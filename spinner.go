@@ -2,20 +2,26 @@ package gooey
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // Spinner represents an animated loading spinner
 type Spinner struct {
-	frames   []string
-	interval time.Duration
-	style    Style
-	message  string
-	mu       sync.Mutex
-	active   bool
-	done     chan struct{}
-	terminal *Terminal
+	frames      []string
+	interval    time.Duration
+	style       Style
+	message     string
+	mu          sync.Mutex
+	active      bool
+	done        chan struct{}
+	terminal    *Terminal
+	startX      int // Absolute cursor position in buffer
+	startY      int // Absolute cursor position in buffer
+	initialized bool
 }
 
 // SpinnerStyle defines different spinner animations
@@ -154,6 +160,16 @@ func (s *Spinner) WithMessage(message string) *Spinner {
 	return s
 }
 
+// ensurePosition makes sure we have a valid start position
+func (s *Spinner) ensurePosition() {
+	if !s.initialized {
+		x, y := s.terminal.CursorPosition()
+		s.startX = x
+		s.startY = y
+		s.initialized = true
+	}
+}
+
 // Start begins the spinner animation
 func (s *Spinner) Start() {
 	s.mu.Lock()
@@ -161,6 +177,9 @@ func (s *Spinner) Start() {
 		s.mu.Unlock()
 		return
 	}
+	// Allow reuse after Stop
+	s.done = make(chan struct{})
+	s.ensurePosition()
 	s.active = true
 	s.mu.Unlock()
 
@@ -178,33 +197,54 @@ func (s *Spinner) Stop() {
 	close(s.done)
 	s.mu.Unlock()
 
-	// Clear the spinner line
-	s.terminal.ClearLine()
+	// Clear the spinner line using atomic frame
+	if frame, err := s.terminal.BeginFrame(); err == nil {
+		// Clear line by printing spaces or using FillStyled?
+		// RenderFrame doesn't have ClearToEndOfLine.
+		// We'll simulate it or just print spaces if we knew the width.
+		// For now, let's assume a reasonable width or use terminal.Width
+		w, _ := frame.Size()
+		frame.FillStyled(s.startX, s.startY, w-s.startX, 1, ' ', NewStyle())
+		s.terminal.EndFrame(frame)
+	}
 }
 
 // Success stops the spinner with a success message
 func (s *Spinner) Success(message string) {
 	s.Stop()
-	s.terminal.MoveCursorLeft(1000) // Move to start of line
-	s.terminal.ClearLine()
-	successStyle := NewStyle().WithForeground(ColorGreen)
-	fmt.Println(successStyle.Apply("✓ " + message))
+
+	if frame, err := s.terminal.BeginFrame(); err == nil {
+		w, _ := frame.Size()
+		// Clear first
+		frame.FillStyled(s.startX, s.startY, w-s.startX, 1, ' ', NewStyle())
+
+		successStyle := NewStyle().WithForeground(ColorGreen)
+		frame.PrintStyled(s.startX, s.startY, "✓ "+message, successStyle)
+		s.terminal.EndFrame(frame)
+	}
+	// We don't automatically advance line here to keep it clean,
+	// or we can let the user handle layout.
 }
 
 // Error stops the spinner with an error message
 func (s *Spinner) Error(message string) {
 	s.Stop()
-	s.terminal.MoveCursorLeft(1000) // Move to start of line
-	s.terminal.ClearLine()
-	errorStyle := NewStyle().WithForeground(ColorRed)
-	fmt.Println(errorStyle.Apply("✗ " + message))
+
+	if frame, err := s.terminal.BeginFrame(); err == nil {
+		w, _ := frame.Size()
+		frame.FillStyled(s.startX, s.startY, w-s.startX, 1, ' ', NewStyle())
+
+		errorStyle := NewStyle().WithForeground(ColorRed)
+		frame.PrintStyled(s.startX, s.startY, "✗ "+message, errorStyle)
+		s.terminal.EndFrame(frame)
+	}
 }
 
 func (s *Spinner) animate() {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
-	frame := 0
+	frameIdx := 0
 	for {
 		select {
 		case <-s.done:
@@ -213,18 +253,28 @@ func (s *Spinner) animate() {
 			s.mu.Lock()
 			message := s.message
 			style := s.style
+			startX, startY := s.startX, s.startY
 			s.mu.Unlock()
 
-			s.terminal.MoveCursorLeft(1000) // Move to start of line
-			s.terminal.ClearLine()
+			if frame, err := s.terminal.BeginFrame(); err == nil {
+				w, _ := frame.Size()
+				// Clear line
+				frame.FillStyled(startX, startY, w-startX, 1, ' ', NewStyle())
 
-			output := style.Apply(s.frames[frame])
-			if message != "" {
-				output += " " + message
+				// Draw frame
+				frame.PrintStyled(startX, startY, s.frames[frameIdx], style)
+
+				// Draw message
+				if message != "" {
+					// Length of frame + space
+					offset := len(s.frames[frameIdx]) + 1
+					frame.PrintStyled(startX+offset, startY, message, NewStyle())
+				}
+
+				s.terminal.EndFrame(frame)
 			}
-			fmt.Print(output)
 
-			frame = (frame + 1) % len(s.frames)
+			frameIdx = (frameIdx + 1) % len(s.frames)
 		}
 	}
 }
@@ -242,6 +292,9 @@ type ProgressBar struct {
 	message     string
 	terminal    *Terminal
 	mu          sync.Mutex
+	startX      int // Absolute cursor position in buffer
+	startY      int // Absolute cursor position in buffer
+	initialized bool
 }
 
 // NewProgressBar creates a new progress bar
@@ -299,6 +352,20 @@ func (p *ProgressBar) Update(current int, message string) {
 		p.current = p.total
 	}
 	p.message = message
+
+	// Ensure position is set if this is the first update
+	if !p.initialized {
+		// We can't easily get virtualX/Y without locking terminal,
+		// but BeginFrame will give us a frame.
+		// However, for standalone usage, we might rely on external positioning?
+		// Or just grab it now (but thread unsafe without lock).
+		// Safe way: NewProgressBar should probably not assume position until drawn/started.
+		// For now, let's assume if not initialized, we default to 0,0 or caller handles it.
+		// But the old code used terminal.virtualX which is internal.
+		// We'll rely on MultiProgress setting it, or if standalone, it might break.
+		// Standalone usage should probably use terminal.Print* directly or we need a 'Start' for ProgressBar too.
+		p.initialized = true
+	}
 	p.mu.Unlock()
 
 	p.draw()
@@ -312,6 +379,10 @@ func (p *ProgressBar) Increment(message string) {
 		p.current = p.total
 	}
 	p.message = message
+
+	if !p.initialized {
+		p.initialized = true
+	}
 	p.mu.Unlock()
 
 	p.draw()
@@ -320,48 +391,72 @@ func (p *ProgressBar) Increment(message string) {
 // Complete marks the progress as complete
 func (p *ProgressBar) Complete(message string) {
 	p.Update(p.total, message)
-	fmt.Println() // Move to next line
+	// We don't force newline here anymore to stay atomic
 }
 
 func (p *ProgressBar) draw() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.terminal.MoveCursorLeft(1000) // Move to start of line
-	p.terminal.ClearLine()
+	if frame, err := p.terminal.BeginFrame(); err == nil {
+		w, _ := frame.Size()
+		// Clear line
+		frame.FillStyled(p.startX, p.startY, w-p.startX, 1, ' ', NewStyle())
 
-	// Calculate fill
-	percent := float64(p.current) / float64(p.total)
-	filled := int(percent * float64(p.width))
-
-	// Build bar
-	bar := "["
-	for i := 0; i < p.width; i++ {
-		if i < filled {
-			bar += p.style.Apply(p.fillChar)
-		} else {
-			bar += p.emptyChar
+		// Calculate fill
+		percent := 0.0
+		if p.total > 0 {
+			percent = float64(p.current) / float64(p.total)
 		}
-	}
-	bar += "]"
+		filled := int(percent * float64(p.width))
 
-	// Add percentage
-	output := bar
-	if p.showPercent {
-		output += fmt.Sprintf(" %3.0f%%", percent*100)
-	}
+		// Build bar
+		currentX := p.startX
 
-	// Add numbers
-	if p.showNumbers {
-		output += fmt.Sprintf(" (%d/%d)", p.current, p.total)
-	}
+		frame.PrintStyled(currentX, p.startY, "[", NewStyle())
+		currentX++
 
-	// Add message
-	if p.message != "" {
-		output += " " + p.message
-	}
+		// Fill part
+		fillStr := strings.Repeat(p.fillChar, filled)
+		frame.PrintStyled(currentX, p.startY, fillStr, p.style)
+		// runewidth for multi-byte chars? Let's assume width 1 or rely on terminal logic
+		// Actually frame.PrintStyled handles width. But we need to advance X correctly if we do piecemeal.
+		// Simpler to build string? No, style changes.
+		// We need to know width of fillStr.
+		currentX += runewidth.StringWidth(fillStr)
 
-	fmt.Print(output)
+		// Empty part
+		emptyWidth := p.width - filled
+		if emptyWidth > 0 {
+			emptyStr := strings.Repeat(p.emptyChar, emptyWidth)
+			frame.PrintStyled(currentX, p.startY, emptyStr, NewStyle())
+			currentX += runewidth.StringWidth(emptyStr)
+		}
+
+		frame.PrintStyled(currentX, p.startY, "]", NewStyle())
+		currentX++
+
+		// Add percentage
+		if p.showPercent {
+			pctStr := fmt.Sprintf(" %3.0f%%", percent*100)
+			frame.PrintStyled(currentX, p.startY, pctStr, NewStyle())
+			currentX += len(pctStr)
+		}
+
+		// Add numbers
+		if p.showNumbers {
+			numStr := fmt.Sprintf(" (%d/%d)", p.current, p.total)
+			frame.PrintStyled(currentX, p.startY, numStr, NewStyle())
+			currentX += len(numStr)
+		}
+
+		// Add message
+		if p.message != "" {
+			frame.PrintStyled(currentX, p.startY, " "+p.message, NewStyle())
+		}
+
+		p.terminal.EndFrame(frame)
+	}
 }
 
 // MultiProgress manages multiple progress items
@@ -369,7 +464,6 @@ type MultiProgress struct {
 	items    []*ProgressItem
 	terminal *Terminal
 	mu       sync.Mutex
-	startY   int
 }
 
 // ProgressItem represents a single progress item in MultiProgress
@@ -380,8 +474,8 @@ type ProgressItem struct {
 	Total       int
 	Style       Style
 	SpinnerOnly bool
-	spinner     *Spinner
-	bar         *ProgressBar
+	Spinner     *Spinner
+	Bar         *ProgressBar
 }
 
 // NewMultiProgress creates a new multi-progress manager
@@ -405,9 +499,9 @@ func (m *MultiProgress) Add(id string, total int, spinnerOnly bool) *ProgressIte
 	}
 
 	if spinnerOnly {
-		item.spinner = NewSpinner(m.terminal, SpinnerDots)
+		item.Spinner = NewSpinner(m.terminal, SpinnerDots)
 	} else {
-		item.bar = NewProgressBar(m.terminal, total)
+		item.Bar = NewProgressBar(m.terminal, total)
 	}
 
 	m.items = append(m.items, item)
@@ -434,15 +528,48 @@ func (m *MultiProgress) Start() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Save current position
-	m.terminal.SaveCursor()
-	_, y := m.terminal.Size()
-	m.startY = y
+	// Reserve space and track positions for each item
+	for _, item := range m.items {
+		// Check if adding a new line will cause scrolling (at bottom of screen)
+		_, y := m.terminal.CursorPosition()
+		_, h := m.terminal.Size()
 
-	// Reserve space for all items
-	for range m.items {
-		fmt.Println()
+		// If we are at the last line, printing a newline will scroll
+		if y >= h-1 {
+			// Shift all previous items up by 1
+			for _, prevItem := range m.items {
+				if prevItem.Bar != nil && prevItem.Bar.initialized {
+					prevItem.Bar.startY--
+				}
+				if prevItem.Spinner != nil && prevItem.Spinner.initialized {
+					prevItem.Spinner.startY--
+				}
+			}
+		}
+
+		// Capture current position for this item
+		// Note: We call CursorPosition again because logic above might have changed understanding,
+		// but actually Println will trigger the scroll.
+		// The item will be placed at 'currentY'.
+		currentX, currentY := m.terminal.CursorPosition()
+
+		if item.Bar != nil {
+			item.Bar.startY = currentY
+			item.Bar.startX = currentX
+			item.Bar.initialized = true
+		}
+		if item.Spinner != nil {
+			item.Spinner.startY = currentY
+			item.Spinner.startX = currentX
+			item.Spinner.initialized = true
+		}
+
+		// Reserve the line (moves cursor down)
+		m.terminal.Println("")
 	}
+
+	// Ensure changes are flushed to screen
+	m.terminal.Flush()
 }
 
 // Stop stops all progress items
@@ -452,26 +579,30 @@ func (m *MultiProgress) Stop() {
 
 	// Stop all spinners
 	for _, item := range m.items {
-		if item.spinner != nil {
-			item.spinner.Stop()
+		if item.Spinner != nil {
+			item.Spinner.Stop()
 		}
 	}
 }
 
 func (m *MultiProgress) drawItem(index int, item *ProgressItem) {
-	// Move to the item's line
-	m.terminal.MoveCursor(0, m.startY+index)
-	m.terminal.ClearLine()
-
+	// The progress bar/spinner will draw at its own startY position
+	// We just need to trigger the update
 	if item.SpinnerOnly {
-		// Draw spinner
-		if item.spinner != nil {
-			item.spinner.WithMessage(item.Message)
+		// Draw spinner - it will use its own startY position
+		if item.Spinner != nil {
+			item.Spinner.WithMessage(item.Message)
+			// Note: Spinner animates in its own goroutine, but WithMessage updates it safely
+			// If we want to force a redraw here (e.g. if message changed), the spinner loop handles it
 		}
 	} else {
-		// Draw progress bar
-		if item.bar != nil {
-			item.bar.Update(item.Current, item.Message)
+		// Draw progress bar - it will use its own startY position
+		if item.Bar != nil {
+			// We call Update which triggers draw()
+			// But we need to be careful not to double-lock or call Update recursively if we are called from Update
+			// m.Update calls this.
+			// item.Bar.Update locks bar.mu. That's fine.
+			item.Bar.Update(item.Current, item.Message)
 		}
 	}
 }

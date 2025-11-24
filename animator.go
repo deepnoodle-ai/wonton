@@ -1,13 +1,32 @@
 package gooey
 
 import (
-	"fmt"
+	"errors"
 	"sync"
 	"time"
 	"unicode/utf8"
 )
 
-// Animator manages multiple animated elements
+// Animator manages multiple animated elements and provides a render loop.
+//
+// The Animator runs a dedicated goroutine that updates and renders all registered
+// AnimatedElements at a configurable frame rate (default 30 FPS).
+//
+// Thread Safety: All public methods are thread-safe. The animator uses internal
+// synchronization to protect element lists and state.
+//
+// Lifecycle:
+//  1. Create with NewAnimator(terminal, fps)
+//  2. Add elements with AddElement()
+//  3. Call Start() to begin animation loop
+//  4. Call Stop() to pause, or Close() to shutdown completely
+//
+// Example:
+//
+//	anim := NewAnimator(term, 60) // 60 FPS
+//	anim.AddElement(myAnimatedText)
+//	anim.Start()
+//	defer anim.Close()
 type Animator struct {
 	terminal     *Terminal
 	elements     []AnimatedElement
@@ -16,24 +35,28 @@ type Animator struct {
 	ticker       *time.Ticker
 	stopChan     chan struct{}
 	frameCounter uint64
+	fps          int
+	wg           sync.WaitGroup
 }
 
 // AnimatedElement represents any element that can be animated
 type AnimatedElement interface {
 	Update(frame uint64)
-	Draw(terminal *Terminal)
+	Draw(frame RenderFrame)
 	Position() (x, y int)
 	Dimensions() (width, height int)
 }
 
 // NewAnimator creates a new animation engine
 func NewAnimator(terminal *Terminal, fps int) *Animator {
-	interval := time.Second / time.Duration(fps)
+	if fps <= 0 {
+		fps = 30
+	}
 	return &Animator{
 		terminal: terminal,
 		elements: make([]AnimatedElement, 0),
-		ticker:   time.NewTicker(interval),
 		stopChan: make(chan struct{}),
+		fps:      fps,
 	}
 }
 
@@ -56,17 +79,31 @@ func (a *Animator) RemoveElement(element AnimatedElement) {
 	}
 }
 
-// Start begins the animation loop
-func (a *Animator) Start() {
+// Start begins the animation loop.
+//
+// Errors:
+//   - Returns ErrAlreadyActive if animator is already running
+func (a *Animator) Start() error {
 	a.mu.Lock()
 	if a.active {
 		a.mu.Unlock()
-		return
+		return ErrAlreadyActive
 	}
 	a.active = true
+	a.stopChan = make(chan struct{}) // Re-initialize stop channel
+
+	// Reset ticker if needed or ensure it's running
+	if a.ticker != nil {
+		a.ticker.Stop() // Stop old one just in case
+	}
+	interval := time.Second / time.Duration(a.fps)
+	a.ticker = time.NewTicker(interval)
+
+	a.wg.Add(1)
 	a.mu.Unlock()
 
 	go a.animate()
+	return nil
 }
 
 // Stop stops the animation loop
@@ -77,13 +114,31 @@ func (a *Animator) Stop() {
 		return
 	}
 	a.active = false
+	close(a.stopChan)
+	if a.ticker != nil {
+		a.ticker.Stop()
+	}
 	a.mu.Unlock()
 
-	close(a.stopChan)
-	a.ticker.Stop()
+	a.wg.Wait() // Wait for animation loop to finish
+}
+
+// Close stops the animation loop and releases all resources.
+// It implements the Component lifecycle pattern.
+// After Close() is called, the Animator should not be reused.
+func (a *Animator) Close() error {
+	a.Stop()
+
+	// Clear elements to release references
+	a.mu.Lock()
+	a.elements = nil
+	a.mu.Unlock()
+
+	return nil
 }
 
 func (a *Animator) animate() {
+	defer a.wg.Done()
 	for {
 		select {
 		case <-a.stopChan:
@@ -100,16 +155,27 @@ func (a *Animator) animate() {
 				element.Update(frameCounter)
 			}
 
-			// Save cursor position
-			a.terminal.SaveCursor()
+			// Begin atomic frame
+			frame, err := a.terminal.BeginFrame()
+			if err != nil {
+				if errors.Is(err, ErrClosed) {
+					return
+				}
+				continue
+			}
 
 			// Draw all elements
 			for _, element := range elements {
-				element.Draw(a.terminal)
+				element.Draw(frame)
 			}
 
-			// Restore cursor position
-			a.terminal.RestoreCursor()
+			// End frame (flushes)
+			if err := a.terminal.EndFrame(frame); err != nil {
+				if errors.Is(err, ErrClosed) {
+					return
+				}
+				continue
+			}
 
 			a.mu.Lock()
 			a.frameCounter++
@@ -148,24 +214,18 @@ func (r *RainbowAnimation) GetStyle(frame uint64, charIndex int, totalChars int)
 		r.Speed = 60
 	}
 
-	// Calculate rainbow position
+	// Get rainbow colors and apply directly
+	colors := SmoothRainbow(r.Length)
 	offset := int(frame) / r.Speed
 	if r.Reversed {
 		offset = -offset
 	}
-
-	// Create a rainbow that moves across the text
-	rainbowPos := (charIndex + offset) % (r.Length * 2)
+	rainbowPos := (charIndex + offset) % len(colors)
 	if rainbowPos < 0 {
-		rainbowPos += r.Length * 2
+		rainbowPos += len(colors)
 	}
-
-	// Generate rainbow colors
-	colors := SmoothRainbow(r.Length)
-	colorIndex := rainbowPos % len(colors)
-
-	_ = colors[colorIndex]                         // Store for potential use
-	return NewStyle().WithForeground(ColorDefault) // We'll apply RGB directly
+	rgb := colors[rainbowPos]
+	return NewStyle().WithFgRGB(rgb)
 }
 
 // WaveAnimation creates a wave-like color effect
@@ -227,19 +287,27 @@ func (p *PulseAnimation) GetStyle(frame uint64, charIndex int, totalChars int) S
 
 	// Calculate pulse
 	pulseTime := float64(frame) / float64(p.Speed)
-	_ = charIndex  // Store for potential use
-	_ = totalChars // Store for potential use
-	brightness := p.MinBrightness + (p.MaxBrightness-p.MinBrightness)*(0.5+0.5)
+	brightness := p.MinBrightness + (p.MaxBrightness-p.MinBrightness)*(0.5+0.5*Sine(pulseTime))
 
 	// Apply brightness to color
-	_ = RGB{
+	adjustedColor := RGB{
 		R: uint8(float64(p.Color.R) * brightness),
 		G: uint8(float64(p.Color.G) * brightness),
 		B: uint8(float64(p.Color.B) * brightness),
 	}
 
-	_ = pulseTime                                  // Store for potential use
-	return NewStyle().WithForeground(ColorDefault) // We'll apply RGB directly
+	return NewStyle().WithFgRGB(adjustedColor)
+}
+
+// Sine helper for pulse calculations
+func Sine(x float64) float64 {
+	// Simple sine approximation
+	x = x - float64(int(x/6.28318))*6.28318 // Normalize to 0-2π
+	if x < 3.14159 {
+		return 4 * x * (3.14159 - x) / (3.14159 * 3.14159)
+	}
+	x = x - 3.14159
+	return -4 * x * (3.14159 - x) / (3.14159 * 3.14159)
 }
 
 // NewAnimatedText creates a new animated text element
@@ -260,39 +328,23 @@ func (at *AnimatedText) Update(frame uint64) {
 }
 
 // Draw renders the animated text
-func (at *AnimatedText) Draw(terminal *Terminal) {
+func (at *AnimatedText) Draw(frame RenderFrame) {
 	at.mu.RLock()
 	defer at.mu.RUnlock()
-
-	terminal.MoveCursor(at.x, at.y)
 
 	runes := []rune(at.text)
 	totalChars := len(runes)
 
 	for i, r := range runes {
+		currentX := at.x + i
+		var style Style
 		if at.animation != nil {
-			style := at.animation.GetStyle(at.currentFrame, i, totalChars)
-			// For RGB animations, we need to handle this differently
-			switch anim := at.animation.(type) {
-			case *RainbowAnimation:
-				// Get rainbow colors and apply directly
-				colors := SmoothRainbow(anim.Length)
-				offset := int(at.currentFrame) / anim.Speed
-				if anim.Reversed {
-					offset = -offset
-				}
-				rainbowPos := (i + offset) % len(colors)
-				if rainbowPos < 0 {
-					rainbowPos += len(colors)
-				}
-				rgb := colors[rainbowPos]
-				terminal.Print(rgb.Apply(string(r), false))
-			default:
-				terminal.Print(style.Apply(string(r)))
-			}
+			// Use the animation's GetStyle method - consolidated rendering
+			style = at.animation.GetStyle(at.currentFrame, i, totalChars)
 		} else {
-			terminal.Print(string(r))
+			style = NewStyle()
 		}
+		frame.SetCell(currentX, at.y, r, style)
 	}
 }
 
@@ -385,16 +437,18 @@ func (aml *AnimatedMultiLine) Update(frame uint64) {
 }
 
 // Draw renders all animated lines
-func (aml *AnimatedMultiLine) Draw(terminal *Terminal) {
+func (aml *AnimatedMultiLine) Draw(frame RenderFrame) {
 	aml.mu.RLock()
 	defer aml.mu.RUnlock()
 
+	frameW, _ := frame.Size()
+
 	for i, line := range aml.lines {
+		// Clear line first
+		frame.FillStyled(0, aml.y+i, frameW, 1, ' ', NewStyle())
+
 		if i < len(aml.animations) && aml.animations[i] != nil {
 			// Draw animated line
-			terminal.MoveCursor(aml.x, aml.y+i)
-			terminal.ClearLine()
-
 			runes := []rune(line)
 			totalChars := len(runes)
 
@@ -403,30 +457,14 @@ func (aml *AnimatedMultiLine) Draw(terminal *Terminal) {
 					break // Respect width limit
 				}
 
+				currentX := aml.x + j
+				// Use the animation's GetStyle method - consolidated rendering
 				style := aml.animations[i].GetStyle(aml.currentFrame, j, totalChars)
-				// Handle different animation types
-				switch anim := aml.animations[i].(type) {
-				case *RainbowAnimation:
-					colors := SmoothRainbow(anim.Length)
-					offset := int(aml.currentFrame) / anim.Speed
-					if anim.Reversed {
-						offset = -offset
-					}
-					rainbowPos := (j + offset) % len(colors)
-					if rainbowPos < 0 {
-						rainbowPos += len(colors)
-					}
-					rgb := colors[rainbowPos]
-					terminal.Print(rgb.Apply(string(r), false))
-				default:
-					terminal.Print(style.Apply(string(r)))
-				}
+				frame.SetCell(currentX, aml.y+i, r, style)
 			}
 		} else {
 			// Draw static line
-			terminal.MoveCursor(aml.x, aml.y+i)
-			terminal.ClearLine()
-			fmt.Print(line)
+			frame.PrintStyled(aml.x, aml.y+i, line, NewStyle())
 		}
 	}
 }
@@ -451,4 +489,11 @@ func (aml *AnimatedMultiLine) SetPosition(x, y int) {
 	defer aml.mu.Unlock()
 	aml.x = x
 	aml.y = y
+}
+
+// SetWidth updates the element's width
+func (aml *AnimatedMultiLine) SetWidth(width int) {
+	aml.mu.Lock()
+	defer aml.mu.Unlock()
+	aml.width = width
 }

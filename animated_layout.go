@@ -2,6 +2,7 @@ package gooey
 
 import (
 	"sync"
+	"unicode/utf8"
 )
 
 // AnimatedLayout extends Layout with animation capabilities
@@ -27,7 +28,40 @@ func NewAnimatedLayout(terminal *Terminal, fps int) *AnimatedLayout {
 		animator: animator,
 	}
 
+	// Override the base layout's resize handler to also update animated elements
+	if al.Layout.unregisterResize != nil {
+		al.Layout.unregisterResize() // Unregister the base handler
+	}
+	al.Layout.unregisterResize = terminal.OnResize(func(width, height int) {
+		al.handleResize(width, height)
+	})
+
 	return al
+}
+
+// handleResize updates animated elements when the terminal is resized
+func (al *AnimatedLayout) handleResize(width, height int) {
+	al.mu.Lock()
+	defer al.mu.Unlock()
+
+	// Update animated header position/width
+	if al.animatedHeader != nil {
+		al.animatedHeader.SetWidth(width)
+	}
+
+	// Update animated footer position/width
+	if al.animatedFooter != nil {
+		al.animatedFooter.SetWidth(width)
+		al.animatedFooter.SetPosition(0, height-al.footerLines)
+	}
+
+	// Update animated content width
+	if al.animatedContent != nil {
+		al.animatedContent.SetWidth(width)
+	}
+
+	// Update the base layout content area
+	al.updateContentArea()
 }
 
 // SetAnimatedHeader configures an animated header area
@@ -159,8 +193,8 @@ func (al *AnimatedLayout) ClearContentLines() {
 }
 
 // StartAnimations begins all animations
-func (al *AnimatedLayout) StartAnimations() {
-	al.animator.Start()
+func (al *AnimatedLayout) StartAnimations() error {
+	return al.animator.Start()
 }
 
 // StopAnimations stops all animations
@@ -266,32 +300,25 @@ func (asb *AnimatedStatusBar) Update(frame uint64) {
 }
 
 // Draw renders the animated status bar
-func (asb *AnimatedStatusBar) Draw(terminal *Terminal) {
+func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 	asb.mu.RLock()
 	defer asb.mu.RUnlock()
 
-	terminal.MoveCursor(asb.x, asb.y)
+	// Draw background
+	bgStyle := NewStyle().WithBgRGB(asb.background)
+	frame.FillStyled(asb.x, asb.y, asb.width, 1, ' ', bgStyle)
 
-	// Clear the line with background
-	bgLine := make([]byte, asb.width)
-	for i := range bgLine {
-		bgLine[i] = ' '
-	}
-	terminal.Print(asb.background.Apply(string(bgLine), true))
-	terminal.MoveCursor(asb.x, asb.y)
-
-	currentX := 0
+	currentX := asb.x
 	for i, item := range asb.items {
-		if currentX >= asb.width {
+		if currentX >= asb.x+asb.width {
 			break
 		}
 
 		// Add separator if not first item
 		if i > 0 {
-			sepStyle := NewStyle().WithForeground(ColorBrightBlack)
-			separatorText := asb.background.Apply(sepStyle.Apply(asb.separator), true)
-			terminal.Print(separatorText)
-			currentX += len(asb.separator)
+			sepStyle := NewStyle().WithForeground(ColorBrightBlack).WithBgRGB(asb.background)
+			frame.PrintStyled(currentX, asb.y, asb.separator, sepStyle)
+			currentX += utf8.RuneCountInString(asb.separator)
 		}
 
 		// Draw icon if present
@@ -299,17 +326,18 @@ func (asb *AnimatedStatusBar) Draw(terminal *Terminal) {
 			iconText := item.Icon + " "
 			if item.Animation != nil {
 				// Apply animation to icon
-				styledIcon := ""
 				runes := []rune(iconText)
 				for j, r := range runes {
 					style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
-					styledIcon += style.Apply(string(r))
+					// Combine with background
+					style = style.WithBgRGB(asb.background)
+					frame.SetCell(currentX+j, asb.y, r, style)
 				}
-				terminal.Print(asb.background.Apply(styledIcon, true))
 			} else {
-				terminal.Print(asb.background.Apply(item.Style.Apply(iconText), true))
+				iconStyle := item.Style.WithBgRGB(asb.background)
+				frame.PrintStyled(currentX, asb.y, iconText, iconStyle)
 			}
-			currentX += len(iconText)
+			currentX += utf8.RuneCountInString(iconText)
 		}
 
 		// Draw key
@@ -319,15 +347,15 @@ func (asb *AnimatedStatusBar) Draw(terminal *Terminal) {
 			if keyStyle.IsEmpty() {
 				keyStyle = NewStyle().WithBold()
 			}
-			terminal.Print(asb.background.Apply(keyStyle.Apply(keyText), true))
-			currentX += len(keyText)
+			keyStyle = keyStyle.WithBgRGB(asb.background)
+			frame.PrintStyled(currentX, asb.y, keyText, keyStyle)
+			currentX += utf8.RuneCountInString(keyText)
 		}
 
 		// Draw value
 		if item.Value != "" {
 			if item.Animation != nil {
 				// Apply animation to value
-				styledValue := ""
 				runes := []rune(item.Value)
 				for j, r := range runes {
 					switch anim := item.Animation.(type) {
@@ -342,18 +370,20 @@ func (asb *AnimatedStatusBar) Draw(terminal *Terminal) {
 							rainbowPos += len(colors)
 						}
 						rgb := colors[rainbowPos]
-						styledValue += rgb.Apply(string(r), false)
+						// Combine with background
+						style := NewStyle().WithFgRGB(rgb).WithBgRGB(asb.background)
+						frame.SetCell(currentX+j, asb.y, r, style)
 					default:
 						style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
-						styledValue += style.Apply(string(r))
+						style = style.WithBgRGB(asb.background)
+						frame.SetCell(currentX+j, asb.y, r, style)
 					}
 				}
-				terminal.Print(asb.background.Apply(styledValue, true))
 			} else {
-				valueStyle := NewStyle().WithForeground(ColorWhite)
-				terminal.Print(asb.background.Apply(valueStyle.Apply(item.Value), true))
+				valueStyle := NewStyle().WithForeground(ColorWhite).WithBgRGB(asb.background)
+				frame.PrintStyled(currentX, asb.y, item.Value, valueStyle)
 			}
-			currentX += len(item.Value)
+			currentX += utf8.RuneCountInString(item.Value)
 		}
 	}
 }
@@ -442,9 +472,10 @@ func (ail *AnimatedInputLayout) GetInputPosition() (x, y int) {
 // DrawPrompt draws the input prompt
 func (ail *AnimatedInputLayout) DrawPrompt() {
 	_, inputY := ail.GetInputArea()
+	// Uses deprecated PrintStyled but safe wrapper
 	ail.terminal.MoveCursor(0, inputY)
 	ail.terminal.ClearLine()
-	ail.terminal.Print(ail.promptStyle.Apply(ail.inputPrompt))
+	ail.terminal.PrintStyled(ail.inputPrompt, ail.promptStyle)
 }
 
 // GetAnimator returns the underlying animator for adding custom elements

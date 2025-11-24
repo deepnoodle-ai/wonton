@@ -33,6 +33,8 @@ const (
 type Style struct {
 	Foreground    Color
 	Background    Color
+	FgRGB         *RGB // RGB override for foreground
+	BgRGB         *RGB // RGB override for background
 	Bold          bool
 	Italic        bool
 	Underline     bool
@@ -41,6 +43,7 @@ type Style struct {
 	Reverse       bool
 	Hidden        bool
 	Dim           bool
+	URL           string // OSC 8 hyperlink URL (empty string = no hyperlink)
 }
 
 // NewStyle creates a new style with default values
@@ -54,12 +57,26 @@ func NewStyle() Style {
 // WithForeground sets the foreground color
 func (s Style) WithForeground(c Color) Style {
 	s.Foreground = c
+	s.FgRGB = nil // Clear RGB override
 	return s
 }
 
 // WithBackground sets the background color
 func (s Style) WithBackground(c Color) Style {
 	s.Background = c
+	s.BgRGB = nil // Clear RGB override
+	return s
+}
+
+// WithFgRGB sets the foreground RGB color
+func (s Style) WithFgRGB(rgb RGB) Style {
+	s.FgRGB = &rgb
+	return s
+}
+
+// WithBgRGB sets the background RGB color
+func (s Style) WithBgRGB(rgb RGB) Style {
+	s.BgRGB = &rgb
 	return s
 }
 
@@ -105,6 +122,12 @@ func (s Style) WithDim() Style {
 	return s
 }
 
+// WithURL sets a hyperlink URL for this style (OSC 8)
+func (s Style) WithURL(url string) Style {
+	s.URL = url
+	return s
+}
+
 // String returns the ANSI escape sequence for this style
 func (s Style) String() string {
 	var codes []string
@@ -139,12 +162,16 @@ func (s Style) String() string {
 	}
 
 	// Foreground color
-	if s.Foreground != ColorDefault {
+	if s.FgRGB != nil {
+		codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", s.FgRGB.R, s.FgRGB.G, s.FgRGB.B))
+	} else if s.Foreground != ColorDefault {
 		codes = append(codes, s.Foreground.foregroundCode())
 	}
 
 	// Background color
-	if s.Background != ColorDefault {
+	if s.BgRGB != nil {
+		codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", s.BgRGB.R, s.BgRGB.G, s.BgRGB.B))
+	} else if s.Background != ColorDefault {
 		codes = append(codes, s.Background.backgroundCode())
 	}
 

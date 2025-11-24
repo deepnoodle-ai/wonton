@@ -33,11 +33,7 @@ func NewButton(x, y int, label string, onClick func()) *Button {
 }
 
 // Draw renders the button
-func (b *Button) Draw(terminal *Terminal) {
-	// Save current cursor position and hide cursor to prevent flash
-	terminal.SaveCursor()
-	terminal.HideCursor()
-
+func (b *Button) Draw(frame RenderFrame) {
 	style := b.Style
 	if b.Hovered {
 		style = b.HoverStyle
@@ -53,12 +49,15 @@ func (b *Button) Draw(terminal *Terminal) {
 		buttonText += strings.Repeat(" ", padding)
 	}
 
-	terminal.MoveCursor(b.X, b.Y)
-	terminal.Print(style.Apply("[" + buttonText + "]"))
+	// Coordinate handling for compatibility with composition system
+	// If we are in a SubFrame sized exactly for this button, we should draw at 0,0
+	drawX, drawY := b.X, b.Y
+	frameWidth, frameHeight := frame.Size()
+	if frameWidth == b.Width && frameHeight == 1 {
+		drawX, drawY = 0, 0
+	}
 
-	// Restore cursor position and show cursor
-	terminal.RestoreCursor()
-	terminal.ShowCursor()
+	frame.PrintStyled(drawX, drawY, "["+buttonText+"]", style)
 }
 
 // GetRegion returns the mouse region for this button
@@ -156,12 +155,19 @@ func (tc *TabCompleter) GetSelected() string {
 }
 
 // Draw renders the tab completion dropdown
-func (tc *TabCompleter) Draw(terminal *Terminal) {
+func (tc *TabCompleter) Draw(frame RenderFrame) {
+	termWidth, _ := frame.Size()
+
 	// Handle clearing if dropdown was hidden
 	if tc.clearDropdown && tc.lastDrawnLines > 0 {
 		for i := 0; i <= tc.lastDrawnLines; i++ {
-			terminal.MoveCursor(0, tc.Y+1+i) // Clear from start of line
-			terminal.ClearLine()             // Clear entire line
+			clearWidth := tc.Width
+			if tc.X+clearWidth > termWidth {
+				clearWidth = termWidth - tc.X
+			}
+			if clearWidth > 0 {
+				frame.FillStyled(tc.X, tc.Y+1+i, clearWidth, 1, ' ', NewStyle())
+			}
 		}
 		tc.clearDropdown = false
 		tc.lastDrawnLines = 0
@@ -169,16 +175,9 @@ func (tc *TabCompleter) Draw(terminal *Terminal) {
 		return
 	}
 
-	if !tc.Visible || len(tc.suggestions) == 0 {
+	if !tc.Visible || len(tc.suggestions) == 0 || tc.Width < 4 {
 		return
 	}
-
-	// Save cursor position and hide it to prevent flashing
-	terminal.SaveCursor()
-	terminal.HideCursor()
-
-	// Force a flush to ensure any pending output is displayed first
-	terminal.Flush()
 
 	// Use a background color to ensure dropdown is visible over other content
 	dropdownBg := ColorBlack
@@ -203,6 +202,8 @@ func (tc *TabCompleter) Draw(terminal *Terminal) {
 	tc.lastDrawnLines = (end - start) + 1 // +1 for bottom border
 
 	// Save content that will be overwritten (for proper layering)
+	// Note: RenderFrame doesn't support reading content back easily.
+	// We assume redraw will handle restoration if we clear.
 	if tc.savedContent == nil {
 		tc.savedContent = make([]string, tc.lastDrawnLines)
 	}
@@ -211,13 +212,14 @@ func (tc *TabCompleter) Draw(terminal *Terminal) {
 	for i := start; i < end; i++ {
 		y := tc.Y + 1 + (i - start)
 
-		// First, save cursor and clear the entire line properly
-		terminal.SaveCursor()
-		terminal.MoveCursor(0, y)    // Move to start of line
-		terminal.ClearLine()         // Clear entire line
-		terminal.MoveCursor(tc.X, y) // Move back to dropdown position
-		terminal.RestoreCursor()
-		terminal.MoveCursor(tc.X, y) // Position for drawing
+		// Clear the entire line properly first (conceptually)
+		clearWidth := tc.Width
+		if tc.X+clearWidth > termWidth {
+			clearWidth = termWidth - tc.X
+		}
+		if clearWidth > 0 {
+			frame.FillStyled(tc.X, y, clearWidth, 1, ' ', NewStyle())
+		}
 
 		// Format suggestion
 		suggestion := tc.suggestions[i]
@@ -247,38 +249,35 @@ func (tc *TabCompleter) Draw(terminal *Terminal) {
 		line += "│"
 
 		// Print the line, ensuring full width is covered with background
-		terminal.Print(style.Apply(line))
+		frame.PrintStyled(tc.X, y, line, style)
 	}
 
 	// Draw bottom border
 	y := tc.Y + 1 + (end - start)
-	terminal.SaveCursor()
-	terminal.MoveCursor(0, y)    // Move to start of line
-	terminal.ClearLine()         // Clear entire line
-	terminal.MoveCursor(tc.X, y) // Move back to dropdown position
-	terminal.RestoreCursor()
-	terminal.MoveCursor(tc.X, y)
-	border := "└" + strings.Repeat("─", tc.Width-2) + "┘"
+	clearWidth := tc.Width
+	if tc.X+clearWidth > termWidth {
+		clearWidth = termWidth - tc.X
+	}
+	if clearWidth > 0 {
+		frame.FillStyled(tc.X, y, clearWidth, 1, ' ', NewStyle()) // Clear line
+	}
+
+	borderWidth := tc.Width - 2
+	if borderWidth < 0 {
+		borderWidth = 0
+	}
+	border := "└" + strings.Repeat("─", borderWidth) + "┘"
 	// Ensure border has background for visibility
 	borderStyle := tc.normalStyle.WithBackground(dropdownBg)
-	terminal.Print(borderStyle.Apply(border))
+	frame.PrintStyled(tc.X, y, border, borderStyle)
 
 	// Show scroll indicators if needed
 	if start > 0 {
-		terminal.MoveCursor(tc.X+tc.Width-3, tc.Y+1)
-		terminal.Print("↑")
+		frame.PrintStyled(tc.X+tc.Width-3, tc.Y+1, "↑", NewStyle())
 	}
 	if end < len(tc.suggestions) {
-		terminal.MoveCursor(tc.X+tc.Width-3, y-1)
-		terminal.Print("↓")
+		frame.PrintStyled(tc.X+tc.Width-3, y-1, "↓", NewStyle())
 	}
-
-	// Restore cursor position and visibility
-	terminal.RestoreCursor()
-	terminal.ShowCursor()
-
-	// Force flush to ensure dropdown is displayed immediately
-	terminal.Flush()
 }
 
 // GetRegions returns mouse regions for clickable suggestions
@@ -356,10 +355,17 @@ func NewRadioGroup(x, y int, options []string) *RadioGroup {
 }
 
 // Draw renders the radio group
-func (rg *RadioGroup) Draw(terminal *Terminal) {
-	for i, option := range rg.Options {
-		terminal.MoveCursor(rg.X, rg.Y+i)
+func (rg *RadioGroup) Draw(frame RenderFrame) {
+	// Coordinate handling for compatibility with composition system
+	drawX, drawY := rg.X, rg.Y
+	_, frameHeight := frame.Size()
+	// If frame height matches our content height exactly, assume we are in a SubFrame
+	// and should draw relative to it (at 0,0) instead of absolute coordinates.
+	if frameHeight == len(rg.Options) {
+		drawX, drawY = 0, 0
+	}
 
+	for i, option := range rg.Options {
 		style := rg.Style
 		indicator := "○"
 		if i == rg.Selected {
@@ -367,7 +373,7 @@ func (rg *RadioGroup) Draw(terminal *Terminal) {
 			indicator = "●"
 		}
 
-		terminal.Print(style.Apply(fmt.Sprintf(" %s %s", indicator, option)))
+		frame.PrintStyled(drawX, drawY+i, fmt.Sprintf(" %s %s", indicator, option), style)
 	}
 }
 

@@ -2,7 +2,8 @@ package gooey
 
 import (
 	"strings"
-	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // BorderStyle defines the characters used for drawing borders
@@ -160,7 +161,8 @@ func (f *Frame) WithTitleStyle(style Style) *Frame {
 }
 
 // Draw renders the frame to the terminal
-func (f *Frame) Draw(t *Terminal) {
+// Updated to use RenderFrame
+func (f *Frame) Draw(t RenderFrame) {
 	if f.Width < 2 || f.Height < 2 {
 		return
 	}
@@ -170,23 +172,21 @@ func (f *Frame) Draw(t *Terminal) {
 
 	// Draw sides
 	for i := 1; i < f.Height-1; i++ {
-		t.MoveCursor(f.X, f.Y+i)
-		t.Print(f.BorderStyle.Apply(f.Border.Vertical))
-		t.MoveCursor(f.X+f.Width-1, f.Y+i)
-		t.Print(f.BorderStyle.Apply(f.Border.Vertical))
+		t.PrintStyled(f.X, f.Y+i, f.Border.Vertical, f.BorderStyle)
+		t.PrintStyled(f.X+f.Width-1, f.Y+i, f.Border.Vertical, f.BorderStyle)
 	}
 
 	// Draw bottom border
 	f.drawBottomBorder(t)
 }
 
-func (f *Frame) drawTopBorder(t *Terminal) {
+func (f *Frame) drawTopBorder(t RenderFrame) {
 	line := f.Border.TopLeft + strings.Repeat(f.Border.Horizontal, f.Width-2) + f.Border.TopRight
 
 	// Insert title if present
 	if f.Title != "" {
 		titleWithSpaces := " " + f.Title + " "
-		titleLen := utf8.RuneCountInString(titleWithSpaces)
+		titleLen := runewidth.StringWidth(titleWithSpaces)
 
 		if titleLen < f.Width-2 {
 			var pos int
@@ -216,17 +216,23 @@ func (f *Frame) drawTopBorder(t *Terminal) {
 		}
 	}
 
-	t.MoveCursor(f.X, f.Y)
-
 	// Apply styles
-	if f.Title != "" && !f.TitleStyle.IsEmpty() {
+	if f.Title != "" {
 		// Split the line to apply different styles
 		parts := f.splitLineForTitle(line)
-		t.Print(f.BorderStyle.Apply(parts[0]))
-		t.Print(f.TitleStyle.Apply(parts[1]))
-		t.Print(f.BorderStyle.Apply(parts[2]))
+
+		// Part 0: before title (border style)
+		t.PrintStyled(f.X, f.Y, parts[0], f.BorderStyle)
+
+		// Part 1: title (title style)
+		titleX := f.X + runewidth.StringWidth(parts[0])
+		t.PrintStyled(titleX, f.Y, parts[1], f.TitleStyle)
+
+		// Part 2: after title (border style)
+		afterX := titleX + runewidth.StringWidth(parts[1])
+		t.PrintStyled(afterX, f.Y, parts[2], f.BorderStyle)
 	} else {
-		t.Print(f.BorderStyle.Apply(line))
+		t.PrintStyled(f.X, f.Y, line, f.BorderStyle)
 	}
 }
 
@@ -236,12 +242,9 @@ func (f *Frame) splitLineForTitle(line string) []string {
 	}
 
 	titleWithSpaces := " " + f.Title + " "
-	// Find the title in the line (it was placed by drawTopBorder)
-	// We need to work with runes to handle multi-byte characters properly
 	lineRunes := []rune(line)
 	titleRunes := []rune(titleWithSpaces)
 
-	// Find where the title starts
 	titleStart := -1
 	for i := 0; i <= len(lineRunes)-len(titleRunes); i++ {
 		match := true
@@ -268,18 +271,19 @@ func (f *Frame) splitLineForTitle(line string) []string {
 	return []string{before, title, after}
 }
 
-func (f *Frame) drawBottomBorder(t *Terminal) {
+func (f *Frame) drawBottomBorder(t RenderFrame) {
 	line := f.Border.BottomLeft + strings.Repeat(f.Border.Horizontal, f.Width-2) + f.Border.BottomRight
-	t.MoveCursor(f.X, f.Y+f.Height-1)
-	t.Print(f.BorderStyle.Apply(line))
+	t.PrintStyled(f.X, f.Y+f.Height-1, line, f.BorderStyle)
 }
 
 // Clear clears the content inside the frame (not the border)
-func (f *Frame) Clear(t *Terminal) {
-	emptyLine := strings.Repeat(" ", f.Width-2)
+func (f *Frame) Clear(t RenderFrame) {
+	if f.Width < 2 {
+		return
+	}
+	// Use FillStyled with spaces
 	for i := 1; i < f.Height-1; i++ {
-		t.MoveCursor(f.X+1, f.Y+i)
-		t.Print(emptyLine)
+		t.FillStyled(f.X+1, f.Y+i, f.Width-2, 1, ' ', NewStyle())
 	}
 }
 
@@ -302,7 +306,7 @@ func NewBox(content []string) *Box {
 }
 
 // Draw renders the box at the specified position
-func (b *Box) Draw(t *Terminal, x, y int) {
+func (b *Box) Draw(t RenderFrame, x, y int) {
 	if len(b.Content) == 0 {
 		return
 	}
@@ -310,7 +314,7 @@ func (b *Box) Draw(t *Terminal, x, y int) {
 	// Calculate dimensions
 	maxWidth := 0
 	for _, line := range b.Content {
-		if len := utf8.RuneCountInString(line); len > maxWidth {
+		if len := runewidth.StringWidth(line); len > maxWidth {
 			maxWidth = len
 		}
 	}
@@ -318,53 +322,57 @@ func (b *Box) Draw(t *Terminal, x, y int) {
 	width := maxWidth + 2 + (b.Padding * 2)
 	height := len(b.Content) + 2 + (b.Padding * 2)
 
-	// Draw the complete box line by line to avoid corruption
-	// This ensures each line is drawn atomically
+	// Draw the complete box line by line
 
 	// Top border
 	topLine := b.Border.TopLeft + strings.Repeat(b.Border.Horizontal, width-2) + b.Border.TopRight
-	t.MoveCursor(x, y)
-	t.Print(b.BorderStyle.Apply(topLine))
+	t.PrintStyled(x, y, topLine, b.BorderStyle)
 
 	// Content lines with side borders
 	for i := 1; i < height-1; i++ {
-		t.MoveCursor(x, y+i)
+		currentY := y + i
 
 		// Left border
-		line := b.BorderStyle.Apply(b.Border.Vertical)
+		t.PrintStyled(x, currentY, b.Border.Vertical, b.BorderStyle)
+
+		// Inner content x position
+		contentX := x + 1
 
 		// Content or padding
 		contentIndex := i - 1 - b.Padding
-		if contentIndex >= 0 && contentIndex < len(b.Content) {
-			// Add leading padding
-			line += strings.Repeat(" ", b.Padding)
 
-			// Add content (truncated if necessary)
+		// Padding before content
+		if b.Padding > 0 {
+			t.FillStyled(contentX, currentY, b.Padding, 1, ' ', NewStyle())
+			contentX += b.Padding
+		}
+
+		if contentIndex >= 0 && contentIndex < len(b.Content) {
+			// Content
 			contentLine := b.Content[contentIndex]
 			maxLineWidth := width - 2 - (b.Padding * 2)
-			if utf8.RuneCountInString(contentLine) > maxLineWidth {
-				lineRunes := []rune(contentLine)
-				contentLine = string(lineRunes[:maxLineWidth])
+			// Truncate to fit width properly considering character widths
+			if runewidth.StringWidth(contentLine) > maxLineWidth {
+				contentLine = runewidth.Truncate(contentLine, maxLineWidth, "")
 			}
-			line += contentLine
+			t.PrintStyled(contentX, currentY, contentLine, NewStyle())
 
-			// Add trailing padding to fill the width
-			contentWidth := utf8.RuneCountInString(contentLine)
+			// Padding after content
+			contentWidth := runewidth.StringWidth(contentLine)
 			padding := width - 2 - b.Padding - contentWidth
-			line += strings.Repeat(" ", padding)
+			if padding > 0 {
+				t.FillStyled(contentX+contentWidth, currentY, padding, 1, ' ', NewStyle())
+			}
 		} else {
-			// Just padding/empty space
-			line += strings.Repeat(" ", width-2)
+			// Just empty space for vertical padding
+			t.FillStyled(contentX, currentY, width-2-(b.Padding*2), 1, ' ', NewStyle())
 		}
 
 		// Right border
-		line += b.BorderStyle.Apply(b.Border.Vertical)
-
-		t.Print(line)
+		t.PrintStyled(x+width-1, currentY, b.Border.Vertical, b.BorderStyle)
 	}
 
 	// Bottom border
 	bottomLine := b.Border.BottomLeft + strings.Repeat(b.Border.Horizontal, width-2) + b.Border.BottomRight
-	t.MoveCursor(x, y+height-1)
-	t.Print(b.BorderStyle.Apply(bottomLine))
+	t.PrintStyled(x, y+height-1, bottomLine, b.BorderStyle)
 }

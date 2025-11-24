@@ -60,29 +60,44 @@ func (d *InteractiveDemo) Setup() {
 
 	width, height := d.terminal.Size()
 
-	// Define screen regions
-	d.screenManager.DefineRegion("title", 0, 0, width, 2, false)
-	d.screenManager.DefineRegion("clickable", 0, 2, width, 4, false)
-	d.screenManager.DefineRegion("buttons", 0, 6, width, 3, false)
-	d.screenManager.DefineRegion("radio", 0, 9, width, 4, false)
-	d.screenManager.DefineRegion("input", 0, 13, width, 2, true)
-	d.screenManager.DefineRegion("completions", 0, 15, width, 7, false)
-	d.screenManager.DefineRegion("notifications", 0, 22, width, 3, false)
+	// Function to set up regions
+	setupRegions := func(w, h int) {
+		// Define screen regions
+		d.screenManager.DefineRegion("title", 0, 0, w, 2, false)
+		d.screenManager.DefineRegion("clickable", 0, 2, w, 4, false)
+		d.screenManager.DefineRegion("buttons", 0, 6, w, 3, false)
+		d.screenManager.DefineRegion("radio", 0, 9, w, 4, false)
+		d.screenManager.DefineRegion("input", 0, 13, w, 2, true)
+		d.screenManager.DefineRegion("completions", 0, 15, w, 7, false)
+		d.screenManager.DefineRegion("notifications", 0, 22, w, 3, false)
 
-	// Footer at bottom
-	footerY := height - 2
-	if footerY > 25 {
-		footerY = 25
+		// Footer at bottom
+		footerY := h - 2
+		if footerY > 25 {
+			footerY = 25
+		}
+		d.screenManager.DefineRegion("footer", 0, footerY, w, 2, false)
+
+		// Reinitialize display
+		d.initializeDisplay()
 	}
-	d.screenManager.DefineRegion("footer", 0, footerY, width, 2, false)
+
+	// Initial setup
+	setupRegions(width, height)
+
+	// Enable automatic resize handling
+	d.terminal.WatchResize()
+	d.terminal.OnResize(func(w, h int) {
+		setupRegions(w, h)
+		d.createButtons()
+		d.createRadioGroup()
+		d.updateClickableText()
+	})
 
 	// Create UI components
 	d.createButtons()
 	d.createRadioGroup()
 	d.setupTabCompleter()
-
-	// Initialize display
-	d.initializeDisplay()
 
 	// Start screen manager
 	d.screenManager.Start()
@@ -110,6 +125,18 @@ func (d *InteractiveDemo) createButtons() {
 		}),
 	}
 
+	// Set custom draw callback for buttons region
+	d.screenManager.SetRegionDrawCallback("buttons", func(frame gooey.RenderFrame, x, y, w, h int) {
+		// Draw region title
+		frame.PrintStyled(x, y, "🔘 Interactive Buttons:", gooey.NewStyle())
+
+		// Draw buttons
+		// Note: Buttons use absolute coordinates (e.g. 5, 7) which matches the screen layout
+		for _, btn := range d.buttons {
+			btn.Draw(frame)
+		}
+	})
+
 	// Add button regions to mouse handler
 	for _, btn := range d.buttons {
 		d.mouseHandler.AddRegion(btn.GetRegion())
@@ -124,6 +151,15 @@ func (d *InteractiveDemo) createRadioGroup() {
 		d.addNotification(fmt.Sprintf("🎨 Theme changed to: %s", theme))
 		d.updateColors()
 	}
+
+	// Set custom draw callback for radio region
+	d.screenManager.SetRegionDrawCallback("radio", func(frame gooey.RenderFrame, x, y, w, h int) {
+		// Draw region title
+		frame.PrintStyled(x, y, "🎨 Theme Selection:", gooey.NewStyle())
+
+		// Draw radio group
+		d.radioGroup.Draw(frame)
+	})
 
 	// Add radio button regions
 	for _, region := range d.radioGroup.GetRegions() {
@@ -149,6 +185,14 @@ func (d *InteractiveDemo) setupTabCompleter() {
 
 	// Store for later use
 	d.tabCompleter.SetSuggestions(commands, "")
+
+	// Set custom draw callback for completions region
+	// This ensures the dropdown is drawn as part of the screen refresh cycle
+	d.screenManager.SetRegionDrawCallback("completions", func(frame gooey.RenderFrame, x, y, w, h int) {
+		if d.tabCompleter.Visible {
+			d.tabCompleter.Draw(frame)
+		}
+	})
 }
 
 func (d *InteractiveDemo) initializeDisplay() {
@@ -185,31 +229,39 @@ func (d *InteractiveDemo) updateClickableText() {
 	// Create clickable words
 	words := []string{"Click", "these", "words", "to", "change", "their", "colors!"}
 
-	d.screenManager.UpdateRegion("clickable", 0,
-		"📝 Clickable Text Area:", nil)
+	// Set custom draw callback for clickable region
+	d.screenManager.SetRegionDrawCallback("clickable", func(frame gooey.RenderFrame, x, y, w, h int) {
+		// Draw title
+		frame.PrintStyled(x, y, "📝 Clickable Text Area:", gooey.NewStyle())
 
-	// Build the text with colored words
-	var textLine strings.Builder
-	textLine.WriteString("   ")
+		// Draw colored words
+		currentX := x + 3
+		currentY := y + 1
 
-	for i, word := range words {
-		// Check if word has been clicked and has a color
-		if color, exists := d.clickedWords[word]; exists {
-			textLine.WriteString(color.Apply(word, false))
-		} else {
-			textLine.WriteString(word)
+		for i, word := range words {
+			style := gooey.NewStyle()
+
+			// Check if word has been clicked and has a color
+			if color, exists := d.clickedWords[word]; exists {
+				style = style.WithFgRGB(color)
+			}
+
+			frame.PrintStyled(currentX, currentY, word, style)
+			currentX += len(word)
+
+			if i < len(words)-1 {
+				frame.PrintStyled(currentX, currentY, " ", gooey.NewStyle())
+				currentX += 1
+			}
 		}
 
-		if i < len(words)-1 {
-			textLine.WriteString(" ")
-		}
-	}
-
-	d.screenManager.UpdateRegion("clickable", 1, textLine.String(), nil)
+		// Draw example sentence
+		frame.PrintStyled(x, y+2, "   Try clicking the words above to see them change color!", gooey.NewStyle())
+	})
 
 	// Add mouse regions for each word
 	x := 3 // Starting x position
-	y := 3 // Line position
+	y := 3 // Line position (title is at y, words at y+1)
 
 	for _, word := range words {
 		wordCopy := word // Capture for closure
@@ -250,31 +302,29 @@ func (d *InteractiveDemo) updateClickableText() {
 		x += len(word) + 1
 	}
 
-	// Add example sentence
-	d.screenManager.UpdateRegion("clickable", 2,
-		"   Try clicking the words above to see them change color!", nil)
+	// Trigger redraw
+	d.screenManager.UpdateRegion("clickable", 0, "refresh", nil)
+}
+
+func (d *InteractiveDemo) drawComponent(c interface{ Draw(gooey.RenderFrame) }) {
+	frame, err := d.terminal.BeginFrame()
+	if err != nil {
+		return
+	}
+	c.Draw(frame)
+	d.terminal.EndFrame(frame)
 }
 
 func (d *InteractiveDemo) updateButtons() {
-	// Clear and redraw button area
+	// Trigger redraw of button region
+	// The DrawCallback set in createButtons will handle the actual rendering
 	d.screenManager.UpdateRegion("buttons", 0, "🔘 Interactive Buttons:", nil)
-
-	// Draw buttons manually for now (would be better integrated with screenManager)
-	go func() {
-		d.terminal.MoveCursor(0, 7)
-		for _, btn := range d.buttons {
-			btn.Draw(d.terminal)
-		}
-	}()
 }
 
 func (d *InteractiveDemo) updateRadioButtons() {
+	// Trigger redraw of radio region
+	// The DrawCallback set in createRadioGroup will handle the actual rendering
 	d.screenManager.UpdateRegion("radio", 0, "🎨 Theme Selection:", nil)
-
-	// Draw radio group
-	go func() {
-		d.radioGroup.Draw(d.terminal)
-	}()
 }
 
 func (d *InteractiveDemo) updateInput() {
@@ -290,17 +340,11 @@ func (d *InteractiveDemo) updateInput() {
 
 	// Update cursor position
 	d.screenManager.SetCursorPosition(len(prompt)+d.cursorPos, 13)
-
-	// Always redraw overlay components last
-	d.drawOverlays()
 }
 
-func (d *InteractiveDemo) drawOverlays() {
-	// Draw any overlay components (dropdowns, modals, etc.) last
-	// This ensures they appear on top of regular content
-	if d.tabCompleter.Visible {
-		d.tabCompleter.Draw(d.terminal)
-	}
+// drawOverlays is no longer needed as overlays are handled by ScreenManager callbacks
+func (d *InteractiveDemo) unused_drawOverlays() {
+	// Kept for reference but unused
 }
 
 func (d *InteractiveDemo) handleTabCompletion() {
@@ -324,9 +368,6 @@ func (d *InteractiveDemo) handleTabCompletion() {
 	if len(suggestions) > 0 {
 		d.tabCompleter.SetSuggestions(suggestions, d.currentInput)
 		d.tabCompleter.Show(2, 13, 40)
-
-		// Draw overlays to ensure dropdown appears on top
-		d.drawOverlays()
 
 		// Add clickable regions for suggestions
 		for _, region := range d.tabCompleter.GetRegions() {
@@ -434,10 +475,8 @@ func (d *InteractiveDemo) Run() error {
 				switch buf[2] {
 				case 'A': // Up
 					d.tabCompleter.SelectPrev()
-					d.drawOverlays()
 				case 'B': // Down
 					d.tabCompleter.SelectNext()
-					d.drawOverlays()
 				}
 				continue
 			}
@@ -525,6 +564,7 @@ func (d *InteractiveDemo) Run() error {
 
 func (d *InteractiveDemo) Cleanup() {
 	d.running = false
+	d.terminal.StopWatchResize()
 	d.screenManager.Stop()
 }
 

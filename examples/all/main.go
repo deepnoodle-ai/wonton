@@ -39,6 +39,9 @@ type ComprehensiveDemo struct {
 	taskProgress   int
 	spinnerFrame   int
 	saveInProgress bool
+
+	// Resize handling
+	setupRegions func(int, int)
 }
 
 func NewComprehensiveDemo() (*ComprehensiveDemo, error) {
@@ -76,29 +79,43 @@ func (d *ComprehensiveDemo) Setup() {
 
 	width, height := d.terminal.Size()
 
-	// Define all screen regions
-	d.screenManager.DefineRegion("title", 0, 0, width, 2, false)
-	d.screenManager.DefineRegion("status", 0, 2, width, 2, false)
-	d.screenManager.DefineRegion("clickable", 0, 4, width, 2, false)
-	d.screenManager.DefineRegion("content", 0, 6, width, 4, false)
-	d.screenManager.DefineRegion("buttons", 0, 10, width, 2, false)
-	d.screenManager.DefineRegion("input", 0, 12, width, 4, true)
-	d.screenManager.DefineRegion("completions", 0, 16, width, 4, false)
-	d.screenManager.DefineRegion("notifications", 0, 20, width, 3, false)
+	// Function to set up all screen regions
+	d.setupRegions = func(w, h int) {
+		// Define all screen regions
+		d.screenManager.DefineRegion("title", 0, 0, w, 2, false)
+		d.screenManager.DefineRegion("status", 0, 2, w, 2, false)
+		d.screenManager.DefineRegion("clickable", 0, 4, w, 2, false)
+		d.screenManager.DefineRegion("content", 0, 6, w, 4, false)
+		d.screenManager.DefineRegion("buttons", 0, 10, w, 2, false)
+		d.screenManager.DefineRegion("input", 0, 12, w, 4, true)
+		d.screenManager.DefineRegion("completions", 0, 16, w, 4, false)
+		d.screenManager.DefineRegion("notifications", 0, 20, w, 3, false)
 
-	footerY := 23
-	footerHeight := height - footerY - 1
-	if footerHeight > 3 {
-		footerHeight = 3
+		footerY := 23
+		footerHeight := h - footerY - 1
+		if footerHeight > 3 {
+			footerHeight = 3
+		}
+		d.screenManager.DefineRegion("footer", 0, footerY, w, footerHeight, false)
+
+		// Reinitialize regions with content
+		d.initializeRegions()
 	}
-	d.screenManager.DefineRegion("footer", 0, footerY, width, footerHeight, false)
+
+	// Initial setup
+	d.setupRegions(width, height)
 
 	// Create interactive components
 	d.createButtons()
 	d.setupTabCompleter()
 
-	// Initialize all regions
-	d.initializeRegions()
+	// Enable automatic resize handling
+	d.terminal.WatchResize()
+	d.terminal.OnResize(func(w, h int) {
+		d.setupRegions(w, h)
+		d.createButtons()
+		d.updateClickableWords()
+	})
 
 	// Start the screen manager
 	d.screenManager.Start()
@@ -147,7 +164,7 @@ func (d *ComprehensiveDemo) setupTabCompleter() {
 		d.inputs[d.selectedInput] = suggestion + " "
 		d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
 		d.tabCompleter.Hide()
-		d.tabCompleter.Draw(d.terminal) // Clear the dropdown
+		d.drawComponent(d.tabCompleter) // Clear the dropdown
 		d.updateInputFields()
 	}
 
@@ -223,6 +240,15 @@ func (d *ComprehensiveDemo) updateClickableWords() {
 	}
 }
 
+func (d *ComprehensiveDemo) drawComponent(c interface{ Draw(gooey.RenderFrame) }) {
+	frame, err := d.terminal.BeginFrame()
+	if err != nil {
+		return
+	}
+	c.Draw(frame)
+	d.terminal.EndFrame(frame)
+}
+
 func (d *ComprehensiveDemo) updateButtons() {
 	d.screenManager.UpdateRegion("buttons", 0, "🔘 Interactive Buttons (click them!):", nil)
 
@@ -230,7 +256,7 @@ func (d *ComprehensiveDemo) updateButtons() {
 	go func() {
 		time.Sleep(10 * time.Millisecond) // Small delay to ensure screen is ready
 		for _, btn := range d.buttons {
-			btn.Draw(d.terminal)
+			d.drawComponent(btn)
 		}
 	}()
 }
@@ -368,9 +394,7 @@ func (d *ComprehensiveDemo) handleTabCompletion() {
 		d.tabCompleter.SetSuggestions(suggestions, d.inputs[d.selectedInput])
 		d.tabCompleter.Show(10, 12+d.selectedInput, 30)
 
-		go func() {
-			d.tabCompleter.Draw(d.terminal)
-		}()
+		d.drawComponent(d.tabCompleter)
 
 		for _, region := range d.tabCompleter.GetRegions() {
 			d.mouseHandler.AddRegion(region)
@@ -485,10 +509,10 @@ func (d *ComprehensiveDemo) Run() error {
 					switch buf[2] {
 					case 'A': // Up
 						d.tabCompleter.SelectPrev()
-						d.tabCompleter.Draw(d.terminal)
+						d.drawComponent(d.tabCompleter)
 					case 'B': // Down
 						d.tabCompleter.SelectNext()
-						d.tabCompleter.Draw(d.terminal)
+						d.drawComponent(d.tabCompleter)
 					}
 				} else {
 					// Navigate fields
@@ -531,7 +555,7 @@ func (d *ComprehensiveDemo) Run() error {
 					d.inputs[d.selectedInput] = selected + " "
 					d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
 					d.tabCompleter.Hide()
-					d.tabCompleter.Draw(d.terminal) // Clear the dropdown
+					d.drawComponent(d.tabCompleter) // Clear the dropdown
 					d.updateInputFields()
 				}
 			} else if d.inputs[d.selectedInput] != "" {
@@ -544,7 +568,7 @@ func (d *ComprehensiveDemo) Run() error {
 		case 27: // ESC
 			if d.tabCompleter.Visible {
 				d.tabCompleter.Hide()
-				d.tabCompleter.Draw(d.terminal) // Clear the dropdown
+				d.drawComponent(d.tabCompleter) // Clear the dropdown
 				d.updateClickableWords()        // Re-add mouse regions
 			} else {
 				d.inputs[d.selectedInput] = ""
@@ -560,7 +584,7 @@ func (d *ComprehensiveDemo) Run() error {
 					d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
 				}
 				d.tabCompleter.Hide()
-				d.tabCompleter.Draw(d.terminal) // Clear the dropdown
+				d.drawComponent(d.tabCompleter) // Clear the dropdown
 			} else if d.inputs[d.selectedInput] != "" {
 				d.addNotification("Executed: " + d.inputs[d.selectedInput])
 			}
@@ -584,7 +608,7 @@ func (d *ComprehensiveDemo) Run() error {
 
 				if d.tabCompleter.Visible {
 					d.tabCompleter.Hide()
-					d.tabCompleter.Draw(d.terminal) // Clear the dropdown
+					d.drawComponent(d.tabCompleter) // Clear the dropdown
 				}
 			}
 		}
@@ -595,6 +619,7 @@ func (d *ComprehensiveDemo) Run() error {
 
 func (d *ComprehensiveDemo) Cleanup() {
 	d.running = false
+	d.terminal.StopWatchResize()
 	d.screenManager.Stop()
 	time.Sleep(100 * time.Millisecond)
 }

@@ -1,17 +1,25 @@
 package gooey
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"sync"
 	"unicode/utf8"
+
+	"golang.org/x/term"
 )
 
 // Key represents special keyboard keys
 type Key int
 
 const (
+	// KeyUnknown is the zero value, used when no special key is pressed
+	// IMPORTANT: Must be 0 so regular characters (with Key field unset) don't match special keys
+	KeyUnknown Key = 0
+
+	// Special keys start at 1 to avoid conflicting with zero value
 	KeyEnter Key = iota
 	KeyTab
 	KeyBackspace
@@ -64,20 +72,62 @@ const (
 	KeyCtrlX
 	KeyCtrlY
 	KeyCtrlZ
-	KeyUnknown
 )
 
 // KeyEvent represents a keyboard event
 type KeyEvent struct {
-	Key  Key
-	Rune rune
-	Alt  bool
-	Ctrl bool
+	Key   Key
+	Rune  rune
+	Alt   bool
+	Ctrl  bool
+	Shift bool
+	Paste string // If non-empty, this event represents a paste operation
 }
+
+// PasteHandlerDecision represents the decision made by a paste handler
+type PasteHandlerDecision int
+
+const (
+	// PasteAccept indicates the paste should be accepted and inserted normally
+	PasteAccept PasteHandlerDecision = iota
+	// PasteReject indicates the paste should be rejected completely
+	PasteReject
+	// PasteModified indicates the paste content has been modified by the handler
+	PasteModified
+)
+
+// PasteInfo contains information about a paste event
+type PasteInfo struct {
+	Content   string // The pasted content
+	LineCount int    // Number of lines in the paste
+	ByteCount int    // Number of bytes in the paste
+}
+
+// PasteHandler is called when paste content is received.
+// It can inspect, modify, or reject the paste.
+// Return (decision, modifiedContent):
+//   - (PasteAccept, "") to accept the paste as-is
+//   - (PasteReject, "") to reject the paste
+//   - (PasteModified, newContent) to replace the paste with modified content
+type PasteHandler func(info PasteInfo) (PasteHandlerDecision, string)
+
+// PasteDisplayMode controls how pasted content is displayed
+type PasteDisplayMode int
+
+const (
+	// PasteDisplayNormal shows the pasted content normally (default behavior)
+	PasteDisplayNormal PasteDisplayMode = iota
+	// PasteDisplayPlaceholder shows a placeholder like "[pasted 27 lines]" instead of the content
+	PasteDisplayPlaceholder
+	// PasteDisplayHidden doesn't show anything (content is added silently)
+	PasteDisplayHidden
+)
 
 // Input handles user input with borders and hotkeys
 type Input struct {
 	terminal        *Terminal
+	reader          io.Reader // Injected reader for testability (defaults to os.Stdin)
+	decoder         *KeyDecoder
 	prompt          string
 	promptStyle     Style
 	inputStyle      Style
@@ -96,29 +146,40 @@ type Input struct {
 	multiline       bool
 	suggestions     []string
 	showSuggestions bool
+	mu              sync.RWMutex
+
+	// Paste handling
+	pasteHandler     PasteHandler
+	pasteDisplayMode PasteDisplayMode
+	placeholderStyle Style
 }
 
 // NewInput creates a new input handler
 func NewInput(terminal *Terminal) *Input {
+	reader := io.Reader(os.Stdin)
 	return &Input{
-		terminal:        terminal,
-		prompt:          "> ",
-		promptStyle:     NewStyle().WithForeground(ColorCyan),
-		inputStyle:      NewStyle(),
-		borderStyle:     SingleBorder,
-		borderColor:     NewStyle().WithForeground(ColorBlue),
-		showBorder:      false,
-		history:         make([]string, 0),
-		historyIndex:    -1,
-		hotkeys:         make(map[Key]func()),
-		beforeLine:      false,
-		afterLine:       false,
-		lineStyle:       NewStyle().WithForeground(ColorBrightBlack),
-		maxLength:       0,
-		mask:            0,
-		multiline:       false,
-		suggestions:     make([]string, 0),
-		showSuggestions: false,
+		terminal:         terminal,
+		reader:           reader,
+		decoder:          NewKeyDecoder(reader),
+		prompt:           "> ",
+		promptStyle:      NewStyle().WithForeground(ColorCyan),
+		inputStyle:       NewStyle(),
+		borderStyle:      SingleBorder,
+		borderColor:      NewStyle().WithForeground(ColorBlue),
+		showBorder:       false,
+		history:          make([]string, 0),
+		historyIndex:     -1,
+		hotkeys:          make(map[Key]func()),
+		beforeLine:       false,
+		afterLine:        false,
+		lineStyle:        NewStyle().WithForeground(ColorBrightBlack),
+		maxLength:        0,
+		mask:             0,
+		multiline:        false,
+		suggestions:      make([]string, 0),
+		showSuggestions:  false,
+		pasteDisplayMode: PasteDisplayNormal,
+		placeholderStyle: NewStyle().WithForeground(ColorBrightBlack).WithItalic(),
 	}
 }
 
@@ -163,6 +224,15 @@ func (i *Input) WithMask(mask rune) *Input {
 	return i
 }
 
+// SetReader sets the input reader for testability.
+// By default, Input reads from os.Stdin, but this allows injecting
+// a custom reader (e.g., bytes.Buffer) for testing.
+func (i *Input) SetReader(reader io.Reader) *Input {
+	i.reader = reader
+	i.decoder = NewKeyDecoder(reader)
+	return i
+}
+
 // EnableMultiline enables multiline input
 func (i *Input) EnableMultiline() *Input {
 	i.multiline = true
@@ -171,6 +241,8 @@ func (i *Input) EnableMultiline() *Input {
 
 // SetHotkey registers a hotkey handler
 func (i *Input) SetHotkey(key Key, handler func()) *Input {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	i.hotkeys[key] = handler
 	return i
 }
@@ -190,16 +262,77 @@ func (i *Input) SetSuggestions(suggestions []string) *Input {
 	return i
 }
 
+// WithPasteHandler sets a custom paste handler callback.
+// The handler is called when paste content is received and can inspect,
+// modify, or reject the paste.
+//
+// Example - Reject pastes over 1000 characters:
+//
+//	input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+//	    if info.ByteCount > 1000 {
+//	        return gooey.PasteReject, ""
+//	    }
+//	    return gooey.PasteAccept, ""
+//	})
+//
+// Example - Strip ANSI codes from paste:
+//
+//	input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+//	    cleaned := stripANSI(info.Content)
+//	    return gooey.PasteModified, cleaned
+//	})
+func (i *Input) WithPasteHandler(handler PasteHandler) *Input {
+	i.pasteHandler = handler
+	return i
+}
+
+// WithPasteDisplayMode sets how pasted content is displayed.
+//
+// - PasteDisplayNormal: Shows the pasted content normally (default)
+// - PasteDisplayPlaceholder: Shows a placeholder like "[pasted 27 lines]"
+// - PasteDisplayHidden: Content is added silently without visual feedback
+//
+// Example - Show placeholder for multi-line pastes:
+//
+//	input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
+func (i *Input) WithPasteDisplayMode(mode PasteDisplayMode) *Input {
+	i.pasteDisplayMode = mode
+	return i
+}
+
+// WithPlaceholderStyle sets the style for paste placeholders.
+// Only applies when PasteDisplayMode is PasteDisplayPlaceholder.
+func (i *Input) WithPlaceholderStyle(style Style) *Input {
+	i.placeholderStyle = style
+	return i
+}
+
 // Read reads user input with all configured features
 func (i *Input) Read() (string, error) {
 	// Draw input area
 	i.drawInputArea()
+	i.terminal.Flush()
 
 	// Enable raw mode for key detection
 	if err := i.terminal.EnableRawMode(); err != nil {
 		return "", err
 	}
 	defer i.terminal.DisableRawMode()
+
+	// Drain any leftover input from the buffer to prevent stray newlines
+	// This can happen after terminal mode transitions (e.g., after password input)
+	for i.decoder.reader.Buffered() > 0 {
+		b, err := i.decoder.reader.ReadByte()
+		if err != nil {
+			break
+		}
+		// Only drain newlines and carriage returns, preserve other characters
+		if b != '\n' && b != '\r' {
+			// Put the byte back if it's not a newline
+			i.decoder.reader.UnreadByte()
+			break
+		}
+	}
 
 	var buffer []rune
 	cursorPos := 0
@@ -208,8 +341,89 @@ func (i *Input) Read() (string, error) {
 		// Read key event
 		event := i.readKeyEvent()
 
+		// Handle paste events
+		if event.Paste != "" {
+			// Create paste info
+			pasteInfo := PasteInfo{
+				Content:   event.Paste,
+				LineCount: strings.Count(event.Paste, "\n") + 1,
+				ByteCount: len(event.Paste),
+			}
+
+			// Call paste handler if configured
+			finalContent := event.Paste
+			if i.pasteHandler != nil {
+				decision, modifiedContent := i.pasteHandler(pasteInfo)
+				switch decision {
+				case PasteReject:
+					// Reject the paste - don't insert anything
+					continue
+				case PasteModified:
+					// Use the modified content
+					finalContent = modifiedContent
+				case PasteAccept:
+					// Use original content (already set)
+				}
+			}
+
+			// Handle display mode
+			switch i.pasteDisplayMode {
+			case PasteDisplayPlaceholder:
+				// Show placeholder instead of content
+				var placeholder string
+				if pasteInfo.LineCount == 1 {
+					placeholder = fmt.Sprintf("[pasted %d chars]", pasteInfo.ByteCount)
+				} else {
+					placeholder = fmt.Sprintf("[pasted %d lines]", pasteInfo.LineCount)
+				}
+
+				// Insert actual content into buffer (hidden from display)
+				for _, r := range finalContent {
+					if i.maxLength == 0 || len(buffer) < i.maxLength {
+						buffer = i.insertRune(buffer, cursorPos, r)
+						cursorPos++
+					}
+				}
+
+				// Update display with placeholder temporarily
+				i.updateDisplayWithPlaceholder(buffer, cursorPos, placeholder)
+				i.terminal.Flush()
+
+			case PasteDisplayHidden:
+				// Insert content silently without visual feedback
+				for _, r := range finalContent {
+					if i.maxLength == 0 || len(buffer) < i.maxLength {
+						buffer = i.insertRune(buffer, cursorPos, r)
+						cursorPos++
+					}
+				}
+				// Update display normally (buffer includes paste but no visual indication)
+				i.updateDisplay(buffer, cursorPos)
+				i.terminal.Flush()
+
+			case PasteDisplayNormal:
+				fallthrough
+			default:
+				// Insert entire paste content at cursor position
+				for _, r := range finalContent {
+					if i.maxLength == 0 || len(buffer) < i.maxLength {
+						buffer = i.insertRune(buffer, cursorPos, r)
+						cursorPos++
+					}
+				}
+				// Update display and continue
+				i.updateDisplay(buffer, cursorPos)
+				i.terminal.Flush()
+			}
+			continue
+		}
+
 		// Check hotkeys
-		if handler, ok := i.hotkeys[event.Key]; ok {
+		i.mu.RLock()
+		handler, ok := i.hotkeys[event.Key]
+		i.mu.RUnlock()
+
+		if ok {
 			handler()
 			continue
 		}
@@ -220,7 +434,8 @@ func (i *Input) Read() (string, error) {
 				i.clearInputArea()
 				result := string(buffer)
 				i.AddToHistory(result)
-				fmt.Println()
+				i.terminal.Println("")
+				i.terminal.Flush()
 				return result, nil
 			}
 			// In multiline mode, add newline
@@ -272,7 +487,7 @@ func (i *Input) Read() (string, error) {
 		case KeyEnd:
 			cursorPos = len(buffer)
 
-		case KeyEscape:
+		case KeyEscape, KeyCtrlC:
 			i.clearInputArea()
 			return "", fmt.Errorf("input cancelled")
 
@@ -280,12 +495,10 @@ func (i *Input) Read() (string, error) {
 			// Handle autocomplete
 			if i.showSuggestions && len(i.suggestions) > 0 {
 				current := string(buffer)
-				for _, suggestion := range i.suggestions {
-					if strings.HasPrefix(suggestion, current) {
-						buffer = []rune(suggestion)
-						cursorPos = len(buffer)
-						break
-					}
+				matches := FuzzySearch(current, i.suggestions)
+				if len(matches) > 0 {
+					buffer = []rune(matches[0])
+					cursorPos = len(buffer)
 				}
 			}
 
@@ -306,36 +519,9 @@ func (i *Input) Read() (string, error) {
 		if i.showSuggestions {
 			i.drawSuggestions(string(buffer))
 		}
+
+		i.terminal.Flush()
 	}
-}
-
-// ReadLine reads a single line of input (simplified version)
-func (i *Input) ReadLine() (string, error) {
-	if i.beforeLine {
-		i.drawHorizontalLine()
-	}
-
-	// Show prompt
-	fmt.Print(i.promptStyle.Apply(i.prompt))
-
-	// Read input
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		input := scanner.Text()
-
-		if i.afterLine {
-			i.drawHorizontalLine()
-		}
-
-		i.AddToHistory(input)
-		return input, nil
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-
-	return "", fmt.Errorf("no input")
 }
 
 func (i *Input) drawInputArea() {
@@ -350,19 +536,27 @@ func (i *Input) drawInputArea() {
 		frame := NewFrame(0, 0, width, 3).
 			WithBorderStyle(i.borderStyle).
 			WithColor(i.borderColor)
-		frame.Draw(i.terminal)
+
+		rf, _ := i.terminal.BeginFrame()
+		frame.Draw(rf)
+		i.terminal.EndFrame(rf)
+
 		i.terminal.MoveCursor(2, 1)
 	}
 
 	// Show prompt
-	fmt.Print(i.promptStyle.Apply(i.prompt))
+	i.terminal.SetStyle(i.promptStyle)
+	i.terminal.Print(i.prompt)
 
 	// Show placeholder if needed
 	if i.placeholder != "" {
 		placeholderStyle := NewStyle().WithForeground(ColorBrightBlack)
-		fmt.Print(placeholderStyle.Apply(i.placeholder))
+		i.terminal.SetStyle(placeholderStyle)
+		i.terminal.Print(i.placeholder)
 		i.terminal.MoveCursorLeft(utf8.RuneCountInString(i.placeholder))
 	}
+
+	i.terminal.Reset()
 }
 
 func (i *Input) clearInputArea() {
@@ -385,14 +579,17 @@ func (i *Input) updateDisplay(buffer []rune, cursorPos int) {
 	i.terminal.ClearToEndOfLine()
 
 	// Redraw prompt
-	fmt.Print(i.promptStyle.Apply(i.prompt))
+	i.terminal.SetStyle(i.promptStyle)
+	i.terminal.Print(i.prompt)
 
 	// Draw input text
 	text := string(buffer)
 	if i.mask != 0 {
 		text = strings.Repeat(string(i.mask), len(buffer))
 	}
-	fmt.Print(i.inputStyle.Apply(text))
+	i.terminal.SetStyle(i.inputStyle)
+	i.terminal.Print(text)
+	i.terminal.Reset()
 
 	// Position cursor
 	if cursorPos < len(buffer) {
@@ -400,10 +597,32 @@ func (i *Input) updateDisplay(buffer []rune, cursorPos int) {
 	}
 }
 
+// updateDisplayWithPlaceholder updates the display showing a placeholder instead of the actual buffer content.
+// This is used for PasteDisplayPlaceholder mode to show something like "[pasted 27 lines]" instead of the full content.
+func (i *Input) updateDisplayWithPlaceholder(buffer []rune, cursorPos int, placeholder string) {
+	// Clear current line
+	i.terminal.MoveCursorLeft(1000)
+	i.terminal.ClearToEndOfLine()
+
+	// Redraw prompt
+	i.terminal.SetStyle(i.promptStyle)
+	i.terminal.Print(i.prompt)
+
+	// Show the placeholder with special styling
+	i.terminal.SetStyle(i.placeholderStyle)
+	i.terminal.Print(placeholder)
+	i.terminal.Reset()
+
+	// Position cursor at end of placeholder
+	// (The actual buffer has the full content, but we're only showing the placeholder)
+}
+
 func (i *Input) drawHorizontalLine() {
 	width, _ := i.terminal.Size()
 	line := strings.Repeat("─", width)
-	fmt.Println(i.lineStyle.Apply(line))
+	i.terminal.SetStyle(i.lineStyle)
+	i.terminal.Println(line)
+	i.terminal.Reset()
 }
 
 func (i *Input) drawSuggestions(current string) {
@@ -411,24 +630,27 @@ func (i *Input) drawSuggestions(current string) {
 	i.terminal.MoveCursorDown(1)
 	i.terminal.ClearLine()
 
-	matches := []string{}
-	for _, suggestion := range i.suggestions {
-		if strings.HasPrefix(suggestion, current) && suggestion != current {
-			matches = append(matches, suggestion)
+	matches := FuzzySearch(current, i.suggestions)
+	filtered := []string{}
+	for _, m := range matches {
+		if m != current {
+			filtered = append(filtered, m)
 		}
 	}
+	matches = filtered
 
 	if len(matches) > 0 {
 		suggestionStyle := NewStyle().WithForeground(ColorBrightBlack)
-		fmt.Print(suggestionStyle.Apply("  Suggestions: "))
+		i.terminal.SetStyle(suggestionStyle)
+		i.terminal.Print("  Suggestions: ")
 		for idx, match := range matches {
 			if idx > 2 { // Show max 3 suggestions
 				break
 			}
 			if idx > 0 {
-				fmt.Print(", ")
+				i.terminal.Print(", ")
 			}
-			fmt.Print(match)
+			i.terminal.Print(match)
 		}
 	}
 
@@ -460,120 +682,130 @@ func (i *Input) deleteRune(buffer []rune, pos int) []rune {
 	return result
 }
 
+// readKeyEvent reads a single key event using the unified KeyDecoder.
+// This method delegates to the decoder for consistent key handling across all input methods.
 func (i *Input) readKeyEvent() KeyEvent {
-	// This is a simplified key event reader
-	// In production, you'd want more sophisticated key detection
-
-	buf := make([]byte, 16)
-	n, _ := os.Stdin.Read(buf)
-
-	if n == 0 {
+	event, err := i.decoder.ReadKeyEvent()
+	if err != nil {
+		// On error (EOF, closed pipe, etc.), return unknown key
+		// This maintains backward compatibility with the old behavior
 		return KeyEvent{Key: KeyUnknown}
 	}
 
-	// Check for special keys
-	if n == 1 {
-		switch buf[0] {
-		case 0x0D, 0x0A: // Enter
-			return KeyEvent{Key: KeyEnter}
-		case 0x09: // Tab
-			return KeyEvent{Key: KeyTab}
-		case 0x7F, 0x08: // Backspace
-			return KeyEvent{Key: KeyBackspace}
-		case 0x1B: // Escape
-			return KeyEvent{Key: KeyEscape}
-		case 0x01: // Ctrl-A
-			return KeyEvent{Key: KeyCtrlA}
-		case 0x03: // Ctrl-C
-			return KeyEvent{Key: KeyCtrlC}
-		case 0x04: // Ctrl-D
-			return KeyEvent{Key: KeyCtrlD}
-		case 0x05: // Ctrl-E
-			return KeyEvent{Key: KeyCtrlE}
-		case 0x06: // Ctrl-F
-			return KeyEvent{Key: KeyCtrlF}
-		case 0x0B: // Ctrl-K
-			return KeyEvent{Key: KeyCtrlK}
-		case 0x0C: // Ctrl-L
-			return KeyEvent{Key: KeyCtrlL}
-		case 0x0E: // Ctrl-N
-			return KeyEvent{Key: KeyCtrlN}
-		case 0x10: // Ctrl-P
-			return KeyEvent{Key: KeyCtrlP}
-		case 0x12: // Ctrl-R
-			return KeyEvent{Key: KeyCtrlR}
-		case 0x13: // Ctrl-S
-			return KeyEvent{Key: KeyCtrlS}
-		case 0x14: // Ctrl-T
-			return KeyEvent{Key: KeyCtrlT}
-		case 0x15: // Ctrl-U
-			return KeyEvent{Key: KeyCtrlU}
-		case 0x16: // Ctrl-V
-			return KeyEvent{Key: KeyCtrlV}
-		case 0x17: // Ctrl-W
-			return KeyEvent{Key: KeyCtrlW}
-		case 0x18: // Ctrl-X
-			return KeyEvent{Key: KeyCtrlX}
-		case 0x19: // Ctrl-Y
-			return KeyEvent{Key: KeyCtrlY}
-		case 0x1A: // Ctrl-Z
-			return KeyEvent{Key: KeyCtrlZ}
-		default:
-			if buf[0] >= 0x20 && buf[0] < 0x7F {
-				return KeyEvent{Rune: rune(buf[0])}
-			}
+	// Record input if recording is active
+	if i.terminal.recorder != nil {
+		inputStr := keyEventToString(event)
+		if inputStr != "" {
+			i.terminal.recorder.RecordInput(inputStr)
 		}
 	}
 
-	// Check for escape sequences (arrows, function keys, etc.)
-	if n >= 3 && buf[0] == 0x1B && buf[1] == '[' {
-		switch buf[2] {
-		case 'A':
-			return KeyEvent{Key: KeyArrowUp}
-		case 'B':
-			return KeyEvent{Key: KeyArrowDown}
-		case 'C':
-			return KeyEvent{Key: KeyArrowRight}
-		case 'D':
-			return KeyEvent{Key: KeyArrowLeft}
-		case 'H':
-			return KeyEvent{Key: KeyHome}
-		case 'F':
-			return KeyEvent{Key: KeyEnd}
-		}
+	return event
+}
 
-		// Function keys
-		if n >= 4 && buf[2] >= '1' && buf[2] <= '2' {
-			switch string(buf[2:4]) {
-			case "11":
-				return KeyEvent{Key: KeyF1}
-			case "12":
-				return KeyEvent{Key: KeyF2}
-			case "13":
-				return KeyEvent{Key: KeyF3}
-			case "14":
-				return KeyEvent{Key: KeyF4}
-			case "15":
-				return KeyEvent{Key: KeyF5}
-			case "17":
-				return KeyEvent{Key: KeyF6}
-			case "18":
-				return KeyEvent{Key: KeyF7}
-			case "19":
-				return KeyEvent{Key: KeyF8}
-			case "20":
-				return KeyEvent{Key: KeyF9}
-			case "21":
-				return KeyEvent{Key: KeyF10}
-			case "23":
-				return KeyEvent{Key: KeyF11}
-			case "24":
-				return KeyEvent{Key: KeyF12}
-			}
-		}
+// ReadKeyEvent reads a single key event from the input stream.
+// This is a public method for character-by-character input handling.
+// It blocks until a key is pressed.
+//
+// Example:
+//
+//	input := gooey.NewInput(terminal)
+//	event := input.ReadKeyEvent()
+//	if event.Rune != 0 {
+//	    fmt.Printf("You pressed: %c\n", event.Rune)
+//	}
+func (i *Input) ReadKeyEvent() KeyEvent {
+	return i.readKeyEvent()
+}
+
+// ReadSimple reads a single line of input using a simple buffered scanner.
+// This is the recommended method for basic line reading without advanced features.
+// For advanced features like history, suggestions, or masking, use Read() instead.
+//
+// Example:
+//
+//	input := gooey.NewInput(terminal)
+//	input.WithPrompt("Name: ", gooey.NewStyle())
+//	name, err := input.ReadSimple()
+func (i *Input) ReadSimple() (string, error) {
+	if i.beforeLine {
+		i.drawHorizontalLine()
 	}
 
-	// UTF-8 character
-	r, _ := utf8.DecodeRune(buf[:n])
-	return KeyEvent{Rune: r}
+	// Show prompt
+	i.terminal.SetStyle(i.promptStyle)
+	i.terminal.Print(i.prompt)
+	i.terminal.Flush()
+
+	// Read input using decoder's underlying reader to avoid creating multiple buffers on stdin
+	// This prevents buffer conflicts when used with other input methods
+	var result strings.Builder
+	for {
+		b, err := i.decoder.reader.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+
+		if b == '\n' {
+			break
+		}
+		if b == '\r' {
+			// Skip carriage return, wait for newline
+			continue
+		}
+		result.WriteByte(b)
+	}
+
+	input := result.String()
+
+	// Move to next line after input
+	i.terminal.Println("")
+	i.terminal.Flush()
+
+	if i.afterLine {
+		i.drawHorizontalLine()
+	}
+
+	i.AddToHistory(input)
+	return input, nil
+}
+
+// ReadPassword reads a password with no echo to the terminal.
+// This is the recommended method for secure password input.
+// The input is not displayed on screen.
+//
+// Example:
+//
+//	input := gooey.NewInput(terminal)
+//	input.WithPrompt("Password: ", gooey.NewStyle())
+//	password, err := input.ReadPassword()
+func (i *Input) ReadPassword() (string, error) {
+	if i.beforeLine {
+		i.drawHorizontalLine()
+	}
+
+	i.terminal.SetStyle(i.promptStyle)
+	i.terminal.Print(i.prompt)
+	i.terminal.Reset()
+	i.terminal.Flush()
+
+	// Use terminal package for secure password input
+	fd := int(os.Stdin.Fd())
+	bytePassword, err := term.ReadPassword(fd)
+	if err != nil {
+		return "", err
+	}
+
+	result := string(bytePassword)
+	i.terminal.Println("") // term.ReadPassword doesn't add newline
+
+	if i.afterLine {
+		i.drawHorizontalLine()
+	}
+
+	// Note: We don't add passwords to history
+	return result, nil
 }
