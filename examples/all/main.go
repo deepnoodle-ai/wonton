@@ -4,17 +4,22 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
 
-type ComprehensiveDemo struct {
-	terminal      *gooey.Terminal
-	screenManager *gooey.ScreenManager
-	mouseHandler  *gooey.MouseHandler
+// ComprehensiveApp demonstrates all major Gooey features using the Runtime architecture.
+// This includes animations, mouse handling, tab completion, and interactive components.
+type ComprehensiveApp struct {
+	terminal *gooey.Terminal
+	runtime  *gooey.Runtime
+
+	// Frame counter for animations
+	frame uint64
+
+	// Mouse handling
+	mouseHandler *gooey.MouseHandler
 
 	// Multiple input fields
 	inputs        []string
@@ -26,13 +31,7 @@ type ComprehensiveDemo struct {
 	tabCompleter *gooey.TabCompleter
 	clickedWords map[string]gooey.RGB
 
-	// State
-	running       bool
-	currentMode   string
-	notifications []string
-	mu            sync.Mutex
-
-	// Demo data
+	// Demo data for metrics display
 	cpuUsage       int
 	memoryUsage    int
 	networkSpeed   float64
@@ -40,168 +39,406 @@ type ComprehensiveDemo struct {
 	spinnerFrame   int
 	saveInProgress bool
 
-	// Resize handling
-	setupRegions func(int, int)
+	// Notifications
+	notifications []string
+
+	// Terminal size
+	width  int
+	height int
 }
 
-func NewComprehensiveDemo() (*ComprehensiveDemo, error) {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		return nil, err
-	}
+// HandleEvent processes events from the Runtime.
+func (app *ComprehensiveApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.TickEvent:
+		// Update animation state
+		app.frame = e.Frame
 
-	screenManager := gooey.NewScreenManager(terminal, 15)
-
-	return &ComprehensiveDemo{
-		terminal:      terminal,
-		screenManager: screenManager,
-		mouseHandler:  gooey.NewMouseHandler(),
-		tabCompleter:  gooey.NewTabCompleter(),
-		inputs:        make([]string, 4),
-		cursorPos:     make([]int, 4),
-		selectedInput: 0,
-		running:       true,
-		currentMode:   "NORMAL",
-		notifications: []string{},
-		clickedWords:  make(map[string]gooey.RGB),
-		cpuUsage:      45,
-		memoryUsage:   62,
-		networkSpeed:  1.2,
-		taskProgress:  0,
-	}, nil
-}
-
-func (d *ComprehensiveDemo) Setup() {
-	// Enable alternate screen, mouse tracking, and show cursor
-	d.terminal.EnableAlternateScreen()
-	d.terminal.EnableMouseTracking()
-	d.terminal.ShowCursor()
-
-	width, height := d.terminal.Size()
-
-	// Function to set up all screen regions
-	d.setupRegions = func(w, h int) {
-		// Define all screen regions
-		d.screenManager.DefineRegion("title", 0, 0, w, 2, false)
-		d.screenManager.DefineRegion("status", 0, 2, w, 2, false)
-		d.screenManager.DefineRegion("clickable", 0, 4, w, 2, false)
-		d.screenManager.DefineRegion("content", 0, 6, w, 4, false)
-		d.screenManager.DefineRegion("buttons", 0, 10, w, 2, false)
-		d.screenManager.DefineRegion("input", 0, 12, w, 4, true)
-		d.screenManager.DefineRegion("completions", 0, 16, w, 4, false)
-		d.screenManager.DefineRegion("notifications", 0, 20, w, 3, false)
-
-		footerY := 23
-		footerHeight := h - footerY - 1
-		if footerHeight > 3 {
-			footerHeight = 3
+		// Update spinner every ~150ms (at 30 FPS, every ~5 frames)
+		if app.frame%5 == 0 {
+			app.spinnerFrame++
 		}
-		d.screenManager.DefineRegion("footer", 0, footerY, w, footerHeight, false)
 
-		// Reinitialize regions with content
-		d.initializeRegions()
+		// Update metrics periodically (~750ms at 30 FPS, every ~22 frames)
+		if app.frame%22 == 0 {
+			app.cpuUsage = 40 + int(time.Now().Unix()%40)
+			app.memoryUsage = 50 + int(time.Now().Unix()%30)
+			app.networkSpeed = 0.5 + float64(time.Now().Unix()%20)/10.0
+			app.taskProgress = (app.taskProgress + 2) % 101
+		}
+
+	case gooey.KeyEvent:
+		// Handle keyboard input
+		app.handleKeyEvent(e)
+
+	case gooey.MouseEvent:
+		// Handle mouse clicks
+		app.mouseHandler.HandleEvent(&e)
+
+	case gooey.ResizeEvent:
+		// Update terminal size and recreate components
+		app.width = e.Width
+		app.height = e.Height
+		app.createButtons()
+		app.updateClickableWords()
 	}
 
-	// Initial setup
-	d.setupRegions(width, height)
-
-	// Create interactive components
-	d.createButtons()
-	d.setupTabCompleter()
-
-	// Enable automatic resize handling
-	d.terminal.WatchResize()
-	d.terminal.OnResize(func(w, h int) {
-		d.setupRegions(w, h)
-		d.createButtons()
-		d.updateClickableWords()
-	})
-
-	// Start the screen manager
-	d.screenManager.Start()
+	return nil
 }
 
-func (d *ComprehensiveDemo) createButtons() {
+// handleKeyEvent processes keyboard events.
+func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) {
+	// Check for Ctrl+C to quit
+	if e.Key == gooey.KeyCtrlC {
+		// Stop the runtime
+		app.runtime.Stop()
+		return
+	}
+
+	// Arrow key handling
+	if e.Key == gooey.KeyArrowUp || e.Key == gooey.KeyArrowDown ||
+		e.Key == gooey.KeyArrowLeft || e.Key == gooey.KeyArrowRight {
+		if app.tabCompleter.Visible {
+			// Navigate in tab completer
+			switch e.Key {
+			case gooey.KeyArrowUp:
+				app.tabCompleter.SelectPrev()
+			case gooey.KeyArrowDown:
+				app.tabCompleter.SelectNext()
+			}
+		} else {
+			// Navigate between input fields or within field
+			switch e.Key {
+			case gooey.KeyArrowUp:
+				if app.selectedInput > 0 {
+					app.selectedInput--
+				}
+			case gooey.KeyArrowDown:
+				if app.selectedInput < 3 {
+					app.selectedInput++
+				}
+			case gooey.KeyArrowRight:
+				if app.cursorPos[app.selectedInput] < len(app.inputs[app.selectedInput]) {
+					app.cursorPos[app.selectedInput]++
+				}
+			case gooey.KeyArrowLeft:
+				if app.cursorPos[app.selectedInput] > 0 {
+					app.cursorPos[app.selectedInput]--
+				}
+			}
+		}
+		return
+	}
+
+	// Handle special keys
+	switch e.Key {
+	case gooey.KeyTab:
+		if app.tabCompleter.Visible {
+			selected := app.tabCompleter.GetSelected()
+			if selected != "" {
+				app.inputs[app.selectedInput] = selected + " "
+				app.cursorPos[app.selectedInput] = len(app.inputs[app.selectedInput])
+				app.tabCompleter.Hide()
+			}
+		} else if app.inputs[app.selectedInput] != "" {
+			app.handleTabCompletion()
+		} else {
+			app.selectedInput = (app.selectedInput + 1) % 4
+		}
+
+	case gooey.KeyEscape:
+		if app.tabCompleter.Visible {
+			app.tabCompleter.Hide()
+			app.updateClickableWords() // Re-add mouse regions
+		} else {
+			app.inputs[app.selectedInput] = ""
+			app.cursorPos[app.selectedInput] = 0
+		}
+
+	case gooey.KeyEnter:
+		if app.tabCompleter.Visible {
+			selected := app.tabCompleter.GetSelected()
+			if selected != "" {
+				app.inputs[app.selectedInput] = selected + " "
+				app.cursorPos[app.selectedInput] = len(app.inputs[app.selectedInput])
+			}
+			app.tabCompleter.Hide()
+		} else if app.inputs[app.selectedInput] != "" {
+			app.addNotification("Executed: " + app.inputs[app.selectedInput])
+		}
+		app.selectedInput = (app.selectedInput + 1) % 4
+
+	case gooey.KeyBackspace:
+		if app.cursorPos[app.selectedInput] > 0 {
+			app.inputs[app.selectedInput] = app.inputs[app.selectedInput][:app.cursorPos[app.selectedInput]-1] +
+				app.inputs[app.selectedInput][app.cursorPos[app.selectedInput]:]
+			app.cursorPos[app.selectedInput]--
+		}
+
+	default:
+		// Handle regular character input
+		if e.Rune >= 32 && e.Rune < 127 {
+			app.inputs[app.selectedInput] = app.inputs[app.selectedInput][:app.cursorPos[app.selectedInput]] +
+				string(e.Rune) + app.inputs[app.selectedInput][app.cursorPos[app.selectedInput]:]
+			app.cursorPos[app.selectedInput]++
+
+			if app.tabCompleter.Visible {
+				app.tabCompleter.Hide()
+			}
+		}
+	}
+}
+
+// Render draws the current application state.
+func (app *ComprehensiveApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Clear screen
+	frame.Fill(' ', gooey.NewStyle())
+
+	// Define layout regions
+	y := 0
+
+	// Title (2 lines)
+	app.renderTitle(frame, y, width)
+	y += 2
+
+	// Status bar (2 lines)
+	app.renderStatusBar(frame, y, width)
+	y += 2
+
+	// Clickable words (2 lines)
+	app.renderClickableWords(frame, y, width)
+	y += 2
+
+	// Metrics (4 lines)
+	app.renderMetrics(frame, y, width)
+	y += 4
+
+	// Buttons (2 lines)
+	app.renderButtons(frame, y, width)
+	y += 2
+
+	// Input fields (4 lines)
+	app.renderInputFields(frame, y, width)
+	y += 4
+
+	// Tab completions (if visible)
+	if app.tabCompleter.Visible {
+		app.tabCompleter.Draw(frame)
+	}
+	y += 4
+
+	// Notifications (3 lines)
+	app.renderNotifications(frame, y, width)
+	y += 3
+
+	// Footer
+	if height-y > 2 {
+		app.renderFooter(frame, height-3, width)
+	}
+
+	// Set cursor position for input
+	cursorX := 10 + app.cursorPos[app.selectedInput]
+	cursorY := 12 + app.selectedInput
+	app.terminal.MoveCursor(cursorX, cursorY)
+}
+
+// renderTitle draws the animated title.
+func (app *ComprehensiveApp) renderTitle(frame gooey.RenderFrame, y, width int) {
+	spinner := app.getSpinner()
+	titleText := spinner + " Gooey - Complete Demo with Mouse! " + spinner
+
+	// Apply rainbow animation
+	rainbow := gooey.CreateRainbowText(titleText, 15)
+	for i, r := range titleText {
+		if i < width {
+			style := rainbow.GetStyle(app.frame, i, len(titleText))
+			frame.SetCell(i, y, r, style)
+		}
+	}
+
+	separator := strings.Repeat("═", width)
+	frame.PrintStyled(0, y+1, separator, gooey.NewStyle())
+}
+
+// renderStatusBar draws the status information.
+func (app *ComprehensiveApp) renderStatusBar(frame gooey.RenderFrame, y, width int) {
+	modeColor := gooey.NewRGB(0, 255, 100)
+	saveIndicator := ""
+	if app.saveInProgress {
+		saveIndicator = " " + app.getSpinner() + " Saving..."
+	}
+
+	statusText := fmt.Sprintf("Mode: NORMAL | Field: %d/4 | Time: %s%s",
+		app.selectedInput+1,
+		time.Now().Format("15:04:05"),
+		saveIndicator)
+
+	// Apply pulse animation
+	pulse := gooey.CreatePulseText(modeColor, 30)
+	for i, r := range statusText {
+		if i < width {
+			style := pulse.GetStyle(app.frame, i, len(statusText))
+			frame.SetCell(i, y, r, style)
+		}
+	}
+
+	// Progress bar
+	progress := app.taskProgress % 101
+	filled := progress / 5
+	progressBar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
+	progressText := fmt.Sprintf("Progress: [%s] %d%%", progressBar, progress)
+	frame.PrintStyled(0, y+1, progressText, gooey.NewStyle())
+}
+
+// renderClickableWords draws the clickable word demo.
+func (app *ComprehensiveApp) renderClickableWords(frame gooey.RenderFrame, y, width int) {
+	words := []string{"Click", "these", "words", "to", "change", "colors!"}
+
+	text := "🖱️ Clickable: "
+	x := 0
+	frame.PrintStyled(x, y, text, gooey.NewStyle())
+	x += len(text)
+
+	for i, word := range words {
+		if color, exists := app.clickedWords[word]; exists {
+			style := gooey.NewStyle().WithFgRGB(color)
+			frame.PrintStyled(x, y, word, style)
+		} else {
+			frame.PrintStyled(x, y, word, gooey.NewStyle())
+		}
+		x += len(word)
+
+		if i < len(words)-1 {
+			frame.PrintStyled(x, y, " ", gooey.NewStyle())
+			x++
+		}
+	}
+
+	frame.PrintStyled(0, y+1, "   Try clicking the words above!", gooey.NewStyle())
+}
+
+// renderMetrics draws the system metrics display.
+func (app *ComprehensiveApp) renderMetrics(frame gooey.RenderFrame, y, width int) {
+	frame.PrintStyled(0, y, "📊 System Metrics:", gooey.NewStyle())
+
+	cpuBar := app.createMeter(app.cpuUsage, 100)
+	cpuText := fmt.Sprintf("   CPU: %s %3d%%", cpuBar, app.cpuUsage)
+	frame.PrintStyled(0, y+1, cpuText, gooey.NewStyle())
+
+	memBar := app.createMeter(app.memoryUsage, 100)
+	memText := fmt.Sprintf("   RAM: %s %3d%%", memBar, app.memoryUsage)
+	frame.PrintStyled(0, y+2, memText, gooey.NewStyle())
+
+	netText := fmt.Sprintf("   NET: %s %.1f GB/s", app.getSpinner(), app.networkSpeed)
+	frame.PrintStyled(0, y+3, netText, gooey.NewStyle())
+}
+
+// renderButtons draws the interactive buttons.
+func (app *ComprehensiveApp) renderButtons(frame gooey.RenderFrame, y, width int) {
+	frame.PrintStyled(0, y, "🔘 Interactive Buttons (click them!):", gooey.NewStyle())
+
+	// Draw buttons
+	for _, btn := range app.buttons {
+		btn.Draw(frame)
+	}
+}
+
+// renderInputFields draws the input fields.
+func (app *ComprehensiveApp) renderInputFields(frame gooey.RenderFrame, y, width int) {
+	labels := []string{"Name    ", "Email   ", "Project ", "Command "}
+
+	for i := 0; i < 4; i++ {
+		text := labels[i] + ": " + app.inputs[i]
+
+		if i == app.selectedInput {
+			style := gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
+			frame.PrintStyled(0, y+i, text, style)
+			// Pad the rest of the line
+			if len(text) < width {
+				padding := strings.Repeat(" ", width-len(text))
+				frame.PrintStyled(len(text), y+i, padding, style)
+			}
+		} else {
+			frame.PrintStyled(0, y+i, text, gooey.NewStyle())
+		}
+	}
+}
+
+// renderNotifications draws recent notifications.
+func (app *ComprehensiveApp) renderNotifications(frame gooey.RenderFrame, y, width int) {
+	for i := 0; i < 3; i++ {
+		if i < len(app.notifications) {
+			frame.PrintStyled(0, y+i, app.notifications[i], gooey.NewStyle())
+		}
+	}
+}
+
+// renderFooter draws the footer with help text.
+func (app *ComprehensiveApp) renderFooter(frame gooey.RenderFrame, y, width int) {
+	frame.PrintStyled(0, y, "🖱️ Click words/buttons | TAB: Completions | ↑↓: Navigate", gooey.NewStyle())
+	frame.PrintStyled(0, y+1, "Enter: Accept | ESC: Cancel | Ctrl+C: Exit", gooey.NewStyle())
+}
+
+// createButtons creates the interactive button components.
+func (app *ComprehensiveApp) createButtons() {
 	// Create interactive buttons
-	d.buttons = []*gooey.Button{
+	app.buttons = []*gooey.Button{
 		gooey.NewButton(5, 11, "Execute", func() {
-			d.addNotification("▶ Executing: " + d.inputs[d.selectedInput])
+			app.addNotification("▶ Executing: " + app.inputs[app.selectedInput])
 		}),
 		gooey.NewButton(18, 11, "Clear", func() {
-			for i := range d.inputs {
-				d.inputs[i] = ""
-				d.cursorPos[i] = 0
+			for i := range app.inputs {
+				app.inputs[i] = ""
+				app.cursorPos[i] = 0
 			}
-			d.updateInputFields()
-			d.addNotification("✨ All fields cleared")
+			app.addNotification("✨ All fields cleared")
 		}),
 		gooey.NewButton(29, 11, "Save", func() {
-			d.saveInProgress = true
-			d.updateStatusBar()
+			app.saveInProgress = true
+			// Schedule async save completion
 			go func() {
 				time.Sleep(2 * time.Second)
-				d.saveInProgress = false
-				d.updateStatusBar()
-				d.addNotification("💾 Configuration saved")
+				app.saveInProgress = false
+				app.addNotification("💾 Configuration saved")
 			}()
 		}),
 	}
 
 	// Add button regions to mouse handler
-	for _, btn := range d.buttons {
-		d.mouseHandler.AddRegion(btn.GetRegion())
+	app.mouseHandler.ClearRegions()
+	for _, btn := range app.buttons {
+		app.mouseHandler.AddRegion(btn.GetRegion())
 	}
+
+	// Re-add clickable word regions
+	app.updateClickableWords()
 }
 
-func (d *ComprehensiveDemo) setupTabCompleter() {
+// setupTabCompleter initializes the tab completion component.
+func (app *ComprehensiveApp) setupTabCompleter() {
 	commands := []string{
 		"build", "test", "run", "install", "clean",
 		"deploy", "debug", "profile", "benchmark",
 		"commit", "push", "pull", "merge", "rebase",
 	}
 
-	d.tabCompleter.OnSelect = func(suggestion string) {
-		d.inputs[d.selectedInput] = suggestion + " "
-		d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
-		d.tabCompleter.Hide()
-		d.drawComponent(d.tabCompleter) // Clear the dropdown
-		d.updateInputFields()
+	app.tabCompleter.OnSelect = func(suggestion string) {
+		app.inputs[app.selectedInput] = suggestion + " "
+		app.cursorPos[app.selectedInput] = len(app.inputs[app.selectedInput])
+		app.tabCompleter.Hide()
 	}
 
-	d.tabCompleter.SetSuggestions(commands, "")
+	app.tabCompleter.SetSuggestions(commands, "")
 }
 
-func (d *ComprehensiveDemo) updateClickableWords() {
+// updateClickableWords sets up the clickable word mouse regions.
+func (app *ComprehensiveApp) updateClickableWords() {
 	words := []string{"Click", "these", "words", "to", "change", "colors!"}
 
-	var textLine strings.Builder
-	textLine.WriteString("🖱️ Clickable: ")
-
-	for i, word := range words {
-		if color, exists := d.clickedWords[word]; exists {
-			textLine.WriteString(color.Apply(word, false))
-		} else {
-			textLine.WriteString(word)
-		}
-
-		if i < len(words)-1 {
-			textLine.WriteString(" ")
-		}
-	}
-
-	d.screenManager.UpdateRegion("clickable", 0, textLine.String(), nil)
-	d.screenManager.UpdateRegion("clickable", 1, "   Try clicking the words above!", nil)
-
-	// Clear and re-add mouse regions
-	d.mouseHandler.ClearRegions()
-
-	// Re-add button regions
-	for _, btn := range d.buttons {
-		d.mouseHandler.AddRegion(btn.GetRegion())
-	}
-
-	// Add word regions
-	x := 14 // After "Clickable: "
+	// Add word regions (buttons are already in mouse handler)
+	x := 14 // After "🖱️ Clickable: "
 	y := 4
 
 	for _, word := range words {
@@ -221,7 +458,7 @@ func (d *ComprehensiveDemo) updateClickableWords() {
 				}
 
 				currentIdx := 0
-				if existingColor, exists := d.clickedWords[wordCopy]; exists {
+				if existingColor, exists := app.clickedWords[wordCopy]; exists {
 					for i, c := range colors {
 						if c == existingColor {
 							currentIdx = (i + 1) % len(colors)
@@ -230,111 +467,65 @@ func (d *ComprehensiveDemo) updateClickableWords() {
 					}
 				}
 
-				d.clickedWords[wordCopy] = colors[currentIdx]
-				d.updateClickableWords()
-				d.addNotification(fmt.Sprintf("🎨 Colored '%s'", wordCopy))
+				app.clickedWords[wordCopy] = colors[currentIdx]
+				app.addNotification(fmt.Sprintf("🎨 Colored '%s'", wordCopy))
 			},
 		}
-		d.mouseHandler.AddRegion(region)
+		app.mouseHandler.AddRegion(region)
 		x += len(word) + 1
 	}
+
+	// Also add tab completer regions if visible
+	if app.tabCompleter.Visible {
+		for _, region := range app.tabCompleter.GetRegions() {
+			app.mouseHandler.AddRegion(region)
+		}
+	}
 }
 
-func (d *ComprehensiveDemo) drawComponent(c interface{ Draw(gooey.RenderFrame) }) {
-	frame, err := d.terminal.BeginFrame()
-	if err != nil {
+// handleTabCompletion shows tab completion suggestions.
+func (app *ComprehensiveApp) handleTabCompletion() {
+	if app.inputs[app.selectedInput] == "" {
 		return
 	}
-	c.Draw(frame)
-	d.terminal.EndFrame(frame)
-}
 
-func (d *ComprehensiveDemo) updateButtons() {
-	d.screenManager.UpdateRegion("buttons", 0, "🔘 Interactive Buttons (click them!):", nil)
+	suggestions := []string{}
+	commands := []string{
+		"build", "test", "run", "install", "clean",
+		"deploy", "debug", "profile", "benchmark",
+		"commit", "push", "pull", "merge", "rebase",
+	}
 
-	// Draw buttons
-	go func() {
-		time.Sleep(10 * time.Millisecond) // Small delay to ensure screen is ready
-		for _, btn := range d.buttons {
-			d.drawComponent(btn)
+	for _, cmd := range commands {
+		if strings.HasPrefix(cmd, app.inputs[app.selectedInput]) {
+			suggestions = append(suggestions, cmd)
 		}
-	}()
-}
-
-func (d *ComprehensiveDemo) initializeRegions() {
-	// Title
-	titleText := d.getSpinner() + " Gooey - Complete Demo with Mouse! " + d.getSpinner()
-	d.screenManager.UpdateRegion("title", 0, titleText,
-		gooey.CreateRainbowText(titleText, 15))
-	d.screenManager.UpdateRegion("title", 1,
-		"════════════════════════════════════════",
-		nil)
-
-	// Status
-	d.updateStatusBar()
-
-	// Clickable words
-	d.updateClickableWords()
-
-	// Content
-	d.screenManager.UpdateRegion("content", 0, "📊 System Metrics:", nil)
-	d.updateMetrics()
-
-	// Buttons
-	d.updateButtons()
-
-	// Input fields
-	d.updateInputFields()
-
-	// Footer
-	d.screenManager.UpdateRegion("footer", 0,
-		"🖱️ Click words/buttons | TAB: Completions | ↑↓: Navigate",
-		nil)
-	d.screenManager.UpdateRegion("footer", 1,
-		"Enter: Accept | ESC: Cancel | Ctrl+C: Exit",
-		nil)
-}
-
-func (d *ComprehensiveDemo) updateStatusBar() {
-	modeColor := gooey.NewRGB(0, 255, 100)
-	if d.currentMode == "INSERT" {
-		modeColor = gooey.NewRGB(255, 100, 0)
 	}
 
-	saveIndicator := ""
-	if d.saveInProgress {
-		saveIndicator = " " + d.getSpinner() + " Saving..."
+	if len(suggestions) > 0 {
+		app.tabCompleter.SetSuggestions(suggestions, app.inputs[app.selectedInput])
+		app.tabCompleter.Show(10, 12+app.selectedInput, 30)
+
+		for _, region := range app.tabCompleter.GetRegions() {
+			app.mouseHandler.AddRegion(region)
+		}
+	} else {
+		app.tabCompleter.Hide()
 	}
-
-	statusText := fmt.Sprintf("Mode: %s | Field: %d/4 | Time: %s%s",
-		d.currentMode,
-		d.selectedInput+1,
-		time.Now().Format("15:04:05"),
-		saveIndicator)
-
-	d.screenManager.UpdateRegion("status", 0, statusText, gooey.CreatePulseText(modeColor, 30))
-
-	progress := d.taskProgress % 101
-	filled := progress / 5
-	progressBar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
-	progressText := fmt.Sprintf("Progress: [%s] %d%%", progressBar, progress)
-	d.screenManager.UpdateRegion("status", 1, progressText, nil)
 }
 
-func (d *ComprehensiveDemo) updateMetrics() {
-	cpuBar := d.createMeter(d.cpuUsage, 100)
-	cpuText := fmt.Sprintf("   CPU: %s %3d%%", cpuBar, d.cpuUsage)
-	d.screenManager.UpdateRegion("content", 1, cpuText, nil)
+// addNotification adds a notification message.
+func (app *ComprehensiveApp) addNotification(msg string) {
+	notification := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
 
-	memBar := d.createMeter(d.memoryUsage, 100)
-	memText := fmt.Sprintf("   RAM: %s %3d%%", memBar, d.memoryUsage)
-	d.screenManager.UpdateRegion("content", 2, memText, nil)
-
-	netText := fmt.Sprintf("   NET: %s %.1f GB/s", d.getSpinner(), d.networkSpeed)
-	d.screenManager.UpdateRegion("content", 3, netText, nil)
+	app.notifications = append(app.notifications, notification)
+	if len(app.notifications) > 3 {
+		app.notifications = app.notifications[len(app.notifications)-3:]
+	}
 }
 
-func (d *ComprehensiveDemo) createMeter(value, max int) string {
+// createMeter creates a visual meter bar.
+func (app *ComprehensiveApp) createMeter(value, max int) string {
 	width := 20
 	filled := (value * width) / max
 
@@ -350,278 +541,38 @@ func (d *ComprehensiveDemo) createMeter(value, max int) string {
 	return bar
 }
 
-func (d *ComprehensiveDemo) updateInputFields() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	labels := []string{"Name    ", "Email   ", "Project ", "Command "}
-
-	for i := 0; i < 4; i++ {
-		text := labels[i] + ": " + d.inputs[i]
-
-		if i == d.selectedInput {
-			style := gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
-			text = style.Apply(text)
-		}
-
-		d.screenManager.UpdateRegion("input", i, text, nil)
-	}
-
-	cursorX := 10 + d.cursorPos[d.selectedInput]
-	cursorY := 12 + d.selectedInput
-	d.screenManager.SetCursorPosition(cursorX, cursorY)
-}
-
-func (d *ComprehensiveDemo) handleTabCompletion() {
-	if d.inputs[d.selectedInput] == "" {
-		return
-	}
-
-	suggestions := []string{}
-	commands := []string{
-		"build", "test", "run", "install", "clean",
-		"deploy", "debug", "profile", "benchmark",
-		"commit", "push", "pull", "merge", "rebase",
-	}
-
-	for _, cmd := range commands {
-		if strings.HasPrefix(cmd, d.inputs[d.selectedInput]) {
-			suggestions = append(suggestions, cmd)
-		}
-	}
-
-	if len(suggestions) > 0 {
-		d.tabCompleter.SetSuggestions(suggestions, d.inputs[d.selectedInput])
-		d.tabCompleter.Show(10, 12+d.selectedInput, 30)
-
-		d.drawComponent(d.tabCompleter)
-
-		for _, region := range d.tabCompleter.GetRegions() {
-			d.mouseHandler.AddRegion(region)
-		}
-	} else {
-		d.tabCompleter.Hide()
-	}
-}
-
-func (d *ComprehensiveDemo) addNotification(msg string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	notification := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), msg)
-
-	d.notifications = append(d.notifications, notification)
-	if len(d.notifications) > 3 {
-		d.notifications = d.notifications[len(d.notifications)-3:]
-	}
-
-	for i := 0; i < 3; i++ {
-		if i < len(d.notifications) {
-			d.screenManager.UpdateRegion("notifications", i, d.notifications[i], nil)
-		} else {
-			d.screenManager.UpdateRegion("notifications", i, "", nil)
-		}
-	}
-}
-
-func (d *ComprehensiveDemo) getSpinner() string {
+// getSpinner returns the current spinner character.
+func (app *ComprehensiveApp) getSpinner() string {
 	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	return spinners[d.spinnerFrame%len(spinners)]
+	return spinners[app.spinnerFrame%len(spinners)]
 }
 
-func (d *ComprehensiveDemo) StartBackgroundTasks() {
-	// Spinner updater
-	go func() {
-		for d.running {
-			time.Sleep(150 * time.Millisecond)
-			d.spinnerFrame++
+// Init initializes the application.
+func (app *ComprehensiveApp) Init() error {
+	// Get terminal size
+	app.width, app.height = app.terminal.Size()
 
-			if d.spinnerFrame%3 == 0 {
-				titleText := d.getSpinner() + " Gooey - Complete Demo with Mouse! " + d.getSpinner()
-				d.screenManager.UpdateRegion("title", 0, titleText,
-					gooey.CreateRainbowText(titleText, 15))
-			}
-		}
-	}()
+	// Enable alternate screen and mouse tracking
+	// Note: Runtime automatically enables raw mode
+	app.terminal.EnableAlternateScreen()
+	app.terminal.EnableMouseTracking()
+	app.terminal.ShowCursor()
 
-	// Metric updater
-	go func() {
-		for d.running {
-			time.Sleep(750 * time.Millisecond)
-
-			d.cpuUsage = 40 + int(time.Now().Unix()%40)
-			d.memoryUsage = 50 + int(time.Now().Unix()%30)
-			d.networkSpeed = 0.5 + float64(time.Now().Unix()%20)/10.0
-			d.taskProgress = (d.taskProgress + 2) % 101
-
-			d.updateMetrics()
-			d.updateStatusBar()
-		}
-	}()
-}
-
-func (d *ComprehensiveDemo) Run() error {
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return err
-	}
-	defer func() {
-		term.Restore(int(os.Stdin.Fd()), oldState)
-		d.terminal.DisableMouseTracking()
-		d.terminal.DisableAlternateScreen()
-		d.terminal.ShowCursor()
-	}()
-
-	d.terminal.Clear()
-
-	// Start background tasks
-	d.StartBackgroundTasks()
-
-	// Initial draw
-	d.updateButtons()
-	d.updateClickableWords()
-
-	// Main event loop
-	buf := make([]byte, 20)
-	for d.running {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 {
-			continue
-		}
-
-		// Check for mouse events
-		if buf[0] == 27 && n > 2 && buf[1] == '[' {
-			if buf[2] == '<' {
-				// SGR mouse event
-				event, err := gooey.ParseMouseEvent(buf[2:n])
-				if err == nil {
-					d.mouseHandler.HandleEvent(event)
-					// Redraw components after mouse event
-					d.updateButtons()
-					d.updateClickableWords()
-					continue
-				}
-			}
-
-			// Arrow keys
-			if n >= 3 && buf[2] >= 'A' && buf[2] <= 'D' {
-				if d.tabCompleter.Visible {
-					switch buf[2] {
-					case 'A': // Up
-						d.tabCompleter.SelectPrev()
-						d.drawComponent(d.tabCompleter)
-					case 'B': // Down
-						d.tabCompleter.SelectNext()
-						d.drawComponent(d.tabCompleter)
-					}
-				} else {
-					// Navigate fields
-					switch buf[2] {
-					case 'A': // Up
-						if d.selectedInput > 0 {
-							d.selectedInput--
-							d.updateInputFields()
-						}
-					case 'B': // Down
-						if d.selectedInput < 3 {
-							d.selectedInput++
-							d.updateInputFields()
-						}
-					case 'C': // Right
-						if d.cursorPos[d.selectedInput] < len(d.inputs[d.selectedInput]) {
-							d.cursorPos[d.selectedInput]++
-							d.updateInputFields()
-						}
-					case 'D': // Left
-						if d.cursorPos[d.selectedInput] > 0 {
-							d.cursorPos[d.selectedInput]--
-							d.updateInputFields()
-						}
-					}
-				}
-				continue
-			}
-		}
-
-		// Regular keyboard input
-		switch buf[0] {
-		case 3: // Ctrl+C
-			d.running = false
-
-		case 9: // TAB
-			if d.tabCompleter.Visible {
-				selected := d.tabCompleter.GetSelected()
-				if selected != "" {
-					d.inputs[d.selectedInput] = selected + " "
-					d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
-					d.tabCompleter.Hide()
-					d.drawComponent(d.tabCompleter) // Clear the dropdown
-					d.updateInputFields()
-				}
-			} else if d.inputs[d.selectedInput] != "" {
-				d.handleTabCompletion()
-			} else {
-				d.selectedInput = (d.selectedInput + 1) % 4
-				d.updateInputFields()
-			}
-
-		case 27: // ESC
-			if d.tabCompleter.Visible {
-				d.tabCompleter.Hide()
-				d.drawComponent(d.tabCompleter) // Clear the dropdown
-				d.updateClickableWords()        // Re-add mouse regions
-			} else {
-				d.inputs[d.selectedInput] = ""
-				d.cursorPos[d.selectedInput] = 0
-				d.updateInputFields()
-			}
-
-		case 13: // Enter
-			if d.tabCompleter.Visible {
-				selected := d.tabCompleter.GetSelected()
-				if selected != "" {
-					d.inputs[d.selectedInput] = selected + " "
-					d.cursorPos[d.selectedInput] = len(d.inputs[d.selectedInput])
-				}
-				d.tabCompleter.Hide()
-				d.drawComponent(d.tabCompleter) // Clear the dropdown
-			} else if d.inputs[d.selectedInput] != "" {
-				d.addNotification("Executed: " + d.inputs[d.selectedInput])
-			}
-			d.selectedInput = (d.selectedInput + 1) % 4
-			d.updateInputFields()
-
-		case 127, 8: // Backspace
-			if d.cursorPos[d.selectedInput] > 0 {
-				d.inputs[d.selectedInput] = d.inputs[d.selectedInput][:d.cursorPos[d.selectedInput]-1] +
-					d.inputs[d.selectedInput][d.cursorPos[d.selectedInput]:]
-				d.cursorPos[d.selectedInput]--
-				d.updateInputFields()
-			}
-
-		default:
-			if buf[0] >= 32 && buf[0] < 127 {
-				d.inputs[d.selectedInput] = d.inputs[d.selectedInput][:d.cursorPos[d.selectedInput]] +
-					string(buf[0]) + d.inputs[d.selectedInput][d.cursorPos[d.selectedInput]:]
-				d.cursorPos[d.selectedInput]++
-				d.updateInputFields()
-
-				if d.tabCompleter.Visible {
-					d.tabCompleter.Hide()
-					d.drawComponent(d.tabCompleter) // Clear the dropdown
-				}
-			}
-		}
-	}
+	// Initialize components
+	app.createButtons()
+	app.setupTabCompleter()
+	app.updateClickableWords()
 
 	return nil
 }
 
-func (d *ComprehensiveDemo) Cleanup() {
-	d.running = false
-	d.terminal.StopWatchResize()
-	d.screenManager.Stop()
-	time.Sleep(100 * time.Millisecond)
+// Destroy cleans up the application.
+func (app *ComprehensiveApp) Destroy() {
+	// Restore terminal state
+	app.terminal.DisableMouseTracking()
+	app.terminal.DisableAlternateScreen()
+	app.terminal.ShowCursor()
+	// Note: Runtime automatically disables raw mode
 }
 
 func main() {
@@ -637,17 +588,38 @@ func main() {
 	fmt.Println("Starting in 2 seconds...")
 	time.Sleep(2 * time.Second)
 
-	demo, err := NewComprehensiveDemo()
+	// Create terminal
+	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
+	}
+	defer terminal.Close()
+
+	// Create the application
+	app := &ComprehensiveApp{
+		terminal:      terminal,
+		mouseHandler:  gooey.NewMouseHandler(),
+		tabCompleter:  gooey.NewTabCompleter(),
+		inputs:        make([]string, 4),
+		cursorPos:     make([]int, 4),
+		selectedInput: 0,
+		notifications: []string{},
+		clickedWords:  make(map[string]gooey.RGB),
+		cpuUsage:      45,
+		memoryUsage:   62,
+		networkSpeed:  1.2,
+		taskProgress:  0,
 	}
 
-	demo.Setup()
-	defer demo.Cleanup()
+	// Create and run the runtime with 30 FPS
+	runtime := gooey.NewRuntime(terminal, app, 30)
+	app.runtime = runtime // Store reference for stopping
 
-	if err := demo.Run(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+	// Run the event loop (blocks until quit)
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("\n✨ Thanks for trying the comprehensive demo!")

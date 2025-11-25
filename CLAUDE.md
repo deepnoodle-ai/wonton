@@ -16,21 +16,36 @@ go fmt ./...
 go vet ./...
 ```
 
+**⚠️ IMPORTANT: Building Binaries**
+
+When building example programs or testing builds, **DO NOT create binaries in this repository directory**. They may be accidentally committed to version control.
+
+**Recommended approach:**
+- Use `go run` instead of `go build` whenever possible (see examples below)
+- If you need to create a binary, build it in `/tmp`:
+  ```bash
+  go build -o /tmp/my_example examples/my_example/main.go
+  /tmp/my_example
+  ```
+
 ### Running Examples
-The comprehensive demo showcases all features:
+
+**Runtime Examples (Recommended - Start Here):**
 ```bash
-go run examples/all/main.go
+go run examples/runtime_counter/main.go      # Simple counter with keyboard input
+go run examples/runtime_http/main.go         # Async HTTP requests without blocking UI
+go run examples/runtime_animation/main.go    # Smooth 60 FPS animation
+go run examples/runtime_composition/main.go  # Composition system with Runtime
 ```
 
-Other examples:
+**Other Examples (All Updated to Use Runtime):**
 ```bash
-go run examples/simple_animation_demo.go
-go run examples/interactive/main.go
-go run examples/progress_spinners/main.go
-go run examples/layout_styling/main.go
-go run examples/composition_demo/main.go  # Demonstrates the composition system
-go run examples/metrics_demo/main.go       # Performance metrics visualization
-go run examples/claude_style/main.go      # Claude Code-style interface with fixed input
+go run examples/all/main.go              # Comprehensive demo showcasing all features
+go run examples/simple_animation_demo.go # Animation styles and text effects
+go run examples/progress_spinners/main.go # Progress bars and spinners
+go run examples/composition_demo/main.go  # Advanced composition system
+go run examples/metrics_demo/main.go      # Performance metrics visualization
+go run examples/claude_style/main.go     # Claude Code-style interface
 ```
 
 ### Testing Individual Components
@@ -40,40 +55,69 @@ go test -run TestSpecificFunction ./...
 
 ## Architecture
 
+### Message-Driven Runtime (Recommended)
+
+**The primary way to build Gooey applications is through the Runtime's message-driven architecture.** This eliminates race conditions, removes the need for manual synchronization, and provides a clean event-driven pattern.
+
+**Core Components:**
+
+1. **Runtime** (`runtime.go`) - Event loop orchestrator:
+   - Single-threaded event processing eliminates race conditions
+   - Automatic rendering after each event
+   - Three-goroutine architecture (event loop, input reader, command executor)
+   - Configurable FPS (30-60 recommended)
+   - Implements the Application interface pattern
+
+2. **Application Interface** - Your application implements:
+   - `HandleEvent(event Event) []Cmd` - Process events, return async commands
+   - `Render(frame RenderFrame)` - Draw current state
+   - Optional: `Init() error` and `Destroy()` for lifecycle management
+
+3. **Event System** (`events.go`) - Unified event handling:
+   - `TickEvent` - Animation frames at configured FPS
+   - `KeyEvent` - Keyboard input
+   - `MouseEvent` - Mouse interactions
+   - `ResizeEvent` - Terminal size changes
+   - `QuitEvent` - Application shutdown
+   - Custom events for async operation results
+
+4. **Command System** (`commands.go`) - Async operations:
+   - `Cmd` type for non-blocking operations (HTTP, timers, I/O)
+   - Built-in commands: `Quit()`, `Tick()`, `After()`, `Batch()`
+   - Commands execute in separate goroutines
+   - Results return as events to the main loop
+
+**Benefits:**
+- ✅ **Race-Free** - HandleEvent and Render never called concurrently
+- ✅ **No Locks Needed** - Single-threaded event loop guarantees safety
+- ✅ **Simple Code** - No manual goroutine or channel management
+- ✅ **Async Support** - Commands handle I/O without blocking UI
+- ✅ **Automatic Rendering** - Screen updates after every event
+
+See `MESSAGE_DRIVEN_ARCHITECTURE.md` for complete details and `examples/runtime_*` for examples.
+
 ### Rendering Pipeline
 
-The library uses a multi-layered rendering architecture designed to eliminate flicker and enable concurrent updates:
+The library's rendering foundation (used by Runtime):
 
-1. **Terminal** (`terminal.go`) - Low-level foundation that manages:
+1. **Terminal** (`terminal.go`) - Low-level foundation:
    - Raw mode and alternate screen buffer
    - Double-buffered rendering (front/back buffers)
    - ANSI escape sequence generation
    - Wide character (Unicode) handling via `github.com/mattn/go-runewidth`
 
-2. **Frame-based Rendering** (`frame.go`) - Atomic rendering operations:
+2. **Frame-based Rendering** (`frame.go`) - Atomic operations:
    - `BeginFrame()` / `EndFrame()` provide transactional rendering
    - All operations between BeginFrame/EndFrame are batched
    - Only dirty regions are flushed to minimize output
    - Prevents interleaved writes from concurrent renderers
 
-3. **ScreenManager** (`screen_manager.go`) - Virtual screen coordination:
-   - Manages named regions (header, body, footer, etc.)
-   - Handles animations via `TextAnimation` interface
-   - Runs draw loop at configurable FPS (default 30)
-   - Batches rapid updates to prevent excessive redraws
-
-4. **Animator** (`animator.go`) - Animation engine:
-   - Dedicated goroutine for animation updates
-   - Manages `AnimatedElement` instances
-   - Calls `Update(frame)` and `Draw(frame)` on each element
-   - Thread-safe element addition/removal
-
-5. **Composition System** (`composition.go`, `container.go`, layout managers) - Modern component hierarchy:
+3. **Composition System** (`composition.go`, `container.go`, layout managers):
    - `ComposableWidget` interface with bounds-based positioning
    - `Container` component for managing child widgets
    - Layout managers (VBox, HBox, FlexLayout) for automatic positioning
    - Parent-child relationships for event propagation and lifecycle management
-   - Enables building complex nested UIs similar to web frameworks
+   - Works seamlessly with Runtime
 
 ### Key Abstractions
 
@@ -94,13 +138,11 @@ The library uses a multi-layered rendering architecture designed to eliminate fl
   - `ReadSimple()` - Basic line reading using bufio.Scanner
 - `KeyEvent` encapsulates keyboard events with modifiers
 - `KeyDecoder` - Unified key decoding for ANSI escape sequences and UTF-8
-- Legacy methods (ReadLine, ReadLineEnhanced, ReadInteractive, etc.) are deprecated
+- Legacy methods (ReadLine, ReadLineEnhanced, ReadInteractive, etc.) are removed
 - Mouse support via `MouseHandler` and `MouseRegion` (`mouse.go`)
 
 **Layouts:**
 - `Layout` (`layout.go`) - Basic header/footer/content organization
-- `AnimatedLayout` (`animated_layout.go`) - Adds animation support to layouts
-- `AnimatedInputLayout` - Combines animated regions with input handling
 
 **Animations:**
 - `TextAnimation` interface: `GetStyle(frame, charIndex, totalChars) Style`
@@ -130,8 +172,7 @@ The library uses a multi-layered rendering architecture designed to eliminate fl
 The library uses extensive locking to support concurrent operations:
 
 - Terminal operations: `mu sync.RWMutex` protects terminal state
-- ScreenManager: `mu sync.RWMutex` for regions, `drawMutex sync.Mutex` ensures single draw
-- Animator: `mu sync.RWMutex` protects element list
+- Runtime ensures single-threaded access to application state in `HandleEvent` and `Render`
 - Always use provided synchronization; avoid direct terminal writes
 
 ### Flicker Prevention Strategy
@@ -139,7 +180,7 @@ The library uses extensive locking to support concurrent operations:
 1. **Double Buffering:** Changes written to back buffer, swapped on flush
 2. **Dirty Regions:** Only modified cells are updated (`DirtyRegion.Mark()`)
 3. **Batched Output:** Frame-based rendering batches all ANSI codes
-4. **Rate Limiting:** ScreenManager enforces minimum draw intervals (50ms)
+4. **Rate Limiting:** Runtime enforces FPS limits
 5. **Atomic Frames:** BeginFrame/EndFrame prevents partial renders
 
 ### Performance Metrics
@@ -339,23 +380,73 @@ This works because containers always call `frame.SubFrame(childBounds)` before p
 
 ## Common Patterns
 
-### Creating an Animated TUI
+### Creating a Runtime Application (Recommended)
 
 ```go
-// 1. Initialize terminal
-terminal, _ := gooey.NewTerminal()
-defer terminal.Restore()
+type MyApp struct {
+    count int
+    // ... your state here (no locks needed!)
+}
 
-// 2. Create animated layout (30 FPS)
-layout := gooey.NewAnimatedInputLayout(terminal, 30)
+func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+    switch e := event.(type) {
+    case gooey.KeyEvent:
+        if e.Rune == 'q' {
+            return []gooey.Cmd{gooey.Quit()}
+        }
+        // Handle other keys...
+    case gooey.TickEvent:
+        // Update animations
+        app.count++
+    case gooey.ResizeEvent:
+        // Handle terminal resize
+    }
+    return nil
+}
 
-// 3. Set up animated regions
-layout.SetAnimatedHeader(1)
-layout.SetHeaderLine(0, "My App", gooey.CreateRainbowText("My App", 20))
+func (app *MyApp) Render(frame gooey.RenderFrame) {
+    style := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+    frame.PrintStyled(0, 0, fmt.Sprintf("Count: %d", app.count), style)
+}
 
-// 4. Start animations
-layout.StartAnimations()
-defer layout.StopAnimations()
+func main() {
+    terminal, _ := gooey.NewTerminal()
+    defer terminal.Close()
+
+    runtime := gooey.NewRuntime(terminal, &MyApp{}, 30)
+    runtime.Run()  // Blocks until quit
+}
+```
+
+### Async Operations with Commands
+
+```go
+func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+    switch e := event.(type) {
+    case gooey.KeyEvent:
+        if e.Rune == 'f' {
+            app.loading = true
+            return []gooey.Cmd{FetchData()}  // Start async operation
+        }
+    case DataResultEvent:
+        app.loading = false
+        app.data = e.Data
+    }
+    return nil
+}
+
+// Command runs in separate goroutine, doesn't block UI
+func FetchData() gooey.Cmd {
+    return func() gooey.Event {
+        resp, err := http.Get("https://api.example.com/data")
+        if err != nil {
+            return gooey.ErrorEvent{Time: time.Now(), Err: err}
+        }
+        defer resp.Body.Close()
+        data, _ := io.ReadAll(resp.Body)
+        return DataResultEvent{Data: string(data)}
+    }
+}
 ```
 
 ### Direct Frame Rendering
@@ -388,82 +479,94 @@ func (a *CustomAnimation) GetStyle(frame uint64, charIndex, totalChars int) gooe
 }
 ```
 
-### Building Layouts with Composition System
+### Building Layouts with Composition System and Runtime
 
 ```go
-// Create main container with vertical layout
-main := gooey.NewContainer(gooey.NewVBoxLayout(2))
+type CompositionApp struct {
+    container *gooey.Container
+    label     *gooey.ComposableLabel
+    count     int
+}
 
-// Add header
-header := gooey.NewComposableLabel("My Application")
-header.WithStyle(gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan))
-main.AddChild(header)
+func (app *CompositionApp) Init() error {
+    // Create main container with vertical layout
+    app.container = gooey.NewContainer(gooey.NewVBoxLayout(2))
 
-// Create button bar with horizontal layout
-buttonBar := gooey.NewContainer(gooey.NewHBoxLayout(2))
-buttonBar.AddChild(gooey.NewComposableButton("Save", onSave))
-buttonBar.AddChild(gooey.NewComposableButton("Cancel", onCancel))
-main.AddChild(buttonBar)
+    // Add header
+    header := gooey.NewComposableLabel("My Application")
+    header.WithStyle(gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan))
+    app.container.AddChild(header)
 
-// Create content area with border and flex-grow
-content := gooey.NewContainerWithBorder(
-    gooey.NewVBoxLayout(1),
-    &gooey.RoundedBorder,
-)
-contentParams := gooey.DefaultLayoutParams()
-contentParams.Grow = 1  // Take all remaining space
-content.SetLayoutParams(contentParams)
-main.AddChild(content)
+    // Add counter label
+    app.label = gooey.NewComposableLabel("Count: 0")
+    app.container.AddChild(app.label)
 
-// Set bounds and initialize
-width, height := terminal.Size()
-main.SetBounds(image.Rect(0, 0, width, height))
-main.Init()
+    // Create button bar with horizontal layout
+    buttonBar := gooey.NewContainer(gooey.NewHBoxLayout(2))
+    buttonBar.AddChild(gooey.NewComposableButton("Increment", func() {}))
+    buttonBar.AddChild(gooey.NewComposableButton("Quit", func() {}))
+    app.container.AddChild(buttonBar)
 
-// Enable automatic resize handling
-terminal.WatchResize()
-defer terminal.StopWatchResize()
-main.WatchResize(terminal)
+    // Initialize and set bounds (will be resized in first Render)
+    app.container.Init()
+    return nil
+}
 
-// Draw
-frame, _ := terminal.BeginFrame()
-main.Draw(frame)
-terminal.EndFrame(frame)
+func (app *CompositionApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+    switch e := event.(type) {
+    case gooey.KeyEvent:
+        if e.Key == gooey.KeyEnter {
+            app.count++
+            app.label.SetText(fmt.Sprintf("Count: %d", app.count))
+        } else if e.Rune == 'q' {
+            return []gooey.Cmd{gooey.Quit()}
+        }
+    case gooey.ResizeEvent:
+        app.container.SetBounds(image.Rect(0, 0, e.Width, e.Height))
+    }
+    return nil
+}
+
+func (app *CompositionApp) Render(frame gooey.RenderFrame) {
+    app.container.Draw(frame)
+}
+
+func main() {
+    terminal, _ := gooey.NewTerminal()
+    defer terminal.Close()
+
+    runtime := gooey.NewRuntime(terminal, &CompositionApp{}, 30)
+    runtime.Run()
+}
 ```
 
-### Handling Terminal Resize
+### Handling Terminal Resize with Runtime
 
-The library provides multiple approaches for handling terminal resize:
+With Runtime, resize handling is automatic through ResizeEvent:
 
 ```go
-// Approach 1: Automatic resize for standard layouts
-layout := gooey.NewLayout(terminal)
-layout.SetHeader(header)
-layout.SetFooter(footer)
-terminal.WatchResize() // Automatically updates layout on resize
-defer terminal.StopWatchResize()
-
-// Approach 2: Automatic resize for composition containers
-container := gooey.NewContainer(layout)
-container.SetBounds(image.Rect(0, 0, width, height))
-terminal.WatchResize()
-container.WatchResize(terminal) // Container auto-resizes with terminal
-defer container.Destroy() // Cleanup automatically unregisters
-
-// Approach 3: Custom resize handling with callbacks
-unregister := terminal.OnResize(func(width, height int) {
-    // Custom resize logic here
-    myWidget.UpdateBounds(width, height)
-    myWidget.Relayout()
-})
-defer unregister()
-terminal.WatchResize() // Still need to watch for signals
-
-// Approach 4: Manual resize detection
-for {
-    terminal.RefreshSize() // Manually check for resize
-    // ... your render loop
+type MyApp struct {
+    container *gooey.Container
+    width     int
+    height    int
 }
+
+func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+    switch e := event.(type) {
+    case gooey.ResizeEvent:
+        // Runtime automatically sends ResizeEvent when terminal is resized
+        app.width = e.Width
+        app.height = e.Height
+
+        // Update container bounds if using composition system
+        if app.container != nil {
+            app.container.SetBounds(image.Rect(0, 0, e.Width, e.Height))
+        }
+    }
+    return nil
+}
+
+// Runtime automatically handles terminal.WatchResize() - no manual setup needed!
 ```
 
 ### Using FlexLayout for Advanced Layouts

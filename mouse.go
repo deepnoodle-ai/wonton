@@ -14,7 +14,7 @@ type MouseEvent struct {
 	Modifiers  MouseModifiers
 	DeltaX     int // For wheel events
 	DeltaY     int // For wheel events
-	Timestamp  time.Time
+	Time       time.Time
 	ClickCount int // 1 for single, 2 for double, 3 for triple
 }
 
@@ -140,9 +140,9 @@ func ParseMouseEvent(seq []byte) (*MouseEvent, error) {
 	y--
 
 	event := &MouseEvent{
-		X:         x,
-		Y:         y,
-		Timestamp: time.Now(),
+		X:    x,
+		Y:    y,
+		Time: time.Now(),
 	}
 
 	// Parse modifiers (bits 2-4 of button byte)
@@ -512,10 +512,10 @@ func (h *MouseHandler) endDrag(event *MouseEvent, region *MouseRegion) {
 func (h *MouseHandler) CancelDrag() {
 	if h.isDragging && h.dragRegion != nil {
 		cancelEvent := &MouseEvent{
-			Type:      MouseDragCancel,
-			X:         h.dragStartX,
-			Y:         h.dragStartY,
-			Timestamp: time.Now(),
+			Type: MouseDragCancel,
+			X:    h.dragStartX,
+			Y:    h.dragStartY,
+			Time: time.Now(),
 		}
 		h.dispatchToRegion(h.dragRegion, cancelEvent)
 		h.isDragging = false
@@ -526,7 +526,7 @@ func (h *MouseHandler) CancelDrag() {
 
 // detectAndDispatchClick detects double/triple clicks and dispatches appropriate event
 func (h *MouseHandler) detectAndDispatchClick(event *MouseEvent, region *MouseRegion) {
-	now := event.Timestamp
+	now := event.Time
 	timeSinceLastClick := now.Sub(h.lastClickTime)
 
 	// Check if this continues a multi-click sequence

@@ -1,57 +1,53 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
 
-func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		panic(err)
+// MouseGridApp demonstrates a clickable grid with mouse support using Runtime.
+// Click cells to toggle through different colors.
+type MouseGridApp struct {
+	terminal *gooey.Terminal
+	mouse    *gooey.MouseHandler
+	width    int
+	height   int
+
+	// Grid configuration
+	gridW   int
+	gridH   int
+	cellW   int
+	cellH   int
+	startX  int
+	startY  int
+	colors  []gooey.Style
+	gridState [][]int
+}
+
+// Init initializes the application
+func (app *MouseGridApp) Init() error {
+	app.terminal.EnableMouseTracking()
+	app.terminal.HideCursor()
+
+	app.width, app.height = app.terminal.Size()
+	app.mouse = gooey.NewMouseHandler()
+
+	// Grid configuration
+	app.gridW, app.gridH = 5, 5
+	app.cellW, app.cellH = 6, 3
+	app.startX, app.startY = 4, 4
+
+	// Initialize state
+	app.gridState = make([][]int, app.gridH)
+	for i := range app.gridState {
+		app.gridState[i] = make([]int, app.gridW)
 	}
 
-	// Setup raw mode for mouse input
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		term.Restore(int(os.Stdin.Fd()), oldState)
-		terminal.DisableMouseTracking()
-		terminal.DisableAlternateScreen()
-		terminal.ShowCursor()
-	}()
-
-	terminal.EnableAlternateScreen()
-	terminal.EnableMouseTracking()
-	terminal.HideCursor()
-
-	sm := gooey.NewScreenManager(terminal, 30)
-	mouse := gooey.NewMouseHandler()
-
-	width, _ := terminal.Size()
-
-	// Title
-	sm.DefineRegion("title", 0, 0, width, 2, false)
-	sm.UpdateRegion("title", 0, "🖱️  Mouse Grid Demo", gooey.CreateRainbowText("🖱️  Mouse Grid Demo", 15))
-	sm.UpdateRegion("title", 1, "Click cells to toggle colors! Press Ctrl+C to exit.", nil)
-
-	// Grid Configuration
-	gridW, gridH := 5, 5
-	cellW, cellH := 6, 3
-	startX, startY := 4, 4
-
-	// State
-	gridState := make([][]int, gridH)
-	for i := range gridState {
-		gridState[i] = make([]int, gridW)
-	}
-
-	colors := []gooey.Style{
+	// Define color palette
+	app.colors = []gooey.Style{
 		gooey.NewStyle().WithBackground(gooey.ColorBrightBlack).WithForeground(gooey.ColorWhite), // Off
 		gooey.NewStyle().WithBackground(gooey.ColorRed).WithForeground(gooey.ColorWhite),
 		gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack),
@@ -59,14 +55,24 @@ func main() {
 		gooey.NewStyle().WithBackground(gooey.ColorYellow).WithForeground(gooey.ColorBlack),
 	}
 
-	// Initialize Grid Regions and Mouse Handlers
-	for y := 0; y < gridH; y++ {
-		for x := 0; x < gridW; x++ {
-			regionName := fmt.Sprintf("cell_%d_%d", x, y)
-			screenX := startX + (x * (cellW + 1))
-			screenY := startY + (y * (cellH + 1))
+	// Setup mouse regions for grid cells
+	app.setupGridRegions()
 
-			sm.DefineRegion(regionName, screenX, screenY, cellW, cellH, false)
+	return nil
+}
+
+// Destroy cleans up resources
+func (app *MouseGridApp) Destroy() {
+	app.terminal.DisableMouseTracking()
+	app.terminal.ShowCursor()
+}
+
+// setupGridRegions creates mouse regions for each grid cell
+func (app *MouseGridApp) setupGridRegions() {
+	for y := 0; y < app.gridH; y++ {
+		for x := 0; x < app.gridW; x++ {
+			screenX := app.startX + (x * (app.cellW + 1))
+			screenY := app.startY + (y * (app.cellH + 1))
 
 			// Capture loop variables
 			cx, cy := x, y
@@ -74,83 +80,192 @@ func main() {
 			mouseRegion := &gooey.MouseRegion{
 				X:      screenX,
 				Y:      screenY,
-				Width:  cellW,
-				Height: cellH,
-				Label:  regionName,
-				Handler: func(e *gooey.MouseEvent) {
-					if e.Type == gooey.MouseClick {
-						// Toggle color
-						gridState[cy][cx] = (gridState[cy][cx] + 1) % len(colors)
-						updateCell(sm, regionName, gridState[cy][cx], colors, cellH)
-					}
+				Width:  app.cellW,
+				Height: app.cellH,
+				ZIndex: 1,
+				OnClick: func(e *gooey.MouseEvent) {
+					// Toggle color
+					app.gridState[cy][cx] = (app.gridState[cy][cx] + 1) % len(app.colors)
 				},
 			}
-			mouse.AddRegion(mouseRegion)
-
-			// Initial draw
-			updateCell(sm, regionName, 0, colors, cellH)
+			app.mouse.AddRegion(mouseRegion)
 		}
 	}
+}
 
-	sm.Start()
-	defer sm.Stop()
+// HandleEvent processes events
+func (app *MouseGridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.MouseEvent:
+		// Forward mouse events to handler
+		app.mouse.HandleEvent(&e)
+		return nil
 
-	// Event loop
-	buf := make([]byte, 128)
+	case gooey.KeyEvent:
+		// Handle keyboard input
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyCtrlC {
+			return []gooey.Cmd{gooey.Quit()}
+		}
+		return nil
+
+	case gooey.ResizeEvent:
+		app.width = e.Width
+		app.height = e.Height
+		return nil
+	}
+
+	return nil
+}
+
+// Render draws the grid
+func (app *MouseGridApp) Render(frame gooey.RenderFrame) {
+	// Clear screen
+	frame.FillStyled(0, 0, app.width, app.height, ' ', gooey.NewStyle())
+
+	// Title
+	title := "🖱️  Mouse Grid Demo"
+	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
+	frame.PrintStyled((app.width-len(title))/2, 0, title, titleStyle)
+
+	subtitle := "Click cells to toggle colors! Press 'q' or Ctrl+C to exit."
+	subtitleStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	frame.PrintStyled((app.width-len(subtitle))/2, 1, subtitle, subtitleStyle)
+
+	// Render grid
+	for y := 0; y < app.gridH; y++ {
+		for x := 0; x < app.gridW; x++ {
+			screenX := app.startX + (x * (app.cellW + 1))
+			screenY := app.startY + (y * (app.cellH + 1))
+			colorIdx := app.gridState[y][x]
+			style := app.colors[colorIdx]
+
+			// Draw cell
+			app.renderCell(frame, screenX, screenY, app.cellW, app.cellH, style)
+		}
+	}
+}
+
+// renderCell draws a single grid cell
+func (app *MouseGridApp) renderCell(frame gooey.RenderFrame, x, y, width, height int, style gooey.Style) {
+	for row := 0; row < height; row++ {
+		frame.FillStyled(x, y+row, width, 1, ' ', style)
+	}
+}
+
+func main() {
+	// Create terminal
+	terminal, err := gooey.NewTerminal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
+	}
+	defer terminal.Close()
+
+	// Create application
+	app := &MouseGridApp{
+		terminal: terminal,
+	}
+
+	// Create runtime with mouse support
+	runtime := NewMouseRuntime(terminal, app, 30)
+
+	// Run the application
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// MouseRuntime extends Runtime with mouse event support.
+// It handles both keyboard and mouse input from stdin.
+type MouseRuntime struct {
+	*gooey.Runtime
+	terminal *gooey.Terminal
+}
+
+// NewMouseRuntime creates a runtime that handles both keyboard and mouse events
+func NewMouseRuntime(terminal *gooey.Terminal, app gooey.Application, fps int) *MouseRuntime {
+	baseRuntime := gooey.NewRuntime(terminal, app, fps)
+
+	return &MouseRuntime{
+		Runtime:  baseRuntime,
+		terminal: terminal,
+	}
+}
+
+// Run starts the mouse-aware runtime
+func (r *MouseRuntime) Run() error {
+	// Start a custom input reader goroutine for mouse+keyboard
+	go r.mouseInputReader()
+
+	// Run the base runtime (which will handle events we send)
+	return r.Runtime.Run()
+}
+
+// mouseInputReader reads both keyboard and mouse events from stdin.
+// This replaces the Runtime's standard inputReader to handle both types of events.
+func (r *MouseRuntime) mouseInputReader() {
+	reader := bufio.NewReader(os.Stdin)
+
 	for {
-		n, err := os.Stdin.Read(buf)
+		// Peek at the first byte to determine event type
+		firstByte, err := reader.ReadByte()
 		if err != nil {
-			break
+			return
 		}
 
-		if n > 0 {
-			if buf[0] == 3 { // Ctrl+C
-				return
-			}
+		// Check if this is the start of a mouse event (ESC [ <)
+		if firstByte == 27 {
+			// Peek ahead to see if it's a mouse event
+			next, err := reader.Peek(2)
+			if err == nil && len(next) >= 2 && next[0] == '[' && next[1] == '<' {
+				// Read the mouse sequence
+				reader.ReadByte() // consume '['
+				reader.ReadByte() // consume '<'
 
-			// Handle Mouse
-			if buf[0] == 27 && n > 2 && buf[1] == '[' && buf[2] == '<' {
-				event, err := gooey.ParseMouseEvent(buf[2:n])
-				if err == nil {
-					mouse.HandleEvent(event)
+				buf := make([]byte, 20)
+				i := 0
+				buf[i] = '<'
+				i++
+
+				// Read until we find M or m
+				for {
+					b, err := reader.ReadByte()
+					if err != nil {
+						break
+					}
+					buf[i] = b
+					i++
+					if b == 'M' || b == 'm' {
+						break
+					}
+					if i >= len(buf) {
+						break
+					}
 				}
+
+				// Parse and send mouse event
+				event, err := gooey.ParseMouseEvent(buf[:i])
+				if err == nil {
+					r.SendEvent(*event)
+				}
+				continue
+			}
+		}
+
+		// Handle keyboard events
+		switch firstByte {
+		case 'q', 'Q':
+			r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
+		case 3: // Ctrl+C
+			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyCtrlC})
+		case 27: // ESC (not followed by mouse sequence)
+			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyEscape})
+		default:
+			// For other keys, create a KeyEvent
+			if firstByte >= 32 && firstByte < 127 {
+				r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
 			}
 		}
 	}
-}
-
-func updateCell(sm *gooey.ScreenManager, region string, colorIdx int, colors []gooey.Style, height int) {
-	style := colors[colorIdx]
-
-	// Create a block of color
-	// We use full block characters or just background color with spaces
-	content := "      " // 6 spaces matches cellW
-
-	// Apply style to the content string (this is a bit of a hack since ScreenManager
-	// expects content + optional animation, but we want static styled blocks.
-	// ScreenManager supports PrintStyled but UpdateRegion takes string.
-	// We'll rely on the fact that we can pass styled strings if we don't use animations,
-	// OR we can use a dummy animation that just sets color?
-	// Actually ScreenManager's UpdateRegion takes `content string`.
-	// If we pass an ANSI string, it might work if length calc handles it.
-	// But ScreenManager uses `utf8.RuneCountInString` which counts ANSI chars as runes usually if not stripped.
-	// gooey's ScreenManager uses `PrintStyled` which applies style ON TOP of content.
-	// But UpdateRegion doesn't take a Style, only Animation.
-	//
-	// Workaround: Use a static animation that returns the fixed style for all frames.
-
-	staticAnim := &StaticStyleAnimation{Style: style}
-
-	for i := 0; i < height; i++ {
-		sm.UpdateRegion(region, i, content, staticAnim)
-	}
-}
-
-// StaticStyleAnimation implements TextAnimation but returns a constant style
-type StaticStyleAnimation struct {
-	Style gooey.Style
-}
-
-func (a *StaticStyleAnimation) GetStyle(frame uint64, index, length int) gooey.Style {
-	return a.Style
 }

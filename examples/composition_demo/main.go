@@ -4,12 +4,8 @@ import (
 	"fmt"
 	"image"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
 
 // This example demonstrates the new composition system in Gooey.
@@ -19,41 +15,28 @@ import (
 // 3. FlexLayout with various settings
 // 4. Composable buttons and labels
 // 5. Parent-child relationships and event handling
+// 6. Message-driven Runtime architecture
 
-func main() {
-	// Initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
+// CompositionDemoApp implements the Application interface for the Runtime.
+type CompositionDemoApp struct {
+	mainContainer *gooey.Container
+	statusLabel   *gooey.ComposableLabel
+	clickCount    int
+}
 
-	// Setup raw mode for input
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to enter raw mode: %v\n", err)
-		os.Exit(1)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+// NewCompositionDemoApp creates and initializes the application.
+func NewCompositionDemoApp(terminal *gooey.Terminal) *CompositionDemoApp {
+	app := &CompositionDemoApp{clickCount: 0}
 
-	terminal.EnableAlternateScreen()
-	defer terminal.DisableAlternateScreen()
-	terminal.HideCursor()
-	defer terminal.ShowCursor()
-	terminal.EnableMouseTracking()
-	defer terminal.DisableMouseTracking()
-
-	// Get terminal size
 	width, height := terminal.Size()
 
 	// Create the main container with VBox layout
 	// Use LayoutAlignStretch to make all children fill the width
-	mainContainer := gooey.NewContainerWithBorder(
+	app.mainContainer = gooey.NewContainerWithBorder(
 		gooey.NewVBoxLayout(1).WithAlignment(gooey.LayoutAlignStretch),
 		&gooey.SingleBorder,
 	)
-	mainContainer.SetStyle(gooey.NewStyle().WithBackground(gooey.ColorBlack))
+	app.mainContainer.SetStyle(gooey.NewStyle().WithBackground(gooey.ColorBlack))
 
 	// Set layout params for padding
 	params := gooey.DefaultLayoutParams()
@@ -61,7 +44,7 @@ func main() {
 	params.PaddingBottom = 1
 	params.PaddingLeft = 2
 	params.PaddingRight = 2
-	mainContainer.SetLayoutParams(params)
+	app.mainContainer.SetLayoutParams(params)
 
 	// Create header
 	header := gooey.NewComposableLabel("Gooey Composition Demo")
@@ -84,25 +67,23 @@ func main() {
 	buttonBarParams.MarginTop = 1
 	buttonBar.SetLayoutParams(buttonBarParams)
 
-	clickCount := 0
-	statusLabel := gooey.NewComposableLabel("Status: Ready")
-	statusLabel.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow))
+	app.statusLabel = gooey.NewComposableLabel("Status: Ready")
+	app.statusLabel.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow))
 
 	// Create buttons with different styles
 	btn1 := gooey.NewComposableButton("Click Me!", func() {
-		clickCount++
-		statusLabel.SetText(fmt.Sprintf("Status: Button 1 clicked! (Count: %d)", clickCount))
+		app.clickCount++
+		app.statusLabel.SetText(fmt.Sprintf("Status: Button 1 clicked! (Count: %d)", app.clickCount))
 	})
 
 	btn2 := gooey.NewComposableButton("Press Here", func() {
-		statusLabel.SetText("Status: Button 2 pressed!")
+		app.statusLabel.SetText("Status: Button 2 pressed!")
 	})
 	btn2.Style = gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
 	btn2.HoverStyle = gooey.NewStyle().WithBackground(gooey.ColorBrightGreen).WithForeground(gooey.ColorBlack).WithBold()
 
-	btn3 := gooey.NewComposableButton("Exit Demo", func() {
-		statusLabel.SetText("Status: Exiting...")
-		os.Exit(0)
+	btn3 := gooey.NewComposableButton("Quit (q)", func() {
+		app.statusLabel.SetText("Status: Exiting...")
 	})
 	btn3.Style = gooey.NewStyle().WithBackground(gooey.ColorRed).WithForeground(gooey.ColorWhite)
 	btn3.HoverStyle = gooey.NewStyle().WithBackground(gooey.ColorBrightRed).WithForeground(gooey.ColorWhite).WithBold()
@@ -174,102 +155,76 @@ func main() {
 		"Instructions:",
 		"• Click buttons with your mouse!",
 		"• Watch the status label update",
-		"• Press Ctrl+C to exit",
+		"• Press 'q' to quit",
 	})
 	instructions.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
 
 	// Add all sections to main container
-	mainContainer.AddChild(header)
-	mainContainer.AddChild(description)
-	mainContainer.AddChild(buttonBar)
-	mainContainer.AddChild(statusLabel)
-	mainContainer.AddChild(flexSection)
-	mainContainer.AddChild(nestedSection)
-	mainContainer.AddChild(instructions)
+	app.mainContainer.AddChild(header)
+	app.mainContainer.AddChild(description)
+	app.mainContainer.AddChild(buttonBar)
+	app.mainContainer.AddChild(app.statusLabel)
+	app.mainContainer.AddChild(flexSection)
+	app.mainContainer.AddChild(nestedSection)
+	app.mainContainer.AddChild(instructions)
 
 	// Set the main container bounds to fill the terminal
-	mainContainer.SetBounds(image.Rect(0, 0, width, height))
+	app.mainContainer.SetBounds(image.Rect(0, 0, width, height))
 
 	// Initialize the container (calls Init on all children)
-	mainContainer.Init()
+	app.mainContainer.Init()
 
-	// Enable automatic resize handling
-	terminal.WatchResize()
-	defer terminal.StopWatchResize()
-	mainContainer.WatchResize(terminal)
+	return app
+}
 
-	// Draw function
-	drawUI := func() {
-		frame, err := terminal.BeginFrame()
-		if err != nil {
-			return
+// HandleEvent processes events from the Runtime.
+func (app *CompositionDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Handle 'q' to quit
+		if e.Rune == 'q' || e.Rune == 'Q' {
+			return []gooey.Cmd{gooey.Quit()}
 		}
 
-		// Debug: Print bounds info
-		bounds := mainContainer.GetBounds()
-		debugText := fmt.Sprintf("Main: %dx%d Container: (%d,%d)->(%d,%d)",
-			width, height, bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Max.Y)
-		frame.PrintStyled(0, height-1, debugText, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+	case gooey.MouseEvent:
+		// Pass mouse events to the container
+		if mouseAware, ok := interface{}(app.mainContainer).(gooey.MouseAware); ok {
+			mouseAware.HandleMouse(e)
+		}
 
-		mainContainer.Draw(frame)
-		terminal.EndFrame(frame)
+	case gooey.ResizeEvent:
+		// Update container bounds when terminal is resized
+		app.mainContainer.SetBounds(image.Rect(0, 0, e.Width, e.Height))
 	}
 
-	// Initial draw
-	drawUI()
+	return nil
+}
 
-	// Set up signal handling for Ctrl+C
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+// Render draws the current application state.
+func (app *CompositionDemoApp) Render(frame gooey.RenderFrame) {
+	// The container handles all rendering of its children
+	app.mainContainer.Draw(frame)
+}
 
-	// Event loop with input handling
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
+func main() {
+	// Initialize terminal
+	terminal, err := gooey.NewTerminal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
+	}
+	defer terminal.Close()
 
-	// Channel for input events
-	inputChan := make(chan []byte, 10)
-	go func() {
-		buf := make([]byte, 128)
-		for {
-			n, err := os.Stdin.Read(buf)
-			if err != nil {
-				return
-			}
-			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				inputChan <- data
-			}
-		}
-	}()
+	// Create the application
+	app := NewCompositionDemoApp(terminal)
 
-	for {
-		select {
-		case <-sigChan:
-			// Graceful shutdown
-			return
-		case data := <-inputChan:
-			// Check for Ctrl+C
-			if len(data) > 0 && data[0] == 3 {
-				return
-			}
+	// Create and run the Runtime
+	// 30 FPS is good for UI responsiveness
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-			// Parse mouse events
-			if len(data) > 2 && data[0] == 27 && data[1] == '[' && data[2] == '<' {
-				event, err := gooey.ParseMouseEvent(data[2:])
-				if err == nil {
-					// Pass mouse event to container
-					if mouseAware, ok := interface{}(mainContainer).(gooey.MouseAware); ok {
-						mouseAware.HandleMouse(*event)
-						drawUI()
-					}
-				}
-			}
-		case <-ticker.C:
-			// Periodic redraw (for animations, etc.)
-			if mainContainer.NeedsRedraw() {
-				drawUI()
-			}
-		}
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 }

@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
+// TextWidget demonstrates text wrapping, alignment, and truncation.
 type TextWidget struct {
 	Text     string
 	Wrap     bool // If true, use WrapText() to insert newlines at word boundaries
@@ -46,28 +47,88 @@ func (tw *TextWidget) HandleKey(event gooey.KeyEvent) bool {
 	return false
 }
 
-func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error creating terminal: %v\n", err)
-		return
+// TextDemoApp demonstrates text wrapping and alignment capabilities.
+type TextDemoApp struct {
+	grid   *gooey.Grid
+	layout *gooey.Layout
+	header *gooey.Header
+}
+
+// Init initializes the application.
+func (app *TextDemoApp) Init() error {
+	return nil
+}
+
+// HandleEvent processes events from the runtime.
+func (app *TextDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Handle keyboard input
+		if e.Key == gooey.KeyCtrlC || e.Rune == 'q' || e.Rune == 'Q' {
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+	case gooey.ResizeEvent:
+		// Grid will automatically adapt to new size in Render
+		return nil
 	}
-	defer terminal.Close()
 
-	screen := gooey.NewScreen(terminal)
+	return nil
+}
 
-	// Layout
-	grid := gooey.NewGrid(terminal).
-		AddCol(0, 1). // Left column
-		AddCol(0, 1)  // Right column
+// Render draws the current application state.
+func (app *TextDemoApp) Render(frame gooey.RenderFrame) {
+	// Lazy initialization on first render
+	if app.grid == nil {
+		app.initializeComponents()
+	}
 
-	grid.AddRow(0, 1). // Top row
-				AddRow(0, 1) // Bottom row
+	// Draw header and grid
+	if app.layout != nil && app.header != nil {
+		// Draw header manually since we're not using the full Layout system
+		headerStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
+		frame.PrintStyled(0, 0, "Text Wrapping & Alignment Demo", headerStyle)
+		frame.PrintStyled(0, 1, "Press Q or Ctrl+C to exit", gooey.NewStyle().WithForeground(gooey.ColorWhite))
+
+		// Draw separator
+		width, _ := frame.Size()
+		separator := ""
+		for i := 0; i < width; i++ {
+			separator += "─"
+		}
+		frame.PrintStyled(0, 2, separator, gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+
+		// Create a sub-frame for the grid (below header)
+		gridFrame := frame.SubFrame(frame.GetBounds().Add(frame.GetBounds().Min).Inset(0))
+		// Adjust the grid frame to start below the header (3 lines)
+		bounds := gridFrame.GetBounds()
+		gridBounds := bounds
+		gridBounds.Min.Y += 3
+		gridFrame = frame.SubFrame(gridBounds)
+
+		app.grid.Draw(gridFrame)
+	} else {
+		app.grid.Draw(frame)
+	}
+}
+
+// initializeComponents creates the grid and widgets.
+func (app *TextDemoApp) initializeComponents() {
+	app.layout = &gooey.Layout{}
+	app.header = &gooey.Header{
+		Center: "Text Wrapping & Alignment Demo",
+		Style:  gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan),
+	}
+
+	// Create grid with 2x2 layout
+	app.grid = &gooey.Grid{}
+	app.grid.AddCol(0, 1).AddCol(0, 1) // Two equal columns
+	app.grid.AddRow(0, 1).AddRow(0, 1) // Two equal rows
 
 	longText := "This is a very long sentence that should automatically wrap when it reaches the boundary of the container. It serves as a demonstration of the text wrapping capability."
 
 	// Top Left: Wrapped, Left Aligned
-	grid.AddWidget(&TextWidget{
+	app.grid.AddWidget(&TextWidget{
 		Text:  "WRAPPED LEFT:\n" + longText,
 		Wrap:  true,
 		Align: gooey.AlignLeft,
@@ -75,7 +136,7 @@ func main() {
 	}, 0, 0)
 
 	// Top Right: Wrapped, Center Aligned
-	grid.AddWidget(&TextWidget{
+	app.grid.AddWidget(&TextWidget{
 		Text:  "WRAPPED CENTER:\n" + longText,
 		Wrap:  true,
 		Align: gooey.AlignCenter,
@@ -83,7 +144,7 @@ func main() {
 	}, 0, 1)
 
 	// Bottom Left: Wrapped, Right Aligned
-	grid.AddWidget(&TextWidget{
+	app.grid.AddWidget(&TextWidget{
 		Text:  "WRAPPED RIGHT:\n" + longText,
 		Wrap:  true,
 		Align: gooey.AlignRight,
@@ -91,24 +152,33 @@ func main() {
 	}, 1, 0)
 
 	// Bottom Right: Truncated (clipped at edge, no wrapping), Center Aligned
-	grid.AddWidget(&TextWidget{
+	app.grid.AddWidget(&TextWidget{
 		Text:     "TRUNCATED (Clipped at edge):\n" + longText,
 		Wrap:     false,
 		Truncate: true,
 		Align:    gooey.AlignCenter,
 		Style:    gooey.NewStyle().WithForeground(gooey.ColorBlack).WithBackground(gooey.ColorYellow),
 	}, 1, 1)
+}
 
-	screen.AddWidget(grid)
-	screen.SetLayout(gooey.NewLayout(terminal).SetHeader(gooey.SimpleHeader("Text Wrapping & Alignment Demo", gooey.NewStyle().WithBold())))
+func main() {
+	// Create terminal
+	terminal, err := gooey.NewTerminal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
+	}
+	defer terminal.Close()
 
-	terminal.WatchResize()
-	defer terminal.StopWatchResize()
+	// Create application
+	app := &TextDemoApp{}
 
-	go func() {
-		time.Sleep(10 * time.Second)
-		screen.Stop()
-	}()
+	// Create runtime with 30 FPS
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	screen.Run()
+	// Run the event loop
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
+	}
 }

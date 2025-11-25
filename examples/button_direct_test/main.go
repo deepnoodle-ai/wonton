@@ -4,13 +4,107 @@ import (
 	"fmt"
 	"image"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
+
+// ButtonApp demonstrates composable button with mouse interaction
+// using the Runtime message-driven architecture.
+type ButtonApp struct {
+	width        int
+	height       int
+	clickCount   int
+	statusLabel  *gooey.ComposableLabel
+	button       *gooey.ComposableButton
+	instructions *gooey.ComposableLabel
+}
+
+// Init initializes the application widgets.
+func (app *ButtonApp) Init() error {
+	// Create a status label that will show click count
+	app.statusLabel = gooey.NewComposableLabel("Status: Ready - Click the button!")
+	app.statusLabel.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	// Create a button and set its bounds manually
+	app.button = gooey.NewComposableButton("Click Me!", func() {
+		app.clickCount++
+		app.statusLabel.SetText(fmt.Sprintf("Button clicked %d times!", app.clickCount))
+	})
+
+	// Instructions
+	app.instructions = gooey.NewComposableLabel("Press Ctrl+C or Q to exit")
+	app.instructions.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+
+	// Initialize widgets
+	app.button.Init()
+	app.statusLabel.Init()
+	app.instructions.Init()
+
+	return nil
+}
+
+// HandleEvent processes events from the runtime.
+func (app *ButtonApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Exit on Ctrl+C or Q
+		if e.Key == gooey.KeyCtrlC || e.Rune == 'q' || e.Rune == 'Q' {
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+	case gooey.MouseEvent:
+		// Pass mouse event to button directly
+		if mouseAware, ok := interface{}(app.button).(gooey.MouseAware); ok {
+			mouseAware.HandleMouse(e)
+		}
+
+	case gooey.ResizeEvent:
+		// Update stored dimensions and widget bounds
+		app.width = e.Width
+		app.height = e.Height
+		app.updateBounds()
+	}
+
+	return nil
+}
+
+// updateBounds updates widget bounds based on terminal size.
+func (app *ButtonApp) updateBounds() {
+	app.statusLabel.SetBounds(image.Rect(5, 2, app.width-5, 3))
+	app.button.SetBounds(image.Rect(5, 5, app.width-5, 6))
+	app.instructions.SetBounds(image.Rect(5, app.height-2, app.width-5, app.height-1))
+}
+
+// Render draws the current application state.
+func (app *ButtonApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Update dimensions if not set
+	if app.width == 0 || app.height == 0 {
+		app.width = width
+		app.height = height
+		app.updateBounds()
+	}
+
+	// Fill background with dots
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			frame.SetCell(x, y, '.', gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+		}
+	}
+
+	// Draw debug info
+	bounds := app.button.GetBounds()
+	info := fmt.Sprintf("Terminal: %dx%d | Button bounds: (%d,%d)->(%d,%d) W:%d",
+		width, height,
+		bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Max.Y, bounds.Dx())
+	frame.PrintStyled(0, 0, info, gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBackground(gooey.ColorBlack))
+
+	// Draw widgets
+	app.statusLabel.Draw(frame)
+	app.button.Draw(frame)
+	app.instructions.Draw(frame)
+}
 
 func main() {
 	terminal, err := gooey.NewTerminal()
@@ -20,14 +114,6 @@ func main() {
 	}
 	defer terminal.Close()
 
-	// Setup raw mode for input
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to enter raw mode: %v\n", err)
-		os.Exit(1)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
-
 	terminal.EnableAlternateScreen()
 	defer terminal.DisableAlternateScreen()
 	terminal.HideCursor()
@@ -35,113 +121,21 @@ func main() {
 	terminal.EnableMouseTracking()
 	defer terminal.DisableMouseTracking()
 
+	// Get initial terminal size
 	width, height := terminal.Size()
 
-	// Create a status label that will show click count
-	clickCount := 0
-	statusLabel := gooey.NewComposableLabel("Status: Ready - Click the button!")
-	statusLabel.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	statusLabel.SetBounds(image.Rect(5, 2, width-5, 3))
-
-	// Create a button and set its bounds manually
-	button := gooey.NewComposableButton("Click Me!", func() {
-		clickCount++
-		statusLabel.SetText(fmt.Sprintf("Button clicked %d times!", clickCount))
-	})
-
-	// Give it explicit bounds - full width of terminal minus margin
-	button.SetBounds(image.Rect(5, 5, width-5, 6))
-
-	// Instructions
-	instructions := gooey.NewComposableLabel("Press Ctrl+C to exit")
-	instructions.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-	instructions.SetBounds(image.Rect(5, height-2, width-5, height-1))
-
-	// Initialize widgets
-	button.Init()
-	statusLabel.Init()
-	instructions.Init()
-
-	// Draw function
-	drawUI := func() {
-		frame, err := terminal.BeginFrame()
-		if err != nil {
-			return
-		}
-
-		// Fill background with dots
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				frame.SetCell(x, y, '.', gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-			}
-		}
-
-		// Draw debug info
-		bounds := button.GetBounds()
-		info := fmt.Sprintf("Terminal: %dx%d | Button bounds: (%d,%d)->(%d,%d) W:%d",
-			width, height,
-			bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Max.Y, bounds.Dx())
-		frame.PrintStyled(0, 0, info, gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBackground(gooey.ColorBlack))
-
-		// Draw widgets
-		statusLabel.Draw(frame)
-		button.Draw(frame)
-		instructions.Draw(frame)
-
-		terminal.EndFrame(frame)
+	// Create the application
+	app := &ButtonApp{
+		width:  width,
+		height: height,
 	}
 
-	drawUI()
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Event loop with input handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-
-	// Channel for input events
-	inputChan := make(chan []byte, 10)
-	go func() {
-		buf := make([]byte, 128)
-		for {
-			n, err := os.Stdin.Read(buf)
-			if err != nil {
-				return
-			}
-			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				inputChan <- data
-			}
-		}
-	}()
-
-	for {
-		select {
-		case <-sigChan:
-			return
-		case data := <-inputChan:
-			// Check for Ctrl+C
-			if len(data) > 0 && data[0] == 3 {
-				return
-			}
-
-			// Parse mouse events
-			if len(data) > 2 && data[0] == 27 && data[1] == '[' && data[2] == '<' {
-				event, err := gooey.ParseMouseEvent(data[2:])
-				if err == nil {
-					// Pass mouse event to button directly
-					if mouseAware, ok := interface{}(button).(gooey.MouseAware); ok {
-						mouseAware.HandleMouse(*event)
-						drawUI()
-					}
-				}
-			}
-		case <-ticker.C:
-			if button.NeedsRedraw() || statusLabel.NeedsRedraw() {
-				drawUI()
-			}
-		}
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 }

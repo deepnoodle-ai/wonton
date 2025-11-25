@@ -4,6 +4,12 @@ import (
 	"image"
 )
 
+// Widget represents a UI widget that can be rendered and handle input.
+type Widget interface {
+	Draw(frame RenderFrame)
+	HandleKey(event KeyEvent) bool
+}
+
 // ComposableWidget extends the basic Widget interface with composition capabilities.
 // This interface enables bounds-based positioning, parent-child relationships,
 // and lifecycle management necessary for complex, nested layouts.

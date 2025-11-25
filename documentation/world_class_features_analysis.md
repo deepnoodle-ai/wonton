@@ -1,6 +1,8 @@
 # World-Class TUI Features Analysis
 
-This document analyzes advanced features that would elevate Gooey to world-class status, comparing it to the best TUI libraries (bubbletea, tview, charm tools) and modern CLI applications (lazygit, k9s, bottom).
+This document analyzes advanced features that would elevate Gooey to world-class
+status, comparing it to the best TUI libraries (bubbletea, tview, charm tools)
+and modern CLI applications (lazygit, k9s, bottom).
 
 **Status Legend:**
 - 🟢 **Easy** - Straightforward implementation, leverages existing foundation
@@ -2281,58 +2283,58 @@ Each is a separate application built with Gooey:
 
 ## Priority Matrix
 
-| Feature | Difficulty | Impact | Priority |
-|---------|------------|--------|----------|
-| **Layout & Rendering** |
-| Flex/Grid Layout | 🔴 Hard | ⚡🔧 | **HIGH** |
-| Fractional Layout | 🟡 Medium | ⚡ | **HIGH** |
-| Split-Pane | 🟡 Medium | ⚡ | **MEDIUM** |
-| Virtualized Lists | 🟡 Medium | ⚡ | **HIGH** |
-| Dirty Region (Enhanced) | 🟢 Easy | 🔧 | ✅ **DONE** (Profiling) |
-| **Input & Interaction** |
-| Full Mouse Support | 🟡 Medium | ⚡ | **HIGH** |
-| Mouse Protocol Detection | 🟢 Easy | 🔧 | **MEDIUM** |
-| Bracketed Paste | 🟢 Easy | ⚡ | ✅ **DONE** (Jan 2025) |
-| IME Support | 🔴 Hard | ⚡ | **LOW** |
-| Secure Password Input | 🟢 Easy | 🔧 | ✅ **DONE** (Nov 2025) |
-| Inline Images | 🔴 Hard | ⚡ | **MEDIUM** |
-| **Text & Styling** |
-| Color Downgrade | 🟡 Medium | ⚡ | **MEDIUM** |
-| Contrast Checker | 🟢 Easy | 🔧 | **HIGH** |
-| Hyperlinks (OSC 8) | 🟢 Easy | ⚡ | ✅ **DONE** (Jan 2025) |
-| Grapheme Clusters | 🔴 Hard | 🔧 | **MEDIUM** |
-| Markdown Renderer | 🟡 Medium | ⚡ | **HIGH** |
-| Animated Text (Enhanced) | 🟢 Easy | ⚡ | **LOW** |
-| **Widgets** |
-| File Picker | 🟡 Medium | ⚡ | **MEDIUM** |
-| Tree View | 🟡 Medium | ⚡ | **HIGH** |
-| Advanced Progress | 🟡 Medium | ⚡ | **MEDIUM** |
-| Advanced Table | 🔴 Hard | ⚡ | **HIGH** |
-| Floating Windows | 🟡 Medium | ⚡ | **MEDIUM** |
-| Toast Notifications | 🟢 Easy | ⚡ | **HIGH** |
-| Pager Widget | 🟡 Medium | ⚡ | **MEDIUM** |
-| **Concurrency** |
-| Async Widgets | 🟡 Medium | 🔧 | **MEDIUM** |
-| Task Runner | 🟡 Medium | ⚡ | **MEDIUM** |
-| FPS Rate Limiting | 🟢 Easy | 🔧 | **LOW** (Exists) |
-| **Accessibility** |
-| Screen Reader | 🔴 Hard | ⚡ | **LOW** |
-| Focus Indicators | 🟢 Easy | ⚡ | **HIGH** |
-| High-Contrast Themes | 🟢 Easy | 🔧 | **HIGH** |
-| Sound Effects | 🟢 Easy | Low | **LOW** |
-| **Theming** |
-| CSS-Like System | 🔴 Hard | 🔧 | **LOW** (Start Simple) |
-| Built-In Themes | 🟢 Easy | ⚡ | **HIGH** |
-| Animated Transitions | 🟡 Medium | Low | **LOW** |
-| **Integration** |
-| Environment Detection | 🟢 Easy | 🔧 | **HIGH** |
-| Clipboard (OSC 52) | 🟡 Medium | ⚡ | **HIGH** |
-| SSH Detection | 🟢 Easy | 🔧 | **MEDIUM** |
-| Live Reload | 🟡 Medium | 🔧 | **LOW** (Dev Tool) |
-| **Advanced** |
-| Session Recording | 🔴 Hard | Low | **LOW** |
-| Remote Control | 🔴 Hard | Low | **LOW** |
-| Example TUIs | Varies | ⚡ | **MEDIUM** |
+| Feature                  | Difficulty | Impact | Priority               |
+| ------------------------ | ---------- | ------ | ---------------------- |
+| **Layout & Rendering**   |
+| Flex/Grid Layout         | 🔴 Hard     | ⚡🔧     | **HIGH**               |
+| Fractional Layout        | 🟡 Medium   | ⚡      | **HIGH**               |
+| Split-Pane               | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| Virtualized Lists        | 🟡 Medium   | ⚡      | **HIGH**               |
+| Dirty Region (Enhanced)  | 🟢 Easy     | 🔧      | ✅ **DONE** (Profiling) |
+| **Input & Interaction**  |
+| Full Mouse Support       | 🟡 Medium   | ⚡      | **HIGH**               |
+| Mouse Protocol Detection | 🟢 Easy     | 🔧      | **MEDIUM**             |
+| Bracketed Paste          | 🟢 Easy     | ⚡      | ✅ **DONE** (Jan 2025)  |
+| IME Support              | 🔴 Hard     | ⚡      | **LOW**                |
+| Secure Password Input    | 🟢 Easy     | 🔧      | ✅ **DONE** (Nov 2025)  |
+| Inline Images            | 🔴 Hard     | ⚡      | **MEDIUM**             |
+| **Text & Styling**       |
+| Color Downgrade          | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| Contrast Checker         | 🟢 Easy     | 🔧      | **HIGH**               |
+| Hyperlinks (OSC 8)       | 🟢 Easy     | ⚡      | ✅ **DONE** (Jan 2025)  |
+| Grapheme Clusters        | 🔴 Hard     | 🔧      | **MEDIUM**             |
+| Markdown Renderer        | 🟡 Medium   | ⚡      | **HIGH**               |
+| Animated Text (Enhanced) | 🟢 Easy     | ⚡      | **LOW**                |
+| **Widgets**              |
+| File Picker              | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| Tree View                | 🟡 Medium   | ⚡      | **HIGH**               |
+| Advanced Progress        | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| Advanced Table           | 🔴 Hard     | ⚡      | **HIGH**               |
+| Floating Windows         | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| Toast Notifications      | 🟢 Easy     | ⚡      | **HIGH**               |
+| Pager Widget             | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| **Concurrency**          |
+| Async Widgets            | 🟡 Medium   | 🔧      | **MEDIUM**             |
+| Task Runner              | 🟡 Medium   | ⚡      | **MEDIUM**             |
+| FPS Rate Limiting        | 🟢 Easy     | 🔧      | **LOW** (Exists)       |
+| **Accessibility**        |
+| Screen Reader            | 🔴 Hard     | ⚡      | **LOW**                |
+| Focus Indicators         | 🟢 Easy     | ⚡      | **HIGH**               |
+| High-Contrast Themes     | 🟢 Easy     | 🔧      | **HIGH**               |
+| Sound Effects            | 🟢 Easy     | Low    | **LOW**                |
+| **Theming**              |
+| CSS-Like System          | 🔴 Hard     | 🔧      | **LOW** (Start Simple) |
+| Built-In Themes          | 🟢 Easy     | ⚡      | **HIGH**               |
+| Animated Transitions     | 🟡 Medium   | Low    | **LOW**                |
+| **Integration**          |
+| Environment Detection    | 🟢 Easy     | 🔧      | **HIGH**               |
+| Clipboard (OSC 52)       | 🟡 Medium   | ⚡      | **HIGH**               |
+| SSH Detection            | 🟢 Easy     | 🔧      | **MEDIUM**             |
+| Live Reload              | 🟡 Medium   | 🔧      | **LOW** (Dev Tool)     |
+| **Advanced**             |
+| Session Recording        | 🔴 Hard     | Low    | **LOW**                |
+| Remote Control           | 🔴 Hard     | Low    | **LOW**                |
+| Example TUIs             | Varies     | ⚡      | **MEDIUM**             |
 
 ---
 
@@ -2432,88 +2434,3 @@ Features that share implementation:
 - High-contrast themes
 - Screen reader
 - Reduced motion
-
----
-
-## Competitive Analysis
-
-### vs Bubbletea
-**Gooey Advantages (Potential):**
-- ✅ Direct rendering (no Elm architecture overhead)
-- ✅ Frame-based atomicity (cleaner API)
-- 🎯 Better animation (if we execute on this)
-- 🎯 More built-in widgets (table, tree, etc.)
-
-**Bubbletea Advantages (Current):**
-- Mature ecosystem (Bubbles, Lipgloss)
-- Large community
-- Excellent docs and examples
-
-**Strategy:** Focus on **widgets** and **layout** - these are Bubbletea's weaknesses.
-
-### vs tview
-**Gooey Advantages (Potential):**
-- Modern API (tview feels dated)
-- Better animation support
-- Cleaner architecture (no global state)
-
-**tview Advantages (Current):**
-- Feature-complete (has most widgets)
-- Stable and battle-tested
-- Good layout system (flex, grid)
-
-**Strategy:** Match tview's **feature completeness**, exceed in **UX polish**.
-
-### vs Charm Tools (glow, gum, etc.)
-**Gooey Advantages (Potential):**
-- Library vs applications (different audience)
-- More extensible
-
-**Charm Advantages:**
-- Professional polish
-- Beautiful defaults
-- Great branding
-
-**Strategy:** Bundle **beautiful themes** and **examples** that match Charm's polish.
-
----
-
-## Conclusion
-
-To make Gooey **world-class**:
-
-1. **Must Have:** Layout engine, virtualization, focus management, clipboard, themes
-2. **Should Have:** Advanced widgets (table, tree), markdown, hyperlinks, mouse
-3. **Nice to Have:** Images, IME, screen reader, recording
-
-The **highest ROI** features are:
-- Simple to implement, high impact: Bracketed paste, focus rings, toasts, **✅ hyperlinks**, themes, **✅ profiling**
-- Medium effort, transformative: Flex layout, virtualized lists, tree view, markdown
-
-**Progress Update (Jan 2025):**
-- ✅ **Performance Metrics/Profiling System** complete - provides developer visibility into rendering performance
-  - Tracks frames, cells, ANSI codes, bytes, timing, FPS, dirty regions
-  - Thread-safe with minimal overhead
-  - Comprehensive documentation and examples
-  - Following the recommendation: "Add profiling first (high value, low cost)" ✓
-
-- ✅ **Hyperlink Support (OSC 8)** complete - clickable links in terminal applications
-  - Full OSC 8 protocol implementation with fallback support
-  - Hyperlink type with URL validation and custom styling
-  - PrintHyperlink and PrintHyperlinkFallback methods
-  - Comprehensive tests and documentation
-  - Example demo showing various use cases
-  - Following the recommendation: "Implement with clear fallback - widely requested feature" ✓
-
-- ✅ **Bracketed Paste Mode** complete - secure paste handling in terminal applications
-  - Terminal methods: EnableBracketedPaste() and DisableBracketedPaste()
-  - KeyDecoder parses \033[200~ (start) and \033[201~ (end) sequences
-  - KeyEvent includes Paste field for atomic paste operations
-  - Input.Read() automatically handles paste events
-  - Security benefits: prevents accidental command execution
-  - 11 comprehensive test cases covering edge cases
-  - Full documentation with security best practices and examples
-  - Graceful degradation in unsupported terminals
-  - Following the recommendation: "Implement immediately - high value, minimal effort" ✓
-
-Start with **Phase 1** to build foundation, then **Phase 2** for differentiation. By end of **Phase 3**, Gooey would genuinely rival or exceed bubbletea/tview in capabilities.

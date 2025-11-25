@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
 
 const sampleMarkdown = `# Gooey Markdown Renderer
@@ -97,81 +96,98 @@ The markdown renderer supports customizable themes. You can change:
 *This is a demonstration of the Gooey markdown rendering system.*
 `
 
+// MarkdownDemoApp demonstrates markdown rendering using the Runtime architecture.
+// It shows how to use the MarkdownViewer widget with scrolling support.
+type MarkdownDemoApp struct {
+	viewer *gooey.MarkdownViewer
+	width  int
+	height int
+}
+
+// Init initializes the application by creating the markdown viewer.
+func (app *MarkdownDemoApp) Init() error {
+	app.viewer = gooey.NewMarkdownViewer(sampleMarkdown)
+	// Set initial bounds (will be updated on first resize event)
+	app.viewer.SetBounds(image.Rect(0, 0, app.width, app.height-2))
+	app.viewer.Init()
+	return nil
+}
+
+// HandleEvent processes events from the runtime.
+func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Quit on 'q'
+		if e.Rune == 'q' || e.Rune == 'Q' {
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+		// Pass other keys to viewer for scrolling
+		app.viewer.HandleKey(e)
+
+	case gooey.ResizeEvent:
+		// Update dimensions and viewer bounds on resize
+		app.width = e.Width
+		app.height = e.Height
+		app.viewer.SetBounds(image.Rect(0, 0, e.Width, e.Height-2))
+	}
+
+	return nil
+}
+
+// Render draws the current application state.
+func (app *MarkdownDemoApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Clear screen
+	frame.Fill(' ', gooey.NewStyle())
+
+	// Draw the markdown viewer
+	app.viewer.Draw(frame)
+
+	// Draw status line at bottom
+	statusStyle := gooey.NewStyle().
+		WithBackground(gooey.ColorBlue).
+		WithForeground(gooey.ColorWhite)
+
+	statusMsg := "Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump"
+	statusLine := fmt.Sprintf(" %s ", statusMsg)
+
+	// Pad to full width
+	for len(statusLine) < width {
+		statusLine += " "
+	}
+	if len(statusLine) > width {
+		statusLine = statusLine[:width]
+	}
+
+	frame.PrintStyled(0, height-1, statusLine, statusStyle)
+}
+
 func main() {
-	// Initialize terminal
+	// Create and initialize terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing terminal: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
 		os.Exit(1)
 	}
 	defer terminal.Close()
 
-	// Enable raw mode for key reading
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error enabling raw mode: %v\n", err)
-		os.Exit(1)
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
-
-	// Enable alternate screen
-	terminal.EnableAlternateScreen()
-
-	// Get terminal size
+	// Get initial terminal size
 	width, height := terminal.Size()
 
-	// Create markdown viewer
-	viewer := gooey.NewMarkdownViewer(sampleMarkdown)
-	viewer.SetBounds(image.Rect(0, 0, width, height-2)) // Leave room for status line
-	viewer.Init()
+	// Create the application
+	app := &MarkdownDemoApp{
+		width:  width,
+		height: height,
+	}
 
-	// Create status message
-	statusMsg := "Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump"
+	// Create and run the runtime with 30 FPS
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Create key decoder
-	decoder := gooey.NewKeyDecoder(os.Stdin)
-
-	// Main render loop
-	for {
-		// Begin frame
-		frame, err := terminal.BeginFrame()
-		if err != nil {
-			break
-		}
-
-		// Clear screen
-		frame.Fill(' ', gooey.NewStyle())
-
-		// Draw the markdown viewer
-		viewer.Draw(frame)
-
-		// Draw status line at bottom
-		statusStyle := gooey.NewStyle().
-			WithBackground(gooey.ColorBlue).
-			WithForeground(gooey.ColorWhite)
-
-		statusLine := fmt.Sprintf(" %s ", statusMsg)
-		// Pad to full width
-		for len(statusLine) < width {
-			statusLine += " "
-		}
-		frame.PrintStyled(0, height-1, statusLine[:width], statusStyle)
-
-		// End frame
-		terminal.EndFrame(frame)
-
-		// Handle input
-		key, err := decoder.ReadKeyEvent()
-		if err != nil {
-			break
-		}
-
-		// Handle quit
-		if key.Rune == 'q' || key.Rune == 'Q' {
-			return
-		}
-
-		// Let the viewer handle the key
-		viewer.HandleKey(key)
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 }

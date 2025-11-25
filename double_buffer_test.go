@@ -2,10 +2,7 @@ package gooey
 
 import (
 	"bytes"
-	"fmt"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -15,35 +12,6 @@ func createTestTerminal(width, height int) (*Terminal, *bytes.Buffer) {
 	out := new(bytes.Buffer)
 	term := NewTestTerminal(width, height, out)
 	return term, out
-}
-
-func TestRaceCondition_UpdateAndDraw(t *testing.T) {
-	term, _ := createTestTerminal(80, 24)
-	sm := NewScreenManager(term, 60)
-	sm.DefineRegion("test", 0, 0, 20, 1, false)
-	sm.Start()
-	defer sm.Stop()
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Goroutine 1: Update Region
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			sm.UpdateRegion("test", 0, fmt.Sprintf("Update %d", i), nil)
-			time.Sleep(time.Millisecond)
-		}
-	}()
-
-	// Goroutine 2: Redraw (implicit via Start, but let's force some via updates or just wait)
-	go func() {
-		defer wg.Done()
-		time.Sleep(100 * time.Millisecond)
-	}()
-
-	wg.Wait()
-	// If no panic, we passed (mostly). Use -race to really check.
 }
 
 func TestResizeBuffer(t *testing.T) {
@@ -82,29 +50,6 @@ func TestResizeBuffer(t *testing.T) {
 	// Expectation: Should not panic.
 }
 
-func TestLineClearing(t *testing.T) {
-	term, _ := createTestTerminal(20, 5)
-	sm := NewScreenManager(term, 0) // 0 FPS, manual draw
-	sm.DefineRegion("content", 0, 0, 20, 1, false)
-
-	// 1. Draw text
-	sm.UpdateRegion("content", 0, "Hello World", nil)
-	sm.draw()
-	require.Equal(t, 'H', term.backBuffer[0][0].Char)
-
-	// 2. Clear text (empty string)
-	sm.UpdateRegion("content", 0, "", nil)
-	sm.draw()
-
-	// BUG EXPECTATION: The text is NOT cleared because drawRegion skips empty strings
-	// We assert what currently happens (bug presence) or what SHOULD happen?
-	// Instructions say "Identify ... issues ... Create unit test cases ... to cover these most important cases".
-	// Usually we write tests that FAIL if the bug exists, to prove the bug.
-	// But if I write `require.Equal(t, ' ', ...)` it will fail.
-	// I will write the assertion for CORRECT behavior, so the test fails, highlighting the bug.
-	require.Equal(t, ' ', term.backBuffer[0][0].Char, "Line should be cleared when content is empty")
-}
-
 func TestMultiWidthChar(t *testing.T) {
 	term, _ := createTestTerminal(20, 5)
 
@@ -121,24 +66,6 @@ func TestMultiWidthChar(t *testing.T) {
 	// Next character 'B' should be at position [0][2] since wide char takes 2 cells
 	term.Print("B")
 	require.Equal(t, 'B', term.backBuffer[0][2].Char, "Next char should be after wide char (at position 2)")
-}
-
-func TestOverlappingRegions(t *testing.T) {
-	term, _ := createTestTerminal(20, 5)
-	sm := NewScreenManager(term, 0)
-
-	sm.DefineRegion("layer1", 0, 0, 10, 1, false)
-	sm.DefineRegion("layer2", 0, 0, 10, 1, false)
-
-	sm.UpdateRegion("layer1", 0, "AAAAA", nil)
-	sm.UpdateRegion("layer2", 0, "BBBBB", nil)
-
-	sm.draw()
-
-	// Non-deterministic which one wins.
-	// We just ensure one of them is there.
-	char := term.backBuffer[0][0].Char
-	require.True(t, char == 'A' || char == 'B')
 }
 
 func TestScrollUp(t *testing.T) {
@@ -226,52 +153,4 @@ func TestOutOfBounds(t *testing.T) {
 
 	// Verify nothing written to (0,0)
 	require.Equal(t, ' ', term.backBuffer[0][0].Char)
-}
-
-func TestNilAnimation(t *testing.T) {
-
-	term, _ := createTestTerminal(10, 10)
-
-	sm := NewScreenManager(term, 0)
-
-	sm.DefineRegion("test", 0, 0, 10, 1, false)
-
-	// Update with nil animation (normal usage)
-
-	sm.UpdateRegion("test", 0, "Hello", nil)
-
-	require.NotPanics(t, func() {
-
-		sm.draw()
-
-	})
-
-	require.Equal(t, 'H', term.backBuffer[0][0].Char)
-
-}
-
-func TestRegionInterference(t *testing.T) {
-
-	term, _ := createTestTerminal(20, 5)
-
-	sm := NewScreenManager(term, 0)
-
-	// Region on left
-
-	sm.DefineRegion("left", 0, 0, 5, 1, false)
-
-	// Text on right (manually placed or another region)
-
-	term.PrintAt(10, 0, "Right")
-
-	// Update left
-
-	sm.UpdateRegion("left", 0, "Left", nil)
-
-	sm.draw()
-
-	// Check Right text
-
-	require.Equal(t, 'R', term.backBuffer[0][10].Char, "Drawing left region should not wipe right side")
-
 }

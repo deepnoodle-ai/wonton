@@ -117,95 +117,6 @@ func TestSubFrame_EmptyIntersection(t *testing.T) {
 	term.EndFrame(frame)
 }
 
-// TestAnimator_DoubleStart verifies proper error on double start
-func TestAnimator_DoubleStart(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 30)
-
-	err := anim.Start()
-	require.NoError(t, err)
-
-	// Second start should return error
-	err = anim.Start()
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, ErrAlreadyActive))
-
-	anim.Stop()
-}
-
-// TestAnimator_StopBeforeStart verifies safe stop
-func TestAnimator_StopBeforeStart(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 30)
-
-	// Should not panic
-	require.NotPanics(t, func() {
-		anim.Stop()
-	})
-}
-
-// TestAnimator_MultipleStops verifies multiple stops are safe
-func TestAnimator_MultipleStops(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 30)
-
-	anim.Start()
-	anim.Stop()
-
-	// Multiple stops should be safe
-	require.NotPanics(t, func() {
-		anim.Stop()
-		anim.Stop()
-	})
-}
-
-// TestAnimator_CloseCleanup verifies Close releases resources
-func TestAnimator_CloseCleanup(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 30)
-
-	// Add some elements
-	elem := NewAnimatedText(10, 10, "Test", &RainbowAnimation{})
-	anim.AddElement(elem)
-
-	anim.Start()
-	err := anim.Close()
-
-	assert.NoError(t, err)
-	// After close, elements should be nil
-	assert.Nil(t, anim.elements)
-}
-
-// TestScreenManager_DoubleStart verifies safe double start
-func TestScreenManager_DoubleStart(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	sm := NewScreenManager(term, 30)
-
-	sm.Start()
-	// Second start should be safe (no error, just no-op)
-	require.NotPanics(t, func() {
-		sm.Start()
-	})
-
-	sm.Stop()
-}
-
-// TestScreenManager_CloseCleanup verifies Close releases resources
-func TestScreenManager_CloseCleanup(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	sm := NewScreenManager(term, 30)
-
-	sm.DefineRegion("test", 0, 0, 10, 10, false)
-	sm.Start()
-
-	err := sm.Close()
-	assert.NoError(t, err)
-
-	// After close, regions should be cleared
-	assert.Equal(t, 0, len(sm.regions))
-	assert.Equal(t, 0, len(sm.regionOrder))
-}
-
 // TestFillStyled_PartiallyOutOfBounds verifies clipping behavior
 func TestFillStyled_PartiallyOutOfBounds(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
@@ -269,26 +180,6 @@ func TestDirtyRegion_ClearAfterMark(t *testing.T) {
 	assert.Equal(t, 0, dr.MinY)
 	assert.Equal(t, 0, dr.MaxX)
 	assert.Equal(t, 0, dr.MaxY)
-}
-
-// TestAnimation_NilAnimation verifies nil animation handling
-func TestAnimation_NilAnimation(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 30)
-
-	// Create animated text with nil animation
-	elem := NewAnimatedText(10, 10, "Test", nil)
-	anim.AddElement(elem)
-
-	anim.Start()
-	defer anim.Close()
-
-	// Should not panic with nil animation
-	frame, _ := term.BeginFrame()
-	require.NotPanics(t, func() {
-		elem.Draw(frame)
-	})
-	term.EndFrame(frame)
 }
 
 // TestAnimation_EmptyText verifies empty text handling

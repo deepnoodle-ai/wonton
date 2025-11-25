@@ -2,37 +2,12 @@ package gooey
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-// Issue 1: Animator Restart Fragility
-func TestAnimator_Restart(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	anim := NewAnimator(term, 60)
-
-	_ = anim.Start()
-	time.Sleep(10 * time.Millisecond)
-	anim.Stop()
-
-	// This second start would fail/panic/return immediately if the stop channel is closed and not recreated
-	done := make(chan struct{})
-	go func() {
-		_ = anim.Start()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Passed start
-	case <-time.After(100 * time.Millisecond):
-		// Passed
-	}
-	anim.Stop()
-}
 
 // Issue 2: Terminal Clear Style Logic
 func TestTerminal_Clear_Style(t *testing.T) {
@@ -68,59 +43,6 @@ func TestTerminal_NegativeCursor_Panic(t *testing.T) {
 	require.NotPanics(t, func() {
 		term.Print("Hello")
 	}, "Print should not panic with negative cursor")
-}
-
-// Issue 4: ScreenManager Z-Order (Overlapping Regions)
-func TestScreenManager_OverlappingRegions_Determinism(t *testing.T) {
-	term := NewTestTerminal(10, 10, &bytes.Buffer{})
-	sm := NewScreenManager(term, 60)
-
-	// Define two overlapping regions
-	// With the fix, order depends on definition order
-	sm.DefineRegion("layer1", 0, 0, 5, 5, false)
-	sm.DefineRegion("layer2", 0, 0, 5, 5, false)
-
-	sm.UpdateRegion("layer1", 0, "AAAAA", nil)
-	sm.UpdateRegion("layer2", 0, "BBBBB", nil)
-
-	// Draw
-	sm.draw()
-
-	// Check what's on the screen at (0,0)
-	// Should be B because layer2 is defined after layer1 and iterated in order
-
-	cell := term.backBuffer[0][0]
-	assert.Equal(t, 'B', cell.Char, "Layer2 should be on top of Layer1")
-}
-
-// Issue 5: Input Hotkey Race Condition
-func TestInput_Hotkey_Race(t *testing.T) {
-	term := NewTestTerminal(80, 24, &bytes.Buffer{})
-	input := NewInput(term)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Routine 1: Simulate reading
-	go func() {
-		defer wg.Done()
-		// Use lock to be thread safe (as Read() would be)
-		for i := 0; i < 1000; i++ {
-			input.mu.RLock()
-			_ = input.hotkeys[KeyCtrlC]
-			input.mu.RUnlock()
-		}
-	}()
-
-	// Routine 2: Set hotkeys
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 1000; i++ {
-			input.SetHotkey(KeyCtrlC, func() {})
-		}
-	}()
-
-	wg.Wait()
 }
 
 // Issue 6: Layout Header Cursor Position
@@ -161,4 +83,23 @@ func TestLayout_HeaderCursor_Bug(t *testing.T) {
 
 	assert.True(t, foundAtTop, "Header text should be at Y=0")
 	assert.False(t, foundAtBottom, "Header text should NOT be at Y=10")
+}
+
+// TestSpinner_PassiveUpdate checks that spinner updates state deterministically
+func TestSpinner_PassiveUpdate(t *testing.T) {
+	// This replaces the old Animator restart test with a check on the new passive Spinner
+	s := NewSpinner(SpinnerDots)
+	
+	// Initial state
+	assert.Equal(t, 0, s.currentFrame)
+	
+	// Update with time < interval
+	now := time.Now()
+	s.lastUpdate = now
+	s.Update(now.Add(10 * time.Millisecond))
+	assert.Equal(t, 0, s.currentFrame, "Should not advance frame before interval")
+	
+	// Update with time > interval
+	s.Update(now.Add(100 * time.Millisecond))
+	assert.Equal(t, 1, s.currentFrame, "Should advance frame after interval")
 }

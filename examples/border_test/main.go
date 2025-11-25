@@ -3,22 +3,47 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-func drawBorder(terminal *gooey.Terminal) error {
-	width, height := terminal.Size()
+// BorderApp demonstrates drawing a border around the terminal
+// and handling terminal resize events using the Runtime.
+type BorderApp struct {
+	width  int
+	height int
+}
 
-	// Clear the terminal to remove any old content from previous size
-	terminal.Clear()
+// HandleEvent processes events from the runtime.
+func (app *BorderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Exit on Ctrl+C
+		if e.Key == gooey.KeyCtrlC {
+			return []gooey.Cmd{gooey.Quit()}
+		}
 
-	frame, err := terminal.BeginFrame()
-	if err != nil {
-		return err
+	case gooey.ResizeEvent:
+		// Update stored dimensions on resize
+		app.width = e.Width
+		app.height = e.Height
 	}
+
+	return nil
+}
+
+// Render draws the border and info text.
+func (app *BorderApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Update dimensions if not set
+	if app.width == 0 || app.height == 0 {
+		app.width = width
+		app.height = height
+	}
+
+	// Clear the frame
+	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
 
 	// Draw info at top
 	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)", width, height)
@@ -48,8 +73,6 @@ func drawBorder(terminal *gooey.Terminal) error {
 	frame.SetCell(width-1, 2, '╗', style)
 	frame.SetCell(0, height-1, '╚', style)
 	frame.SetCell(width-1, height-1, '╝', style)
-
-	return terminal.EndFrame(frame)
 }
 
 func main() {
@@ -63,47 +86,21 @@ func main() {
 	terminal.EnableAlternateScreen()
 	defer terminal.DisableAlternateScreen()
 
-	// Enable automatic resize detection
-	terminal.WatchResize()
-	defer terminal.StopWatchResize()
+	// Get initial terminal size
+	width, height := terminal.Size()
 
-	// Channel to signal when to redraw
-	redrawChan := make(chan bool, 1)
-
-	// Register resize callback
-	unregister := terminal.OnResize(func(width, height int) {
-		// Signal redraw on resize
-		select {
-		case redrawChan <- true:
-		default:
-			// Channel already has a pending redraw, skip
-		}
-	})
-	defer unregister()
-
-	// Handle Ctrl+C gracefully
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Initial draw
-	if err := drawBorder(terminal); err != nil {
-		fmt.Fprintf(os.Stderr, "Draw error: %v\n", err)
-		return
+	// Create the application
+	app := &BorderApp{
+		width:  width,
+		height: height,
 	}
 
-	// Main event loop - wait for resize or exit signal
-	for {
-		select {
-		case <-redrawChan:
-			// Redraw on resize
-			if err := drawBorder(terminal); err != nil {
-				fmt.Fprintf(os.Stderr, "Draw error: %v\n", err)
-				return
-			}
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-		case <-sigChan:
-			// Exit on Ctrl+C
-			return
-		}
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 }

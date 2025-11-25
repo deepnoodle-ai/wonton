@@ -4,284 +4,236 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/deepnoodle-ai/gooey"
-	"golang.org/x/term"
 )
 
-type SynchronizedDemo struct {
-	terminal      *gooey.Terminal
-	screenManager *gooey.ScreenManager
-	lines         [2]string
-	selectedLine  int
-	cursorPos     [2]int
-	running       bool
-	mu            sync.Mutex
+// SynchronizedDemoApp demonstrates coordinated updates with animated content and interactive input.
+// This shows how the Runtime handles complex UIs with multiple animated regions and user input.
+type SynchronizedDemoApp struct {
+	// State
+	lines        [2]string
+	selectedLine int
+	cursorPos    [2]int
+	counter      int
+	width        int
+	height       int
+
+	// Animation colors
+	colors []gooey.RGB
 }
 
-func NewSynchronizedDemo() (*SynchronizedDemo, error) {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		return nil, err
+// Init initializes the application state.
+func (app *SynchronizedDemoApp) Init() error {
+	app.lines = [2]string{"", ""}
+	app.selectedLine = 0
+	app.cursorPos = [2]int{0, 0}
+	app.counter = 0
+
+	// Initialize animation colors
+	app.colors = []gooey.RGB{
+		gooey.NewRGB(255, 255, 0),
+		gooey.NewRGB(255, 165, 0),
+		gooey.NewRGB(0, 255, 255),
+		gooey.NewRGB(0, 255, 100),
+		gooey.NewRGB(255, 0, 255),
+		gooey.NewRGB(100, 255, 100),
+		gooey.NewRGB(0, 255, 100),
+		gooey.NewRGB(0, 255, 100),
 	}
 
-	screenManager := gooey.NewScreenManager(terminal, 30)
-
-	return &SynchronizedDemo{
-		terminal:      terminal,
-		screenManager: screenManager,
-		lines:         [2]string{"", ""},
-		selectedLine:  0,
-		cursorPos:     [2]int{0, 0},
-		running:       true,
-	}, nil
+	return nil
 }
 
-func (d *SynchronizedDemo) Setup() {
-	// Enable alternate screen and show cursor
-	d.terminal.EnableAlternateScreen()
-	d.terminal.ShowCursor()
-
-	width, height := d.terminal.Size()
-
-	// Define screen regions
-	// Header region (lines 0-1)
-	d.screenManager.DefineRegion("header", 0, 0, width, 2, false)
-
-	// Animated content region (lines 2-5)
-	d.screenManager.DefineRegion("content", 0, 2, width, 4, false)
-
-	// Input region (lines 6-7) - PROTECTED from animation overwrites
-	d.screenManager.DefineRegion("input", 0, 6, width, 2, true)
-
-	// Footer region (lines 8+)
-	footerY := 8
-	footerHeight := height - footerY - 1
-	if footerHeight > 3 {
-		footerHeight = 3
-	}
-	d.screenManager.DefineRegion("footer", 0, footerY, width, footerHeight, false)
-
-	// Set initial content
-	d.screenManager.UpdateRegion("header", 0, "🚀 Synchronized Gooey Demo", gooey.CreateRainbowText("🚀 Synchronized Gooey Demo", 20))
-	d.screenManager.UpdateRegion("header", 1, "All updates properly synchronized!", gooey.CreateReverseRainbowText("All updates properly synchronized!", 25))
-
-	d.screenManager.UpdateRegion("content", 0, "Status: Ready", gooey.CreatePulseText(gooey.NewRGB(0, 255, 100), 40))
-	d.screenManager.UpdateRegion("content", 1, "Progress: ████████████████████", gooey.CreateRainbowText("Progress: ████████████████████", 15))
-	d.screenManager.UpdateRegion("content", 2, "", nil)
-	d.screenManager.UpdateRegion("content", 3, "System: Online", nil)
-
-	d.screenManager.UpdateRegion("footer", 0, "↑↓ Switch lines | Type to add text | Ctrl+C to quit", nil)
-	d.screenManager.UpdateRegion("footer", 1, "No more cursor jumping!", gooey.CreateRainbowText("No more cursor jumping!", 18))
-
-	// Initial input lines
-	d.UpdateInputLines()
-
-	// Start the screen manager
-	d.screenManager.Start()
-}
-
-func (d *SynchronizedDemo) UpdateInputLines() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	for i := 0; i < 2; i++ {
-		prefix := fmt.Sprintf("Line %d: ", i+1)
-		line := prefix + d.lines[i]
-
-		if i == d.selectedLine {
-			// Highlight selected line
-			style := gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
-			styledLine := style.Apply(line)
-			d.screenManager.UpdateRegion("input", i, styledLine, nil)
-		} else {
-			// Normal line
-			d.screenManager.UpdateRegion("input", i, line, nil)
-		}
-	}
-
-	// Update cursor position in screen manager
-	cursorX := 8 + d.cursorPos[d.selectedLine] // "Line N: " is 8 chars
-	cursorY := 6 + d.selectedLine              // Input region starts at line 6
-	d.screenManager.SetCursorPosition(cursorX, cursorY)
-}
-
-func (d *SynchronizedDemo) StartBackgroundUpdates() {
-	go func() {
-		counter := 0
-		for d.running {
-			time.Sleep(500 * time.Millisecond)
-			counter++
-
-			// Update status line
-			statuses := []string{
-				"Status: Initializing...",
-				"Status: Loading...",
-				"Status: Connecting...",
-				"Status: Processing...",
-				"Status: Optimizing...",
-				"Status: Finalizing...",
-				"Status: Complete!",
-				"Status: Ready",
-			}
-
-			statusIdx := counter % len(statuses)
-			statusText := statuses[statusIdx]
-
-			var animation gooey.TextAnimation
-			if statusIdx == 6 { // "Complete!" gets rainbow
-				animation = gooey.CreateRainbowText(statusText, 15)
-			} else {
-				colors := []gooey.RGB{
-					gooey.NewRGB(255, 255, 0),
-					gooey.NewRGB(255, 165, 0),
-					gooey.NewRGB(0, 255, 255),
-					gooey.NewRGB(0, 255, 100),
-					gooey.NewRGB(255, 0, 255),
-					gooey.NewRGB(100, 255, 100),
-					gooey.NewRGB(0, 255, 100),
-					gooey.NewRGB(0, 255, 100),
-				}
-				animation = gooey.CreatePulseText(colors[statusIdx], 40)
-			}
-
-			d.screenManager.UpdateRegion("content", 0, statusText, animation)
-
-			// Update progress bar
-			progress := (counter % 20) + 1
-			progressBar := strings.Repeat("█", progress) + strings.Repeat("░", 20-progress)
-			progressText := fmt.Sprintf("Progress: %s %d%%", progressBar, progress*5)
-			d.screenManager.UpdateRegion("content", 1, progressText, gooey.CreateRainbowText(progressText, 12))
-
-			// Update system info
-			connections := 40 + (counter % 10)
-			d.screenManager.UpdateRegion("content", 3, fmt.Sprintf("System: %d connections", connections), nil)
-		}
-	}()
-}
-
-func (d *SynchronizedDemo) Run() error {
-	// Set terminal to raw mode
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return err
-	}
-	defer func() {
-		term.Restore(int(os.Stdin.Fd()), oldState)
-		d.terminal.DisableAlternateScreen()
-		d.terminal.ShowCursor()
-	}()
-
-	// Clear and position cursor
-	d.terminal.Clear()
-
-	// Start background updates
-	d.StartBackgroundUpdates()
-
-	// Main input loop
-	buf := make([]byte, 1)
-	for d.running {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 {
-			continue
+// HandleEvent processes events from the runtime.
+func (app *SynchronizedDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Handle special keys
+		if e.Key == gooey.KeyCtrlC {
+			return []gooey.Cmd{gooey.Quit()}
 		}
 
-		switch buf[0] {
-		case 3: // Ctrl+C
-			d.running = false
-
-		case 27: // Escape sequence (arrow keys)
-			seq := make([]byte, 2)
-			n, _ := os.Stdin.Read(seq)
-			if n == 2 && seq[0] == '[' {
-				switch seq[1] {
-				case 'A': // Up arrow
-					if d.selectedLine > 0 {
-						d.selectedLine--
-						d.UpdateInputLines()
-					}
-				case 'B': // Down arrow
-					if d.selectedLine < 1 {
-						d.selectedLine++
-						d.UpdateInputLines()
-					}
-				case 'C': // Right arrow
-					if d.cursorPos[d.selectedLine] < len(d.lines[d.selectedLine]) {
-						d.cursorPos[d.selectedLine]++
-						d.UpdateInputLines()
-					}
-				case 'D': // Left arrow
-					if d.cursorPos[d.selectedLine] > 0 {
-						d.cursorPos[d.selectedLine]--
-						d.UpdateInputLines()
-					}
-				}
+		// Arrow keys for line navigation
+		if e.Key == gooey.KeyArrowUp {
+			if app.selectedLine > 0 {
+				app.selectedLine--
 			}
+			return nil
+		}
+		if e.Key == gooey.KeyArrowDown {
+			if app.selectedLine < 1 {
+				app.selectedLine++
+			}
+			return nil
+		}
+		if e.Key == gooey.KeyArrowRight {
+			if app.cursorPos[app.selectedLine] < len(app.lines[app.selectedLine]) {
+				app.cursorPos[app.selectedLine]++
+			}
+			return nil
+		}
+		if e.Key == gooey.KeyArrowLeft {
+			if app.cursorPos[app.selectedLine] > 0 {
+				app.cursorPos[app.selectedLine]--
+			}
+			return nil
+		}
 
-		case 127, 8: // Backspace
-			d.mu.Lock()
-			line := d.lines[d.selectedLine]
-			pos := d.cursorPos[d.selectedLine]
+		// Backspace
+		if e.Key == gooey.KeyBackspace {
+			line := app.lines[app.selectedLine]
+			pos := app.cursorPos[app.selectedLine]
 			if pos > 0 && len(line) > 0 {
-				d.lines[d.selectedLine] = line[:pos-1] + line[pos:]
-				d.cursorPos[d.selectedLine]--
+				app.lines[app.selectedLine] = line[:pos-1] + line[pos:]
+				app.cursorPos[app.selectedLine]--
 			}
-			d.mu.Unlock()
-			d.UpdateInputLines()
+			return nil
+		}
 
-		case 13: // Enter
-			// Move to next line
-			if d.selectedLine < 1 {
-				d.selectedLine++
+		// Enter - move to next line
+		if e.Key == gooey.KeyEnter {
+			if app.selectedLine < 1 {
+				app.selectedLine++
 			} else {
-				d.selectedLine = 0
+				app.selectedLine = 0
 			}
-			d.UpdateInputLines()
+			return nil
+		}
 
-		default:
-			// Regular character input
-			if buf[0] >= 32 && buf[0] < 127 {
-				d.mu.Lock()
-				line := d.lines[d.selectedLine]
-				pos := d.cursorPos[d.selectedLine]
-				d.lines[d.selectedLine] = line[:pos] + string(buf[0]) + line[pos:]
-				d.cursorPos[d.selectedLine]++
-				d.mu.Unlock()
-				d.UpdateInputLines()
-			}
+		// Regular character input
+		if e.Rune != 0 && e.Rune >= 32 && e.Rune < 127 {
+			line := app.lines[app.selectedLine]
+			pos := app.cursorPos[app.selectedLine]
+			app.lines[app.selectedLine] = line[:pos] + string(e.Rune) + line[pos:]
+			app.cursorPos[app.selectedLine]++
+		}
+
+	case gooey.ResizeEvent:
+		app.width = e.Width
+		app.height = e.Height
+
+	case gooey.TickEvent:
+		// Update animation counter every few ticks (~500ms at 30fps = 15 ticks)
+		if e.Frame%15 == 0 {
+			app.counter++
 		}
 	}
 
 	return nil
 }
 
-func (d *SynchronizedDemo) Cleanup() {
-	d.running = false
-	d.screenManager.Stop()
+// Render draws the current application state.
+func (app *SynchronizedDemoApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+	app.width = width
+	app.height = height
+
+	// Define styles
+	rainbowStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
+	normalStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	highlightStyle := gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
+
+	// Header (lines 0-1)
+	frame.PrintStyled(0, 0, "🚀 Synchronized Gooey Demo", rainbowStyle)
+	frame.PrintStyled(0, 1, "All updates properly synchronized!", normalStyle)
+
+	// Animated content region (lines 2-5)
+	statuses := []string{
+		"Status: Initializing...",
+		"Status: Loading...",
+		"Status: Connecting...",
+		"Status: Processing...",
+		"Status: Optimizing...",
+		"Status: Finalizing...",
+		"Status: Complete!",
+		"Status: Ready",
+	}
+
+	statusIdx := app.counter % len(statuses)
+	statusText := statuses[statusIdx]
+
+	// Use different colors for different statuses
+	var statusColor gooey.RGB
+	if statusIdx == 6 { // "Complete!" gets special color
+		statusColor = gooey.NewRGB(0, 255, 100)
+	} else {
+		statusColor = app.colors[statusIdx]
+	}
+	statusStyle := gooey.NewStyle().WithFgRGB(statusColor).WithBold()
+	frame.PrintStyled(0, 2, statusText, statusStyle)
+
+	// Progress bar
+	progress := (app.counter % 20) + 1
+	progressBar := strings.Repeat("█", progress) + strings.Repeat("░", 20-progress)
+	progressText := fmt.Sprintf("Progress: %s %d%%", progressBar, progress*5)
+	progressStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+	frame.PrintStyled(0, 3, progressText, progressStyle)
+
+	// Blank line
+	frame.PrintStyled(0, 4, "", normalStyle)
+
+	// System info
+	connections := 40 + (app.counter % 10)
+	systemText := fmt.Sprintf("System: %d connections", connections)
+	frame.PrintStyled(0, 5, systemText, normalStyle)
+
+	// Input region (lines 6-7) - Interactive text input
+	for i := 0; i < 2; i++ {
+		prefix := fmt.Sprintf("Line %d: ", i+1)
+		line := prefix + app.lines[i]
+
+		if i == app.selectedLine {
+			// Highlight selected line
+			frame.PrintStyled(0, 6+i, line, highlightStyle)
+		} else {
+			// Normal line
+			frame.PrintStyled(0, 6+i, line, normalStyle)
+		}
+	}
+
+	// Footer (lines 8+)
+	if height > 8 {
+		footerStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, 8, "↑↓ Switch lines | Type to add text | Ctrl+C to quit", footerStyle)
+
+		if height > 9 {
+			successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+			frame.PrintStyled(0, 9, "No more cursor jumping!", successStyle)
+		}
+	}
+
+	// Note: We're not actually positioning the terminal cursor here since
+	// Runtime manages the display. In a real app with text input, you'd
+	// want to use a proper input widget or manage cursor visibility differently.
 }
 
 func main() {
 	fmt.Println("\n🎨 Synchronized Gooey Demo")
-	fmt.Println("This demo uses a ScreenManager to coordinate all drawing:")
-	fmt.Println("✨ No cursor jumping")
+	fmt.Println("This demo shows coordinated updates with animations and input:")
+	fmt.Println("✨ Smooth animations")
 	fmt.Println("🛡️  Protected input regions")
-	fmt.Println("🎯 Proper synchronization")
-	fmt.Println("\nStarting in 2 seconds...")
-	time.Sleep(2 * time.Second)
+	fmt.Println("🎯 Proper synchronization via Runtime")
+	fmt.Println("\nStarting...")
 
-	demo, err := NewSynchronizedDemo()
+	// Create terminal
+	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Printf("Error creating demo: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
 	}
+	defer terminal.Close()
 
-	demo.Setup()
-	defer demo.Cleanup()
+	// Create application
+	app := &SynchronizedDemoApp{}
 
-	if err := demo.Run(); err != nil {
-		fmt.Printf("Error running demo: %v\n", err)
+	// Create runtime with 30 FPS
+	runtime := gooey.NewRuntime(terminal, app, 30)
+
+	// Run the event loop
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("\n👋 Thanks for trying the synchronized demo!")

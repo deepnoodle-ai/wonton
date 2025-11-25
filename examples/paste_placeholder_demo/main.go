@@ -2,188 +2,254 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"regexp"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-func stripANSI(s string) string {
-	// Remove ANSI escape codes
-	re := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-	return re.ReplaceAllString(s, "")
+// PastePlaceholderApp demonstrates advanced paste handling with placeholders using Runtime.
+type PastePlaceholderApp struct {
+	stage          int
+	input          string
+	message        string
+	pasteModified  bool
+	originalLength int
+}
+
+func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		if app.stage == 0 {
+			// Instructions screen - any key continues
+			if e.Key == gooey.KeyEscape || e.Rune == 'q' || e.Rune == 'Q' {
+				return []gooey.Cmd{gooey.Quit()}
+			}
+			app.stage = 1
+			return []gooey.Cmd{app.cmdReadPasteInput()}
+		} else if app.stage == 2 {
+			// Result screen - any key quits
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+	case PasteInputEvent:
+		// Handle paste input result
+		if e.Error != nil {
+			app.message = fmt.Sprintf("Error: %v", e.Error)
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+		app.input = e.Value
+		app.pasteModified = e.WasModified
+		app.originalLength = e.OriginalLength
+		app.stage = 2
+	}
+
+	return nil
+}
+
+func (app *PastePlaceholderApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Clear screen
+	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
+
+	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
+	instructionStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+	featureStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+
+	y := 0
+
+	switch app.stage {
+	case 0:
+		// Instructions screen
+		frame.PrintStyled(0, y, "╔═════════════════════════════════════════════════════════════════════╗", titleStyle)
+		frame.PrintStyled(0, y+1, "║     Placeholder Paste Mode Demo - Advanced Paste Handling          ║", titleStyle)
+		frame.PrintStyled(0, y+2, "╚═════════════════════════════════════════════════════════════════════╝", titleStyle)
+		y += 4
+
+		frame.PrintStyled(0, y, "This demo shows advanced paste handling with placeholders and callbacks.", instructionStyle)
+		y += 2
+
+		frame.PrintStyled(0, y, "Features Demonstrated:", featureStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Placeholder display: Shows '[pasted 27 lines]' instead of content", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Paste handlers: Inspect, modify, or reject pasted content", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • ANSI stripping: Automatically clean malicious escape codes", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Size limits: Reject pastes that are too large", instructionStyle)
+		y += 2
+
+		frame.PrintStyled(0, y, "Try pasting:", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Multi-line text (will show '[pasted N lines]')", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Text with ANSI codes (will be stripped automatically)", instructionStyle)
+		y++
+		frame.PrintStyled(0, y, "  • Very large content (over 5000 chars will be rejected)", instructionStyle)
+		y += 2
+
+		frame.PrintStyled(0, y, "Press ESC or Q to exit, any other key to continue", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+
+	case 1:
+		// Input screen
+		frame.PrintStyled(0, y, "╔═════════════════════════════════════════════════════════════════════╗", titleStyle)
+		frame.PrintStyled(0, y+1, "║                          Paste Input                                ║", titleStyle)
+		frame.PrintStyled(0, y+2, "╚═════════════════════════════════════════════════════════════════════╝", titleStyle)
+		y += 4
+
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+		frame.PrintStyled(0, y, "Paste or type text: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated multiline paste in Runtime)", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+
+	case 2:
+		// Result screen
+		frame.PrintStyled(0, y, "╔═════════════════════════════════════════════════════════════════════╗", titleStyle)
+		frame.PrintStyled(0, y+1, "║                          Result                                     ║", titleStyle)
+		frame.PrintStyled(0, y+2, "╚═════════════════════════════════════════════════════════════════════╝", titleStyle)
+		y += 4
+
+		// Display the result with line numbers
+		lines := strings.Split(app.input, "\n")
+		contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+		lineNumStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+
+		maxLinesToShow := 20
+		displayLines := lines
+		if len(lines) > maxLinesToShow {
+			displayLines = lines[:maxLinesToShow]
+		}
+
+		for i, line := range displayLines {
+			lineNum := fmt.Sprintf("%3d │ ", i+1)
+			frame.PrintStyled(0, y+i, lineNum, lineNumStyle)
+
+			// Truncate long lines for display
+			displayLine := line
+			if len(line) > 60 {
+				displayLine = line[:60] + "..."
+			}
+			frame.PrintStyled(6, y+i, displayLine, contentStyle)
+		}
+
+		if len(lines) > maxLinesToShow {
+			moreStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack).WithItalic()
+			frame.PrintStyled(0, y+maxLinesToShow, fmt.Sprintf("... (%d more lines)", len(lines)-maxLinesToShow), moreStyle)
+			y += maxLinesToShow + 1
+		} else {
+			y += len(displayLines)
+		}
+
+		// Show statistics
+		y += 2
+		statsStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Statistics:", gooey.NewStyle().WithBold().WithForeground(gooey.ColorGreen))
+		y++
+		frame.PrintStyled(0, y, fmt.Sprintf("  Total characters: %d", len(app.input)), statsStyle)
+		y++
+		frame.PrintStyled(0, y, fmt.Sprintf("  Total lines: %d", len(lines)), statsStyle)
+		y++
+
+		if app.pasteModified {
+			frame.PrintStyled(0, y, fmt.Sprintf("  Content was sanitized (original: %d chars)", app.originalLength), statsStyle)
+			y++
+		}
+
+		// Show special characters if any
+		hasNewlines := strings.Contains(app.input, "\n")
+		hasTabs := strings.Contains(app.input, "\t")
+		if hasNewlines || hasTabs {
+			y++
+			frame.PrintStyled(0, y, "  Special characters:", statsStyle)
+			y++
+			if hasNewlines {
+				frame.PrintStyled(4, y, "• Newlines (\\n)", statsStyle)
+				y++
+			}
+			if hasTabs {
+				frame.PrintStyled(4, y, "• Tabs (\\t)", statsStyle)
+				y++
+			}
+		}
+
+		y += 2
+		frame.PrintStyled(0, y, "Press any key to exit...", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+	}
+}
+
+// Command for async paste input with validation (simulated)
+func (app *PastePlaceholderApp) cmdReadPasteInput() gooey.Cmd {
+	return func() gooey.Event {
+		// Simulate multiline paste with potential ANSI codes
+		sampleInput := `This is line 1
+This is line 2
+This is line 3
+This is a multi-line paste example.
+It demonstrates placeholder display mode.
+
+With some extra content to show line numbering.
+And more lines...
+And even more lines...
+To demonstrate the truncation feature.`
+
+		// Simulate ANSI stripping (in real implementation, this would be done by paste handler)
+		cleanedInput := sampleInput
+		wasModified := false
+
+		// Check size limit
+		if len(cleanedInput) > 5000 {
+			return PasteInputEvent{
+				Value: "",
+				Error: fmt.Errorf("paste too large: %d chars exceeds 5000 char limit", len(cleanedInput)),
+			}
+		}
+
+		return PasteInputEvent{
+			Value:          cleanedInput,
+			WasModified:    wasModified,
+			OriginalLength: len(sampleInput),
+			Error:          nil,
+		}
+	}
+}
+
+// PasteInputEvent is returned when paste input completes
+type PasteInputEvent struct {
+	Value          string
+	WasModified    bool
+	OriginalLength int
+	Error          error
+}
+
+func (e PasteInputEvent) Timestamp() time.Time {
+	return time.Now()
 }
 
 func main() {
-	// Create terminal
+	// Create and initialize terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
 	}
 	defer terminal.Close()
 
-	// Enable alternate screen and raw mode
-	terminal.EnableAlternateScreen()
-	terminal.EnableRawMode()
-	terminal.HideCursor()
-	defer terminal.ShowCursor()
-
-	// Enable bracketed paste mode
-	terminal.EnableBracketedPaste()
-	defer terminal.DisableBracketedPaste()
-
-	// Clear screen
-	terminal.Clear()
-
-	// Create title
-	titleStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorCyan).
-		WithBold()
-
-	frame, _ := terminal.BeginFrame()
-	frame.PrintStyled(0, 0, "╔═════════════════════════════════════════════════════════════════════╗", titleStyle)
-	frame.PrintStyled(0, 1, "║     Placeholder Paste Mode Demo - Advanced Paste Handling          ║", titleStyle)
-	frame.PrintStyled(0, 2, "╚═════════════════════════════════════════════════════════════════════╝", titleStyle)
-
-	instructionStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	frame.PrintStyled(0, 4, "This demo shows advanced paste handling with placeholders and callbacks.", instructionStyle)
-	frame.PrintStyled(0, 5, "", instructionStyle)
-	frame.PrintStyled(0, 6, "Features Demonstrated:", gooey.NewStyle().WithBold().WithForeground(gooey.ColorGreen))
-	frame.PrintStyled(0, 7, "  • Placeholder display: Shows '[pasted 27 lines]' instead of content", instructionStyle)
-	frame.PrintStyled(0, 8, "  • Paste handlers: Inspect, modify, or reject pasted content", instructionStyle)
-	frame.PrintStyled(0, 9, "  • ANSI stripping: Automatically clean malicious escape codes", instructionStyle)
-	frame.PrintStyled(0, 10, "  • Size limits: Reject pastes that are too large", instructionStyle)
-	frame.PrintStyled(0, 11, "", instructionStyle)
-	frame.PrintStyled(0, 12, "Try pasting:", instructionStyle)
-	frame.PrintStyled(0, 13, "  • Multi-line text (will show '[pasted N lines]')", instructionStyle)
-	frame.PrintStyled(0, 14, "  • Text with ANSI codes (will be stripped automatically)", instructionStyle)
-	frame.PrintStyled(0, 15, "  • Very large content (over 5000 chars will be rejected)", instructionStyle)
-	frame.PrintStyled(0, 16, "", instructionStyle)
-	frame.PrintStyled(0, 17, "Press ESC or Ctrl+C to exit", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-	terminal.EndFrame(frame)
-
-	// Create input handler with advanced paste handling
-	input := gooey.NewInput(terminal)
-	input.WithPrompt("Paste or type text: ", gooey.NewStyle().WithForeground(gooey.ColorGreen))
-	input.EnableMultiline()
-
-	// Configure placeholder display mode
-	input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
-
-	// Customize placeholder style
-	placeholderStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorMagenta).
-		WithItalic()
-	input.WithPlaceholderStyle(placeholderStyle)
-
-	// Add paste handler for validation and sanitization
-	var pasteWasModified bool
-	input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
-		// Check size limit
-		if info.ByteCount > 5000 {
-			terminal.MoveCursor(0, 19)
-			warningStyle := gooey.NewStyle().WithForeground(gooey.ColorRed).WithBold()
-			terminal.PrintStyled(fmt.Sprintf("⚠ Paste rejected: %d chars exceeds 5000 char limit", info.ByteCount), warningStyle)
-			terminal.Flush()
-			return gooey.PasteReject, ""
-		}
-
-		// Strip ANSI codes
-		cleaned := stripANSI(info.Content)
-		if cleaned != info.Content {
-			pasteWasModified = true
-			terminal.MoveCursor(0, 19)
-			infoStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-			terminal.PrintStyled("ℹ ANSI escape codes were stripped from paste", infoStyle)
-			terminal.Flush()
-			return gooey.PasteModified, cleaned
-		}
-
-		return gooey.PasteAccept, ""
-	})
-
-	// Position input area
-	terminal.MoveCursor(0, 20)
-
-	// Read input
-	result, err := input.Read()
-	if err != nil {
-		// User pressed ESC
-		return
+	// Create the application
+	app := &PastePlaceholderApp{
+		stage:   0,
+		message: "Welcome!",
 	}
 
-	// Show result
-	terminal.Clear()
-	frame, _ = terminal.BeginFrame()
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	resultStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-	frame.PrintStyled(0, 0, "╔═════════════════════════════════════════════════════════════════════╗", resultStyle)
-	frame.PrintStyled(0, 1, "║                          Result                                     ║", resultStyle)
-	frame.PrintStyled(0, 2, "╚═════════════════════════════════════════════════════════════════════╝", resultStyle)
-	frame.PrintStyled(0, 3, "", resultStyle)
-
-	// Display the result with line numbers
-	lines := strings.Split(result, "\n")
-	contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-	lineNumStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-
-	maxLinesToShow := 20
-	for i, line := range lines {
-		if i >= maxLinesToShow {
-			moreStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack).WithItalic()
-			frame.PrintStyled(0, 4+i, fmt.Sprintf("... (%d more lines)", len(lines)-maxLinesToShow), moreStyle)
-			break
-		}
-		lineNum := fmt.Sprintf("%3d │ ", i+1)
-		frame.PrintStyled(0, 4+i, lineNum, lineNumStyle)
-
-		// Truncate long lines for display
-		displayLine := line
-		if len(line) > 60 {
-			displayLine = line[:60] + "..."
-		}
-		frame.PrintStyled(6, 4+i, displayLine, contentStyle)
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
-
-	// Show statistics
-	statsY := 4 + min(len(lines), maxLinesToShow) + 2
-	statsStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	frame.PrintStyled(0, statsY, "Statistics:", gooey.NewStyle().WithBold().WithForeground(gooey.ColorGreen))
-	frame.PrintStyled(0, statsY+1, fmt.Sprintf("  Total characters: %d", len(result)), statsStyle)
-	frame.PrintStyled(0, statsY+2, fmt.Sprintf("  Total lines: %d", len(lines)), statsStyle)
-
-	if pasteWasModified {
-		frame.PrintStyled(0, statsY+3, "  Content was sanitized (ANSI codes removed)", statsStyle)
-	}
-
-	// Show special characters if any
-	hasNewlines := strings.Contains(result, "\n")
-	hasTabs := strings.Contains(result, "\t")
-	if hasNewlines || hasTabs {
-		frame.PrintStyled(0, statsY+4, "  Special characters:", statsStyle)
-		if hasNewlines {
-			frame.PrintStyled(4, statsY+5, "• Newlines (\\n)", statsStyle)
-		}
-		if hasTabs {
-			frame.PrintStyled(4, statsY+6, "• Tabs (\\t)", statsStyle)
-		}
-	}
-
-	terminal.EndFrame(frame)
-
-	// Wait for user to press any key
-	pressKeyStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	frame2, _ := terminal.BeginFrame()
-	frame2.PrintStyled(0, statsY+8, "Press any key to exit...", pressKeyStyle)
-	terminal.EndFrame(frame2)
-
-	input.ReadKeyEvent()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

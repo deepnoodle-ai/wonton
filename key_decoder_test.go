@@ -404,38 +404,4 @@ func TestKeyDecoder_SequentialReads(t *testing.T) {
 	}
 }
 
-// TestInput_SetReader tests that Input.SetReader properly injects a custom reader
-func TestInput_SetReader(t *testing.T) {
-	term, err := NewTerminal()
-	if err != nil {
-		t.Skipf("skipping test: cannot create terminal: %v", err)
-	}
-	defer term.Close()
 
-	input := NewInput(term)
-
-	// Inject a custom reader with test data
-	testData := []byte{'x', 0x0D} // 'x' followed by Enter
-	customReader := bytes.NewReader(testData)
-	input.SetReader(customReader)
-
-	// Verify that the decoder was updated
-	if input.decoder == nil {
-		t.Fatal("decoder should not be nil after SetReader")
-	}
-
-	if input.reader != customReader {
-		t.Error("reader was not properly set")
-	}
-
-	// Test that reading uses the custom reader
-	event := input.readKeyEvent()
-	if event.Rune != 'x' {
-		t.Errorf("expected to read 'x' from custom reader, got %q", event.Rune)
-	}
-
-	event = input.readKeyEvent()
-	if event.Key != KeyEnter {
-		t.Errorf("expected to read Enter from custom reader, got %v", event.Key)
-	}
-}

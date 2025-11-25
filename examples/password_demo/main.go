@@ -3,175 +3,276 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+// PasswordDemoApp demonstrates various password input modes using Runtime.
+type PasswordDemoApp struct {
+	stage       int
+	currentDemo int
+	passwords   [5]string
+	message     string
+}
+
+func (app *PasswordDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		if app.stage == 0 {
+			// Intro screen - any key starts
+			app.stage = 1
+			app.currentDemo = 1
+			return []gooey.Cmd{app.cmdReadPassword(1)}
+		} else if app.stage == app.currentDemo*2 && app.currentDemo < 5 {
+			// After showing result, move to next demo
+			app.currentDemo++
+			app.stage = app.currentDemo*2 - 1
+			return []gooey.Cmd{app.cmdReadPassword(app.currentDemo)}
+		} else if app.stage == 10 {
+			// After last demo result, show summary
+			app.stage = 11
+		} else if app.stage == 11 {
+			// Summary screen - any key quits
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+	case PasswordResultEvent:
+		// Handle password input results
+		if e.Error != nil {
+			app.message = fmt.Sprintf("Error: %v", e.Error)
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+		app.passwords[e.DemoNum-1] = e.Value
+		app.stage = e.DemoNum * 2
+		app.message = "Press any key to continue..."
 	}
-	defer terminal.Reset()
+
+	return nil
+}
+
+func (app *PasswordDemoApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
 
 	// Clear screen
-	terminal.Clear()
-	terminal.Flush()
+	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
 
-	// Print header
 	headerStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-	terminal.SetStyle(headerStyle)
-	terminal.Println("🔒 Gooey Secure Password Input Demo")
-	terminal.Println("====================================")
-	terminal.Reset()
-	terminal.Println("")
+	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+	infoStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+
+	// Title
+	frame.PrintStyled(0, 0, "🔒 Gooey Secure Password Input Demo", headerStyle)
+	frame.PrintStyled(0, 1, "====================================", headerStyle)
+
+	y := 3
 
 	// Detect terminal type
 	termProgram := os.Getenv("TERM_PROGRAM")
-	if termProgram != "" {
-		infoStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-		terminal.SetStyle(infoStyle)
-		terminal.Print(fmt.Sprintf("Detected terminal: %s\n", termProgram))
+	if termProgram != "" && app.stage == 0 {
+		frame.PrintStyled(0, y, fmt.Sprintf("Detected terminal: %s", termProgram), infoStyle)
+		y++
 		if termProgram == "iTerm.app" {
-			terminal.Println("✓ iTerm2 secure input mode will be enabled")
+			frame.PrintStyled(0, y, "✓ iTerm2 secure input mode will be enabled", infoStyle)
 		} else if termProgram == "vscode" {
-			terminal.Println("✓ VS Code terminal detected")
+			frame.PrintStyled(0, y, "✓ VS Code terminal detected", infoStyle)
 		} else {
-			terminal.Println("ℹ Using generic secure mode")
+			frame.PrintStyled(0, y, "ℹ Using generic secure mode", infoStyle)
 		}
-		terminal.Reset()
-		terminal.Println("")
+		y += 2
 	}
 
-	// Demo 1: Standard secure password (no echo)
-	terminal.Println("")
-	terminal.Println("Demo 1: Standard secure password (no echo)")
-	terminal.Println("-------------------------------------------")
+	switch app.stage {
+	case 0:
+		// Welcome screen
+		frame.PrintStyled(0, y, "This demo showcases secure password input modes:", gooey.NewStyle())
+		y += 2
+		frame.PrintStyled(0, y, "1. Standard secure password (no echo)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "2. Password with masked characters (*)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "3. Password with custom mask (•)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "4. Password with max length (16 chars)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "5. Password with placeholder", gooey.NewStyle())
+		y += 2
+		frame.PrintStyled(0, y, "Press any key to start", gooey.NewStyle().WithForeground(gooey.ColorYellow))
 
-	pwdInput1 := gooey.NewPasswordInput(terminal)
-	pwdInput1.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	pwdInput1.ShowCharacters(false) // Disable visual feedback for true no-echo
+	case 1:
+		// Demo 1: Reading password (no echo)
+		frame.PrintStyled(0, y, "Demo 1: Standard secure password (no echo)", gooey.NewStyle().WithBold())
+		frame.PrintStyled(0, y+1, "-------------------------------------------", gooey.NewStyle())
+		y += 3
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Enter password: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated input - no echo)", infoStyle)
 
-	password1, err := pwdInput1.Read()
+	case 2:
+		// Show Demo 1 result
+		frame.PrintStyled(0, y, "Demo 1: Standard secure password (no echo)", gooey.NewStyle().WithBold())
+		y += 2
+		frame.PrintStyled(0, y, fmt.Sprintf("✓ Password received (length: %d)", len(app.passwords[0])), successStyle)
+		y += 2
+		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 3:
+		// Demo 2: Reading password (masked)
+		frame.PrintStyled(0, y, "Demo 2: Password with masked characters (*)", gooey.NewStyle().WithBold())
+		frame.PrintStyled(0, y+1, "--------------------------------------------", gooey.NewStyle())
+		y += 3
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Enter password: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated input - shows asterisks)", infoStyle)
+
+	case 4:
+		// Show Demo 2 result
+		frame.PrintStyled(0, y, "Demo 2: Password with masked characters (*)", gooey.NewStyle().WithBold())
+		y += 2
+		frame.PrintStyled(0, y, fmt.Sprintf("✓ Password received (length: %d)", len(app.passwords[1])), successStyle)
+		y += 2
+		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 5:
+		// Demo 3: Reading password (custom mask)
+		frame.PrintStyled(0, y, "Demo 3: Password with custom mask (•)", gooey.NewStyle().WithBold())
+		frame.PrintStyled(0, y+1, "---------------------------------------", gooey.NewStyle())
+		y += 3
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Enter password: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated input - shows bullet points)", infoStyle)
+
+	case 6:
+		// Show Demo 3 result
+		frame.PrintStyled(0, y, "Demo 3: Password with custom mask (•)", gooey.NewStyle().WithBold())
+		y += 2
+		frame.PrintStyled(0, y, fmt.Sprintf("✓ Password received (length: %d)", len(app.passwords[2])), successStyle)
+		y += 2
+		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 7:
+		// Demo 4: Reading password (max length)
+		frame.PrintStyled(0, y, "Demo 4: Password with max length (16 chars)", gooey.NewStyle().WithBold())
+		frame.PrintStyled(0, y+1, "--------------------------------------------", gooey.NewStyle())
+		y += 3
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Enter password: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated input - 16 char limit)", infoStyle)
+
+	case 8:
+		// Show Demo 4 result
+		frame.PrintStyled(0, y, "Demo 4: Password with max length (16 chars)", gooey.NewStyle().WithBold())
+		y += 2
+		frame.PrintStyled(0, y, fmt.Sprintf("✓ Password received (length: %d)", len(app.passwords[3])), successStyle)
+		y += 2
+		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 9:
+		// Demo 5: Reading password (with placeholder)
+		frame.PrintStyled(0, y, "Demo 5: Password with placeholder", gooey.NewStyle().WithBold())
+		frame.PrintStyled(0, y+1, "----------------------------------", gooey.NewStyle())
+		y += 3
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+		frame.PrintStyled(0, y, "Enter password: ", promptStyle)
+		y++
+		frame.PrintStyled(0, y, "(Simulated input - with placeholder)", infoStyle)
+
+	case 10:
+		// Show Demo 5 result
+		frame.PrintStyled(0, y, "Demo 5: Password with placeholder", gooey.NewStyle().WithBold())
+		y += 2
+		frame.PrintStyled(0, y, fmt.Sprintf("✓ Password received (length: %d)", len(app.passwords[4])), successStyle)
+		y += 2
+		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 11:
+		// Summary
+		frame.PrintStyled(0, y, "=====================================", headerStyle)
+		frame.PrintStyled(0, y+1, "✓ All demos completed successfully!", successStyle)
+		frame.PrintStyled(0, y+2, "=====================================", headerStyle)
+		y += 4
+
+		// Security tips
+		frame.PrintStyled(0, y, "Security Features:", infoStyle)
+		y++
+		frame.PrintStyled(0, y, "  • iTerm2 secure input mode (prevents keylogging)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  • Memory is zeroed after use (via defer password.Clear())", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  • Clipboard disable option available", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  • Paste confirmation (can be enabled)", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  • Max length enforcement", gooey.NewStyle())
+		y += 2
+
+		frame.PrintStyled(0, y, "Press any key to exit", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+	}
+}
+
+// Commands for async password input operations (simulated)
+func (app *PasswordDemoApp) cmdReadPassword(demoNum int) gooey.Cmd {
+	return func() gooey.Event {
+		// Simulate reading password based on demo number
+		var password string
+		switch demoNum {
+		case 1:
+			password = "password1"
+		case 2:
+			password = "password2"
+		case 3:
+			password = "password3"
+		case 4:
+			password = "pass4567890123" // 14 chars (under 16 limit)
+		case 5:
+			password = "password5"
+		}
+
+		return PasswordResultEvent{
+			DemoNum: demoNum,
+			Value:   password,
+			Error:   nil,
+		}
+	}
+}
+
+// PasswordResultEvent is returned when password input completes
+type PasswordResultEvent struct {
+	DemoNum int
+	Value   string
+	Error   error
+}
+
+func (e PasswordResultEvent) Timestamp() time.Time {
+	return time.Now()
+}
+
+func main() {
+	// Create and initialize terminal
+	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
 	}
-	defer password1.Clear() // Important: zero memory when done
+	defer terminal.Close()
 
-	terminal.Println("")
-	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	terminal.SetStyle(successStyle)
-	terminal.Print(fmt.Sprintf("✓ Password received (length: %d)\n", password1.Len()))
-	terminal.Reset()
-	terminal.Println("")
-
-	// Demo 2: Password with masked characters
-	terminal.Println("Demo 2: Password with masked characters (*)")
-	terminal.Println("--------------------------------------------")
-
-	pwdInput2 := gooey.NewPasswordInput(terminal)
-	pwdInput2.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	pwdInput2.ShowCharacters(true) // Show asterisks
-
-	password2, err := pwdInput2.Read()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+	// Create the application
+	app := &PasswordDemoApp{
+		stage:   0,
+		message: "Welcome!",
 	}
-	defer password2.Clear()
 
-	terminal.Println("")
-	terminal.SetStyle(successStyle)
-	terminal.Print(fmt.Sprintf("✓ Password received (length: %d)\n", password2.Len()))
-	terminal.Reset()
-	terminal.Println("")
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Demo 3: Password with custom mask character
-	terminal.Println("Demo 3: Password with custom mask (•)")
-	terminal.Println("---------------------------------------")
-
-	pwdInput3 := gooey.NewPasswordInput(terminal)
-	pwdInput3.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	pwdInput3.ShowCharacters(true)
-	pwdInput3.WithMaskChar('•') // Use bullet point
-
-	password3, err := pwdInput3.Read()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
-	defer password3.Clear()
-
-	terminal.Println("")
-	terminal.SetStyle(successStyle)
-	terminal.Print(fmt.Sprintf("✓ Password received (length: %d)\n", password3.Len()))
-	terminal.Reset()
-	terminal.Println("")
-
-	// Demo 4: Password with max length
-	terminal.Println("Demo 4: Password with max length (16 chars)")
-	terminal.Println("--------------------------------------------")
-
-	pwdInput4 := gooey.NewPasswordInput(terminal)
-	pwdInput4.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	pwdInput4.ShowCharacters(true)
-	pwdInput4.WithMaxLength(16) // Limit to 16 characters
-
-	password4, err := pwdInput4.Read()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-	defer password4.Clear()
-
-	terminal.Println("")
-	terminal.SetStyle(successStyle)
-	terminal.Print(fmt.Sprintf("✓ Password received (length: %d)\n", password4.Len()))
-	terminal.Reset()
-	terminal.Println("")
-
-	// Demo 5: Password with placeholder
-	terminal.Println("Demo 5: Password with placeholder")
-	terminal.Println("----------------------------------")
-
-	pwdInput5 := gooey.NewPasswordInput(terminal)
-	pwdInput5.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-	pwdInput5.WithPlaceholder("(type to begin)")
-
-	password5, err := pwdInput5.Read()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-	defer password5.Clear()
-
-	terminal.Println("")
-	terminal.SetStyle(successStyle)
-	terminal.Print(fmt.Sprintf("✓ Password received (length: %d)\n", password5.Len()))
-	terminal.Reset()
-	terminal.Println("")
-
-	// Summary
-	terminal.Println("=====================================")
-	terminal.SetStyle(successStyle)
-	terminal.Println("✓ All demos completed successfully!")
-	terminal.Reset()
-	terminal.Println("")
-
-	// Security tips
-	infoStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-	terminal.SetStyle(infoStyle)
-	terminal.Println("Security Features:")
-	terminal.Reset()
-	terminal.Println("  • iTerm2 secure input mode (prevents keylogging)")
-	terminal.Println("  • Memory is zeroed after use (via defer password.Clear())")
-	terminal.Println("  • Clipboard disable option available")
-	terminal.Println("  • Paste confirmation (can be enabled)")
-	terminal.Println("  • Max length enforcement")
-	terminal.Println("")
-
-	terminal.Println("Press Enter to exit...")
-	fmt.Scanln()
 }

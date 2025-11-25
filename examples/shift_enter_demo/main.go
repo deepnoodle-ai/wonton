@@ -2,213 +2,185 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
+	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-func main() {
-	// Initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer terminal.Close()
-
-	// Enable raw mode for key detection
-	terminal.EnableRawMode()
-	defer terminal.DisableRawMode()
-
-	// Clear screen and show instructions
-	terminal.Clear()
-	terminal.Println("Shift+Enter Demo")
-	terminal.Println("================")
-	terminal.Println("")
-	terminal.Println("Instructions:")
-	terminal.Println("  - Press Shift+Enter to add a newline")
-	terminal.Println("  - Press Enter to submit")
-	terminal.Println("  - Press Ctrl+C or Esc to cancel")
-	terminal.Println("")
-	terminal.Flush()
-
-	// Create input handler
-	input := gooey.NewInput(terminal)
-
-	// Show cursor
-	terminal.ShowCursor()
-
-	// Read input with custom key handling
-	result, err := readWithShiftEnter(input, terminal)
-	if err != nil {
-		terminal.Println(fmt.Sprintf("Error: %v", err))
-		terminal.Flush()
-		return
-	}
-
-	// Display the result
-	terminal.Println("")
-	terminal.Println("You entered:")
-	terminal.Println("------------")
-	terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorGreen))
-	terminal.Print(result)
-	terminal.Reset()
-	terminal.Println("")
-	terminal.Println("------------")
-	terminal.Flush()
+// ShiftEnterApp demonstrates Shift+Enter for newlines and Enter to submit using Runtime.
+type ShiftEnterApp struct {
+	stage  int
+	buffer []rune
+	cursor int
+	result string
 }
 
-// readWithShiftEnter implements custom input handling where:
-// - Shift+Enter adds a newline
-// - Regular Enter submits the input
-func readWithShiftEnter(input *gooey.Input, terminal *gooey.Terminal) (string, error) {
-	var buffer []rune
-	cursorPos := 0
-	previousLineCount := 1 // Track how many lines we drew last time
+func (app *ShiftEnterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		switch app.stage {
+		case 0:
+			// Instructions screen - any key starts
+			app.stage = 1
+			app.buffer = []rune{}
+			app.cursor = 0
 
-	// Draw initial prompt
-	terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorCyan))
-	terminal.Print("Enter text: ")
-	terminal.Reset()
-	terminal.Flush()
+		case 1:
+			// Input mode - handle keys
+			return app.handleInputKey(e)
 
-	for {
-		// Read key event
-		event := input.ReadKeyEvent()
-
-		// Handle different key combinations
-		switch event.Key {
-		case gooey.KeyEnter:
-			if event.Shift {
-				// Shift+Enter: Add newline
-				buffer = insertRune(buffer, cursorPos, '\n')
-				cursorPos++
-			} else {
-				// Regular Enter: Submit input
-				terminal.Println("")
-				terminal.Flush()
-				return string(buffer), nil
-			}
-
-		case gooey.KeyBackspace:
-			if cursorPos > 0 && len(buffer) > 0 {
-				buffer = deleteRune(buffer, cursorPos-1)
-				cursorPos--
-			}
-
-		case gooey.KeyDelete:
-			if cursorPos < len(buffer) {
-				buffer = deleteRune(buffer, cursorPos)
-			}
-
-		case gooey.KeyArrowLeft:
-			if cursorPos > 0 {
-				cursorPos--
-			}
-
-		case gooey.KeyArrowRight:
-			if cursorPos < len(buffer) {
-				cursorPos++
-			}
-
-		case gooey.KeyHome:
-			cursorPos = 0
-
-		case gooey.KeyEnd:
-			cursorPos = len(buffer)
-
-		case gooey.KeyEscape, gooey.KeyCtrlC:
-			terminal.Println("")
-			terminal.Flush()
-			return "", fmt.Errorf("input cancelled")
-
-		default:
-			// Regular character input
-			if event.Rune != 0 {
-				buffer = insertRune(buffer, cursorPos, event.Rune)
-				cursorPos++
-			}
+		case 2:
+			// Result screen - any key quits
+			return []gooey.Cmd{gooey.Quit()}
 		}
-
-		// Update display
-		previousLineCount = updateDisplay(terminal, buffer, cursorPos, previousLineCount)
-		terminal.Flush()
 	}
+
+	return nil
 }
 
-// updateDisplay redraws the input line with the current buffer and cursor position
-// Returns the number of lines drawn so we can clear them next time
-func updateDisplay(terminal *gooey.Terminal, buffer []rune, cursorPos, previousLineCount int) int {
-	text := string(buffer)
-	lines := splitLines(text)
+func (app *ShiftEnterApp) handleInputKey(e gooey.KeyEvent) []gooey.Cmd {
+	switch e.Key {
+	case gooey.KeyEnter:
+		if e.Shift {
+			// Shift+Enter: Add newline
+			app.buffer = insertRune(app.buffer, app.cursor, '\n')
+			app.cursor++
+		} else {
+			// Regular Enter: Submit input
+			app.result = string(app.buffer)
+			app.stage = 2
+		}
 
-	// Calculate cursor position in the text
-	runesBeforeCursor := buffer[:min(cursorPos, len(buffer))]
-	cursorLine := countNewlines(string(runesBeforeCursor))
+	case gooey.KeyBackspace:
+		if app.cursor > 0 && len(app.buffer) > 0 {
+			app.buffer = deleteRune(app.buffer, app.cursor-1)
+			app.cursor--
+		}
 
-	// Find column position on current line
-	lastNewlineIdx := -1
-	for i := len(runesBeforeCursor) - 1; i >= 0; i-- {
-		if runesBeforeCursor[i] == '\n' {
-			lastNewlineIdx = i
-			break
+	case gooey.KeyDelete:
+		if app.cursor < len(app.buffer) {
+			app.buffer = deleteRune(app.buffer, app.cursor)
+		}
+
+	case gooey.KeyArrowLeft:
+		if app.cursor > 0 {
+			app.cursor--
+		}
+
+	case gooey.KeyArrowRight:
+		if app.cursor < len(app.buffer) {
+			app.cursor++
+		}
+
+	case gooey.KeyHome:
+		app.cursor = 0
+
+	case gooey.KeyEnd:
+		app.cursor = len(app.buffer)
+
+	case gooey.KeyEscape, gooey.KeyCtrlC:
+		return []gooey.Cmd{gooey.Quit()}
+
+	default:
+		// Regular character input
+		if e.Rune != 0 {
+			app.buffer = insertRune(app.buffer, app.cursor, e.Rune)
+			app.cursor++
 		}
 	}
 
-	var cursorCol int
-	if lastNewlineIdx == -1 {
-		cursorCol = len(runesBeforeCursor)
-	} else {
-		cursorCol = len(runesBeforeCursor) - lastNewlineIdx - 1
-	}
+	return nil
+}
 
-	// Clear all previously drawn lines
-	// Start by going to beginning of current line
-	terminal.Print("\r")
-	terminal.ClearToEndOfLine()
+func (app *ShiftEnterApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
 
-	// Clear any additional lines that were drawn before
-	for i := 1; i < previousLineCount; i++ {
-		terminal.Print("\n")
-		terminal.ClearLine()
-	}
+	// Clear screen
+	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
 
-	// Move back to the start
-	for i := 1; i < previousLineCount; i++ {
-		terminal.MoveCursorUp(1)
-	}
-	terminal.Print("\r")
+	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
 
-	// Redraw prompt
-	terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorCyan))
-	terminal.Print("Enter text: ")
-	terminal.Reset()
+	y := 0
 
-	// Draw all lines
-	for i, line := range lines {
-		if i > 0 {
-			terminal.Print("\n")
-			terminal.Print("            ") // Indent continuation lines
+	switch app.stage {
+	case 0:
+		// Instructions screen
+		frame.PrintStyled(0, y, "Shift+Enter Demo", titleStyle)
+		frame.PrintStyled(0, y+1, "================", titleStyle)
+		y += 3
+
+		frame.PrintStyled(0, y, "Instructions:", gooey.NewStyle().WithBold())
+		y++
+		frame.PrintStyled(0, y, "  - Press Shift+Enter to add a newline", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  - Press Enter to submit", gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, "  - Press Ctrl+C or Esc to cancel", gooey.NewStyle())
+		y += 2
+
+		frame.PrintStyled(0, y, "Press any key to start...", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+
+	case 1:
+		// Input screen
+		frame.PrintStyled(0, y, "Shift+Enter Demo", titleStyle)
+		frame.PrintStyled(0, y+1, "================", titleStyle)
+		y += 3
+
+		// Show the input prompt and buffer
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+		frame.PrintStyled(0, y, "Enter text: ", promptStyle)
+		y++
+
+		// Display the buffer with proper line wrapping
+		text := string(app.buffer)
+		lines := splitLines(text)
+
+		for i, line := range lines {
+			indent := ""
+			if i > 0 {
+				indent = "            " // 12 spaces to align with prompt
+			}
+			frame.PrintStyled(0, y+i, indent+line, gooey.NewStyle())
 		}
-		terminal.Print(line)
+
+		// Show cursor position info
+		y += len(lines) + 2
+		infoStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+		frame.PrintStyled(0, y, fmt.Sprintf("Cursor: %d | Buffer length: %d", app.cursor, len(app.buffer)), infoStyle)
+		y++
+		frame.PrintStyled(0, y, "Shift+Enter for newline, Enter to submit", infoStyle)
+
+	case 2:
+		// Result screen
+		frame.PrintStyled(0, y, "Shift+Enter Demo - Result", titleStyle)
+		frame.PrintStyled(0, y+1, "=========================", titleStyle)
+		y += 3
+
+		frame.PrintStyled(0, y, "You entered:", gooey.NewStyle().WithBold())
+		y++
+		frame.PrintStyled(0, y, "------------", gooey.NewStyle())
+		y++
+
+		successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+		lines := strings.Split(app.result, "\n")
+		for _, line := range lines {
+			frame.PrintStyled(0, y, line, successStyle)
+			y++
+		}
+
+		y++
+		frame.PrintStyled(0, y, "------------", gooey.NewStyle())
+		y++
+
+		// Statistics
+		frame.PrintStyled(0, y, fmt.Sprintf("Total characters: %d", len(app.result)), gooey.NewStyle())
+		y++
+		frame.PrintStyled(0, y, fmt.Sprintf("Total lines: %d", len(lines)), gooey.NewStyle())
+		y += 2
+
+		frame.PrintStyled(0, y, "Press any key to exit...", gooey.NewStyle().WithForeground(gooey.ColorYellow))
 	}
-
-	// Position cursor at the correct location
-	// Move back to first line
-	for i := 0; i < len(lines)-1; i++ {
-		terminal.MoveCursorUp(1)
-	}
-	terminal.Print("\r")
-
-	// Move down to cursor line
-	for i := 0; i < cursorLine; i++ {
-		terminal.MoveCursorDown(1)
-	}
-
-	// Move to correct column
-	terminal.MoveCursorRight(12 + cursorCol) // "Enter text: " or "            " = 12 chars
-
-	// Return the number of lines we drew
-	return len(lines)
 }
 
 // Helper functions
@@ -234,6 +206,9 @@ func deleteRune(buffer []rune, pos int) []rune {
 }
 
 func splitLines(text string) []string {
+	if text == "" {
+		return []string{""}
+	}
 	result := []string{""}
 	for _, r := range text {
 		if r == '\n' {
@@ -245,19 +220,28 @@ func splitLines(text string) []string {
 	return result
 }
 
-func countNewlines(text string) int {
-	count := 0
-	for _, r := range text {
-		if r == '\n' {
-			count++
-		}
+func main() {
+	// Create and initialize terminal
+	terminal, err := gooey.NewTerminal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
+		os.Exit(1)
 	}
-	return count
-}
+	defer terminal.Close()
 
-func min(a, b int) int {
-	if a < b {
-		return a
+	// Create the application
+	app := &ShiftEnterApp{
+		stage:  0,
+		buffer: []rune{},
+		cursor: 0,
 	}
-	return b
+
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
+
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
+	}
 }

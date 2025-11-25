@@ -45,6 +45,102 @@ func (sb *SimpleBox) HandleKey(event gooey.KeyEvent) bool {
 	return false
 }
 
+// GridApp demonstrates the Grid layout system using the Runtime.
+type GridApp struct {
+	grid         *gooey.Grid
+	resizeCount  int
+	width        int
+	height       int
+}
+
+// Init initializes the grid layout.
+func (app *GridApp) Init() error {
+	// Create the Grid layout with 3 columns of equal weight
+	app.grid = gooey.NewGrid(nil). // Pass nil since we'll use the frame directly
+		AddCol(0, 1). // Flexible column, takes 1/3 of width
+		AddCol(0, 1). // Flexible column, takes 1/3 of width
+		AddCol(0, 1)  // Flexible column, takes 1/3 of width
+
+	// Add 3 rows: header, content, footer with proportional heights
+	app.grid.AddRow(0, 1). // Flexible row for header (takes 1/6 of height)
+				AddRow(0, 4). // Flexible row for main content area (takes 4/6 of height)
+				AddRow(0, 1)  // Flexible row for footer (takes 1/6 of height)
+
+	// Row 0: Header spanning all 3 columns
+	_ = app.grid.AddWidgetSpan(&SimpleBox{
+		Text:  "HEADER - Grid Layout Demo (Spans 3 Columns)",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite).WithBold(),
+	}, 0, 0, 1, 3) // row=0, col=0, rowspan=1, colspan=3
+
+	// Row 1: Content Area spanning 2 columns, and Sidebar taking 1 column
+	_ = app.grid.AddWidgetSpan(&SimpleBox{
+		Text:  "MAIN CONTENT AREA (Spans 2 Columns)",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorWhite).WithBold(),
+	}, 1, 0, 1, 2) // row=1, col=0, rowspan=1, colspan=2
+
+	_ = app.grid.AddWidget(&SimpleBox{
+		Text:  "SIDEBAR - Navigation & Tools",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightMagenta).WithForeground(gooey.ColorWhite).WithBold(),
+	}, 1, 2) // row=1, col=2
+
+	// Row 2: Footer with 3 sections
+	_ = app.grid.AddWidget(&SimpleBox{
+		Text:  "Footer: Status",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightBlue).WithForeground(gooey.ColorWhite),
+	}, 2, 0)
+
+	_ = app.grid.AddWidget(&SimpleBox{
+		Text:  "Footer: Info & Help",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightCyan).WithForeground(gooey.ColorBlack),
+	}, 2, 1)
+
+	_ = app.grid.AddWidget(&SimpleBox{
+		Text:  "Footer: Version 1.0",
+		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightYellow).WithForeground(gooey.ColorBlack),
+	}, 2, 2)
+
+	return nil
+}
+
+// HandleEvent processes events from the runtime.
+func (app *GridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Exit on Ctrl+C or Escape
+		if e.Key == gooey.KeyCtrlC || e.Key == gooey.KeyEscape {
+			return []gooey.Cmd{gooey.Quit()}
+		}
+
+	case gooey.ResizeEvent:
+		// Update stored dimensions
+		app.width = e.Width
+		app.height = e.Height
+		app.resizeCount++
+	}
+
+	return nil
+}
+
+// Render draws the grid layout.
+func (app *GridApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
+
+	// Update dimensions if not set
+	if app.width == 0 || app.height == 0 {
+		app.width = width
+		app.height = height
+	}
+
+	// Draw the grid to fill the entire terminal
+	app.grid.Draw(frame)
+
+	// Draw resize indicator in bottom-right corner
+	sizeText := fmt.Sprintf("%dx%d", width, height)
+	textWidth := runewidth.StringWidth(sizeText)
+	frame.PrintStyled(width-textWidth-1, height-1, sizeText,
+		gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+}
+
 func main() {
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
@@ -53,113 +149,29 @@ func main() {
 	}
 	defer terminal.Reset()
 
-	// Enable raw mode and alternate screen for interactive demo
-	terminal.EnableRawMode()
-	defer terminal.DisableRawMode()
+	// Enable alternate screen for interactive demo
+	// Note: Runtime automatically enables raw mode
 	terminal.EnableAlternateScreen()
 	defer terminal.DisableAlternateScreen()
 	terminal.HideCursor()
 	defer terminal.ShowCursor()
 
-	// Enable resize watching for full terminal window resizing support
-	terminal.WatchResize()
-	defer terminal.StopWatchResize()
+	// Get initial terminal size
+	width, height := terminal.Size()
 
-	// Terminal size will be determined dynamically in draw function
-
-	// Create the Grid layout with 3 columns of equal weight
-	grid := gooey.NewGrid(terminal).
-		AddCol(0, 1). // Flexible column, takes 1/3 of width
-		AddCol(0, 1). // Flexible column, takes 1/3 of width
-		AddCol(0, 1)  // Flexible column, takes 1/3 of width
-
-	// Add 3 rows: header, content, footer with proportional heights
-	grid.AddRow(0, 1). // Flexible row for header (takes 1/6 of height)
-				AddRow(0, 4). // Flexible row for main content area (takes 4/6 of height)
-				AddRow(0, 1)  // Flexible row for footer (takes 1/6 of height)
-
-	// Row 0: Header spanning all 3 columns
-	_ = grid.AddWidgetSpan(&SimpleBox{
-		Text:  "HEADER - Grid Layout Demo (Spans 3 Columns)",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite).WithBold(),
-	}, 0, 0, 1, 3) // row=0, col=0, rowspan=1, colspan=3
-
-	// Row 1: Content Area spanning 2 columns, and Sidebar taking 1 column
-	_ = grid.AddWidgetSpan(&SimpleBox{
-		Text:  "MAIN CONTENT AREA (Spans 2 Columns)",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorWhite).WithBold(),
-	}, 1, 0, 1, 2) // row=1, col=0, rowspan=1, colspan=2
-
-	_ = grid.AddWidget(&SimpleBox{
-		Text:  "SIDEBAR - Navigation & Tools",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightMagenta).WithForeground(gooey.ColorWhite).WithBold(),
-	}, 1, 2) // row=1, col=2
-
-	// Row 2: Footer with 3 sections
-	_ = grid.AddWidget(&SimpleBox{
-		Text:  "Footer: Status",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightBlue).WithForeground(gooey.ColorWhite),
-	}, 2, 0)
-
-	_ = grid.AddWidget(&SimpleBox{
-		Text:  "Footer: Info & Help",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightCyan).WithForeground(gooey.ColorBlack),
-	}, 2, 1)
-
-	_ = grid.AddWidget(&SimpleBox{
-		Text:  "Footer: Version 1.0",
-		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightYellow).WithForeground(gooey.ColorBlack),
-	}, 2, 2)
-
-	// Draw function that handles the current terminal size
-	drawGrid := func() {
-		// Get current terminal size
-		currentWidth, currentHeight := terminal.Size()
-
-		// Create frame and draw the grid to fill the entire terminal
-		frame, err := terminal.BeginFrame()
-		if err != nil {
-			return
-		}
-
-		// Set grid bounds to fill entire terminal
-		grid.Draw(frame)
-
-		// Draw resize indicator in bottom-right corner
-		sizeText := fmt.Sprintf("%dx%d", currentWidth, currentHeight)
-		textWidth := runewidth.StringWidth(sizeText)
-		frame.PrintStyled(currentWidth-textWidth-1, currentHeight-1, sizeText,
-			gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-
-		terminal.EndFrame(frame)
+	// Create the application
+	app := &GridApp{
+		width:  width,
+		height: height,
 	}
 
-	// Register resize callback to redraw when terminal is resized
-	resizeCount := 0
-	unregisterResize := terminal.OnResize(func(width, height int) {
-		resizeCount++
-		// Redraw immediately when resized
-		drawGrid()
-	})
-	defer unregisterResize()
+	// Create and run the runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Initial draw
-	drawGrid()
-
-	// Main event loop
-	input := gooey.NewInput(terminal)
-	for {
-		event := input.ReadKeyEvent()
-
-		// Exit on Ctrl+C or Escape
-		if event.Key == gooey.KeyCtrlC || event.Key == gooey.KeyEscape {
-			break
-		}
-
-		// Handle any other keys if needed (grid widgets don't handle keys in this demo)
-
-		// Redraw after each key event (in case widgets need updating)
-		drawGrid()
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Printf("Runtime error: %v\n", err)
+		return
 	}
 
 	fmt.Println("Demo finished.")

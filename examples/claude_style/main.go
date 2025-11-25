@@ -2,44 +2,43 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
+// Message represents a chat message
 type Message struct {
 	Role    string // "user" or "assistant"
 	Content string
 	Time    time.Time
 }
 
+// ClaudeStyleDemo implements a Claude Code-style interface with fixed input at the bottom
+// using the Runtime message-driven architecture.
+//
+// This example shows:
+// - Fixed input area at bottom with multi-line support
+// - Scrollable message history
+// - Clean, modern design similar to Claude Code
+// - Proper keyboard input handling (Shift+Enter for newlines)
 type ClaudeStyleDemo struct {
 	terminal *gooey.Terminal
-	decoder  *gooey.KeyDecoder
 	messages []Message
 	input    string
 
 	// UI state
 	scrollOffset int
 	maxScroll    int
-
-	// Synchronization
-	mu sync.RWMutex
+	width        int
+	height       int
 }
 
-func NewClaudeStyleDemo() (*ClaudeStyleDemo, error) {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		return nil, err
-	}
-
-	demo := &ClaudeStyleDemo{
+func NewClaudeStyleDemo(terminal *gooey.Terminal) *ClaudeStyleDemo {
+	return &ClaudeStyleDemo{
 		terminal: terminal,
-		decoder:  gooey.NewKeyDecoder(os.Stdin),
 		messages: []Message{
 			{
 				Role:    "assistant",
@@ -48,82 +47,49 @@ func NewClaudeStyleDemo() (*ClaudeStyleDemo, error) {
 			},
 		},
 	}
-
-	return demo, nil
 }
 
-func (d *ClaudeStyleDemo) Run() error {
-	defer d.terminal.Close()
-
-	// Open debug log file
-	debugLog, err := os.OpenFile("/tmp/claude_style_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err == nil {
-		defer debugLog.Close()
-		log.SetOutput(debugLog)
-		log.Println("=== Starting Claude Style Demo ===")
-	}
-
-	// Enable raw mode for keyboard input
-	d.terminal.EnableRawMode()
-	defer d.terminal.DisableRawMode()
-
+// Init implements the Initializable interface
+func (d *ClaudeStyleDemo) Init() error {
 	// Use alternate screen buffer
 	d.terminal.EnableAlternateScreen()
-	defer d.terminal.DisableAlternateScreen()
-
-	// Clear screen initially
-	d.terminal.Clear()
 
 	// Hide cursor for cleaner UI
 	d.terminal.HideCursor()
-	defer d.terminal.ShowCursor()
 
-	// Main event loop - simple blocking approach
-	for {
-		// Render current state
-		if err := d.render(); err != nil {
-			return err
-		}
+	d.width, d.height = d.terminal.Size()
 
-		// Read and process one key event (blocking)
-		event, err := d.decoder.ReadKeyEvent()
-		if err != nil {
-			return err
-		}
-
-		log.Printf("KeyEvent: Key=%d, Rune=%q, Alt=%v, Ctrl=%v, Shift=%v",
-			event.Key, event.Rune, event.Alt, event.Ctrl, event.Shift)
-
-		// Process the event
-		if d.processKeyEvent(event) {
-			return nil // Exit requested
-		}
-
-		// Render again immediately after processing to show updated state
-		if err := d.render(); err != nil {
-			return err
-		}
-	}
+	return nil
 }
 
-func (d *ClaudeStyleDemo) render() error {
-	frame, err := d.terminal.BeginFrame()
-	if err != nil {
-		return err
+// Destroy implements the Destroyable interface
+func (d *ClaudeStyleDemo) Destroy() {
+	d.terminal.DisableAlternateScreen()
+	d.terminal.ShowCursor()
+}
+
+// HandleEvent processes events from the runtime
+func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		return d.handleKeyEvent(e)
+
+	case gooey.ResizeEvent:
+		d.width = e.Width
+		d.height = e.Height
+		return nil
 	}
-	defer d.terminal.EndFrame(frame)
 
+	return nil
+}
+
+// Render draws the current application state
+func (d *ClaudeStyleDemo) Render(frame gooey.RenderFrame) {
 	width, height := frame.Size()
-
-	// Lock for reading state
-	d.mu.RLock()
 
 	// Calculate input area height (number of lines + 2 for prompt and help)
 	inputLines := strings.Count(d.input, "\n") + 1
 	inputAreaHeight := inputLines + 2 // +2 for prompt line and help line
-
-	log.Printf("RENDER: input=%q, newlines=%d, inputLines=%d, inputAreaHeight=%d",
-		d.input, strings.Count(d.input, "\n"), inputLines, inputAreaHeight)
 
 	// Ensure input area doesn't take more than half the screen
 	maxInputHeight := height / 2
@@ -136,22 +102,70 @@ func (d *ClaudeStyleDemo) render() error {
 	inputY := contentHeight
 
 	// Draw content area
-	d.renderContentLocked(frame, width, contentHeight)
+	d.renderContent(frame, width, contentHeight)
 
 	// Draw separator line
 	separatorStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
 	frame.FillStyled(0, inputY, width, 1, '─', separatorStyle)
 
 	// Draw input area
-	d.renderInputLocked(frame, inputY+1, width, inputAreaHeight-1)
+	d.renderInput(frame, inputY+1, width, inputAreaHeight-1)
+}
 
-	d.mu.RUnlock()
+func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
+	switch {
+	case event.Key == gooey.KeyCtrlC:
+		return []gooey.Cmd{gooey.Quit()}
+
+	case event.Key == gooey.KeyEnter:
+		// Alt+Enter or Shift+Enter adds a new line, plain Enter sends the message
+		if event.Alt || event.Shift {
+			d.input += "\n"
+		} else {
+			// Send message
+			trimmed := strings.TrimSpace(d.input)
+			if trimmed != "" {
+				d.sendMessage(d.input)
+				d.input = "" // Clear input after sending
+				d.scrollOffset = 0 // Reset scroll to show new message
+			}
+		}
+
+	case event.Key == gooey.KeyBackspace:
+		// Delete character
+		if len(d.input) > 0 {
+			d.input = d.input[:len(d.input)-1]
+		}
+
+	case event.Key == gooey.KeyArrowUp:
+		// Scroll up
+		if d.scrollOffset < d.maxScroll {
+			d.scrollOffset++
+		}
+
+	case event.Key == gooey.KeyArrowDown:
+		// Scroll down
+		if d.scrollOffset > 0 {
+			d.scrollOffset--
+		}
+
+	case event.Key == gooey.KeyPageUp:
+		// Page up
+		d.scrollOffset = min(d.scrollOffset+10, d.maxScroll)
+
+	case event.Key == gooey.KeyPageDown:
+		// Page down
+		d.scrollOffset = max(d.scrollOffset-10, 0)
+
+	case event.Rune != 0:
+		// Regular character
+		d.input += string(event.Rune)
+	}
 
 	return nil
 }
 
-func (d *ClaudeStyleDemo) renderContentLocked(frame gooey.RenderFrame, width, height int) {
-	// IMPORTANT: Assumes d.mu.RLock() is held by caller
+func (d *ClaudeStyleDemo) renderContent(frame gooey.RenderFrame, width, height int) {
 	// Render messages from bottom to top
 	currentY := height - 1
 
@@ -253,9 +267,7 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-func (d *ClaudeStyleDemo) renderInputLocked(frame gooey.RenderFrame, y, width, availableHeight int) {
-	// IMPORTANT: Assumes d.mu.RLock() is held by caller
-
+func (d *ClaudeStyleDemo) renderInput(frame gooey.RenderFrame, y, width, availableHeight int) {
 	// Clear the entire input area first to remove any old text
 	clearStyle := gooey.NewStyle()
 	for clearY := y; clearY < y+availableHeight; clearY++ {
@@ -313,75 +325,7 @@ func (d *ClaudeStyleDemo) renderInputLocked(frame gooey.RenderFrame, y, width, a
 	}
 }
 
-func (d *ClaudeStyleDemo) processKeyEvent(event gooey.KeyEvent) bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	switch {
-	// Handle regular characters first (Rune != 0)
-	case event.Rune != 0:
-		d.input += string(event.Rune)
-		log.Printf("Added char to input. Input now: %q (len=%d)", d.input, len(d.input))
-
-	case event.Key == gooey.KeyCtrlC:
-		log.Println("Ctrl+C pressed, exiting")
-		return true // Exit
-
-	case event.Key == gooey.KeyEnter:
-		log.Printf("=== ENTER KEY PRESSED === Alt=%v, Shift=%v, input=%q", event.Alt, event.Shift, d.input)
-		// Alt+Enter or Shift+Enter adds a new line, plain Enter sends the message
-		if event.Alt || event.Shift {
-			log.Printf("*** ADDING NEWLINE (Alt=%v, Shift=%v) ***", event.Alt, event.Shift)
-			d.input += "\n"
-			log.Printf("After adding newline: input=%q (len=%d, newlines=%d)",
-				d.input, len(d.input), strings.Count(d.input, "\n"))
-		} else {
-			// Send message
-			trimmed := strings.TrimSpace(d.input)
-			log.Printf("Trimmed input: %q (len=%d, empty=%v)", trimmed, len(trimmed), trimmed == "")
-			if trimmed != "" {
-				log.Println("Sending message and clearing input")
-				d.sendMessageLocked(d.input)
-				d.input = "" // Clear input after sending
-				d.scrollOffset = 0 // Reset scroll to show new message
-				log.Printf("Input cleared. Input now: %q", d.input)
-			} else {
-				log.Println("Input is empty after trim, not sending")
-			}
-		}
-
-	case event.Key == gooey.KeyBackspace:
-		// Delete character
-		if len(d.input) > 0 {
-			d.input = d.input[:len(d.input)-1]
-		}
-
-	case event.Key == gooey.KeyArrowUp:
-		// Scroll up
-		if d.scrollOffset < d.maxScroll {
-			d.scrollOffset++
-		}
-
-	case event.Key == gooey.KeyArrowDown:
-		// Scroll down
-		if d.scrollOffset > 0 {
-			d.scrollOffset--
-		}
-
-	case event.Key == gooey.KeyPageUp:
-		// Page up
-		d.scrollOffset = min(d.scrollOffset+10, d.maxScroll)
-
-	case event.Key == gooey.KeyPageDown:
-		// Page down
-		d.scrollOffset = max(d.scrollOffset-10, 0)
-	}
-
-	return false
-}
-
-func (d *ClaudeStyleDemo) sendMessageLocked(text string) {
-	// IMPORTANT: Assumes d.mu.Lock() is held by caller
+func (d *ClaudeStyleDemo) sendMessage(text string) {
 	// Add user message
 	d.messages = append(d.messages, Message{
 		Role:    "user",
@@ -437,13 +381,22 @@ func min(a, b int) int {
 }
 
 func main() {
-	demo, err := NewClaudeStyleDemo()
+	// Create terminal
+	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Printf("Error creating demo: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Error creating terminal: %v\n", err)
+		os.Exit(1)
 	}
+	defer terminal.Close()
 
-	if err := demo.Run(); err != nil {
-		fmt.Printf("Error running demo: %v\n", err)
+	// Create application
+	app := NewClaudeStyleDemo(terminal)
+
+	// Create and run runtime
+	runtime := gooey.NewRuntime(terminal, app, 30)
+
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
 	}
 }

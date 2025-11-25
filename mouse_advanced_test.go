@@ -109,7 +109,7 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -119,7 +119,7 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -132,7 +132,7 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent2)
 
@@ -142,7 +142,7 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent2)
 
@@ -173,7 +173,7 @@ func TestMouseHandler_TripleClick(t *testing.T) {
 			Y:         15,
 			Button:    MouseButtonLeft,
 			Type:      MousePress,
-			Timestamp: time.Now(),
+			Time: time.Now(),
 		}
 		handler.HandleEvent(pressEvent)
 
@@ -182,7 +182,7 @@ func TestMouseHandler_TripleClick(t *testing.T) {
 			Y:         15,
 			Button:    MouseButtonNone,
 			Type:      MouseRelease,
-			Timestamp: time.Now(),
+			Time: time.Now(),
 		}
 		handler.HandleEvent(releaseEvent)
 
@@ -224,7 +224,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -234,7 +234,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 		Y:         16,
 		Button:    MouseButtonLeft,
 		Type:      MouseDrag,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(dragEvent1)
 
@@ -244,7 +244,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 		Y:         25,
 		Button:    MouseButtonLeft,
 		Type:      MouseDrag,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(dragEvent2)
 
@@ -254,7 +254,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 		Y:         30,
 		Button:    MouseButtonLeft,
 		Type:      MouseDrag,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(dragEvent3)
 
@@ -264,7 +264,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 		Y:         30,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -320,7 +320,7 @@ func TestMouseHandler_PointerCapture(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -330,7 +330,7 @@ func TestMouseHandler_PointerCapture(t *testing.T) {
 		Y:         45,
 		Button:    MouseButtonLeft,
 		Type:      MouseDrag,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(dragEvent)
 
@@ -340,7 +340,7 @@ func TestMouseHandler_PointerCapture(t *testing.T) {
 		Y:         45,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -376,7 +376,7 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 		Y:         5,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent1)
 	assert.Len(t, enterLeaveEvents, 0, "No events outside region")
@@ -387,7 +387,7 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent2)
 	assert.Len(t, enterLeaveEvents, 1, "Should have enter event")
@@ -399,7 +399,7 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 		Y:         16,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent3)
 	assert.Len(t, enterLeaveEvents, 1, "No new enter/leave events")
@@ -410,7 +410,7 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 		Y:         5,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent4)
 	assert.Len(t, enterLeaveEvents, 2, "Should have leave event")
@@ -454,7 +454,7 @@ func TestMouseHandler_ZIndex(t *testing.T) {
 		Y:         20,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -463,7 +463,7 @@ func TestMouseHandler_ZIndex(t *testing.T) {
 		Y:         20,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -499,7 +499,7 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -509,7 +509,7 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 		Y:         25,
 		Button:    MouseButtonLeft,
 		Type:      MouseDrag,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(dragEvent)
 
@@ -524,7 +524,7 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 		Y:         25,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -558,7 +558,7 @@ func TestMouseHandler_LegacyHandlers(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent)
 	assert.True(t, hovered, "Legacy HoverHandler should be called on enter")
@@ -569,7 +569,7 @@ func TestMouseHandler_LegacyHandlers(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonLeft,
 		Type:      MousePress,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
@@ -578,7 +578,7 @@ func TestMouseHandler_LegacyHandlers(t *testing.T) {
 		Y:         15,
 		Button:    MouseButtonNone,
 		Type:      MouseRelease,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -590,7 +590,7 @@ func TestMouseHandler_LegacyHandlers(t *testing.T) {
 		Y:         5,
 		Button:    MouseButtonNone,
 		Type:      MouseMove,
-		Timestamp: time.Now(),
+		Time: time.Now(),
 	}
 	handler.HandleEvent(moveEvent2)
 	assert.False(t, hovered, "Legacy HoverHandler should be called on leave with false")

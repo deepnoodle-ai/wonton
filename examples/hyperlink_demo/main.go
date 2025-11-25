@@ -8,30 +8,51 @@ import (
 	"github.com/deepnoodle-ai/gooey"
 )
 
-func main() {
-	// Create terminal
-	term, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+// HyperlinkApp demonstrates OSC 8 hyperlink support using the Runtime.
+type HyperlinkApp struct {
+	width      int
+	height     int
+	startTime  time.Time
+	autoQuitAt time.Time
+}
+
+// Init initializes the application.
+func (app *HyperlinkApp) Init() error {
+	app.startTime = time.Now()
+	app.autoQuitAt = app.startTime.Add(30 * time.Second)
+	return nil
+}
+
+// HandleEvent processes events from the runtime.
+func (app *HyperlinkApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+	switch e := event.(type) {
+	case gooey.KeyEvent:
+		// Exit on any key press or Ctrl+C
+		return []gooey.Cmd{gooey.Quit()}
+
+	case gooey.ResizeEvent:
+		// Update stored dimensions
+		app.width = e.Width
+		app.height = e.Height
+
+	case gooey.TickEvent:
+		// Auto-quit after 30 seconds
+		if time.Now().After(app.autoQuitAt) {
+			return []gooey.Cmd{gooey.Quit()}
+		}
 	}
-	defer term.Close()
 
-	// Enable raw mode and alternate screen
-	if err := term.EnableRawMode(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to enable raw mode: %v\n", err)
-		os.Exit(1)
-	}
-	term.EnableAlternateScreen()
+	return nil
+}
 
-	// Get terminal size
-	width, height := term.Size()
+// Render draws the hyperlink examples.
+func (app *HyperlinkApp) Render(frame gooey.RenderFrame) {
+	width, height := frame.Size()
 
-	// Create frame
-	frame, err := term.BeginFrame()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to begin frame: %v\n", err)
-		os.Exit(1)
+	// Update dimensions if not set
+	if app.width == 0 || app.height == 0 {
+		app.width = width
+		app.height = height
 	}
 
 	// Clear screen
@@ -186,17 +207,45 @@ func main() {
 	fallbackNote := "  (OSC 8 escape codes are ignored, text displays normally)"
 	frame.PrintStyled(4, infoY, fallbackNote, gooey.NewStyle().WithForeground(gooey.ColorWhite).WithDim())
 
-	// Footer
-	footer := "Press Ctrl+C to exit"
+	// Footer with countdown
+	elapsed := time.Since(app.startTime)
+	remaining := 30*time.Second - elapsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	footer := fmt.Sprintf("Press any key to exit (auto-exit in %.0fs)", remaining.Seconds())
 	footerStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
 	frame.PrintStyled((width-len(footer))/2, height-1, footer, footerStyle)
+}
 
-	// End frame
-	if err := term.EndFrame(frame); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to end frame: %v\n", err)
+func main() {
+	// Create terminal
+	term, err := gooey.NewTerminal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
 		os.Exit(1)
 	}
+	defer term.Close()
 
-	// Wait for a while to allow viewing
-	time.Sleep(30 * time.Second)
+	// Enable alternate screen
+	// Note: Runtime automatically enables raw mode
+	term.EnableAlternateScreen()
+
+	// Get initial terminal size
+	width, height := term.Size()
+
+	// Create the application
+	app := &HyperlinkApp{
+		width:  width,
+		height: height,
+	}
+
+	// Create and run the runtime at 30 FPS to update the countdown
+	runtime := gooey.NewRuntime(term, app, 30)
+
+	// Run blocks until the application quits
+	if err := runtime.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+		os.Exit(1)
+	}
 }
