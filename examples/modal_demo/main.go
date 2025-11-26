@@ -7,14 +7,12 @@ import (
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// ModalDemoApp demonstrates modal dialogs using the Runtime architecture.
+// ModalDemoApp demonstrates modal dialogs using the declarative View API.
 // It shows how to display overlay modals and handle modal-specific interactions.
 type ModalDemoApp struct {
 	modal          *gooey.Modal
 	showModal      bool
 	lastButtonText string
-	width          int
-	height         int
 }
 
 // HandleEvent processes events from the runtime.
@@ -51,106 +49,90 @@ func (app *ModalDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-
-	case gooey.ResizeEvent:
-		// Update dimensions on resize
-		app.width = e.Width
-		app.height = e.Height
 	}
 
 	return nil
 }
 
-// Render draws the current application state.
-func (app *ModalDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
+// View returns the declarative UI for this app.
+func (app *ModalDemoApp) View() gooey.View {
+	// Main content without modal
+	mainContent := gooey.VStack(
+		// Header
+		gooey.Text(" Modal Demo ").
+			Bold().
+			Fg(gooey.ColorWhite).
+			Bg(gooey.ColorBlue).
+			Width(0), // Full width
+		gooey.Spacer(),
+		// Main message
+		gooey.Text("Press 'm' to open modal. Press 'q' to quit.").
+			Fg(gooey.ColorWhite),
+		gooey.Spacer().MinHeight(2),
+		// Last button clicked
+		gooey.If(app.lastButtonText != "",
+			gooey.Text("Last clicked: %s", app.lastButtonText).
+				Fg(gooey.ColorGreen),
+		),
+		gooey.Spacer(),
+		// Footer
+		gooey.Padding(1,
+			gooey.HStack(
+				gooey.Text("Left"),
+				gooey.Spacer(),
+				gooey.Text("Center"),
+				gooey.Spacer(),
+				gooey.Text("Right"),
+			).Bg(gooey.ColorWhite),
+		),
+	).Align(gooey.AlignCenter)
 
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Draw header
-	headerStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorWhite).WithBackground(gooey.ColorBlue)
-	headerText := " Modal Demo "
-	for i := 0; i < width; i++ {
-		if i >= (width-len(headerText))/2 && i < (width-len(headerText))/2+len(headerText) {
-			frame.SetCell(i, 0, rune(headerText[i-(width-len(headerText))/2]), headerStyle)
-		} else {
-			frame.SetCell(i, 0, ' ', headerStyle)
-		}
-	}
-
-	// Draw main content
-	contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-	msg := "Press 'm' to open modal. Press 'q' to quit."
-	msgX := (width - len(msg)) / 2
-	msgY := height / 2
-	if msgX < 0 {
-		msgX = 0
-	}
-	frame.PrintStyled(msgX, msgY, msg, contentStyle)
-
-	// Show last button clicked
-	if app.lastButtonText != "" {
-		resultMsg := fmt.Sprintf("Last clicked: %s", app.lastButtonText)
-		resultX := (width - len(resultMsg)) / 2
-		if resultX < 0 {
-			resultX = 0
-		}
-		resultStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-		frame.PrintStyled(resultX, msgY+2, resultMsg, resultStyle)
-	}
-
-	// Draw footer
-	footerStyle := gooey.NewStyle().WithForeground(gooey.ColorBlack).WithBackground(gooey.ColorWhite)
-	leftText := "Left"
-	centerText := "Center"
-	rightText := "Right"
-
-	if height > 0 {
-		// Left aligned
-		frame.PrintStyled(1, height-1, leftText, footerStyle)
-
-		// Center aligned
-		centerX := (width - len(centerText)) / 2
-		if centerX < 0 {
-			centerX = 0
-		}
-		frame.PrintStyled(centerX, height-1, centerText, footerStyle)
-
-		// Right aligned
-		rightX := width - len(rightText) - 1
-		if rightX < 0 {
-			rightX = 0
-		}
-		frame.PrintStyled(rightX, height-1, rightText, footerStyle)
-
-		// Fill remaining footer space
-		for i := 0; i < width; i++ {
-			// Skip positions where we've already drawn text
-			hasText := false
-			if i >= 1 && i < 1+len(leftText) {
-				hasText = true
-			}
-			if i >= centerX && i < centerX+len(centerText) {
-				hasText = true
-			}
-			if i >= rightX && i < rightX+len(rightText) {
-				hasText = true
-			}
-			if !hasText {
-				frame.SetCell(i, height-1, ' ', footerStyle)
-			}
-		}
-	}
-
-	// Draw modal overlay if shown
+	// If modal is shown, overlay it on top using ZStack
 	if app.showModal && app.modal != nil {
-		app.modal.Draw(frame)
+		return gooey.ZStack(
+			mainContent,
+			app.modalView(),
+		)
 	}
+
+	return mainContent
+}
+
+// modalView creates the modal dialog view
+func (app *ModalDemoApp) modalView() gooey.View {
+	if app.modal == nil {
+		return gooey.Text("")
+	}
+
+	// Create buttons
+	var buttons []gooey.View
+	for i, buttonText := range app.modal.Buttons {
+		idx := i // capture for closure
+		buttons = append(buttons,
+			gooey.Clickable(fmt.Sprintf("[ %s ]", buttonText), func() {
+				if app.modal.Callback != nil {
+					app.modal.Callback(idx)
+				}
+			}).Fg(gooey.ColorWhite).Bg(gooey.ColorBlue),
+		)
+	}
+
+	// Modal content
+	return gooey.Bordered(
+		gooey.Padding(2,
+			gooey.VStack(
+				gooey.Text("%s", app.modal.Title).Bold().Fg(gooey.ColorCyan),
+				gooey.Spacer().MinHeight(1),
+				gooey.Text("%s", app.modal.Content).Fg(gooey.ColorWhite),
+				gooey.Spacer().MinHeight(2),
+				gooey.HStack(buttons...).Gap(2).Align(gooey.AlignCenter),
+			).Bg(gooey.ColorBlack),
+		),
+	)
 }
 
 func main() {
-	if err := gooey.Run(&ModalDemoApp{}); err != nil {
+	if err := gooey.Run(&ModalDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

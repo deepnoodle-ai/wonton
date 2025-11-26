@@ -41,9 +41,6 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render is required by the Application interface but won't be called.
-func (app *App) Render(frame gooey.RenderFrame) {}
-
 func main() {
 	if err := gooey.Run(&App{}); err != nil {
 		log.Fatal(err)

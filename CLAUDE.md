@@ -7,7 +7,7 @@ This file provides guidance to Claude Code when working with this codebase.
 Gooey is a terminal GUI library for Go that provides flicker-free rendering,
 smooth animations (30-60 FPS), and a race-free message-driven architecture. The
 library supports double-buffered rendering with dirty region tracking, full
-keyboard/mouse input handling, and a widget composition system.
+keyboard/mouse input handling, and a declarative view system.
 
 ## Development Commands
 
@@ -25,10 +25,10 @@ go test -v ./...
 go test -v -run TestName ./...
 
 # Run examples
-go run examples/runtime_counter/main.go    # Basic keyboard input
-go run examples/runtime_http/main.go       # Async HTTP requests
-go run examples/runtime_animation/main.go  # Smooth animations
-go run examples/all/main.go                # Comprehensive demo
+go run examples/declarative_counter/main.go  # Declarative counter with buttons
+go run examples/declarative/main.go          # Declarative input form
+go run examples/runtime_animation/main.go    # Smooth animations
+go run examples/all/main.go                  # Comprehensive demo
 ```
 
 ## Architecture
@@ -39,36 +39,54 @@ go run examples/all/main.go                # Comprehensive demo
 
 - **Runtime** (`runtime.go`): The event loop that coordinates everything. Runs three goroutines:
 
-  1. Main event loop (processes events, calls HandleEvent/Render)
+  1. Main event loop (processes events, calls HandleEvent/View)
   2. Input reader (reads from stdin, forwards KeyEvent/MouseEvent)
   3. Command executor (runs async commands, returns results as events)
 
 - **Application Interface** (`runtime.go`): User code implements this to define app behavior:
 
-  - `HandleEvent(event Event) []Cmd` - Process events, return commands for async work
-  - `Render(frame RenderFrame)` - Draw current state to the frame
+  - `View() View` - Return a declarative view tree representing the UI (required)
+  - `HandleEvent(event Event) []Cmd` - Process events, return commands (optional, via EventHandler interface)
+
+- **Declarative Views** (`view.go`, `layout_views.go`, `text_view.go`, `modifiers.go`): Composable view components:
+  - `VStack()`, `HStack()`, `ZStack()` - Layout containers
+  - `Text()` - Styled text display
+  - `Clickable()` - Interactive buttons
+  - `Input()` - Text input fields
+  - `Spacer()`, `Bordered()`, `Canvas()` - Layout helpers
 
 - **Events** (`events.go`, `input.go`, `mouse.go`): Event types including `KeyEvent`, `MouseEvent`, `TickEvent`, `ResizeEvent`, `QuitEvent`, `ErrorEvent`.
 
 - **Commands** (`commands.go`): Functions that perform async work and return events. Built-ins: `Quit()`, `Tick()`, `After()`, `Batch()`, `Sequence()`.
 
-- **Composition System** (`composition.go`, `container.go`): Widget system with `ComposableWidget` interface, `BaseWidget` base class, and layout managers (`VerticalLayout`, `HorizontalLayout`, `FlexLayout`, `GridLayout`).
-
 ### Rendering Flow
 
 ```
-BeginFrame() -> get RenderFrame -> app.Render(frame) -> EndFrame() -> diff & flush
+View() -> measure views -> render views -> diff & flush
 ```
 
-The frame is a back buffer. `EndFrame()` diffs against the front buffer and only sends changes to the terminal.
+The declarative View() method returns a view tree. The runtime measures, renders to a back buffer, then diffs against the front buffer and sends only changes to the terminal.
 
 ## Common Patterns
 
-### Simplest Application (Recommended)
+### Simplest Application (Recommended - Declarative)
 
 ```go
 type MyApp struct {
     count int
+}
+
+func (app *MyApp) View() gooey.View {
+    return gooey.VStack(
+        gooey.Text("Count: %d", app.count).Bold().Fg(gooey.ColorGreen),
+        gooey.Spacer().MinHeight(1),
+        gooey.HStack(
+            gooey.Clickable("[ + ]", func() { app.count++ }).Fg(gooey.ColorGreen),
+            gooey.Clickable("[ - ]", func() { app.count-- }).Fg(gooey.ColorRed),
+        ).Gap(2),
+        gooey.Spacer(),
+        gooey.Text("Press 'q' to quit").Dim(),
+    ).Align(gooey.AlignCenter).Padding(2)
 }
 
 func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
@@ -81,14 +99,8 @@ func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
     return nil
 }
 
-func (app *MyApp) Render(frame gooey.RenderFrame) {
-    width, height := frame.Size()
-    frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-    frame.PrintStyled(0, 0, "Hello", gooey.NewStyle().WithForeground(gooey.ColorGreen))
-}
-
 func main() {
-    if err := gooey.Run(&MyApp{}); err != nil {
+    if err := gooey.Run(&MyApp{}, gooey.WithMouseTracking(true)); err != nil {
         log.Fatal(err)
     }
 }
@@ -105,18 +117,85 @@ gooey.Run(&MyApp{},
 )
 ```
 
-### Manual Terminal Control
-
-For applications needing direct terminal access:
+### Declarative View Components
 
 ```go
-func main() {
-    terminal, _ := gooey.NewTerminal()
-    defer terminal.Close()
+// Layout containers
+gooey.VStack(children...)     // Vertical stack
+gooey.HStack(children...)     // Horizontal stack
+gooey.ZStack(children...)     // Layered stack
 
-    runtime := gooey.NewRuntime(terminal, &MyApp{}, 30) // 30 FPS
-    runtime.Run()
-}
+// Text with styling
+gooey.Text("Hello %s", name).Bold().Fg(gooey.ColorCyan)
+gooey.Text("Count: %d", count).Italic().Bg(gooey.ColorBlue)
+
+// Interactive elements
+gooey.Clickable("Click me", func() { /* handler */ })
+gooey.Input(&app.textField).Placeholder("Enter text...").Width(30)
+gooey.Input(&app.password).Mask('*')
+
+// Layout helpers
+gooey.Spacer()                 // Flexible space
+gooey.Spacer().MinHeight(2)    // Minimum height spacer
+gooey.Bordered(content)        // Add border around content
+gooey.Canvas(drawFunc)         // Custom imperative drawing
+
+// Modifiers (chain on views)
+.Fg(color)      // Foreground color
+.Bg(color)      // Background color
+.Bold()         // Bold text
+.Dim()          // Dimmed text
+.Style(s)       // Apply a Style
+.Padding(n)     // Add padding
+.Gap(n)         // Gap between children (stacks)
+.Align(align)   // Alignment (stacks)
+```
+
+### Conditional Rendering
+
+```go
+// Show view conditionally
+gooey.If(app.showDetails,
+    gooey.Text("Details here"),
+)
+
+// If-else pattern
+gooey.IfElse(app.isLoading,
+    gooey.Text("Loading..."),
+    gooey.Text("Content loaded"),
+)
+
+// Switch on value
+gooey.Switch(app.state,
+    gooey.Case("idle", gooey.Text("Idle")),
+    gooey.Case("loading", gooey.Text("Loading...")),
+    gooey.Default(gooey.Text("Unknown")),
+)
+```
+
+### Collection Rendering
+
+```go
+// Render list of items vertically
+gooey.ForEach(app.items, func(item Item, i int) gooey.View {
+    return gooey.Text("%d. %s", i+1, item.Name)
+})
+
+// Render horizontally
+gooey.HForEach(app.tabs, func(tab Tab, i int) gooey.View {
+    return gooey.Clickable(tab.Name, func() { app.selectTab(i) })
+})
+```
+
+### Custom Drawing with Canvas
+
+```go
+// Canvas provides escape hatch for imperative drawing
+gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+    width, height := bounds.Dx(), bounds.Dy()
+    // Use frame.SetCell(), frame.PrintStyled(), etc.
+    frame.SetCell(bounds.Min.X, bounds.Min.Y, '█', style)
+})
 ```
 
 ### Async Operations (HTTP, etc.)
@@ -159,9 +238,10 @@ style := gooey.NewStyle().
     WithUnderline()
 
 // RGB colors
-style = gooey.NewStyle().WithFgRGB(gooey.RGB{R: 255, G: 128, B: 0})
+style = gooey.NewStyle().WithFgRGB(gooey.NewRGB(255, 128, 0))
 
-frame.PrintStyled(x, y, "text", style)
+// Apply to text
+gooey.Text("styled").Style(style)
 ```
 
 ### Mouse Handling
@@ -184,24 +264,6 @@ func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 ```
 
-### TextInput Widget
-
-```go
-input := gooey.NewTextInput().
-    WithPlaceholder("Enter text...").
-    WithMaxLength(100).
-    WithMask('*')  // For passwords
-
-input.OnSubmit = func(value string) {
-    // Handle enter key
-}
-
-// In HandleEvent, forward key events:
-if input.HandleKey(keyEvent) {
-    return nil // Input consumed the event
-}
-```
-
 ## Important Constraints
 
 ### Coordinate System
@@ -213,15 +275,9 @@ if input.HandleKey(keyEvent) {
 
 ### Thread Safety
 
-- **HandleEvent and Render are NEVER called concurrently** - the Runtime guarantees this
-- **No locks needed** in application state - mutate freely in HandleEvent
+- **View and HandleEvent are NEVER called concurrently** - the Runtime guarantees this
+- **No locks needed** in application state - mutate freely in HandleEvent or Clickable callbacks
 - **Commands run in separate goroutines** - don't access app state directly from commands, return data via events
-
-### Frame Lifecycle
-
-- **BeginFrame/EndFrame must be paired** - frame is invalid after EndFrame
-- **Only one frame active at a time** - BeginFrame blocks if another frame is active
-- **Don't hold frames across async operations** - complete rendering in a single call
 
 ### Event Ordering
 
@@ -283,17 +339,24 @@ go test -v -run TestFoo # Specific test
 
 ## Key Files
 
-| File             | Purpose                                               |
-| ---------------- | ----------------------------------------------------- |
-| `run.go`         | Simplified Run() API for quick application startup    |
-| `runtime.go`     | Event loop, Application interface, command system     |
-| `terminal.go`    | Low-level terminal ops, double buffering, RenderFrame |
-| `events.go`      | Event types (Tick, Resize, Quit, Error, Batch)        |
-| `input.go`       | KeyEvent, Key constants                               |
-| `mouse.go`       | MouseEvent, mouse tracking, MouseRegion               |
-| `commands.go`    | Built-in commands (Quit, Tick, After, Batch)          |
-| `composition.go` | Widget interfaces, BaseWidget, layout params          |
-| `container.go`   | Container widget implementation                       |
-| `style.go`       | Style, Color constants, RGB support                   |
-| `text_input.go`  | TextInput widget                                      |
-| `key_decoder.go` | Keyboard/paste input decoding                         |
+| File                 | Purpose                                               |
+| -------------------- | ----------------------------------------------------- |
+| `run.go`             | Simplified Run() API for quick application startup    |
+| `runtime.go`         | Event loop, Application interface, command system     |
+| `view.go`            | View interface, Empty, Spacer, Fill views             |
+| `layout_views.go`    | VStack, HStack, ZStack layout containers              |
+| `text_view.go`       | Text view with styling                                |
+| `button_view.go`     | Clickable interactive view                            |
+| `input_view.go`      | Input text field view                                 |
+| `modifiers.go`       | Padding, Bordered, Size modifiers                     |
+| `canvas_view.go`     | Canvas for custom imperative drawing                  |
+| `conditional_views.go` | If, IfElse, Switch conditional views                |
+| `collection_views.go` | ForEach, HForEach collection views                   |
+| `terminal.go`        | Low-level terminal ops, double buffering, RenderFrame |
+| `events.go`          | Event types (Tick, Resize, Quit, Error, Batch)        |
+| `input.go`           | KeyEvent, Key constants                               |
+| `mouse.go`           | MouseEvent, mouse tracking, MouseRegion               |
+| `commands.go`        | Built-in commands (Quit, Tick, After, Batch)          |
+| `style.go`           | Style, Color constants, RGB support                   |
+| `text_input.go`      | TextInput widget (imperative)                         |
+| `key_decoder.go`     | Keyboard/paste input decoding                         |

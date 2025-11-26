@@ -56,40 +56,24 @@ func (app *MetricsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the current application state.
-func (app *MetricsApp) Render(frame gooey.RenderFrame) {
+// View returns the declarative view for the current application state.
+func (app *MetricsApp) View() gooey.View {
 	if app.demoRunning {
-		app.renderDemo(frame)
+		return app.viewDemo()
 	} else if app.demoDone {
-		app.renderFinalMetrics(frame)
+		return app.viewFinalMetrics()
 	}
+	return gooey.VStack()
 }
 
-// renderDemo draws the animated demo with live metrics.
-func (app *MetricsApp) renderDemo(frame gooey.RenderFrame) {
-	_, height := frame.Size()
-
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Draw animated header
-	colorIdx := int(app.frame/10) % len(app.colors)
-	style := gooey.NewStyle().
-		WithForeground(app.colors[colorIdx]).
-		WithBold()
-	frame.PrintStyled(2, 2, "=== Performance Metrics Demo ===", style)
-
-	// Draw some animated content
+// viewDemo returns the animated demo view with live metrics.
+func (app *MetricsApp) viewDemo() gooey.View {
+	// Build animated content lines
+	animatedLines := []gooey.View{}
 	for i := 0; i < 10; i++ {
-		x := 2
-		y := 4 + i
-		if y >= height-10 {
-			break
-		}
 		offset := int(app.frame) + i*5
 		char := "▓▒░ "[offset%4]
 		colorIdx := (i + int(app.frame/5)) % len(app.colors)
-		style := gooey.NewStyle().WithForeground(app.colors[colorIdx])
 		line := ""
 		for j := 0; j < 40; j++ {
 			if (j+offset)%4 == 0 {
@@ -98,117 +82,89 @@ func (app *MetricsApp) renderDemo(frame gooey.RenderFrame) {
 				line += " "
 			}
 		}
-		frame.PrintStyled(x, y, line, style)
+		animatedLines = append(animatedLines, gooey.Text("%s", line).Fg(app.colors[colorIdx]))
 	}
 
-	// Draw progress bar
+	// Build progress bar string
 	barWidth := 40
 	progress := float64(time.Since(app.startTime)) / float64(5*time.Second)
 	filled := int(progress * float64(barWidth))
 
-	frame.PrintStyled(2, 16, "Progress: ", gooey.NewStyle())
-	frame.PrintStyled(12, 16, "[", gooey.NewStyle())
+	progressBar := "["
 	for i := 0; i < barWidth; i++ {
 		if i < filled {
-			frame.PrintStyled(13+i, 16, "█", gooey.NewStyle().WithForeground(gooey.ColorGreen))
+			progressBar += "█"
 		} else {
-			frame.PrintStyled(13+i, 16, "░", gooey.NewStyle().WithForeground(gooey.ColorWhite))
+			progressBar += "░"
 		}
 	}
-	frame.PrintStyled(13+barWidth, 16, "]", gooey.NewStyle())
+	progressBar += "]"
 
-	// Display live metrics
-	y := 18
-	frame.PrintStyled(2, y, "Live Metrics:", gooey.NewStyle().WithBold())
-	y++
+	// Animated header color
+	colorIdx := int(app.frame/10) % len(app.colors)
 
-	frame.PrintStyled(2, y, fmt.Sprintf("  Frames rendered: %d", app.metrics.TotalFrames), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Frames skipped:  %d", app.metrics.SkippedFrames), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Cells updated:   %d", app.metrics.CellsUpdated), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  ANSI codes:      %d", app.metrics.ANSICodesEmitted), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Bytes written:   %d (%.1f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Avg FPS:         %.2f", app.metrics.FPS()), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Last frame:      %.2fms", app.metrics.LastFrameTime.Seconds()*1000), gooey.NewStyle())
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("  Efficiency:      %.1f%%", app.metrics.Efficiency()), gooey.NewStyle())
-
-	// Footer
-	frame.PrintStyled(2, height-2, "Animation running... Will show final metrics in a moment",
-		gooey.NewStyle().WithForeground(gooey.ColorWhite))
+	return gooey.VStack(
+		gooey.Spacer().MinHeight(1),
+		gooey.Text("=== Performance Metrics Demo ===").Bold().Fg(app.colors[colorIdx]),
+		gooey.Spacer().MinHeight(1),
+		gooey.VStack(animatedLines...),
+		gooey.Spacer().MinHeight(1),
+		gooey.Text("Progress: %s", progressBar).Fg(gooey.ColorGreen),
+		gooey.Spacer().MinHeight(1),
+		gooey.Text("Live Metrics:").Bold(),
+		gooey.Text("  Frames rendered: %d", app.metrics.TotalFrames),
+		gooey.Text("  Frames skipped:  %d", app.metrics.SkippedFrames),
+		gooey.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
+		gooey.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
+		gooey.Text("  Bytes written:   %d (%.1f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
+		gooey.Text("  Avg FPS:         %.2f", app.metrics.FPS()),
+		gooey.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
+		gooey.Text("  Last frame:      %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
+		gooey.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
+		gooey.Spacer(),
+		gooey.Text("Animation running... Will show final metrics in a moment"),
+	).Padding(2)
 }
 
-// renderFinalMetrics draws the final metrics screen.
-func (app *MetricsApp) renderFinalMetrics(frame gooey.RenderFrame) {
-	_, height := frame.Size()
+// viewFinalMetrics returns the final metrics screen view.
+func (app *MetricsApp) viewFinalMetrics() gooey.View {
+	return gooey.VStack(
+		gooey.Spacer().MinHeight(1),
+		gooey.Text("=== Final Performance Metrics ===").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(1),
 
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
+		gooey.Text("Frames:").Fg(gooey.ColorYellow),
+		gooey.Text("  Total rendered:  %d", app.metrics.TotalFrames),
+		gooey.Text("  Skipped:         %d", app.metrics.SkippedFrames),
+		gooey.Text("  Average FPS:     %.2f", app.metrics.FPS()),
+		gooey.Spacer().MinHeight(1),
 
-	// Title
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled(2, 2, "=== Final Performance Metrics ===", titleStyle)
+		gooey.Text("Rendering:").Fg(gooey.ColorYellow),
+		gooey.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
+		gooey.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
+		gooey.Text("  Bytes written:   %d (%.2f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
+		gooey.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
+		gooey.Spacer().MinHeight(1),
 
-	// Display detailed metrics
-	y := 4
-	labelStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	valueStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+		gooey.Text("Timing:").Fg(gooey.ColorYellow),
+		gooey.Text("  Min frame time:  %.2fms", app.metrics.MinFrameTime.Seconds()*1000),
+		gooey.Text("  Max frame time:  %.2fms", app.metrics.MaxFrameTime.Seconds()*1000),
+		gooey.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
+		gooey.Text("  Last frame time: %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
+		gooey.Spacer().MinHeight(1),
 
-	frame.PrintStyled(2, y, "Frames:", labelStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Total rendered:  %d", app.metrics.TotalFrames), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Skipped:         %d", app.metrics.SkippedFrames), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Average FPS:     %.2f", app.metrics.FPS()), valueStyle)
-	y += 2
+		gooey.Text("Dirty Regions:").Fg(gooey.ColorYellow),
+		gooey.Text("  Last size:       %d cells", app.metrics.LastDirtyArea),
+		gooey.Text("  Max size:        %d cells", app.metrics.MaxDirtyArea),
+		gooey.Text("  Avg size:        %.0f cells", app.metrics.AvgDirtyArea),
+		gooey.Spacer().MinHeight(1),
 
-	frame.PrintStyled(2, y, "Rendering:", labelStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Cells updated:   %d", app.metrics.CellsUpdated), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("ANSI codes:      %d", app.metrics.ANSICodesEmitted), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Bytes written:   %d (%.2f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Efficiency:      %.1f%%", app.metrics.Efficiency()), valueStyle)
-	y += 2
+		gooey.Text("Compact Summary:").Fg(gooey.ColorYellow),
+		gooey.Text("  %s", app.metrics.Compact()).Fg(gooey.ColorGreen),
 
-	frame.PrintStyled(2, y, "Timing:", labelStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Min frame time:  %.2fms", app.metrics.MinFrameTime.Seconds()*1000), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Max frame time:  %.2fms", app.metrics.MaxFrameTime.Seconds()*1000), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Last frame time: %.2fms", app.metrics.LastFrameTime.Seconds()*1000), valueStyle)
-	y += 2
-
-	frame.PrintStyled(2, y, "Dirty Regions:", labelStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Last size:       %d cells", app.metrics.LastDirtyArea), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Max size:        %d cells", app.metrics.MaxDirtyArea), valueStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Avg size:        %.0f cells", app.metrics.AvgDirtyArea), valueStyle)
-	y += 2
-
-	// Compact summary
-	frame.PrintStyled(2, y, "Compact Summary:", labelStyle)
-	y++
-	frame.PrintStyled(4, y, app.metrics.Compact(), gooey.NewStyle().WithForeground(gooey.ColorGreen))
-
-	// Footer instruction
-	footerStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta).WithBold()
-	frame.PrintStyled(2, height-2, "Press Ctrl+C to exit", footerStyle)
+		gooey.Spacer(),
+		gooey.Text("Press Ctrl+C to exit").Bold().Fg(gooey.ColorMagenta),
+	).Padding(2)
 }
 
 // Init initializes the application.

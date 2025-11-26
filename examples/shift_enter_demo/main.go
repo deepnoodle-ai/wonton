@@ -29,31 +29,33 @@ func (app *ShiftEnterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *ShiftEnterApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-
-	y := 0
-
-	frame.PrintStyled(0, y, "Shift+Enter Detection Demo", gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold())
-	y += 2
-
-	frame.PrintStyled(0, y, "Press Shift+Enter to test detection", gooey.NewStyle())
-	y += 2
-
+func (app *ShiftEnterApp) View() gooey.View {
+	var statusText string
+	var statusStyle gooey.Style
 	if app.shiftEntered {
-		frame.PrintStyled(0, y, "Shift+Enter detected!", gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold())
+		statusText = "Shift+Enter detected!"
+		statusStyle = gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
 	} else {
-		frame.PrintStyled(0, y, "Waiting...", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+		statusText = "Waiting..."
+		statusStyle = gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
 	}
-	y += 2
 
+	var lastKeyView gooey.View = gooey.Empty()
 	if app.lastKey != "" {
-		frame.PrintStyled(0, y, "Last key: "+app.lastKey, gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+		lastKeyView = gooey.Text("Last key: %s", app.lastKey).Dim()
 	}
-	y += 2
 
-	frame.PrintStyled(0, y, "Press Ctrl+C or Esc to quit", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
+	return gooey.VStack(
+		gooey.Text("Shift+Enter Detection Demo").Fg(gooey.ColorCyan).Bold(),
+		gooey.Spacer(),
+		gooey.Text("Press Shift+Enter to test detection"),
+		gooey.Spacer(),
+		gooey.Text("%s", statusText).Style(statusStyle),
+		gooey.Spacer(),
+		lastKeyView,
+		gooey.Spacer(),
+		gooey.Text("Press Ctrl+C or Esc to quit").Dim(),
+	)
 }
 
 func main() {

@@ -4,41 +4,17 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// ReflowApp demonstrates the constraint-based layout system with text reflow
-// using the Runtime message-driven architecture.
+// ReflowApp demonstrates text reflow with animated width changes
+// using the declarative View API.
 type ReflowApp struct {
-	content   *gooey.Container
 	width     int
 	direction int
 	frame     uint64
-}
-
-// Init initializes the application widgets.
-func (app *ReflowApp) Init() error {
-	// Create content container with VBox layout
-	// This will use the new ConstraintLayoutManager implementation of VBoxLayout
-	app.content = gooey.NewContainerWithBorder(
-		gooey.NewVBoxLayout(1),
-		&gooey.RoundedBorder,
-	)
-
-	// Add a wrapping label
-	label := gooey.NewWrappingLabel("This is a long text that should wrap automatically when the container width decreases. It demonstrates the new constraint-based layout system in Gooey! The height of the box should adjust to fit the text.")
-	app.content.AddChild(label)
-
-	// Add another button below to show it moves
-	btn := gooey.NewComposableButton("I move down!", nil)
-	app.content.AddChild(btn)
-
-	// Initialize with starting width
-	app.width = 40
-	app.direction = 1
-
-	return nil
 }
 
 // HandleEvent processes events from the runtime.
@@ -67,48 +43,62 @@ func (app *ReflowApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the animated reflow demo.
-func (app *ReflowApp) Render(frame gooey.RenderFrame) {
-	termW, termH := frame.Size()
+// View returns the declarative view tree.
+func (app *ReflowApp) View() gooey.View {
+	// Debug info at top
+	debugInfo := fmt.Sprintf("Width: %d | Frame: %d/200 | Press any key to exit", app.width, app.frame)
 
-	// Clear the frame
-	frame.FillStyled(0, 0, termW, termH, ' ', gooey.NewStyle())
+	// The long text that will wrap based on width
+	longText := "This is a long text that should wrap automatically when the container width decreases. It demonstrates text reflow in Gooey! The height of the box should adjust to fit the text."
 
-	// 1. MEASURE phase
-	// We impose a tight width constraint, and loose height constraint
-	// This simulates a parent (like Flex or SplitPane) constraining the child
-	constraints := gooey.SizeConstraints{
-		MinWidth:  app.width,
-		MaxWidth:  app.width,
-		MinHeight: 0,
-		MaxHeight: 0,
-	}
+	// Wrap the text to the current width
+	wrapped := gooey.WrapText(longText, app.width-4) // -4 for border and padding
 
-	// This triggers the ConstraintLayoutManager logic
-	// The Container calls VBoxLayout.Measure
-	// VBoxLayout.Measure calls WrappingLabel.Measure
-	// WrappingLabel calculates height based on wrapped text
-	size := app.content.Measure(constraints)
+	// Create the wrapping text box using Canvas for custom width control
+	wrappingBox := gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		// Split into lines and render
+		lines := strings.Split(wrapped, "\n")
+		for i, line := range lines {
+			if i >= bounds.Dy() {
+				break
+			}
+			frame.PrintStyled(0, i, line, gooey.NewStyle())
+		}
+	}).Size(app.width-4, len(strings.Split(wrapped, "\n")))
 
-	// 2. LAYOUT phase
-	// We center the box on screen
-	x := (termW - size.X) / 2
-	y := (termH - size.Y) / 2
+	// Wrap in a border
+	borderedBox := gooey.Bordered(wrappingBox).
+		Border(&gooey.RoundedBorder).
+		BorderFg(gooey.ColorCyan)
 
-	// Set bounds triggers internal layout
-	// content.relayout() will use LayoutWithConstraints because we added it
-	app.content.SetBounds(image.Rect(x, y, x+size.X, y+size.Y))
+	// Add a button below to show it moves
+	button := gooey.Text("I move down!").
+		Fg(gooey.ColorGreen).
+		Bold()
 
-	// 3. DRAW phase
-	app.content.Draw(frame)
-
-	// Draw debug info
-	debugInfo := fmt.Sprintf("Width: %d, Height: %d | Frame: %d/200 | Press any key to exit", size.X, size.Y, app.frame)
-	frame.PrintStyled(0, 0, debugInfo, gooey.NewStyle())
+	// Main layout with everything centered
+	return gooey.VStack(
+		gooey.Text(debugInfo),
+		gooey.Spacer(),
+		gooey.HStack(
+			gooey.Spacer(),
+			gooey.VStack(
+				borderedBox,
+				gooey.Spacer().MinHeight(1),
+				button,
+			),
+			gooey.Spacer(),
+		),
+		gooey.Spacer(),
+	)
 }
 
 func main() {
-	if err := gooey.Run(&ReflowApp{}, gooey.WithFPS(20)); err != nil {
+	app := &ReflowApp{
+		width:     40,
+		direction: 1,
+	}
+	if err := gooey.Run(app, gooey.WithFPS(20)); err != nil {
 		log.Fatal(err)
 	}
 }

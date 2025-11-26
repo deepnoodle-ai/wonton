@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -9,9 +10,67 @@ import (
 
 // AnimationDemoApp shows different text animation styles, one per line.
 type AnimationDemoApp struct {
-	frame  uint64
-	width  int
-	height int
+	frame uint64
+}
+
+// Animation definitions
+type animDef struct {
+	name string
+	anim gooey.TextAnimation
+	text string
+}
+
+var animations = []animDef{
+	{"Rainbow", gooey.CreateRainbowText("", 3), "Smooth rainbow color cycling"},
+	{"Reverse Rainbow", gooey.CreateReverseRainbowText("", 3), "Rainbow cycling backwards"},
+	{"Fast Rainbow", gooey.CreateRainbowText("", 1), "Faster rainbow animation"},
+	{"Cyan Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 255), 12), "Pulsing brightness effect"},
+	{"Orange Pulse", gooey.CreatePulseText(gooey.NewRGB(255, 128, 0), 12), "Warm pulsing glow"},
+	{"Green Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 128), 10), "Matrix-style pulse"},
+}
+
+func (app *AnimationDemoApp) View() gooey.View {
+	// Build views for each animation line
+	views := []gooey.View{
+		gooey.Text("Text Animation Styles").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(1),
+	}
+
+	// Add each animation as a canvas
+	for _, a := range animations {
+		anim := a // Capture for closure
+		views = append(views,
+			gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+				app.renderAnimatedLine(frame, bounds, anim)
+			}),
+			gooey.Spacer().MinHeight(1),
+		)
+	}
+
+	// Add help text at bottom
+	views = append(views,
+		gooey.Spacer(),
+		gooey.Text("[q] quit").Fg(gooey.ColorBrightBlack),
+	)
+
+	return gooey.VStack(views...).Padding(1)
+}
+
+func (app *AnimationDemoApp) renderAnimatedLine(frame gooey.RenderFrame, bounds image.Rectangle, anim animDef) {
+	// Label
+	label := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+	labelText := fmt.Sprintf("%-16s", anim.name+":")
+	frame.PrintStyled(0, 0, labelText, label)
+
+	// Animated text
+	startX := 18
+	for j, ch := range anim.text {
+		if startX+j >= bounds.Dx() {
+			break
+		}
+		style := anim.anim.GetStyle(app.frame, j, len(anim.text))
+		frame.SetCell(startX+j, 0, ch, style)
+	}
 }
 
 func (app *AnimationDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
@@ -23,63 +82,9 @@ func (app *AnimationDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-
-	case gooey.ResizeEvent:
-		app.width = e.Width
-		app.height = e.Height
 	}
 
 	return nil
-}
-
-func (app *AnimationDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Styles
-	title := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	label := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	dim := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-
-	// Clear
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-
-	// Title
-	frame.PrintStyled(2, 1, "Text Animation Styles", title)
-
-	// Animation definitions
-	animations := []struct {
-		name string
-		anim gooey.TextAnimation
-		text string
-	}{
-		{"Rainbow", gooey.CreateRainbowText("", 3), "Smooth rainbow color cycling"},
-		{"Reverse Rainbow", gooey.CreateReverseRainbowText("", 3), "Rainbow cycling backwards"},
-		{"Fast Rainbow", gooey.CreateRainbowText("", 1), "Faster rainbow animation"},
-		{"Cyan Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 255), 12), "Pulsing brightness effect"},
-		{"Orange Pulse", gooey.CreatePulseText(gooey.NewRGB(255, 128, 0), 12), "Warm pulsing glow"},
-		{"Green Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 128), 10), "Matrix-style pulse"},
-	}
-
-	// Render each animation on its own line
-	startY := 4
-	for i, a := range animations {
-		y := startY + i*2
-		if y >= height-2 {
-			break
-		}
-
-		// Label
-		frame.PrintStyled(2, y, fmt.Sprintf("%-16s", a.name+":"), label)
-
-		// Animated text
-		for j, ch := range a.text {
-			style := a.anim.GetStyle(app.frame, j, len(a.text))
-			frame.SetCell(20+j, y, ch, style)
-		}
-	}
-
-	// Help
-	frame.PrintStyled(2, height-1, "[q] quit", dim)
 }
 
 func main() {

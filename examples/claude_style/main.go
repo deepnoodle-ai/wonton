@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"strings"
 	"time"
@@ -53,6 +54,33 @@ func (d *ClaudeStyleDemo) Init() error {
 	return nil
 }
 
+// View returns the declarative UI for this app
+func (d *ClaudeStyleDemo) View() gooey.View {
+	// Calculate input area height (number of lines + 2 for prompt and help)
+	inputLines := strings.Count(d.input, "\n") + 1
+	inputAreaHeight := inputLines + 2 // +2 for prompt line and help line
+
+	// Ensure input area doesn't take more than half the screen (assume reasonable terminal)
+	maxInputHeight := 20 // fallback if we don't have height info
+	if d.height > 0 {
+		maxInputHeight = d.height / 2
+	}
+	if inputAreaHeight > maxInputHeight {
+		inputAreaHeight = maxInputHeight
+	}
+
+	return gooey.VStack(
+		// Message content area (flexible - takes remaining space)
+		d.renderContentView(),
+
+		// Separator line
+		gooey.Height(1, gooey.Fill('─').Fg(gooey.ColorCyan)),
+
+		// Input area (fixed height based on input content)
+		gooey.Height(inputAreaHeight, d.renderInputView()),
+	)
+}
+
 // HandleEvent processes events from the runtime
 func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
@@ -69,35 +97,6 @@ func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
 	}
 
 	return nil
-}
-
-// Render draws the current application state
-func (d *ClaudeStyleDemo) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Calculate input area height (number of lines + 2 for prompt and help)
-	inputLines := strings.Count(d.input, "\n") + 1
-	inputAreaHeight := inputLines + 2 // +2 for prompt line and help line
-
-	// Ensure input area doesn't take more than half the screen
-	maxInputHeight := height / 2
-	if inputAreaHeight > maxInputHeight {
-		inputAreaHeight = maxInputHeight
-	}
-
-	// Calculate areas
-	contentHeight := height - inputAreaHeight - 1 // -1 for separator
-	inputY := contentHeight
-
-	// Draw content area
-	d.renderContent(frame, width, contentHeight)
-
-	// Draw separator line
-	separatorStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-	frame.FillStyled(0, inputY, width, 1, '─', separatorStyle)
-
-	// Draw input area
-	d.renderInput(frame, inputY+1, width, inputAreaHeight-1)
 }
 
 func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
@@ -194,78 +193,74 @@ func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
 	return nil
 }
 
-// contentLine represents a single line in the content area with its style
-type contentLine struct {
-	text  string
-	style gooey.Style
-}
-
-func (d *ClaudeStyleDemo) renderContent(frame gooey.RenderFrame, width, height int) {
-	// Clear the content area first to prevent ghost text when scrolling
-	clearStyle := gooey.NewStyle()
-	for y := 0; y < height; y++ {
-		frame.FillStyled(0, y, width, 1, ' ', clearStyle)
-	}
-
-	// Build all content lines from messages
-	var allLines []contentLine
-	userStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-	assistantStyle := gooey.NewStyle()
-
-	for i, msg := range d.messages {
-		// Add spacing between messages (except before first)
-		if i > 0 {
-			allLines = append(allLines, contentLine{"", clearStyle})
+// renderContentView returns a declarative view for the message content area
+func (d *ClaudeStyleDemo) renderContentView() gooey.View {
+	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		if bounds.Empty() {
+			return
 		}
 
-		// Get the style for this message
-		style := assistantStyle
-		if msg.Role == "user" {
-			style = userStyle
+		width := bounds.Dx()
+		height := bounds.Dy()
+
+		// Clear the content area first to prevent ghost text when scrolling
+		clearStyle := gooey.NewStyle()
+		for y := 0; y < height; y++ {
+			frame.FillStyled(0, y, width, 1, ' ', clearStyle)
 		}
 
-		// Format and add message lines
-		lines := d.formatMessage(msg, width-4)
-		for _, line := range lines {
-			allLines = append(allLines, contentLine{line, style})
+		// Build all content lines from messages
+		type contentLine struct {
+			text  string
+			style gooey.Style
 		}
-	}
+		var allLines []contentLine
+		userStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+		assistantStyle := gooey.NewStyle()
 
-	// Calculate max scroll (in lines)
-	totalLines := len(allLines)
-	d.maxScroll = max(0, totalLines-height)
+		for i, msg := range d.messages {
+			// Add spacing between messages (except before first)
+			if i > 0 {
+				allLines = append(allLines, contentLine{"", clearStyle})
+			}
 
-	// Calculate which lines to display
-	// scrollOffset=0 means show the bottom (newest), higher values scroll up (older)
-	// We want to show lines from (totalLines - height - scrollOffset) to (totalLines - scrollOffset)
-	endLine := totalLines - d.scrollOffset
-	startLine := endLine - height
+			// Get the style for this message
+			style := assistantStyle
+			if msg.Role == "user" {
+				style = userStyle
+			}
 
-	// Clamp to valid range
-	if startLine < 0 {
-		startLine = 0
-	}
-	if endLine > totalLines {
-		endLine = totalLines
-	}
+			// Format and add message lines
+			lines := d.formatMessage(msg, width-4)
+			for _, line := range lines {
+				allLines = append(allLines, contentLine{line, style})
+			}
+		}
 
-	// Render visible lines
-	screenY := 0
-	// If we're at the top of content, we may have fewer lines than screen height
-	// In that case, start rendering from the top
-	if startLine == 0 && endLine-startLine < height {
-		// Content doesn't fill screen, render from top
+		// Calculate max scroll (in lines)
+		totalLines := len(allLines)
+		d.maxScroll = max(0, totalLines-height)
+
+		// Calculate which lines to display
+		// scrollOffset=0 means show the bottom (newest), higher values scroll up (older)
+		endLine := totalLines - d.scrollOffset
+		startLine := endLine - height
+
+		// Clamp to valid range
+		if startLine < 0 {
+			startLine = 0
+		}
+		if endLine > totalLines {
+			endLine = totalLines
+		}
+
+		// Render visible lines
+		screenY := 0
 		for i := startLine; i < endLine && screenY < height; i++ {
 			frame.PrintStyled(2, screenY, allLines[i].text, allLines[i].style)
 			screenY++
 		}
-	} else {
-		// Content fills or exceeds screen, render normally
-		for i := startLine; i < endLine && screenY < height; i++ {
-			frame.PrintStyled(2, screenY, allLines[i].text, allLines[i].style)
-			screenY++
-		}
-	}
+	})
 }
 
 func (d *ClaudeStyleDemo) formatMessage(msg Message, maxWidth int) []string {
@@ -322,62 +317,75 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-func (d *ClaudeStyleDemo) renderInput(frame gooey.RenderFrame, y, width, availableHeight int) {
-	// Clear the entire input area first to remove any old text
-	clearStyle := gooey.NewStyle()
-	for clearY := y; clearY < y+availableHeight; clearY++ {
-		frame.FillStyled(0, clearY, width, 1, ' ', clearStyle)
-	}
-
-	// Split input into lines
-	inputLines := strings.Split(d.input, "\n")
-
-	// Calculate how many lines we can display
-	maxDisplayLines := availableHeight - 1 // -1 for help text
-	startLine := 0
-	if len(inputLines) > maxDisplayLines {
-		startLine = len(inputLines) - maxDisplayLines
-	}
-
-	// Draw prompt and input lines
-	promptStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
-	inputStyle := gooey.NewStyle()
-
-	currentY := y
-	for i := startLine; i < len(inputLines) && currentY < y+availableHeight-1; i++ {
-		// Draw prompt only on first line
-		if i == startLine {
-			frame.PrintStyled(0, currentY, "> ", promptStyle)
-		} else {
-			frame.PrintStyled(0, currentY, "  ", promptStyle)
+// renderInputView returns a declarative view for the input area
+func (d *ClaudeStyleDemo) renderInputView() gooey.View {
+	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		if bounds.Empty() {
+			return
 		}
 
-		// Draw line content
-		line := inputLines[i]
-		if len(line) > width-3 {
-			line = line[:width-3]
-		}
-		frame.PrintStyled(2, currentY, line, inputStyle)
+		width := bounds.Dx()
+		height := bounds.Dy()
 
-		// Draw cursor if this is the last line
-		if i == len(inputLines)-1 {
-			cursorX := 2 + len(line)
-			if cursorX < width {
-				cursorStyle := gooey.NewStyle().WithReverse()
-				frame.PrintStyled(cursorX, currentY, " ", cursorStyle)
+		// Clear the entire input area first to remove any old text
+		clearStyle := gooey.NewStyle()
+		for clearY := 0; clearY < height; clearY++ {
+			frame.FillStyled(0, clearY, width, 1, ' ', clearStyle)
+		}
+
+		// Split input into lines
+		inputLines := strings.Split(d.input, "\n")
+
+		// Calculate how many lines we can display
+		maxDisplayLines := height - 1 // -1 for help text
+		if maxDisplayLines < 1 {
+			maxDisplayLines = 1
+		}
+		startLine := 0
+		if len(inputLines) > maxDisplayLines {
+			startLine = len(inputLines) - maxDisplayLines
+		}
+
+		// Draw prompt and input lines
+		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+		inputStyle := gooey.NewStyle()
+
+		currentY := 0
+		for i := startLine; i < len(inputLines) && currentY < height-1; i++ {
+			// Draw prompt only on first line
+			if i == startLine {
+				frame.PrintStyled(0, currentY, "> ", promptStyle)
+			} else {
+				frame.PrintStyled(0, currentY, "  ", promptStyle)
 			}
+
+			// Draw line content
+			line := inputLines[i]
+			if len(line) > width-3 {
+				line = line[:width-3]
+			}
+			frame.PrintStyled(2, currentY, line, inputStyle)
+
+			// Draw cursor if this is the last line
+			if i == len(inputLines)-1 {
+				cursorX := 2 + len(line)
+				if cursorX < width {
+					cursorStyle := gooey.NewStyle().WithReverse()
+					frame.PrintStyled(cursorX, currentY, " ", cursorStyle)
+				}
+			}
+
+			currentY++
 		}
 
-		currentY++
-	}
-
-	// Draw help text
-	helpStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite).WithDim()
-	helpText := "Ctrl+C: exit | Enter: send | Shift+Enter: newline | ↑↓: history"
-	if len(helpText) < width {
-		helpX := width - len(helpText)
-		frame.PrintStyled(helpX, y+availableHeight-1, helpText, helpStyle)
-	}
+		// Draw help text
+		helpStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite).WithDim()
+		helpText := "Ctrl+C: exit | Enter: send | Shift+Enter: newline | ↑↓: history"
+		if len(helpText) < width {
+			helpX := width - len(helpText)
+			frame.PrintStyled(helpX, height-1, helpText, helpStyle)
+		}
+	})
 }
 
 func (d *ClaudeStyleDemo) sendMessage(text string) {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -13,7 +12,7 @@ import (
 // This example shows:
 // - Basic keyboard input handling ('+', '-', 'r' for reset, 'q' for quit)
 // - State management without any locks (single-threaded event loop guarantees)
-// - Simple rendering using frame primitives
+// - Declarative view rendering using the View API
 // - Terminal resize handling
 type CounterApp struct {
 	count int
@@ -40,79 +39,28 @@ func (app *CounterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		}
 
 	case gooey.ResizeEvent:
-		// Handle terminal resize (we don't need to do anything, Render will adapt)
+		// Handle terminal resize (we don't need to do anything, View will adapt)
 		return nil
 	}
 
 	return nil
 }
 
-// Render draws the current application state to the terminal.
+// View returns the declarative view of the application state.
 // This is called automatically after each event is processed.
-// Uses Gooey's double-buffered rendering for flicker-free updates.
-func (app *CounterApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Create styles
-	headerStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorCyan).
-		WithBold()
-
-	counterStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorGreen).
-		WithBold()
-
-	helpStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorWhite)
-
-	dimStyle := gooey.NewStyle().
-		WithForeground(gooey.ColorBrightBlack)
-
-	// Clear screen by filling with spaces
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-
-	// Title
-	title := "Counter Application"
-	titleX := (width - len(title)) / 2
-	if titleX < 0 {
-		titleX = 0
-	}
-	frame.PrintStyled(titleX, 2, title, headerStyle)
-
-	// Counter display (big and prominent)
-	counterText := fmt.Sprintf("Count: %d", app.count)
-	counterX := (width - len(counterText)) / 2
-	if counterX < 0 {
-		counterX = 0
-	}
-	frame.PrintStyled(counterX, 5, counterText, counterStyle)
-
-	// Help text
-	helpLines := []string{
-		"[+] to increment    [-] to decrement",
-		"[R] to reset        [Q] to quit",
-	}
-
-	startY := 9
-	for i, line := range helpLines {
-		x := (width - len(line)) / 2
-		if x < 0 {
-			x = 0
-		}
-		frame.PrintStyled(x, startY+i, line, helpStyle)
-	}
-
-	// Footer with status
-	if height > 0 {
-		statusText := "Running...  |  Press q to quit"
-		if len(statusText) <= width {
-			x := (width - len(statusText)) / 2
-			if x < 0 {
-				x = 0
-			}
-			frame.PrintStyled(x, height-1, statusText, dimStyle)
-		}
-	}
+// Uses Gooey's declarative view system for clean, composable UI.
+func (app *CounterApp) View() gooey.View {
+	return gooey.VStack(
+		gooey.Spacer().MinHeight(2),
+		gooey.Text("Counter Application").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(2),
+		gooey.Text("Count: %d", app.count).Bold().Fg(gooey.ColorGreen),
+		gooey.Spacer().MinHeight(3),
+		gooey.Text("[+] to increment    [-] to decrement"),
+		gooey.Text("[R] to reset        [Q] to quit"),
+		gooey.Spacer(),
+		gooey.Text("Running...  |  Press q to quit").Dim(),
+	).Align(gooey.AlignCenter).Padding(2)
 }
 
 func main() {

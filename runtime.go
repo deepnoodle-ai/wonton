@@ -10,21 +10,33 @@ import (
 	"golang.org/x/term"
 )
 
-// Application is the main interface for message-driven applications.
-// Implementations of this interface handle events and render the current state.
+// Application is the main interface for declarative UI applications.
+// Implementations provide a View that describes the current UI state.
 //
-// Thread Safety: HandleEvent and Render are NEVER called concurrently.
+// Thread Safety: View and HandleEvent (if implemented) are NEVER called concurrently.
 // The Runtime ensures these methods run sequentially in a single goroutine,
 // eliminating the need for locks in application code.
 type Application interface {
+	// View returns the declarative view tree representing the current UI.
+	// This is called automatically after each event is processed.
+	View() View
+}
+
+// EventHandler is an optional interface that applications can implement
+// to handle events and trigger async operations.
+type EventHandler interface {
 	// HandleEvent processes an event and optionally returns commands for async execution.
 	// This is called in a single-threaded event loop, so state can be mutated freely
 	// without locks. Return commands for async operations (HTTP requests, timers, etc.).
 	HandleEvent(event Event) []Cmd
+}
 
-	// Render draws the current application state using the provided frame.
-	// This is called automatically after each HandleEvent.
-	// Uses Gooey's existing BeginFrame/EndFrame system for flicker-free rendering.
+// LegacyApplication is the deprecated interface for imperative rendering.
+// New applications should implement Application with View() instead.
+//
+// Deprecated: Use Application with View() for declarative rendering.
+type LegacyApplication interface {
+	HandleEvent(event Event) []Cmd
 	Render(frame RenderFrame)
 }
 
@@ -45,7 +57,7 @@ type Destroyable interface {
 // async operations through the command system.
 //
 // Architecture:
-//   - Goroutine 1: Main event loop (processes events sequentially, calls HandleEvent/Render)
+//   - Goroutine 1: Main event loop (processes events sequentially, calls HandleEvent/View)
 //   - Goroutine 2: Input reader (blocks on stdin, sends KeyEvents)
 //   - Goroutine 3: Command executor (runs async commands, sends results as events)
 //
@@ -53,7 +65,7 @@ type Destroyable interface {
 // responsive UI through non-blocking async operations.
 type Runtime struct {
 	terminal *Terminal
-	app      Application
+	app      any // Application or LegacyApplication
 	events   chan Event
 	cmds     chan Cmd
 	done     chan struct{}
@@ -79,11 +91,11 @@ type Runtime struct {
 //
 // Parameters:
 //   - terminal: The Terminal instance to use for rendering and input
-//   - app: The Application to run
+//   - app: The Application (declarative) or LegacyApplication (imperative) to run
 //   - fps: Frames per second for TickEvents (30 recommended, 60 for smooth animations)
 //
 // The runtime does not start automatically. Call Run() to start the event loop.
-func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
+func NewRuntime(terminal *Terminal, app any, fps int) *Runtime {
 	if fps <= 0 {
 		fps = 30 // Default to 30 FPS
 	}
@@ -306,28 +318,32 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 	return false
 }
 
-// processEvent calls the application's HandleEvent and queues any returned commands.
+// processEvent calls the application's HandleEvent (if implemented) and queues any returned commands.
 func (r *Runtime) processEvent(event Event) {
-	// For declarative apps, route events to interactive elements
-	if _, ok := r.app.(ViewProvider); ok {
-		switch e := event.(type) {
-		case MouseEvent:
-			if e.Type == MouseClick {
-				// Check if the click hit a registered input (for focus)
-				inputRegistry.HandleClick(e.X, e.Y)
-				// Check if the click hit a registered button
-				interactiveRegistry.HandleClick(e.X, e.Y)
-			}
-		case KeyEvent:
-			// Route key events to focused input
-			if inputRegistry.HandleKey(e) {
-				// Input consumed the event, but still pass to app
-			}
+	// Route events to interactive elements (inputs, buttons)
+	switch e := event.(type) {
+	case MouseEvent:
+		if e.Type == MouseClick {
+			// Check if the click hit a registered input (for focus)
+			inputRegistry.HandleClick(e.X, e.Y)
+			// Check if the click hit a registered button
+			interactiveRegistry.HandleClick(e.X, e.Y)
+		}
+	case KeyEvent:
+		// Route key events to focused input
+		if inputRegistry.HandleKey(e) {
+			// Input consumed the event, but still pass to app
 		}
 	}
 
 	// Call user's event handler
-	cmds := r.app.HandleEvent(event)
+	// Try EventHandler first (new interface), then LegacyApplication (deprecated)
+	var cmds []Cmd
+	if handler, ok := r.app.(EventHandler); ok {
+		cmds = handler.HandleEvent(event)
+	} else if legacy, ok := r.app.(LegacyApplication); ok {
+		cmds = legacy.HandleEvent(event)
+	}
 
 	// Queue commands for async execution
 	if len(cmds) > 0 {
@@ -341,14 +357,13 @@ func (r *Runtime) processEvent(event Event) {
 	}
 }
 
-// ViewProvider is an optional interface that applications can implement
-// to use declarative rendering instead of imperative Render().
-type ViewProvider interface {
-	View() View
-}
+// ViewProvider is an alias for Application for backward compatibility.
+//
+// Deprecated: Use Application directly instead.
+type ViewProvider = Application
 
-// render calls the application's Render method using BeginFrame/EndFrame.
-// If the application implements ViewProvider, it uses declarative rendering instead.
+// render calls the application's View() or Render() method using BeginFrame/EndFrame.
+// Application uses declarative View() rendering, LegacyApplication uses imperative Render().
 func (r *Runtime) render() {
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
@@ -356,8 +371,11 @@ func (r *Runtime) render() {
 		return
 	}
 
-	// Check if app implements View() for declarative rendering
-	if viewProvider, ok := r.app.(ViewProvider); ok {
+	// Check for LegacyApplication first (imperative rendering)
+	if legacy, ok := r.app.(LegacyApplication); ok {
+		legacy.Render(frame)
+	} else if app, ok := r.app.(Application); ok {
+		// Application interface - use declarative View() rendering
 		// Clear interactive regions before render
 		interactiveRegistry.Clear()
 		inputRegistry.Clear()
@@ -367,16 +385,13 @@ func (r *Runtime) render() {
 		// system ensures only actual changes are sent to the terminal.
 		frame.Fill(' ', NewStyle())
 
-		view := viewProvider.View()
+		view := app.View()
 		width, height := frame.Size()
 		bounds := image.Rect(0, 0, width, height)
 		// Measure phase (populates cached child sizes)
 		view.size(width, height)
 		// Render phase
 		view.render(frame, bounds)
-	} else {
-		// Fall back to imperative rendering
-		r.app.Render(frame)
 	}
 
 	// Flush to screen (diffs and sends only dirty regions)

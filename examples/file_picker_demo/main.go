@@ -124,45 +124,26 @@ func (app *FilePickerDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the current application state.
-func (app *FilePickerDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
+// View returns the declarative view structure.
+func (app *FilePickerDemoApp) View() gooey.View {
+	return gooey.VStack(
+		// Title
+		gooey.Text("FILE PICKER DEMO").Bold().Fg(gooey.ColorCyan),
 
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
+		// Separator line
+		gooey.Spacer().MinHeight(1),
 
-	// Draw title
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	title := "FILE PICKER DEMO"
-	titleX := (width - len(title)) / 2
-	if titleX < 0 {
-		titleX = 0
-	}
-	frame.PrintStyled(titleX, 0, title, titleStyle)
+		// File picker
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			app.picker.Draw(frame)
+		}),
 
-	// Draw separator
-	separatorStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack)
-	for i := 0; i < width; i++ {
-		frame.SetCell(i, 1, ' ', separatorStyle)
-	}
+		// Separator line
+		gooey.Spacer().MinHeight(1),
 
-	// Draw file picker
-	bounds := app.picker.GetBounds()
-	pickerFrame := frame.SubFrame(image.Rect(0, 2, width, 2+bounds.Dy()))
-	app.picker.Draw(pickerFrame)
-
-	// Draw separator before status
-	for i := 0; i < width; i++ {
-		frame.SetCell(i, height-2, ' ', separatorStyle)
-	}
-
-	// Draw status
-	statusStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	statusText := app.statusMsg
-	if len(statusText) > width {
-		statusText = statusText[:width-3] + "..."
-	}
-	frame.PrintStyled(0, height-1, statusText, statusStyle)
+		// Status message
+		gooey.Text("%s", app.statusMsg).Fg(gooey.ColorGreen),
+	).Align(gooey.AlignCenter)
 }
 
 func main() {

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// AnimatedApp demonstrates smooth animation using the Runtime and TickEvents.
+// AnimatedApp demonstrates smooth animation using the declarative View system.
 // It renders animated blocks moving across the screen with rainbow color cycling.
 type AnimatedApp struct {
 	frame     uint64
@@ -50,73 +50,76 @@ func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the current animation frame.
-// This is called automatically after each HandleEvent by the Runtime.
-func (app *AnimatedApp) Render(frame gooey.RenderFrame) {
-	// Clear background and draw header
-	width, height := frame.Size()
+// View returns the declarative view structure.
+// This is called automatically by the Runtime to render the UI.
+func (app *AnimatedApp) View() gooey.View {
+	return gooey.VStack(
+		// Title
+		gooey.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(gooey.ColorCyan),
 
-	// Draw title
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled(0, 0, "Animated Blocks Demo (60 FPS)", titleStyle)
+		gooey.Spacer(),
 
-	// Draw animated blocks
-	// We'll draw multiple blocks at different vertical positions
-	numBlocks := 5
-	blockHeight := (height - 4) / numBlocks
+		// Animation canvas
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			width := bounds.Dx()
+			height := bounds.Dy()
 
-	for blockIdx := 0; blockIdx < numBlocks; blockIdx++ {
-		y := 2 + blockIdx*blockHeight
-		if y >= height-1 {
-			break
-		}
+			// Draw animated blocks
+			// We'll draw multiple blocks at different vertical positions
+			numBlocks := 5
+			blockHeight := height / numBlocks
 
-		// Get the position for this block
-		if blockIdx < len(app.positions) {
-			x := app.positions[blockIdx]
-
-			// Ensure position is within bounds
-			if x < 0 || x >= width {
-				continue
-			}
-
-			// Draw a solid block (█)
-			blockChar := '█'
-			blockStyle := rainbowStyle(app.frame, blockIdx)
-			frame.SetCell(x, y, blockChar, blockStyle)
-
-			// Draw a trail of semi-filled blocks for visual effect
-			trailLength := 4
-			for trail := 1; trail <= trailLength; trail++ {
-				trailX := x - trail
-				if trailX < 0 {
+			for blockIdx := 0; blockIdx < numBlocks; blockIdx++ {
+				y := blockIdx * blockHeight
+				if y >= height {
 					break
 				}
-				// Avoid uint64 underflow when frame < trail
-				trailFrame := app.frame
-				if trailFrame >= uint64(trail) {
-					trailFrame -= uint64(trail)
+
+				// Get the position for this block
+				if blockIdx < len(app.positions) {
+					x := app.positions[blockIdx]
+
+					// Ensure position is within bounds
+					if x < 0 || x >= width {
+						continue
+					}
+
+					// Draw a solid block (█)
+					blockChar := '█'
+					blockStyle := rainbowStyle(app.frame, blockIdx)
+					frame.SetCell(bounds.Min.X+x, bounds.Min.Y+y, blockChar, blockStyle)
+
+					// Draw a trail of semi-filled blocks for visual effect
+					trailLength := 4
+					for trail := 1; trail <= trailLength; trail++ {
+						trailX := x - trail
+						if trailX < 0 {
+							break
+						}
+						// Avoid uint64 underflow when frame < trail
+						trailFrame := app.frame
+						if trailFrame >= uint64(trail) {
+							trailFrame -= uint64(trail)
+						}
+						trailStyle := rainbowStyle(trailFrame, blockIdx)
+						trailStyle = trailStyle.WithFgRGB(gooey.NewRGB(
+							trailStyle.FgRGB.R/uint8(trail+1),
+							trailStyle.FgRGB.G/uint8(trail+1),
+							trailStyle.FgRGB.B/uint8(trail+1),
+						))
+						frame.SetCell(bounds.Min.X+trailX, bounds.Min.Y+y, '▒', trailStyle)
+					}
 				}
-				trailStyle := rainbowStyle(trailFrame, blockIdx)
-				trailStyle = trailStyle.WithFgRGB(gooey.NewRGB(
-					trailStyle.FgRGB.R/uint8(trail+1),
-					trailStyle.FgRGB.G/uint8(trail+1),
-					trailStyle.FgRGB.B/uint8(trail+1),
-				))
-				frame.SetCell(trailX, y, '▒', trailStyle)
 			}
-		}
-	}
+		}),
 
-	// Draw info text at the bottom
-	infoY := height - 1
-	infoStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	frame.PrintStyled(0, infoY, "Press 'q' to quit", infoStyle)
-
-	// Display frame count
-	frameCounterStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	frameCountStr := fmt.Sprintf("Frame: %d", app.frame)
-	frame.PrintStyled(width-len(frameCountStr), infoY, frameCountStr, frameCounterStyle)
+		// Footer with controls and frame counter
+		gooey.HStack(
+			gooey.Text("Press 'q' to quit").Fg(gooey.ColorYellow),
+			gooey.Spacer(),
+			gooey.Text("Frame: %d", app.frame).Fg(gooey.ColorGreen),
+		),
+	)
 }
 
 // rainbowStyle generates a rainbow color based on frame and block index.

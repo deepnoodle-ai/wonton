@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"math/rand"
 	"time"
@@ -123,79 +124,82 @@ func (app *FlickerFreeApp) updateQuadrant(quadrant int) {
 	app.quadrantData[quadrant][line] = str
 }
 
-// Render draws the current application state.
-func (app *FlickerFreeApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
+// View returns the declarative view structure.
+func (app *FlickerFreeApp) View() gooey.View {
+	return gooey.VStack(
+		// Header
+		gooey.Text("⚡ Flicker-Free Update Demo ⚡").Bold().Fg(gooey.ColorCyan),
+		gooey.Text("Updates occur rapidly. Press Ctrl+C or Q to exit.").Fg(gooey.ColorWhite),
+		gooey.Text("--------------------------------------------------").Fg(gooey.ColorWhite),
 
-	// Update dimensions if changed
-	if app.width != width || app.height != height {
-		app.width = width
-		app.height = height
-		app.updateLayout()
-	}
+		gooey.Spacer(),
 
-	// Define styles
-	rainbowStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	normalStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+		// Quadrants canvas
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			width := bounds.Dx()
+			height := bounds.Dy()
 
-	// Header
-	title := "⚡ Flicker-Free Update Demo ⚡"
-	frame.PrintStyled(0, 0, title, rainbowStyle)
-	frame.PrintStyled(0, 1, "Updates occur rapidly. Press Ctrl+C or Q to exit.", normalStyle)
-	frame.PrintStyled(0, 2, "--------------------------------------------------", normalStyle)
-
-	// Calculate quadrant positions
-	midX := width / 2
-	midY := (height-3)/2 + 3
-
-	// Draw quadrants with colored borders
-	quadrantColors := []gooey.Color{
-		gooey.ColorRed,
-		gooey.ColorGreen,
-		gooey.ColorBlue,
-		gooey.ColorYellow,
-	}
-
-	quadrantPositions := [][2]int{
-		{2, 4},               // Q1: top-left
-		{midX + 2, 4},        // Q2: top-right
-		{2, midY + 2},        // Q3: bottom-left
-		{midX + 2, midY + 2}, // Q4: bottom-right
-	}
-
-	// Draw each quadrant
-	for q := 0; q < 4; q++ {
-		x := quadrantPositions[q][0]
-		y := quadrantPositions[q][1]
-
-		// Draw quadrant label
-		label := fmt.Sprintf("Q%d", q+1)
-		labelStyle := gooey.NewStyle().WithForeground(quadrantColors[q]).WithBold()
-		frame.PrintStyled(x, y-1, label, labelStyle)
-
-		// Draw quadrant data
-		for i := 0; i < app.quadrantHeight && i < len(app.quadrantData[q]); i++ {
-			line := app.quadrantData[q][i]
-			if line == "" {
-				continue
+			// Update dimensions if changed
+			if app.width != width || app.height != height {
+				app.width = width
+				app.height = height
+				app.updateLayout()
 			}
 
-			// Create animated style for this line
-			color := app.colors[rand.Intn(len(app.colors))]
-			lineStyle := gooey.NewStyle().WithFgRGB(color)
+			// Calculate quadrant positions
+			midX := width / 2
+			midY := height / 2
 
-			// Draw the line (truncate if too long)
-			maxWidth := midX - 6
-			if maxWidth < 1 {
-				maxWidth = 10
-			}
-			if len(line) > maxWidth {
-				line = line[:maxWidth]
+			// Draw quadrants with colored borders
+			quadrantColors := []gooey.Color{
+				gooey.ColorRed,
+				gooey.ColorGreen,
+				gooey.ColorBlue,
+				gooey.ColorYellow,
 			}
 
-			frame.PrintStyled(x, y+i, line, lineStyle)
-		}
-	}
+			quadrantPositions := [][2]int{
+				{2, 1},           // Q1: top-left
+				{midX + 2, 1},    // Q2: top-right
+				{2, midY + 2},    // Q3: bottom-left
+				{midX + 2, midY + 2}, // Q4: bottom-right
+			}
+
+			// Draw each quadrant
+			for q := 0; q < 4; q++ {
+				x := quadrantPositions[q][0]
+				y := quadrantPositions[q][1]
+
+				// Draw quadrant label
+				label := fmt.Sprintf("Q%d", q+1)
+				labelStyle := gooey.NewStyle().WithForeground(quadrantColors[q]).WithBold()
+				frame.PrintStyled(bounds.Min.X+x, bounds.Min.Y+y-1, label, labelStyle)
+
+				// Draw quadrant data
+				for i := 0; i < app.quadrantHeight && i < len(app.quadrantData[q]); i++ {
+					line := app.quadrantData[q][i]
+					if line == "" {
+						continue
+					}
+
+					// Create animated style for this line
+					color := app.colors[rand.Intn(len(app.colors))]
+					lineStyle := gooey.NewStyle().WithFgRGB(color)
+
+					// Draw the line (truncate if too long)
+					maxWidth := midX - 6
+					if maxWidth < 1 {
+						maxWidth = 10
+					}
+					if len(line) > maxWidth {
+						line = line[:maxWidth]
+					}
+
+					frame.PrintStyled(bounds.Min.X+x, bounds.Min.Y+y+i, line, lineStyle)
+				}
+			}
+		}),
+	)
 }
 
 func main() {

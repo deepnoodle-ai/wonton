@@ -93,8 +93,6 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *App) Render(frame gooey.RenderFrame) {}
-
 func main() {
 	app := &App{
 		positions: make([]int, 5),

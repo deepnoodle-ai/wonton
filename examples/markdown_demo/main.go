@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"log"
 
@@ -132,33 +131,21 @@ func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the current application state.
-func (app *MarkdownDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Draw the markdown viewer
-	app.viewer.Draw(frame)
-
-	// Draw status line at bottom
+// View returns the declarative UI for this app.
+func (app *MarkdownDemoApp) View() gooey.View {
+	// Status bar style
 	statusStyle := gooey.NewStyle().
 		WithBackground(gooey.ColorBlue).
 		WithForeground(gooey.ColorWhite)
 
-	statusMsg := "Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump"
-	statusLine := fmt.Sprintf(" %s ", statusMsg)
-
-	// Pad to full width
-	for len(statusLine) < width {
-		statusLine += " "
-	}
-	if len(statusLine) > width {
-		statusLine = statusLine[:width]
-	}
-
-	frame.PrintStyled(0, height-1, statusLine, statusStyle)
+	return gooey.VStack(
+		// Markdown viewer canvas (fills available space)
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			app.viewer.Draw(frame)
+		}),
+		// Status line at bottom
+		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").Style(statusStyle),
+	)
 }
 
 func main() {

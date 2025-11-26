@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// TableDemoApp demonstrates the Table widget using the Runtime architecture.
+// TableDemoApp demonstrates the Table widget using the declarative View system.
 // It shows how to display tabular data with scrolling and selection.
 type TableDemoApp struct {
 	table  *gooey.Table
@@ -15,10 +16,48 @@ type TableDemoApp struct {
 	height int
 }
 
-// Init initializes the application by creating the table widget.
-func (app *TableDemoApp) Init() error {
-	// Table will be created on first ResizeEvent with actual terminal dimensions
-	return nil
+// View returns the declarative UI for this app.
+func (app *TableDemoApp) View() gooey.View {
+	var tableView gooey.View
+	var infoView gooey.View
+
+	// Create table view if table is initialized
+	if app.table != nil {
+		tableView = gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			app.table.Draw(frame)
+		})
+
+		infoView = gooey.VStack(
+			gooey.Text("Selected Row: %d", app.table.SelectedRow).Fg(gooey.ColorGreen),
+			gooey.Text("Press Arrows to move, q to quit.").Dim(),
+		)
+	} else {
+		tableView = gooey.Spacer()
+		infoView = gooey.Text("Initializing...").Dim()
+	}
+
+	return gooey.VStack(
+		gooey.Text(" Table Demo ").Bold().Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
+		gooey.Text(repeatRune('─', app.width)).Fg(gooey.ColorBrightBlack),
+		gooey.Spacer().MinHeight(1),
+		tableView,
+		gooey.Spacer().MinHeight(1),
+		infoView,
+		gooey.Spacer(),
+		gooey.Text(" Press 'q' to quit ").Bg(gooey.ColorBrightBlack).Fg(gooey.ColorWhite),
+	)
+}
+
+// repeatRune creates a string by repeating a rune n times.
+func repeatRune(r rune, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	runes := make([]rune, n)
+	for i := range runes {
+		runes[i] = r
+	}
+	return string(runes)
 }
 
 // HandleEvent processes events from the runtime.
@@ -28,7 +67,9 @@ func (app *TableDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		app.table.HandleKey(e)
+		if app.table != nil {
+			app.table.HandleKey(e)
+		}
 
 	case gooey.ResizeEvent:
 		// Update dimensions
@@ -81,66 +122,6 @@ func (app *TableDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	}
 
 	return nil
-}
-
-// Render draws the current application state.
-func (app *TableDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Draw header
-	headerStyle := gooey.NewStyle().WithBold().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite)
-	headerText := " Table Demo "
-	for i := 0; i < width; i++ {
-		if i >= (width-len(headerText))/2 && i < (width-len(headerText))/2+len(headerText) {
-			frame.SetCell(i, 0, rune(headerText[i-(width-len(headerText))/2]), headerStyle)
-		} else {
-			frame.SetCell(i, 0, ' ', headerStyle)
-		}
-	}
-
-	// Draw separator
-	separatorStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	for i := 0; i < width; i++ {
-		frame.SetCell(i, 1, '─', separatorStyle)
-	}
-
-	// Draw table (if initialized)
-	if app.table != nil {
-		app.table.Draw(frame)
-	}
-
-	// Draw info below table (if table exists)
-	if app.table != nil {
-		infoY := app.table.Y + app.table.Height + 1
-		if infoY < height-2 {
-			msg := fmt.Sprintf("Selected Row: %d", app.table.SelectedRow)
-			msgStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-			frame.PrintStyled(2, infoY, msg, msgStyle)
-
-			helpStyle := gooey.NewStyle().WithDim()
-			frame.PrintStyled(2, infoY+1, "Press Arrows to move, q to quit.", helpStyle)
-		}
-	}
-
-	// Draw footer
-	if height > 0 {
-		footerStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack).WithForeground(gooey.ColorWhite)
-		footerText := " Press 'q' to quit "
-		footerX := (width - len(footerText)) / 2
-		if footerX < 0 {
-			footerX = 0
-		}
-		for i := 0; i < width; i++ {
-			if i >= footerX && i < footerX+len(footerText) {
-				frame.SetCell(i, height-1, rune(footerText[i-footerX]), footerStyle)
-			} else {
-				frame.SetCell(i, height-1, ' ', footerStyle)
-			}
-		}
-	}
 }
 
 func main() {

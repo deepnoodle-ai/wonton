@@ -33,7 +33,6 @@ func (app *PastePlaceholderApp) reset() {
 		WithPlaceholder("type or paste here...").
 		WithPastePlaceholderMode(true).
 		WithMultilineMode(true)
-	app.input.SetBounds(image.Rect(0, 0, 50, 1))
 	app.input.SetFocused(true)
 	app.message = "Paste multi-line text to see the placeholder!"
 	app.submitted = false
@@ -91,98 +90,101 @@ func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *PastePlaceholderApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-
-	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-	hintStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-
+func (app *PastePlaceholderApp) View() gooey.View {
 	if app.submitted {
-		app.renderResult(frame, width, height, titleStyle, hintStyle)
-		return
+		return app.resultView()
 	}
-
-	app.renderInput(frame, width, titleStyle, hintStyle)
+	return app.inputView()
 }
 
-func (app *PastePlaceholderApp) renderInput(frame gooey.RenderFrame, width int, titleStyle, hintStyle gooey.Style) {
-	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+func (app *PastePlaceholderApp) inputView() gooey.View {
+	// Stats
+	displayLen := len(app.input.DisplayText())
+	actualLen := len(app.input.Value())
+	statsText := fmt.Sprintf("Display: %d chars | Actual: %d chars", displayLen, actualLen)
 
-	y := 0
+	var children []gooey.View
 
 	// Title
-	frame.PrintStyled(0, y, "Paste Placeholder Demo", titleStyle)
-	y++
-	frame.PrintStyled(0, y, "Multi-line pastes show as '[pasted N lines]' - deleted atomically", hintStyle)
-	y++
-	frame.PrintStyled(0, y, "Enter: submit | Shift+Enter: newline | ESC: quit | Ctrl+U: clear", hintStyle)
-	y += 2
+	children = append(children,
+		gooey.Text("Paste Placeholder Demo").Bold().Fg(gooey.ColorCyan),
+		gooey.Text("Multi-line pastes show as '[pasted N lines]' - deleted atomically").Fg(gooey.ColorBrightBlack),
+		gooey.Text("Enter: submit | Shift+Enter: newline | ESC: quit | Ctrl+U: clear").Fg(gooey.ColorBrightBlack),
+		gooey.Spacer().MinHeight(1),
+	)
 
-	// Input label
-	frame.PrintStyled(0, y, "Input:", gooey.NewStyle().WithBold())
-	y++
-
-	// Draw input widget
-	inputWidth := width - 4
-	if inputWidth > 50 {
-		inputWidth = 50
-	}
-	inputHeight := 5 // Allow multiple lines
-	app.input.SetBounds(image.Rect(2, y, 2+inputWidth, y+inputHeight))
-	app.input.Draw(frame)
-	y += inputHeight + 1
+	// Input label and widget
+	children = append(children,
+		gooey.Text("Input:").Bold(),
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			app.input.SetBounds(bounds)
+			app.input.Draw(frame)
+		}).Height(5).Width(50),
+		gooey.Spacer().MinHeight(1),
+	)
 
 	// Status message
 	if app.message != "" {
-		frame.PrintStyled(0, y, app.message, successStyle)
-		y++
+		children = append(children, gooey.Text(app.message).Fg(gooey.ColorGreen))
+		children = append(children, gooey.Spacer().MinHeight(1))
 	}
 
 	// Stats
-	y++
-	statsStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	displayLen := len(app.input.DisplayText())
-	actualLen := len(app.input.Value())
-	frame.PrintStyled(0, y, fmt.Sprintf("Display: %d chars | Actual: %d chars", displayLen, actualLen), statsStyle)
+	children = append(children, gooey.Text(statsText).Fg(gooey.ColorYellow))
+
+	return gooey.VStack(children...)
 }
 
-func (app *PastePlaceholderApp) renderResult(frame gooey.RenderFrame, width, height int, titleStyle, hintStyle gooey.Style) {
-	y := 0
-
-	frame.PrintStyled(0, y, "Submitted Content", titleStyle)
-	y += 2
-
-	// Show result with line numbers
+func (app *PastePlaceholderApp) resultView() gooey.View {
 	lines := strings.Split(app.result, "\n")
-	lineNumStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	maxLines := 15
 
-	maxLines := height - 8
-	if maxLines > 15 {
-		maxLines = 15
-	}
+	var children []gooey.View
 
-	for i, line := range lines {
-		if i >= maxLines {
-			frame.PrintStyled(0, y, fmt.Sprintf("... (%d more lines)", len(lines)-maxLines), hintStyle)
-			y++
-			break
-		}
-		frame.PrintStyled(0, y, fmt.Sprintf("%3d │ ", i+1), lineNumStyle)
-		displayLine := line
-		if len(displayLine) > width-8 {
-			displayLine = displayLine[:width-11] + "..."
-		}
-		frame.PrintStyled(6, y, displayLine, contentStyle)
-		y++
-	}
+	// Title
+	children = append(children,
+		gooey.Text("Submitted Content").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(1),
+	)
 
-	y++
-	statsStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	frame.PrintStyled(0, y, fmt.Sprintf("Total: %d chars, %d lines", len(app.result), len(lines)), statsStyle)
-	y += 2
-	frame.PrintStyled(0, y, "Press any key to try again...", hintStyle)
+	// Show result with line numbers using Canvas for custom formatting
+	children = append(children,
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			lineNumStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+			contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+			hintStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+			width := bounds.Dx()
+
+			y := 0
+			for i, line := range lines {
+				if i >= maxLines {
+					frame.PrintStyled(0, y, fmt.Sprintf("... (%d more lines)", len(lines)-maxLines), hintStyle)
+					break
+				}
+				if y >= bounds.Dy() {
+					break
+				}
+				frame.PrintStyled(0, y, fmt.Sprintf("%3d │ ", i+1), lineNumStyle)
+				displayLine := line
+				if len(displayLine) > width-8 {
+					displayLine = displayLine[:width-11] + "..."
+				}
+				frame.PrintStyled(6, y, displayLine, contentStyle)
+				y++
+			}
+		}).Height(maxLines + 1).Width(80),
+		gooey.Spacer().MinHeight(1),
+	)
+
+	// Stats
+	statsText := fmt.Sprintf("Total: %d chars, %d lines", len(app.result), len(lines))
+	children = append(children,
+		gooey.Text(statsText).Fg(gooey.ColorYellow),
+		gooey.Spacer().MinHeight(1),
+		gooey.Text("Press any key to try again...").Fg(gooey.ColorBrightBlack),
+	)
+
+	return gooey.VStack(children...)
 }
 
 func main() {

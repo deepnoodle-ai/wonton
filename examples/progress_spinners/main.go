@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"time"
 
@@ -133,69 +134,83 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the progress indicators.
-func (app *ProgressDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
+// View returns the declarative view hierarchy.
+func (app *ProgressDemoApp) View() gooey.View {
+	elapsed := time.Since(app.startTime).Truncate(time.Millisecond)
 
-	// Clear screen
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
+	return gooey.VStack(
+		// Header
+		gooey.Text("Multi-Progress Demo").Bold().Fg(gooey.ColorCyan),
+		gooey.Text("======================").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(1),
 
-	// Draw header
-	headerStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled(2, 1, "Multi-Progress Demo", headerStyle)
-	frame.PrintStyled(2, 2, "======================", headerStyle)
+		// Progress items
+		gooey.ForEach(app.items, func(item *ProgressItem, i int) gooey.View {
+			spinner := app.spinnerSet[item.SpinnerIdx]
 
-	// Draw progress items starting at line 4
-	startY := 4
-	for i, item := range app.items {
-		y := startY + i*2
-		if y >= height-2 {
-			break
-		}
+			// Build the item view
+			itemContent := gooey.HStack(
+				gooey.Text("%s", spinner).Style(item.Style),
+				gooey.Text("%s", item.Message).Style(item.Style),
+			).Gap(1)
 
-		// Draw spinner
-		spinner := app.spinnerSet[item.SpinnerIdx]
-		frame.PrintStyled(2, y, spinner, item.Style)
+			// If not spinner-only, add progress bar below
+			if !item.SpinnerOnly {
+				progressBar := gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+					app.drawProgressBar(frame, bounds, item)
+				}).Height(1)
 
-		// Draw message
-		frame.PrintStyled(4, y, item.Message, item.Style)
-
-		// Draw progress bar if not spinner-only
-		if !item.SpinnerOnly {
-			barWidth := 30
-			barX := 4
-			barY := y + 1
-
-			// Draw progress bar background
-			bgStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-			for x := 0; x < barWidth; x++ {
-				frame.SetCell(barX+x, barY, '░', bgStyle)
+				return gooey.VStack(
+					itemContent,
+					progressBar,
+				)
 			}
 
-			// Draw progress bar fill
-			fillWidth := (item.Progress * barWidth) / item.Total
-			if fillWidth > barWidth {
-				fillWidth = barWidth
-			}
-			for x := 0; x < fillWidth; x++ {
-				frame.SetCell(barX+x, barY, '█', item.Style)
-			}
+			return itemContent
+		}).Gap(1),
 
-			// Draw percentage
-			percentText := fmt.Sprintf(" %d%%", (item.Progress*100)/item.Total)
-			frame.PrintStyled(barX+barWidth+1, barY, percentText, item.Style)
+		gooey.Spacer(),
+
+		// Bottom controls
+		gooey.HStack(
+			gooey.Text("Press 'q' to quit").Fg(gooey.ColorWhite),
+			gooey.Spacer(),
+			gooey.Text("Elapsed: %s", elapsed).Fg(gooey.ColorBrightBlack),
+		),
+	).Padding(2)
+}
+
+// drawProgressBar draws a progress bar in imperative style using Canvas.
+func (app *ProgressDemoApp) drawProgressBar(frame gooey.RenderFrame, bounds image.Rectangle, item *ProgressItem) {
+	barWidth := 30
+	width := bounds.Dx()
+
+	// Ensure we have space for the bar
+	if width < barWidth+2 {
+		barWidth = width - 10
+		if barWidth < 5 {
+			return
 		}
 	}
 
-	// Draw help text at bottom
-	helpStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-	frame.PrintStyled(2, height-2, "Press 'q' to quit", helpStyle)
+	// Draw progress bar background
+	bgStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+	for x := 0; x < barWidth; x++ {
+		frame.SetCell(x, 0, '░', bgStyle)
+	}
 
-	// Draw elapsed time
-	elapsed := time.Since(app.startTime).Truncate(time.Millisecond)
-	timeStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	timeText := fmt.Sprintf("Elapsed: %s", elapsed)
-	frame.PrintStyled(width-len(timeText)-2, height-1, timeText, timeStyle)
+	// Draw progress bar fill
+	fillWidth := (item.Progress * barWidth) / item.Total
+	if fillWidth > barWidth {
+		fillWidth = barWidth
+	}
+	for x := 0; x < fillWidth; x++ {
+		frame.SetCell(x, 0, '█', item.Style)
+	}
+
+	// Draw percentage
+	percentText := fmt.Sprintf(" %d%%", (item.Progress*100)/item.Total)
+	frame.PrintStyled(barWidth+1, 0, percentText, item.Style)
 }
 
 func main() {

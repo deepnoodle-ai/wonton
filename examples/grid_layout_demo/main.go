@@ -46,16 +46,19 @@ func (sb *SimpleBox) HandleKey(event gooey.KeyEvent) bool {
 	return false
 }
 
-// GridApp demonstrates the Grid layout system using the Runtime.
+// GridApp demonstrates the Grid layout system using the declarative View system.
 type GridApp struct {
-	grid        *gooey.Grid
-	resizeCount int
-	width       int
-	height      int
+	grid   *gooey.Grid
+	width  int
+	height int
 }
 
-// Init initializes the grid layout.
-func (app *GridApp) Init() error {
+// initGrid initializes the grid layout on first call.
+func (app *GridApp) initGrid() {
+	if app.grid != nil {
+		return
+	}
+
 	// Create the Grid layout with 3 columns of equal weight
 	app.grid = gooey.NewGrid(nil). // Pass nil since we'll use the frame directly
 					AddCol(0, 1). // Flexible column, takes 1/3 of width
@@ -99,8 +102,26 @@ func (app *GridApp) Init() error {
 		Text:  "Footer: Version 1.0",
 		Style: gooey.NewStyle().WithBackground(gooey.ColorBrightYellow).WithForeground(gooey.ColorBlack),
 	}, 2, 2)
+}
 
-	return nil
+// View returns the declarative view tree.
+func (app *GridApp) View() gooey.View {
+	// Initialize grid on first render
+	app.initGrid()
+
+	return gooey.VStack(
+		// Main grid area - uses Canvas to wrap the imperative Grid layout
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			// Draw the grid to fill the entire canvas area
+			app.grid.Draw(frame)
+		}),
+
+		// Size indicator in bottom-right corner
+		gooey.HStack(
+			gooey.Spacer(),
+			gooey.Text("%dx%d", app.width, app.height).Fg(gooey.ColorBrightBlack),
+		),
+	)
 }
 
 // HandleEvent processes events from the runtime.
@@ -116,30 +137,9 @@ func (app *GridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		// Update stored dimensions
 		app.width = e.Width
 		app.height = e.Height
-		app.resizeCount++
 	}
 
 	return nil
-}
-
-// Render draws the grid layout.
-func (app *GridApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Update dimensions if not set
-	if app.width == 0 || app.height == 0 {
-		app.width = width
-		app.height = height
-	}
-
-	// Draw the grid to fill the entire terminal
-	app.grid.Draw(frame)
-
-	// Draw resize indicator in bottom-right corner
-	sizeText := fmt.Sprintf("%dx%d", width, height)
-	textWidth := runewidth.StringWidth(sizeText)
-	frame.PrintStyled(width-textWidth-1, height-1, sizeText,
-		gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
 }
 
 func main() {

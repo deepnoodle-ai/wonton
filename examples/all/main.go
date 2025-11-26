@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"strings"
 	"time"
@@ -9,31 +10,21 @@ import (
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// ComprehensiveApp demonstrates all major Gooey features using the Runtime architecture.
+// ComprehensiveApp demonstrates all major Gooey features using the declarative View architecture.
 // This includes animations, mouse handling, tab completion, and interactive components.
-//
-// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of gooey.Run()
-// because it needs to call terminal.MoveCursor() in Render() to position the cursor for text input.
-// Once RenderFrame supports cursor positioning, this can be simplified to use gooey.Run().
 type ComprehensiveApp struct {
-	terminal *gooey.Terminal
-	runtime  *gooey.Runtime
-
 	// Frame counter for animations
 	frame uint64
-
-	// Mouse handling
-	mouseHandler *gooey.MouseHandler
 
 	// Multiple input fields
 	inputs        []string
 	selectedInput int
 	cursorPos     []int
 
-	// Interactive components
-	buttons      []*gooey.Button
-	tabCompleter *gooey.TabCompleter
-	clickedWords map[string]gooey.RGB
+	// Tab completion
+	tabCompleter      *gooey.TabCompleter
+	clickedWords      map[string]gooey.RGB
+	clickableWordRefs []string // Track word order
 
 	// Demo data for metrics display
 	cpuUsage       int
@@ -73,30 +64,22 @@ func (app *ComprehensiveApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 	case gooey.KeyEvent:
 		// Handle keyboard input
-		app.handleKeyEvent(e)
-
-	case gooey.MouseEvent:
-		// Handle mouse clicks
-		app.mouseHandler.HandleEvent(&e)
+		return app.handleKeyEvent(e)
 
 	case gooey.ResizeEvent:
-		// Update terminal size and recreate components
+		// Update terminal size
 		app.width = e.Width
 		app.height = e.Height
-		app.createButtons()
-		app.updateClickableWords()
 	}
 
 	return nil
 }
 
 // handleKeyEvent processes keyboard events.
-func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) {
+func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) []gooey.Cmd {
 	// Check for Ctrl+C to quit
 	if e.Key == gooey.KeyCtrlC {
-		// Stop the runtime
-		app.runtime.Stop()
-		return
+		return []gooey.Cmd{gooey.Quit()}
 	}
 
 	// Arrow key handling
@@ -131,7 +114,7 @@ func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) {
 				}
 			}
 		}
-		return
+		return nil
 	}
 
 	// Handle special keys
@@ -153,7 +136,6 @@ func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) {
 	case gooey.KeyEscape:
 		if app.tabCompleter.Visible {
 			app.tabCompleter.Hide()
-			app.updateClickableWords() // Re-add mouse regions
 		} else {
 			app.inputs[app.selectedInput] = ""
 			app.cursorPos[app.selectedInput] = 0
@@ -191,87 +173,82 @@ func (app *ComprehensiveApp) handleKeyEvent(e gooey.KeyEvent) {
 			}
 		}
 	}
+	return nil
 }
 
-// Render draws the current application state.
-func (app *ComprehensiveApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Define layout regions
-	y := 0
-
-	// Title (2 lines)
-	app.renderTitle(frame, y, width)
-	y += 2
-
-	// Status bar (2 lines)
-	app.renderStatusBar(frame, y, width)
-	y += 2
-
-	// Clickable words (2 lines)
-	app.renderClickableWords(frame, y, width)
-	y += 2
-
-	// Metrics (4 lines)
-	app.renderMetrics(frame, y, width)
-	y += 4
-
-	// Buttons (2 lines)
-	app.renderButtons(frame, y, width)
-	y += 2
-
-	// Input fields (4 lines)
-	app.renderInputFields(frame, y, width)
-	y += 4
-
-	// Tab completions (if visible)
-	if app.tabCompleter.Visible {
-		app.tabCompleter.Draw(frame)
-	}
-	y += 4
-
-	// Notifications (3 lines)
-	app.renderNotifications(frame, y, width)
-	y += 3
-
-	// Footer
-	if height-y > 2 {
-		app.renderFooter(frame, height-3, width)
-	}
-
-	// Set cursor position for input
-	cursorX := 10 + app.cursorPos[app.selectedInput]
-	cursorY := 12 + app.selectedInput
-	app.terminal.MoveCursor(cursorX, cursorY)
-}
-
-// renderTitle draws the animated title.
-func (app *ComprehensiveApp) renderTitle(frame gooey.RenderFrame, y, width int) {
+// View returns the declarative view structure.
+func (app *ComprehensiveApp) View() gooey.View {
 	spinner := app.getSpinner()
-	titleText := spinner + " Gooey - Complete Demo with Mouse! " + spinner
 
-	// Apply rainbow animation
-	rainbow := gooey.CreateRainbowText(titleText, 15)
-	for i, r := range titleText {
-		if i < width {
-			style := rainbow.GetStyle(app.frame, i, len(titleText))
-			frame.SetCell(i, y, r, style)
-		}
-	}
+	// Build clickable words
+	clickableWordsView := app.buildClickableWords()
 
-	separator := strings.Repeat("═", width)
-	frame.PrintStyled(0, y+1, separator, gooey.NewStyle())
+	// Build buttons
+	buttonsView := app.buildButtons()
+
+	// Build input fields
+	inputFieldsView := app.buildInputFields()
+
+	// Build notifications
+	notificationsView := app.buildNotifications()
+
+	return gooey.VStack(
+		// Title with animated rainbow text
+		app.buildAnimatedTitle(spinner),
+		gooey.Text(strings.Repeat("═", 80)),
+		gooey.Spacer().MinHeight(1),
+
+		// Status bar
+		app.buildStatusBar(spinner),
+		gooey.Spacer().MinHeight(1),
+
+		// Clickable words demo
+		clickableWordsView,
+		gooey.Text("   Try clicking the words above!"),
+		gooey.Spacer().MinHeight(1),
+
+		// Metrics
+		app.buildMetrics(spinner),
+		gooey.Spacer().MinHeight(1),
+
+		// Buttons
+		gooey.Text("🔘 Interactive Buttons (click them!):"),
+		buttonsView,
+		gooey.Spacer().MinHeight(1),
+
+		// Input fields
+		inputFieldsView,
+		gooey.Spacer().MinHeight(1),
+
+		// Notifications
+		notificationsView,
+		gooey.Spacer(),
+
+		// Footer
+		gooey.Text("🖱️ Click words/buttons | TAB: Completions | ↑↓: Navigate"),
+		gooey.Text("Enter: Accept | ESC: Cancel | Ctrl+C: Exit"),
+	)
 }
 
-// renderStatusBar draws the status information.
-func (app *ComprehensiveApp) renderStatusBar(frame gooey.RenderFrame, y, width int) {
-	modeColor := gooey.NewRGB(0, 255, 100)
+// buildAnimatedTitle creates the animated rainbow title.
+func (app *ComprehensiveApp) buildAnimatedTitle(spinner string) gooey.View {
+	titleText := spinner + " Gooey - Complete Demo with Mouse! " + spinner
+	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		rainbow := gooey.CreateRainbowText(titleText, 15)
+		for i, r := range titleText {
+			if i < bounds.Dx() {
+				style := rainbow.GetStyle(app.frame, i, len(titleText))
+				frame.SetCell(bounds.Min.X+i, bounds.Min.Y, r, style)
+			}
+		}
+	})
+}
+
+// buildStatusBar creates the status bar with pulse animation.
+func (app *ComprehensiveApp) buildStatusBar(spinner string) gooey.View {
 	saveIndicator := ""
 	if app.saveInProgress {
-		saveIndicator = " " + app.getSpinner() + " Saving..."
+		saveIndicator = " " + spinner + " Saving..."
 	}
 
 	statusText := fmt.Sprintf("Mode: NORMAL | Field: %d/4 | Time: %s%s",
@@ -279,213 +256,149 @@ func (app *ComprehensiveApp) renderStatusBar(frame gooey.RenderFrame, y, width i
 		time.Now().Format("15:04:05"),
 		saveIndicator)
 
-	// Apply pulse animation
-	pulse := gooey.CreatePulseText(modeColor, 30)
-	for i, r := range statusText {
-		if i < width {
-			style := pulse.GetStyle(app.frame, i, len(statusText))
-			frame.SetCell(i, y, r, style)
-		}
-	}
-
-	// Progress bar
 	progress := app.taskProgress % 101
 	filled := progress / 5
 	progressBar := strings.Repeat("█", filled) + strings.Repeat("░", 20-filled)
 	progressText := fmt.Sprintf("Progress: [%s] %d%%", progressBar, progress)
-	frame.PrintStyled(0, y+1, progressText, gooey.NewStyle())
+
+	return gooey.VStack(
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			modeColor := gooey.NewRGB(0, 255, 100)
+			pulse := gooey.CreatePulseText(modeColor, 30)
+			for i, r := range statusText {
+				if i < bounds.Dx() {
+					style := pulse.GetStyle(app.frame, i, len(statusText))
+					frame.SetCell(bounds.Min.X+i, bounds.Min.Y, r, style)
+				}
+			}
+		}),
+		gooey.Text(progressText),
+	)
 }
 
-// renderClickableWords draws the clickable word demo.
-func (app *ComprehensiveApp) renderClickableWords(frame gooey.RenderFrame, y, width int) {
+// buildClickableWords creates the clickable words demo.
+func (app *ComprehensiveApp) buildClickableWords() gooey.View {
 	words := []string{"Click", "these", "words", "to", "change", "colors!"}
+	app.clickableWordRefs = words // Store for reference
 
-	text := "🖱️ Clickable: "
-	x := 0
-	frame.PrintStyled(x, y, text, gooey.NewStyle())
-	x += len(text)
+	wordViews := []gooey.View{gooey.Text("🖱️ Clickable: ")}
 
 	for i, word := range words {
-		if color, exists := app.clickedWords[word]; exists {
-			style := gooey.NewStyle().WithFgRGB(color)
-			frame.PrintStyled(x, y, word, style)
-		} else {
-			frame.PrintStyled(x, y, word, gooey.NewStyle())
-		}
-		x += len(word)
+		wordCopy := word
+		wordView := gooey.Clickable(word, func() {
+			app.cycleWordColor(wordCopy)
+		}).Bold()
+
+		wordViews = append(wordViews, wordView)
 
 		if i < len(words)-1 {
-			frame.PrintStyled(x, y, " ", gooey.NewStyle())
-			x++
+			wordViews = append(wordViews, gooey.Text(" "))
 		}
 	}
 
-	frame.PrintStyled(0, y+1, "   Try clicking the words above!", gooey.NewStyle())
+	return gooey.HStack(wordViews...)
 }
 
-// renderMetrics draws the system metrics display.
-func (app *ComprehensiveApp) renderMetrics(frame gooey.RenderFrame, y, width int) {
-	frame.PrintStyled(0, y, "📊 System Metrics:", gooey.NewStyle())
+// cycleWordColor cycles through colors for a clicked word.
+func (app *ComprehensiveApp) cycleWordColor(word string) {
+	colors := []gooey.RGB{
+		gooey.NewRGB(255, 100, 100),
+		gooey.NewRGB(100, 255, 100),
+		gooey.NewRGB(100, 100, 255),
+		gooey.NewRGB(255, 255, 100),
+	}
 
+	currentIdx := 0
+	if existingColor, exists := app.clickedWords[word]; exists {
+		for i, c := range colors {
+			if c == existingColor {
+				currentIdx = (i + 1) % len(colors)
+				break
+			}
+		}
+	}
+
+	app.clickedWords[word] = colors[currentIdx]
+	app.addNotification(fmt.Sprintf("🎨 Colored '%s'", word))
+}
+
+// buildMetrics creates the metrics display.
+func (app *ComprehensiveApp) buildMetrics(spinner string) gooey.View {
 	cpuBar := app.createMeter(app.cpuUsage, 100)
 	cpuText := fmt.Sprintf("   CPU: %s %3d%%", cpuBar, app.cpuUsage)
-	frame.PrintStyled(0, y+1, cpuText, gooey.NewStyle())
 
 	memBar := app.createMeter(app.memoryUsage, 100)
 	memText := fmt.Sprintf("   RAM: %s %3d%%", memBar, app.memoryUsage)
-	frame.PrintStyled(0, y+2, memText, gooey.NewStyle())
 
-	netText := fmt.Sprintf("   NET: %s %.1f GB/s", app.getSpinner(), app.networkSpeed)
-	frame.PrintStyled(0, y+3, netText, gooey.NewStyle())
+	netText := fmt.Sprintf("   NET: %s %.1f GB/s", spinner, app.networkSpeed)
+
+	return gooey.VStack(
+		gooey.Text("📊 System Metrics:"),
+		gooey.Text(cpuText),
+		gooey.Text(memText),
+		gooey.Text(netText),
+	)
 }
 
-// renderButtons draws the interactive buttons.
-func (app *ComprehensiveApp) renderButtons(frame gooey.RenderFrame, y, width int) {
-	frame.PrintStyled(0, y, "🔘 Interactive Buttons (click them!):", gooey.NewStyle())
-
-	// Draw buttons
-	for _, btn := range app.buttons {
-		btn.Draw(frame)
-	}
-}
-
-// renderInputFields draws the input fields.
-func (app *ComprehensiveApp) renderInputFields(frame gooey.RenderFrame, y, width int) {
-	labels := []string{"Name    ", "Email   ", "Project ", "Command "}
-
-	for i := 0; i < 4; i++ {
-		text := labels[i] + ": " + app.inputs[i]
-
-		if i == app.selectedInput {
-			style := gooey.NewStyle().WithBackground(gooey.ColorGreen).WithForeground(gooey.ColorBlack)
-			frame.PrintStyled(0, y+i, text, style)
-			// Pad the rest of the line
-			if len(text) < width {
-				padding := strings.Repeat(" ", width-len(text))
-				frame.PrintStyled(len(text), y+i, padding, style)
-			}
-		} else {
-			frame.PrintStyled(0, y+i, text, gooey.NewStyle())
-		}
-	}
-}
-
-// renderNotifications draws recent notifications.
-func (app *ComprehensiveApp) renderNotifications(frame gooey.RenderFrame, y, width int) {
-	for i := 0; i < 3; i++ {
-		if i < len(app.notifications) {
-			frame.PrintStyled(0, y+i, app.notifications[i], gooey.NewStyle())
-		}
-	}
-}
-
-// renderFooter draws the footer with help text.
-func (app *ComprehensiveApp) renderFooter(frame gooey.RenderFrame, y, width int) {
-	frame.PrintStyled(0, y, "🖱️ Click words/buttons | TAB: Completions | ↑↓: Navigate", gooey.NewStyle())
-	frame.PrintStyled(0, y+1, "Enter: Accept | ESC: Cancel | Ctrl+C: Exit", gooey.NewStyle())
-}
-
-// createButtons creates the interactive button components.
-func (app *ComprehensiveApp) createButtons() {
-	// Create interactive buttons
-	app.buttons = []*gooey.Button{
-		gooey.NewButton(5, 11, "Execute", func() {
+// buildButtons creates the interactive buttons.
+func (app *ComprehensiveApp) buildButtons() gooey.View {
+	return gooey.HStack(
+		gooey.Clickable("[Execute]", func() {
 			app.addNotification("▶ Executing: " + app.inputs[app.selectedInput])
-		}),
-		gooey.NewButton(18, 11, "Clear", func() {
+		}).Fg(gooey.ColorGreen),
+		gooey.Spacer().MinWidth(2),
+		gooey.Clickable("[Clear]", func() {
 			for i := range app.inputs {
 				app.inputs[i] = ""
 				app.cursorPos[i] = 0
 			}
 			app.addNotification("✨ All fields cleared")
-		}),
-		gooey.NewButton(29, 11, "Save", func() {
+		}).Fg(gooey.ColorYellow),
+		gooey.Spacer().MinWidth(2),
+		gooey.Clickable("[Save]", func() {
 			app.saveInProgress = true
-			// Schedule async save completion
 			go func() {
 				time.Sleep(2 * time.Second)
 				app.saveInProgress = false
 				app.addNotification("💾 Configuration saved")
 			}()
-		}),
-	}
-
-	// Add button regions to mouse handler
-	app.mouseHandler.ClearRegions()
-	for _, btn := range app.buttons {
-		app.mouseHandler.AddRegion(btn.GetRegion())
-	}
-
-	// Re-add clickable word regions
-	app.updateClickableWords()
+		}).Fg(gooey.ColorBlue),
+	)
 }
 
-// setupTabCompleter initializes the tab completion component.
-func (app *ComprehensiveApp) setupTabCompleter() {
-	commands := []string{
-		"build", "test", "run", "install", "clean",
-		"deploy", "debug", "profile", "benchmark",
-		"commit", "push", "pull", "merge", "rebase",
-	}
+// buildInputFields creates the input field display.
+func (app *ComprehensiveApp) buildInputFields() gooey.View {
+	labels := []string{"Name    ", "Email   ", "Project ", "Command "}
+	fields := []gooey.View{}
 
-	app.tabCompleter.OnSelect = func(suggestion string) {
-		app.inputs[app.selectedInput] = suggestion + " "
-		app.cursorPos[app.selectedInput] = len(app.inputs[app.selectedInput])
-		app.tabCompleter.Hide()
-	}
+	for i := 0; i < 4; i++ {
+		text := labels[i] + ": " + app.inputs[i]
 
-	app.tabCompleter.SetSuggestions(commands, "")
-}
-
-// updateClickableWords sets up the clickable word mouse regions.
-func (app *ComprehensiveApp) updateClickableWords() {
-	words := []string{"Click", "these", "words", "to", "change", "colors!"}
-
-	// Add word regions (buttons are already in mouse handler)
-	x := 14 // After "🖱️ Clickable: "
-	y := 4
-
-	for _, word := range words {
-		wordCopy := word
-		region := &gooey.MouseRegion{
-			X:      x,
-			Y:      y,
-			Width:  len(word),
-			Height: 1,
-			Label:  word,
-			OnClick: func(event *gooey.MouseEvent) {
-				colors := []gooey.RGB{
-					gooey.NewRGB(255, 100, 100),
-					gooey.NewRGB(100, 255, 100),
-					gooey.NewRGB(100, 100, 255),
-					gooey.NewRGB(255, 255, 100),
-				}
-
-				currentIdx := 0
-				if existingColor, exists := app.clickedWords[wordCopy]; exists {
-					for i, c := range colors {
-						if c == existingColor {
-							currentIdx = (i + 1) % len(colors)
-							break
-						}
-					}
-				}
-
-				app.clickedWords[wordCopy] = colors[currentIdx]
-				app.addNotification(fmt.Sprintf("🎨 Colored '%s'", wordCopy))
-			},
-		}
-		app.mouseHandler.AddRegion(region)
-		x += len(word) + 1
-	}
-
-	// Also add tab completer regions if visible
-	if app.tabCompleter.Visible {
-		for _, region := range app.tabCompleter.GetRegions() {
-			app.mouseHandler.AddRegion(region)
+		if i == app.selectedInput {
+			fields = append(fields, gooey.Text(text).Bg(gooey.ColorGreen).Fg(gooey.ColorBlack))
+		} else {
+			fields = append(fields, gooey.Text(text))
 		}
 	}
+
+	return gooey.VStack(fields...)
 }
+
+// buildNotifications creates the notifications display.
+func (app *ComprehensiveApp) buildNotifications() gooey.View {
+	notifViews := []gooey.View{}
+
+	for i := 0; i < 3; i++ {
+		if i < len(app.notifications) {
+			notifViews = append(notifViews, gooey.Text(app.notifications[i]))
+		} else {
+			notifViews = append(notifViews, gooey.Text(""))
+		}
+	}
+
+	return gooey.VStack(notifViews...)
+}
+
 
 // handleTabCompletion shows tab completion suggestions.
 func (app *ComprehensiveApp) handleTabCompletion() {
@@ -509,10 +422,6 @@ func (app *ComprehensiveApp) handleTabCompletion() {
 	if len(suggestions) > 0 {
 		app.tabCompleter.SetSuggestions(suggestions, app.inputs[app.selectedInput])
 		app.tabCompleter.Show(10, 12+app.selectedInput, 30)
-
-		for _, region := range app.tabCompleter.GetRegions() {
-			app.mouseHandler.AddRegion(region)
-		}
 	} else {
 		app.tabCompleter.Hide()
 	}
@@ -551,36 +460,8 @@ func (app *ComprehensiveApp) getSpinner() string {
 	return spinners[app.spinnerFrame%len(spinners)]
 }
 
-// Init initializes the application.
-func (app *ComprehensiveApp) Init() error {
-	// Get terminal size
-	app.width, app.height = app.terminal.Size()
-
-	// Enable alternate screen and mouse tracking
-	// Note: Runtime automatically enables raw mode
-	app.terminal.EnableAlternateScreen()
-	app.terminal.EnableMouseTracking()
-	app.terminal.ShowCursor()
-
-	// Initialize components
-	app.createButtons()
-	app.setupTabCompleter()
-	app.updateClickableWords()
-
-	return nil
-}
-
-// Destroy cleans up the application.
-func (app *ComprehensiveApp) Destroy() {
-	// Restore terminal state
-	app.terminal.DisableMouseTracking()
-	app.terminal.DisableAlternateScreen()
-	app.terminal.ShowCursor()
-	// Note: Runtime automatically disables raw mode
-}
-
 func main() {
-	fmt.Println("\n🚀 Comprehensive Gooey Demo with Mouse Support!")
+	fmt.Println("\n🚀 Comprehensive Gooey Demo with Declarative Views!")
 	fmt.Println("=" + strings.Repeat("=", 50))
 	fmt.Println("\nFeatures:")
 	fmt.Println("✅ Click on words to change their colors")
@@ -592,17 +473,8 @@ func main() {
 	fmt.Println("Starting in 2 seconds...")
 	time.Sleep(2 * time.Second)
 
-	// Create terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		log.Fatalf("Failed to create terminal: %v\n", err)
-	}
-	defer terminal.Close()
-
 	// Create the application
 	app := &ComprehensiveApp{
-		terminal:      terminal,
-		mouseHandler:  gooey.NewMouseHandler(),
 		tabCompleter:  gooey.NewTabCompleter(),
 		inputs:        make([]string, 4),
 		cursorPos:     make([]int, 4),
@@ -613,14 +485,12 @@ func main() {
 		memoryUsage:   62,
 		networkSpeed:  1.2,
 		taskProgress:  0,
+		width:         80,
+		height:        24,
 	}
 
-	// Create and run the runtime with 30 FPS
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	app.runtime = runtime // Store reference for stopping
-
-	// Run the event loop (blocks until quit)
-	if err := runtime.Run(); err != nil {
+	// Run with mouse tracking and 30 FPS
+	if err := gooey.Run(app, gooey.WithMouseTracking(true), gooey.WithFPS(30)); err != nil {
 		log.Fatalf("Runtime error: %v\n", err)
 	}
 

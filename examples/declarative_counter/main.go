@@ -45,8 +45,6 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *App) Render(frame gooey.RenderFrame) {}
-
 func main() {
 	if err := gooey.Run(&App{}, gooey.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)

@@ -84,42 +84,30 @@ func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the current application state.
-func (app *DiffDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Clear screen
-	frame.Fill(' ', gooey.NewStyle())
-
-	// Draw the diff viewer
-	app.viewer.Draw(frame)
-
-	// Draw status line at bottom
+// View returns the declarative view structure.
+func (app *DiffDemoApp) View() gooey.View {
 	statusStyle := gooey.NewStyle().
 		WithBackground(gooey.ColorBlue).
 		WithForeground(gooey.ColorWhite)
 
 	statusMsg := "Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump"
-	statusLine := fmt.Sprintf(" %s ", statusMsg)
-
-	// Pad to full width
-	for len(statusLine) < width {
-		statusLine += " "
-	}
-	if len(statusLine) > width {
-		statusLine = statusLine[:width]
-	}
-
-	frame.PrintStyled(0, height-1, statusLine, statusStyle)
-
-	// Draw scroll indicator
-	scrollInfo := fmt.Sprintf(" Line %d/%d ",
+	scrollInfo := fmt.Sprintf("Line %d/%d",
 		app.viewer.GetScrollPosition()+1,
 		app.viewer.GetLineCount())
-	scrollX := width - len(scrollInfo) - 1
-	if scrollX > 0 && scrollX+len(scrollInfo) <= width {
-		frame.PrintStyled(scrollX, height-1, scrollInfo, statusStyle)
-	}
+
+	return gooey.VStack(
+		// Diff viewer area
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			app.viewer.Draw(frame)
+		}),
+
+		// Status line at bottom
+		gooey.Height(1, gooey.Background(' ', statusStyle, gooey.HStack(
+			gooey.Text(" %s ", statusMsg).Style(statusStyle),
+			gooey.Spacer(),
+			gooey.Text(" %s ", scrollInfo).Style(statusStyle),
+		))),
+	)
 }
 
 func main() {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -104,32 +105,27 @@ func (app *MouseGridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-// Render draws the grid
-func (app *MouseGridApp) Render(frame gooey.RenderFrame) {
-	// Clear screen
-	frame.FillStyled(0, 0, app.width, app.height, ' ', gooey.NewStyle())
+// View returns the declarative view structure
+func (app *MouseGridApp) View() gooey.View {
+	return gooey.VStack(
+		gooey.Text("Mouse Grid Demo").Bold().Fg(gooey.ColorCyan),
+		gooey.Text("Click cells to toggle colors! Press 'q' or Ctrl+C to exit.").Fg(gooey.ColorWhite),
+		gooey.Spacer().MinHeight(1),
+		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+			// Render grid
+			for y := 0; y < app.gridH; y++ {
+				for x := 0; x < app.gridW; x++ {
+					screenX := app.startX + (x * (app.cellW + 1))
+					screenY := app.startY + (y * (app.cellH + 1))
+					colorIdx := app.gridState[y][x]
+					style := app.colors[colorIdx]
 
-	// Title
-	title := "Mouse Grid Demo"
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled((app.width-len(title))/2, 0, title, titleStyle)
-
-	subtitle := "Click cells to toggle colors! Press 'q' or Ctrl+C to exit."
-	subtitleStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-	frame.PrintStyled((app.width-len(subtitle))/2, 1, subtitle, subtitleStyle)
-
-	// Render grid
-	for y := 0; y < app.gridH; y++ {
-		for x := 0; x < app.gridW; x++ {
-			screenX := app.startX + (x * (app.cellW + 1))
-			screenY := app.startY + (y * (app.cellH + 1))
-			colorIdx := app.gridState[y][x]
-			style := app.colors[colorIdx]
-
-			// Draw cell
-			app.renderCell(frame, screenX, screenY, app.cellW, app.cellH, style)
-		}
-	}
+					// Draw cell
+					app.renderCell(frame, screenX, screenY, app.cellW, app.cellH, style)
+				}
+			}
+		}),
+	).Align(gooey.AlignCenter)
 }
 
 // renderCell draws a single grid cell

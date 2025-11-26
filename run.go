@@ -1,5 +1,7 @@
 package gooey
 
+import "fmt"
+
 // RunOption is a functional option for configuring Run.
 type RunOption func(*runConfig)
 
@@ -68,19 +70,26 @@ func WithPasteTabWidth(width int) RunOption {
 // Run is the simplest way to start a Gooey application.
 // It creates a terminal, configures it, runs the application, and cleans up.
 //
-// Example:
+// The app parameter must implement Application (declarative) or LegacyApplication (imperative).
+//
+// Example (declarative - recommended):
 //
 //	type MyApp struct {
-//	    // state
+//	    count int
+//	}
+//
+//	func (app *MyApp) View() gooey.View {
+//	    return gooey.VStack(
+//	        gooey.Text("Count: %d", app.count),
+//	        gooey.Clickable("[+]", func() { app.count++ }),
+//	    )
 //	}
 //
 //	func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
-//	    // handle events
+//	    if key, ok := event.(gooey.KeyEvent); ok && key.Rune == 'q' {
+//	        return []gooey.Cmd{gooey.Quit()}
+//	    }
 //	    return nil
-//	}
-//
-//	func (app *MyApp) Render(frame gooey.RenderFrame) {
-//	    // render state
 //	}
 //
 //	func main() {
@@ -95,7 +104,14 @@ func WithPasteTabWidth(width int) RunOption {
 //	    gooey.WithFPS(60),
 //	    gooey.WithMouseTracking(true),
 //	)
-func Run(app Application, opts ...RunOption) error {
+func Run(app any, opts ...RunOption) error {
+	// Validate app implements required interface
+	_, isApp := app.(Application)
+	_, isLegacy := app.(LegacyApplication)
+	if !isApp && !isLegacy {
+		return fmt.Errorf("app must implement Application (View()) or LegacyApplication (HandleEvent()+Render())")
+	}
+
 	// Apply options
 	cfg := defaultRunConfig()
 	for _, opt := range opts {

@@ -212,49 +212,8 @@ func (app *BracketedPasteDemoApp) moveCursorDown() {
 	app.cursor = nextLineStart + newCol
 }
 
-func (app *BracketedPasteDemoApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
-
-	// Clear screen
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
-
-	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-	instructionStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	dimStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	borderStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-
-	y := 0
-
-	// Header
-	frame.PrintStyled(0, y, "╔═══════════════════════════════════════════════════════════════╗", borderStyle)
-	y++
-	frame.PrintStyled(0, y, "║          Bracketed Paste Mode Demo - Gooey Library            ║", titleStyle)
-	y++
-	frame.PrintStyled(0, y, "╚═══════════════════════════════════════════════════════════════╝", borderStyle)
-	y += 2
-
-	// Instructions
-	frame.PrintStyled(0, y, "Try pasting text (Cmd+V / Ctrl+V). Paste events are detected!", instructionStyle)
-	y++
-	frame.PrintStyled(0, y, "Type normally, use arrow keys to navigate, Enter for newlines.", dimStyle)
-	y++
-	frame.PrintStyled(0, y, "Ctrl+U: clear input | Ctrl+L: clear history | Esc/Ctrl+C: quit", dimStyle)
-	y += 2
-
-	// Input area
-	frame.PrintStyled(0, y, "Input:", gooey.NewStyle().WithBold())
-	y++
-
-	// Draw input box border
-	inputBoxWidth := width - 4
-	if inputBoxWidth > 70 {
-		inputBoxWidth = 70
-	}
-	frame.PrintStyled(2, y, "┌"+strings.Repeat("─", inputBoxWidth-2)+"┐", borderStyle)
-	y++
-
-	// Display the buffer content (limited height)
+func (app *BracketedPasteDemoApp) View() gooey.View {
+	// Prepare buffer content
 	text := string(app.buffer)
 	lines := splitLines(text)
 	maxDisplayLines := 8
@@ -263,47 +222,50 @@ func (app *BracketedPasteDemoApp) Render(frame gooey.RenderFrame) {
 		displayLines = lines[len(lines)-maxDisplayLines:]
 	}
 
-	contentWidth := inputBoxWidth - 4 // Space between │ and │
+	// Build input box content
+	inputBoxLines := make([]gooey.View, 0)
+	inputBoxLines = append(inputBoxLines, gooey.Text("┌"+strings.Repeat("─", 68)+"┐").Fg(gooey.ColorCyan))
+
 	for i := 0; i < maxDisplayLines; i++ {
-		frame.PrintStyled(2, y+i, "│", borderStyle)
-		// Clear the line content area
-		frame.PrintStyled(3, y+i, strings.Repeat(" ", contentWidth), gooey.NewStyle())
-		// Draw content if we have a line for this row
+		var lineContent string
 		if i < len(displayLines) {
-			displayLine := displayLines[i]
-			if len(displayLine) > contentWidth {
-				displayLine = displayLine[:contentWidth-3] + "..."
+			lineContent = displayLines[i]
+			if len(lineContent) > 64 {
+				lineContent = lineContent[:61] + "..."
 			}
-			frame.PrintStyled(4, y+i, displayLine, gooey.NewStyle())
 		}
-		frame.PrintStyled(2+inputBoxWidth-1, y+i, "│", borderStyle)
+		// Pad to consistent width
+		lineContent = fmt.Sprintf("%-64s", lineContent)
+		inputBoxLines = append(inputBoxLines, gooey.HStack(
+			gooey.Text("│").Fg(gooey.ColorCyan),
+			gooey.Text(" "+lineContent+" "),
+			gooey.Text("│").Fg(gooey.ColorCyan),
+		))
 	}
-	y += maxDisplayLines
 
-	frame.PrintStyled(2, y, "└"+strings.Repeat("─", inputBoxWidth-2)+"┘", borderStyle)
-	y += 2
+	inputBoxLines = append(inputBoxLines, gooey.Text("└"+strings.Repeat("─", 68)+"┘").Fg(gooey.ColorCyan))
 
-	// Status line
+	// Build status and message section
 	statusLine := fmt.Sprintf("Chars: %d | Lines: %d | Cursor: %d", len(app.buffer), len(lines), app.cursor)
-	frame.PrintStyled(0, y, statusLine, dimStyle)
-	y++
-
-	// Message
-	if app.message != "" {
-		frame.PrintStyled(0, y, app.message, successStyle)
+	statusSection := []gooey.View{
+		gooey.Text(statusLine).Dim(),
 	}
-	y += 2
+	if app.message != "" {
+		statusSection = append(statusSection, gooey.Text(app.message).Fg(gooey.ColorGreen))
+	} else {
+		statusSection = append(statusSection, gooey.Spacer())
+	}
 
-	// Paste history
+	// Build paste history section
+	var pasteHistorySection gooey.View
 	if len(app.pastes) > 0 {
-		frame.PrintStyled(0, y, "Paste History:", gooey.NewStyle().WithBold())
-		y++
-
 		// Show last 5 pastes
 		startIdx := 0
 		if len(app.pastes) > 5 {
 			startIdx = len(app.pastes) - 5
 		}
+
+		pasteItems := make([]gooey.View, 0)
 		for i := startIdx; i < len(app.pastes); i++ {
 			p := app.pastes[i]
 			preview := p.Content
@@ -313,16 +275,46 @@ func (app *BracketedPasteDemoApp) Render(frame gooey.RenderFrame) {
 			preview = strings.ReplaceAll(preview, "\n", "↵")
 			preview = strings.ReplaceAll(preview, "\t", "→")
 			info := fmt.Sprintf("  #%d: %d chars, %d lines: %q", i+1, p.CharCount, p.LineCount, preview)
-			frame.PrintStyled(0, y, info, dimStyle)
-			y++
+			pasteItems = append(pasteItems, gooey.Text(info).Dim())
 		}
+
 		if len(app.pastes) > 5 {
-			frame.PrintStyled(0, y, fmt.Sprintf("  ... and %d more pastes", len(app.pastes)-5), dimStyle)
-			y++
+			pasteItems = append(pasteItems, gooey.Text(fmt.Sprintf("  ... and %d more pastes", len(app.pastes)-5)).Dim())
 		}
+
+		pasteHistorySection = gooey.VStack(
+			gooey.Text("Paste History:").Bold(),
+			gooey.VStack(pasteItems...),
+		)
 	} else {
-		frame.PrintStyled(0, y, "No pastes yet. Try pasting something!", dimStyle)
+		pasteHistorySection = gooey.Text("No pastes yet. Try pasting something!").Dim()
 	}
+
+	return gooey.VStack(
+		// Header
+		gooey.Text("╔═══════════════════════════════════════════════════════════════╗").Fg(gooey.ColorCyan),
+		gooey.Text("║          Bracketed Paste Mode Demo - Gooey Library            ║").Fg(gooey.ColorCyan).Bold(),
+		gooey.Text("╚═══════════════════════════════════════════════════════════════╝").Fg(gooey.ColorCyan),
+		gooey.Spacer(),
+
+		// Instructions
+		gooey.Text("Try pasting text (Cmd+V / Ctrl+V). Paste events are detected!").Fg(gooey.ColorYellow),
+		gooey.Text("Type normally, use arrow keys to navigate, Enter for newlines.").Dim(),
+		gooey.Text("Ctrl+U: clear input | Ctrl+L: clear history | Esc/Ctrl+C: quit").Dim(),
+		gooey.Spacer(),
+
+		// Input area
+		gooey.Text("Input:").Bold(),
+		gooey.VStack(inputBoxLines...),
+		gooey.Spacer(),
+
+		// Status and message
+		gooey.VStack(statusSection...),
+		gooey.Spacer(),
+
+		// Paste history
+		pasteHistorySection,
+	)
 }
 
 // Helper functions

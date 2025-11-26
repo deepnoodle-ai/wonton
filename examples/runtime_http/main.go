@@ -76,80 +76,97 @@ func (app *HTTPApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *HTTPApp) Render(frame gooey.RenderFrame) {
-	width, height := frame.Size()
+func (app *HTTPApp) View() gooey.View {
+	return gooey.VStack(
+		// Title
+		gooey.Text("GitHub User Lookup").Bold().Fg(gooey.ColorCyan),
+		gooey.Spacer().MinHeight(1),
 
-	// Styles
-	title := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	dim := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	key := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	label := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-	value := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	errStyle := gooey.NewStyle().WithForeground(gooey.ColorRed)
+		// Keys
+		gooey.HStack(
+			gooey.Text("[1]").Fg(gooey.ColorYellow),
+			gooey.Text("golang").Fg(gooey.ColorWhite),
+			gooey.Spacer().MinWidth(2),
+			gooey.Text("[2]").Fg(gooey.ColorYellow),
+			gooey.Text("torvalds").Fg(gooey.ColorWhite),
+			gooey.Spacer().MinWidth(2),
+			gooey.Text("[3]").Fg(gooey.ColorYellow),
+			gooey.Text("antirez").Fg(gooey.ColorWhite),
+			gooey.Spacer().MinWidth(2),
+			gooey.Text("[c]").Fg(gooey.ColorYellow),
+			gooey.Text("clear").Fg(gooey.ColorWhite),
+			gooey.Spacer().MinWidth(2),
+			gooey.Text("[q]").Fg(gooey.ColorYellow),
+			gooey.Text("quit").Fg(gooey.ColorWhite),
+		).Gap(1),
+		gooey.Spacer().MinHeight(1),
 
-	// Clear
-	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
+		// Content area
+		app.contentView(),
 
-	// Title
-	frame.PrintStyled(2, 1, "GitHub User Lookup", title)
+		gooey.Spacer(),
 
-	// Keys
-	frame.PrintStyled(2, 3, "[1]", key)
-	frame.PrintStyled(6, 3, "golang", label)
-	frame.PrintStyled(15, 3, "[2]", key)
-	frame.PrintStyled(19, 3, "torvalds", label)
-	frame.PrintStyled(30, 3, "[3]", key)
-	frame.PrintStyled(34, 3, "antirez", label)
-	frame.PrintStyled(44, 3, "[c]", key)
-	frame.PrintStyled(48, 3, "clear", label)
-	frame.PrintStyled(56, 3, "[q]", key)
-	frame.PrintStyled(60, 3, "quit", label)
+		// Footer
+		gooey.Text("Async HTTP demo - requests don't block the UI").Fg(gooey.ColorBrightBlack),
+	).Padding(2)
+}
 
-	// Content area
-	y := 5
+func (app *HTTPApp) contentView() gooey.View {
 	if app.loading {
-		frame.PrintStyled(2, y, "Loading...", dim)
-	} else if app.error != nil {
-		frame.PrintStyled(2, y, fmt.Sprintf("Error: %v", app.error), errStyle)
-	} else if app.data != nil {
-		user := app.data
-
-		frame.PrintStyled(2, y, user.Login, title)
-		if user.Name != "" {
-			frame.PrintStyled(2+len(user.Login)+1, y, user.Name, dim)
-		}
-		y += 2
-
-		if user.Bio != "" {
-			bio := user.Bio
-			if len(bio) > width-4 {
-				bio = bio[:width-7] + "..."
-			}
-			frame.PrintStyled(2, y, bio, label)
-			y += 2
-		}
-
-		if user.Location != "" {
-			frame.PrintStyled(2, y, "Location:", dim)
-			frame.PrintStyled(12, y, user.Location, value)
-			y++
-		}
-		if user.Company != "" {
-			frame.PrintStyled(2, y, "Company:", dim)
-			frame.PrintStyled(12, y, user.Company, value)
-			y++
-		}
-		y++
-
-		frame.PrintStyled(2, y, fmt.Sprintf("Repos: %d", user.PublicRepos), value)
-		frame.PrintStyled(16, y, fmt.Sprintf("Followers: %d", user.Followers), value)
-		frame.PrintStyled(34, y, fmt.Sprintf("Following: %d", user.Following), value)
-	} else {
-		frame.PrintStyled(2, y, "Press 1, 2, or 3 to fetch a user", dim)
+		return gooey.Text("Loading...").Fg(gooey.ColorBrightBlack)
 	}
 
-	// Footer
-	frame.PrintStyled(2, height-1, "Async HTTP demo - requests don't block the UI", dim)
+	if app.error != nil {
+		return gooey.Text("Error: %v", app.error).Fg(gooey.ColorRed)
+	}
+
+	if app.data != nil {
+		user := app.data
+
+		// Build user details
+		var details []gooey.View
+
+		// Header with login and name
+		details = append(details, gooey.HStack(
+			gooey.Text(user.Login).Bold().Fg(gooey.ColorCyan),
+			gooey.If(user.Name != "", gooey.Text(user.Name).Fg(gooey.ColorBrightBlack)),
+		).Gap(1))
+
+		details = append(details, gooey.Spacer().MinHeight(1))
+
+		// Bio
+		if user.Bio != "" {
+			details = append(details, gooey.Text(user.Bio).Fg(gooey.ColorWhite).MaxWidth(76))
+			details = append(details, gooey.Spacer().MinHeight(1))
+		}
+
+		// Location and Company
+		if user.Location != "" {
+			details = append(details, gooey.HStack(
+				gooey.Text("Location:").Fg(gooey.ColorBrightBlack),
+				gooey.Text(user.Location).Fg(gooey.ColorGreen),
+			).Gap(1))
+		}
+		if user.Company != "" {
+			details = append(details, gooey.HStack(
+				gooey.Text("Company:").Fg(gooey.ColorBrightBlack),
+				gooey.Text(user.Company).Fg(gooey.ColorGreen),
+			).Gap(1))
+		}
+
+		details = append(details, gooey.Spacer().MinHeight(1))
+
+		// Stats
+		details = append(details, gooey.HStack(
+			gooey.Text("Repos: %d", user.PublicRepos).Fg(gooey.ColorGreen),
+			gooey.Text("Followers: %d", user.Followers).Fg(gooey.ColorGreen),
+			gooey.Text("Following: %d", user.Following).Fg(gooey.ColorGreen),
+		).Gap(2))
+
+		return gooey.VStack(details...)
+	}
+
+	return gooey.Text("Press 1, 2, or 3 to fetch a user").Fg(gooey.ColorBrightBlack)
 }
 
 // FetchGitHubUser fetches a GitHub user profile asynchronously
