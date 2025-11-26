@@ -137,8 +137,19 @@ func (r *Runtime) Run() error {
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
+		// Detect Kitty keyboard protocol support before enabling raw mode
+		// This probes the terminal and enables the protocol if supported
+		r.terminal.DetectKittyProtocol()
+
 		if err := r.terminal.EnableRawMode(); err != nil {
 			return fmt.Errorf("failed to enable raw mode: %w", err)
+		}
+
+		// Enable Kitty keyboard protocol if the terminal supports it
+		// This allows detection of modifier keys (Shift+Enter, etc.)
+		// For terminals that don't support it, backslash+Enter fallback is used
+		if r.terminal.IsKittyProtocolSupported() {
+			r.terminal.EnableEnhancedKeyboard()
 		}
 	}
 
@@ -196,6 +207,9 @@ func (r *Runtime) Run() error {
 	r.terminal.StopWatchResize()
 	if r.resizeUnsub != nil {
 		r.resizeUnsub()
+	}
+	if r.terminal.IsKittyProtocolEnabled() {
+		r.terminal.DisableEnhancedKeyboard()
 	}
 	r.terminal.DisableRawMode()
 
@@ -368,6 +382,10 @@ func (r *Runtime) inputReader() {
 		}
 	}()
 
+	// Timeout for backslash+Enter detection
+	// Gemini CLI uses 5ms but Go's scheduler may need more time
+	const backslashEnterTimeout = 100 * time.Millisecond
+
 	// Main loop that can be interrupted by r.done
 	// This pattern ensures we can exit immediately when quit is requested,
 	// rather than waiting for the next stdin input
@@ -376,6 +394,28 @@ func (r *Runtime) inputReader() {
 		case <-r.done:
 			return
 		case event := <-inputChan:
+			// Check for backslash key - might be start of backslash+Enter sequence
+			// This provides a terminal-agnostic way to input Shift+Enter
+			if keyEvent, ok := event.(KeyEvent); ok && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
+				// Wait briefly for Enter to follow
+				select {
+				case <-r.done:
+					return
+				case nextEvent := <-inputChan:
+					// Check if Enter followed the backslash
+					if nextKeyEvent, ok := nextEvent.(KeyEvent); ok && nextKeyEvent.Key == KeyEnter {
+						// Convert backslash+Enter to Shift+Enter
+						event = KeyEvent{Key: KeyEnter, Shift: true}
+					} else {
+						// Not Enter - forward backslash first, then process nextEvent
+						r.forwardEvent(keyEvent)
+						event = nextEvent
+					}
+				case <-time.After(backslashEnterTimeout):
+					// Timeout - just a regular backslash, forward it
+					// (event is already the backslash, will be forwarded below)
+				}
+			}
 			// Process mouse events to synthesize clicks from Press/Release pairs.
 			// See processMouseEvent for detailed documentation on click synthesis.
 			event, clickEvent := r.processMouseEvent(event)
@@ -411,6 +451,15 @@ func (r *Runtime) inputReader() {
 			}
 			return
 		}
+	}
+}
+
+// forwardEvent sends an event to the main event loop.
+// Used by inputReader when it needs to send multiple events (e.g., backslash followed by non-Enter).
+func (r *Runtime) forwardEvent(event Event) {
+	select {
+	case r.events <- event:
+	case <-r.done:
 	}
 }
 

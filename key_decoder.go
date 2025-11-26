@@ -219,6 +219,12 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 				keyEvent, err := kd.decodeCSIModified(string(num))
 				return keyEvent, err
 			}
+			if b == 'u' {
+				// CSI u sequence without modifiers (e.g., ESC[13u for Enter)
+				// This is the Kitty keyboard protocol format
+				keyEvent, err := kd.decodeCSIu(string(num))
+				return keyEvent, err
+			}
 			if b >= '0' && b <= '9' {
 				num = append(num, b)
 			} else {
@@ -507,6 +513,23 @@ func (kd *KeyDecoder) decodeCSINumber(num string) (KeyEvent, error) {
 		return KeyEvent{Key: KeyF11}, nil
 	case "24":
 		return KeyEvent{Key: KeyF12}, nil
+	default:
+		return KeyEvent{Key: KeyUnknown}, nil
+	}
+}
+
+// decodeCSIu decodes CSI u sequences without modifiers (Kitty keyboard protocol)
+// Format: ESC [ codepoint u
+func (kd *KeyDecoder) decodeCSIu(codepoint string) (KeyEvent, error) {
+	switch codepoint {
+	case "13":
+		return KeyEvent{Key: KeyEnter}, nil
+	case "9":
+		return KeyEvent{Key: KeyTab}, nil
+	case "27":
+		return KeyEvent{Key: KeyEscape}, nil
+	case "127":
+		return KeyEvent{Key: KeyBackspace}, nil
 	default:
 		return KeyEvent{Key: KeyUnknown}, nil
 	}

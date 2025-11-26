@@ -366,6 +366,10 @@ type Terminal struct {
 
 	// Session recording
 	recorder *Recorder
+
+	// Kitty keyboard protocol support
+	kittySupported bool
+	kittyEnabled   bool
 }
 
 // EndFrame finishes the frame, flushes the buffer to the terminal, and unlocks.
@@ -826,15 +830,81 @@ func (t *Terminal) DisableBracketedPaste() {
 	fmt.Fprint(t.out, "\033[?2004l")
 }
 
+// DetectKittyProtocol probes the terminal to detect Kitty keyboard protocol support.
+// This should be called once at startup before enabling raw mode.
+// Returns true if the terminal supports the protocol.
+//
+// The detection works by:
+// 1. Sending a query for progressive enhancement support (\x1b[?u)
+// 2. Sending a device attributes query (\x1b[c)
+// 3. Checking if both responses are received within a timeout
+//
+// This is the same approach used by Gemini CLI.
+func (t *Terminal) DetectKittyProtocol() bool {
+	if t.fd == -1 {
+		return false // Test mode
+	}
+
+	// Need raw mode for detection
+	oldState, err := term.MakeRaw(t.fd)
+	if err != nil {
+		return false
+	}
+	defer term.Restore(t.fd, oldState)
+
+	// Send query: progressive enhancement query + device attributes query
+	fmt.Print("\x1b[?u\x1b[c")
+
+	// Read response with timeout
+	responseChan := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 256)
+		response := ""
+		deadline := time.Now().Add(200 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+			n, err := os.Stdin.Read(buf)
+			if err != nil {
+				break
+			}
+			response += string(buf[:n])
+			// Check if we have both responses
+			if strings.Contains(response, "\x1b[?") && strings.Contains(response, "c") {
+				break
+			}
+		}
+		os.Stdin.SetReadDeadline(time.Time{}) // Clear deadline
+		responseChan <- response
+	}()
+
+	select {
+	case response := <-responseChan:
+		// Check for progressive enhancement response (CSI ? <flags> u) AND device attributes (CSI ? ... c)
+		hasProgressiveEnhancement := strings.Contains(response, "\x1b[?") && strings.Contains(response, "u")
+		hasDeviceAttributes := strings.Contains(response, "\x1b[?") && strings.Contains(response, "c")
+		t.kittySupported = hasProgressiveEnhancement && hasDeviceAttributes
+	case <-time.After(250 * time.Millisecond):
+		t.kittySupported = false
+	}
+
+	return t.kittySupported
+}
+
 // EnableEnhancedKeyboard enables enhanced keyboard mode (CSI u / kitty keyboard protocol).
 // This allows detection of modifier keys with Enter, Tab, and other special keys.
 // For example, Shift+Enter will be reported as a distinct key event (ESC[13;2u).
+//
+// If DetectKittyProtocol() was called and returned false, this does nothing.
+// Otherwise it enables the protocol (useful when you know the terminal supports it).
 //
 // Supported terminals: kitty, WezTerm, foot, ghostty, iTerm2 (3.5+), and others.
 // Unsupported terminals will silently ignore this escape sequence.
 //
 // Call DisableEnhancedKeyboard() before exiting to restore normal keyboard mode.
 func (t *Terminal) EnableEnhancedKeyboard() {
+	if t.kittyEnabled {
+		return
+	}
 	// Enable kitty keyboard protocol with flags:
 	// Bit 0 (1): Disambiguate escape codes - report modifier keys with special keys
 	// Bit 1 (2): Report event types (press, repeat, release)
@@ -842,13 +912,29 @@ func (t *Terminal) EnableEnhancedKeyboard() {
 	// Bit 3 (8): Report all keys as escape codes
 	// Bit 4 (16): Report associated text
 	// We use flag 1 for basic modifier detection (e.g., Shift+Enter)
-	fmt.Fprint(t.out, "\033[>1u")
+	fmt.Print("\033[>1u")
+	t.kittyEnabled = true
 }
 
 // DisableEnhancedKeyboard disables enhanced keyboard mode.
 // This restores normal keyboard reporting.
 func (t *Terminal) DisableEnhancedKeyboard() {
-	fmt.Fprint(t.out, "\033[<u")
+	if !t.kittyEnabled {
+		return
+	}
+	fmt.Print("\033[<u")
+	t.kittyEnabled = false
+}
+
+// IsKittyProtocolSupported returns true if Kitty keyboard protocol is supported.
+// Only valid after DetectKittyProtocol() has been called.
+func (t *Terminal) IsKittyProtocolSupported() bool {
+	return t.kittySupported
+}
+
+// IsKittyProtocolEnabled returns true if Kitty keyboard protocol is currently enabled.
+func (t *Terminal) IsKittyProtocolEnabled() bool {
+	return t.kittyEnabled
 }
 
 // DisableAlternateScreen switches back to the main screen buffer
