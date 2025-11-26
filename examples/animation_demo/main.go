@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -82,18 +83,7 @@ func (app *AnimationDemoApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
-	}
-	defer terminal.Close()
-
-	width, height := terminal.Size()
-	app := &AnimationDemoApp{width: width, height: height}
-
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		fmt.Printf("Runtime error: %v\n", err)
+	if err := gooey.Run(&AnimationDemoApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

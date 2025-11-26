@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -116,26 +116,8 @@ func (app *CounterApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Create and initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Create the counter application
-	app := &CounterApp{
-		count: 0,
-	}
-
-	// Create and run the runtime with 30 FPS
-	// This starts the event loop which is single-threaded and race-free!
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
 	// Run blocks until the application quits (when 'q' is pressed)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&CounterApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

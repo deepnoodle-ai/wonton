@@ -64,11 +64,10 @@ The frame is a back buffer. `EndFrame()` diffs against the front buffer and only
 
 ## Common Patterns
 
-### Basic Application Structure
+### Simplest Application (Recommended)
 
 ```go
 type MyApp struct {
-    // State fields - no mutex needed!
     count int
 }
 
@@ -78,10 +77,6 @@ func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
         if e.Rune == 'q' {
             return []gooey.Cmd{gooey.Quit()}
         }
-    case gooey.TickEvent:
-        // Called every frame (30-60 FPS based on runtime config)
-    case gooey.ResizeEvent:
-        // Terminal resized to e.Width x e.Height
     }
     return nil
 }
@@ -92,6 +87,29 @@ func (app *MyApp) Render(frame gooey.RenderFrame) {
     frame.PrintStyled(0, 0, "Hello", gooey.NewStyle().WithForeground(gooey.ColorGreen))
 }
 
+func main() {
+    if err := gooey.Run(&MyApp{}); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Options can be passed to customize behavior:
+
+```go
+gooey.Run(&MyApp{},
+    gooey.WithFPS(60),              // Default: 30
+    gooey.WithMouseTracking(true),  // Default: false
+    gooey.WithAlternateScreen(false), // Default: true
+    gooey.WithHideCursor(false),    // Default: true
+)
+```
+
+### Manual Terminal Control
+
+For applications needing direct terminal access:
+
+```go
 func main() {
     terminal, _ := gooey.NewTerminal()
     defer terminal.Close()
@@ -267,6 +285,7 @@ go test -v -run TestFoo # Specific test
 
 | File             | Purpose                                               |
 | ---------------- | ----------------------------------------------------- |
+| `run.go`         | Simplified Run() API for quick application startup    |
 | `runtime.go`     | Event loop, Application interface, command system     |
 | `terminal.go`    | Low-level terminal ops, double buffering, RenderFrame |
 | `events.go`      | Event types (Tick, Resize, Quit, Error, Batch)        |

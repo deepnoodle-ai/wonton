@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -219,33 +219,7 @@ func (app *HyperlinkApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Create terminal
-	term, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer term.Close()
-
-	// Enable alternate screen
-	// Note: Runtime automatically enables raw mode
-	term.EnableAlternateScreen()
-
-	// Get initial terminal size
-	width, height := term.Size()
-
-	// Create the application
-	app := &HyperlinkApp{
-		width:  width,
-		height: height,
-	}
-
-	// Create and run the runtime at 30 FPS to update the countdown
-	runtime := gooey.NewRuntime(term, app, 30)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&HyperlinkApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

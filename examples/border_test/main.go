@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -76,31 +76,7 @@ func (app *BorderApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	terminal.EnableAlternateScreen()
-	defer terminal.DisableAlternateScreen()
-
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
-	app := &BorderApp{
-		width:  width,
-		height: height,
-	}
-
-	// Create and run the runtime
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&BorderApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

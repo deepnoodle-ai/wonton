@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"strings"
 	"time"
 
@@ -11,6 +11,10 @@ import (
 
 // ComprehensiveApp demonstrates all major Gooey features using the Runtime architecture.
 // This includes animations, mouse handling, tab completion, and interactive components.
+//
+// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of gooey.Run()
+// because it needs to call terminal.MoveCursor() in Render() to position the cursor for text input.
+// Once RenderFrame supports cursor positioning, this can be simplified to use gooey.Run().
 type ComprehensiveApp struct {
 	terminal *gooey.Terminal
 	runtime  *gooey.Runtime
@@ -591,8 +595,7 @@ func main() {
 	// Create terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
@@ -618,8 +621,7 @@ func main() {
 
 	// Run the event loop (blocks until quit)
 	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Runtime error: %v\n", err)
 	}
 
 	fmt.Println("\n✨ Thanks for trying the comprehensive demo!")

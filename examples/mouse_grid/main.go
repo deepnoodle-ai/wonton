@@ -1,8 +1,7 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -10,10 +9,9 @@ import (
 // MouseGridApp demonstrates a clickable grid with mouse support using Runtime.
 // Click cells to toggle through different colors.
 type MouseGridApp struct {
-	terminal *gooey.Terminal
-	mouse    *gooey.MouseHandler
-	width    int
-	height   int
+	mouse  *gooey.MouseHandler
+	width  int
+	height int
 
 	// Grid configuration
 	gridW     int
@@ -28,12 +26,6 @@ type MouseGridApp struct {
 
 // Init initializes the application
 func (app *MouseGridApp) Init() error {
-	// Use EnableMouseButtons for click-only tracking (no motion events)
-	// This provides much better responsiveness than EnableMouseTracking
-	app.terminal.EnableMouseButtons()
-	app.terminal.HideCursor()
-
-	app.width, app.height = app.terminal.Size()
 	app.mouse = gooey.NewMouseHandler()
 
 	// Grid configuration
@@ -60,12 +52,6 @@ func (app *MouseGridApp) Init() error {
 	app.setupGridRegions()
 
 	return nil
-}
-
-// Destroy cleans up resources
-func (app *MouseGridApp) Destroy() {
-	app.terminal.DisableMouseTracking()
-	app.terminal.ShowCursor()
 }
 
 // setupGridRegions creates mouse regions for each grid cell
@@ -154,27 +140,9 @@ func (app *MouseGridApp) renderCell(frame gooey.RenderFrame, x, y, width, height
 }
 
 func main() {
-	// Create terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Create application
-	app := &MouseGridApp{
-		terminal: terminal,
-	}
-
-	// Create runtime - mouse events are now handled automatically!
-	// Just call terminal.EnableMouseTracking() in Init() and mouse events
-	// will be delivered to HandleEvent as gooey.MouseEvent
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run the application
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	// Mouse tracking is enabled via WithMouseTracking option, and mouse events are
+	// automatically delivered to HandleEvent as gooey.MouseEvent
+	if err := gooey.Run(&MouseGridApp{}, gooey.WithMouseTracking(true)); err != nil {
+		log.Fatal(err)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -23,8 +24,6 @@ type ProgressItem struct {
 type ProgressDemoApp struct {
 	items      []*ProgressItem
 	frame      uint64
-	width      int
-	height     int
 	startTime  time.Time
 	spinnerSet []string
 }
@@ -129,10 +128,6 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-
-	case gooey.ResizeEvent:
-		app.width = e.Width
-		app.height = e.Height
 	}
 
 	return nil
@@ -204,31 +199,11 @@ func (app *ProgressDemoApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error initializing terminal: %v\n", err)
-		return
-	}
-	defer terminal.Close()
+	app := &ProgressDemoApp{}
 
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
-	app := &ProgressDemoApp{
-		width:  width,
-		height: height,
+	if err := gooey.Run(app); err != nil {
+		log.Fatal(err)
 	}
 
-	// Create and run the runtime with 30 FPS
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run the event loop (blocks until quit)
-	if err := runtime.Run(); err != nil {
-		fmt.Printf("Runtime error: %v\n", err)
-		return
-	}
-
-	fmt.Println("\n✨ All tasks finished!")
+	log.Println("\n✨ All tasks finished!")
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -107,24 +108,7 @@ func (app *ReflowApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	term, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error creating terminal: %v\n", err)
-		return
+	if err := gooey.Run(&ReflowApp{}, gooey.WithFPS(20)); err != nil {
+		log.Fatal(err)
 	}
-	defer term.Close()
-
-	// Create the application
-	app := &ReflowApp{}
-
-	// Create and run the runtime at 20 FPS (50ms per frame)
-	runtime := gooey.NewRuntime(term, app, 20)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Printf("Runtime error: %v\n", err)
-		return
-	}
-
-	fmt.Println("\nReflow demo complete!")
 }

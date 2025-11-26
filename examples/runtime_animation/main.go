@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -135,33 +136,12 @@ func rainbowStyle(frame uint64, blockIndex int) gooey.Style {
 }
 
 func main() {
-	// Initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error initializing terminal: %v\n", err)
-		return
-	}
-	defer terminal.Close()
-
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
 	app := &AnimatedApp{
 		frame:     0,
 		positions: make([]int, 5), // 5 animated blocks
-		width:     width,
-		height:    height,
 	}
 
-	// Create and run the runtime with 60 FPS for smooth animation
-	runtime := gooey.NewRuntime(terminal, app, 60)
-
-	// Run the event loop (blocks until quit)
-	if err := runtime.Run(); err != nil {
-		fmt.Printf("Runtime error: %v\n", err)
-		return
+	if err := gooey.Run(app, gooey.WithFPS(60)); err != nil {
+		log.Fatal(err)
 	}
-
-	fmt.Println("\n✨ Animation demo finished!")
 }

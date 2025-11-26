@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 	"github.com/mattn/go-runewidth"
@@ -142,37 +143,8 @@ func (app *GridApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Printf("Error creating terminal: %v\n", err)
-		return
+	if err := gooey.Run(&GridApp{}); err != nil {
+		log.Fatal(err)
 	}
-	defer terminal.Reset()
-
-	// Enable alternate screen for interactive demo
-	// Note: Runtime automatically enables raw mode
-	terminal.EnableAlternateScreen()
-	defer terminal.DisableAlternateScreen()
-	terminal.HideCursor()
-	defer terminal.ShowCursor()
-
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
-	app := &GridApp{
-		width:  width,
-		height: height,
-	}
-
-	// Create and run the runtime
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Printf("Runtime error: %v\n", err)
-		return
-	}
-
 	fmt.Println("Demo finished.")
 }

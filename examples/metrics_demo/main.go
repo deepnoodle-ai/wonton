@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -240,8 +240,7 @@ func main() {
 	// Create terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
@@ -264,8 +263,7 @@ func main() {
 
 	// Run the event loop (blocks until quit)
 	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Runtime error: %v\n", err)
 	}
 
 	fmt.Println("\n✨ Metrics demo finished!")

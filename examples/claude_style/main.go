@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"strings"
 	"time"
 
@@ -25,7 +25,6 @@ type Message struct {
 // - Clean, modern design similar to Claude Code
 // - Proper keyboard input handling (Shift+Enter for newlines)
 type ClaudeStyleDemo struct {
-	terminal *gooey.Terminal
 	messages []Message
 	input    string
 
@@ -41,41 +40,17 @@ type ClaudeStyleDemo struct {
 	height       int
 }
 
-func NewClaudeStyleDemo(terminal *gooey.Terminal) *ClaudeStyleDemo {
-	return &ClaudeStyleDemo{
-		terminal:     terminal,
-		historyIndex: -1, // Not browsing history
-		messages: []Message{
-			{
-				Role:    "assistant",
-				Content: "Hello! I'm Claude Code. I can help you with software engineering tasks.\n\nTry typing a message below and press Enter.",
-				Time:    time.Now(),
-			},
-		},
-	}
-}
-
 // Init implements the Initializable interface
 func (d *ClaudeStyleDemo) Init() error {
-	// Use alternate screen buffer
-	d.terminal.EnableAlternateScreen()
-
-	// Hide cursor for cleaner UI
-	d.terminal.HideCursor()
-
-	// Enable mouse tracking for scroll wheel support
-	d.terminal.EnableMouseTracking()
-
-	d.width, d.height = d.terminal.Size()
-
+	d.historyIndex = -1 // Not browsing history
+	d.messages = []Message{
+		{
+			Role:    "assistant",
+			Content: "Hello! I'm Claude Code. I can help you with software engineering tasks.\n\nTry typing a message below and press Enter.",
+			Time:    time.Now(),
+		},
+	}
 	return nil
-}
-
-// Destroy implements the Destroyable interface
-func (d *ClaudeStyleDemo) Destroy() {
-	d.terminal.DisableMouseTracking()
-	d.terminal.DisableAlternateScreen()
-	d.terminal.ShowCursor()
 }
 
 // HandleEvent processes events from the runtime
@@ -461,22 +436,7 @@ func min(a, b int) int {
 }
 
 func main() {
-	// Create terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Create application
-	app := NewClaudeStyleDemo(terminal)
-
-	// Create and run runtime
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&ClaudeStyleDemo{}, gooey.WithMouseTracking(true)); err != nil {
+		log.Fatal(err)
 	}
 }

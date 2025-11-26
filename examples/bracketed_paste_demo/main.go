@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -363,11 +363,11 @@ func splitLines(text string) []string {
 }
 
 func main() {
-	// Create and initialize terminal
+	// Note: This example uses bracketed paste mode which requires direct terminal access.
+	// It cannot use the simplified gooey.Run() API until WithBracketedPaste option is added.
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
@@ -388,7 +388,6 @@ func main() {
 
 	// Run blocks until the application quits
 	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Runtime error: %v\n", err)
 	}
 }

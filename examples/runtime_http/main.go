@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -184,16 +184,7 @@ func FetchGitHubUser(username string) gooey.Cmd {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		return
-	}
-	defer terminal.Close()
-
-	app := &HTTPApp{}
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
+	if err := gooey.Run(&HTTPApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

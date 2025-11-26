@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -11,10 +11,9 @@ import (
 // MouseDemoApp demonstrates mouse support with the Runtime architecture.
 // It shows clickable buttons, scroll areas, hover effects, and modifier detection.
 type MouseDemoApp struct {
-	terminal *gooey.Terminal
-	mouse    *gooey.MouseHandler
-	width    int
-	height   int
+	mouse  *gooey.MouseHandler
+	width  int
+	height int
 
 	// State
 	clickCount   map[string]int
@@ -32,10 +31,6 @@ type MouseDemoApp struct {
 
 // Init initializes the application
 func (app *MouseDemoApp) Init() error {
-	app.terminal.EnableMouseTracking()
-	app.terminal.HideCursor()
-
-	app.width, app.height = app.terminal.Size()
 	app.mouse = gooey.NewMouseHandler()
 	// app.mouse.EnableDebug() // Uncomment for debug logging
 
@@ -52,12 +47,6 @@ func (app *MouseDemoApp) Init() error {
 	app.setupMouseRegions()
 
 	return nil
-}
-
-// Destroy cleans up resources
-func (app *MouseDemoApp) Destroy() {
-	app.terminal.DisableMouseTracking()
-	app.terminal.ShowCursor()
 }
 
 // setupMouseRegions creates all mouse regions
@@ -417,27 +406,9 @@ func (app *MouseDemoApp) renderBorder(frame gooey.RenderFrame, x, y, width, heig
 }
 
 func main() {
-	// Create terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Create application
-	app := &MouseDemoApp{
-		terminal: terminal,
-	}
-
-	// Create runtime with 30 FPS
-	// Mouse tracking is enabled in Init(), and mouse events are automatically
-	// delivered to HandleEvent as gooey.MouseEvent
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run the application (blocks until quit)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	// Mouse tracking is enabled via WithMouseTracking option, and mouse events are
+	// automatically delivered to HandleEvent as gooey.MouseEvent
+	if err := gooey.Run(&MouseDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
+		log.Fatal(err)
 	}
 }

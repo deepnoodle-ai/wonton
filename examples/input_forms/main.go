@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
-	"os"
+	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -13,8 +13,6 @@ import (
 // It shows how to handle multiple input fields with focus management,
 // form validation, and submission.
 type InputFormsApp struct {
-	terminal *gooey.Terminal
-
 	// Form fields
 	nameInput     *gooey.TextInput
 	emailInput    *gooey.TextInput
@@ -28,9 +26,7 @@ type InputFormsApp struct {
 	errors    []string
 }
 
-func NewInputFormsApp(terminal *gooey.Terminal) *InputFormsApp {
-	app := &InputFormsApp{terminal: terminal}
-
+func (app *InputFormsApp) Init() error {
 	// Create name input
 	app.nameInput = gooey.NewTextInput().
 		WithPlaceholder("Enter your name")
@@ -45,16 +41,7 @@ func NewInputFormsApp(terminal *gooey.Terminal) *InputFormsApp {
 		WithPlaceholder("Enter password").
 		WithMask('*')
 
-	return app
-}
-
-func (app *InputFormsApp) Init() error {
-	app.terminal.HideCursor()
 	return nil
-}
-
-func (app *InputFormsApp) Destroy() {
-	app.terminal.ShowCursor()
 }
 
 func (app *InputFormsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
@@ -228,17 +215,7 @@ func (app *InputFormsApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	app := NewInputFormsApp(terminal)
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&InputFormsApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

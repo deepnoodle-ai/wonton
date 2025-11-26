@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -174,25 +175,23 @@ func (app *RecordingApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Create terminal
+	// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of
+	// gooey.Run() because it needs to call terminal.StartRecording() and use terminal.Print*()
+	// methods directly, which requires access to the terminal instance.
+
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
-	// Create the application
 	app := &RecordingApp{
 		terminal: terminal,
 	}
 
-	// Create and run the runtime at 30 FPS
 	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Run blocks until the application quits
 	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Runtime error: %v\n", err)
 	}
 }

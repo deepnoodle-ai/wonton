@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -21,11 +22,10 @@ import (
 // - Escape or Ctrl+C to quit
 
 type FilePickerDemoApp struct {
-	picker     *gooey.FilePicker
-	statusMsg  string
-	width      int
-	height     int
-	mouseReady bool
+	picker    *gooey.FilePicker
+	statusMsg string
+	width     int
+	height    int
 }
 
 // Init initializes the application by creating the file picker.
@@ -166,33 +166,7 @@ func (app *FilePickerDemoApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Create and initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Enable mouse tracking
-	terminal.EnableMouseTracking()
-	defer terminal.DisableMouseTracking()
-
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
-	app := &FilePickerDemoApp{
-		width:  width,
-		height: height,
-	}
-
-	// Create and run the runtime with 30 FPS
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&FilePickerDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
+		log.Fatal(err)
 	}
 }

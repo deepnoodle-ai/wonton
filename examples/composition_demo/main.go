@@ -3,22 +3,19 @@ package main
 import (
 	"fmt"
 	"image"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
 // Simple composition demo showing nested layouts with buttons and labels.
 type App struct {
-	terminal   *gooey.Terminal
 	root       *gooey.Container
 	counter    int
 	counterLbl *gooey.ComposableLabel
 }
 
-func NewApp(terminal *gooey.Terminal) *App {
-	app := &App{terminal: terminal}
-	width, height := terminal.Size()
+func (app *App) setupUI(width, height int) {
 
 	// Root container with vertical layout - stretch makes children fill width
 	app.root = gooey.NewContainerWithBorder(
@@ -93,21 +90,22 @@ func NewApp(terminal *gooey.Terminal) *App {
 
 	app.root.SetBounds(image.Rect(0, 0, width, height))
 	app.root.Init()
-
-	return app
 }
 
 func (app *App) Init() error {
-	app.terminal.EnableMouseTracking()
 	return nil
-}
-
-func (app *App) Destroy() {
-	app.terminal.DisableMouseTracking()
 }
 
 func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
+	case gooey.ResizeEvent:
+		if app.root == nil {
+			// Initial setup
+			app.setupUI(e.Width, e.Height)
+		} else {
+			// Just resize
+			app.root.SetBounds(image.Rect(0, 0, e.Width, e.Height))
+		}
 	case gooey.KeyEvent:
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
@@ -116,8 +114,6 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if mouseAware, ok := interface{}(app.root).(gooey.MouseAware); ok {
 			mouseAware.HandleMouse(e)
 		}
-	case gooey.ResizeEvent:
-		app.root.SetBounds(image.Rect(0, 0, e.Width, e.Height))
 	}
 	return nil
 }
@@ -127,18 +123,7 @@ func (app *App) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	app := NewApp(terminal)
-
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&App{}, gooey.WithMouseTracking(true)); err != nil {
+		log.Fatal(err)
 	}
 }

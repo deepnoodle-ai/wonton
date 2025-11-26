@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
-	"os"
+	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -186,10 +186,14 @@ func (app *PastePlaceholderApp) renderResult(frame gooey.RenderFrame, width, hei
 }
 
 func main() {
+	// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of
+	// gooey.Run() because it needs to call terminal.EnableBracketedPaste() in Init(),
+	// which requires access to the terminal instance. There is currently no
+	// gooey.WithBracketedPaste() option.
+
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
@@ -199,7 +203,6 @@ func main() {
 
 	runtime := gooey.NewRuntime(terminal, app, 30)
 	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Runtime error: %v\n", err)
 	}
 }

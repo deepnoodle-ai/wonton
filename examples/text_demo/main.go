@@ -1,8 +1,7 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -162,23 +161,11 @@ func (app *TextDemoApp) initializeComponents() {
 }
 
 func main() {
-	// Create terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
 	// Create application
 	app := &TextDemoApp{}
 
-	// Create runtime with 30 FPS
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run the event loop
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	// Run the application (30 FPS is default)
+	if err := gooey.Run(app); err != nil {
+		log.Fatal(err)
 	}
 }

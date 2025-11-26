@@ -3,31 +3,25 @@ package main
 import (
 	"fmt"
 	"image"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
 // PasswordDemoApp demonstrates password input using TextInput with masking.
 type PasswordDemoApp struct {
-	terminal  *gooey.Terminal
 	input     *gooey.TextInput
 	submitted bool
 	password  string
 }
 
 func (app *PasswordDemoApp) Init() error {
-	app.terminal.HideCursor()
 	app.input = gooey.NewTextInput().
 		WithMask('*').
 		WithPlaceholder("enter password")
 	app.input.SetFocused(true)
 	app.input.SetBounds(image.Rect(0, 0, 30, 1))
 	return nil
-}
-
-func (app *PasswordDemoApp) Destroy() {
-	app.terminal.ShowCursor()
 }
 
 func (app *PasswordDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
@@ -78,17 +72,7 @@ func (app *PasswordDemoApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	app := &PasswordDemoApp{terminal: terminal}
-	runtime := gooey.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&PasswordDemoApp{}); err != nil {
+		log.Fatal(err)
 	}
 }

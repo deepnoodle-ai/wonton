@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
-	"os"
+	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
@@ -45,17 +45,13 @@ const sampleDiff = `diff --git a/server.go b/server.go
 // DiffDemoApp demonstrates diff viewing using the Runtime architecture.
 // It shows how to use the DiffViewer widget with syntax highlighting and scrolling.
 type DiffDemoApp struct {
-	terminal *gooey.Terminal
-	viewer   *gooey.DiffViewer
-	width    int
-	height   int
+	viewer *gooey.DiffViewer
+	width  int
+	height int
 }
 
 // Init initializes the application by creating the diff viewer.
 func (app *DiffDemoApp) Init() error {
-	// Hide cursor - this app doesn't need a visible cursor
-	app.terminal.HideCursor()
-
 	viewer, err := gooey.NewDiffViewer(sampleDiff, "go")
 	if err != nil {
 		return fmt.Errorf("failed to create diff viewer: %w", err)
@@ -127,30 +123,7 @@ func (app *DiffDemoApp) Render(frame gooey.RenderFrame) {
 }
 
 func main() {
-	// Create and initialize terminal
-	terminal, err := gooey.NewTerminal()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
-		os.Exit(1)
-	}
-	defer terminal.Close()
-
-	// Get initial terminal size
-	width, height := terminal.Size()
-
-	// Create the application
-	app := &DiffDemoApp{
-		terminal: terminal,
-		width:    width,
-		height:   height,
-	}
-
-	// Create and run the runtime with 30 FPS
-	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
-		os.Exit(1)
+	if err := gooey.Run(&DiffDemoApp{}); err != nil {
+		log.Fatal(err)
 	}
 }
