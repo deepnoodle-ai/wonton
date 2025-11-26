@@ -106,7 +106,7 @@ func (app *App) Destroy() {
 func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
-		if e.Rune == 'q' {
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
 	case gooey.MouseEvent:

@@ -126,8 +126,7 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		}
 
 	case gooey.KeyEvent:
-		// Allow manual quit
-		if e.Rune == 'q' || e.Rune == 'Q' {
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
 

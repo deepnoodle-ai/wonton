@@ -36,8 +36,7 @@ func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 	case gooey.KeyEvent:
 		// Handle user input
-		if e.Rune == 'q' || e.Rune == 'Q' {
-			// Quit the application
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
 
@@ -92,7 +91,12 @@ func (app *AnimatedApp) Render(frame gooey.RenderFrame) {
 				if trailX < 0 {
 					break
 				}
-				trailStyle := rainbowStyle(app.frame-uint64(trail), blockIdx)
+				// Avoid uint64 underflow when frame < trail
+				trailFrame := app.frame
+				if trailFrame >= uint64(trail) {
+					trailFrame -= uint64(trail)
+				}
+				trailStyle := rainbowStyle(trailFrame, blockIdx)
 				trailStyle = trailStyle.WithFgRGB(gooey.NewRGB(
 					trailStyle.FgRGB.R/uint8(trail+1),
 					trailStyle.FgRGB.G/uint8(trail+1),

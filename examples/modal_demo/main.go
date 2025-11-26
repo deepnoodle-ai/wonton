@@ -48,7 +48,7 @@ func (app *ModalDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 			return nil
 		}
 
-		if e.Rune == 'q' || e.Rune == 'Q' {
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
 

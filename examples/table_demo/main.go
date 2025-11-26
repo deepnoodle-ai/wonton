@@ -54,12 +54,9 @@ func (app *TableDemoApp) Init() error {
 func (app *TableDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
-		// Quit on 'q'
-		if e.Rune == 'q' || e.Rune == 'Q' {
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-
-		// Pass other keys to table for navigation
 		app.table.HandleKey(e)
 
 	case gooey.ResizeEvent:

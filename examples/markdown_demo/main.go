@@ -117,12 +117,9 @@ func (app *MarkdownDemoApp) Init() error {
 func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
-		// Quit on 'q'
-		if e.Rune == 'q' || e.Rune == 'Q' {
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-
-		// Pass other keys to viewer for scrolling
 		app.viewer.HandleKey(e)
 
 	case gooey.ResizeEvent:

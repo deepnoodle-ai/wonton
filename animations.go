@@ -30,7 +30,7 @@ func (r *RainbowAnimation) GetStyle(frame uint64, charIndex int, totalChars int)
 		r.Length = totalChars
 	}
 	if r.Speed <= 0 {
-		r.Speed = 60
+		r.Speed = 3
 	}
 
 	// Get rainbow colors and apply directly
@@ -95,7 +95,7 @@ type PulseAnimation struct {
 // GetStyle returns the style for a character at a given frame
 func (p *PulseAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
 	if p.Speed <= 0 {
-		p.Speed = 60
+		p.Speed = 15
 	}
 	if p.MinBrightness <= 0 {
 		p.MinBrightness = 0.3

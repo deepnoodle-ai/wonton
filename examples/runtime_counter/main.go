@@ -25,25 +25,18 @@ type CounterApp struct {
 func (app *CounterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
+		if e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
+			return []gooey.Cmd{gooey.Quit()}
+		}
 		switch e.Rune {
 		case '+':
-			// Increment counter
 			app.count++
-			return nil
-
 		case '-':
-			// Decrement counter
 			app.count--
-			return nil
-
 		case 'q', 'Q':
-			// Quit application
 			return []gooey.Cmd{gooey.Quit()}
-
 		case 'r', 'R':
-			// Reset counter
 			app.count = 0
-			return nil
 		}
 
 	case gooey.ResizeEvent:

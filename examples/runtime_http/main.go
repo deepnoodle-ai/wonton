@@ -14,13 +14,9 @@ import (
 // GitHubUser represents a GitHub user profile response
 type GitHubUser struct {
 	Login       string `json:"login"`
-	ID          int    `json:"id"`
-	AvatarURL   string `json:"avatar_url"`
 	Name        string `json:"name"`
 	Company     string `json:"company"`
-	Blog        string `json:"blog"`
 	Location    string `json:"location"`
-	Email       string `json:"email"`
 	Bio         string `json:"bio"`
 	PublicRepos int    `json:"public_repos"`
 	Followers   int    `json:"followers"`
@@ -29,231 +25,165 @@ type GitHubUser struct {
 
 // DataResponse is a custom event that carries HTTP response data
 type DataResponse struct {
-	User *GitHubUser
-	Raw  string // Raw response for display
+	User     *GitHubUser
+	Username string
 }
 
-// Implement Event interface
-func (d DataResponse) Timestamp() time.Time {
-	return time.Now()
-}
+func (d DataResponse) Timestamp() time.Time { return time.Now() }
 
 // HTTPApp demonstrates async HTTP requests that don't block the UI
 type HTTPApp struct {
-	loading     bool
-	data        *GitHubUser
-	error       error
-	lastRequest string
-	history     []string // List of previous fetches
+	loading bool
+	data    *GitHubUser
+	error   error
 }
 
-// HandleEvent processes events in the application
 func (app *HTTPApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
+		if e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
+			return []gooey.Cmd{gooey.Quit()}
+		}
 		switch e.Rune {
-		case 'f', 'F':
-			// Fetch data when 'f' is pressed
+		case '1':
 			app.loading = true
 			app.error = nil
 			return []gooey.Cmd{FetchGitHubUser("golang")}
-
-		case 'g', 'G':
-			// Fetch different user
+		case '2':
 			app.loading = true
 			app.error = nil
 			return []gooey.Cmd{FetchGitHubUser("torvalds")}
-
+		case '3':
+			app.loading = true
+			app.error = nil
+			return []gooey.Cmd{FetchGitHubUser("antirez")}
 		case 'c', 'C':
-			// Clear data
 			app.data = nil
 			app.error = nil
-			app.lastRequest = ""
-			return nil
-
 		case 'q', 'Q':
-			// Quit
 			return []gooey.Cmd{gooey.Quit()}
 		}
 
 	case DataResponse:
-		// Handle successful response
 		app.loading = false
 		app.data = e.User
-		if e.Raw != "" {
-			app.lastRequest = e.Raw
-			app.history = append(app.history, e.Raw)
-			if len(app.history) > 5 {
-				app.history = app.history[len(app.history)-5:]
-			}
-		}
 
 	case gooey.ErrorEvent:
-		// Handle error from HTTP request
 		app.loading = false
 		app.error = e.Err
-
-	case gooey.TickEvent:
-		// Could add animation effects here
 	}
 
 	return nil
 }
 
-// Render draws the application UI
 func (app *HTTPApp) Render(frame gooey.RenderFrame) {
-	_, height := frame.Size()
+	width, height := frame.Size()
+
+	// Styles
+	title := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
+	dim := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+	key := gooey.NewStyle().WithForeground(gooey.ColorYellow)
+	label := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	value := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+	errStyle := gooey.NewStyle().WithForeground(gooey.ColorRed)
+
+	// Clear
+	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
 
 	// Title
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled(2, 1, "GitHub User Fetcher", titleStyle)
+	frame.PrintStyled(2, 1, "GitHub User Lookup", title)
 
-	// Instructions
-	instructionStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	frame.PrintStyled(2, 3, "Press 'f' to fetch golang user  |  Press 'g' to fetch Linus Torvalds", instructionStyle)
-	frame.PrintStyled(2, 4, "Press 'c' to clear  |  Press 'q' to quit", instructionStyle)
+	// Keys
+	frame.PrintStyled(2, 3, "[1]", key)
+	frame.PrintStyled(6, 3, "golang", label)
+	frame.PrintStyled(15, 3, "[2]", key)
+	frame.PrintStyled(19, 3, "torvalds", label)
+	frame.PrintStyled(30, 3, "[3]", key)
+	frame.PrintStyled(34, 3, "antirez", label)
+	frame.PrintStyled(44, 3, "[c]", key)
+	frame.PrintStyled(48, 3, "clear", label)
+	frame.PrintStyled(56, 3, "[q]", key)
+	frame.PrintStyled(60, 3, "quit", label)
 
-	// Loading indicator
+	// Content area
+	y := 5
 	if app.loading {
-		spinnerStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
-		spinner := []rune{'|', '/', '-', '\\'}
-		frame.PrintStyled(2, 6, fmt.Sprintf("Loading... %c", spinner[0]), spinnerStyle)
+		frame.PrintStyled(2, y, "Loading...", dim)
 	} else if app.error != nil {
-		// Error display
-		errorStyle := gooey.NewStyle().WithForeground(gooey.ColorRed).WithBold()
-		frame.PrintStyled(2, 6, fmt.Sprintf("Error: %v", app.error), errorStyle)
+		frame.PrintStyled(2, y, fmt.Sprintf("Error: %v", app.error), errStyle)
 	} else if app.data != nil {
-		// Display user data
-		app.renderUserData(frame)
-	} else {
-		// Empty state
-		emptyStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack).WithDim()
-		frame.PrintStyled(2, 6, "Press 'f' or 'g' to fetch a user", emptyStyle)
-	}
+		user := app.data
 
-	// Display history at the bottom
-	if len(app.history) > 0 {
-		historyStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta).WithDim()
-		historyY := height - 1 - len(app.history)
-		frame.PrintStyled(2, historyY, "Recent requests:", historyStyle)
-		for i, h := range app.history {
-			frame.PrintStyled(4, historyY+1+i, fmt.Sprintf("• %s", h), historyStyle)
+		frame.PrintStyled(2, y, user.Login, title)
+		if user.Name != "" {
+			frame.PrintStyled(2+len(user.Login)+1, y, user.Name, dim)
 		}
+		y += 2
+
+		if user.Bio != "" {
+			bio := user.Bio
+			if len(bio) > width-4 {
+				bio = bio[:width-7] + "..."
+			}
+			frame.PrintStyled(2, y, bio, label)
+			y += 2
+		}
+
+		if user.Location != "" {
+			frame.PrintStyled(2, y, "Location:", dim)
+			frame.PrintStyled(12, y, user.Location, value)
+			y++
+		}
+		if user.Company != "" {
+			frame.PrintStyled(2, y, "Company:", dim)
+			frame.PrintStyled(12, y, user.Company, value)
+			y++
+		}
+		y++
+
+		frame.PrintStyled(2, y, fmt.Sprintf("Repos: %d", user.PublicRepos), value)
+		frame.PrintStyled(16, y, fmt.Sprintf("Followers: %d", user.Followers), value)
+		frame.PrintStyled(34, y, fmt.Sprintf("Following: %d", user.Following), value)
+	} else {
+		frame.PrintStyled(2, y, "Press 1, 2, or 3 to fetch a user", dim)
 	}
 
 	// Footer
-	footerStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack).WithDim()
-	frame.PrintStyled(2, height-1, "Message-Driven HTTP Example - async requests don't block the UI", footerStyle)
+	frame.PrintStyled(2, height-1, "Async HTTP demo - requests don't block the UI", dim)
 }
 
-// renderUserData displays the fetched user information
-func (app *HTTPApp) renderUserData(frame gooey.RenderFrame) {
-	user := app.data
-	if user == nil {
-		return
-	}
-
-	y := 7
-	dataStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
-	labelStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-
-	// Display user information
-	frame.PrintStyled(2, y, "User Profile:", labelStyle)
-	y++
-
-	frame.PrintStyled(4, y, fmt.Sprintf("Login: %s", user.Login), dataStyle)
-	y++
-
-	if user.Name != "" {
-		frame.PrintStyled(4, y, fmt.Sprintf("Name: %s", user.Name), dataStyle)
-		y++
-	}
-
-	if user.Location != "" {
-		frame.PrintStyled(4, y, fmt.Sprintf("Location: %s", user.Location), dataStyle)
-		y++
-	}
-
-	if user.Company != "" {
-		frame.PrintStyled(4, y, fmt.Sprintf("Company: %s", user.Company), dataStyle)
-		y++
-	}
-
-	if user.Bio != "" {
-		bio := user.Bio
-		if len(bio) > 60 {
-			bio = bio[:60] + "..."
-		}
-		frame.PrintStyled(4, y, fmt.Sprintf("Bio: %s", bio), dataStyle)
-		y++
-	}
-
-	y++ // Blank line
-
-	// Statistics
-	frame.PrintStyled(4, y, fmt.Sprintf("Public Repos: %d", user.PublicRepos), dataStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Followers: %d", user.Followers), dataStyle)
-	y++
-	frame.PrintStyled(4, y, fmt.Sprintf("Following: %d", user.Following), dataStyle)
-}
-
-// FetchGitHubUser is a command that fetches a GitHub user profile
-// This runs in a separate goroutine and doesn't block the UI
+// FetchGitHubUser fetches a GitHub user profile asynchronously
 func FetchGitHubUser(username string) gooey.Cmd {
 	return func() gooey.Event {
-		// Perform the HTTP request (may take time)
 		url := fmt.Sprintf("https://api.github.com/users/%s", username)
 		resp, err := http.Get(url)
 		if err != nil {
-			return gooey.ErrorEvent{
-				Time:  time.Now(),
-				Err:   err,
-				Cause: fmt.Sprintf("failed to fetch user '%s'", username),
-			}
+			return gooey.ErrorEvent{Time: time.Now(), Err: err}
 		}
 		defer resp.Body.Close()
 
-		// Check HTTP status
 		if resp.StatusCode != http.StatusOK {
 			return gooey.ErrorEvent{
-				Time:  time.Now(),
-				Err:   fmt.Errorf("HTTP %d: user not found", resp.StatusCode),
-				Cause: fmt.Sprintf("failed to fetch user '%s'", username),
+				Time: time.Now(),
+				Err:  fmt.Errorf("HTTP %d", resp.StatusCode),
 			}
 		}
 
-		// Read response body
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gooey.ErrorEvent{
-				Time:  time.Now(),
-				Err:   err,
-				Cause: "failed to read response body",
-			}
+			return gooey.ErrorEvent{Time: time.Now(), Err: err}
 		}
 
-		// Parse JSON
 		var user GitHubUser
-		err = json.Unmarshal(body, &user)
-		if err != nil {
-			return gooey.ErrorEvent{
-				Time:  time.Now(),
-				Err:   err,
-				Cause: "failed to parse JSON response",
-			}
+		if err := json.Unmarshal(body, &user); err != nil {
+			return gooey.ErrorEvent{Time: time.Now(), Err: err}
 		}
 
-		// Return successful response
-		return DataResponse{
-			User: &user,
-			Raw:  fmt.Sprintf("Fetched %s at %s", username, time.Now().Format("15:04:05")),
-		}
+		return DataResponse{User: &user, Username: username}
 	}
 }
 
 func main() {
-	// Initialize terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
@@ -261,10 +191,7 @@ func main() {
 	}
 	defer terminal.Close()
 
-	// Create application
 	app := &HTTPApp{}
-
-	// Create and run runtime
 	runtime := gooey.NewRuntime(terminal, app, 30)
 	if err := runtime.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
