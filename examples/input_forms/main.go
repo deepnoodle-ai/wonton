@@ -13,6 +13,8 @@ import (
 // It shows how to handle multiple input fields with focus management,
 // form validation, and submission.
 type InputFormsApp struct {
+	terminal *gooey.Terminal
+
 	// Form fields
 	nameInput     *gooey.TextInput
 	emailInput    *gooey.TextInput
@@ -26,23 +28,33 @@ type InputFormsApp struct {
 	errors    []string
 }
 
-func NewInputFormsApp() *InputFormsApp {
-	app := &InputFormsApp{}
+func NewInputFormsApp(terminal *gooey.Terminal) *InputFormsApp {
+	app := &InputFormsApp{terminal: terminal}
 
 	// Create name input
-	app.nameInput = gooey.NewTextInput()
-	app.nameInput.Placeholder = "Enter your name"
+	app.nameInput = gooey.NewTextInput().
+		WithPlaceholder("Enter your name")
 	app.nameInput.SetFocused(true) // Start with name focused
 
 	// Create email input
-	app.emailInput = gooey.NewTextInput()
-	app.emailInput.Placeholder = "Enter your email"
+	app.emailInput = gooey.NewTextInput().
+		WithPlaceholder("Enter your email")
 
-	// Create password input (we'll mask it in Render)
-	app.passwordInput = gooey.NewTextInput()
-	app.passwordInput.Placeholder = "Enter password"
+	// Create password input with masking
+	app.passwordInput = gooey.NewTextInput().
+		WithPlaceholder("Enter password").
+		WithMask('*')
 
 	return app
+}
+
+func (app *InputFormsApp) Init() error {
+	app.terminal.HideCursor()
+	return nil
+}
+
+func (app *InputFormsApp) Destroy() {
+	app.terminal.ShowCursor()
 }
 
 func (app *InputFormsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
@@ -78,12 +90,7 @@ func (app *InputFormsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 			}
 			return nil
 
-		case gooey.KeyEscape:
-			return []gooey.Cmd{gooey.Quit()}
-		}
-
-		// Handle Ctrl+C to quit
-		if e.Rune == 'q' && e.Ctrl {
+		case gooey.KeyEscape, gooey.KeyCtrlC:
 			return []gooey.Cmd{gooey.Quit()}
 		}
 
@@ -122,12 +129,12 @@ func (app *InputFormsApp) validateAndSubmit() {
 	app.errors = nil
 
 	// Validate name
-	if strings.TrimSpace(app.nameInput.Value) == "" {
+	if strings.TrimSpace(app.nameInput.Value()) == "" {
 		app.errors = append(app.errors, "Name is required")
 	}
 
 	// Validate email (simple check)
-	email := strings.TrimSpace(app.emailInput.Value)
+	email := strings.TrimSpace(app.emailInput.Value())
 	if email == "" {
 		app.errors = append(app.errors, "Email is required")
 	} else if !strings.Contains(email, "@") {
@@ -135,7 +142,7 @@ func (app *InputFormsApp) validateAndSubmit() {
 	}
 
 	// Validate password
-	if len(app.passwordInput.Value) < 4 {
+	if len(app.passwordInput.Value()) < 4 {
 		app.errors = append(app.errors, "Password must be at least 4 characters")
 	}
 
@@ -165,9 +172,9 @@ func (app *InputFormsApp) Render(frame gooey.RenderFrame) {
 	if app.submitted {
 		// Show success message
 		frame.PrintStyled(2, 4, "Form submitted successfully!", successStyle)
-		frame.PrintStyled(2, 6, fmt.Sprintf("Name:     %s", app.nameInput.Value), labelStyle)
-		frame.PrintStyled(2, 7, fmt.Sprintf("Email:    %s", app.emailInput.Value), labelStyle)
-		frame.PrintStyled(2, 8, fmt.Sprintf("Password: %s", strings.Repeat("*", len(app.passwordInput.Value))), labelStyle)
+		frame.PrintStyled(2, 6, fmt.Sprintf("Name:     %s", app.nameInput.Value()), labelStyle)
+		frame.PrintStyled(2, 7, fmt.Sprintf("Email:    %s", app.emailInput.Value()), labelStyle)
+		frame.PrintStyled(2, 8, fmt.Sprintf("Password: %s", strings.Repeat("*", len(app.passwordInput.Value()))), labelStyle)
 		frame.PrintStyled(2, 10, "Press Enter to exit", helpStyle)
 		return
 	}
@@ -196,14 +203,14 @@ func (app *InputFormsApp) Render(frame gooey.RenderFrame) {
 	app.emailInput.Draw(frame)
 	y += 2
 
-	// Password field (display masked)
+	// Password field
 	if app.focusedField == 2 {
 		frame.PrintStyled(labelX, y, "> Password:", focusedLabelStyle)
 	} else {
 		frame.PrintStyled(labelX, y, "  Password:", labelStyle)
 	}
-	// For password, we draw it manually with masking
-	app.drawPasswordField(frame, inputX, y, 40)
+	app.passwordInput.SetBounds(image.Rect(inputX, y, inputX+40, y+1))
+	app.passwordInput.Draw(frame)
 	y += 2
 
 	// Show errors if any
@@ -220,38 +227,7 @@ func (app *InputFormsApp) Render(frame gooey.RenderFrame) {
 	frame.PrintStyled(2, y, "Tab/Arrow keys: Navigate | Enter: Submit | Esc: Quit", helpStyle)
 }
 
-// drawPasswordField renders a password field with masked characters
-func (app *InputFormsApp) drawPasswordField(frame gooey.RenderFrame, x, y, width int) {
-	input := app.passwordInput
-	style := input.Style
-	cursorStyle := input.CursorStyle
-
-	// Clear the field area
-	frame.FillStyled(x, y, width, 1, ' ', style)
-
-	// Show placeholder or masked value
-	if input.Value == "" && input.Placeholder != "" {
-		frame.PrintStyled(x, y, input.Placeholder, input.PlaceholderStyle)
-	} else {
-		// Draw masked characters
-		masked := strings.Repeat("*", len(input.Value))
-		if len(masked) > width {
-			masked = masked[:width]
-		}
-		frame.PrintStyled(x, y, masked, style)
-	}
-
-	// Draw cursor if focused (check if this is the focused field)
-	if app.focusedField == 2 {
-		cursorX := x + len(input.Value)
-		if cursorX < x+width {
-			frame.PrintStyled(cursorX, y, " ", cursorStyle)
-		}
-	}
-}
-
 func main() {
-	// Create and initialize terminal
 	terminal, err := gooey.NewTerminal()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create terminal: %v\n", err)
@@ -259,13 +235,8 @@ func main() {
 	}
 	defer terminal.Close()
 
-	// Create the application
-	app := NewInputFormsApp()
-
-	// Create and run the runtime
+	app := NewInputFormsApp(terminal)
 	runtime := gooey.NewRuntime(terminal, app, 30)
-
-	// Run blocks until the application quits
 	if err := runtime.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
 		os.Exit(1)

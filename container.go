@@ -356,19 +356,29 @@ func (c *Container) Draw(frame RenderFrame) {
 		return
 	}
 
+	// Create a SubFrame for this container's bounds to establish our coordinate space.
+	// This ensures the container draws correctly even when positioned away from (0,0).
+	// We convert our absolute bounds to be relative to the frame we received.
+	frameBounds := frame.GetBounds()
+	relativeContainerBounds := c.bounds.Sub(frameBounds.Min)
+	containerFrame := frame.SubFrame(relativeContainerBounds)
+
+	// From here on, all drawing uses coordinates relative to the container (0,0 origin)
+	width := c.bounds.Dx()
+	height := c.bounds.Dy()
+
 	// Draw background if style has background color
 	if c.style.Background != ColorDefault || c.style.BgRGB != nil {
-		bounds := c.GetBounds()
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				frame.SetCell(x, y, ' ', c.style)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				containerFrame.SetCell(x, y, ' ', c.style)
 			}
 		}
 	}
 
 	// Draw border if enabled
 	if c.drawBorder && c.borderStyle != nil {
-		c.drawBorderLines(frame)
+		c.drawBorderLines(containerFrame, width, height)
 	}
 
 	// Draw all visible children
@@ -381,7 +391,7 @@ func (c *Container) Draw(frame RenderFrame) {
 			relativeBounds := childBounds.Sub(c.bounds.Min)
 			// Clip to content bounds (also made relative)
 			relativeContent := c.contentBounds.Sub(c.bounds.Min)
-			childFrame := frame.SubFrame(relativeBounds.Intersect(relativeContent))
+			childFrame := containerFrame.SubFrame(relativeBounds.Intersect(relativeContent))
 			child.Draw(childFrame)
 			child.ClearDirty()
 		}
@@ -390,9 +400,8 @@ func (c *Container) Draw(frame RenderFrame) {
 	c.ClearDirty()
 }
 
-// drawBorderLines draws the border around the container
-func (c *Container) drawBorderLines(frame RenderFrame) {
-	bounds := c.GetBounds()
+// drawBorderLines draws the border around the container using relative coordinates
+func (c *Container) drawBorderLines(frame RenderFrame, width, height int) {
 	style := c.style
 
 	// Convert border style strings to runes
@@ -404,24 +413,24 @@ func (c *Container) drawBorderLines(frame RenderFrame) {
 	vertical := []rune(c.borderStyle.Vertical)[0]
 
 	// Top border
-	frame.SetCell(bounds.Min.X, bounds.Min.Y, topLeft, style)
-	for x := bounds.Min.X + 1; x < bounds.Max.X-1; x++ {
-		frame.SetCell(x, bounds.Min.Y, horizontal, style)
+	frame.SetCell(0, 0, topLeft, style)
+	for x := 1; x < width-1; x++ {
+		frame.SetCell(x, 0, horizontal, style)
 	}
-	frame.SetCell(bounds.Max.X-1, bounds.Min.Y, topRight, style)
+	frame.SetCell(width-1, 0, topRight, style)
 
 	// Sides
-	for y := bounds.Min.Y + 1; y < bounds.Max.Y-1; y++ {
-		frame.SetCell(bounds.Min.X, y, vertical, style)
-		frame.SetCell(bounds.Max.X-1, y, vertical, style)
+	for y := 1; y < height-1; y++ {
+		frame.SetCell(0, y, vertical, style)
+		frame.SetCell(width-1, y, vertical, style)
 	}
 
 	// Bottom border
-	frame.SetCell(bounds.Min.X, bounds.Max.Y-1, bottomLeft, style)
-	for x := bounds.Min.X + 1; x < bounds.Max.X-1; x++ {
-		frame.SetCell(x, bounds.Max.Y-1, horizontal, style)
+	frame.SetCell(0, height-1, bottomLeft, style)
+	for x := 1; x < width-1; x++ {
+		frame.SetCell(x, height-1, horizontal, style)
 	}
-	frame.SetCell(bounds.Max.X-1, bounds.Max.Y-1, bottomRight, style)
+	frame.SetCell(width-1, height-1, bottomRight, style)
 }
 
 // HandleKey handles keyboard events and delegates to focused child

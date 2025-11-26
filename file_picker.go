@@ -63,7 +63,7 @@ func (fp *FilePicker) Init() {
 
 // Refresh reloads the file list from the current directory
 func (fp *FilePicker) Refresh() {
-	fp.input.Value = "" // Reset filter on dir change? Or keep it? usually reset.
+	fp.input.SetValue("") // Reset filter on dir change? Or keep it? usually reset.
 	fp.input.CursorPos = 0
 	fp.Filter = ""
 
@@ -235,7 +235,7 @@ func (fp *FilePicker) FocusInput() {
 
 // GetInputValue returns the current value of the input field (for debugging)
 func (fp *FilePicker) GetInputValue() string {
-	return fp.input.Value
+	return fp.input.Value()
 }
 
 // GetInputFocused returns whether the input is focused (for debugging)
@@ -250,8 +250,7 @@ func (fp *FilePicker) GetInputCursorPos() int {
 
 // SetInputValueDirect directly sets the input value (for debugging)
 func (fp *FilePicker) SetInputValueDirect(val string) {
-	fp.input.Value = val
-	fp.input.CursorPos = len(val)
+	fp.input.SetValue(val)
 	fp.Filter = val
 	fp.filterFiles()
 }
