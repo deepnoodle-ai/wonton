@@ -2,6 +2,7 @@ package gooey
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"sync"
 	"time"
@@ -307,6 +308,24 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 
 // processEvent calls the application's HandleEvent and queues any returned commands.
 func (r *Runtime) processEvent(event Event) {
+	// For declarative apps, route events to interactive elements
+	if _, ok := r.app.(ViewProvider); ok {
+		switch e := event.(type) {
+		case MouseEvent:
+			if e.Type == MouseClick {
+				// Check if the click hit a registered input (for focus)
+				inputRegistry.HandleClick(e.X, e.Y)
+				// Check if the click hit a registered button
+				interactiveRegistry.HandleClick(e.X, e.Y)
+			}
+		case KeyEvent:
+			// Route key events to focused input
+			if inputRegistry.HandleKey(e) {
+				// Input consumed the event, but still pass to app
+			}
+		}
+	}
+
 	// Call user's event handler
 	cmds := r.app.HandleEvent(event)
 
@@ -322,7 +341,14 @@ func (r *Runtime) processEvent(event Event) {
 	}
 }
 
+// ViewProvider is an optional interface that applications can implement
+// to use declarative rendering instead of imperative Render().
+type ViewProvider interface {
+	View() View
+}
+
 // render calls the application's Render method using BeginFrame/EndFrame.
+// If the application implements ViewProvider, it uses declarative rendering instead.
 func (r *Runtime) render() {
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
@@ -330,8 +356,28 @@ func (r *Runtime) render() {
 		return
 	}
 
-	// Application renders to back buffer
-	r.app.Render(frame)
+	// Check if app implements View() for declarative rendering
+	if viewProvider, ok := r.app.(ViewProvider); ok {
+		// Clear interactive regions before render
+		interactiveRegistry.Clear()
+		inputRegistry.Clear()
+
+		// Clear the frame before rendering. This ensures that when views shrink,
+		// old content outside their new bounds is erased. The double-buffering
+		// system ensures only actual changes are sent to the terminal.
+		frame.Fill(' ', NewStyle())
+
+		view := viewProvider.View()
+		width, height := frame.Size()
+		bounds := image.Rect(0, 0, width, height)
+		// Measure phase (populates cached child sizes)
+		view.size(width, height)
+		// Render phase
+		view.render(frame, bounds)
+	} else {
+		// Fall back to imperative rendering
+		r.app.Render(frame)
+	}
 
 	// Flush to screen (diffs and sends only dirty regions)
 	r.terminal.EndFrame(frame)
