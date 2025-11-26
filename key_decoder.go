@@ -3,6 +3,7 @@ package gooey
 import (
 	"bufio"
 	"io"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -12,20 +13,271 @@ import (
 // - ANSI escape sequences (arrows, function keys, etc.)
 // - Alt/Meta modifiers
 // - Ctrl combinations
+// - Mouse events (when mouse tracking is enabled)
 // - Proper error handling and EOF detection
 //
 // The decoder uses internal buffering to ensure we only consume bytes
 // for one key event at a time, making it suitable for sequential reads.
 type KeyDecoder struct {
-	reader *bufio.Reader
+	reader        *bufio.Reader
+	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
 }
 
 // NewKeyDecoder creates a new key decoder that reads from the given reader.
 // For production use, pass os.Stdin. For testing, pass a bytes.Buffer or other io.Reader.
 func NewKeyDecoder(reader io.Reader) *KeyDecoder {
 	return &KeyDecoder{
-		reader: bufio.NewReader(reader),
+		reader:        bufio.NewReader(reader),
+		pasteTabWidth: 0, // Default: preserve tabs
 	}
+}
+
+// SetPasteTabWidth configures how tabs in pasted content are handled.
+// If width is 0 (default), tabs are preserved as-is.
+// If width > 0, each tab is converted to that many spaces.
+func (kd *KeyDecoder) SetPasteTabWidth(width int) {
+	kd.pasteTabWidth = width
+}
+
+// ReadEvent reads a single input event from the input stream.
+// It returns either a KeyEvent or MouseEvent, both implementing the Event interface.
+// This is the recommended method for reading input when mouse support is needed.
+func (kd *KeyDecoder) ReadEvent() (Event, error) {
+	// Read first byte
+	firstByte, err := kd.reader.ReadByte()
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+
+	// Check the first byte to see what we're dealing with
+	switch firstByte {
+	// Control characters
+	case 0x0D, 0x0A: // Enter (CR or LF)
+		return KeyEvent{Key: KeyEnter}, nil
+	case 0x09: // Tab
+		return KeyEvent{Key: KeyTab}, nil
+	case 0x7F, 0x08: // Backspace (DEL or BS)
+		return KeyEvent{Key: KeyBackspace}, nil
+	case 0x1B: // Escape (might be start of sequence or mouse event)
+		return kd.handleEscapeEvent()
+
+	// Ctrl combinations (0x01-0x1A map to Ctrl+A through Ctrl+Z)
+	case 0x01:
+		return KeyEvent{Key: KeyCtrlA, Ctrl: true}, nil
+	case 0x02:
+		return KeyEvent{Key: KeyCtrlB, Ctrl: true}, nil
+	case 0x03:
+		return KeyEvent{Key: KeyCtrlC, Ctrl: true}, nil
+	case 0x04:
+		return KeyEvent{Key: KeyCtrlD, Ctrl: true}, nil
+	case 0x05:
+		return KeyEvent{Key: KeyCtrlE, Ctrl: true}, nil
+	case 0x06:
+		return KeyEvent{Key: KeyCtrlF, Ctrl: true}, nil
+	case 0x07:
+		return KeyEvent{Key: KeyCtrlG, Ctrl: true}, nil
+	case 0x0B:
+		return KeyEvent{Key: KeyCtrlK, Ctrl: true}, nil
+	case 0x0C:
+		return KeyEvent{Key: KeyCtrlL, Ctrl: true}, nil
+	case 0x0E:
+		return KeyEvent{Key: KeyCtrlN, Ctrl: true}, nil
+	case 0x0F:
+		return KeyEvent{Key: KeyCtrlO, Ctrl: true}, nil
+	case 0x10:
+		return KeyEvent{Key: KeyCtrlP, Ctrl: true}, nil
+	case 0x11:
+		return KeyEvent{Key: KeyCtrlQ, Ctrl: true}, nil
+	case 0x12:
+		return KeyEvent{Key: KeyCtrlR, Ctrl: true}, nil
+	case 0x13:
+		return KeyEvent{Key: KeyCtrlS, Ctrl: true}, nil
+	case 0x14:
+		return KeyEvent{Key: KeyCtrlT, Ctrl: true}, nil
+	case 0x15:
+		return KeyEvent{Key: KeyCtrlU, Ctrl: true}, nil
+	case 0x16:
+		return KeyEvent{Key: KeyCtrlV, Ctrl: true}, nil
+	case 0x17:
+		return KeyEvent{Key: KeyCtrlW, Ctrl: true}, nil
+	case 0x18:
+		return KeyEvent{Key: KeyCtrlX, Ctrl: true}, nil
+	case 0x19:
+		return KeyEvent{Key: KeyCtrlY, Ctrl: true}, nil
+	case 0x1A:
+		return KeyEvent{Key: KeyCtrlZ, Ctrl: true}, nil
+
+	// Printable ASCII
+	default:
+		if firstByte >= 0x20 && firstByte < 0x7F {
+			return KeyEvent{Rune: rune(firstByte)}, nil
+		}
+		// Might be start of UTF-8 multi-byte character
+		keyEvent, err := kd.decodeUTF8(firstByte)
+		return keyEvent, err
+	}
+}
+
+// handleEscapeEvent processes an escape key or escape sequence, including mouse events
+// We've already consumed the ESC byte (0x1B)
+func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
+	// Check if there are more bytes already buffered.
+	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
+	// sequence, the following bytes should already be in the buffer.
+	// If nothing is buffered, this is a standalone Escape key press.
+	if kd.reader.Buffered() == 0 {
+		return KeyEvent{Key: KeyEscape}, nil
+	}
+
+	// Peek at the next byte to see if this is an escape sequence
+	nextByte, err := kd.reader.ReadByte()
+	if err != nil {
+		// No more bytes available, it's just the Escape key
+		return KeyEvent{Key: KeyEscape}, nil
+	}
+
+	// Check what follows the ESC
+	switch nextByte {
+	case '[':
+		// ANSI CSI sequence: ESC [ - could be keyboard or mouse
+		return kd.decodeCSIEvent()
+	case 'O':
+		// ANSI SS3 sequence: ESC O
+		keyEvent, err := kd.decodeSS3()
+		return keyEvent, err
+	case 0x0D, 0x0A:
+		// ESC + Enter (CR or LF) = Shift+Enter (iTerm2 and similar terminals)
+		return KeyEvent{Key: KeyEnter, Shift: true}, nil
+	default:
+		// Alt+key combination or unknown
+		if nextByte >= 0x20 && nextByte < 0x7F {
+			// Printable character with Alt
+			return KeyEvent{Rune: rune(nextByte), Alt: true}, nil
+		}
+		// Unknown sequence, return escape
+		kd.reader.UnreadByte()
+		return KeyEvent{Key: KeyEscape}, nil
+	}
+}
+
+// decodeCSIEvent decodes ANSI CSI sequences (ESC [ ...), including mouse events
+// We've already consumed ESC and '['
+func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
+	// Read the next character
+	ch, err := kd.reader.ReadByte()
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+
+	// Check for SGR mouse event: ESC [ <
+	if ch == '<' {
+		return kd.decodeMouseEvent()
+	}
+
+	// Simple sequences: ESC [ A/B/C/D/H/F
+	switch ch {
+	case 'A':
+		return KeyEvent{Key: KeyArrowUp}, nil
+	case 'B':
+		return KeyEvent{Key: KeyArrowDown}, nil
+	case 'C':
+		return KeyEvent{Key: KeyArrowRight}, nil
+	case 'D':
+		return KeyEvent{Key: KeyArrowLeft}, nil
+	case 'H':
+		return KeyEvent{Key: KeyHome}, nil
+	case 'F':
+		return KeyEvent{Key: KeyEnd}, nil
+	case 'M':
+		// Legacy mouse format: ESC [ M followed by 3 bytes
+		return kd.decodeLegacyMouseEvent()
+	}
+
+	// Numeric sequences: ESC [ <number> ~  or  ESC [ <number> ; <modifier> <key>
+	if ch >= '0' && ch <= '9' {
+		// Read the full numeric sequence
+		num := []byte{ch}
+		for {
+			b, err := kd.reader.ReadByte()
+			if err != nil {
+				return KeyEvent{Key: KeyUnknown}, err
+			}
+			if b == '~' {
+				// Sequence ends with ~
+				// Check for bracketed paste
+				numStr := string(num)
+				if numStr == "200" {
+					// Bracketed paste start
+					keyEvent, err := kd.decodeBracketedPaste()
+					return keyEvent, err
+				}
+				keyEvent, err := kd.decodeCSINumber(numStr)
+				return keyEvent, err
+			}
+			if b == ';' {
+				// Modified key sequence
+				keyEvent, err := kd.decodeCSIModified(string(num))
+				return keyEvent, err
+			}
+			if b >= '0' && b <= '9' {
+				num = append(num, b)
+			} else {
+				// Unexpected character
+				return KeyEvent{Key: KeyUnknown}, nil
+			}
+		}
+	}
+
+	return KeyEvent{Key: KeyUnknown}, nil
+}
+
+// decodeMouseEvent decodes SGR mouse events: ESC [ < button ; x ; y [Mm]
+// We've already consumed ESC [ <
+func (kd *KeyDecoder) decodeMouseEvent() (Event, error) {
+	// Read until we find M or m
+	buf := make([]byte, 0, 20)
+	for {
+		b, err := kd.reader.ReadByte()
+		if err != nil {
+			return KeyEvent{Key: KeyUnknown}, err
+		}
+		buf = append(buf, b)
+		if b == 'M' || b == 'm' {
+			break
+		}
+		if len(buf) >= 20 {
+			// Sequence too long, probably malformed
+			return KeyEvent{Key: KeyUnknown}, nil
+		}
+	}
+
+	// Prepend '<' for ParseMouseEvent
+	fullBuf := append([]byte{'<'}, buf...)
+	event, err := ParseMouseEvent(fullBuf)
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+	return *event, nil
+}
+
+// decodeLegacyMouseEvent decodes legacy mouse format: ESC [ M followed by 3 bytes
+// We've already consumed ESC [ M
+func (kd *KeyDecoder) decodeLegacyMouseEvent() (Event, error) {
+	// Read the 3 bytes
+	buf := make([]byte, 3)
+	for i := 0; i < 3; i++ {
+		b, err := kd.reader.ReadByte()
+		if err != nil {
+			return KeyEvent{Key: KeyUnknown}, err
+		}
+		buf[i] = b
+	}
+
+	event, err := ParseMouseEvent(buf)
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+	return *event, nil
 }
 
 // ReadKeyEvent reads a single key event from the input stream.
@@ -118,6 +370,14 @@ func (kd *KeyDecoder) ReadKeyEvent() (KeyEvent, error) {
 // handleEscape processes an escape key or escape sequence
 // We've already consumed the ESC byte (0x1B)
 func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
+	// Check if there are more bytes already buffered.
+	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
+	// sequence, the following bytes should already be in the buffer.
+	// If nothing is buffered, this is a standalone Escape key press.
+	if kd.reader.Buffered() == 0 {
+		return KeyEvent{Key: KeyEscape}, nil
+	}
+
 	// Peek at the next byte to see if this is an escape sequence
 	nextByte, err := kd.reader.ReadByte()
 	if err != nil {
@@ -133,6 +393,9 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 	case 'O':
 		// ANSI SS3 sequence: ESC O
 		return kd.decodeSS3()
+	case 0x0D, 0x0A:
+		// ESC + Enter (CR or LF) = Shift+Enter (iTerm2 and similar terminals)
+		return KeyEvent{Key: KeyEnter, Shift: true}, nil
 	default:
 		// Alt+key combination or unknown
 		if nextByte >= 0x20 && nextByte < 0x7F {
@@ -384,6 +647,22 @@ func (kd *KeyDecoder) decodeUTF8(firstByte byte) (KeyEvent, error) {
 	return KeyEvent{Rune: r}, nil
 }
 
+// normalizePasteContent normalizes pasted content:
+// - Converts \r\n (Windows) and \r (old Mac) line endings to \n
+// - Optionally converts tabs to spaces based on tabWidth (0 = preserve tabs)
+func normalizePasteContent(s string, tabWidth int) string {
+	// First replace \r\n (Windows) with \n
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	// Then replace any remaining \r (old Mac) with \n
+	s = strings.ReplaceAll(s, "\r", "\n")
+	// Convert tabs to spaces if configured
+	if tabWidth > 0 {
+		spaces := strings.Repeat(" ", tabWidth)
+		s = strings.ReplaceAll(s, "\t", spaces)
+	}
+	return s
+}
+
 // decodeBracketedPaste decodes a bracketed paste sequence
 // We've already consumed ESC [ 200 ~, now read until ESC [ 201 ~
 func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
@@ -394,8 +673,8 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 		b, err := kd.reader.ReadByte()
 		if err != nil {
 			// EOF or error while reading paste content
-			// Return what we have so far
-			return KeyEvent{Paste: string(content)}, err
+			// Return what we have so far (with normalized line endings)
+			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, err
 		}
 
 		// Check if this might be the start of the end sequence
@@ -437,7 +716,7 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 
 							if next5 == '~' {
 								// Found the end sequence!
-								return KeyEvent{Paste: string(content)}, nil
+								return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
 							}
 							// Not the end sequence, add all bytes to content
 							content = append(content, b, next1, next2, next3, next4, next5)
@@ -460,5 +739,5 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 	}
 
 	// If we reach here, we hit EOF or error
-	return KeyEvent{Paste: string(content)}, nil
+	return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
 }

@@ -63,6 +63,15 @@ type Runtime struct {
 	mu          sync.Mutex
 	running     bool
 	resizeUnsub func() // Unsubscribe function for resize callback
+
+	// Paste handling configuration
+	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
+
+	// Mouse click synthesis state
+	mousePressX      int  // X position of last mouse press
+	mousePressY      int  // Y position of last mouse press
+	mousePressButton MouseButton // Button that was pressed
+	mousePressed     bool // Whether a mouse button is currently pressed
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -79,14 +88,23 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 	}
 
 	return &Runtime{
-		terminal: terminal,
-		app:      app,
-		events:   make(chan Event, 100), // Buffered to prevent blocking
-		cmds:     make(chan Cmd, 100),
-		done:     make(chan struct{}),
-		fps:      fps,
-		frame:    0,
+		terminal:      terminal,
+		app:           app,
+		events:        make(chan Event, 100), // Buffered to prevent blocking
+		cmds:          make(chan Cmd, 100),
+		done:          make(chan struct{}),
+		fps:           fps,
+		frame:         0,
+		pasteTabWidth: 0, // Default: preserve tabs
 	}
+}
+
+// SetPasteTabWidth configures how tabs in pasted content are handled.
+// If width is 0 (default), tabs are preserved as-is.
+// If width > 0, each tab is converted to that many spaces.
+// Must be called before Run().
+func (r *Runtime) SetPasteTabWidth(width int) {
+	r.pasteTabWidth = width
 }
 
 // Run starts the runtime's event loop and blocks until the application quits.
@@ -205,30 +223,34 @@ func (r *Runtime) Stop() {
 
 // eventLoop is the main event processing loop (Goroutine 1).
 // It processes events sequentially, ensuring no race conditions.
+// Events are batched: all pending events are processed before rendering once.
 func (r *Runtime) eventLoop() {
 	for {
 		select {
 		case event := <-r.events:
-			// Check for quit event
-			if _, isQuit := event.(QuitEvent); isQuit {
+			// Process this event and drain any other pending events
+			if r.processEventWithQuitCheck(event) {
 				close(r.done)
 				return
 			}
 
-			// Handle batch events by unpacking them
-			if batch, isBatch := event.(BatchEvent); isBatch {
-				for _, e := range batch.Events {
-					r.processEvent(e)
-					if _, isQuit := e.(QuitEvent); isQuit {
+			// Drain all pending events before rendering
+			// This prevents slow rendering from causing event backlog
+		drainLoop:
+			for {
+				select {
+				case event := <-r.events:
+					if r.processEventWithQuitCheck(event) {
 						close(r.done)
 						return
 					}
+				default:
+					// No more pending events
+					break drainLoop
 				}
-			} else {
-				r.processEvent(event)
 			}
 
-			// Render after processing event
+			// Render once after processing all pending events
 			r.render()
 
 		case <-r.ticker.C:
@@ -245,6 +267,28 @@ func (r *Runtime) eventLoop() {
 			return
 		}
 	}
+}
+
+// processEventWithQuitCheck processes an event and returns true if it's a quit event
+func (r *Runtime) processEventWithQuitCheck(event Event) bool {
+	// Check for quit event
+	if _, isQuit := event.(QuitEvent); isQuit {
+		return true
+	}
+
+	// Handle batch events by unpacking them
+	if batch, isBatch := event.(BatchEvent); isBatch {
+		for _, e := range batch.Events {
+			if _, isQuit := e.(QuitEvent); isQuit {
+				return true
+			}
+			r.processEvent(e)
+		}
+	} else {
+		r.processEvent(event)
+	}
+
+	return false
 }
 
 // processEvent calls the application's HandleEvent and queues any returned commands.
@@ -279,39 +323,155 @@ func (r *Runtime) render() {
 	r.terminal.EndFrame(frame)
 }
 
-// inputReader reads keyboard events from stdin (Goroutine 2).
+// inputReader reads keyboard and mouse events from stdin (Goroutine 2).
 // This goroutine blocks on stdin reads and forwards events to the main loop.
+// When mouse tracking is enabled (via terminal.EnableMouseTracking()),
+// this reader will automatically decode and forward mouse events as well.
+//
+// IMPORTANT: This uses a nested goroutine pattern to allow clean shutdown.
+// The problem: decoder.ReadEvent() is a blocking call on stdin. If we called it
+// directly in a select statement's default case, we'd be stuck waiting for input
+// even after r.done is closed, preventing the program from exiting cleanly.
+// This manifested as the terminal not clearing until another key was pressed.
+//
+// The solution: A nested goroutine continuously reads from stdin and sends events
+// to a channel. The main loop uses select to monitor both this channel and r.done,
+// allowing immediate exit when r.done is closed. The nested goroutine may remain
+// blocked on stdin, but that's okay - the parent goroutine exits, allowing
+// wg.Wait() in Run() to proceed and the program to clean up and exit immediately.
 func (r *Runtime) inputReader() {
 	decoder := NewKeyDecoder(os.Stdin)
+	decoder.SetPasteTabWidth(r.pasteTabWidth)
 
-	for {
-		select {
-		case <-r.done:
-			return
-		default:
-			// This blocks until a key is pressed
-			event, err := decoder.ReadKeyEvent()
+	// Channel to receive stdin reads from a separate goroutine
+	inputChan := make(chan Event, 1)
+	errChan := make(chan error, 1)
+
+	// Start a nested goroutine that continuously reads from stdin
+	// This goroutine may remain blocked on stdin after shutdown, which is acceptable
+	go func() {
+		for {
+			event, err := decoder.ReadEvent()
 			if err != nil {
-				// EOF or error - send error event
 				select {
-				case r.events <- ErrorEvent{
-					Time:  time.Now(),
-					Err:   err,
-					Cause: "input reader",
-				}:
+				case errChan <- err:
 				case <-r.done:
 					return
 				}
 				return
 			}
+			select {
+			case inputChan <- event:
+			case <-r.done:
+				return
+			}
+		}
+	}()
 
-			// Forward to main event loop
+	// Main loop that can be interrupted by r.done
+	// This pattern ensures we can exit immediately when quit is requested,
+	// rather than waiting for the next stdin input
+	for {
+		select {
+		case <-r.done:
+			return
+		case event := <-inputChan:
+			// Process mouse events to synthesize clicks from Press/Release pairs.
+			// See processMouseEvent for detailed documentation on click synthesis.
+			event, clickEvent := r.processMouseEvent(event)
+
+			// IMPORTANT: Send Click BEFORE Release
+			// This ordering ensures MouseHandler.HandleEvent sees the Click first,
+			// sets clickSynthesized=true, and then skips synthesis in handleRelease.
+			// Without this ordering, handleRelease would create a duplicate click.
+			if clickEvent != nil {
+				select {
+				case r.events <- clickEvent:
+				case <-r.done:
+					return
+				}
+			}
+
+			// Forward original event (Press, Release, Move, etc.)
 			select {
 			case r.events <- event:
 			case <-r.done:
 				return
 			}
+		case err := <-errChan:
+			// EOF or error - send error event
+			select {
+			case r.events <- ErrorEvent{
+				Time:  time.Now(),
+				Err:   err,
+				Cause: "input reader",
+			}:
+			case <-r.done:
+				return
+			}
+			return
 		}
+	}
+}
+
+// processMouseEvent tracks mouse state and returns any additional synthetic events.
+//
+// # Mouse Click Synthesis
+//
+// Terminal mouse input only provides raw Press and Release events. To provide a
+// convenient "click" abstraction, the Runtime synthesizes MouseClick events when
+// a press and release occur at the same location.
+//
+// Applications receive events in this order for a click:
+//  1. MousePress - button went down
+//  2. MouseClick - synthetic click (same location as press)
+//  3. MouseRelease - button came up
+//
+// The Click is sent BEFORE Release so that MouseHandler (if used) can detect that
+// a click was already synthesized and skip its own click synthesis in handleRelease.
+//
+// Applications can handle whichever events they need:
+//   - Most apps just handle MouseClick for simple button behavior
+//   - Apps needing drag or press feedback can also handle MousePress/MouseRelease
+//
+// Returns the original event and an optional synthetic click event.
+func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
+	mouseEvent, ok := event.(MouseEvent)
+	if !ok {
+		return event, nil
+	}
+
+	switch mouseEvent.Type {
+	case MousePress:
+		// Track the press location and button
+		r.mousePressX = mouseEvent.X
+		r.mousePressY = mouseEvent.Y
+		r.mousePressButton = mouseEvent.Button
+		r.mousePressed = true
+		return event, nil
+
+	case MouseRelease:
+		// Check if release is at the same location as press
+		if r.mousePressed &&
+			mouseEvent.X == r.mousePressX &&
+			mouseEvent.Y == r.mousePressY {
+			// Return both the release AND a synthetic click
+			r.mousePressed = false
+			clickEvent := MouseEvent{
+				X:         mouseEvent.X,
+				Y:         mouseEvent.Y,
+				Button:    r.mousePressButton,
+				Type:      MouseClick,
+				Modifiers: mouseEvent.Modifiers,
+				Time:      mouseEvent.Time,
+			}
+			return event, clickEvent
+		}
+		r.mousePressed = false
+		return event, nil
+
+	default:
+		return event, nil
 	}
 }
 

@@ -157,9 +157,9 @@ func (app *FlickerFreeApp) Render(frame gooey.RenderFrame) {
 	}
 
 	quadrantPositions := [][2]int{
-		{2, 4},              // Q1: top-left
-		{midX + 2, 4},       // Q2: top-right
-		{2, midY + 2},       // Q3: bottom-left
+		{2, 4},               // Q1: top-left
+		{midX + 2, 4},        // Q2: top-right
+		{2, midY + 2},        // Q3: bottom-left
 		{midX + 2, midY + 2}, // Q4: bottom-right
 	}
 

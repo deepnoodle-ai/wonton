@@ -105,21 +105,21 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 
 	// First press
 	pressEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
 	// First release (generates click)
 	releaseEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -128,21 +128,21 @@ func TestMouseHandler_DoubleClick(t *testing.T) {
 	// Second press (within threshold)
 	time.Sleep(10 * time.Millisecond)
 	pressEvent2 := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent2)
 
 	// Second release (generates double-click)
 	releaseEvent2 := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent2)
 
@@ -169,20 +169,20 @@ func TestMouseHandler_TripleClick(t *testing.T) {
 	// Perform three quick clicks
 	for i := 0; i < 3; i++ {
 		pressEvent := &MouseEvent{
-			X:         15,
-			Y:         15,
-			Button:    MouseButtonLeft,
-			Type:      MousePress,
-			Time: time.Now(),
+			X:      15,
+			Y:      15,
+			Button: MouseButtonLeft,
+			Type:   MousePress,
+			Time:   time.Now(),
 		}
 		handler.HandleEvent(pressEvent)
 
 		releaseEvent := &MouseEvent{
-			X:         15,
-			Y:         15,
-			Button:    MouseButtonNone,
-			Type:      MouseRelease,
-			Time: time.Now(),
+			X:      15,
+			Y:      15,
+			Button: MouseButtonNone,
+			Type:   MouseRelease,
+			Time:   time.Now(),
 		}
 		handler.HandleEvent(releaseEvent)
 
@@ -220,51 +220,51 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 
 	// Press
 	pressEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
 	// Move a little (not enough to trigger drag)
 	dragEvent1 := &MouseEvent{
-		X:         16,
-		Y:         16,
-		Button:    MouseButtonLeft,
-		Type:      MouseDrag,
-		Time: time.Now(),
+		X:      16,
+		Y:      16,
+		Button: MouseButtonLeft,
+		Type:   MouseDrag,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(dragEvent1)
 
 	// Move more (triggers drag start)
 	dragEvent2 := &MouseEvent{
-		X:         25,
-		Y:         25,
-		Button:    MouseButtonLeft,
-		Type:      MouseDrag,
-		Time: time.Now(),
+		X:      25,
+		Y:      25,
+		Button: MouseButtonLeft,
+		Type:   MouseDrag,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(dragEvent2)
 
 	// Continue dragging
 	dragEvent3 := &MouseEvent{
-		X:         30,
-		Y:         30,
-		Button:    MouseButtonLeft,
-		Type:      MouseDrag,
-		Time: time.Now(),
+		X:      30,
+		Y:      30,
+		Button: MouseButtonLeft,
+		Type:   MouseDrag,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(dragEvent3)
 
 	// Release (ends drag)
 	releaseEvent := &MouseEvent{
-		X:         30,
-		Y:         30,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      30,
+		Y:      30,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -316,31 +316,31 @@ func TestMouseHandler_PointerCapture(t *testing.T) {
 
 	// Press in region1
 	pressEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
 	// Drag outside region1 and into region2
 	dragEvent := &MouseEvent{
-		X:         45, // Inside region2
-		Y:         45,
-		Button:    MouseButtonLeft,
-		Type:      MouseDrag,
-		Time: time.Now(),
+		X:      45, // Inside region2
+		Y:      45,
+		Button: MouseButtonLeft,
+		Type:   MouseDrag,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(dragEvent)
 
 	// Release in region2
 	releaseEvent := &MouseEvent{
-		X:         45,
-		Y:         45,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      45,
+		Y:      45,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -372,22 +372,22 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 
 	// Move outside region (no event)
 	moveEvent1 := &MouseEvent{
-		X:         5,
-		Y:         5,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
+		X:      5,
+		Y:      5,
+		Button: MouseButtonNone,
+		Type:   MouseMove,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(moveEvent1)
 	assert.Len(t, enterLeaveEvents, 0, "No events outside region")
 
 	// Move into region (enter event + move event dispatched)
 	moveEvent2 := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonNone,
+		Type:   MouseMove,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(moveEvent2)
 	assert.Len(t, enterLeaveEvents, 1, "Should have enter event")
@@ -395,22 +395,22 @@ func TestMouseHandler_EnterLeave(t *testing.T) {
 
 	// Move within region (only move event, no enter/leave)
 	moveEvent3 := &MouseEvent{
-		X:         16,
-		Y:         16,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
+		X:      16,
+		Y:      16,
+		Button: MouseButtonNone,
+		Type:   MouseMove,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(moveEvent3)
 	assert.Len(t, enterLeaveEvents, 1, "No new enter/leave events")
 
 	// Move out of region (leave event)
 	moveEvent4 := &MouseEvent{
-		X:         5,
-		Y:         5,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
+		X:      5,
+		Y:      5,
+		Button: MouseButtonNone,
+		Type:   MouseMove,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(moveEvent4)
 	assert.Len(t, enterLeaveEvents, 2, "Should have leave event")
@@ -450,20 +450,20 @@ func TestMouseHandler_ZIndex(t *testing.T) {
 
 	// Click in overlapping area
 	pressEvent := &MouseEvent{
-		X:         20,
-		Y:         20,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      20,
+		Y:      20,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
 	releaseEvent := &MouseEvent{
-		X:         20,
-		Y:         20,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      20,
+		Y:      20,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
@@ -495,21 +495,21 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 
 	// Press
 	pressEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
+		X:      15,
+		Y:      15,
+		Button: MouseButtonLeft,
+		Type:   MousePress,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(pressEvent)
 
 	// Drag to trigger drag start
 	dragEvent := &MouseEvent{
-		X:         25,
-		Y:         25,
-		Button:    MouseButtonLeft,
-		Type:      MouseDrag,
-		Time: time.Now(),
+		X:      25,
+		Y:      25,
+		Button: MouseButtonLeft,
+		Type:   MouseDrag,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(dragEvent)
 
@@ -520,78 +520,14 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 
 	// Release should not trigger drag end since we cancelled
 	releaseEvent := &MouseEvent{
-		X:         25,
-		Y:         25,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
+		X:      25,
+		Y:      25,
+		Button: MouseButtonNone,
+		Type:   MouseRelease,
+		Time:   time.Now(),
 	}
 	handler.HandleEvent(releaseEvent)
 
 	assert.False(t, dragCancelled, "Drag was cancelled")
 }
 
-// Test legacy handler compatibility
-func TestMouseHandler_LegacyHandlers(t *testing.T) {
-	handler := NewMouseHandler()
-	clicked := false
-	hovered := false
-
-	region := &MouseRegion{
-		X:      10,
-		Y:      10,
-		Width:  20,
-		Height: 20,
-		Handler: func(event *MouseEvent) {
-			clicked = true
-		},
-		HoverHandler: func(hovering bool) {
-			hovered = hovering
-		},
-	}
-
-	handler.AddRegion(region)
-
-	// Test hover (enter)
-	moveEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
-	}
-	handler.HandleEvent(moveEvent)
-	assert.True(t, hovered, "Legacy HoverHandler should be called on enter")
-
-	// Test click
-	pressEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonLeft,
-		Type:      MousePress,
-		Time: time.Now(),
-	}
-	handler.HandleEvent(pressEvent)
-
-	releaseEvent := &MouseEvent{
-		X:         15,
-		Y:         15,
-		Button:    MouseButtonNone,
-		Type:      MouseRelease,
-		Time: time.Now(),
-	}
-	handler.HandleEvent(releaseEvent)
-
-	assert.True(t, clicked, "Legacy Handler should be called on click")
-
-	// Test hover (leave)
-	moveEvent2 := &MouseEvent{
-		X:         5,
-		Y:         5,
-		Button:    MouseButtonNone,
-		Type:      MouseMove,
-		Time: time.Now(),
-	}
-	handler.HandleEvent(moveEvent2)
-	assert.False(t, hovered, "Legacy HoverHandler should be called on leave with false")
-}

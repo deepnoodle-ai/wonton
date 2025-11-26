@@ -404,4 +404,186 @@ func TestKeyDecoder_SequentialReads(t *testing.T) {
 	}
 }
 
+// TestKeyDecoder_ReadEvent_MouseEvent tests that ReadEvent can decode SGR mouse events
+func TestKeyDecoder_ReadEvent_MouseEvent(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          []byte
+		expectedX      int
+		expectedY      int
+		expectedButton MouseButton
+		expectedType   MouseEventType
+	}{
+		{
+			name:           "Left click at (10, 5)",
+			input:          []byte{0x1B, '[', '<', '0', ';', '1', '1', ';', '6', 'M'},
+			expectedX:      10,
+			expectedY:      5,
+			expectedButton: MouseButtonLeft,
+			expectedType:   MousePress,
+		},
+		{
+			name:           "Right click at (20, 15)",
+			input:          []byte{0x1B, '[', '<', '2', ';', '2', '1', ';', '1', '6', 'M'},
+			expectedX:      20,
+			expectedY:      15,
+			expectedButton: MouseButtonRight,
+			expectedType:   MousePress,
+		},
+		{
+			name:           "Mouse release",
+			input:          []byte{0x1B, '[', '<', '0', ';', '5', ';', '5', 'm'},
+			expectedX:      4,
+			expectedY:      4,
+			expectedButton: MouseButtonNone,
+			expectedType:   MouseRelease,
+		},
+		{
+			name:           "Mouse wheel up",
+			input:          []byte{0x1B, '[', '<', '6', '4', ';', '1', '0', ';', '1', '0', 'M'},
+			expectedX:      9,
+			expectedY:      9,
+			expectedButton: MouseButtonWheelUp,
+			expectedType:   MouseScroll,
+		},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
+			event, err := decoder.ReadEvent()
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			mouseEvent, ok := event.(MouseEvent)
+			if !ok {
+				t.Fatalf("expected MouseEvent, got %T", event)
+			}
+
+			if mouseEvent.X != tt.expectedX {
+				t.Errorf("expected X=%d, got X=%d", tt.expectedX, mouseEvent.X)
+			}
+
+			if mouseEvent.Y != tt.expectedY {
+				t.Errorf("expected Y=%d, got Y=%d", tt.expectedY, mouseEvent.Y)
+			}
+
+			if mouseEvent.Button != tt.expectedButton {
+				t.Errorf("expected Button=%v, got Button=%v", tt.expectedButton, mouseEvent.Button)
+			}
+
+			if mouseEvent.Type != tt.expectedType {
+				t.Errorf("expected Type=%v, got Type=%v", tt.expectedType, mouseEvent.Type)
+			}
+		})
+	}
+}
+
+// TestKeyDecoder_ReadEvent_KeyEvent tests that ReadEvent still returns KeyEvents properly
+func TestKeyDecoder_ReadEvent_KeyEvent(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []byte
+		expectedKey Key
+		expectedR   rune
+	}{
+		{"Enter", []byte{0x0D}, KeyEnter, 0},
+		{"Letter a", []byte{'a'}, KeyUnknown, 'a'},
+		{"Arrow Up", []byte{0x1B, '[', 'A'}, KeyArrowUp, 0},
+		{"Ctrl+C", []byte{0x03}, KeyCtrlC, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
+			event, err := decoder.ReadEvent()
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			keyEvent, ok := event.(KeyEvent)
+			if !ok {
+				t.Fatalf("expected KeyEvent, got %T", event)
+			}
+
+			if tt.expectedKey != KeyUnknown && keyEvent.Key != tt.expectedKey {
+				t.Errorf("expected Key=%v, got Key=%v", tt.expectedKey, keyEvent.Key)
+			}
+
+			if tt.expectedR != 0 && keyEvent.Rune != tt.expectedR {
+				t.Errorf("expected Rune=%q, got Rune=%q", tt.expectedR, keyEvent.Rune)
+			}
+		})
+	}
+}
+
+// TestKeyDecoder_ReadEvent_MixedInput tests reading mixed mouse and key events
+func TestKeyDecoder_ReadEvent_MixedInput(t *testing.T) {
+	// Simulate: 'a', mouse click at (5,5), 'b', mouse release
+	input := []byte{
+		'a',                                          // Key 'a'
+		0x1B, '[', '<', '0', ';', '6', ';', '6', 'M', // Mouse left press at (5,5)
+		'b',                                          // Key 'b'
+		0x1B, '[', '<', '0', ';', '6', ';', '6', 'm', // Mouse release
+	}
+
+	decoder := NewKeyDecoder(bytes.NewReader(input))
+
+	// Event 1: Key 'a'
+	event, err := decoder.ReadEvent()
+	if err != nil {
+		t.Fatalf("event 1: unexpected error: %v", err)
+	}
+	keyEvent, ok := event.(KeyEvent)
+	if !ok {
+		t.Fatalf("event 1: expected KeyEvent, got %T", event)
+	}
+	if keyEvent.Rune != 'a' {
+		t.Errorf("event 1: expected Rune='a', got %q", keyEvent.Rune)
+	}
+
+	// Event 2: Mouse press
+	event, err = decoder.ReadEvent()
+	if err != nil {
+		t.Fatalf("event 2: unexpected error: %v", err)
+	}
+	mouseEvent, ok := event.(MouseEvent)
+	if !ok {
+		t.Fatalf("event 2: expected MouseEvent, got %T", event)
+	}
+	if mouseEvent.Type != MousePress {
+		t.Errorf("event 2: expected Type=MousePress, got %v", mouseEvent.Type)
+	}
+	if mouseEvent.X != 5 || mouseEvent.Y != 5 {
+		t.Errorf("event 2: expected (5,5), got (%d,%d)", mouseEvent.X, mouseEvent.Y)
+	}
+
+	// Event 3: Key 'b'
+	event, err = decoder.ReadEvent()
+	if err != nil {
+		t.Fatalf("event 3: unexpected error: %v", err)
+	}
+	keyEvent, ok = event.(KeyEvent)
+	if !ok {
+		t.Fatalf("event 3: expected KeyEvent, got %T", event)
+	}
+	if keyEvent.Rune != 'b' {
+		t.Errorf("event 3: expected Rune='b', got %q", keyEvent.Rune)
+	}
+
+	// Event 4: Mouse release
+	event, err = decoder.ReadEvent()
+	if err != nil {
+		t.Fatalf("event 4: unexpected error: %v", err)
+	}
+	mouseEvent, ok = event.(MouseEvent)
+	if !ok {
+		t.Fatalf("event 4: expected MouseEvent, got %T", event)
+	}
+	if mouseEvent.Type != MouseRelease {
+		t.Errorf("event 4: expected Type=MouseRelease, got %v", mouseEvent.Type)
+	}
+}

@@ -16,9 +16,9 @@ import (
 // - Type to filter files (fuzzy matching)
 // - Arrow keys to navigate
 // - Enter to select file or open directory
-// - H to toggle hidden files
+// - F2 to toggle hidden files
 // - Mouse click to select
-// - q to quit
+// - Escape or Ctrl+C to quit
 
 type FilePickerDemoApp struct {
 	picker     *gooey.FilePicker
@@ -76,7 +76,7 @@ func (app *FilePickerDemoApp) Init() error {
 		}
 	}
 
-	app.statusMsg = "Type to filter, arrows to navigate, Enter to select, H to toggle hidden, q to quit"
+	app.statusMsg = "Type to filter, arrows to navigate, Enter to select, F2 toggle hidden, Esc/Ctrl+C quit"
 
 	return nil
 }
@@ -85,16 +85,13 @@ func (app *FilePickerDemoApp) Init() error {
 func (app *FilePickerDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
-		// Quit on 'q'
-		if e.Rune == 'q' || e.Rune == 'Q' {
-			// Only quit if not typing in input
-			if !app.picker.GetInputFocused() || app.picker.GetInputValue() == "" {
-				return []gooey.Cmd{gooey.Quit()}
-			}
+		// Quit on Ctrl+C or Escape
+		if e.Key == gooey.KeyCtrlC || e.Key == gooey.KeyEscape {
+			return []gooey.Cmd{gooey.Quit()}
 		}
 
-		// Toggle hidden files on 'h' (when not typing)
-		if (e.Rune == 'h' || e.Rune == 'H') && !app.picker.GetInputFocused() {
+		// Toggle hidden files on F2
+		if e.Key == gooey.KeyF2 {
 			app.picker.ShowHidden = !app.picker.ShowHidden
 			app.picker.Refresh()
 			if app.picker.ShowHidden {

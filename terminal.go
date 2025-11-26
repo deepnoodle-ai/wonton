@@ -826,6 +826,31 @@ func (t *Terminal) DisableBracketedPaste() {
 	fmt.Fprint(t.out, "\033[?2004l")
 }
 
+// EnableEnhancedKeyboard enables enhanced keyboard mode (CSI u / kitty keyboard protocol).
+// This allows detection of modifier keys with Enter, Tab, and other special keys.
+// For example, Shift+Enter will be reported as a distinct key event (ESC[13;2u).
+//
+// Supported terminals: kitty, WezTerm, foot, ghostty, iTerm2 (3.5+), and others.
+// Unsupported terminals will silently ignore this escape sequence.
+//
+// Call DisableEnhancedKeyboard() before exiting to restore normal keyboard mode.
+func (t *Terminal) EnableEnhancedKeyboard() {
+	// Enable kitty keyboard protocol with flags:
+	// Bit 0 (1): Disambiguate escape codes - report modifier keys with special keys
+	// Bit 1 (2): Report event types (press, repeat, release)
+	// Bit 2 (4): Report alternate keys
+	// Bit 3 (8): Report all keys as escape codes
+	// Bit 4 (16): Report associated text
+	// We use flag 1 for basic modifier detection (e.g., Shift+Enter)
+	fmt.Fprint(t.out, "\033[>1u")
+}
+
+// DisableEnhancedKeyboard disables enhanced keyboard mode.
+// This restores normal keyboard reporting.
+func (t *Terminal) DisableEnhancedKeyboard() {
+	fmt.Fprint(t.out, "\033[<u")
+}
+
 // DisableAlternateScreen switches back to the main screen buffer
 func (t *Terminal) DisableAlternateScreen() {
 	if t.altScreen {

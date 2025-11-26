@@ -37,4 +37,3 @@ func TestRuntimeWithPipedInput(t *testing.T) {
 	// but we've verified that the runtime is properly initialized and won't crash
 	// when stdin is not a terminal.
 }
-

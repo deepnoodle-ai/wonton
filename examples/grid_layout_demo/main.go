@@ -47,19 +47,19 @@ func (sb *SimpleBox) HandleKey(event gooey.KeyEvent) bool {
 
 // GridApp demonstrates the Grid layout system using the Runtime.
 type GridApp struct {
-	grid         *gooey.Grid
-	resizeCount  int
-	width        int
-	height       int
+	grid        *gooey.Grid
+	resizeCount int
+	width       int
+	height      int
 }
 
 // Init initializes the grid layout.
 func (app *GridApp) Init() error {
 	// Create the Grid layout with 3 columns of equal weight
 	app.grid = gooey.NewGrid(nil). // Pass nil since we'll use the frame directly
-		AddCol(0, 1). // Flexible column, takes 1/3 of width
-		AddCol(0, 1). // Flexible column, takes 1/3 of width
-		AddCol(0, 1)  // Flexible column, takes 1/3 of width
+					AddCol(0, 1). // Flexible column, takes 1/3 of width
+					AddCol(0, 1). // Flexible column, takes 1/3 of width
+					AddCol(0, 1)  // Flexible column, takes 1/3 of width
 
 	// Add 3 rows: header, content, footer with proportional heights
 	app.grid.AddRow(0, 1). // Flexible row for header (takes 1/6 of height)

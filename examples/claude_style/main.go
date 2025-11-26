@@ -29,6 +29,11 @@ type ClaudeStyleDemo struct {
 	messages []Message
 	input    string
 
+	// Command history
+	history      []string // Past commands
+	historyIndex int      // Current position in history (-1 = not browsing)
+	savedInput   string   // Input saved when starting to browse history
+
 	// UI state
 	scrollOffset int
 	maxScroll    int
@@ -38,7 +43,8 @@ type ClaudeStyleDemo struct {
 
 func NewClaudeStyleDemo(terminal *gooey.Terminal) *ClaudeStyleDemo {
 	return &ClaudeStyleDemo{
-		terminal: terminal,
+		terminal:     terminal,
+		historyIndex: -1, // Not browsing history
 		messages: []Message{
 			{
 				Role:    "assistant",
@@ -57,6 +63,9 @@ func (d *ClaudeStyleDemo) Init() error {
 	// Hide cursor for cleaner UI
 	d.terminal.HideCursor()
 
+	// Enable mouse tracking for scroll wheel support
+	d.terminal.EnableMouseTracking()
+
 	d.width, d.height = d.terminal.Size()
 
 	return nil
@@ -64,6 +73,7 @@ func (d *ClaudeStyleDemo) Init() error {
 
 // Destroy implements the Destroyable interface
 func (d *ClaudeStyleDemo) Destroy() {
+	d.terminal.DisableMouseTracking()
 	d.terminal.DisableAlternateScreen()
 	d.terminal.ShowCursor()
 }
@@ -73,6 +83,9 @@ func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
 		return d.handleKeyEvent(e)
+
+	case gooey.MouseEvent:
+		return d.handleMouseEvent(e)
 
 	case gooey.ResizeEvent:
 		d.width = e.Width
@@ -118,15 +131,20 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 		return []gooey.Cmd{gooey.Quit()}
 
 	case event.Key == gooey.KeyEnter:
-		// Alt+Enter or Shift+Enter adds a new line, plain Enter sends the message
-		if event.Alt || event.Shift {
+		if event.Shift {
+			// Shift+Enter adds a new line
 			d.input += "\n"
 		} else {
-			// Send message
+			// Plain Enter sends the message
 			trimmed := strings.TrimSpace(d.input)
 			if trimmed != "" {
+				// Add to history
+				d.history = append(d.history, d.input)
+				d.historyIndex = -1
+				d.savedInput = ""
+
 				d.sendMessage(d.input)
-				d.input = "" // Clear input after sending
+				d.input = ""       // Clear input after sending
 				d.scrollOffset = 0 // Reset scroll to show new message
 			}
 		}
@@ -136,81 +154,143 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 		if len(d.input) > 0 {
 			d.input = d.input[:len(d.input)-1]
 		}
+		// Reset history browsing when editing
+		d.historyIndex = -1
 
 	case event.Key == gooey.KeyArrowUp:
-		// Scroll up
-		if d.scrollOffset < d.maxScroll {
-			d.scrollOffset++
+		// Navigate to older history
+		if len(d.history) > 0 {
+			if d.historyIndex == -1 {
+				// Starting to browse history, save current input
+				d.savedInput = d.input
+				d.historyIndex = len(d.history) - 1
+			} else if d.historyIndex > 0 {
+				d.historyIndex--
+			}
+			d.input = d.history[d.historyIndex]
 		}
 
 	case event.Key == gooey.KeyArrowDown:
-		// Scroll down
-		if d.scrollOffset > 0 {
-			d.scrollOffset--
+		// Navigate to newer history
+		if d.historyIndex != -1 {
+			if d.historyIndex < len(d.history)-1 {
+				d.historyIndex++
+				d.input = d.history[d.historyIndex]
+			} else {
+				// Back to current input
+				d.historyIndex = -1
+				d.input = d.savedInput
+			}
 		}
 
 	case event.Key == gooey.KeyPageUp:
-		// Page up
+		// Page up - scroll content
 		d.scrollOffset = min(d.scrollOffset+10, d.maxScroll)
 
 	case event.Key == gooey.KeyPageDown:
-		// Page down
+		// Page down - scroll content
 		d.scrollOffset = max(d.scrollOffset-10, 0)
 
 	case event.Rune != 0:
-		// Regular character
+		// Regular character - reset history browsing
 		d.input += string(event.Rune)
+		d.historyIndex = -1
 	}
 
 	return nil
 }
 
-func (d *ClaudeStyleDemo) renderContent(frame gooey.RenderFrame, width, height int) {
-	// Render messages from bottom to top
-	currentY := height - 1
-
-	for i := len(d.messages) - 1 - d.scrollOffset; i >= 0 && currentY >= 0; i-- {
-		msg := d.messages[i]
-
-		// Render message
-		lines := d.formatMessage(msg, width-4)
-		msgHeight := len(lines)
-
-		// Calculate starting Y position for this message
-		startY := currentY - msgHeight + 1
-
-		if startY < 0 {
-			// Message partially visible, only show bottom part
-			lines = lines[len(lines)-(currentY+1):]
-			startY = 0
-		}
-
-		// Draw message
-		for j, line := range lines {
-			y := startY + j
-			if y >= 0 && y < height {
-				if msg.Role == "user" {
-					// User messages in cyan
-					style := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-					frame.PrintStyled(2, y, line, style)
-				} else {
-					// Assistant messages in default color
-					defaultStyle := gooey.NewStyle()
-					frame.PrintStyled(2, y, line, defaultStyle)
-				}
+func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
+	// Handle scroll wheel events
+	if event.Type == gooey.MouseScroll {
+		switch event.Button {
+		case gooey.MouseButtonWheelUp:
+			// Scroll up (show older messages)
+			if d.scrollOffset < d.maxScroll {
+				d.scrollOffset++
+			}
+		case gooey.MouseButtonWheelDown:
+			// Scroll down (show newer messages)
+			if d.scrollOffset > 0 {
+				d.scrollOffset--
 			}
 		}
+	}
+	return nil
+}
 
-		currentY = startY - 2 // Add spacing between messages
+// contentLine represents a single line in the content area with its style
+type contentLine struct {
+	text  string
+	style gooey.Style
+}
+
+func (d *ClaudeStyleDemo) renderContent(frame gooey.RenderFrame, width, height int) {
+	// Clear the content area first to prevent ghost text when scrolling
+	clearStyle := gooey.NewStyle()
+	for y := 0; y < height; y++ {
+		frame.FillStyled(0, y, width, 1, ' ', clearStyle)
 	}
 
-	// Update max scroll
-	totalLines := 0
-	for _, msg := range d.messages {
+	// Build all content lines from messages
+	var allLines []contentLine
+	userStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+	assistantStyle := gooey.NewStyle()
+
+	for i, msg := range d.messages {
+		// Add spacing between messages (except before first)
+		if i > 0 {
+			allLines = append(allLines, contentLine{"", clearStyle})
+		}
+
+		// Get the style for this message
+		style := assistantStyle
+		if msg.Role == "user" {
+			style = userStyle
+		}
+
+		// Format and add message lines
 		lines := d.formatMessage(msg, width-4)
-		totalLines += len(lines) + 2 // +2 for spacing
+		for _, line := range lines {
+			allLines = append(allLines, contentLine{line, style})
+		}
 	}
-	d.maxScroll = max(0, (totalLines-height)/2)
+
+	// Calculate max scroll (in lines)
+	totalLines := len(allLines)
+	d.maxScroll = max(0, totalLines-height)
+
+	// Calculate which lines to display
+	// scrollOffset=0 means show the bottom (newest), higher values scroll up (older)
+	// We want to show lines from (totalLines - height - scrollOffset) to (totalLines - scrollOffset)
+	endLine := totalLines - d.scrollOffset
+	startLine := endLine - height
+
+	// Clamp to valid range
+	if startLine < 0 {
+		startLine = 0
+	}
+	if endLine > totalLines {
+		endLine = totalLines
+	}
+
+	// Render visible lines
+	screenY := 0
+	// If we're at the top of content, we may have fewer lines than screen height
+	// In that case, start rendering from the top
+	if startLine == 0 && endLine-startLine < height {
+		// Content doesn't fill screen, render from top
+		for i := startLine; i < endLine && screenY < height; i++ {
+			frame.PrintStyled(2, screenY, allLines[i].text, allLines[i].style)
+			screenY++
+		}
+	} else {
+		// Content fills or exceeds screen, render normally
+		for i := startLine; i < endLine && screenY < height; i++ {
+			frame.PrintStyled(2, screenY, allLines[i].text, allLines[i].style)
+			screenY++
+		}
+	}
 }
 
 func (d *ClaudeStyleDemo) formatMessage(msg Message, maxWidth int) []string {
@@ -318,7 +398,7 @@ func (d *ClaudeStyleDemo) renderInput(frame gooey.RenderFrame, y, width, availab
 
 	// Draw help text
 	helpStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite).WithDim()
-	helpText := "Ctrl+C: exit | Enter: send | Shift+Enter: new line"
+	helpText := "Ctrl+C: exit | Enter: send | Shift+Enter: newline | ↑↓: history"
 	if len(helpText) < width {
 		helpX := width - len(helpText)
 		frame.PrintStyled(helpX, y+availableHeight-1, helpText, helpStyle)

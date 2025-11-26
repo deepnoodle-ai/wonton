@@ -16,7 +16,7 @@ func TestParseMouseEvent_SGR_LeftClick(t *testing.T) {
 	require.NotNil(t, event)
 	assert.Equal(t, 9, event.X) // 0-based, so 10-1
 	assert.Equal(t, 4, event.Y) // 0-based, so 5-1
-	assert.Equal(t, MouseLeft, event.Button)
+	assert.Equal(t, MouseButtonLeft, event.Button)
 	assert.Equal(t, MousePress, event.Type) // ParseMouseEvent returns Press events
 }
 
@@ -28,7 +28,7 @@ func TestParseMouseEvent_SGR_RightClick(t *testing.T) {
 	require.NotNil(t, event)
 	assert.Equal(t, 14, event.X)
 	assert.Equal(t, 19, event.Y)
-	assert.Equal(t, MouseRight, event.Button)
+	assert.Equal(t, MouseButtonRight, event.Button)
 	assert.Equal(t, MousePress, event.Type)
 }
 
@@ -40,7 +40,7 @@ func TestParseMouseEvent_SGR_MiddleClick(t *testing.T) {
 	require.NotNil(t, event)
 	assert.Equal(t, 24, event.X)
 	assert.Equal(t, 29, event.Y)
-	assert.Equal(t, MouseMiddle, event.Button)
+	assert.Equal(t, MouseButtonMiddle, event.Button)
 	assert.Equal(t, MousePress, event.Type)
 }
 
@@ -62,7 +62,7 @@ func TestParseMouseEvent_SGR_WheelUp(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, event)
-	assert.Equal(t, MouseWheelUp, event.Button)
+	assert.Equal(t, MouseButtonWheelUp, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 }
 
@@ -73,7 +73,7 @@ func TestParseMouseEvent_SGR_WheelDown(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, event)
-	assert.Equal(t, MouseWheelDown, event.Button)
+	assert.Equal(t, MouseButtonWheelDown, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 }
 
@@ -201,7 +201,7 @@ func TestMouseHandler_HandleEvent_Click(t *testing.T) {
 		Y:      10,
 		Width:  20,
 		Height: 20,
-		Handler: func(event *MouseEvent) {
+		OnClick: func(event *MouseEvent) {
 			clicked = true
 		},
 	}
@@ -211,12 +211,12 @@ func TestMouseHandler_HandleEvent_Click(t *testing.T) {
 	event := &MouseEvent{
 		X:      15,
 		Y:      15,
-		Button: MouseLeft,
+		Button: MouseButtonLeft,
 		Type:   MouseClick,
 	}
 
 	handler.HandleEvent(event)
-	assert.True(t, clicked, "Handler should be called for click inside region")
+	assert.True(t, clicked, "OnClick should be called for click inside region")
 }
 
 func TestMouseHandler_HandleEvent_OutsideRegion(t *testing.T) {
@@ -228,7 +228,7 @@ func TestMouseHandler_HandleEvent_OutsideRegion(t *testing.T) {
 		Y:      10,
 		Width:  20,
 		Height: 20,
-		Handler: func(event *MouseEvent) {
+		OnClick: func(event *MouseEvent) {
 			clicked = true
 		},
 	}
@@ -238,12 +238,12 @@ func TestMouseHandler_HandleEvent_OutsideRegion(t *testing.T) {
 	event := &MouseEvent{
 		X:      5,
 		Y:      5,
-		Button: MouseLeft,
+		Button: MouseButtonLeft,
 		Type:   MouseClick,
 	}
 
 	handler.HandleEvent(event)
-	assert.False(t, clicked, "Handler should not be called for click outside region")
+	assert.False(t, clicked, "OnClick should not be called for click outside region")
 }
 
 func TestMouseHandler_HandleEvent_Hover(t *testing.T) {
@@ -255,19 +255,21 @@ func TestMouseHandler_HandleEvent_Hover(t *testing.T) {
 		Y:      10,
 		Width:  20,
 		Height: 20,
-		HoverHandler: func(hovering bool) {
-			hoverState = hovering
+		OnEnter: func(event *MouseEvent) {
+			hoverState = true
+		},
+		OnLeave: func(event *MouseEvent) {
+			hoverState = false
 		},
 	}
 
 	handler.AddRegion(region)
 
-	// Trigger hover
+	// Trigger hover with MouseMove (the correct event type for hover)
 	event := &MouseEvent{
-		X:      15,
-		Y:      15,
-		Button: MouseLeft,
-		Type:   MouseClick,
+		X:    15,
+		Y:    15,
+		Type: MouseMove,
 	}
 
 	handler.HandleEvent(event)
@@ -275,10 +277,9 @@ func TestMouseHandler_HandleEvent_Hover(t *testing.T) {
 
 	// Leave region
 	event = &MouseEvent{
-		X:      5,
-		Y:      5,
-		Button: MouseLeft,
-		Type:   MouseClick,
+		X:    5,
+		Y:    5,
+		Type: MouseMove,
 	}
 
 	handler.HandleEvent(event)
@@ -295,7 +296,7 @@ func TestMouseHandler_HandleEvent_MultipleRegions(t *testing.T) {
 		Y:      0,
 		Width:  10,
 		Height: 10,
-		Handler: func(event *MouseEvent) {
+		OnClick: func(event *MouseEvent) {
 			region1Clicked = true
 		},
 	}
@@ -305,7 +306,7 @@ func TestMouseHandler_HandleEvent_MultipleRegions(t *testing.T) {
 		Y:      20,
 		Width:  10,
 		Height: 10,
-		Handler: func(event *MouseEvent) {
+		OnClick: func(event *MouseEvent) {
 			region2Clicked = true
 		},
 	}
@@ -317,7 +318,7 @@ func TestMouseHandler_HandleEvent_MultipleRegions(t *testing.T) {
 	event := &MouseEvent{
 		X:      5,
 		Y:      5,
-		Button: MouseLeft,
+		Button: MouseButtonLeft,
 		Type:   MouseClick,
 	}
 
@@ -331,7 +332,7 @@ func TestMouseHandler_HandleEvent_MultipleRegions(t *testing.T) {
 	event = &MouseEvent{
 		X:      25,
 		Y:      25,
-		Button: MouseLeft,
+		Button: MouseButtonLeft,
 		Type:   MouseClick,
 	}
 
@@ -341,7 +342,6 @@ func TestMouseHandler_HandleEvent_MultipleRegions(t *testing.T) {
 }
 
 func TestMouseButton_Constants(t *testing.T) {
-	// Test new constants
 	assert.Equal(t, MouseButton(0), MouseButtonLeft)
 	assert.Equal(t, MouseButton(1), MouseButtonMiddle)
 	assert.Equal(t, MouseButton(2), MouseButtonRight)
@@ -350,13 +350,6 @@ func TestMouseButton_Constants(t *testing.T) {
 	assert.Equal(t, MouseButton(5), MouseButtonWheelDown)
 	assert.Equal(t, MouseButton(6), MouseButtonWheelLeft)
 	assert.Equal(t, MouseButton(7), MouseButtonWheelRight)
-
-	// Test legacy constants for backward compatibility
-	assert.Equal(t, MouseLeft, MouseButtonLeft)
-	assert.Equal(t, MouseMiddle, MouseButtonMiddle)
-	assert.Equal(t, MouseRight, MouseButtonRight)
-	assert.Equal(t, MouseWheelUp, MouseButtonWheelUp)
-	assert.Equal(t, MouseWheelDown, MouseButtonWheelDown)
 }
 
 func TestMouseEventType_Constants(t *testing.T) {

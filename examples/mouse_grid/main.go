@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 
@@ -17,19 +16,21 @@ type MouseGridApp struct {
 	height   int
 
 	// Grid configuration
-	gridW   int
-	gridH   int
-	cellW   int
-	cellH   int
-	startX  int
-	startY  int
-	colors  []gooey.Style
+	gridW     int
+	gridH     int
+	cellW     int
+	cellH     int
+	startX    int
+	startY    int
+	colors    []gooey.Style
 	gridState [][]int
 }
 
 // Init initializes the application
 func (app *MouseGridApp) Init() error {
-	app.terminal.EnableMouseTracking()
+	// Use EnableMouseButtons for click-only tracking (no motion events)
+	// This provides much better responsiveness than EnableMouseTracking
+	app.terminal.EnableMouseButtons()
 	app.terminal.HideCursor()
 
 	app.width, app.height = app.terminal.Size()
@@ -123,7 +124,7 @@ func (app *MouseGridApp) Render(frame gooey.RenderFrame) {
 	frame.FillStyled(0, 0, app.width, app.height, ' ', gooey.NewStyle())
 
 	// Title
-	title := "🖱️  Mouse Grid Demo"
+	title := "Mouse Grid Demo"
 	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
 	frame.PrintStyled((app.width-len(title))/2, 0, title, titleStyle)
 
@@ -166,106 +167,14 @@ func main() {
 		terminal: terminal,
 	}
 
-	// Create runtime with mouse support
-	runtime := NewMouseRuntime(terminal, app, 30)
+	// Create runtime - mouse events are now handled automatically!
+	// Just call terminal.EnableMouseTracking() in Init() and mouse events
+	// will be delivered to HandleEvent as gooey.MouseEvent
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
 	// Run the application
 	if err := runtime.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
 		os.Exit(1)
-	}
-}
-
-// MouseRuntime extends Runtime with mouse event support.
-// It handles both keyboard and mouse input from stdin.
-type MouseRuntime struct {
-	*gooey.Runtime
-	terminal *gooey.Terminal
-}
-
-// NewMouseRuntime creates a runtime that handles both keyboard and mouse events
-func NewMouseRuntime(terminal *gooey.Terminal, app gooey.Application, fps int) *MouseRuntime {
-	baseRuntime := gooey.NewRuntime(terminal, app, fps)
-
-	return &MouseRuntime{
-		Runtime:  baseRuntime,
-		terminal: terminal,
-	}
-}
-
-// Run starts the mouse-aware runtime
-func (r *MouseRuntime) Run() error {
-	// Start a custom input reader goroutine for mouse+keyboard
-	go r.mouseInputReader()
-
-	// Run the base runtime (which will handle events we send)
-	return r.Runtime.Run()
-}
-
-// mouseInputReader reads both keyboard and mouse events from stdin.
-// This replaces the Runtime's standard inputReader to handle both types of events.
-func (r *MouseRuntime) mouseInputReader() {
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		// Peek at the first byte to determine event type
-		firstByte, err := reader.ReadByte()
-		if err != nil {
-			return
-		}
-
-		// Check if this is the start of a mouse event (ESC [ <)
-		if firstByte == 27 {
-			// Peek ahead to see if it's a mouse event
-			next, err := reader.Peek(2)
-			if err == nil && len(next) >= 2 && next[0] == '[' && next[1] == '<' {
-				// Read the mouse sequence
-				reader.ReadByte() // consume '['
-				reader.ReadByte() // consume '<'
-
-				buf := make([]byte, 20)
-				i := 0
-				buf[i] = '<'
-				i++
-
-				// Read until we find M or m
-				for {
-					b, err := reader.ReadByte()
-					if err != nil {
-						break
-					}
-					buf[i] = b
-					i++
-					if b == 'M' || b == 'm' {
-						break
-					}
-					if i >= len(buf) {
-						break
-					}
-				}
-
-				// Parse and send mouse event
-				event, err := gooey.ParseMouseEvent(buf[:i])
-				if err == nil {
-					r.SendEvent(*event)
-				}
-				continue
-			}
-		}
-
-		// Handle keyboard events
-		switch firstByte {
-		case 'q', 'Q':
-			r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
-		case 3: // Ctrl+C
-			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyCtrlC})
-		case 27: // ESC (not followed by mouse sequence)
-			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyEscape})
-		default:
-			// For other keys, create a KeyEvent
-			if firstByte >= 32 && firstByte < 127 {
-				r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
-			}
-		}
 	}
 }

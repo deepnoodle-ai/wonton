@@ -137,9 +137,14 @@ The library's rendering foundation (used by Runtime):
   - `ReadPassword()` - Secure password input with no echo
   - `ReadSimple()` - Basic line reading using bufio.Scanner
 - `KeyEvent` encapsulates keyboard events with modifiers
-- `KeyDecoder` - Unified key decoding for ANSI escape sequences and UTF-8
+- `KeyDecoder` - Unified input decoding for ANSI escape sequences, UTF-8, and mouse events
+  - `ReadEvent()` returns `Event` interface (either `KeyEvent` or `MouseEvent`)
+  - `ReadKeyEvent()` returns only `KeyEvent` (for keyboard-only applications)
 - Legacy methods (ReadLine, ReadLineEnhanced, ReadInteractive, etc.) are removed
 - Mouse support via `MouseHandler` and `MouseRegion` (`mouse.go`)
+  - Runtime automatically decodes mouse events when mouse tracking is enabled
+  - Call `terminal.EnableMouseTracking()` in your app's `Init()` method
+  - Mouse events are delivered to `HandleEvent()` as `gooey.MouseEvent`
 
 **Layouts:**
 - `Layout` (`layout.go`) - Basic header/footer/content organization
@@ -446,6 +451,54 @@ func FetchData() gooey.Cmd {
         data, _ := io.ReadAll(resp.Body)
         return DataResultEvent{Data: string(data)}
     }
+}
+```
+
+### Mouse Events with Runtime
+
+```go
+type MouseApp struct {
+    terminal *gooey.Terminal
+    mouse    *gooey.MouseHandler
+    clicks   int
+}
+
+func (app *MouseApp) Init() error {
+    // Enable mouse tracking - this is all you need!
+    app.terminal.EnableMouseTracking()
+    app.terminal.HideCursor()
+
+    // Create mouse handler and define clickable regions
+    app.mouse = gooey.NewMouseHandler()
+    app.mouse.AddRegion(&gooey.MouseRegion{
+        X: 10, Y: 5, Width: 20, Height: 3,
+        OnClick: func(e *gooey.MouseEvent) {
+            app.clicks++
+        },
+    })
+    return nil
+}
+
+func (app *MouseApp) Destroy() {
+    app.terminal.DisableMouseTracking()
+    app.terminal.ShowCursor()
+}
+
+func (app *MouseApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+    switch e := event.(type) {
+    case gooey.MouseEvent:
+        // Forward mouse events to the handler
+        app.mouse.HandleEvent(&e)
+    case gooey.KeyEvent:
+        if e.Rune == 'q' {
+            return []gooey.Cmd{gooey.Quit()}
+        }
+    }
+    return nil
+}
+
+func (app *MouseApp) Render(frame gooey.RenderFrame) {
+    frame.PrintStyled(10, 5, fmt.Sprintf("Clicks: %d", app.clicks), style)
 }
 ```
 

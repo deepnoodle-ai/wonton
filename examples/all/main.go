@@ -449,7 +449,7 @@ func (app *ComprehensiveApp) updateClickableWords() {
 			Width:  len(word),
 			Height: 1,
 			Label:  word,
-			Handler: func(event *gooey.MouseEvent) {
+			OnClick: func(event *gooey.MouseEvent) {
 				colors := []gooey.RGB{
 					gooey.NewRGB(255, 100, 100),
 					gooey.NewRGB(100, 255, 100),

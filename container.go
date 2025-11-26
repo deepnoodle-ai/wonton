@@ -376,8 +376,12 @@ func (c *Container) Draw(frame RenderFrame) {
 	for _, child := range c.children {
 		if child.IsVisible() {
 			childBounds := child.GetBounds()
-			// Create a SubFrame for this specific child, clipped to content bounds
-			childFrame := frame.SubFrame(childBounds.Intersect(c.contentBounds))
+			// Convert child bounds to be relative to this container's bounds
+			// SubFrame expects coordinates relative to the current frame
+			relativeBounds := childBounds.Sub(c.bounds.Min)
+			// Clip to content bounds (also made relative)
+			relativeContent := c.contentBounds.Sub(c.bounds.Min)
+			childFrame := frame.SubFrame(relativeBounds.Intersect(relativeContent))
 			child.Draw(childFrame)
 			child.ClearDirty()
 		}
@@ -438,7 +442,9 @@ func (c *Container) HandleKey(event KeyEvent) bool {
 	return false
 }
 
-// HandleMouse handles mouse events and delegates to children
+// HandleMouse handles mouse events and delegates to children.
+// Note: MouseClick events are synthesized by the Runtime from Press/Release pairs,
+// so this method receives ready-to-use click events.
 func (c *Container) HandleMouse(event MouseEvent) bool {
 	if !c.visible {
 		return false
@@ -458,38 +464,42 @@ func (c *Container) HandleMouse(event MouseEvent) bool {
 		return false
 	}
 
-	var newHoveredChild ComposableWidget
+	var targetChild ComposableWidget
 
-	// Iterate through children in reverse order (top to bottom in z-order)
+	// Find the child under the mouse
 	for i := len(c.children) - 1; i >= 0; i-- {
 		child := c.children[i]
 		if !child.IsVisible() {
 			continue
 		}
 
-		// Check if child supports mouse events
-		if mouseAware, ok := child.(MouseAware); ok {
-			// Check if event is within child bounds
-			childBounds := child.GetBounds()
-			if event.X >= childBounds.Min.X && event.X < childBounds.Max.X &&
-				event.Y >= childBounds.Min.Y && event.Y < childBounds.Max.Y {
-				newHoveredChild = child
-				if mouseAware.HandleMouse(event) {
-					break
-				}
+		childBounds := child.GetBounds()
+		if event.X >= childBounds.Min.X && event.X < childBounds.Max.X &&
+			event.Y >= childBounds.Min.Y && event.Y < childBounds.Max.Y {
+			targetChild = child
+			break
+		}
+	}
+
+	// Handle hover state changes
+	if targetChild != c.hoveredChild {
+		if c.hoveredChild != nil {
+			if mouseAware, ok := c.hoveredChild.(MouseAware); ok {
+				// Send event to clear hover state
+				mouseAware.HandleMouse(event)
 			}
 		}
+		c.hoveredChild = targetChild
 	}
 
-	// If hovered child changed, send event to old hovered child to clear hover state
-	if c.hoveredChild != nil && c.hoveredChild != newHoveredChild {
-		if mouseAware, ok := c.hoveredChild.(MouseAware); ok {
-			mouseAware.HandleMouse(event)
+	// Forward event to the target child
+	if targetChild != nil {
+		if mouseAware, ok := targetChild.(MouseAware); ok {
+			return mouseAware.HandleMouse(event)
 		}
 	}
 
-	c.hoveredChild = newHoveredChild
-	return newHoveredChild != nil
+	return targetChild != nil
 }
 
 // Init initializes the container and all its children

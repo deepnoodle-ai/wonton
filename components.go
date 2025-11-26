@@ -68,13 +68,16 @@ func (b *Button) GetRegion() *MouseRegion {
 		Width:  b.Width + 2, // Include brackets
 		Height: 1,
 		Label:  b.Label,
-		Handler: func(event *MouseEvent) {
+		OnClick: func(event *MouseEvent) {
 			if b.OnClick != nil {
 				b.OnClick()
 			}
 		},
-		HoverHandler: func(hovering bool) {
-			b.Hovered = hovering
+		OnEnter: func(event *MouseEvent) {
+			b.Hovered = true
+		},
+		OnLeave: func(event *MouseEvent) {
+			b.Hovered = false
 		},
 	}
 }
@@ -314,16 +317,14 @@ func (tc *TabCompleter) GetRegions() []*MouseRegion {
 			Width:  tc.Width,
 			Height: 1,
 			Label:  tc.suggestions[idx],
-			Handler: func(event *MouseEvent) {
+			OnClick: func(event *MouseEvent) {
 				tc.currentIndex = idx
 				if tc.OnSelect != nil {
 					tc.OnSelect(tc.suggestions[idx])
 				}
 			},
-			HoverHandler: func(hovering bool) {
-				if hovering {
-					tc.currentIndex = idx
-				}
+			OnEnter: func(event *MouseEvent) {
+				tc.currentIndex = idx
 			},
 		}
 		regions = append(regions, region)
@@ -390,7 +391,7 @@ func (rg *RadioGroup) GetRegions() []*MouseRegion {
 			Width:  len(option) + 4,
 			Height: 1,
 			Label:  option,
-			Handler: func(event *MouseEvent) {
+			OnClick: func(event *MouseEvent) {
 				rg.Selected = idx
 				if rg.OnChange != nil {
 					rg.OnChange(idx, rg.Options[idx])

@@ -159,8 +159,8 @@ func (cb *ComposableButton) HandleMouse(event MouseEvent) bool {
 			cb.MarkDirty()
 		}
 
-		// Handle click
-		if event.Button == MouseLeft && event.Type == MouseClick {
+		// Handle click (synthetic click from Container or MouseHandler)
+		if event.Button == MouseButtonLeft && event.Type == MouseClick {
 			if cb.OnClick != nil {
 				cb.OnClick()
 			}

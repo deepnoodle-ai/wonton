@@ -2,210 +2,252 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// InputFormsApp demonstrates a form with three different input types using Runtime.
+// InputFormsApp demonstrates a multi-field form using TextInput widgets.
+// It shows how to handle multiple input fields with focus management,
+// form validation, and submission.
 type InputFormsApp struct {
-	stage    int
-	name     string
-	password string
-	fruit    string
-	message  string
+	// Form fields
+	nameInput     *gooey.TextInput
+	emailInput    *gooey.TextInput
+	passwordInput *gooey.TextInput
+
+	// Which field is focused (0=name, 1=email, 2=password)
+	focusedField int
+
+	// Form state
+	submitted bool
+	errors    []string
+}
+
+func NewInputFormsApp() *InputFormsApp {
+	app := &InputFormsApp{}
+
+	// Create name input
+	app.nameInput = gooey.NewTextInput()
+	app.nameInput.Placeholder = "Enter your name"
+	app.nameInput.SetFocused(true) // Start with name focused
+
+	// Create email input
+	app.emailInput = gooey.NewTextInput()
+	app.emailInput.Placeholder = "Enter your email"
+
+	// Create password input (we'll mask it in Render)
+	app.passwordInput = gooey.NewTextInput()
+	app.passwordInput.Placeholder = "Enter password"
+
+	return app
 }
 
 func (app *InputFormsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
-		switch app.stage {
-		case 0:
-			// Intro screen - any key starts
-			app.stage = 1
-			app.message = "Reading name..."
-			return []gooey.Cmd{app.cmdReadName()}
+		// Handle form-level keys first
+		switch e.Key {
+		case gooey.KeyTab:
+			// Move to next field
+			app.cycleFocus(1)
+			return nil
 
-		case 2:
-			// After name input, any key continues
-			app.stage = 3
-			app.message = "Reading password..."
-			return []gooey.Cmd{app.cmdReadPassword()}
+		case gooey.KeyArrowDown:
+			// Move to next field
+			app.cycleFocus(1)
+			return nil
 
-		case 4:
-			// After password input, any key continues
-			app.stage = 5
-			app.message = "Reading fruit preference..."
-			return []gooey.Cmd{app.cmdReadFruit()}
+		case gooey.KeyArrowUp:
+			// Move to previous field
+			app.cycleFocus(-1)
+			return nil
 
-		case 6:
-			// After fruit input, any key continues to summary
-			app.stage = 7
+		case gooey.KeyEnter:
+			if app.submitted {
+				// Already submitted, quit on Enter
+				return []gooey.Cmd{gooey.Quit()}
+			}
+			// Move to next field, or submit if on last field
+			if app.focusedField < 2 {
+				app.cycleFocus(1)
+			} else {
+				app.validateAndSubmit()
+			}
+			return nil
 
-		case 7:
-			// Summary screen - any key quits
+		case gooey.KeyEscape:
 			return []gooey.Cmd{gooey.Quit()}
 		}
 
-	case FormInputEvent:
-		// Handle form input results
-		if e.Error != nil {
-			app.message = fmt.Sprintf("Error: %v", e.Error)
+		// Handle Ctrl+C to quit
+		if e.Rune == 'q' && e.Ctrl {
 			return []gooey.Cmd{gooey.Quit()}
 		}
 
-		switch e.Field {
-		case "name":
-			app.name = e.Value
-			app.stage = 2
-			app.message = "Press any key to continue..."
-		case "password":
-			app.password = e.Value
-			app.stage = 4
-			app.message = "Press any key to continue..."
-		case "fruit":
-			app.fruit = e.Value
-			app.stage = 6
-			app.message = "Press any key to view summary..."
-		}
+		// Pass key events to the focused input
+		app.getFocusedInput().HandleKey(e)
 	}
 
 	return nil
 }
 
+func (app *InputFormsApp) cycleFocus(direction int) {
+	// Clear focus on current
+	app.getFocusedInput().SetFocused(false)
+
+	// Move to next/prev field
+	app.focusedField = (app.focusedField + direction + 3) % 3
+
+	// Set focus on new field
+	app.getFocusedInput().SetFocused(true)
+}
+
+func (app *InputFormsApp) getFocusedInput() *gooey.TextInput {
+	switch app.focusedField {
+	case 0:
+		return app.nameInput
+	case 1:
+		return app.emailInput
+	case 2:
+		return app.passwordInput
+	default:
+		return app.nameInput
+	}
+}
+
+func (app *InputFormsApp) validateAndSubmit() {
+	app.errors = nil
+
+	// Validate name
+	if strings.TrimSpace(app.nameInput.Value) == "" {
+		app.errors = append(app.errors, "Name is required")
+	}
+
+	// Validate email (simple check)
+	email := strings.TrimSpace(app.emailInput.Value)
+	if email == "" {
+		app.errors = append(app.errors, "Email is required")
+	} else if !strings.Contains(email, "@") {
+		app.errors = append(app.errors, "Email must contain @")
+	}
+
+	// Validate password
+	if len(app.passwordInput.Value) < 4 {
+		app.errors = append(app.errors, "Password must be at least 4 characters")
+	}
+
+	if len(app.errors) == 0 {
+		app.submitted = true
+	}
+}
+
 func (app *InputFormsApp) Render(frame gooey.RenderFrame) {
 	width, height := frame.Size()
+
+	// Styles
+	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
+	labelStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	focusedLabelStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+	errorStyle := gooey.NewStyle().WithForeground(gooey.ColorRed)
+	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+	helpStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
 
 	// Clear screen
 	frame.FillStyled(0, 0, width, height, ' ', gooey.NewStyle())
 
-	titleStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-
 	// Title
-	frame.PrintStyled(0, 0, "📝 Gooey Input Form Demo", titleStyle)
-	frame.PrintStyled(0, 1, "------------------------", titleStyle)
+	frame.PrintStyled(2, 1, "Gooey Input Forms Demo", titleStyle)
+	frame.PrintStyled(2, 2, "----------------------", titleStyle)
 
-	y := 3
-
-	switch app.stage {
-	case 0:
-		// Welcome screen
-		frame.PrintStyled(0, y, "This demo shows a multi-step form with different input types:", gooey.NewStyle())
-		y += 2
-		frame.PrintStyled(0, y, "1. Basic input (name)", gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, "2. Secure password input", gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, "3. Input with suggestions (fruit)", gooey.NewStyle())
-		y += 2
-		frame.PrintStyled(0, y, "Press any key to start", gooey.NewStyle().WithForeground(gooey.ColorYellow))
-
-	case 1:
-		// Reading name
-		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-		frame.PrintStyled(0, y, "What is your name? ", promptStyle)
-		y++
-		frame.PrintStyled(0, y, "(Simulated input in Runtime)", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-
-	case 2:
-		// Show name result
-		frame.PrintStyled(0, y, fmt.Sprintf("Name: %s", app.name), gooey.NewStyle().WithForeground(gooey.ColorGreen))
-		y += 2
-		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
-
-	case 3:
-		// Reading password
-		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorRed).WithBold()
-		frame.PrintStyled(0, y, "Enter a password: ", promptStyle)
-		y++
-		frame.PrintStyled(0, y, "(Simulated secure input)", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-
-	case 4:
-		// Show password result
-		frame.PrintStyled(0, y, fmt.Sprintf("Name: %s", app.name), gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, fmt.Sprintf("Password: %s (len=%d)", strings.Repeat("*", len(app.password)), len(app.password)), gooey.NewStyle().WithForeground(gooey.ColorGreen))
-		y += 2
-		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
-
-	case 5:
-		// Reading fruit
-		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
-		frame.PrintStyled(0, y, "Favorite fruit? ", promptStyle)
-		y++
-		frame.PrintStyled(0, y, "(Simulated input with suggestions)", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-		y++
-		frame.PrintStyled(0, y, "Options: Apple, Banana, Cherry, Date, Elderberry...", gooey.NewStyle().WithForeground(gooey.ColorBrightBlack))
-
-	case 6:
-		// Show all results
-		frame.PrintStyled(0, y, fmt.Sprintf("Name: %s", app.name), gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, fmt.Sprintf("Password: %s (len=%d)", strings.Repeat("*", len(app.password)), len(app.password)), gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, fmt.Sprintf("Fruit: %s", app.fruit), gooey.NewStyle().WithForeground(gooey.ColorGreen))
-		y += 2
-		frame.PrintStyled(0, y, app.message, gooey.NewStyle().WithForeground(gooey.ColorYellow))
-
-	case 7:
-		// Summary
-		frame.PrintStyled(0, y, "✅ Form Complete!", titleStyle)
-		y += 2
-		frame.PrintStyled(0, y, fmt.Sprintf("Name:     %s", app.name), gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, fmt.Sprintf("Password: %s (len=%d)", strings.Repeat("*", len(app.password)), len(app.password)), gooey.NewStyle())
-		y++
-		frame.PrintStyled(0, y, fmt.Sprintf("Fruit:    %s", app.fruit), gooey.NewStyle())
-		y += 2
-		frame.PrintStyled(0, y, "Press any key to exit", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+	if app.submitted {
+		// Show success message
+		frame.PrintStyled(2, 4, "Form submitted successfully!", successStyle)
+		frame.PrintStyled(2, 6, fmt.Sprintf("Name:     %s", app.nameInput.Value), labelStyle)
+		frame.PrintStyled(2, 7, fmt.Sprintf("Email:    %s", app.emailInput.Value), labelStyle)
+		frame.PrintStyled(2, 8, fmt.Sprintf("Password: %s", strings.Repeat("*", len(app.passwordInput.Value))), labelStyle)
+		frame.PrintStyled(2, 10, "Press Enter to exit", helpStyle)
+		return
 	}
-}
 
-// Commands for async form input operations (simulated)
-func (app *InputFormsApp) cmdReadName() gooey.Cmd {
-	return func() gooey.Event {
-		// Simulate reading name
-		return FormInputEvent{
-			Field: "name",
-			Value: "John Doe",
-			Error: nil,
+	y := 4
+	labelX := 2
+	inputX := 14 // Fixed position for all inputs
+
+	// Name field
+	if app.focusedField == 0 {
+		frame.PrintStyled(labelX, y, "> Name:", focusedLabelStyle)
+	} else {
+		frame.PrintStyled(labelX, y, "  Name:", labelStyle)
+	}
+	app.nameInput.SetBounds(image.Rect(inputX, y, inputX+40, y+1))
+	app.nameInput.Draw(frame)
+	y += 2
+
+	// Email field
+	if app.focusedField == 1 {
+		frame.PrintStyled(labelX, y, "> Email:", focusedLabelStyle)
+	} else {
+		frame.PrintStyled(labelX, y, "  Email:", labelStyle)
+	}
+	app.emailInput.SetBounds(image.Rect(inputX, y, inputX+40, y+1))
+	app.emailInput.Draw(frame)
+	y += 2
+
+	// Password field (display masked)
+	if app.focusedField == 2 {
+		frame.PrintStyled(labelX, y, "> Password:", focusedLabelStyle)
+	} else {
+		frame.PrintStyled(labelX, y, "  Password:", labelStyle)
+	}
+	// For password, we draw it manually with masking
+	app.drawPasswordField(frame, inputX, y, 40)
+	y += 2
+
+	// Show errors if any
+	if len(app.errors) > 0 {
+		y++
+		for _, err := range app.errors {
+			frame.PrintStyled(2, y, "- "+err, errorStyle)
+			y++
 		}
 	}
+
+	// Help text
+	y += 2
+	frame.PrintStyled(2, y, "Tab/Arrow keys: Navigate | Enter: Submit | Esc: Quit", helpStyle)
 }
 
-func (app *InputFormsApp) cmdReadPassword() gooey.Cmd {
-	return func() gooey.Event {
-		// Simulate reading password
-		return FormInputEvent{
-			Field: "password",
-			Value: "securepass123",
-			Error: nil,
+// drawPasswordField renders a password field with masked characters
+func (app *InputFormsApp) drawPasswordField(frame gooey.RenderFrame, x, y, width int) {
+	input := app.passwordInput
+	style := input.Style
+	cursorStyle := input.CursorStyle
+
+	// Clear the field area
+	frame.FillStyled(x, y, width, 1, ' ', style)
+
+	// Show placeholder or masked value
+	if input.Value == "" && input.Placeholder != "" {
+		frame.PrintStyled(x, y, input.Placeholder, input.PlaceholderStyle)
+	} else {
+		// Draw masked characters
+		masked := strings.Repeat("*", len(input.Value))
+		if len(masked) > width {
+			masked = masked[:width]
+		}
+		frame.PrintStyled(x, y, masked, style)
+	}
+
+	// Draw cursor if focused (check if this is the focused field)
+	if app.focusedField == 2 {
+		cursorX := x + len(input.Value)
+		if cursorX < x+width {
+			frame.PrintStyled(cursorX, y, " ", cursorStyle)
 		}
 	}
-}
-
-func (app *InputFormsApp) cmdReadFruit() gooey.Cmd {
-	return func() gooey.Event {
-		// Simulate reading fruit with suggestions
-		return FormInputEvent{
-			Field: "fruit",
-			Value: "Apple",
-			Error: nil,
-		}
-	}
-}
-
-// FormInputEvent is returned when form field input completes
-type FormInputEvent struct {
-	Field string
-	Value string
-	Error error
-}
-
-func (e FormInputEvent) Timestamp() time.Time {
-	return time.Now()
 }
 
 func main() {
@@ -218,10 +260,7 @@ func main() {
 	defer terminal.Close()
 
 	// Create the application
-	app := &InputFormsApp{
-		stage:   0,
-		message: "Welcome!",
-	}
+	app := NewInputFormsApp()
 
 	// Create and run the runtime
 	runtime := gooey.NewRuntime(terminal, app, 30)

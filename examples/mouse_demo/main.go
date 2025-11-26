@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -9,8 +8,8 @@ import (
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// MouseDemoApp demonstrates full mouse support with the Runtime architecture.
-// It shows clickable buttons, draggable elements, scroll areas, and modifier detection.
+// MouseDemoApp demonstrates mouse support with the Runtime architecture.
+// It shows clickable buttons, scroll areas, hover effects, and modifier detection.
 type MouseDemoApp struct {
 	terminal *gooey.Terminal
 	mouse    *gooey.MouseHandler
@@ -19,19 +18,16 @@ type MouseDemoApp struct {
 
 	// State
 	clickCount   map[string]int
-	dragInfo     string
-	hoverInfo    string
-	scrollCount  int
+	hoverRegion  string
+	scrollOffset int
 	modifierInfo string
-	layerInfo    string
+	lastAction   string
 
 	// Styles
-	normalStyle gooey.Style
-	hoverStyle  gooey.Style
-	dragStyle   gooey.Style
-
-	// Mouse regions (need to track for dynamic updates)
-	dragRegion *gooey.MouseRegion
+	primaryStyle   gooey.Style
+	secondaryStyle gooey.Style
+	accentStyle    gooey.Style
+	textStyle      gooey.Style
 }
 
 // Init initializes the application
@@ -43,15 +39,15 @@ func (app *MouseDemoApp) Init() error {
 	app.mouse = gooey.NewMouseHandler()
 	// app.mouse.EnableDebug() // Uncomment for debug logging
 
-	app.clickCount = map[string]int{
-		"single": 0,
-		"double": 0,
-		"triple": 0,
-	}
+	app.clickCount = make(map[string]int)
 
-	app.normalStyle = gooey.NewStyle().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite)
-	app.hoverStyle = gooey.NewStyle().WithBackground(gooey.ColorCyan).WithForeground(gooey.ColorBlack)
-	app.dragStyle = gooey.NewStyle().WithBackground(gooey.ColorYellow).WithForeground(gooey.ColorBlack)
+	// Define color scheme
+	app.primaryStyle = gooey.NewStyle().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite)
+	app.secondaryStyle = gooey.NewStyle().WithBackground(gooey.ColorMagenta).WithForeground(gooey.ColorWhite)
+	app.accentStyle = gooey.NewStyle().WithBackground(gooey.ColorCyan).WithForeground(gooey.ColorBlack)
+	app.textStyle = gooey.NewStyle().WithForeground(gooey.ColorWhite)
+
+	app.lastAction = "Ready - interact with buttons below"
 
 	app.setupMouseRegions()
 
@@ -66,85 +62,105 @@ func (app *MouseDemoApp) Destroy() {
 
 // setupMouseRegions creates all mouse regions
 func (app *MouseDemoApp) setupMouseRegions() {
-	// Clickable button
-	buttonRegion := &gooey.MouseRegion{
-		X:      5,
-		Y:      5,
-		Width:  30,
-		Height: 3,
-		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
-			app.clickCount["single"]++
-		},
-		OnDoubleClick: func(event *gooey.MouseEvent) {
-			app.clickCount["double"]++
-		},
-		OnTripleClick: func(event *gooey.MouseEvent) {
-			app.clickCount["triple"]++
-		},
-		OnEnter: func(event *gooey.MouseEvent) {
-			app.hoverInfo = "Button (hover)"
-		},
-		OnLeave: func(event *gooey.MouseEvent) {
-			app.hoverInfo = ""
-		},
-	}
-	app.mouse.AddRegion(buttonRegion)
+	// Row 1: Action buttons (centered, starting at y=4)
+	buttonY := 4
+	buttonSpacing := 3
 
-	// Draggable box
-	app.dragRegion = &gooey.MouseRegion{
-		X:      40,
-		Y:      5,
+	// Button 1: Increment counter
+	app.mouse.AddRegion(&gooey.MouseRegion{
+		X:      10,
+		Y:      buttonY,
 		Width:  20,
 		Height: 3,
 		ZIndex: 1,
-		OnDragStart: func(event *gooey.MouseEvent) {
-			app.dragInfo = "Dragging..."
-		},
-		OnDrag: func(event *gooey.MouseEvent) {
-			app.dragRegion.X = event.X - 10 // Center on cursor
-			app.dragRegion.Y = event.Y - 1
-			app.dragInfo = fmt.Sprintf("Dragging... (%d, %d)", app.dragRegion.X, app.dragRegion.Y)
-		},
-		OnDragEnd: func(event *gooey.MouseEvent) {
-			app.dragInfo = fmt.Sprintf("Dropped at (%d, %d)", app.dragRegion.X, app.dragRegion.Y)
+		OnClick: func(event *gooey.MouseEvent) {
+			app.clickCount["increment"]++
+			app.lastAction = fmt.Sprintf("Incremented! Count: %d", app.clickCount["increment"])
 		},
 		OnEnter: func(event *gooey.MouseEvent) {
-			app.hoverInfo = "Draggable box (hover)"
+			app.hoverRegion = "increment"
 		},
 		OnLeave: func(event *gooey.MouseEvent) {
-			app.hoverInfo = ""
+			app.hoverRegion = ""
 		},
-	}
-	app.mouse.AddRegion(app.dragRegion)
+	})
 
-	// Scroll area
-	scrollRegion := &gooey.MouseRegion{
-		X:      5,
-		Y:      10,
-		Width:  55,
-		Height: 5,
+	// Button 2: Reset counter
+	app.mouse.AddRegion(&gooey.MouseRegion{
+		X:      35,
+		Y:      buttonY,
+		Width:  20,
+		Height: 3,
+		ZIndex: 1,
+		OnClick: func(event *gooey.MouseEvent) {
+			app.clickCount["increment"] = 0
+			app.lastAction = "Counter reset to 0"
+		},
+		OnEnter: func(event *gooey.MouseEvent) {
+			app.hoverRegion = "reset"
+		},
+		OnLeave: func(event *gooey.MouseEvent) {
+			app.hoverRegion = ""
+		},
+	})
+
+	// Button 3: Info button
+	app.mouse.AddRegion(&gooey.MouseRegion{
+		X:      60,
+		Y:      buttonY,
+		Width:  20,
+		Height: 3,
+		ZIndex: 1,
+		OnClick: func(event *gooey.MouseEvent) {
+			app.lastAction = "Info: This demo showcases mouse interactions!"
+		},
+		OnDoubleClick: func(event *gooey.MouseEvent) {
+			app.lastAction = "Info: You double-clicked! Try triple-click too."
+		},
+		OnTripleClick: func(event *gooey.MouseEvent) {
+			app.lastAction = "Info: Triple-click detected!"
+		},
+		OnEnter: func(event *gooey.MouseEvent) {
+			app.hoverRegion = "info"
+		},
+		OnLeave: func(event *gooey.MouseEvent) {
+			app.hoverRegion = ""
+		},
+	})
+
+	// Scroll area (centered panel)
+	scrollY := buttonY + buttonSpacing + 3
+	app.mouse.AddRegion(&gooey.MouseRegion{
+		X:      10,
+		Y:      scrollY,
+		Width:  70,
+		Height: 8,
 		ZIndex: 1,
 		OnScroll: func(event *gooey.MouseEvent) {
 			if event.DeltaY != 0 {
-				app.scrollCount += event.DeltaY
+				app.scrollOffset += event.DeltaY
+				if event.DeltaY > 0 {
+					app.lastAction = fmt.Sprintf("Scrolled down (offset: %d)", app.scrollOffset)
+				} else {
+					app.lastAction = fmt.Sprintf("Scrolled up (offset: %d)", app.scrollOffset)
+				}
 			}
 		},
 		OnEnter: func(event *gooey.MouseEvent) {
-			app.hoverInfo = "Scroll area (use mouse wheel)"
+			app.hoverRegion = "scroll"
 		},
 		OnLeave: func(event *gooey.MouseEvent) {
-			app.hoverInfo = ""
+			app.hoverRegion = ""
 		},
-	}
-	app.mouse.AddRegion(scrollRegion)
+	})
 
 	// Modifier detection area
-	modifierRegion := &gooey.MouseRegion{
-		X:      5,
-		Y:      17,
-		Width:  55,
-		Height: 3,
+	modY := scrollY + 10
+	app.mouse.AddRegion(&gooey.MouseRegion{
+		X:      10,
+		Y:      modY,
+		Width:  70,
+		Height: 4,
 		ZIndex: 1,
 		OnClick: func(event *gooey.MouseEvent) {
 			mods := []string{}
@@ -158,38 +174,20 @@ func (app *MouseDemoApp) setupMouseRegions() {
 				mods = append(mods, "Alt")
 			}
 			if len(mods) == 0 {
-				app.modifierInfo = "No modifiers"
+				app.modifierInfo = "none"
+				app.lastAction = "Click detected with no modifiers"
 			} else {
 				app.modifierInfo = strings.Join(mods, "+")
+				app.lastAction = fmt.Sprintf("Click with %s modifier(s)", app.modifierInfo)
 			}
 		},
-	}
-	app.mouse.AddRegion(modifierRegion)
-
-	// Z-index demonstration - overlapping buttons
-	layer1Region := &gooey.MouseRegion{
-		X:      5,
-		Y:      22,
-		Width:  20,
-		Height: 3,
-		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
-			app.layerInfo = "Layer 1 (z=1)"
+		OnEnter: func(event *gooey.MouseEvent) {
+			app.hoverRegion = "modifier"
 		},
-	}
-	app.mouse.AddRegion(layer1Region)
-
-	layer2Region := &gooey.MouseRegion{
-		X:      15,
-		Y:      23,
-		Width:  20,
-		Height: 3,
-		ZIndex: 2,
-		OnClick: func(event *gooey.MouseEvent) {
-			app.layerInfo = "Layer 2 (z=2)"
+		OnLeave: func(event *gooey.MouseEvent) {
+			app.hoverRegion = ""
 		},
-	}
-	app.mouse.AddRegion(layer2Region)
+	})
 }
 
 // HandleEvent processes events
@@ -205,11 +203,6 @@ func (app *MouseDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		// ESC cancels drag
-		if e.Key == gooey.KeyEscape {
-			app.mouse.CancelDrag()
-			app.dragInfo = "Drag cancelled"
-		}
 		return nil
 
 	case gooey.ResizeEvent:
@@ -224,41 +217,174 @@ func (app *MouseDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 // Render draws the UI
 func (app *MouseDemoApp) Render(frame gooey.RenderFrame) {
 	// Clear screen
-	frame.FillStyled(0, 0, app.width, app.height, ' ', gooey.NewStyle())
+	bgStyle := gooey.NewStyle().WithBackground(gooey.ColorBlack)
+	frame.FillStyled(0, 0, app.width, app.height, ' ', bgStyle)
 
-	// Title
-	title := "🖱️  Full Mouse Support Demo - Press 'q' or Ctrl+C to exit, Esc to cancel drag"
-	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
-	frame.PrintStyled((app.width-len(title))/2, 0, title, titleStyle)
+	// Header
+	app.renderHeader(frame)
 
-	// Render click button
-	app.renderButton(frame, "Click Me!", 5, 5, 30, 3, app.normalStyle)
-
-	// Render drag button
-	app.renderButton(frame, "Drag Me!", app.dragRegion.X, app.dragRegion.Y, 20, 3, app.dragStyle)
+	// Action buttons
+	app.renderActionButtons(frame)
 
 	// Scroll area
-	scrollStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack).WithForeground(gooey.ColorWhite)
-	app.renderBox(frame, 5, 10, 55, 5, scrollStyle)
-	frame.PrintStyled(7, 11, "Scroll Area - Use mouse wheel", gooey.NewStyle().WithForeground(gooey.ColorWhite))
+	app.renderScrollArea(frame)
 
 	// Modifier detection area
-	modStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack).WithForeground(gooey.ColorWhite)
-	app.renderBox(frame, 5, 17, 55, 3, modStyle)
-	frame.PrintStyled(7, 18, "Click with Shift/Ctrl/Alt modifiers", gooey.NewStyle().WithForeground(gooey.ColorWhite))
+	app.renderModifierArea(frame)
 
-	// Z-index layers
-	layer1Style := gooey.NewStyle().WithBackground(gooey.ColorMagenta).WithForeground(gooey.ColorWhite)
-	layer2Style := gooey.NewStyle().WithBackground(gooey.ColorRed).WithForeground(gooey.ColorWhite)
-	app.renderButton(frame, "Layer 1 (z=1)", 5, 22, 20, 3, layer1Style)
-	app.renderButton(frame, "Layer 2 (z=2)", 15, 23, 20, 3, layer2Style)
+	// Status footer
+	app.renderFooter(frame)
+}
 
-	// Info panel
-	app.renderInfo(frame)
+func (app *MouseDemoApp) renderHeader(frame gooey.RenderFrame) {
+	title := "Gooey Mouse Demo"
+	subtitle := "Press 'q' or Ctrl+C to exit"
+
+	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan)
+	subtitleStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+
+	frame.PrintStyled((app.width-len(title))/2, 1, title, titleStyle)
+	frame.PrintStyled((app.width-len(subtitle))/2, 2, subtitle, subtitleStyle)
+}
+
+func (app *MouseDemoApp) renderActionButtons(frame gooey.RenderFrame) {
+	buttonY := 4
+
+	// Button 1: Increment
+	style1 := app.primaryStyle
+	if app.hoverRegion == "increment" {
+		style1 = app.accentStyle
+	}
+	app.renderButton(frame, "Increment", 10, buttonY, 20, 3, style1)
+
+	// Button 2: Reset
+	style2 := app.secondaryStyle
+	if app.hoverRegion == "reset" {
+		style2 = app.accentStyle
+	}
+	app.renderButton(frame, "Reset", 35, buttonY, 20, 3, style2)
+
+	// Button 3: Info
+	style3 := app.primaryStyle
+	if app.hoverRegion == "info" {
+		style3 = app.accentStyle
+	}
+	app.renderButton(frame, "Info (try clicks)", 60, buttonY, 20, 3, style3)
+}
+
+func (app *MouseDemoApp) renderScrollArea(frame gooey.RenderFrame) {
+	scrollY := 10
+	boxStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack)
+	borderStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+
+	// Draw border
+	app.renderBorder(frame, 9, scrollY-1, 72, 10, borderStyle)
+
+	// Fill background
+	app.renderBox(frame, 10, scrollY, 70, 8, boxStyle)
+
+	// Title
+	title := "Scrollable Content Area"
+	if app.hoverRegion == "scroll" {
+		title += " (hovering)"
+	}
+	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorYellow)
+	frame.PrintStyled(12, scrollY, title, titleStyle)
+
+	// Content with scroll offset
+	contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	content := []string{
+		"Use your mouse wheel to scroll through this area.",
+		"",
+		"Line 1: The quick brown fox jumps over the lazy dog",
+		"Line 2: Lorem ipsum dolor sit amet, consectetur",
+		"Line 3: The five boxing wizards jump quickly",
+		"Line 4: Pack my box with five dozen liquor jugs",
+		"Line 5: How vexingly quick daft zebras jump!",
+		"Line 6: The jay, pig, fox, zebra and my wolves",
+		"Line 7: Sphinx of black quartz, judge my vow",
+		"Line 8: Two driven jocks help fax my big quiz",
+	}
+
+	startLine := app.scrollOffset
+	if startLine < 0 {
+		startLine = 0
+	}
+	if startLine > len(content)-5 {
+		startLine = len(content) - 5
+	}
+	app.scrollOffset = startLine
+
+	for i := 0; i < 6 && startLine+i < len(content); i++ {
+		frame.PrintStyled(12, scrollY+i+1, content[startLine+i], contentStyle)
+	}
+
+	// Scroll indicator
+	indicatorStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+	indicator := fmt.Sprintf("Scroll: %d/%d", startLine+1, len(content))
+	frame.PrintStyled(68, scrollY+7, indicator, indicatorStyle)
+}
+
+func (app *MouseDemoApp) renderModifierArea(frame gooey.RenderFrame) {
+	modY := 21
+	boxStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack)
+	borderStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta)
+
+	// Draw border
+	app.renderBorder(frame, 9, modY-1, 72, 6, borderStyle)
+
+	// Fill background
+	app.renderBox(frame, 10, modY, 70, 4, boxStyle)
+
+	// Title
+	title := "Modifier Key Detection"
+	if app.hoverRegion == "modifier" {
+		title += " (hovering)"
+	}
+	titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorYellow)
+	frame.PrintStyled(12, modY, title, titleStyle)
+
+	// Instructions
+	instructStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	frame.PrintStyled(12, modY+1, "Click here while holding Shift, Ctrl, or Alt keys", instructStyle)
+
+	// Show last detected modifiers
+	if app.modifierInfo != "" {
+		modStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+		frame.PrintStyled(12, modY+2, fmt.Sprintf("Last detected: %s", app.modifierInfo), modStyle)
+	}
+}
+
+func (app *MouseDemoApp) renderFooter(frame gooey.RenderFrame) {
+	footerY := app.height - 3
+	separatorStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+	labelStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+	valueStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	bgStyle := gooey.NewStyle().WithBackground(gooey.ColorBlack)
+
+	// Clear footer area (3 lines) to hide any content behind it
+	for row := footerY; row < footerY+3 && row < app.height; row++ {
+		frame.FillStyled(0, row, app.width, 1, ' ', bgStyle)
+	}
+
+	// Separator
+	separator := strings.Repeat("━", app.width)
+	frame.PrintStyled(0, footerY, separator, separatorStyle)
+
+	// Counter
+	frame.PrintStyled(2, footerY+1, "Counter:", labelStyle)
+	frame.PrintStyled(12, footerY+1, fmt.Sprintf("%d", app.clickCount["increment"]), valueStyle)
+
+	// Last action
+	frame.PrintStyled(20, footerY+1, "Status:", labelStyle)
+	frame.PrintStyled(29, footerY+1, app.lastAction, valueStyle)
 }
 
 func (app *MouseDemoApp) renderButton(frame gooey.RenderFrame, text string, x, y, width, height int, style gooey.Style) {
+	// Draw button background
 	app.renderBox(frame, x, y, width, height, style)
+
+	// Center text
 	textX := x + (width-len(text))/2
 	textY := y + height/2
 	frame.PrintStyled(textX, textY, text, style)
@@ -270,29 +396,24 @@ func (app *MouseDemoApp) renderBox(frame gooey.RenderFrame, x, y, width, height 
 	}
 }
 
-func (app *MouseDemoApp) renderInfo(frame gooey.RenderFrame) {
-	infoY := app.height - 12
-	infoStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+func (app *MouseDemoApp) renderBorder(frame gooey.RenderFrame, x, y, width, height int, style gooey.Style) {
+	// Top and bottom
+	for col := 0; col < width; col++ {
+		frame.PrintStyled(x+col, y, "─", style)
+		frame.PrintStyled(x+col, y+height-1, "─", style)
+	}
 
-	frame.PrintStyled(2, infoY, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", infoStyle)
-	frame.PrintStyled(2, infoY+1, "Status:", gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan))
+	// Left and right
+	for row := 0; row < height; row++ {
+		frame.PrintStyled(x, y+row, "│", style)
+		frame.PrintStyled(x+width-1, y+row, "│", style)
+	}
 
-	y := infoY + 2
-	frame.PrintStyled(2, y, fmt.Sprintf("Single Clicks: %d", app.clickCount["single"]), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Double Clicks: %d", app.clickCount["double"]), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Triple Clicks: %d", app.clickCount["triple"]), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Scroll Count: %d", app.scrollCount), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Drag: %s", app.dragInfo), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Hover: %s", app.hoverInfo), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Modifiers: %s", app.modifierInfo), infoStyle)
-	y++
-	frame.PrintStyled(2, y, fmt.Sprintf("Layer Clicked: %s", app.layerInfo), infoStyle)
+	// Corners
+	frame.PrintStyled(x, y, "┌", style)
+	frame.PrintStyled(x+width-1, y, "┐", style)
+	frame.PrintStyled(x, y+height-1, "└", style)
+	frame.PrintStyled(x+width-1, y+height-1, "┘", style)
 }
 
 func main() {
@@ -309,111 +430,14 @@ func main() {
 		terminal: terminal,
 	}
 
-	// Create runtime with mouse support
-	runtime := NewMouseRuntime(terminal, app, 30)
+	// Create runtime with 30 FPS
+	// Mouse tracking is enabled in Init(), and mouse events are automatically
+	// delivered to HandleEvent as gooey.MouseEvent
+	runtime := gooey.NewRuntime(terminal, app, 30)
 
-	// Run the application
+	// Run the application (blocks until quit)
 	if err := runtime.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Runtime error: %v\n", err)
 		os.Exit(1)
-	}
-}
-
-// MouseRuntime extends Runtime with mouse event support.
-// It handles both keyboard and mouse input from stdin.
-type MouseRuntime struct {
-	*gooey.Runtime
-	terminal *gooey.Terminal
-}
-
-// NewMouseRuntime creates a runtime that handles both keyboard and mouse events
-func NewMouseRuntime(terminal *gooey.Terminal, app gooey.Application, fps int) *MouseRuntime {
-	// Create base runtime (which handles keyboard)
-	baseRuntime := gooey.NewRuntime(terminal, app, fps)
-
-	return &MouseRuntime{
-		Runtime:  baseRuntime,
-		terminal: terminal,
-	}
-}
-
-// Run starts the mouse-aware runtime
-func (r *MouseRuntime) Run() error {
-	// Start a custom input reader goroutine for mouse+keyboard
-	go r.mouseInputReader()
-
-	// Run the base runtime (which will handle events we send)
-	return r.Runtime.Run()
-}
-
-// mouseInputReader reads both keyboard and mouse events from stdin.
-// This replaces the Runtime's standard inputReader to handle both types of events.
-func (r *MouseRuntime) mouseInputReader() {
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		// Peek at the first byte to determine event type
-		firstByte, err := reader.ReadByte()
-		if err != nil {
-			return
-		}
-
-		// Check if this is the start of a mouse event (ESC [ <)
-		if firstByte == 27 {
-			// Peek ahead to see if it's a mouse event
-			next, err := reader.Peek(2)
-			if err == nil && len(next) >= 2 && next[0] == '[' && next[1] == '<' {
-				// Read the mouse sequence
-				reader.ReadByte() // consume '['
-				reader.ReadByte() // consume '<'
-
-				buf := make([]byte, 20)
-				i := 0
-				buf[i] = '<'
-				i++
-
-				// Read until we find M or m
-				for {
-					b, err := reader.ReadByte()
-					if err != nil {
-						break
-					}
-					buf[i] = b
-					i++
-					if b == 'M' || b == 'm' {
-						break
-					}
-					if i >= len(buf) {
-						break
-					}
-				}
-
-				// Parse and send mouse event
-				event, err := gooey.ParseMouseEvent(buf[:i])
-				if err == nil {
-					r.SendEvent(*event)
-				}
-				continue
-			}
-		}
-
-		// Not a mouse event - reconstruct the bytes and use KeyDecoder
-		// We need to handle this more elegantly
-		// For simplicity, we'll use a pipe approach or just handle common cases
-
-		// Handle common keyboard events directly
-		switch firstByte {
-		case 'q', 'Q':
-			r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
-		case 3: // Ctrl+C
-			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyCtrlC})
-		case 27: // ESC (not followed by mouse sequence)
-			r.SendEvent(gooey.KeyEvent{Key: gooey.KeyEscape})
-		default:
-			// For other keys, create a KeyEvent
-			if firstByte >= 32 && firstByte < 127 {
-				r.SendEvent(gooey.KeyEvent{Rune: rune(firstByte)})
-			}
-		}
 	}
 }

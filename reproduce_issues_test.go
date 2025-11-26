@@ -89,16 +89,16 @@ func TestLayout_HeaderCursor_Bug(t *testing.T) {
 func TestSpinner_PassiveUpdate(t *testing.T) {
 	// This replaces the old Animator restart test with a check on the new passive Spinner
 	s := NewSpinner(SpinnerDots)
-	
+
 	// Initial state
 	assert.Equal(t, 0, s.currentFrame)
-	
+
 	// Update with time < interval
 	now := time.Now()
 	s.lastUpdate = now
 	s.Update(now.Add(10 * time.Millisecond))
 	assert.Equal(t, 0, s.currentFrame, "Should not advance frame before interval")
-	
+
 	// Update with time > interval
 	s.Update(now.Add(100 * time.Millisecond))
 	assert.Equal(t, 1, s.currentFrame, "Should advance frame after interval")

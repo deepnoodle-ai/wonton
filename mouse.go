@@ -32,20 +32,6 @@ const (
 	MouseButtonWheelRight
 )
 
-// Deprecated: Use MouseButtonLeft
-const MouseLeft = MouseButtonLeft
-
-// Deprecated: Use MouseButtonMiddle
-const MouseMiddle = MouseButtonMiddle
-
-// Deprecated: Use MouseButtonRight
-const MouseRight = MouseButtonRight
-
-// Deprecated: Use MouseButtonWheelUp
-const MouseWheelUp = MouseButtonWheelUp
-
-// Deprecated: Use MouseButtonWheelDown
-const MouseWheelDown = MouseButtonWheelDown
 
 // MouseEventType represents the type of mouse event
 type MouseEventType int
@@ -76,7 +62,9 @@ const (
 	ModMeta
 )
 
-// EnableMouseTracking enables mouse event reporting in the terminal
+// EnableMouseTracking enables full mouse event reporting in the terminal.
+// This includes button press/release AND all mouse motion events (hover).
+// Use EnableMouseButtons() if you only need click events without motion tracking.
 func (t *Terminal) EnableMouseTracking() {
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
 	fmt.Print("\033[?1006h")
@@ -85,6 +73,16 @@ func (t *Terminal) EnableMouseTracking() {
 	// Enable all mouse motion tracking (including when no button is pressed)
 	// This is needed for proper hover state detection
 	fmt.Print("\033[?1003h")
+}
+
+// EnableMouseButtons enables mouse button tracking without motion events.
+// This reports button press/release events only, not mouse movement.
+// Use this for better performance when hover detection is not needed.
+func (t *Terminal) EnableMouseButtons() {
+	// Enable SGR extended mouse mode (supports coordinates beyond 223)
+	fmt.Print("\033[?1006h")
+	// Enable mouse tracking - report button press and release only
+	fmt.Print("\033[?1000h")
 }
 
 // DisableMouseTracking disables mouse event reporting
@@ -256,13 +254,9 @@ type MouseRegion struct {
 	OnLeave       func(event *MouseEvent)
 	OnMove        func(event *MouseEvent)
 	OnDragStart   func(event *MouseEvent)
-	OnDrag        func(event *MouseEvent)
-	OnDragEnd     func(event *MouseEvent)
-	OnScroll      func(event *MouseEvent)
-
-	// Legacy handlers for backwards compatibility
-	Handler      func(event *MouseEvent) // Maps to OnClick
-	HoverHandler func(hovering bool)     // Maps to OnEnter/OnLeave
+	OnDrag    func(event *MouseEvent)
+	OnDragEnd func(event *MouseEvent)
+	OnScroll  func(event *MouseEvent)
 }
 
 // Contains checks if a point is within the region
@@ -288,6 +282,11 @@ type MouseHandler struct {
 	dragStartX      int
 	dragStartY      int
 	debugMode       bool
+	// clickSynthesized tracks whether a MouseClick event was received for the current
+	// press cycle. When using Runtime, clicks are pre-synthesized and sent BEFORE the
+	// Release event. This flag prevents handleRelease from creating a duplicate click.
+	// Reset to false on each MousePress, set to true when MouseClick is received.
+	clickSynthesized bool
 
 	// Configuration
 	DoubleClickThreshold time.Duration // Maximum time between clicks for double-click
@@ -381,6 +380,19 @@ func (h *MouseHandler) HandleEvent(event *MouseEvent) {
 			event.Type, event.Button, event.X, event.Y, event.Modifiers)
 	}
 
+	// Handle pre-synthesized click events (from Runtime or other sources).
+	// These arrive BEFORE MouseRelease in the event stream. We dispatch them directly
+	// and set clickSynthesized=true so that handleRelease knows to skip its own
+	// click synthesis (which would cause duplicate clicks).
+	if event.Type == MouseClick || event.Type == MouseDoubleClick || event.Type == MouseTripleClick {
+		h.clickSynthesized = true
+		targetRegion := h.findRegionAt(event.X, event.Y)
+		if targetRegion != nil {
+			h.dispatchToRegion(targetRegion, event)
+		}
+		return
+	}
+
 	// If we have a captured region, route all events to it
 	if h.capturedRegion != nil {
 		h.handleCapturedEvent(event)
@@ -432,6 +444,11 @@ func (h *MouseHandler) handleEnterLeave(event *MouseEvent, targetRegion *MouseRe
 
 // handlePress handles press events and initiates capture if needed
 func (h *MouseHandler) handlePress(event *MouseEvent, region *MouseRegion) {
+	// Reset clickSynthesized for the new press/release cycle.
+	// If Runtime sends a pre-synthesized Click, it will arrive before Release
+	// and set this back to true.
+	h.clickSynthesized = false
+
 	if region != nil {
 		// Capture the region for drag/release tracking
 		h.capturedRegion = region
@@ -444,8 +461,15 @@ func (h *MouseHandler) handlePress(event *MouseEvent, region *MouseRegion) {
 
 // handleRelease handles release events and generates click events
 func (h *MouseHandler) handleRelease(event *MouseEvent, region *MouseRegion) {
-	// Check if this is a click (release on same region as press, minimal movement)
-	if h.capturedRegion != nil {
+	// Synthesize a click if:
+	// 1. We have a captured region (from the press)
+	// 2. No pre-synthesized click was received (clickSynthesized is false)
+	// 3. Mouse didn't move much (within ClickMoveThreshold)
+	//
+	// When using Runtime, clickSynthesized will be true because Runtime sends
+	// MouseClick BEFORE MouseRelease, and HandleEvent sets the flag.
+	// This prevents duplicate click dispatch.
+	if h.capturedRegion != nil && !h.clickSynthesized {
 		dx := event.X - h.dragStartX
 		dy := event.Y - h.dragStartY
 		moved := dx*dx + dy*dy
@@ -548,20 +572,23 @@ func (h *MouseHandler) detectAndDispatchClick(event *MouseEvent, region *MouseRe
 	clickEvent.Button = h.capturedButton
 	clickEvent.ClickCount = h.clickCount
 
-	switch h.clickCount {
-	case 1:
-		clickEvent.Type = MouseClick
-	case 2:
-		clickEvent.Type = MouseDoubleClick
-	case 3:
-		clickEvent.Type = MouseTripleClick
-		h.clickCount = 0 // Reset after triple
-	default:
-		clickEvent.Type = MouseClick
-		h.clickCount = 1
-	}
-
+	// Always dispatch a regular click first - this ensures OnClick handlers
+	// are called for every click, even during double/triple click sequences
+	clickEvent.Type = MouseClick
 	h.dispatchToRegion(region, &clickEvent)
+
+	// Then dispatch double/triple click events if applicable
+	switch h.clickCount {
+	case 2:
+		doubleClickEvent := clickEvent
+		doubleClickEvent.Type = MouseDoubleClick
+		h.dispatchToRegion(region, &doubleClickEvent)
+	case 3:
+		tripleClickEvent := clickEvent
+		tripleClickEvent.Type = MouseTripleClick
+		h.dispatchToRegion(region, &tripleClickEvent)
+		h.clickCount = 0 // Reset after triple
+	}
 }
 
 // dispatchToRegion dispatches event to region's appropriate handler
@@ -582,9 +609,6 @@ func (h *MouseHandler) dispatchToRegion(region *MouseRegion, event *MouseEvent) 
 	case MouseClick:
 		if region.OnClick != nil {
 			region.OnClick(event)
-		} else if region.Handler != nil {
-			// Legacy compatibility
-			region.Handler(event)
 		}
 	case MouseDoubleClick:
 		if region.OnDoubleClick != nil {
@@ -598,17 +622,9 @@ func (h *MouseHandler) dispatchToRegion(region *MouseRegion, event *MouseEvent) 
 		if region.OnEnter != nil {
 			region.OnEnter(event)
 		}
-		if region.HoverHandler != nil {
-			// Legacy compatibility
-			region.HoverHandler(true)
-		}
 	case MouseLeave:
 		if region.OnLeave != nil {
 			region.OnLeave(event)
-		}
-		if region.HoverHandler != nil {
-			// Legacy compatibility
-			region.HoverHandler(false)
 		}
 	case MouseMove:
 		if region.OnMove != nil {

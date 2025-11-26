@@ -30,7 +30,7 @@ func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		// Each block moves at a different speed and offset
 		for i := range app.positions {
 			speed := uint64(i+1) * 2 // Different speeds for visual interest
-			offset := uint64(i * 15)  // Stagger the starting positions
+			offset := uint64(i * 15) // Stagger the starting positions
 			app.positions[i] = int((app.frame*speed + offset) % uint64(app.width))
 		}
 
@@ -94,9 +94,9 @@ func (app *AnimatedApp) Render(frame gooey.RenderFrame) {
 				}
 				trailStyle := rainbowStyle(app.frame-uint64(trail), blockIdx)
 				trailStyle = trailStyle.WithFgRGB(gooey.NewRGB(
-					trailStyle.FgRGB.R / uint8(trail+1),
-					trailStyle.FgRGB.G / uint8(trail+1),
-					trailStyle.FgRGB.B / uint8(trail+1),
+					trailStyle.FgRGB.R/uint8(trail+1),
+					trailStyle.FgRGB.G/uint8(trail+1),
+					trailStyle.FgRGB.B/uint8(trail+1),
 				))
 				frame.SetCell(trailX, y, '▒', trailStyle)
 			}

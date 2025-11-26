@@ -13,18 +13,18 @@ import (
 
 // GitHubUser represents a GitHub user profile response
 type GitHubUser struct {
-	Login      string `json:"login"`
-	ID         int    `json:"id"`
-	AvatarURL  string `json:"avatar_url"`
-	Name       string `json:"name"`
-	Company    string `json:"company"`
-	Blog       string `json:"blog"`
-	Location   string `json:"location"`
-	Email      string `json:"email"`
-	Bio        string `json:"bio"`
-	PublicRepos int   `json:"public_repos"`
-	Followers  int   `json:"followers"`
-	Following  int   `json:"following"`
+	Login       string `json:"login"`
+	ID          int    `json:"id"`
+	AvatarURL   string `json:"avatar_url"`
+	Name        string `json:"name"`
+	Company     string `json:"company"`
+	Blog        string `json:"blog"`
+	Location    string `json:"location"`
+	Email       string `json:"email"`
+	Bio         string `json:"bio"`
+	PublicRepos int    `json:"public_repos"`
+	Followers   int    `json:"followers"`
+	Following   int    `json:"following"`
 }
 
 // DataResponse is a custom event that carries HTTP response data

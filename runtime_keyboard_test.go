@@ -120,7 +120,7 @@ func TestRuntimeEnablesRawMode(t *testing.T) {
 func TestRuntimeSendsInitialResizeEvent(t *testing.T) {
 	// Create a test application that tracks received events
 	app := &testEventTracker{
-		events:    make([]Event, 0),
+		events:      make([]Event, 0),
 		resizesSeen: 0,
 	}
 
@@ -165,4 +165,3 @@ func (app *testEventTracker) HandleEvent(event Event) []Cmd {
 func (app *testEventTracker) Render(frame RenderFrame) {
 	// Nothing to render
 }
-
