@@ -3,6 +3,7 @@ package gooey
 import (
 	"bufio"
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -52,8 +53,10 @@ func (kd *KeyDecoder) ReadEvent() (Event, error) {
 	// Check the first byte to see what we're dealing with
 	switch firstByte {
 	// Control characters
-	case 0x0D, 0x0A: // Enter (CR or LF)
+	case 0x0D: // CR - normal Enter
 		return KeyEvent{Key: KeyEnter}, nil
+	case 0x0A: // LF - Shift+Enter (via terminal key binding like iTerm2)
+		return KeyEvent{Key: KeyEnter, Shift: true}, nil
 	case 0x09: // Tab
 		return KeyEvent{Key: KeyTab}, nil
 	case 0x7F, 0x08: // Backspace (DEL or BS)
@@ -308,8 +311,10 @@ func (kd *KeyDecoder) ReadKeyEvent() (KeyEvent, error) {
 	// Check the first byte to see what we're dealing with
 	switch firstByte {
 	// Control characters
-	case 0x0D, 0x0A: // Enter (CR or LF)
+	case 0x0D: // CR - normal Enter
 		return KeyEvent{Key: KeyEnter}, nil
+	case 0x0A: // LF - Shift+Enter (via terminal key binding like iTerm2)
+		return KeyEvent{Key: KeyEnter, Shift: true}, nil
 	case 0x09: // Tab
 		return KeyEvent{Key: KeyTab}, nil
 	case 0x7F, 0x08: // Backspace (DEL or BS)
@@ -521,18 +526,170 @@ func (kd *KeyDecoder) decodeCSINumber(num string) (KeyEvent, error) {
 // decodeCSIu decodes CSI u sequences without modifiers (Kitty keyboard protocol)
 // Format: ESC [ codepoint u
 func (kd *KeyDecoder) decodeCSIu(codepoint string) (KeyEvent, error) {
-	switch codepoint {
-	case "13":
-		return KeyEvent{Key: KeyEnter}, nil
-	case "9":
-		return KeyEvent{Key: KeyTab}, nil
-	case "27":
-		return KeyEvent{Key: KeyEscape}, nil
-	case "127":
-		return KeyEvent{Key: KeyBackspace}, nil
-	default:
-		return KeyEvent{Key: KeyUnknown}, nil
+	return kd.decodeCSIuWithModifier(codepoint, '1') // modifier 1 = no modifiers
+}
+
+// decodeCSIuWithModifier decodes CSI u sequences with modifiers (Kitty keyboard protocol)
+// Format: ESC [ codepoint ; modifier u
+// Codepoint is the Unicode code point of the key
+// Modifier: 1=none, 2=Shift, 3=Alt, 4=Shift+Alt, 5=Ctrl, 6=Shift+Ctrl, 7=Alt+Ctrl, 8=Shift+Alt+Ctrl
+func (kd *KeyDecoder) decodeCSIuWithModifier(codepoint string, modByte byte) (KeyEvent, error) {
+	// Decode modifiers
+	var shift, alt, ctrl bool
+	if modByte == '2' || modByte == '4' || modByte == '6' || modByte == '8' {
+		shift = true
 	}
+	if modByte == '3' || modByte == '4' || modByte == '7' || modByte == '8' {
+		alt = true
+	}
+	if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
+		ctrl = true
+	}
+
+	// Handle special keys by codepoint
+	switch codepoint {
+	case "9":
+		return KeyEvent{Key: KeyTab, Shift: shift, Alt: alt, Ctrl: ctrl}, nil
+	case "13":
+		event := KeyEvent{Key: KeyEnter, Shift: shift, Alt: alt, Ctrl: ctrl}
+		// Normalize Ctrl+Enter and Alt+Enter to also set Shift
+		if ctrl || alt {
+			event.Shift = true
+		}
+		return event, nil
+	case "27":
+		return KeyEvent{Key: KeyEscape, Shift: shift, Alt: alt, Ctrl: ctrl}, nil
+	case "127":
+		return KeyEvent{Key: KeyBackspace, Shift: shift, Alt: alt, Ctrl: ctrl}, nil
+
+	// Ctrl+letter combinations (codepoints 1-26 map to Ctrl+A through Ctrl+Z)
+	case "1":
+		return KeyEvent{Key: KeyCtrlA, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "2":
+		return KeyEvent{Key: KeyCtrlB, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "3":
+		return KeyEvent{Key: KeyCtrlC, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "4":
+		return KeyEvent{Key: KeyCtrlD, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "5":
+		return KeyEvent{Key: KeyCtrlE, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "6":
+		return KeyEvent{Key: KeyCtrlF, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "7":
+		return KeyEvent{Key: KeyCtrlG, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "8":
+		return KeyEvent{Key: KeyBackspace, Ctrl: true, Shift: shift, Alt: alt}, nil // Ctrl+H = Backspace
+	case "10":
+		// LF - treat as Shift+Enter
+		return KeyEvent{Key: KeyEnter, Shift: true, Alt: alt, Ctrl: ctrl}, nil
+	case "11":
+		return KeyEvent{Key: KeyCtrlK, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "12":
+		return KeyEvent{Key: KeyCtrlL, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "14":
+		return KeyEvent{Key: KeyCtrlN, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "15":
+		return KeyEvent{Key: KeyCtrlO, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "16":
+		return KeyEvent{Key: KeyCtrlP, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "17":
+		return KeyEvent{Key: KeyCtrlQ, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "18":
+		return KeyEvent{Key: KeyCtrlR, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "19":
+		return KeyEvent{Key: KeyCtrlS, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "20":
+		return KeyEvent{Key: KeyCtrlT, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "21":
+		return KeyEvent{Key: KeyCtrlU, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "22":
+		return KeyEvent{Key: KeyCtrlV, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "23":
+		return KeyEvent{Key: KeyCtrlW, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "24":
+		return KeyEvent{Key: KeyCtrlX, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "25":
+		return KeyEvent{Key: KeyCtrlY, Ctrl: true, Shift: shift, Alt: alt}, nil
+	case "26":
+		return KeyEvent{Key: KeyCtrlZ, Ctrl: true, Shift: shift, Alt: alt}, nil
+	}
+
+	// For other codepoints, try to parse as a number and return as a rune
+	if cp, err := strconv.Atoi(codepoint); err == nil && cp >= 32 && cp < 0x10FFFF {
+		// If Ctrl is pressed with a letter, return the appropriate KeyCtrl* constant
+		// This handles Kitty protocol sending Ctrl+C as codepoint 99 ('c') with Ctrl modifier
+		if ctrl && cp >= 'a' && cp <= 'z' {
+			return kd.ctrlLetterEvent(rune(cp), shift, alt)
+		}
+		if ctrl && cp >= 'A' && cp <= 'Z' {
+			return kd.ctrlLetterEvent(rune(cp-'A'+'a'), shift, alt) // normalize to lowercase
+		}
+		return KeyEvent{Rune: rune(cp), Shift: shift, Alt: alt, Ctrl: ctrl}, nil
+	}
+
+	return KeyEvent{Key: KeyUnknown}, nil
+}
+
+// ctrlLetterEvent returns a KeyEvent for Ctrl+letter combinations
+func (kd *KeyDecoder) ctrlLetterEvent(letter rune, shift, alt bool) (KeyEvent, error) {
+	var key Key
+	switch letter {
+	case 'a':
+		key = KeyCtrlA
+	case 'b':
+		key = KeyCtrlB
+	case 'c':
+		key = KeyCtrlC
+	case 'd':
+		key = KeyCtrlD
+	case 'e':
+		key = KeyCtrlE
+	case 'f':
+		key = KeyCtrlF
+	case 'g':
+		key = KeyCtrlG
+	case 'h':
+		key = KeyCtrlH
+	case 'i':
+		key = KeyCtrlI
+	case 'j':
+		key = KeyCtrlJ
+	case 'k':
+		key = KeyCtrlK
+	case 'l':
+		key = KeyCtrlL
+	case 'm':
+		key = KeyCtrlM
+	case 'n':
+		key = KeyCtrlN
+	case 'o':
+		key = KeyCtrlO
+	case 'p':
+		key = KeyCtrlP
+	case 'q':
+		key = KeyCtrlQ
+	case 'r':
+		key = KeyCtrlR
+	case 's':
+		key = KeyCtrlS
+	case 't':
+		key = KeyCtrlT
+	case 'u':
+		key = KeyCtrlU
+	case 'v':
+		key = KeyCtrlV
+	case 'w':
+		key = KeyCtrlW
+	case 'x':
+		key = KeyCtrlX
+	case 'y':
+		key = KeyCtrlY
+	case 'z':
+		key = KeyCtrlZ
+	default:
+		return KeyEvent{Rune: letter, Ctrl: true, Shift: shift, Alt: alt}, nil
+	}
+	return KeyEvent{Key: key, Ctrl: true, Shift: shift, Alt: alt}, nil
 }
 
 // decodeCSIModified decodes CSI sequences with modifiers (e.g., ESC [ 1 ; 5 A for Ctrl+Up)
@@ -561,18 +718,9 @@ func (kd *KeyDecoder) decodeCSIModified(num string) (KeyEvent, error) {
 	case 'D':
 		key = KeyArrowLeft
 	case 'u':
-		// CSI u sequence (e.g., ESC[13;2u for Shift+Enter in iTerm2)
-		// num contains the key code
-		switch num {
-		case "13":
-			key = KeyEnter
-		case "9":
-			key = KeyTab
-		case "27":
-			key = KeyEscape
-		default:
-			return KeyEvent{Key: KeyUnknown}, nil
-		}
+		// CSI u sequence (Kitty keyboard protocol)
+		// num contains the Unicode codepoint
+		return kd.decodeCSIuWithModifier(num, modByte)
 	case '~':
 		// Modified key ending with ~ (e.g., ESC[3;5~ for Ctrl+Delete)
 		switch num {
@@ -600,6 +748,21 @@ func (kd *KeyDecoder) decodeCSIModified(num string) (KeyEvent, error) {
 	}
 	if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
 		event.Ctrl = true
+	}
+
+	// Normalize Ctrl+Enter and Alt+Enter to also set Shift, so apps can just check Shift for "soft newline".
+	// This allows applications to simply check e.Shift to detect any "insert newline" intent:
+	//
+	//   Input              Result
+	//   -----------------  -------------------------
+	//   Shift+Enter        Shift=true
+	//   Ctrl+Enter         Ctrl=true, Shift=true
+	//   Option/Alt+Enter   Alt=true, Shift=true
+	//   \n (LF byte)       Shift=true (via iTerm2 keybinding)
+	//   ESC then Enter     Shift=true
+	//
+	if key == KeyEnter && (event.Ctrl || event.Alt) {
+		event.Shift = true
 	}
 
 	return event, nil
