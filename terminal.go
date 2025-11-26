@@ -370,6 +370,9 @@ type Terminal struct {
 	// Kitty keyboard protocol support
 	kittySupported bool
 	kittyEnabled   bool
+
+	// Cursor visibility state
+	cursorHidden bool
 }
 
 // EndFrame finishes the frame, flushes the buffer to the terminal, and unlocks.
@@ -797,11 +800,13 @@ func (t *Terminal) CursorPosition() (x, y int) {
 
 // HideCursor hides the cursor
 func (t *Terminal) HideCursor() {
+	t.cursorHidden = true
 	fmt.Fprint(t.out, "\033[?25l")
 }
 
 // ShowCursor shows the cursor
 func (t *Terminal) ShowCursor() {
+	t.cursorHidden = false
 	fmt.Fprint(t.out, "\033[?25h")
 }
 
@@ -1356,6 +1361,15 @@ func (t *Terminal) flushInternal() error {
 		startTime = time.Now()
 	}
 
+	// Hide cursor during rendering to prevent flicker.
+	// The cursor moves around while writing cells, which can cause visible
+	// flashing even if the app has called HideCursor(). We always hide it
+	// during flush and restore visibility based on the app's desired state.
+	wasHidden := t.cursorHidden
+	if !wasHidden {
+		fmt.Fprint(t.out, "\033[?25l") // Hide cursor
+	}
+
 	var output strings.Builder
 	cellsUpdated := 0
 	ansiCodes := 0
@@ -1466,6 +1480,11 @@ func (t *Terminal) flushInternal() error {
 		if t.metricsEnabled {
 			ansiCodes++
 		}
+	}
+
+	// Restore cursor visibility if it was visible before flush
+	if !wasHidden {
+		output.WriteString("\033[?25h") // Show cursor
 	}
 
 	outputStr := output.String()

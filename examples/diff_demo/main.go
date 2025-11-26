@@ -45,13 +45,17 @@ const sampleDiff = `diff --git a/server.go b/server.go
 // DiffDemoApp demonstrates diff viewing using the Runtime architecture.
 // It shows how to use the DiffViewer widget with syntax highlighting and scrolling.
 type DiffDemoApp struct {
-	viewer *gooey.DiffViewer
-	width  int
-	height int
+	terminal *gooey.Terminal
+	viewer   *gooey.DiffViewer
+	width    int
+	height   int
 }
 
 // Init initializes the application by creating the diff viewer.
 func (app *DiffDemoApp) Init() error {
+	// Hide cursor - this app doesn't need a visible cursor
+	app.terminal.HideCursor()
+
 	viewer, err := gooey.NewDiffViewer(sampleDiff, "go")
 	if err != nil {
 		return fmt.Errorf("failed to create diff viewer: %w", err)
@@ -136,8 +140,9 @@ func main() {
 
 	// Create the application
 	app := &DiffDemoApp{
-		width:  width,
-		height: height,
+		terminal: terminal,
+		width:    width,
+		height:   height,
 	}
 
 	// Create and run the runtime with 30 FPS
