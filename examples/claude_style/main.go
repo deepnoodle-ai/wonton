@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"strings"
 	"time"
@@ -22,7 +21,7 @@ type Message struct {
 //
 // This example shows:
 // - Fixed input area at bottom with multi-line support
-// - Scrollable message history
+// - Message history above
 // - Clean, modern design similar to Claude Code
 // - Proper keyboard input handling (Shift+Enter for newlines)
 type ClaudeStyleDemo struct {
@@ -34,16 +33,15 @@ type ClaudeStyleDemo struct {
 	historyIndex int      // Current position in history (-1 = not browsing)
 	savedInput   string   // Input saved when starting to browse history
 
-	// UI state
-	scrollOffset int
-	maxScroll    int
-	width        int
-	height       int
+	// Scroll position for message area
+	// Large initial value gets clamped to maxScroll (bottom)
+	scrollY int
 }
 
 // Init implements the Initializable interface
 func (d *ClaudeStyleDemo) Init() error {
 	d.historyIndex = -1 // Not browsing history
+	d.scrollY = 999999  // Start at bottom (gets clamped to maxScroll)
 	d.messages = []Message{
 		{
 			Role:    "assistant",
@@ -56,28 +54,19 @@ func (d *ClaudeStyleDemo) Init() error {
 
 // View returns the declarative UI for this app
 func (d *ClaudeStyleDemo) View() gooey.View {
-	// Calculate input area height (number of lines + 2 for prompt and help)
+	// Calculate footer height: divider (1) + input lines + help line (1)
 	inputLines := strings.Count(d.input, "\n") + 1
-	inputAreaHeight := inputLines + 2 // +2 for prompt line and help line
-
-	// Ensure input area doesn't take more than half the screen (assume reasonable terminal)
-	maxInputHeight := 20 // fallback if we don't have height info
-	if d.height > 0 {
-		maxInputHeight = d.height / 2
-	}
-	if inputAreaHeight > maxInputHeight {
-		inputAreaHeight = maxInputHeight
-	}
+	footerHeight := 1 + inputLines + 1
 
 	return gooey.VStack(
-		// Message content area (flexible - takes remaining space)
-		d.renderContentView(),
+		// Scrollable message area, anchored to bottom
+		gooey.Scroll(d.renderMessages(), &d.scrollY).Bottom(),
 
-		// Separator line
-		gooey.Height(1, gooey.Fill('─').Fg(gooey.ColorCyan)),
-
-		// Input area (fixed height based on input content)
-		gooey.Height(inputAreaHeight, d.renderInputView()),
+		// Fixed footer: separator + input area
+		gooey.Height(footerHeight, gooey.VStack(
+			gooey.Divider().Fg(gooey.ColorCyan),
+			d.renderInputArea(),
+		)),
 	)
 }
 
@@ -86,16 +75,27 @@ func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.KeyEvent:
 		return d.handleKeyEvent(e)
-
 	case gooey.MouseEvent:
 		return d.handleMouseEvent(e)
-
-	case gooey.ResizeEvent:
-		d.width = e.Width
-		d.height = e.Height
-		return nil
 	}
 
+	return nil
+}
+
+func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
+	if event.Type == gooey.MouseScroll {
+		switch event.Button {
+		case gooey.MouseButtonWheelUp:
+			// Scroll up to see older messages
+			d.scrollY -= 3
+			if d.scrollY < 0 {
+				d.scrollY = 0
+			}
+		case gooey.MouseButtonWheelDown:
+			// Scroll down to see newer messages
+			d.scrollY += 3
+		}
+	}
 	return nil
 }
 
@@ -119,7 +119,7 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 
 				d.sendMessage(d.input)
 				d.input = ""       // Clear input after sending
-				d.scrollOffset = 0 // Reset scroll to show new message
+				d.scrollY = 999999 // Scroll to bottom to see new message
 			}
 		}
 
@@ -158,12 +158,16 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 		}
 
 	case event.Key == gooey.KeyPageUp:
-		// Page up - scroll content
-		d.scrollOffset = min(d.scrollOffset+10, d.maxScroll)
+		// Scroll up to see older messages (decrease offset toward top)
+		d.scrollY -= 10
+		if d.scrollY < 0 {
+			d.scrollY = 0
+		}
 
 	case event.Key == gooey.KeyPageDown:
-		// Page down - scroll content
-		d.scrollOffset = max(d.scrollOffset-10, 0)
+		// Scroll down to see newer messages (increase offset toward bottom)
+		// The scroll view will clamp to maxScroll
+		d.scrollY += 10
 
 	case event.Rune != 0:
 		// Regular character - reset history browsing
@@ -174,218 +178,97 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 	return nil
 }
 
-func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
-	// Handle scroll wheel events
-	if event.Type == gooey.MouseScroll {
-		switch event.Button {
-		case gooey.MouseButtonWheelUp:
-			// Scroll up (show older messages)
-			if d.scrollOffset < d.maxScroll {
-				d.scrollOffset++
-			}
-		case gooey.MouseButtonWheelDown:
-			// Scroll down (show newer messages)
-			if d.scrollOffset > 0 {
-				d.scrollOffset--
-			}
+// renderMessages returns a view for all messages
+func (d *ClaudeStyleDemo) renderMessages() gooey.View {
+	// Build all message views
+	var messageViews []gooey.View
+
+	for i, msg := range d.messages {
+		// Add spacing between messages (except before first)
+		if i > 0 {
+			messageViews = append(messageViews, gooey.Spacer().MinHeight(1))
 		}
+
+		messageViews = append(messageViews, d.renderMessage(msg))
 	}
-	return nil
+
+	// Wrap in a VStack with left padding
+	return gooey.PaddingHV(2, 0, gooey.VStack(messageViews...))
 }
 
-// renderContentView returns a declarative view for the message content area
-func (d *ClaudeStyleDemo) renderContentView() gooey.View {
-	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-		if bounds.Empty() {
-			return
-		}
-
-		width := bounds.Dx()
-		height := bounds.Dy()
-
-		// Clear the content area first to prevent ghost text when scrolling
-		clearStyle := gooey.NewStyle()
-		for y := 0; y < height; y++ {
-			frame.FillStyled(0, y, width, 1, ' ', clearStyle)
-		}
-
-		// Build all content lines from messages
-		type contentLine struct {
-			text  string
-			style gooey.Style
-		}
-		var allLines []contentLine
-		userStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
-		assistantStyle := gooey.NewStyle()
-
-		for i, msg := range d.messages {
-			// Add spacing between messages (except before first)
-			if i > 0 {
-				allLines = append(allLines, contentLine{"", clearStyle})
-			}
-
-			// Get the style for this message
-			style := assistantStyle
-			if msg.Role == "user" {
-				style = userStyle
-			}
-
-			// Format and add message lines
-			lines := d.formatMessage(msg, width-4)
-			for _, line := range lines {
-				allLines = append(allLines, contentLine{line, style})
-			}
-		}
-
-		// Calculate max scroll (in lines)
-		totalLines := len(allLines)
-		d.maxScroll = max(0, totalLines-height)
-
-		// Calculate which lines to display
-		// scrollOffset=0 means show the bottom (newest), higher values scroll up (older)
-		endLine := totalLines - d.scrollOffset
-		startLine := endLine - height
-
-		// Clamp to valid range
-		if startLine < 0 {
-			startLine = 0
-		}
-		if endLine > totalLines {
-			endLine = totalLines
-		}
-
-		// Render visible lines
-		screenY := 0
-		for i := startLine; i < endLine && screenY < height; i++ {
-			frame.PrintStyled(2, screenY, allLines[i].text, allLines[i].style)
-			screenY++
-		}
-	})
-}
-
-func (d *ClaudeStyleDemo) formatMessage(msg Message, maxWidth int) []string {
-	var lines []string
-
-	// Add header
+// renderMessage returns a view for a single message
+func (d *ClaudeStyleDemo) renderMessage(msg Message) gooey.View {
+	// Determine header and style based on role
 	var header string
+	var headerColor gooey.Color
+
 	if msg.Role == "user" {
 		header = "You:"
+		headerColor = gooey.ColorCyan
 	} else {
 		header = "Claude Code:"
+		headerColor = gooey.ColorWhite
 	}
-	lines = append(lines, header)
 
-	// Wrap content
-	contentLines := wrapText(msg.Content, maxWidth-2)
+	// Split content into lines for WrappedText
+	contentLines := strings.Split(msg.Content, "\n")
+	var contentViews []gooey.View
+
 	for _, line := range contentLines {
-		lines = append(lines, "  "+line)
-	}
-
-	return lines
-}
-
-func wrapText(text string, maxWidth int) []string {
-	var lines []string
-	paragraphs := strings.Split(text, "\n")
-
-	for _, para := range paragraphs {
-		if para == "" {
-			lines = append(lines, "")
-			continue
-		}
-
-		words := strings.Fields(para)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-
-		currentLine := words[0]
-		for _, word := range words[1:] {
-			if len(currentLine)+1+len(word) <= maxWidth {
-				currentLine += " " + word
-			} else {
-				lines = append(lines, currentLine)
-				currentLine = word
-			}
-		}
-		if currentLine != "" {
-			lines = append(lines, currentLine)
+		if line == "" {
+			contentViews = append(contentViews, gooey.Text(""))
+		} else {
+			contentViews = append(contentViews, gooey.WrappedText(line).Fg(headerColor))
 		}
 	}
 
-	return lines
+	return gooey.VStack(
+		gooey.Text(header).Bold().Fg(headerColor),
+		gooey.PaddingHV(2, 0, gooey.VStack(contentViews...)),
+	)
 }
 
-// renderInputView returns a declarative view for the input area
-func (d *ClaudeStyleDemo) renderInputView() gooey.View {
-	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-		if bounds.Empty() {
-			return
+// renderInputArea returns a view for the input area
+func (d *ClaudeStyleDemo) renderInputArea() gooey.View {
+	// Split input into lines
+	inputLines := strings.Split(d.input, "\n")
+
+	// Build input line views
+	var inputViews []gooey.View
+
+	for i, line := range inputLines {
+		var prefix string
+		if i == 0 {
+			prefix = "> "
+		} else {
+			prefix = "  "
 		}
 
-		width := bounds.Dx()
-		height := bounds.Dy()
-
-		// Clear the entire input area first to remove any old text
-		clearStyle := gooey.NewStyle()
-		for clearY := 0; clearY < height; clearY++ {
-			frame.FillStyled(0, clearY, width, 1, ' ', clearStyle)
+		// Add cursor to the last line
+		displayLine := line
+		if i == len(inputLines)-1 {
+			displayLine = line + "█"
 		}
 
-		// Split input into lines
-		inputLines := strings.Split(d.input, "\n")
+		inputViews = append(inputViews,
+			gooey.HStack(
+				gooey.Text(prefix).Bold().Fg(gooey.ColorGreen),
+				gooey.Text(displayLine),
+			),
+		)
+	}
 
-		// Calculate how many lines we can display
-		maxDisplayLines := height - 1 // -1 for help text
-		if maxDisplayLines < 1 {
-			maxDisplayLines = 1
-		}
-		startLine := 0
-		if len(inputLines) > maxDisplayLines {
-			startLine = len(inputLines) - maxDisplayLines
-		}
+	// Help text at the bottom, right-aligned
+	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
 
-		// Draw prompt and input lines
-		promptStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
-		inputStyle := gooey.NewStyle()
-
-		currentY := 0
-		for i := startLine; i < len(inputLines) && currentY < height-1; i++ {
-			// Draw prompt only on first line
-			if i == startLine {
-				frame.PrintStyled(0, currentY, "> ", promptStyle)
-			} else {
-				frame.PrintStyled(0, currentY, "  ", promptStyle)
-			}
-
-			// Draw line content
-			line := inputLines[i]
-			if len(line) > width-3 {
-				line = line[:width-3]
-			}
-			frame.PrintStyled(2, currentY, line, inputStyle)
-
-			// Draw cursor if this is the last line
-			if i == len(inputLines)-1 {
-				cursorX := 2 + len(line)
-				if cursorX < width {
-					cursorStyle := gooey.NewStyle().WithReverse()
-					frame.PrintStyled(cursorX, currentY, " ", cursorStyle)
-				}
-			}
-
-			currentY++
-		}
-
-		// Draw help text
-		helpStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite).WithDim()
-		helpText := "Ctrl+C: exit | Enter: send | Shift+Enter: newline | ↑↓: history"
-		if len(helpText) < width {
-			helpX := width - len(helpText)
-			frame.PrintStyled(helpX, height-1, helpText, helpStyle)
-		}
-	})
+	return gooey.VStack(
+		gooey.VStack(inputViews...),
+		gooey.Spacer(),
+		gooey.HStack(
+			gooey.Spacer(),
+			gooey.Text(helpText).Dim(),
+		),
+	)
 }
 
 func (d *ClaudeStyleDemo) sendMessage(text string) {
@@ -422,25 +305,11 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 	}
 
 	if strings.Contains(input, "example") {
-		return "Here are some examples you can run:\n\n```bash\ngo run examples/all/main.go\ngo run examples/interactive/main.go\ngo run examples/composition_demo/main.go\n```\n\nEach demonstrates different library features!"
+		return "Here are some examples you can run:\n\ngo run examples/all/main.go\ngo run examples/interactive/main.go\ngo run examples/composition_demo/main.go\n\nEach demonstrates different library features!"
 	}
 
 	// Default response
 	return fmt.Sprintf("You said: %s\n\nThis is a demo showing a Claude Code-style interface with:\n• Fixed input at the bottom\n• Scrollable message history\n• Clean, modern design\n\nTry asking about 'features', 'examples', or 'help'!", input)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func main() {

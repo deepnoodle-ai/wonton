@@ -166,7 +166,7 @@ type colorGridView struct {
 //
 //	ColorGrid(5, 5, app.gridState, []Color{ColorBlack, ColorRed, ColorGreen, ColorBlue})
 func ColorGrid(cols, rows int, state [][]int, colors []Color) *colorGridView {
-	if colors == nil || len(colors) == 0 {
+	if len(colors) == 0 {
 		colors = []Color{ColorBrightBlack, ColorRed, ColorGreen, ColorBlue, ColorYellow}
 	}
 	return &colorGridView{

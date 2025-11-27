@@ -25,14 +25,6 @@ var (
 	ErrAlreadyActive = errors.New("component is already active")
 )
 
-// gooeyError is a helper for creating new error types within the gooey package.
-// It helps maintain consistency in error messages.
-type gooeyError string
-
-func (e gooeyError) Error() string {
-	return string(e)
-}
-
 // Cell represents a single character cell on the terminal
 type Cell struct {
 	Char         rune

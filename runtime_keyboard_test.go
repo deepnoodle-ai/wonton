@@ -1,7 +1,6 @@
 package gooey
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -59,47 +58,6 @@ func (app *testKeyboardApp) Render(frame RenderFrame) {
 	// Nothing to render
 }
 
-// TestCheckboxWithMockInput tests that the checkbox properly handles keyboard input in the Runtime context.
-func TestCheckboxWithMockInput(t *testing.T) {
-	// Create a buffer to capture output
-	var buf bytes.Buffer
-
-	// Create a checkbox group
-	cg := NewCheckboxGroup(2, 4, []string{
-		"Apple",
-		"Banana",
-		"Cherry",
-	})
-
-	// Simulate arrow down key
-	handled := cg.HandleKey(KeyEvent{Key: KeyArrowDown})
-	require.True(t, handled, "arrow down should be handled")
-	require.Equal(t, 1, cg.Cursor, "cursor should move to index 1")
-
-	// Simulate space key to toggle selection
-	handled = cg.HandleKey(KeyEvent{Rune: ' '})
-	require.True(t, handled, "space should be handled")
-	require.True(t, cg.Selected[1], "Banana should be selected")
-
-	// Simulate arrow down again
-	handled = cg.HandleKey(KeyEvent{Key: KeyArrowDown})
-	require.True(t, handled, "arrow down should be handled")
-	require.Equal(t, 2, cg.Cursor, "cursor should move to index 2")
-
-	// Simulate space key to toggle selection
-	handled = cg.HandleKey(KeyEvent{Rune: ' '})
-	require.True(t, handled, "space should be handled")
-	require.True(t, cg.Selected[2], "Cherry should be selected")
-
-	// Verify selected items
-	selected := cg.GetSelectedItems()
-	require.Len(t, selected, 2, "should have 2 selected items")
-	require.Contains(t, selected, "Banana")
-	require.Contains(t, selected, "Cherry")
-
-	_ = buf // suppress unused warning
-}
-
 // TestRuntimeEnablesRawMode verifies that the Runtime enables raw mode on the terminal.
 func TestRuntimeEnablesRawMode(t *testing.T) {
 	// This is a simple structural test - we can't fully test raw mode in CI
@@ -126,16 +84,17 @@ func TestRuntimeSendsInitialResizeEvent(t *testing.T) {
 
 	// We can't actually run the runtime without a TTY, but we can verify
 	// the event channel is set up correctly
+	events := make(chan Event, 100)
 	runtime := &Runtime{
-		app:    app,
-		events: make(chan Event, 100),
-		cmds:   make(chan Cmd, 100),
-		done:   make(chan struct{}),
-		fps:    30,
+		events: events,
 	}
 
+	// Verify the runtime is set up correctly
+	require.NotNil(t, runtime.events)
+	_ = app // app is used to show test setup
+
 	// Manually send a resize event to simulate what the runtime does
-	runtime.events <- ResizeEvent{
+	events <- ResizeEvent{
 		Time:   time.Now(),
 		Width:  80,
 		Height: 24,

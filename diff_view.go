@@ -125,7 +125,7 @@ func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
 	// Render diff content
 	d.renderContent()
 
-	if d.rendered == nil || len(d.rendered) == 0 {
+	if len(d.rendered) == 0 {
 		return
 	}
 

@@ -251,7 +251,7 @@ func (fl *FlexLayout) layoutSingleLine(containerBounds image.Rectangle, items []
 }
 
 // layoutWithWrap lays out items with wrapping to multiple lines
-func (fl *FlexLayout) layoutWithWrap(containerBounds image.Rectangle, items []flexItem, containerMain, containerCross int) {
+func (fl *FlexLayout) layoutWithWrap(containerBounds image.Rectangle, items []flexItem, containerMain, _ int) {
 	// Split items into lines
 	lines := fl.splitIntoLines(items, containerMain)
 
@@ -271,7 +271,7 @@ func (fl *FlexLayout) layoutWithWrap(containerBounds image.Rectangle, items []fl
 	}
 
 	// Position each line
-	crossPos := containerBounds.Min.Y
+	var crossPos int
 	if fl.direction == FlexRow {
 		crossPos = containerBounds.Min.Y
 	} else {
@@ -291,7 +291,7 @@ func (fl *FlexLayout) layoutWithWrap(containerBounds image.Rectangle, items []fl
 		lineItems := make([]flexItem, len(line))
 		copy(lineItems, line)
 
-		lineBounds := containerBounds
+		var lineBounds image.Rectangle
 		if fl.direction == FlexRow {
 			lineBounds = image.Rect(
 				containerBounds.Min.X,

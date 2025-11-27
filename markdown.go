@@ -439,7 +439,7 @@ func (mr *MarkdownRenderer) extractInlineSegments(node ast.Node, ctx *renderCont
 func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderContext, currentStyle Style, segments *[]StyledSegment) {
 	switch n := node.(type) {
 	case *ast.Text:
-		text := string(n.Text(ctx.source))
+		text := string(n.Segment.Value(ctx.source))
 		*segments = append(*segments, StyledSegment{
 			Text:  text,
 			Style: currentStyle,
@@ -452,18 +452,25 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		})
 
 	case *ast.CodeSpan:
-		text := string(n.Text(ctx.source))
+		// CodeSpan contains Text children - extract their content
+		var codeText strings.Builder
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			if textNode, ok := child.(*ast.Text); ok {
+				codeText.Write(textNode.Segment.Value(ctx.source))
+			}
+		}
 		style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
 		*segments = append(*segments, StyledSegment{
-			Text:  text,
+			Text:  codeText.String(),
 			Style: style,
 		})
 
 	case *ast.Emphasis:
 		style := currentStyle
-		if n.Level == 1 {
+		switch n.Level {
+		case 1:
 			style = mr.mergeStyles(style, mr.Theme.ItalicStyle)
-		} else if n.Level == 2 {
+		case 2:
 			style = mr.mergeStyles(style, mr.Theme.BoldStyle)
 		}
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
@@ -477,7 +484,7 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		var linkText strings.Builder
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			if text, ok := child.(*ast.Text); ok {
-				linkText.Write(text.Text(ctx.source))
+				linkText.Write(text.Segment.Value(ctx.source))
 			}
 		}
 

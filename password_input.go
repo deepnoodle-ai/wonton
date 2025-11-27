@@ -246,8 +246,7 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 }
 
 // updateMaskedDisplay updates the display showing masked characters.
-// firstChar indicates if this is the first character being typed (to clear placeholder).
-func (p *PasswordInput) updateMaskedDisplay(buffer []byte, firstChar bool) {
+func (p *PasswordInput) updateMaskedDisplay(buffer []byte, _ bool) {
 	// In raw mode, we need to use direct stdout writes with ANSI escape codes
 
 	// Clear line and move to beginning

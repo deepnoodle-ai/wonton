@@ -71,7 +71,7 @@ func NewLayout(terminal *Terminal) *Layout {
 }
 
 // handleResize updates the layout when the terminal is resized
-func (l *Layout) handleResize(width, height int) {
+func (l *Layout) handleResize(_, _ int) {
 	l.updateContentArea()
 }
 

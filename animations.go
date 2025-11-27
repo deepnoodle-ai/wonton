@@ -81,7 +81,7 @@ func (w *WaveAnimation) GetStyle(frame uint64, charIndex int, totalChars int) St
 		colorIndex = len(w.Colors) - 1
 	}
 
-	return NewStyle().WithForeground(ColorDefault) // We'll apply RGB directly
+	return NewStyle().WithFgRGB(w.Colors[colorIndex])
 }
 
 // PulseAnimation creates a pulsing brightness effect

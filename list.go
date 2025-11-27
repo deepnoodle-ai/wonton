@@ -27,9 +27,6 @@ type List struct {
 
 	// Callbacks
 	OnSelect func(item ListItem)
-
-	// Internal
-	focused bool
 }
 
 // NewList creates a new list widget
@@ -227,9 +224,10 @@ func (l *List) HandleMouse(event MouseEvent) bool {
 
 	// Wheel support
 	if event.Type == MouseScroll {
-		if event.Button == MouseButtonWheelDown {
+		switch event.Button {
+		case MouseButtonWheelDown:
 			l.ScrollOffset++
-		} else if event.Button == MouseButtonWheelUp {
+		case MouseButtonWheelUp:
 			l.ScrollOffset--
 		}
 		l.MarkDirty()

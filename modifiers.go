@@ -363,12 +363,6 @@ func (z *zStack) Bordered() *borderedView {
 	return Bordered(z)
 }
 
-// bgView wraps a view with a background color
-type bgView struct {
-	inner View
-	style Style
-}
-
 // Background wraps a view with a background fill.
 func Background(char rune, style Style, inner View) View {
 	return &zStack{

@@ -40,12 +40,14 @@ func TestCell_WideCharacter(t *testing.T) {
 	assert.Equal(t, 'Ａ', cell.Char)
 	assert.Equal(t, 2, cell.Width)
 	assert.False(t, cell.Continuation)
+	assert.Equal(t, style, cell.Style)
 }
 
 func TestCell_ContinuationCell(t *testing.T) {
+	style := NewStyle()
 	cell := Cell{
 		Char:         0,
-		Style:        NewStyle(),
+		Style:        style,
 		Width:        0,
 		Continuation: true,
 	}
@@ -53,6 +55,7 @@ func TestCell_ContinuationCell(t *testing.T) {
 	assert.Equal(t, rune(0), cell.Char)
 	assert.Equal(t, 0, cell.Width)
 	assert.True(t, cell.Continuation)
+	assert.Equal(t, style, cell.Style)
 }
 
 func TestDirtyRegion_Empty(t *testing.T) {

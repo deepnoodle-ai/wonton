@@ -274,8 +274,6 @@ type MouseHandler struct {
 	lastClickRegion *MouseRegion
 	lastClickTime   time.Time
 	lastClickButton MouseButton
-	lastClickX      int
-	lastClickY      int
 	capturedButton  MouseButton // Button that was pressed (for click detection)
 	clickCount      int
 	isDragging      bool
@@ -460,7 +458,7 @@ func (h *MouseHandler) handlePress(event *MouseEvent, region *MouseRegion) {
 }
 
 // handleRelease handles release events and generates click events
-func (h *MouseHandler) handleRelease(event *MouseEvent, region *MouseRegion) {
+func (h *MouseHandler) handleRelease(event *MouseEvent, _ *MouseRegion) {
 	// Synthesize a click if:
 	// 1. We have a captured region (from the press)
 	// 2. No pre-synthesized click was received (clickSynthesized is false)
@@ -490,7 +488,7 @@ func (h *MouseHandler) handleRelease(event *MouseEvent, region *MouseRegion) {
 }
 
 // handleDrag manages drag state machine
-func (h *MouseHandler) handleDrag(event *MouseEvent, region *MouseRegion) {
+func (h *MouseHandler) handleDrag(event *MouseEvent, _ *MouseRegion) {
 	if h.capturedRegion != nil && !h.isDragging {
 		dx := event.X - h.dragStartX
 		dy := event.Y - h.dragStartY
