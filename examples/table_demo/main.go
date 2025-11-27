@@ -38,7 +38,7 @@ func (app *TableDemoApp) View() gooey.View {
 
 	return gooey.VStack(
 		gooey.Text(" Table Demo ").Bold().Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
-		gooey.Text(repeatRune('─', app.width)).Fg(gooey.ColorBrightBlack),
+		gooey.Text("%s", repeatRune('─', app.width)).Fg(gooey.ColorBrightBlack),
 		gooey.Spacer().MinHeight(1),
 		tableView,
 		gooey.Spacer().MinHeight(1),

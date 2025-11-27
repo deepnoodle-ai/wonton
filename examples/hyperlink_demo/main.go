@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"image"
 	"log"
 	"time"
 
@@ -55,107 +53,70 @@ func (app *HyperlinkApp) View() gooey.View {
 		gooey.Text("Click the links below (if your terminal supports OSC 8)").Fg(gooey.ColorWhite),
 		gooey.Spacer().MinHeight(1),
 		// Separator
-		gooey.Text("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").Fg(gooey.ColorBlue).Dim(),
+		gooey.Divider().Fg(gooey.ColorBlue),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 1: Default styled hyperlink
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "1. Default styled link: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			link := gooey.NewHyperlink("https://github.com/myzie/gooey", "Gooey on GitHub")
-			frame.PrintHyperlink(4+len(label), 0, link)
-		}),
+		gooey.HStack(
+			gooey.Text("1. Default styled link: "),
+			gooey.Link("https://github.com/myzie/gooey", "Gooey on GitHub"),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 2: Custom styled hyperlink
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "2. Custom styled link: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			link := gooey.NewHyperlink("https://example.com", "Example.com")
-			customStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta).WithBold().WithUnderline()
-			link = link.WithStyle(customStyle)
-			frame.PrintHyperlink(4+len(label), 0, link)
-		}),
+		gooey.HStack(
+			gooey.Text("2. Custom styled link: "),
+			gooey.Link("https://example.com", "Example.com").Fg(gooey.ColorMagenta).Bold(),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 3: Multiple links on same line
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "3. Multiple links: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			x := 4 + len(label)
-
-			linkA := gooey.NewHyperlink("https://go.dev", "Go")
-			frame.PrintHyperlink(x, 0, linkA)
-			x += len("Go")
-
-			frame.PrintStyled(x, 0, " | ", gooey.NewStyle())
-			x += 3
-
-			linkB := gooey.NewHyperlink("https://github.com", "GitHub")
-			frame.PrintHyperlink(x, 0, linkB)
-			x += len("GitHub")
-
-			frame.PrintStyled(x, 0, " | ", gooey.NewStyle())
-			x += 3
-
-			linkC := gooey.NewHyperlink("https://stackoverflow.com", "Stack Overflow")
-			frame.PrintHyperlink(x, 0, linkC)
-		}),
+		gooey.HStack(
+			gooey.Text("3. Multiple links: "),
+			gooey.InlineLinks(" | ",
+				gooey.NewHyperlink("https://go.dev", "Go"),
+				gooey.NewHyperlink("https://github.com", "GitHub"),
+				gooey.NewHyperlink("https://stackoverflow.com", "Stack Overflow"),
+			),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 4: Link with emoji
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "4. Link with emoji: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			link := gooey.NewHyperlink("https://www.anthropic.com", "🤖 Anthropic")
-			frame.PrintHyperlink(4+len(label), 0, link)
-		}),
+		gooey.HStack(
+			gooey.Text("4. Link with emoji: "),
+			gooey.Link("https://www.anthropic.com", "🤖 Anthropic"),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 5: Fallback format (showing URL)
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "5. Fallback format: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			link := gooey.NewHyperlink("https://golang.org", "Go Programming")
-			frame.PrintHyperlinkFallback(4+len(label), 0, link)
-		}),
+		gooey.HStack(
+			gooey.Text("5. Fallback format: "),
+			gooey.Link("https://golang.org", "Go Programming").ShowURL(),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 6: Long URL
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "6. Long URL: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			link := gooey.NewHyperlink(
+		gooey.HStack(
+			gooey.Text("6. Long URL: "),
+			gooey.Link(
 				"https://example.com/very/long/path/to/resource?with=many&query=params&and=more#section",
 				"Complex URL",
-			)
-			frame.PrintHyperlink(4+len(label), 0, link)
-		}),
+			),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 7: Different link styles
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			label := "7. Different styles: "
-			frame.PrintStyled(4, 0, label, gooey.NewStyle())
-			x := 4 + len(label)
-
-			// Red link
-			redLink := gooey.NewHyperlink("https://example.com/red", "Red").
-				WithStyle(gooey.NewStyle().WithForeground(gooey.ColorRed).WithUnderline())
-			frame.PrintHyperlink(x, 0, redLink)
-			x += len("Red") + 2
-
-			// Green link
-			greenLink := gooey.NewHyperlink("https://example.com/green", "Green").
-				WithStyle(gooey.NewStyle().WithForeground(gooey.ColorGreen).WithUnderline())
-			frame.PrintHyperlink(x, 0, greenLink)
-			x += len("Green") + 2
-
-			// Yellow link
-			yellowLink := gooey.NewHyperlink("https://example.com/yellow", "Yellow").
-				WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow).WithUnderline())
-			frame.PrintHyperlink(x, 0, yellowLink)
-		}),
+		gooey.HStack(
+			gooey.Text("7. Different styles: "),
+			gooey.InlineLinks("  ",
+				gooey.NewHyperlink("https://example.com/red", "Red").
+					WithStyle(gooey.NewStyle().WithForeground(gooey.ColorRed).WithUnderline()),
+				gooey.NewHyperlink("https://example.com/green", "Green").
+					WithStyle(gooey.NewStyle().WithForeground(gooey.ColorGreen).WithUnderline()),
+				gooey.NewHyperlink("https://example.com/yellow", "Yellow").
+					WithStyle(gooey.NewStyle().WithForeground(gooey.ColorYellow).WithUnderline()),
+			),
+		).Gap(0),
 		gooey.Spacer().MinHeight(1),
 
 		// Example 8: Links in a table-like layout
@@ -163,31 +124,10 @@ func (app *HyperlinkApp) View() gooey.View {
 			gooey.Spacer(),
 			gooey.VStack(
 				gooey.Text("8. Table of links:").Bold(),
-				gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-					type Resource struct {
-						name string
-						url  string
-					}
-
-					resources := []Resource{
-						{"Documentation", "https://pkg.go.dev"},
-						{"Source Code", "https://github.com"},
-						{"Issue Tracker", "https://github.com/issues"},
-						{"Community", "https://www.reddit.com/r/golang"},
-					}
-
-					y := 0
-					for _, res := range resources {
-						// Print resource name in a fixed width column
-						nameStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-						frame.PrintStyled(3, y, fmt.Sprintf("%-20s", res.name), nameStyle)
-
-						// Print link
-						link := gooey.NewHyperlink(res.url, res.url)
-						frame.PrintHyperlink(24, y, link)
-						y++
-					}
-				}),
+				gooey.LinkRow("Documentation", "https://pkg.go.dev", "https://pkg.go.dev").LabelFg(gooey.ColorWhite),
+				gooey.LinkRow("Source Code", "https://github.com", "https://github.com").LabelFg(gooey.ColorWhite),
+				gooey.LinkRow("Issue Tracker", "https://github.com/issues", "https://github.com/issues").LabelFg(gooey.ColorWhite),
+				gooey.LinkRow("Community", "https://www.reddit.com/r/golang", "https://www.reddit.com/r/golang").LabelFg(gooey.ColorWhite),
 			),
 			gooey.Spacer(),
 		),
@@ -207,7 +147,7 @@ func (app *HyperlinkApp) View() gooey.View {
 		gooey.Spacer(),
 
 		// Footer with countdown
-		gooey.Text(fmt.Sprintf("Press any key to exit (auto-exit in %.0fs)", remaining.Seconds())).Fg(gooey.ColorCyan),
+		gooey.Text("Press any key to exit (auto-exit in %.0fs)", remaining.Seconds()).Fg(gooey.ColorCyan),
 		gooey.Spacer().MinHeight(1),
 	).Align(gooey.AlignCenter)
 }

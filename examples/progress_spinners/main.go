@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"time"
 
@@ -16,25 +15,20 @@ type ProgressItem struct {
 	Progress    int
 	Total       int
 	SpinnerOnly bool
-	SpinnerIdx  int
-	Style       gooey.Style
+	Color       gooey.Color
 	Complete    bool
 }
 
 // ProgressDemoApp demonstrates multiple progress indicators and spinners using Runtime.
 type ProgressDemoApp struct {
-	items      []*ProgressItem
-	frame      uint64
-	startTime  time.Time
-	spinnerSet []string
+	items     []*ProgressItem
+	frame     uint64
+	startTime time.Time
 }
 
 // Init initializes the progress demo
 func (app *ProgressDemoApp) Init() error {
 	app.startTime = time.Now()
-
-	// Use a simple spinner set
-	app.spinnerSet = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 	// Initialize progress items
 	app.items = []*ProgressItem{
@@ -44,7 +38,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       100,
 			SpinnerOnly: false,
-			Style:       gooey.NewStyle().WithForeground(gooey.ColorCyan),
+			Color:       gooey.ColorCyan,
 		},
 		{
 			ID:          "db",
@@ -52,7 +46,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       1,
 			SpinnerOnly: true,
-			Style:       gooey.NewStyle().WithForeground(gooey.ColorYellow),
+			Color:       gooey.ColorYellow,
 		},
 		{
 			ID:          "process",
@@ -60,7 +54,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       50,
 			SpinnerOnly: false,
-			Style:       gooey.NewStyle().WithForeground(gooey.ColorGreen),
+			Color:       gooey.ColorGreen,
 		},
 	}
 
@@ -72,11 +66,6 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	switch e := event.(type) {
 	case gooey.TickEvent:
 		app.frame = e.Frame
-
-		// Update spinner indices for all items
-		for _, item := range app.items {
-			item.SpinnerIdx = int(app.frame/4) % len(app.spinnerSet)
-		}
 
 		// Simulate download progress (item 0)
 		if app.items[0].Progress < 100 && !app.items[0].Complete {
@@ -118,7 +107,7 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 				break
 			}
 		}
-		if allComplete && app.frame > 120 { // 120 frames = 4 seconds at 30 FPS (2 sec after start, roughly)
+		if allComplete && app.frame > 120 { // 120 frames = 4 seconds at 30 FPS
 			// Give user a moment to see completion
 			if app.frame == 240 { // 8 seconds total
 				return []gooey.Cmd{gooey.Quit()}
@@ -140,29 +129,21 @@ func (app *ProgressDemoApp) View() gooey.View {
 
 	return gooey.VStack(
 		// Header
-		gooey.Text("Multi-Progress Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("======================").Bold().Fg(gooey.ColorCyan),
+		gooey.HeaderBar("Multi-Progress Demo").Bg(gooey.ColorCyan).Fg(gooey.ColorBlack),
 		gooey.Spacer().MinHeight(1),
 
-		// Progress items
+		// Progress items using new declarative views
 		gooey.ForEach(app.items, func(item *ProgressItem, i int) gooey.View {
-			spinner := app.spinnerSet[item.SpinnerIdx]
-
-			// Build the item view
+			// Build the item view using Loading (spinner) view
 			itemContent := gooey.HStack(
-				gooey.Text("%s", spinner).Style(item.Style),
-				gooey.Text("%s", item.Message).Style(item.Style),
-			).Gap(1)
+				gooey.Loading(app.frame).Label(item.Message).Fg(item.Color),
+			)
 
-			// If not spinner-only, add progress bar below
+			// If not spinner-only, add progress bar below using Progress view
 			if !item.SpinnerOnly {
-				progressBar := gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-					app.drawProgressBar(frame, bounds, item)
-				}).Height(1)
-
 				return gooey.VStack(
 					itemContent,
-					progressBar,
+					gooey.Progress(item.Progress, item.Total).Width(30).Fg(item.Color),
 				)
 			}
 
@@ -171,46 +152,17 @@ func (app *ProgressDemoApp) View() gooey.View {
 
 		gooey.Spacer(),
 
+		// Divider before footer
+		gooey.Divider(),
+		gooey.Spacer().MinHeight(1),
+
 		// Bottom controls
 		gooey.HStack(
 			gooey.Text("Press 'q' to quit").Fg(gooey.ColorWhite),
 			gooey.Spacer(),
-			gooey.Text("Elapsed: %s", elapsed).Fg(gooey.ColorBrightBlack),
+			gooey.Text("Elapsed: %s", elapsed).Dim(),
 		),
 	).Padding(2)
-}
-
-// drawProgressBar draws a progress bar in imperative style using Canvas.
-func (app *ProgressDemoApp) drawProgressBar(frame gooey.RenderFrame, bounds image.Rectangle, item *ProgressItem) {
-	barWidth := 30
-	width := bounds.Dx()
-
-	// Ensure we have space for the bar
-	if width < barWidth+2 {
-		barWidth = width - 10
-		if barWidth < 5 {
-			return
-		}
-	}
-
-	// Draw progress bar background
-	bgStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	for x := 0; x < barWidth; x++ {
-		frame.SetCell(x, 0, '░', bgStyle)
-	}
-
-	// Draw progress bar fill
-	fillWidth := (item.Progress * barWidth) / item.Total
-	if fillWidth > barWidth {
-		fillWidth = barWidth
-	}
-	for x := 0; x < fillWidth; x++ {
-		frame.SetCell(x, 0, '█', item.Style)
-	}
-
-	// Draw percentage
-	percentText := fmt.Sprintf(" %d%%", (item.Progress*100)/item.Total)
-	frame.PrintStyled(barWidth+1, 0, percentText, item.Style)
 }
 
 func main() {

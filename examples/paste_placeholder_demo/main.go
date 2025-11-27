@@ -125,12 +125,12 @@ func (app *PastePlaceholderApp) inputView() gooey.View {
 
 	// Status message
 	if app.message != "" {
-		children = append(children, gooey.Text(app.message).Fg(gooey.ColorGreen))
+		children = append(children, gooey.Text("%s", app.message).Fg(gooey.ColorGreen))
 		children = append(children, gooey.Spacer().MinHeight(1))
 	}
 
 	// Stats
-	children = append(children, gooey.Text(statsText).Fg(gooey.ColorYellow))
+	children = append(children, gooey.Text("%s", statsText).Fg(gooey.ColorYellow))
 
 	return gooey.VStack(children...)
 }
@@ -172,14 +172,14 @@ func (app *PastePlaceholderApp) resultView() gooey.View {
 				frame.PrintStyled(6, y, displayLine, contentStyle)
 				y++
 			}
-		}).Height(maxLines + 1).Width(80),
+		}).Height(maxLines+1).Width(80),
 		gooey.Spacer().MinHeight(1),
 	)
 
 	// Stats
 	statsText := fmt.Sprintf("Total: %d chars, %d lines", len(app.result), len(lines))
 	children = append(children,
-		gooey.Text(statsText).Fg(gooey.ColorYellow),
+		gooey.Text("%s", statsText).Fg(gooey.ColorYellow),
 		gooey.Spacer().MinHeight(1),
 		gooey.Text("Press any key to try again...").Fg(gooey.ColorBrightBlack),
 	)

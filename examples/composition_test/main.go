@@ -16,7 +16,7 @@ func (app *App) View() gooey.View {
 		gooey.VStack(
 			gooey.Text("Nested Layout Test").Fg(gooey.ColorCyan).Bold(),
 			gooey.Spacer().MinHeight(1),
-			gooey.Text(app.status).Fg(gooey.ColorYellow),
+			gooey.Text("%s", app.status).Fg(gooey.ColorYellow),
 			gooey.Spacer().MinHeight(1),
 			gooey.HStack(
 				gooey.Bordered(

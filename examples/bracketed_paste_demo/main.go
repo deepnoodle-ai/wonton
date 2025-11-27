@@ -224,7 +224,7 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 
 	// Build input box content
 	inputBoxLines := make([]gooey.View, 0)
-	inputBoxLines = append(inputBoxLines, gooey.Text("┌"+strings.Repeat("─", 68)+"┐").Fg(gooey.ColorCyan))
+	inputBoxLines = append(inputBoxLines, gooey.Text("┌%s┐", strings.Repeat("─", 68)).Fg(gooey.ColorCyan))
 
 	for i := 0; i < maxDisplayLines; i++ {
 		var lineContent string
@@ -238,20 +238,20 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 		lineContent = fmt.Sprintf("%-64s", lineContent)
 		inputBoxLines = append(inputBoxLines, gooey.HStack(
 			gooey.Text("│").Fg(gooey.ColorCyan),
-			gooey.Text(" "+lineContent+" "),
+			gooey.Text(" %s ", lineContent),
 			gooey.Text("│").Fg(gooey.ColorCyan),
 		))
 	}
 
-	inputBoxLines = append(inputBoxLines, gooey.Text("└"+strings.Repeat("─", 68)+"┘").Fg(gooey.ColorCyan))
+	inputBoxLines = append(inputBoxLines, gooey.Text("└%s┘", strings.Repeat("─", 68)).Fg(gooey.ColorCyan))
 
 	// Build status and message section
 	statusLine := fmt.Sprintf("Chars: %d | Lines: %d | Cursor: %d", len(app.buffer), len(lines), app.cursor)
 	statusSection := []gooey.View{
-		gooey.Text(statusLine).Dim(),
+		gooey.Text("%s", statusLine).Dim(),
 	}
 	if app.message != "" {
-		statusSection = append(statusSection, gooey.Text(app.message).Fg(gooey.ColorGreen))
+		statusSection = append(statusSection, gooey.Text("%s", app.message).Fg(gooey.ColorGreen))
 	} else {
 		statusSection = append(statusSection, gooey.Spacer())
 	}
@@ -275,11 +275,11 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 			preview = strings.ReplaceAll(preview, "\n", "↵")
 			preview = strings.ReplaceAll(preview, "\t", "→")
 			info := fmt.Sprintf("  #%d: %d chars, %d lines: %q", i+1, p.CharCount, p.LineCount, preview)
-			pasteItems = append(pasteItems, gooey.Text(info).Dim())
+			pasteItems = append(pasteItems, gooey.Text("%s", info).Dim())
 		}
 
 		if len(app.pastes) > 5 {
-			pasteItems = append(pasteItems, gooey.Text(fmt.Sprintf("  ... and %d more pastes", len(app.pastes)-5)).Dim())
+			pasteItems = append(pasteItems, gooey.Text("  ... and %d more pastes", len(app.pastes)-5).Dim())
 		}
 
 		pasteHistorySection = gooey.VStack(

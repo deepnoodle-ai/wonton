@@ -1,28 +1,29 @@
 package main
 
 import (
-	"image"
 	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// CheckboxDemoApp demonstrates the CheckboxGroup widget using declarative View() style.
-// It shows how to handle keyboard events and render state without manual loops or goroutines.
+// CheckboxDemoApp demonstrates the CheckboxList declarative view.
 type CheckboxDemoApp struct {
-	checkbox *gooey.CheckboxGroup
+	items   []string
+	checked []bool
+	cursor  int
 }
 
-// Init initializes the application by creating the checkbox widget.
+// Init initializes the application.
 func (app *CheckboxDemoApp) Init() error {
-	app.checkbox = gooey.NewCheckboxGroup(2, 4, []string{
+	app.items = []string{
 		"Apple",
 		"Banana",
 		"Cherry",
 		"Date",
 		"Elderberry",
-	})
+	}
+	app.checked = make([]bool, len(app.items))
 	return nil
 }
 
@@ -33,7 +34,20 @@ func (app *CheckboxDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		app.checkbox.HandleKey(e)
+		// Handle keyboard navigation
+		switch e.Key {
+		case gooey.KeyArrowUp:
+			if app.cursor > 0 {
+				app.cursor--
+			}
+		case gooey.KeyArrowDown:
+			if app.cursor < len(app.items)-1 {
+				app.cursor++
+			}
+		}
+		if e.Rune == ' ' {
+			app.checked[app.cursor] = !app.checked[app.cursor]
+		}
 	}
 
 	return nil
@@ -42,55 +56,43 @@ func (app *CheckboxDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 // View returns the declarative view structure.
 func (app *CheckboxDemoApp) View() gooey.View {
 	// Get selected items for display
-	selected := app.checkbox.GetSelectedItems()
+	var selected []string
+	for i, item := range app.items {
+		if app.checked[i] {
+			selected = append(selected, item)
+		}
+	}
 	selectedMsg := "Selected: " + strings.Join(selected, ", ")
 	if len(selected) == 0 {
 		selectedMsg = "Selected: (none)"
 	}
 
+	// Build checkbox items
+	items := make([]gooey.ListItem, len(app.items))
+	for i, item := range app.items {
+		items[i] = gooey.ListItem{Label: item, Value: item}
+	}
+
 	return gooey.VStack(
 		// Header
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			width := bounds.Dx()
-			headerStyle := gooey.NewStyle().WithBold().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite)
-			headerText := " Checkbox Demo "
-			// Center the header text
-			startX := (width - len(headerText)) / 2
-			if startX < 0 {
-				startX = 0
-			}
-			// Fill entire width with header background
-			for i := 0; i < width; i++ {
-				if i >= startX && i < startX+len(headerText) {
-					frame.SetCell(i, 0, rune(headerText[i-startX]), headerStyle)
-				} else {
-					frame.SetCell(i, 0, ' ', headerStyle)
-				}
-			}
-		}).Height(1),
+		gooey.HeaderBar("Checkbox Demo").Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
 
-		// Separator
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			width := bounds.Dx()
-			separatorStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-			for i := 0; i < width; i++ {
-				frame.SetCell(i, 0, '─', separatorStyle)
-			}
-		}).Height(1),
+		// Divider
+		gooey.Divider(),
 
 		// Spacing
 		gooey.Spacer().MinHeight(1),
 
-		// Checkbox widget
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			app.checkbox.Draw(frame)
-		}).Height(len(app.checkbox.Options)).Width(30),
+		// Checkbox list using new declarative view
+		gooey.CheckboxList(items, app.checked, &app.cursor).
+			Fg(gooey.ColorWhite).
+			CursorFg(gooey.ColorGreen),
 
 		// Spacing
 		gooey.Spacer().MinHeight(1),
 
 		// Selected items display
-		gooey.Text(selectedMsg).Fg(gooey.ColorGreen),
+		gooey.Text("%s", selectedMsg).Fg(gooey.ColorGreen),
 
 		// Spacing
 		gooey.Spacer().MinHeight(1),
@@ -102,27 +104,12 @@ func (app *CheckboxDemoApp) View() gooey.View {
 		gooey.Spacer(),
 
 		// Footer
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			width := bounds.Dx()
-			footerStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack).WithForeground(gooey.ColorWhite)
-			footerText := " Press 'q' to quit "
-			footerX := (width - len(footerText)) / 2
-			if footerX < 0 {
-				footerX = 0
-			}
-			for i := 0; i < width; i++ {
-				if i >= footerX && i < footerX+len(footerText) {
-					frame.SetCell(i, 0, rune(footerText[i-footerX]), footerStyle)
-				} else {
-					frame.SetCell(i, 0, ' ', footerStyle)
-				}
-			}
-		}).Height(1),
-	).PaddingLTRB(2, 0, 2, 0)
+		gooey.StatusBar("Press 'q' to quit"),
+	).Padding(2)
 }
 
 func main() {
-	if err := gooey.Run(&CheckboxDemoApp{}); err != nil {
+	if err := gooey.Run(&CheckboxDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

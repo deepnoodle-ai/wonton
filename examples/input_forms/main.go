@@ -83,7 +83,7 @@ func (app *InputFormsApp) View() gooey.View {
 	if len(app.errors) > 0 {
 		for _, err := range app.errors {
 			children = append(children,
-				gooey.Text("- "+err).Fg(gooey.ColorRed),
+				gooey.Text("- %s", err).Fg(gooey.ColorRed),
 			)
 		}
 		children = append(children, gooey.Spacer().MinHeight(1))

@@ -78,7 +78,7 @@ func (app *ReflowApp) View() gooey.View {
 
 	// Main layout with everything centered
 	return gooey.VStack(
-		gooey.Text(debugInfo),
+		gooey.Text("%s", debugInfo),
 		gooey.Spacer(),
 		gooey.HStack(
 			gooey.Spacer(),

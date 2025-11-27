@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -41,7 +40,7 @@ func (app *PasswordDemoApp) View() gooey.View {
 		return gooey.VStack(
 			gooey.Text("Password Input Demo").Style(headerStyle),
 			gooey.Spacer(),
-			gooey.Text(fmt.Sprintf("Password received (%d chars)", len(app.password))).Style(successStyle),
+			gooey.Text("Password received (%d chars)", len(app.password)).Style(successStyle),
 			gooey.Spacer(),
 			gooey.Text("Press any key to exit").Style(infoStyle),
 		)

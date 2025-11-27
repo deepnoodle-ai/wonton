@@ -85,20 +85,11 @@ func (app *MetricsApp) viewDemo() gooey.View {
 		animatedLines = append(animatedLines, gooey.Text("%s", line).Fg(app.colors[colorIdx]))
 	}
 
-	// Build progress bar string
-	barWidth := 40
-	progress := float64(time.Since(app.startTime)) / float64(5*time.Second)
-	filled := int(progress * float64(barWidth))
-
-	progressBar := "["
-	for i := 0; i < barWidth; i++ {
-		if i < filled {
-			progressBar += "█"
-		} else {
-			progressBar += "░"
-		}
+	// Calculate progress
+	progressVal := int(float64(time.Since(app.startTime)) / float64(5*time.Second) * 100)
+	if progressVal > 100 {
+		progressVal = 100
 	}
-	progressBar += "]"
 
 	// Animated header color
 	colorIdx := int(app.frame/10) % len(app.colors)
@@ -109,7 +100,11 @@ func (app *MetricsApp) viewDemo() gooey.View {
 		gooey.Spacer().MinHeight(1),
 		gooey.VStack(animatedLines...),
 		gooey.Spacer().MinHeight(1),
-		gooey.Text("Progress: %s", progressBar).Fg(gooey.ColorGreen),
+		// Use Progress view instead of manual string building
+		gooey.HStack(
+			gooey.Text("Progress:").Fg(gooey.ColorGreen),
+			gooey.Progress(progressVal, 100).Width(40).Fg(gooey.ColorGreen).HidePercent(),
+		).Gap(1),
 		gooey.Spacer().MinHeight(1),
 		gooey.Text("Live Metrics:").Bold(),
 		gooey.Text("  Frames rendered: %d", app.metrics.TotalFrames),

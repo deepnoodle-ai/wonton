@@ -128,15 +128,15 @@ func (app *HTTPApp) contentView() gooey.View {
 
 		// Header with login and name
 		details = append(details, gooey.HStack(
-			gooey.Text(user.Login).Bold().Fg(gooey.ColorCyan),
-			gooey.If(user.Name != "", gooey.Text(user.Name).Fg(gooey.ColorBrightBlack)),
+			gooey.Text("%s", user.Login).Bold().Fg(gooey.ColorCyan),
+			gooey.If(user.Name != "", gooey.Text("%s", user.Name).Fg(gooey.ColorBrightBlack)),
 		).Gap(1))
 
 		details = append(details, gooey.Spacer().MinHeight(1))
 
 		// Bio
 		if user.Bio != "" {
-			details = append(details, gooey.Text(user.Bio).Fg(gooey.ColorWhite).MaxWidth(76))
+			details = append(details, gooey.Text("%s", user.Bio).Fg(gooey.ColorWhite).MaxWidth(76))
 			details = append(details, gooey.Spacer().MinHeight(1))
 		}
 
@@ -144,13 +144,13 @@ func (app *HTTPApp) contentView() gooey.View {
 		if user.Location != "" {
 			details = append(details, gooey.HStack(
 				gooey.Text("Location:").Fg(gooey.ColorBrightBlack),
-				gooey.Text(user.Location).Fg(gooey.ColorGreen),
+				gooey.Text("%s", user.Location).Fg(gooey.ColorGreen),
 			).Gap(1))
 		}
 		if user.Company != "" {
 			details = append(details, gooey.HStack(
 				gooey.Text("Company:").Fg(gooey.ColorBrightBlack),
-				gooey.Text(user.Company).Fg(gooey.ColorGreen),
+				gooey.Text("%s", user.Company).Fg(gooey.ColorGreen),
 			).Gap(1))
 		}
 

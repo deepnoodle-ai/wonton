@@ -140,6 +140,53 @@ gooey.Spacer().MinHeight(2)    // Minimum height spacer
 gooey.Bordered(content)        // Add border around content
 gooey.Canvas(drawFunc)         // Custom imperative drawing
 
+// Progress and Loading indicators
+gooey.Progress(current, total).Width(30).Fg(gooey.ColorGreen)  // Progress bar
+gooey.Loading(app.frame).Label("Loading...")                    // Animated spinner
+
+// Dividers and Bars
+gooey.Divider()                            // Horizontal separator line
+gooey.Divider().Title("Section")           // Divider with centered title
+gooey.HeaderBar("My App")                  // Full-width header with centered text
+gooey.StatusBar("Status message")          // Full-width footer bar
+
+// List Views
+gooey.SelectList(items, &selected)         // Selectable list
+gooey.SelectListStrings(labels, &selected) // String list shorthand
+gooey.CheckboxList(items, checked, &cursor) // Checkbox list
+gooey.RadioList(items, &selected)          // Radio button list
+gooey.Meter("CPU", 75, 100).Width(20)      // Labeled gauge/meter
+
+// Animated Text
+gooey.AnimatedTextView("Hello", animation, app.frame)  // Per-character animation
+// Use with: CreateRainbowText, CreatePulseText, CreateReverseRainbowText
+
+// Panels and Boxes
+gooey.Panel(content).Width(30).Height(10).Border(gooey.BorderSingle)  // Bordered panel
+gooey.Panel(nil).Bg(gooey.ColorBlue).Title("Section")                 // Empty panel with title
+
+// Styled Buttons
+gooey.StyledButton("Submit", callback).Width(20).Height(3).Bg(gooey.ColorBlue)  // Button with dimensions
+
+// Data Display
+gooey.KeyValue("Name", "John").LabelFg(gooey.ColorYellow)  // Key: value pairs
+gooey.Toggle(&app.enabled).OnChange(func(v bool) {...})    // On/off toggle switch
+
+// Hyperlinks
+gooey.Link("https://example.com", "Click here")            // Clickable hyperlink (OSC 8)
+gooey.Link("https://example.com", "").Fg(gooey.ColorCyan)  // URL as text when second arg empty
+gooey.LinkRow("Docs", "https://docs.example.com", "docs")  // Label + link pair
+gooey.InlineLinks(" | ", link1, link2, link3)              // Multiple links on one line
+
+// Wrapped Text
+gooey.WrappedText("Long text...").Center()                 // Auto-wrapping text
+gooey.WrappedText("Text").Bg(gooey.ColorBlue).FillBg()     // Fill background
+
+// Grids
+gooey.ColorGrid(5, 5, state, colors).CellSize(6, 3)        // Clickable color cycling grid
+gooey.CellGrid(5, 5).OnClick(func(c, r int) {...})         // Generic clickable grid
+gooey.CharGrid([][]rune{{...}})                            // Display character grid
+
 // Modifiers (chain on views)
 .Fg(color)      // Foreground color
 .Bg(color)      // Background color
@@ -352,6 +399,12 @@ go test -v -run TestFoo # Specific test
 | `canvas_view.go`     | Canvas for custom imperative drawing                  |
 | `conditional_views.go` | If, IfElse, Switch conditional views                |
 | `collection_views.go` | ForEach, HForEach collection views                   |
+| `progress_view.go`   | Progress bar and Loading spinner views                |
+| `divider_view.go`    | Divider, HeaderBar, StatusBar views                   |
+| `list_view.go`       | SelectList, CheckboxList, RadioList, Meter views      |
+| `animated_text_view.go` | AnimatedTextView, Panel, StyledButton, KeyValue, Toggle |
+| `link_text_views.go` | Link, LinkRow, InlineLinks, WrappedText views         |
+| `grid_view.go`       | CellGrid, ColorGrid, CharGrid views                   |
 | `terminal.go`        | Low-level terminal ops, double buffering, RenderFrame |
 | `events.go`          | Event types (Tick, Resize, Quit, Error, Batch)        |
 | `input.go`           | KeyEvent, Key constants                               |

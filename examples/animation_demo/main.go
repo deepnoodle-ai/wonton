@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -30,47 +28,21 @@ var animations = []animDef{
 }
 
 func (app *AnimationDemoApp) View() gooey.View {
-	// Build views for each animation line
-	views := []gooey.View{
+	return gooey.VStack(
 		gooey.Text("Text Animation Styles").Bold().Fg(gooey.ColorCyan),
 		gooey.Spacer().MinHeight(1),
-	}
 
-	// Add each animation as a canvas
-	for _, a := range animations {
-		anim := a // Capture for closure
-		views = append(views,
-			gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-				app.renderAnimatedLine(frame, bounds, anim)
-			}),
-			gooey.Spacer().MinHeight(1),
-		)
-	}
+		// Use ForEach with AnimatedTextView - no more Canvas needed!
+		gooey.ForEach(animations, func(anim animDef, i int) gooey.View {
+			return gooey.HStack(
+				gooey.Text("%-16s", anim.name+":").Fg(gooey.ColorBrightBlack),
+				gooey.AnimatedTextView(anim.text, anim.anim, app.frame),
+			)
+		}).Gap(1),
 
-	// Add help text at bottom
-	views = append(views,
 		gooey.Spacer(),
 		gooey.Text("[q] quit").Fg(gooey.ColorBrightBlack),
-	)
-
-	return gooey.VStack(views...).Padding(1)
-}
-
-func (app *AnimationDemoApp) renderAnimatedLine(frame gooey.RenderFrame, bounds image.Rectangle, anim animDef) {
-	// Label
-	label := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	labelText := fmt.Sprintf("%-16s", anim.name+":")
-	frame.PrintStyled(0, 0, labelText, label)
-
-	// Animated text
-	startX := 18
-	for j, ch := range anim.text {
-		if startX+j >= bounds.Dx() {
-			break
-		}
-		style := anim.anim.GetStyle(app.frame, j, len(anim.text))
-		frame.SetCell(startX+j, 0, ch, style)
-	}
+	).Padding(1)
 }
 
 func (app *AnimationDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
