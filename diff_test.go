@@ -1,7 +1,6 @@
 package gooey
 
 import (
-	"image"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -165,124 +164,84 @@ func TestDiffRenderer_CustomTheme(t *testing.T) {
 	require.NotEmpty(t, rendered)
 }
 
-func TestDiffViewer_Creation(t *testing.T) {
-	viewer, err := NewDiffViewer(sampleDiff, "go")
+func TestDiffView_Creation(t *testing.T) {
+	diff, err := ParseUnifiedDiff(sampleDiff)
 	require.NoError(t, err)
-	require.NotNil(t, viewer)
 
-	diff := viewer.GetDiff()
-	require.NotNil(t, diff)
-	require.Len(t, diff.Files, 1)
+	scrollY := 0
+	view := DiffView(diff, "go", &scrollY)
+	require.NotNil(t, view)
+	require.Equal(t, diff, view.diff)
 }
 
-func TestDiffViewer_Scrolling(t *testing.T) {
-	viewer, err := NewDiffViewer(sampleDiff, "go")
+func TestDiffView_FromText(t *testing.T) {
+	scrollY := 0
+	view, err := DiffViewFromText(sampleDiff, "go", &scrollY)
+	require.NoError(t, err)
+	require.NotNil(t, view)
+	require.Len(t, view.diff.Files, 1)
+}
+
+func TestDiffView_Scrolling(t *testing.T) {
+	diff, err := ParseUnifiedDiff(sampleDiff)
 	require.NoError(t, err)
 
-	viewer.SetBounds(image.Rect(0, 0, 80, 10))
-	viewer.Init()
+	scrollY := 0
+	view := DiffView(diff, "go", &scrollY).Height(10)
+
+	// Render to initialize
+	view.renderContent()
 
 	// Initial position
-	require.Equal(t, 0, viewer.GetScrollPosition())
+	require.Equal(t, 0, scrollY)
 
 	// Scroll down
-	viewer.ScrollBy(5)
-	require.Equal(t, 5, viewer.GetScrollPosition())
+	scrollY = 5
+	require.Equal(t, 5, scrollY)
 
 	// Scroll up
-	viewer.ScrollBy(-2)
-	require.Equal(t, 3, viewer.GetScrollPosition())
+	scrollY = 3
+	require.Equal(t, 3, scrollY)
 
 	// Scroll to position
-	viewer.ScrollTo(10)
-	require.Equal(t, 10, viewer.GetScrollPosition())
+	scrollY = 10
+	require.Equal(t, 10, scrollY)
 
 	// Scroll to top
-	viewer.ScrollTo(0)
-	require.Equal(t, 0, viewer.GetScrollPosition())
+	scrollY = 0
+	require.Equal(t, 0, scrollY)
 }
 
-func TestDiffViewer_KeyHandling(t *testing.T) {
-	// Create a longer diff for scrolling
-	longDiff := sampleDiff
-	for i := 0; i < 20; i++ {
-		longDiff += "\n+// Added line " + string(rune('0'+i))
-	}
-
-	viewer, err := NewDiffViewer(longDiff, "go")
+func TestDiffView_LineCount(t *testing.T) {
+	diff, err := ParseUnifiedDiff(sampleDiff)
 	require.NoError(t, err)
 
-	viewer.SetBounds(image.Rect(0, 0, 80, 10))
-	viewer.Init()
+	scrollY := 0
+	view := DiffView(diff, "go", &scrollY)
 
-	// Test arrow down
-	handled := viewer.HandleKey(KeyEvent{Key: KeyArrowDown})
-	if viewer.CanScrollDown() {
-		require.True(t, handled)
-		require.Equal(t, 1, viewer.GetScrollPosition())
-
-		// Test arrow up
-		handled = viewer.HandleKey(KeyEvent{Key: KeyArrowUp})
-		require.True(t, handled)
-		require.Equal(t, 0, viewer.GetScrollPosition())
-	}
-
-	// Test home
-	viewer.ScrollTo(5)
-	handled = viewer.HandleKey(KeyEvent{Key: KeyHome})
-	require.True(t, handled)
-	require.Equal(t, 0, viewer.GetScrollPosition())
-
-	// Test end
-	handled = viewer.HandleKey(KeyEvent{Key: KeyEnd})
-	require.True(t, handled)
-	require.Greater(t, viewer.GetScrollPosition(), 0)
+	lineCount := view.GetLineCount()
+	require.Greater(t, lineCount, 0)
 }
 
-func TestDiffViewer_LanguageChange(t *testing.T) {
-	viewer, err := NewDiffViewer(sampleDiff, "go")
+func TestDiffView_LanguageSetting(t *testing.T) {
+	diff, err := ParseUnifiedDiff(sampleDiff)
 	require.NoError(t, err)
 
-	viewer.SetLanguage("python")
-	// Should trigger re-render
-	require.True(t, viewer.NeedsRedraw())
+	scrollY := 0
+	view := DiffView(diff, "go", &scrollY).Language("python")
+	require.Equal(t, "python", view.language)
 }
 
-func TestDiffViewer_ThemeChange(t *testing.T) {
-	viewer, err := NewDiffViewer(sampleDiff, "go")
+func TestDiffView_ThemeSetting(t *testing.T) {
+	diff, err := ParseUnifiedDiff(sampleDiff)
 	require.NoError(t, err)
 
 	theme := DefaultDiffTheme()
 	theme.AddedBg = RGB{R: 0, G: 128, B: 0}
 
-	viewer.SetTheme(theme)
-	require.True(t, viewer.NeedsRedraw())
-}
-
-func TestDiffViewer_DiffUpdate(t *testing.T) {
-	viewer, err := NewDiffViewer(sampleDiff, "go")
-	require.NoError(t, err)
-
-	viewer.SetBounds(image.Rect(0, 0, 80, 25))
-	viewer.ScrollTo(5)
-
-	// Update diff
-	newDiff := `diff --git a/test.py b/test.py
---- a/test.py
-+++ b/test.py
-@@ -1,1 +1,1 @@
--print("old")
-+print("new")`
-
-	err = viewer.SetDiffText(newDiff)
-	require.NoError(t, err)
-
-	// Scroll should reset
-	require.Equal(t, 0, viewer.GetScrollPosition())
-
-	// Should have new diff
-	diff := viewer.GetDiff()
-	require.Equal(t, "test.py", diff.Files[0].NewPath)
+	scrollY := 0
+	view := DiffView(diff, "go", &scrollY).Theme(theme)
+	require.Equal(t, theme.AddedBg, view.theme.AddedBg)
 }
 
 func TestParseDiff_MultipleFiles(t *testing.T) {

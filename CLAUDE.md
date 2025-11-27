@@ -187,6 +187,20 @@ gooey.ColorGrid(5, 5, state, colors).CellSize(6, 3)        // Clickable color cy
 gooey.CellGrid(5, 5).OnClick(func(c, r int) {...})         // Generic clickable grid
 gooey.CharGrid([][]rune{{...}})                            // Display character grid
 
+// Data Tables
+gooey.Table(columns, &selected).Rows(rows).Height(20)      // Scrollable data table
+gooey.Table(columns, &selected).OnSelect(func(row int) {...})
+
+// File Picker
+gooey.FilePicker(items, &filter, &selected).CurrentPath(dir).Height(20)  // File browser
+gooey.FilePicker(items, &filter, &selected).OnSelect(func(item ListItem) {...})
+
+// Markdown and Diff Viewers
+gooey.Markdown(content, &scrollY).Height(30).MaxWidth(80)  // Rendered markdown
+gooey.Markdown(content, &scrollY).Theme(customTheme)
+gooey.DiffView(diff, "go", &scrollY).Height(30)            // Syntax-highlighted diff
+gooey.DiffView(diff, "go", &scrollY).ShowLineNumbers(true)
+
 // Modifiers (chain on views)
 .Fg(color)      // Foreground color
 .Bg(color)      // Background color
@@ -405,6 +419,10 @@ go test -v -run TestFoo # Specific test
 | `animated_text_view.go` | AnimatedTextView, Panel, StyledButton, KeyValue, Toggle |
 | `link_text_views.go` | Link, LinkRow, InlineLinks, WrappedText views         |
 | `grid_view.go`       | CellGrid, ColorGrid, CharGrid views                   |
+| `table_view.go`      | Table view for tabular data display                   |
+| `file_picker_view.go` | FilePicker view for file browsing                    |
+| `markdown_view.go`   | Markdown view with syntax highlighting                |
+| `diff_view.go`       | DiffView for displaying file diffs                    |
 | `terminal.go`        | Low-level terminal ops, double buffering, RenderFrame |
 | `events.go`          | Event types (Tick, Resize, Quit, Error, Batch)        |
 | `input.go`           | KeyEvent, Key constants                               |

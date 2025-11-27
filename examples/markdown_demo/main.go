@@ -1,7 +1,6 @@
 package main
 
 import (
-	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -95,21 +94,11 @@ The markdown renderer supports customizable themes. You can change:
 *This is a demonstration of the Gooey markdown rendering system.*
 `
 
-// MarkdownDemoApp demonstrates markdown rendering using the Runtime architecture.
-// It shows how to use the MarkdownViewer widget with scrolling support.
+// MarkdownDemoApp demonstrates the declarative Markdown view.
 type MarkdownDemoApp struct {
-	viewer *gooey.MarkdownViewer
-	width  int
-	height int
-}
-
-// Init initializes the application by creating the markdown viewer.
-func (app *MarkdownDemoApp) Init() error {
-	app.viewer = gooey.NewMarkdownViewer(sampleMarkdown)
-	// Set initial bounds (will be updated on first resize event)
-	app.viewer.SetBounds(image.Rect(0, 0, app.width, app.height-2))
-	app.viewer.Init()
-	return nil
+	scrollY int
+	width   int
+	height  int
 }
 
 // HandleEvent processes events from the runtime.
@@ -119,13 +108,36 @@ func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		app.viewer.HandleKey(e)
+
+		// Handle scrolling
+		pageSize := app.height - 3
+		if pageSize < 1 {
+			pageSize = 1
+		}
+
+		switch e.Key {
+		case gooey.KeyArrowUp:
+			if app.scrollY > 0 {
+				app.scrollY--
+			}
+		case gooey.KeyArrowDown:
+			app.scrollY++
+		case gooey.KeyPageUp:
+			app.scrollY -= pageSize
+			if app.scrollY < 0 {
+				app.scrollY = 0
+			}
+		case gooey.KeyPageDown:
+			app.scrollY += pageSize
+		case gooey.KeyHome:
+			app.scrollY = 0
+		case gooey.KeyEnd:
+			app.scrollY = 1000 // will be clamped
+		}
 
 	case gooey.ResizeEvent:
-		// Update dimensions and viewer bounds on resize
 		app.width = e.Width
 		app.height = e.Height
-		app.viewer.SetBounds(image.Rect(0, 0, e.Width, e.Height-2))
 	}
 
 	return nil
@@ -133,18 +145,17 @@ func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 // View returns the declarative UI for this app.
 func (app *MarkdownDemoApp) View() gooey.View {
-	// Status bar style
-	statusStyle := gooey.NewStyle().
-		WithBackground(gooey.ColorBlue).
-		WithForeground(gooey.ColorWhite)
+	markdownHeight := app.height - 2
+	if markdownHeight < 1 {
+		markdownHeight = 1
+	}
 
 	return gooey.VStack(
-		// Markdown viewer canvas (fills available space)
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			app.viewer.Draw(frame)
-		}),
-		// Status line at bottom
-		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").Style(statusStyle),
+		gooey.Markdown(sampleMarkdown, &app.scrollY).
+			Height(markdownHeight).
+			MaxWidth(app.width),
+		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
+			Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
 	)
 }
 

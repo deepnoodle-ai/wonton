@@ -2,62 +2,44 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
 )
 
-// TableDemoApp demonstrates the Table widget using the declarative View system.
-// It shows how to display tabular data with scrolling and selection.
+// TableDemoApp demonstrates the declarative Table view.
 type TableDemoApp struct {
-	table  *gooey.Table
-	width  int
-	height int
+	columns  []gooey.TableColumn
+	rows     [][]string
+	selected int
+	width    int
+	height   int
 }
 
 // View returns the declarative UI for this app.
 func (app *TableDemoApp) View() gooey.View {
-	var tableView gooey.View
-	var infoView gooey.View
-
-	// Create table view if table is initialized
-	if app.table != nil {
-		tableView = gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			app.table.Draw(frame)
-		})
-
-		infoView = gooey.VStack(
-			gooey.Text("Selected Row: %d", app.table.SelectedRow).Fg(gooey.ColorGreen),
-			gooey.Text("Press Arrows to move, q to quit.").Dim(),
-		)
-	} else {
-		tableView = gooey.Spacer()
-		infoView = gooey.Text("Initializing...").Dim()
+	// Calculate table height based on terminal size
+	tableHeight := app.height - 8
+	if tableHeight < 5 {
+		tableHeight = 5
 	}
 
 	return gooey.VStack(
 		gooey.Text(" Table Demo ").Bold().Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
-		gooey.Text("%s", repeatRune('─', app.width)).Fg(gooey.ColorBrightBlack),
+		gooey.Divider(),
 		gooey.Spacer().MinHeight(1),
-		tableView,
+		gooey.Table(app.columns, &app.selected).
+			Rows(app.rows).
+			Height(tableHeight).
+			OnSelect(func(row int) {
+				// Handle row click
+			}),
 		gooey.Spacer().MinHeight(1),
-		infoView,
+		gooey.Text("Selected Row: %d", app.selected+1).Fg(gooey.ColorGreen),
+		gooey.Text("Press Arrows to move, q to quit.").Dim(),
 		gooey.Spacer(),
 		gooey.Text(" Press 'q' to quit ").Bg(gooey.ColorBrightBlack).Fg(gooey.ColorWhite),
 	)
-}
-
-// repeatRune creates a string by repeating a rune n times.
-func repeatRune(r rune, n int) string {
-	if n < 0 {
-		n = 0
-	}
-	runes := make([]rune, n)
-	for i := range runes {
-		runes[i] = r
-	}
-	return string(runes)
 }
 
 // HandleEvent processes events from the runtime.
@@ -67,68 +49,68 @@ func (app *TableDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		if app.table != nil {
-			app.table.HandleKey(e)
+
+		// Handle keyboard navigation
+		switch e.Key {
+		case gooey.KeyArrowUp:
+			if app.selected > 0 {
+				app.selected--
+			}
+		case gooey.KeyArrowDown:
+			if app.selected < len(app.rows)-1 {
+				app.selected++
+			}
+		case gooey.KeyPageUp:
+			app.selected -= 10
+			if app.selected < 0 {
+				app.selected = 0
+			}
+		case gooey.KeyPageDown:
+			app.selected += 10
+			if app.selected >= len(app.rows) {
+				app.selected = len(app.rows) - 1
+			}
+		case gooey.KeyHome:
+			app.selected = 0
+		case gooey.KeyEnd:
+			app.selected = len(app.rows) - 1
 		}
 
 	case gooey.ResizeEvent:
-		// Update dimensions
 		app.width = e.Width
 		app.height = e.Height
-
-		// Create table on first resize if needed
-		if app.table == nil {
-			tableWidth := e.Width - 4
-			tableHeight := e.Height - 6
-			if tableWidth < 10 {
-				tableWidth = 10
-			}
-			if tableHeight < 5 {
-				tableHeight = 5
-			}
-
-			app.table = gooey.NewTable(2, 3, tableWidth, tableHeight)
-			app.table.SetColumns([]gooey.Column{
-				{Title: "ID", Width: 5},
-				{Title: "Name", Width: 20},
-				{Title: "Role", Width: 15},
-				{Title: "Status", Width: 10},
-			})
-
-			// Generate dummy data
-			rows := make([][]string, 50)
-			for i := 0; i < 50; i++ {
-				rows[i] = []string{
-					fmt.Sprintf("%d", i+1),
-					fmt.Sprintf("User %d", i+1),
-					"Developer",
-					"Active",
-				}
-			}
-			app.table.SetRows(rows)
-		} else {
-			// Update table dimensions on subsequent resizes
-			tableWidth := e.Width - 4
-			tableHeight := e.Height - 6
-			if tableWidth < 10 {
-				tableWidth = 10
-			}
-			if tableHeight < 5 {
-				tableHeight = 5
-			}
-			app.table.Width = tableWidth
-			app.table.Height = tableHeight
-		}
 	}
 
 	return nil
 }
 
 func main() {
-	// Create the application
-	app := &TableDemoApp{}
+	// Define columns
+	columns := []gooey.TableColumn{
+		{Title: "ID", Width: 5},
+		{Title: "Name", Width: 20},
+		{Title: "Role", Width: 15},
+		{Title: "Status", Width: 10},
+	}
 
-	// Run the application (30 FPS is default)
+	// Generate sample data
+	rows := make([][]string, 50)
+	for i := 0; i < 50; i++ {
+		rows[i] = []string{
+			fmt.Sprintf("%d", i+1),
+			fmt.Sprintf("User %d", i+1),
+			"Developer",
+			"Active",
+		}
+	}
+
+	// Create the application
+	app := &TableDemoApp{
+		columns: columns,
+		rows:    rows,
+	}
+
+	// Run the application
 	if err := gooey.Run(app); err != nil {
 		log.Fatal(err)
 	}

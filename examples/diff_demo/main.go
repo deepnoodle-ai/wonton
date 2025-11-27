@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/gooey"
@@ -42,26 +41,21 @@ const sampleDiff = `diff --git a/server.go b/server.go
 +	}
  }`
 
-// DiffDemoApp demonstrates diff viewing using the Runtime architecture.
-// It shows how to use the DiffViewer widget with syntax highlighting and scrolling.
+// DiffDemoApp demonstrates the declarative DiffView.
 type DiffDemoApp struct {
-	viewer *gooey.DiffViewer
-	width  int
-	height int
+	diff    *gooey.Diff
+	scrollY int
+	width   int
+	height  int
 }
 
-// Init initializes the application by creating the diff viewer.
+// Init initializes the application by parsing the diff.
 func (app *DiffDemoApp) Init() error {
-	viewer, err := gooey.NewDiffViewer(sampleDiff, "go")
+	diff, err := gooey.ParseUnifiedDiff(sampleDiff)
 	if err != nil {
-		return fmt.Errorf("failed to create diff viewer: %w", err)
+		return fmt.Errorf("failed to parse diff: %w", err)
 	}
-	app.viewer = viewer
-
-	// Set initial bounds (will be updated on first resize event)
-	app.viewer.SetBounds(image.Rect(0, 0, app.width, app.height-2))
-	app.viewer.Init()
-
+	app.diff = diff
 	return nil
 }
 
@@ -72,13 +66,36 @@ func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
 			return []gooey.Cmd{gooey.Quit()}
 		}
-		app.viewer.HandleKey(e)
+
+		// Handle scrolling
+		pageSize := app.height - 3
+		if pageSize < 1 {
+			pageSize = 1
+		}
+
+		switch e.Key {
+		case gooey.KeyArrowUp:
+			if app.scrollY > 0 {
+				app.scrollY--
+			}
+		case gooey.KeyArrowDown:
+			app.scrollY++
+		case gooey.KeyPageUp:
+			app.scrollY -= pageSize
+			if app.scrollY < 0 {
+				app.scrollY = 0
+			}
+		case gooey.KeyPageDown:
+			app.scrollY += pageSize
+		case gooey.KeyHome:
+			app.scrollY = 0
+		case gooey.KeyEnd:
+			app.scrollY = 1000 // will be clamped
+		}
 
 	case gooey.ResizeEvent:
-		// Update dimensions and viewer bounds on resize
 		app.width = e.Width
 		app.height = e.Height
-		app.viewer.SetBounds(image.Rect(0, 0, e.Width, e.Height-2))
 	}
 
 	return nil
@@ -86,32 +103,30 @@ func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 // View returns the declarative view structure.
 func (app *DiffDemoApp) View() gooey.View {
+	diffHeight := app.height - 2
+	if diffHeight < 1 {
+		diffHeight = 1
+	}
+
 	statusStyle := gooey.NewStyle().
 		WithBackground(gooey.ColorBlue).
 		WithForeground(gooey.ColorWhite)
 
-	statusMsg := "Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump"
-	scrollInfo := fmt.Sprintf("Line %d/%d",
-		app.viewer.GetScrollPosition()+1,
-		app.viewer.GetLineCount())
-
 	return gooey.VStack(
-		// Diff viewer area
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			app.viewer.Draw(frame)
-		}),
-
-		// Status line at bottom
-		gooey.Height(1, gooey.Background(' ', statusStyle, gooey.HStack(
-			gooey.Text(" %s ", statusMsg).Style(statusStyle),
-			gooey.Spacer(),
-			gooey.Text(" %s ", scrollInfo).Style(statusStyle),
-		))),
+		gooey.DiffView(app.diff, "go", &app.scrollY).
+			Height(diffHeight).
+			ShowLineNumbers(true),
+		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
+			Style(statusStyle),
 	)
 }
 
 func main() {
-	if err := gooey.Run(&DiffDemoApp{}); err != nil {
+	app := &DiffDemoApp{}
+	if err := app.Init(); err != nil {
+		log.Fatal(err)
+	}
+	if err := gooey.Run(app); err != nil {
 		log.Fatal(err)
 	}
 }

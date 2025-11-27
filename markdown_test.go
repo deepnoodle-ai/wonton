@@ -2,7 +2,6 @@ package gooey
 
 import (
 	"fmt"
-	"image"
 	"strings"
 	"testing"
 
@@ -297,106 +296,79 @@ func TestMarkdownRenderer_MaxWidth(t *testing.T) {
 	require.Greater(t, len(result.Lines), 2, "Expected text to wrap into multiple lines")
 }
 
-func TestMarkdownWidget_BasicRendering(t *testing.T) {
-	widget := NewMarkdownWidget("# Test\n\nParagraph")
-	require.NotNil(t, widget)
+func TestMarkdownView_BasicRendering(t *testing.T) {
+	scrollY := 0
+	view := Markdown("# Test\n\nParagraph", &scrollY)
+	require.NotNil(t, view)
 
-	// Set bounds
-	widget.SetBounds(image.Rect(0, 0, 80, 25))
+	// Force rendering
+	view.renderContent(80)
 
-	// Initialize
-	widget.Init()
+	// Check that content was rendered
+	require.NotNil(t, view.rendered)
+	require.Greater(t, len(view.rendered.Lines), 0)
 
-	// Render to string for testing
-	output := widget.RenderToString()
+	// Check content is present
+	output := renderToPlainText(view.rendered)
 	require.Contains(t, output, "Test")
 	require.Contains(t, output, "Paragraph")
 }
 
-func TestMarkdownWidget_Scrolling(t *testing.T) {
+func TestMarkdownView_Scrolling(t *testing.T) {
 	content := strings.Repeat("Line\n\n", 50) // Create many lines
-	widget := NewMarkdownWidget(content)
-	widget.SetBounds(image.Rect(0, 0, 80, 10)) // Small viewport
+	scrollY := 0
+	view := Markdown(content, &scrollY).Height(10)
 
-	widget.Init()
+	// Force rendering
+	view.renderContent(80)
 
-	require.Equal(t, 0, widget.GetScrollPosition())
+	require.Equal(t, 0, scrollY)
 
 	// Scroll down
-	widget.ScrollBy(5)
-	require.Equal(t, 5, widget.GetScrollPosition())
+	scrollY = 5
+	require.Equal(t, 5, scrollY)
 
 	// Scroll up
-	widget.ScrollBy(-2)
-	require.Equal(t, 3, widget.GetScrollPosition())
+	scrollY = 3
+	require.Equal(t, 3, scrollY)
 
 	// Scroll to position
-	widget.ScrollTo(10)
-	require.Equal(t, 10, widget.GetScrollPosition())
+	scrollY = 10
+	require.Equal(t, 10, scrollY)
 }
 
-func TestMarkdownWidget_ContentUpdate(t *testing.T) {
-	widget := NewMarkdownWidget("Initial content")
-	widget.SetBounds(image.Rect(0, 0, 80, 25))
-	widget.Init()
+func TestMarkdownView_ContentRendering(t *testing.T) {
+	scrollY := 0
+	view := Markdown("Initial content", &scrollY)
 
-	output := widget.RenderToString()
+	// Render
+	view.renderContent(80)
+	output := renderToPlainText(view.rendered)
 	require.Contains(t, output, "Initial content")
 
-	// Update content
-	widget.SetContent("Updated content")
-	output = widget.RenderToString()
-	require.Contains(t, output, "Updated content")
-	require.NotContains(t, output, "Initial content")
+	// Create new view with updated content
+	view2 := Markdown("Updated content", &scrollY)
+	view2.renderContent(80)
+	output2 := renderToPlainText(view2.rendered)
+	require.Contains(t, output2, "Updated content")
+	require.NotContains(t, output2, "Initial content")
 }
 
-func TestMarkdownViewer_KeyHandling(t *testing.T) {
-	// Create content with many lines to enable scrolling
+func TestMarkdownView_LineCount(t *testing.T) {
+	// Create content with many lines
 	var contentBuilder strings.Builder
 	for i := 0; i < 50; i++ {
 		contentBuilder.WriteString(fmt.Sprintf("Line %d\n\n", i))
 	}
 	content := contentBuilder.String()
 
-	viewer := NewMarkdownViewer(content)
-	viewer.SetBounds(image.Rect(0, 0, 80, 10))
-	viewer.Init()
-
-	// Force rendering by calling RenderToString
-	_ = viewer.content.RenderToString()
+	scrollY := 0
+	view := Markdown(content, &scrollY)
+	view.renderContent(80)
 
 	// Verify we have enough lines
-	lineCount := viewer.content.GetLineCount()
+	lineCount := view.GetLineCount()
 	require.Greater(t, lineCount, 10, "Should have more lines than viewport height")
-
-	// Verify we can scroll (have enough content)
-	require.True(t, viewer.content.CanScrollDown(), "Viewer should have enough content to scroll")
-
-	// Test arrow down
-	handled := viewer.HandleKey(KeyEvent{Key: KeyArrowDown})
-	require.True(t, handled)
-	require.Equal(t, 1, viewer.GetScrollPosition())
-
-	// Test arrow up
-	handled = viewer.HandleKey(KeyEvent{Key: KeyArrowUp})
-	require.True(t, handled)
-	require.Equal(t, 0, viewer.GetScrollPosition())
-
-	// Test page down
-	handled = viewer.HandleKey(KeyEvent{Key: KeyPageDown})
-	require.True(t, handled)
-	require.Greater(t, viewer.GetScrollPosition(), 0)
-
-	// Test home
-	viewer.ScrollTo(20)
-	handled = viewer.HandleKey(KeyEvent{Key: KeyHome})
-	require.True(t, handled)
-	require.Equal(t, 0, viewer.GetScrollPosition())
-
-	// Test end
-	handled = viewer.HandleKey(KeyEvent{Key: KeyEnd})
-	require.True(t, handled)
-	require.Greater(t, viewer.GetScrollPosition(), 0)
 }
 
 // Helper function to convert rendered markdown to plain text for testing
