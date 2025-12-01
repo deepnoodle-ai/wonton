@@ -4,10 +4,19 @@ This file provides guidance to Claude Code when working with this codebase.
 
 ## Project Overview
 
-Gooey is a terminal GUI library for Go that provides flicker-free rendering,
-smooth animations (30-60 FPS), and a race-free message-driven architecture. The
-library supports double-buffered rendering with dirty region tracking, full
-keyboard/mouse input handling, and a declarative view system.
+Gooey is a collection of Go packages for building command-line applications. It provides everything needed to create professional CLIs: from simple argument parsing to rich terminal UIs with animations.
+
+### Packages
+
+| Package      | Import Path                               | Purpose                                                    |
+| ------------ | ----------------------------------------- | ---------------------------------------------------------- |
+| **cli**      | `github.com/deepnoodle-ai/gooey/cli`      | CLI framework with commands, flags, config, and middleware |
+| **color**    | `github.com/deepnoodle-ai/gooey/color`    | ANSI color types, RGB, HSL, and gradient utilities         |
+| **env**      | `github.com/deepnoodle-ai/gooey/env`      | Config loading from env vars, .env files, and JSON         |
+| **slog**     | `github.com/deepnoodle-ai/gooey/slog`     | Colorized slog.Handler for terminal output                 |
+| **terminal** | `github.com/deepnoodle-ai/gooey/terminal` | Low-level terminal control, input decoding, styles         |
+| **tui**      | `github.com/deepnoodle-ai/gooey/tui`      | Full TUI library with declarative views and runtime        |
+| **unidiff**  | `github.com/deepnoodle-ai/gooey/unidiff`  | Unified diff parsing for display and analysis              |
 
 ## Development Commands
 
@@ -33,41 +42,115 @@ go run examples/all/main.go                  # Comprehensive demo
 
 ## Architecture
 
-### Core Components
+### cli Package
 
-- **Terminal** (`terminal.go`): Low-level terminal control with double-buffered rendering. Manages raw mode, cursor, colors, and screen operations via `BeginFrame()`/`EndFrame()`.
+CLI framework for building command-line applications with subcommands, flags, and configuration.
 
-- **Runtime** (`runtime.go`): The event loop that coordinates everything. Runs three goroutines:
+```go
+app := cli.New("myapp", "My CLI application")
+app.Version("1.0.0")
 
-  1. Main event loop (processes events, calls HandleEvent/View)
-  2. Input reader (reads from stdin, forwards KeyEvent/MouseEvent)
-  3. Command executor (runs async commands, returns results as events)
+app.Command("serve", "Start the server", func(ctx *cli.Context, flags *ServeFlags) error {
+    return runServer(flags.Port)
+})
 
-- **Application Interface** (`runtime.go`): User code implements this to define app behavior:
+app.Run(os.Args)
+```
 
-  - `View() View` - Return a declarative view tree representing the UI (required)
-  - `HandleEvent(event Event) []Cmd` - Process events, return commands (optional, via EventHandler interface)
+Key features:
 
-- **Declarative Views** (`view.go`, `layout_views.go`, `text_view.go`, `modifiers.go`): Composable view components:
-  - `VStack()`, `HStack()`, `ZStack()` - Layout containers
-  - `Text()` - Styled text display
-  - `Clickable()` - Interactive buttons
-  - `Input()` - Text input fields
-  - `Spacer()`, `Bordered()`, `Canvas()` - Layout helpers
+- Hierarchical command structure with groups
+- Flag parsing with struct tags
+- Config file support (YAML, JSON)
+- Middleware chain for cross-cutting concerns
+- Shell completions generation
 
-- **Events** (`events.go`, `input.go`, `mouse.go`): Event types including `KeyEvent`, `MouseEvent`, `TickEvent`, `ResizeEvent`, `QuitEvent`, `ErrorEvent`.
+### color Package
 
-- **Commands** (`commands.go`): Functions that perform async work and return events. Built-ins: `Quit()`, `Tick()`, `After()`, `Batch()`, `Sequence()`.
+Color types for terminal output including ANSI colors, RGB, HSL, and gradients.
 
-### Rendering Flow
+```go
+c := color.Green
+rgb := color.NewRGB(255, 128, 0)
+hsl := color.NewHSL(180, 0.5, 0.5)
+gradient := color.NewGradient(color.Red, color.Blue, 10)
+```
+
+### env Package
+
+Configuration loading from environment variables with struct binding.
+
+```go
+type Config struct {
+    Host string `env:"HOST" default:"localhost"`
+    Port int    `env:"PORT" default:"8080"`
+}
+
+cfg, err := env.Parse[Config](
+    env.WithPrefix("MYAPP"),
+    env.WithEnvFile(".env"),
+)
+```
+
+### slog Package
+
+Colorized slog.Handler for terminal output with auto-detection.
+
+```go
+logger := slog.New(gooeyslog.NewHandler(os.Stderr, &gooeyslog.Options{
+    Level:     slog.LevelDebug,
+    AddSource: true,
+    NoColor:   !gooeyslog.IsTerminal(os.Stderr),
+}))
+```
+
+### terminal Package
+
+Low-level terminal control with double-buffered rendering, input decoding, and styles.
+
+- Raw mode management
+- Keyboard and mouse event decoding
+- Style system (colors, bold, italic, etc.)
+- Double-buffered rendering with dirty region tracking
+- Hyperlink support (OSC 8)
+
+### tui Package
+
+Full TUI library with declarative views, runtime event loop, and animations.
+
+**Runtime**: Event loop coordinating three goroutines:
+
+1. Main event loop (processes events, calls HandleEvent/View)
+2. Input reader (reads from stdin, forwards KeyEvent/MouseEvent)
+3. Command executor (runs async commands, returns results as events)
+
+**Rendering Flow**:
 
 ```
 View() -> measure views -> render views -> diff & flush
 ```
 
-The declarative View() method returns a view tree. The runtime measures, renders to a back buffer, then diffs against the front buffer and sends only changes to the terminal.
+**Application Interface**: User code implements:
 
-## Common Patterns
+- `View() View` - Return declarative view tree (required)
+- `HandleEvent(event Event) []Cmd` - Process events (optional)
+
+### unidiff Package
+
+Unified diff parsing for display and analysis.
+
+```go
+diff, err := unidiff.Parse(diffText)
+for _, file := range diff.Files {
+    for _, hunk := range file.Hunks {
+        for _, line := range hunk.Lines {
+            fmt.Printf("%s: %s\n", line.Type, line.Content)
+        }
+    }
+}
+```
+
+## TUI Patterns
 
 ### Simplest Application (Recommended - Declarative)
 
@@ -76,31 +159,31 @@ type MyApp struct {
     count int
 }
 
-func (app *MyApp) View() gooey.View {
-    return gooey.VStack(
-        gooey.Text("Count: %d", app.count).Bold().Fg(gooey.ColorGreen),
-        gooey.Spacer().MinHeight(1),
-        gooey.HStack(
-            gooey.Clickable("[ + ]", func() { app.count++ }).Fg(gooey.ColorGreen),
-            gooey.Clickable("[ - ]", func() { app.count-- }).Fg(gooey.ColorRed),
+func (app *MyApp) View() tui.View {
+    return tui.VStack(
+        tui.Text("Count: %d", app.count).Bold().Fg(tui.ColorGreen),
+        tui.Spacer().MinHeight(1),
+        tui.HStack(
+            tui.Clickable("[ + ]", func() { app.count++ }).Fg(tui.ColorGreen),
+            tui.Clickable("[ - ]", func() { app.count-- }).Fg(tui.ColorRed),
         ).Gap(2),
-        gooey.Spacer(),
-        gooey.Text("Press 'q' to quit").Dim(),
-    ).Align(gooey.AlignCenter).Padding(2)
+        tui.Spacer(),
+        tui.Text("Press 'q' to quit").Dim(),
+    ).Align(tui.AlignCenter).Padding(2)
 }
 
-func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MyApp) HandleEvent(event tui.Event) []tui.Cmd {
     switch e := event.(type) {
-    case gooey.KeyEvent:
+    case tui.KeyEvent:
         if e.Rune == 'q' {
-            return []gooey.Cmd{gooey.Quit()}
+            return []tui.Cmd{tui.Quit()}
         }
     }
     return nil
 }
 
 func main() {
-    if err := gooey.Run(&MyApp{}, gooey.WithMouseTracking(true)); err != nil {
+    if err := tui.Run(&MyApp{}, tui.WithMouseTracking(true)); err != nil {
         log.Fatal(err)
     }
 }
@@ -109,150 +192,19 @@ func main() {
 Options can be passed to customize behavior:
 
 ```go
-gooey.Run(&MyApp{},
-    gooey.WithFPS(60),              // Default: 30
-    gooey.WithMouseTracking(true),  // Default: false
-    gooey.WithAlternateScreen(false), // Default: true
-    gooey.WithHideCursor(false),    // Default: true
+tui.Run(&MyApp{},
+    tui.WithFPS(60),              // Default: 30
+    tui.WithMouseTracking(true),  // Default: false
+    tui.WithAlternateScreen(false), // Default: true
+    tui.WithHideCursor(false),    // Default: true
 )
-```
-
-### Declarative View Components
-
-```go
-// Layout containers
-gooey.VStack(children...)     // Vertical stack
-gooey.HStack(children...)     // Horizontal stack
-gooey.ZStack(children...)     // Layered stack
-
-// Text with styling
-gooey.Text("Hello %s", name).Bold().Fg(gooey.ColorCyan)
-gooey.Text("Count: %d", count).Italic().Bg(gooey.ColorBlue)
-
-// Interactive elements
-gooey.Clickable("Click me", func() { /* handler */ })
-gooey.Input(&app.textField).Placeholder("Enter text...").Width(30)
-gooey.Input(&app.password).Mask('*')
-
-// Layout helpers
-gooey.Spacer()                 // Flexible space
-gooey.Spacer().MinHeight(2)    // Minimum height spacer
-gooey.Bordered(content)        // Add border around content
-gooey.Canvas(drawFunc)         // Custom imperative drawing
-
-// Progress and Loading indicators
-gooey.Progress(current, total).Width(30).Fg(gooey.ColorGreen)  // Progress bar
-gooey.Loading(app.frame).Label("Loading...")                    // Animated spinner
-
-// Dividers and Bars
-gooey.Divider()                            // Horizontal separator line
-gooey.Divider().Title("Section")           // Divider with centered title
-gooey.HeaderBar("My App")                  // Full-width header with centered text
-gooey.StatusBar("Status message")          // Full-width footer bar
-
-// List Views
-gooey.SelectList(items, &selected)         // Selectable list
-gooey.SelectListStrings(labels, &selected) // String list shorthand
-gooey.CheckboxList(items, checked, &cursor) // Checkbox list
-gooey.RadioList(items, &selected)          // Radio button list
-gooey.Meter("CPU", 75, 100).Width(20)      // Labeled gauge/meter
-
-// Animated Text
-gooey.AnimatedTextView("Hello", animation, app.frame)  // Per-character animation
-// Use with: CreateRainbowText, CreatePulseText, CreateReverseRainbowText
-
-// Panels and Boxes
-gooey.Panel(content).Width(30).Height(10).Border(gooey.BorderSingle)  // Bordered panel
-gooey.Panel(nil).Bg(gooey.ColorBlue).Title("Section")                 // Empty panel with title
-
-// Styled Buttons
-gooey.StyledButton("Submit", callback).Width(20).Height(3).Bg(gooey.ColorBlue)  // Button with dimensions
-
-// Data Display
-gooey.KeyValue("Name", "John").LabelFg(gooey.ColorYellow)  // Key: value pairs
-gooey.Toggle(&app.enabled).OnChange(func(v bool) {...})    // On/off toggle switch
-
-// Hyperlinks
-gooey.Link("https://example.com", "Click here")            // Clickable hyperlink (OSC 8)
-gooey.Link("https://example.com", "").Fg(gooey.ColorCyan)  // URL as text when second arg empty
-gooey.LinkRow("Docs", "https://docs.example.com", "docs")  // Label + link pair
-gooey.InlineLinks(" | ", link1, link2, link3)              // Multiple links on one line
-
-// Wrapped Text
-gooey.WrappedText("Long text...").Center()                 // Auto-wrapping text
-gooey.WrappedText("Text").Bg(gooey.ColorBlue).FillBg()     // Fill background
-
-// Grids
-gooey.ColorGrid(5, 5, state, colors).CellSize(6, 3)        // Clickable color cycling grid
-gooey.CellGrid(5, 5).OnClick(func(c, r int) {...})         // Generic clickable grid
-gooey.CharGrid([][]rune{{...}})                            // Display character grid
-
-// Data Tables
-gooey.Table(columns, &selected).Rows(rows).Height(20)      // Scrollable data table
-gooey.Table(columns, &selected).OnSelect(func(row int) {...})
-
-// File Picker
-gooey.FilePicker(items, &filter, &selected).CurrentPath(dir).Height(20)  // File browser
-gooey.FilePicker(items, &filter, &selected).OnSelect(func(item ListItem) {...})
-
-// Markdown and Diff Viewers
-gooey.Markdown(content, &scrollY).Height(30).MaxWidth(80)  // Rendered markdown
-gooey.Markdown(content, &scrollY).Theme(customTheme)
-gooey.DiffView(diff, "go", &scrollY).Height(30)            // Syntax-highlighted diff
-gooey.DiffView(diff, "go", &scrollY).ShowLineNumbers(true)
-
-// Modifiers (chain on views)
-.Fg(color)      // Foreground color
-.Bg(color)      // Background color
-.Bold()         // Bold text
-.Dim()          // Dimmed text
-.Style(s)       // Apply a Style
-.Padding(n)     // Add padding
-.Gap(n)         // Gap between children (stacks)
-.Align(align)   // Alignment (stacks)
-```
-
-### Conditional Rendering
-
-```go
-// Show view conditionally
-gooey.If(app.showDetails,
-    gooey.Text("Details here"),
-)
-
-// If-else pattern
-gooey.IfElse(app.isLoading,
-    gooey.Text("Loading..."),
-    gooey.Text("Content loaded"),
-)
-
-// Switch on value
-gooey.Switch(app.state,
-    gooey.Case("idle", gooey.Text("Idle")),
-    gooey.Case("loading", gooey.Text("Loading...")),
-    gooey.Default(gooey.Text("Unknown")),
-)
-```
-
-### Collection Rendering
-
-```go
-// Render list of items vertically
-gooey.ForEach(app.items, func(item Item, i int) gooey.View {
-    return gooey.Text("%d. %s", i+1, item.Name)
-})
-
-// Render horizontally
-gooey.HForEach(app.tabs, func(tab Tab, i int) gooey.View {
-    return gooey.Clickable(tab.Name, func() { app.selectTab(i) })
-})
 ```
 
 ### Custom Drawing with Canvas
 
 ```go
 // Canvas provides escape hatch for imperative drawing
-gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
     width, height := bounds.Dx(), bounds.Dy()
     // Use frame.SetCell(), frame.PrintStyled(), etc.
     frame.SetCell(bounds.Min.X, bounds.Min.Y, '█', style)
@@ -269,11 +221,11 @@ type DataReceived struct {
 func (d DataReceived) Timestamp() time.Time { return time.Now() }
 
 // Command that performs async work
-func FetchData(url string) gooey.Cmd {
-    return func() gooey.Event {
+func FetchData(url string) tui.Cmd {
+    return func() tui.Event {
         resp, err := http.Get(url)
         if err != nil {
-            return gooey.ErrorEvent{Time: time.Now(), Err: err}
+            return tui.ErrorEvent{Time: time.Now(), Err: err}
         }
         // ... process response
         return DataReceived{Data: result}
@@ -281,9 +233,9 @@ func FetchData(url string) gooey.Cmd {
 }
 
 // In HandleEvent:
-case gooey.KeyEvent:
+case tui.KeyEvent:
     if e.Rune == 'f' {
-        return []gooey.Cmd{FetchData("https://api.example.com")}
+        return []tui.Cmd{FetchData("https://api.example.com")}
     }
 case DataReceived:
     app.data = e.Data
@@ -292,32 +244,32 @@ case DataReceived:
 ### Styles
 
 ```go
-style := gooey.NewStyle().
-    WithForeground(gooey.ColorGreen).
-    WithBackground(gooey.ColorBlack).
+style := tui.NewStyle().
+    WithForeground(tui.ColorGreen).
+    WithBackground(tui.ColorBlack).
     WithBold().
     WithUnderline()
 
 // RGB colors
-style = gooey.NewStyle().WithFgRGB(gooey.NewRGB(255, 128, 0))
+style = tui.NewStyle().WithFgRGB(tui.NewRGB(255, 128, 0))
 
 // Apply to text
-gooey.Text("styled").Style(style)
+tui.Text("styled").Style(style)
 ```
 
 ### Mouse Handling
 
 ```go
-func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MyApp) HandleEvent(event tui.Event) []tui.Cmd {
     switch e := event.(type) {
-    case gooey.MouseEvent:
+    case tui.MouseEvent:
         switch e.Type {
-        case gooey.MouseClick:
+        case tui.MouseClick:
             // Synthesized when press+release at same position
             app.handleClick(e.X, e.Y, e.Button)
-        case gooey.MousePress, gooey.MouseRelease:
+        case tui.MousePress, tui.MouseRelease:
             // Raw press/release events
-        case gooey.MouseMove:
+        case tui.MouseMove:
             app.hoverX, app.hoverY = e.X, e.Y
         }
     }
@@ -325,7 +277,7 @@ func (app *MyApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 ```
 
-## Important Constraints
+## TUI Constraints
 
 ### Coordinate System
 
@@ -359,8 +311,8 @@ Gooey supports Shift+Enter for multi-line text input through two mechanisms:
 The Runtime's input reader handles this transparently. Applications receive `KeyEvent{Key: KeyEnter, Shift: true}` regardless of which method was used.
 
 ```go
-case gooey.KeyEvent:
-    if e.Key == gooey.KeyEnter {
+case tui.KeyEvent:
+    if e.Key == tui.KeyEnter {
         if e.Shift {
             // Shift+Enter: insert newline in multi-line input
             app.insertNewline()
@@ -377,14 +329,17 @@ Always use `defer terminal.Close()` to restore terminal state on exit.
 
 ## Testing
 
-Tests use the standard Go testing package with testify/require for assertions:
+Tests use the standard Go testing package with the internal `require` and `assert` packages for assertions:
 
 ```go
-func TestSomething(t *testing.T) {
-    require := require.New(t)
+import (
+    "testing"
+    "github.com/deepnoodle-ai/gooey/require"
+)
 
-    terminal, err := gooey.NewTerminal()
-    require.NoError(err)
+func TestSomething(t *testing.T) {
+    terminal, err := tui.NewTerminal()
+    require.NoError(t, err)
     defer terminal.Close()
 
     // Test code...
@@ -400,34 +355,74 @@ go test -v -run TestFoo # Specific test
 
 ## Key Files
 
-| File                 | Purpose                                               |
-| -------------------- | ----------------------------------------------------- |
-| `run.go`             | Simplified Run() API for quick application startup    |
-| `runtime.go`         | Event loop, Application interface, command system     |
-| `view.go`            | View interface, Empty, Spacer, Fill views             |
-| `layout_views.go`    | VStack, HStack, ZStack layout containers              |
-| `text_view.go`       | Text view with styling                                |
-| `button_view.go`     | Clickable interactive view                            |
-| `input_view.go`      | Input text field view                                 |
-| `modifiers.go`       | Padding, Bordered, Size modifiers                     |
-| `canvas_view.go`     | Canvas for custom imperative drawing                  |
-| `conditional_views.go` | If, IfElse, Switch conditional views                |
-| `collection_views.go` | ForEach, HForEach collection views                   |
-| `progress_view.go`   | Progress bar and Loading spinner views                |
-| `divider_view.go`    | Divider, HeaderBar, StatusBar views                   |
-| `list_view.go`       | SelectList, CheckboxList, RadioList, Meter views      |
-| `animated_text_view.go` | AnimatedTextView, Panel, StyledButton, KeyValue, Toggle |
-| `link_text_views.go` | Link, LinkRow, InlineLinks, WrappedText views         |
-| `grid_view.go`       | CellGrid, ColorGrid, CharGrid views                   |
-| `table_view.go`      | Table view for tabular data display                   |
-| `file_picker_view.go` | FilePicker view for file browsing                    |
-| `markdown_view.go`   | Markdown view with syntax highlighting                |
-| `diff_view.go`       | DiffView for displaying file diffs                    |
-| `terminal.go`        | Low-level terminal ops, double buffering, RenderFrame |
-| `events.go`          | Event types (Tick, Resize, Quit, Error, Batch)        |
-| `input.go`           | KeyEvent, Key constants                               |
-| `mouse.go`           | MouseEvent, mouse tracking, MouseRegion               |
-| `commands.go`        | Built-in commands (Quit, Tick, After, Batch)          |
-| `style.go`           | Style, Color constants, RGB support                   |
-| `text_input.go`      | TextInput widget (imperative)                         |
-| `key_decoder.go`     | Keyboard/paste input decoding                         |
+### cli/
+
+| File             | Purpose                                             |
+| ---------------- | --------------------------------------------------- |
+| `cli.go`         | App struct, command registration, Run() entry point |
+| `command.go`     | Command and Group definitions                       |
+| `flags.go`       | Flag parsing with struct tags                       |
+| `config.go`      | Configuration file loading                          |
+| `middleware.go`  | Middleware chain for commands                       |
+| `context.go`     | Execution context passed to handlers                |
+| `completions.go` | Shell completion generation                         |
+
+### color/
+
+| File          | Purpose                       |
+| ------------- | ----------------------------- |
+| `color.go`    | ANSI Color type and constants |
+| `gradient.go` | Color gradient generation     |
+| `hsl.go`      | HSL color space support       |
+
+### env/
+
+| File        | Purpose                                |
+| ----------- | -------------------------------------- |
+| `config.go` | Parse[T]() and options for env loading |
+| `dotenv.go` | .env file parsing                      |
+| `json.go`   | JSON config file support               |
+| `errors.go` | Aggregate error handling               |
+
+### slog/
+
+| File         | Purpose                               |
+| ------------ | ------------------------------------- |
+| `handler.go` | Colorized slog.Handler implementation |
+| `options.go` | Handler configuration options         |
+
+### terminal/
+
+| File           | Purpose                                      |
+| -------------- | -------------------------------------------- |
+| `terminal.go`  | Terminal struct, raw mode, screen operations |
+| `decoder.go`   | Input sequence decoding                      |
+| `key.go`       | Key types and constants                      |
+| `mouse.go`     | Mouse event types                            |
+| `style.go`     | Style struct for colors and attributes       |
+| `frame.go`     | RenderFrame for drawing                      |
+| `hyperlink.go` | OSC 8 hyperlink support                      |
+
+### tui/
+
+| File                   | Purpose                             |
+| ---------------------- | ----------------------------------- |
+| `run.go`               | Simplified Run() API                |
+| `runtime.go`           | Event loop, Application interface   |
+| `view.go`              | View interface, Empty, Spacer views |
+| `layout_views.go`      | VStack, HStack, ZStack              |
+| `text_view.go`         | Text view with styling              |
+| `button_view.go`       | Clickable interactive view          |
+| `input_view.go`        | Input text field                    |
+| `modifiers.go`         | Padding, Bordered, Size modifiers   |
+| `canvas_view.go`       | Canvas for imperative drawing       |
+| `conditional_views.go` | If, IfElse, Switch                  |
+| `collection_views.go`  | ForEach, HForEach                   |
+| `events.go`            | Event types                         |
+| `commands.go`          | Built-in commands                   |
+
+### unidiff/
+
+| File      | Purpose             |
+| --------- | ------------------- |
+| `diff.go` | Unified diff parser |

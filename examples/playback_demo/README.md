@@ -42,7 +42,7 @@ The `PlaybackController` provides:
 
 ```go
 // Load recording
-controller, _ := gooey.LoadRecording("demo.cast")
+controller, _ := tui.LoadRecording("demo.cast")
 
 // Get metadata
 header := controller.GetHeader()
@@ -55,7 +55,7 @@ controller.Resume()
 controller.Seek(30.5)      // Jump to 30.5 seconds
 
 // Play it
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 controller.Play(terminal)
 ```
 

@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // Simple composition demo showing nested layouts with buttons and labels.
@@ -11,49 +11,49 @@ type App struct {
 	counter int
 }
 
-func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 	return nil
 }
 
-func (app *App) View() gooey.View {
-	return gooey.VStack(
-		gooey.Text("Composition Demo").Bold().Fg(gooey.ColorCyan),
+func (app *App) View() tui.View {
+	return tui.VStack(
+		tui.Text("Composition Demo").Bold().Fg(tui.ColorCyan),
 
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Counter: %d", app.counter).Fg(gooey.ColorYellow),
+		tui.Text("Counter: %d", app.counter).Fg(tui.ColorYellow),
 
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
-		gooey.HStack(
-			gooey.Clickable(" + ", func() { app.counter++ }).Fg(gooey.ColorGreen),
-			gooey.Clickable(" - ", func() { app.counter-- }).Fg(gooey.ColorRed),
-			gooey.Clickable("Reset", func() { app.counter = 0 }),
+		tui.HStack(
+			tui.Clickable(" + ", func() { app.counter++ }).Fg(tui.ColorGreen),
+			tui.Clickable(" - ", func() { app.counter-- }).Fg(tui.ColorRed),
+			tui.Clickable("Reset", func() { app.counter = 0 }),
 		).Gap(2),
 
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
-		gooey.VStack(
-			gooey.Text("Nested VBox").Fg(gooey.ColorMagenta),
-			gooey.Text("Item 1"),
-			gooey.Text("Item 2"),
-			gooey.Text("Item 3"),
-		).Bordered().Border(&gooey.SingleBorder),
+		tui.VStack(
+			tui.Text("Nested VBox").Fg(tui.ColorMagenta),
+			tui.Text("Item 1"),
+			tui.Text("Item 2"),
+			tui.Text("Item 3"),
+		).Bordered().Border(&tui.SingleBorder),
 
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Click buttons or press 'q' to quit").Dim(),
-	).Bordered().Border(&gooey.RoundedBorder)
+		tui.Text("Click buttons or press 'q' to quit").Dim(),
+	).Bordered().Border(&tui.RoundedBorder)
 }
 
 func main() {
-	if err := gooey.Run(&App{}, gooey.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(&App{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

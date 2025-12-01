@@ -7,7 +7,7 @@ import (
 	"image"
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 type App struct {
@@ -16,23 +16,23 @@ type App struct {
 	width     int
 }
 
-func (app *App) View() gooey.View {
-	return gooey.VStack(
-		gooey.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+func (app *App) View() tui.View {
+	return tui.VStack(
+		tui.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 		// Use Canvas for custom animation drawing
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 			app.drawBlocks(frame, bounds)
 		}),
-		gooey.HStack(
-			gooey.Text("Press 'q' to quit").Fg(gooey.ColorYellow),
-			gooey.Spacer(),
-			gooey.Text("Frame: %d", app.frame).Fg(gooey.ColorGreen),
+		tui.HStack(
+			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
+			tui.Spacer(),
+			tui.Text("Frame: %d", app.frame).Fg(tui.ColorGreen),
 		),
 	).Padding(1)
 }
 
-func (app *App) drawBlocks(frame gooey.RenderFrame, bounds image.Rectangle) {
+func (app *App) drawBlocks(frame tui.RenderFrame, bounds image.Rectangle) {
 	width, height := bounds.Dx(), bounds.Dy()
 	numBlocks := 5
 	blockHeight := height / numBlocks
@@ -55,7 +55,7 @@ func (app *App) drawBlocks(frame gooey.RenderFrame, bounds image.Rectangle) {
 			if trailX < 0 {
 				break
 			}
-			trailStyle := style.WithFgRGB(gooey.NewRGB(
+			trailStyle := style.WithFgRGB(tui.NewRGB(
 				style.FgRGB.R/uint8(trail+1),
 				style.FgRGB.G/uint8(trail+1),
 				style.FgRGB.B/uint8(trail+1),
@@ -65,16 +65,16 @@ func (app *App) drawBlocks(frame gooey.RenderFrame, bounds image.Rectangle) {
 	}
 }
 
-func (app *App) rainbowStyle(blockIndex int) gooey.Style {
-	colors := gooey.SmoothRainbow(60)
+func (app *App) rainbowStyle(blockIndex int) tui.Style {
+	colors := tui.SmoothRainbow(60)
 	offset := int(app.frame) % 60
 	colorIndex := (blockIndex*10 + offset) % len(colors)
-	return gooey.NewStyle().WithFgRGB(colors[colorIndex]).WithBold()
+	return tui.NewStyle().WithFgRGB(colors[colorIndex]).WithBold()
 }
 
-func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		app.frame++
 		for i := range app.positions {
 			speed := uint64(i+1) * 2
@@ -82,12 +82,12 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 			app.positions[i] = int((app.frame*speed + offset) % uint64(app.width))
 		}
 
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 	}
 	return nil
@@ -102,7 +102,7 @@ func main() {
 	// Suppress unused variable warning
 	_ = fmt.Sprint
 
-	if err := gooey.Run(app, gooey.WithFPS(60)); err != nil {
+	if err := tui.Run(app, tui.WithFPS(60)); err != nil {
 		log.Fatal(err)
 	}
 }

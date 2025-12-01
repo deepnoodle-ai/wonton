@@ -25,24 +25,24 @@ The Gooey package now supports comprehensive animation capabilities for creating
 #### Rainbow Animations
 ```go
 // Create rainbow text animation
-rainbow := gooey.CreateRainbowText("Rainbow Text!", 20)
+rainbow := tui.CreateRainbowText("Rainbow Text!", 20)
 layout.SetHeaderLine(0, "Rainbow Text!", rainbow)
 
 // Reverse rainbow animation
-reverseRainbow := gooey.CreateReverseRainbowText("Reverse Rainbow!", 25)
+reverseRainbow := tui.CreateReverseRainbowText("Reverse Rainbow!", 25)
 ```
 
 #### Pulse Animations
 ```go
 // Create pulsing text with custom color
-pulse := gooey.CreatePulseText(gooey.NewRGB(255, 100, 0), 30)
+pulse := tui.CreatePulseText(tui.NewRGB(255, 100, 0), 30)
 layout.SetContentLine(0, "Pulsing Status", pulse)
 ```
 
 #### Custom Animations
 ```go
 // Custom rainbow animation with configuration
-customRainbow := &gooey.RainbowAnimation{
+customRainbow := &tui.RainbowAnimation{
     Speed:    15,  // Animation speed (lower = faster)
     Length:   10,  // Rainbow length in characters
     Reversed: false,
@@ -54,21 +54,21 @@ customRainbow := &gooey.RainbowAnimation{
 ### Basic Animated Layout
 ```go
 // Create animated layout with 30 FPS
-layout := gooey.NewAnimatedInputLayout(terminal, 30)
+layout := tui.NewAnimatedInputLayout(terminal, 30)
 
 // Set up animated header (2 lines)
 layout.SetAnimatedHeader(2)
-layout.SetHeaderLine(0, "App Title", gooey.CreateRainbowText("App Title", 20))
+layout.SetHeaderLine(0, "App Title", tui.CreateRainbowText("App Title", 20))
 layout.SetHeaderLine(1, "Subtitle", nil) // Static text
 
 // Set up animated content area (3 lines above input)
 layout.SetAnimatedContent(3)
-layout.SetContentLine(0, "Status: Ready", gooey.CreatePulseText(gooey.NewRGB(0, 255, 0), 40))
-layout.SetContentLine(1, "Progress: 50%", gooey.CreateRainbowText("Progress: 50%", 15))
+layout.SetContentLine(0, "Status: Ready", tui.CreatePulseText(tui.NewRGB(0, 255, 0), 40))
+layout.SetContentLine(1, "Progress: 50%", tui.CreateRainbowText("Progress: 50%", 15))
 
 // Set up animated footer
 layout.SetAnimatedFooter(1)
-layout.SetFooterLine(0, "Footer Info", gooey.CreateRainbowText("Footer Info", 18))
+layout.SetFooterLine(0, "Footer Info", tui.CreateRainbowText("Footer Info", 18))
 
 // Start animations
 layout.StartAnimations()
@@ -78,9 +78,9 @@ defer layout.StopAnimations()
 ### Animated Status Bar
 ```go
 // Create animated status bar
-statusBar := gooey.NewAnimatedStatusBar(0, 0, 80)
-statusBar.AddItem("CPU", "85%", "⚡", gooey.CreatePulseText(gooey.NewRGB(255, 100, 0), 30), gooey.NewStyle())
-statusBar.AddItem("Memory", "67%", "🧠", gooey.CreateRainbowText("67%", 20), gooey.NewStyle())
+statusBar := tui.NewAnimatedStatusBar(0, 0, 80)
+statusBar.AddItem("CPU", "85%", "⚡", tui.CreatePulseText(tui.NewRGB(255, 100, 0), 30), tui.NewStyle())
+statusBar.AddItem("Memory", "67%", "🧠", tui.CreateRainbowText("67%", 20), tui.NewStyle())
 
 // Add to animator
 layout.GetAnimator().AddElement(statusBar)
@@ -92,9 +92,9 @@ layout.GetAnimator().AddElement(statusBar)
 go func() {
     for {
         time.Sleep(500 * time.Millisecond)
-        layout.SetContentLine(0, "Status: Processing...", gooey.CreatePulseText(gooey.NewRGB(255, 255, 0), 40))
+        layout.SetContentLine(0, "Status: Processing...", tui.CreatePulseText(tui.NewRGB(255, 255, 0), 40))
         time.Sleep(500 * time.Millisecond)
-        layout.SetContentLine(0, "Status: Complete!", gooey.CreateRainbowText("Status: Complete!", 15))
+        layout.SetContentLine(0, "Status: Complete!", tui.CreateRainbowText("Status: Complete!", 15))
     }
 }()
 ```

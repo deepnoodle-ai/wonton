@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // ReflowApp demonstrates text reflow with animated width changes
@@ -18,13 +18,13 @@ type ReflowApp struct {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *ReflowApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *ReflowApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Exit on any key press or Ctrl+C
-		return []gooey.Cmd{gooey.Quit()}
+		return []tui.Cmd{tui.Quit()}
 
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		// Animate width on each tick
 		app.frame = e.Frame
 		app.width += app.direction
@@ -36,7 +36,7 @@ func (app *ReflowApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 		// Auto-quit after 200 frames
 		if app.frame >= 200 {
-			return []gooey.Cmd{gooey.Quit()}
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 
@@ -44,7 +44,7 @@ func (app *ReflowApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view tree.
-func (app *ReflowApp) View() gooey.View {
+func (app *ReflowApp) View() tui.View {
 	// Debug info at top
 	debugInfo := fmt.Sprintf("Width: %d | Frame: %d/200 | Press any key to exit", app.width, app.frame)
 
@@ -52,44 +52,44 @@ func (app *ReflowApp) View() gooey.View {
 	longText := "This is a long text that should wrap automatically when the container width decreases. It demonstrates text reflow in Gooey! The height of the box should adjust to fit the text."
 
 	// Wrap the text to the current width
-	wrapped := gooey.WrapText(longText, app.width-4) // -4 for border and padding
+	wrapped := tui.WrapText(longText, app.width-4) // -4 for border and padding
 
 	// Create the wrapping text box using Canvas for custom width control
-	wrappingBox := gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+	wrappingBox := tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 		// Split into lines and render
 		lines := strings.Split(wrapped, "\n")
 		for i, line := range lines {
 			if i >= bounds.Dy() {
 				break
 			}
-			frame.PrintStyled(0, i, line, gooey.NewStyle())
+			frame.PrintStyled(0, i, line, tui.NewStyle())
 		}
 	}).Size(app.width-4, len(strings.Split(wrapped, "\n")))
 
 	// Wrap in a border
-	borderedBox := gooey.Bordered(wrappingBox).
-		Border(&gooey.RoundedBorder).
-		BorderFg(gooey.ColorCyan)
+	borderedBox := tui.Bordered(wrappingBox).
+		Border(&tui.RoundedBorder).
+		BorderFg(tui.ColorCyan)
 
 	// Add a button below to show it moves
-	button := gooey.Text("I move down!").
-		Fg(gooey.ColorGreen).
+	button := tui.Text("I move down!").
+		Fg(tui.ColorGreen).
 		Bold()
 
 	// Main layout with everything centered
-	return gooey.VStack(
-		gooey.Text("%s", debugInfo),
-		gooey.Spacer(),
-		gooey.HStack(
-			gooey.Spacer(),
-			gooey.VStack(
+	return tui.VStack(
+		tui.Text("%s", debugInfo),
+		tui.Spacer(),
+		tui.HStack(
+			tui.Spacer(),
+			tui.VStack(
 				borderedBox,
-				gooey.Spacer().MinHeight(1),
+				tui.Spacer().MinHeight(1),
 				button,
 			),
-			gooey.Spacer(),
+			tui.Spacer(),
 		),
-		gooey.Spacer(),
+		tui.Spacer(),
 	)
 }
 
@@ -98,7 +98,7 @@ func main() {
 		width:     40,
 		direction: 1,
 	}
-	if err := gooey.Run(app, gooey.WithFPS(20)); err != nil {
+	if err := tui.Run(app, tui.WithFPS(20)); err != nil {
 		log.Fatal(err)
 	}
 }

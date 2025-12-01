@@ -218,9 +218,9 @@ This could be improved by adding `GetLayoutParams()` to `ComposableWidget` inter
 Widgets embed `BaseWidget` rather than delegating to it:
 ```go
 type MyWidget struct {
-    gooey.BaseWidget  // Embed
+    tui.BaseWidget  // Embed
     // vs
-    base gooey.BaseWidget  // Delegate
+    base tui.BaseWidget  // Delegate
 }
 ```
 
@@ -319,7 +319,7 @@ type Button struct {
 After:
 ```go
 type ComposableButton struct {
-    gooey.BaseWidget
+    tui.BaseWidget
     Label string
     // ...
 }
@@ -337,8 +337,8 @@ If you want to use old widgets in containers without rewriting them:
 ```go
 // Create adapter wrapper
 type WidgetAdapter struct {
-    gooey.BaseWidget
-    widget gooey.Widget
+    tui.BaseWidget
+    widget tui.Widget
 }
 
 func (wa *WidgetAdapter) Draw(frame RenderFrame) {

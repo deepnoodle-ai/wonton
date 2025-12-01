@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 	filename := os.Args[1]
 
 	// Load the recording first to validate the file
-	controller, err := gooey.LoadRecording(filename)
+	controller, err := tui.LoadRecording(filename)
 	if err != nil {
 		log.Fatalf("Failed to load recording: %v\n", err)
 	}
@@ -45,7 +45,7 @@ func main() {
 	fmt.Print("\033[2J\033[H") // Clear screen and home cursor
 
 	// Create terminal for playback
-	terminal, err := gooey.NewTerminal()
+	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)
 	}

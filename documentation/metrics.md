@@ -15,7 +15,7 @@ The metrics system tracks:
 ## Quick Start
 
 ```go
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 defer terminal.Close()
 
 // Enable metrics collection
@@ -23,7 +23,7 @@ terminal.EnableMetrics()
 
 // Render your TUI...
 frame, _ := terminal.BeginFrame()
-frame.PrintStyled(0, 0, "Hello!", gooey.NewStyle())
+frame.PrintStyled(0, 0, "Hello!", tui.NewStyle())
 terminal.EndFrame(frame)
 
 // Get metrics snapshot
@@ -193,7 +193,7 @@ for {
 
     // Show live metrics
     metrics := terminal.GetMetrics()
-    frame.PrintStyled(0, 0, metrics.Compact(), gooey.NewStyle())
+    frame.PrintStyled(0, 0, metrics.Compact(), tui.NewStyle())
 
     terminal.EndFrame(frame)
 }
@@ -203,7 +203,7 @@ for {
 
 ```go
 func TestRenderingPerformance(t *testing.T) {
-    term := gooey.NewTestTerminal(80, 24, &bytes.Buffer{})
+    term := tui.NewTestTerminal(80, 24, &bytes.Buffer{})
     term.EnableMetrics()
 
     // Render test content
@@ -259,7 +259,7 @@ if os.Getenv("GOOEY_DEBUG") == "1" {
 
 ```go
 func BenchmarkRendering(b *testing.B) {
-    term := gooey.NewTestTerminal(80, 24, io.Discard)
+    term := tui.NewTestTerminal(80, 24, io.Discard)
     term.EnableMetrics()
 
     b.ResetTimer()

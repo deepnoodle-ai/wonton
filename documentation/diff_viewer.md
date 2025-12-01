@@ -39,7 +39,7 @@ package main
 
 import (
     "fmt"
-    "github.com/deepnoodle-ai/gooey"
+    "github.com/deepnoodle-ai/gooey/tui"
 )
 
 func main() {
@@ -51,7 +51,7 @@ func main() {
 +new line`
 
     // Create diff viewer
-    viewer, err := gooey.NewDiffViewer(diffText, "go")
+    viewer, err := tui.NewDiffViewer(diffText, "go")
     if err != nil {
         panic(err)
     }
@@ -61,7 +61,7 @@ func main() {
     viewer.Init()
 
     // Render
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     frame, _ := terminal.BeginFrame()
     viewer.Draw(frame)
     terminal.EndFrame(frame)
@@ -183,7 +183,7 @@ renderedLines := renderer.RenderDiff(diff, "go")
 ### Default Theme
 
 ```go
-theme := gooey.DefaultDiffTheme()
+theme := tui.DefaultDiffTheme()
 // Dark green background for added lines
 // Dark red background for removed lines
 // Cyan for file headers
@@ -194,15 +194,15 @@ theme := gooey.DefaultDiffTheme()
 ### Custom Theme
 
 ```go
-theme := gooey.DiffTheme{
-    AddedBg:      gooey.RGB{R: 0, G: 100, B: 0},     // Dark green
-    AddedFg:      gooey.RGB{R: 150, G: 255, B: 150}, // Light green
-    RemovedBg:    gooey.RGB{R: 100, G: 0, B: 0},     // Dark red
-    RemovedFg:    gooey.RGB{R: 255, G: 150, B: 150}, // Light red
-    ContextStyle: gooey.NewStyle().WithForeground(gooey.ColorWhite),
-    HeaderStyle:  gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold(),
-    HunkStyle:    gooey.NewStyle().WithForeground(gooey.ColorBlue).WithBold(),
-    LineNumStyle: gooey.NewStyle().WithForeground(gooey.ColorBrightBlack),
+theme := tui.DiffTheme{
+    AddedBg:      tui.RGB{R: 0, G: 100, B: 0},     // Dark green
+    AddedFg:      tui.RGB{R: 150, G: 255, B: 150}, // Light green
+    RemovedBg:    tui.RGB{R: 100, G: 0, B: 0},     // Dark red
+    RemovedFg:    tui.RGB{R: 255, G: 150, B: 150}, // Light red
+    ContextStyle: tui.NewStyle().WithForeground(tui.ColorWhite),
+    HeaderStyle:  tui.NewStyle().WithForeground(tui.ColorCyan).WithBold(),
+    HunkStyle:    tui.NewStyle().WithForeground(tui.ColorBlue).WithBold(),
+    LineNumStyle: tui.NewStyle().WithForeground(tui.ColorBrightBlack),
     SyntaxTheme:  "dracula", // Any Chroma theme
 }
 
@@ -234,7 +234,7 @@ diffText := `diff --git a/main.go b/main.go
 -import "fmt"
 +import "log"`
 
-viewer, _ := gooey.NewDiffViewer(diffText, "go")
+viewer, _ := tui.NewDiffViewer(diffText, "go")
 viewer.SetBounds(image.Rect(0, 0, 80, 25))
 viewer.Init()
 ```
@@ -242,17 +242,17 @@ viewer.Init()
 ### Scrolling Through Large Diffs
 
 ```go
-viewer, _ := gooey.NewDiffViewer(largeDiffText, "python")
+viewer, _ := tui.NewDiffViewer(largeDiffText, "python")
 viewer.SetBounds(image.Rect(0, 0, 80, 25))
 viewer.Init()
 
 // Keyboard navigation
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyArrowDown}) // Scroll down 1 line
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyArrowUp})   // Scroll up 1 line
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyPageDown})  // Scroll down 1 page
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyPageUp})    // Scroll up 1 page
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyHome})      // Jump to top
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyEnd})       // Jump to bottom
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyArrowDown}) // Scroll down 1 line
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyArrowUp})   // Scroll up 1 line
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyPageDown})  // Scroll down 1 page
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyPageUp})    // Scroll up 1 page
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyHome})      // Jump to top
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyEnd})       // Jump to bottom
 
 // Programmatic scrolling
 viewer.ScrollTo(50)   // Scroll to line 50
@@ -265,11 +265,11 @@ viewer.ScrollBy(-5)   // Scroll up 5 lines
 For very large diffs or when syntax highlighting isn't needed:
 
 ```go
-viewer, _ := gooey.NewDiffViewer(diffText, "")
+viewer, _ := tui.NewDiffViewer(diffText, "")
 // Empty language string disables syntax highlighting
 
 // Or with custom renderer
-renderer := gooey.NewDiffRenderer()
+renderer := tui.NewDiffRenderer()
 renderer.SyntaxHighlight = false
 viewer.SetRenderer(renderer)
 ```
@@ -277,7 +277,7 @@ viewer.SetRenderer(renderer)
 ### Hide Line Numbers
 
 ```go
-renderer := gooey.NewDiffRenderer()
+renderer := tui.NewDiffRenderer()
 renderer.ShowLineNums = false
 viewer.SetRenderer(renderer)
 ```
@@ -287,7 +287,7 @@ viewer.SetRenderer(renderer)
 ```go
 import (
     "os/exec"
-    "github.com/deepnoodle-ai/gooey"
+    "github.com/deepnoodle-ai/gooey/tui"
 )
 
 // Get diff from git
@@ -298,7 +298,7 @@ if err != nil {
 }
 
 // Display in viewer
-viewer, err := gooey.NewDiffViewer(string(diffBytes), "go")
+viewer, err := tui.NewDiffViewer(string(diffBytes), "go")
 if err != nil {
     panic(err)
 }
@@ -322,7 +322,7 @@ diff --git a/file2.py b/file2.py
 -old
 +new`
 
-viewer, _ := gooey.NewDiffViewer(multiFileDiff, "auto")
+viewer, _ := tui.NewDiffViewer(multiFileDiff, "auto")
 // Will show both files with proper headers
 ```
 
@@ -331,8 +331,8 @@ viewer, _ := gooey.NewDiffViewer(multiFileDiff, "auto")
 For advanced use cases, use the renderer directly:
 
 ```go
-diff, _ := gooey.ParseUnifiedDiff(diffText)
-renderer := gooey.NewDiffRenderer()
+diff, _ := tui.ParseUnifiedDiff(diffText)
+renderer := tui.NewDiffRenderer()
 
 renderedLines := renderer.RenderDiff(diff, "go")
 
@@ -352,22 +352,22 @@ for _, line := range renderedLines {
 
 ```go
 // Create a container with diff viewer and other widgets
-container := gooey.NewContainer(gooey.NewVBoxLayout(1))
+container := tui.NewContainer(tui.NewVBoxLayout(1))
 
 // Add header
-header := gooey.NewComposableLabel("Git Diff Viewer")
+header := tui.NewComposableLabel("Git Diff Viewer")
 container.AddChild(header)
 
 // Add diff viewer
-viewer, _ := gooey.NewDiffViewer(diffText, "go")
-viewerParams := gooey.DefaultLayoutParams()
+viewer, _ := tui.NewDiffViewer(diffText, "go")
+viewerParams := tui.DefaultLayoutParams()
 viewerParams.Grow = 1 // Take all remaining space
 viewer.SetLayoutParams(viewerParams)
 container.AddChild(viewer)
 
 // Add footer with stats
 stats := fmt.Sprintf("Files: %d", len(viewer.GetDiff().Files))
-footer := gooey.NewComposableLabel(stats)
+footer := tui.NewComposableLabel(stats)
 container.AddChild(footer)
 ```
 
@@ -389,15 +389,15 @@ func getLanguageFromPath(path string) string {
     }
 }
 
-diff, _ := gooey.ParseUnifiedDiff(diffText)
+diff, _ := tui.ParseUnifiedDiff(diffText)
 language := getLanguageFromPath(diff.Files[0].NewPath)
-viewer := gooey.NewDiffViewerFromDiff(diff, language)
+viewer := tui.NewDiffViewerFromDiff(diff, language)
 ```
 
 ### Dynamic Diff Updates
 
 ```go
-viewer, _ := gooey.NewDiffViewer(initialDiff, "go")
+viewer, _ := tui.NewDiffViewer(initialDiff, "go")
 
 // Later, update the diff
 newDiffText := getNewDiff()
@@ -413,7 +413,7 @@ if err != nil {
 For very large diffs:
 
 ```go
-renderer := gooey.NewDiffRenderer()
+renderer := tui.NewDiffRenderer()
 
 // Disable syntax highlighting for speed
 renderer.SyntaxHighlight = false
@@ -519,7 +519,7 @@ diff --git a/file.txt b/file.txt
 
 Check that your diff is in unified format:
 ```go
-diff, err := gooey.ParseUnifiedDiff(diffText)
+diff, err := tui.ParseUnifiedDiff(diffText)
 if err != nil {
     log.Printf("Parse error: %v", err)
 }

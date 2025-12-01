@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // FilePickerDemoApp demonstrates the declarative FilePicker view.
 type FilePickerDemoApp struct {
 	currentDir string
-	files      []gooey.ListItem
+	files      []tui.ListItem
 	filter     string
 	selected   int
 	showHidden bool
@@ -41,16 +41,16 @@ func (app *FilePickerDemoApp) refreshFiles() {
 
 	files, err := os.ReadDir(app.currentDir)
 	if err != nil {
-		app.files = []gooey.ListItem{{Label: fmt.Sprintf("Error: %v", err)}}
+		app.files = []tui.ListItem{{Label: fmt.Sprintf("Error: %v", err)}}
 		return
 	}
 
-	var items []gooey.ListItem
+	var items []tui.ListItem
 
 	// Add ".." if not at root
 	parent := filepath.Dir(app.currentDir)
 	if parent != app.currentDir {
-		items = append(items, gooey.ListItem{Label: "..", Value: parent, Icon: "[DIR]"})
+		items = append(items, tui.ListItem{Label: "..", Value: parent, Icon: "[DIR]"})
 	}
 
 	// Sort: Directories first, then files
@@ -69,7 +69,7 @@ func (app *FilePickerDemoApp) refreshFiles() {
 	}
 
 	for _, d := range dirs {
-		items = append(items, gooey.ListItem{
+		items = append(items, tui.ListItem{
 			Label: "[DIR] " + d.Name(),
 			Value: filepath.Join(app.currentDir, d.Name()),
 			Icon:  "[DIR]",
@@ -77,7 +77,7 @@ func (app *FilePickerDemoApp) refreshFiles() {
 	}
 
 	for _, f := range regular {
-		items = append(items, gooey.ListItem{
+		items = append(items, tui.ListItem{
 			Label: f.Name(),
 			Value: filepath.Join(app.currentDir, f.Name()),
 		})
@@ -87,16 +87,16 @@ func (app *FilePickerDemoApp) refreshFiles() {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *FilePickerDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *FilePickerDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Quit on Ctrl+C or Escape
-		if e.Key == gooey.KeyCtrlC || e.Key == gooey.KeyEscape {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Key == tui.KeyCtrlC || e.Key == tui.KeyEscape {
+			return []tui.Cmd{tui.Quit()}
 		}
 
 		// Toggle hidden files on F2
-		if e.Key == gooey.KeyF2 {
+		if e.Key == tui.KeyF2 {
 			app.showHidden = !app.showHidden
 			app.refreshFiles()
 			if app.showHidden {
@@ -109,22 +109,22 @@ func (app *FilePickerDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 		// Handle navigation (these are passed to SelectList via InputRegistry)
 		switch e.Key {
-		case gooey.KeyArrowUp:
+		case tui.KeyArrowUp:
 			if app.selected > 0 {
 				app.selected--
 			}
 			return nil
-		case gooey.KeyArrowDown:
+		case tui.KeyArrowDown:
 			if app.selected < len(app.files)-1 {
 				app.selected++
 			}
 			return nil
-		case gooey.KeyEnter:
+		case tui.KeyEnter:
 			app.handleSelect()
 			return nil
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
 	}
@@ -169,23 +169,23 @@ func (app *FilePickerDemoApp) handleSelect() {
 }
 
 // View returns the declarative view structure.
-func (app *FilePickerDemoApp) View() gooey.View {
+func (app *FilePickerDemoApp) View() tui.View {
 	pickerHeight := app.height - 6
 	if pickerHeight < 5 {
 		pickerHeight = 5
 	}
 
-	return gooey.VStack(
-		gooey.Text("FILE PICKER DEMO").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
-		gooey.FilePicker(app.files, &app.filter, &app.selected).
+	return tui.VStack(
+		tui.Text("FILE PICKER DEMO").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
+		tui.FilePicker(app.files, &app.filter, &app.selected).
 			CurrentPath(app.currentDir).
 			Height(pickerHeight).
-			OnSelect(func(item gooey.ListItem) {
+			OnSelect(func(item tui.ListItem) {
 				app.handleSelect()
 			}),
-		gooey.Spacer().MinHeight(1),
-		gooey.Text("%s", app.statusMsg).Fg(gooey.ColorGreen),
+		tui.Spacer().MinHeight(1),
+		tui.Text("%s", app.statusMsg).Fg(tui.ColorGreen),
 	)
 }
 
@@ -194,7 +194,7 @@ func main() {
 	if err := app.Init(); err != nil {
 		log.Fatal(err)
 	}
-	if err := gooey.Run(app, gooey.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(app, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

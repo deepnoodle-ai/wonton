@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // Message represents a chat message
@@ -53,45 +53,45 @@ func (d *ClaudeStyleDemo) Init() error {
 }
 
 // View returns the declarative UI for this app
-func (d *ClaudeStyleDemo) View() gooey.View {
+func (d *ClaudeStyleDemo) View() tui.View {
 	// Calculate footer height: divider (1) + input lines + help line (1)
 	inputLines := strings.Count(d.input, "\n") + 1
 	footerHeight := 1 + inputLines + 1
 
-	return gooey.VStack(
+	return tui.VStack(
 		// Scrollable message area, anchored to bottom
-		gooey.Scroll(d.renderMessages(), &d.scrollY).Bottom(),
+		tui.Scroll(d.renderMessages(), &d.scrollY).Bottom(),
 
 		// Fixed footer: separator + input area
-		gooey.Height(footerHeight, gooey.VStack(
-			gooey.Divider().Fg(gooey.ColorCyan),
+		tui.Height(footerHeight, tui.VStack(
+			tui.Divider().Fg(tui.ColorCyan),
 			d.renderInputArea(),
 		)),
 	)
 }
 
 // HandleEvent processes events from the runtime
-func (d *ClaudeStyleDemo) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (d *ClaudeStyleDemo) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		return d.handleKeyEvent(e)
-	case gooey.MouseEvent:
+	case tui.MouseEvent:
 		return d.handleMouseEvent(e)
 	}
 
 	return nil
 }
 
-func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
-	if event.Type == gooey.MouseScroll {
+func (d *ClaudeStyleDemo) handleMouseEvent(event tui.MouseEvent) []tui.Cmd {
+	if event.Type == tui.MouseScroll {
 		switch event.Button {
-		case gooey.MouseButtonWheelUp:
+		case tui.MouseButtonWheelUp:
 			// Scroll up to see older messages
 			d.scrollY -= 3
 			if d.scrollY < 0 {
 				d.scrollY = 0
 			}
-		case gooey.MouseButtonWheelDown:
+		case tui.MouseButtonWheelDown:
 			// Scroll down to see newer messages
 			d.scrollY += 3
 		}
@@ -99,12 +99,12 @@ func (d *ClaudeStyleDemo) handleMouseEvent(event gooey.MouseEvent) []gooey.Cmd {
 	return nil
 }
 
-func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
+func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 	switch {
-	case event.Key == gooey.KeyCtrlC:
-		return []gooey.Cmd{gooey.Quit()}
+	case event.Key == tui.KeyCtrlC:
+		return []tui.Cmd{tui.Quit()}
 
-	case event.Key == gooey.KeyEnter:
+	case event.Key == tui.KeyEnter:
 		if event.Shift {
 			// Shift+Enter adds a new line
 			d.input += "\n"
@@ -123,7 +123,7 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 			}
 		}
 
-	case event.Key == gooey.KeyBackspace:
+	case event.Key == tui.KeyBackspace:
 		// Delete character
 		if len(d.input) > 0 {
 			d.input = d.input[:len(d.input)-1]
@@ -131,7 +131,7 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 		// Reset history browsing when editing
 		d.historyIndex = -1
 
-	case event.Key == gooey.KeyArrowUp:
+	case event.Key == tui.KeyArrowUp:
 		// Navigate to older history
 		if len(d.history) > 0 {
 			if d.historyIndex == -1 {
@@ -144,7 +144,7 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 			d.input = d.history[d.historyIndex]
 		}
 
-	case event.Key == gooey.KeyArrowDown:
+	case event.Key == tui.KeyArrowDown:
 		// Navigate to newer history
 		if d.historyIndex != -1 {
 			if d.historyIndex < len(d.history)-1 {
@@ -157,14 +157,14 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 			}
 		}
 
-	case event.Key == gooey.KeyPageUp:
+	case event.Key == tui.KeyPageUp:
 		// Scroll up to see older messages (decrease offset toward top)
 		d.scrollY -= 10
 		if d.scrollY < 0 {
 			d.scrollY = 0
 		}
 
-	case event.Key == gooey.KeyPageDown:
+	case event.Key == tui.KeyPageDown:
 		// Scroll down to see newer messages (increase offset toward bottom)
 		// The scroll view will clamp to maxScroll
 		d.scrollY += 10
@@ -179,62 +179,62 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event gooey.KeyEvent) []gooey.Cmd {
 }
 
 // renderMessages returns a view for all messages
-func (d *ClaudeStyleDemo) renderMessages() gooey.View {
+func (d *ClaudeStyleDemo) renderMessages() tui.View {
 	// Build all message views
-	var messageViews []gooey.View
+	var messageViews []tui.View
 
 	for i, msg := range d.messages {
 		// Add spacing between messages (except before first)
 		if i > 0 {
-			messageViews = append(messageViews, gooey.Spacer().MinHeight(1))
+			messageViews = append(messageViews, tui.Spacer().MinHeight(1))
 		}
 
 		messageViews = append(messageViews, d.renderMessage(msg))
 	}
 
 	// Wrap in a VStack with left padding
-	return gooey.PaddingHV(2, 0, gooey.VStack(messageViews...))
+	return tui.PaddingHV(2, 0, tui.VStack(messageViews...))
 }
 
 // renderMessage returns a view for a single message
-func (d *ClaudeStyleDemo) renderMessage(msg Message) gooey.View {
+func (d *ClaudeStyleDemo) renderMessage(msg Message) tui.View {
 	// Determine header and style based on role
 	var header string
-	var headerColor gooey.Color
+	var headerColor tui.Color
 
 	if msg.Role == "user" {
 		header = "You:"
-		headerColor = gooey.ColorCyan
+		headerColor = tui.ColorCyan
 	} else {
 		header = "Claude Code:"
-		headerColor = gooey.ColorWhite
+		headerColor = tui.ColorWhite
 	}
 
 	// Split content into lines for WrappedText
 	contentLines := strings.Split(msg.Content, "\n")
-	var contentViews []gooey.View
+	var contentViews []tui.View
 
 	for _, line := range contentLines {
 		if line == "" {
-			contentViews = append(contentViews, gooey.Text(""))
+			contentViews = append(contentViews, tui.Text(""))
 		} else {
-			contentViews = append(contentViews, gooey.WrappedText(line).Fg(headerColor))
+			contentViews = append(contentViews, tui.WrappedText(line).Fg(headerColor))
 		}
 	}
 
-	return gooey.VStack(
-		gooey.Text(header).Bold().Fg(headerColor),
-		gooey.PaddingHV(2, 0, gooey.VStack(contentViews...)),
+	return tui.VStack(
+		tui.Text("%s", header).Bold().Fg(headerColor),
+		tui.PaddingHV(2, 0, tui.VStack(contentViews...)),
 	)
 }
 
 // renderInputArea returns a view for the input area
-func (d *ClaudeStyleDemo) renderInputArea() gooey.View {
+func (d *ClaudeStyleDemo) renderInputArea() tui.View {
 	// Split input into lines
 	inputLines := strings.Split(d.input, "\n")
 
 	// Build input line views
-	var inputViews []gooey.View
+	var inputViews []tui.View
 
 	for i, line := range inputLines {
 		var prefix string
@@ -251,9 +251,9 @@ func (d *ClaudeStyleDemo) renderInputArea() gooey.View {
 		}
 
 		inputViews = append(inputViews,
-			gooey.HStack(
-				gooey.Text(prefix).Bold().Fg(gooey.ColorGreen),
-				gooey.Text(displayLine),
+			tui.HStack(
+				tui.Text("%s", prefix).Bold().Fg(tui.ColorGreen),
+				tui.Text("%s", displayLine),
 			),
 		)
 	}
@@ -261,12 +261,12 @@ func (d *ClaudeStyleDemo) renderInputArea() gooey.View {
 	// Help text at the bottom, right-aligned
 	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
 
-	return gooey.VStack(
-		gooey.VStack(inputViews...),
-		gooey.Spacer(),
-		gooey.HStack(
-			gooey.Spacer(),
-			gooey.Text(helpText).Dim(),
+	return tui.VStack(
+		tui.VStack(inputViews...),
+		tui.Spacer(),
+		tui.HStack(
+			tui.Spacer(),
+			tui.Text("%s", helpText).Dim(),
 		),
 	)
 }
@@ -313,7 +313,7 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 }
 
 func main() {
-	if err := gooey.Run(&ClaudeStyleDemo{}, gooey.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(&ClaudeStyleDemo{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // PasswordDemoApp demonstrates password input using declarative View style.
@@ -12,54 +12,54 @@ type PasswordDemoApp struct {
 	submitted bool
 }
 
-func (app *PasswordDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *PasswordDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		if app.submitted {
-			return []gooey.Cmd{gooey.Quit()}
+			return []tui.Cmd{tui.Quit()}
 		}
 
 		switch e.Key {
-		case gooey.KeyEnter:
+		case tui.KeyEnter:
 			app.submitted = true
 			return nil
-		case gooey.KeyEscape, gooey.KeyCtrlC:
-			return []gooey.Cmd{gooey.Quit()}
+		case tui.KeyEscape, tui.KeyCtrlC:
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 	return nil
 }
 
-func (app *PasswordDemoApp) View() gooey.View {
-	headerStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan).WithBold()
-	promptStyle := gooey.NewStyle().WithForeground(gooey.ColorYellow)
-	infoStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-	successStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen)
+func (app *PasswordDemoApp) View() tui.View {
+	headerStyle := tui.NewStyle().WithForeground(tui.ColorCyan).WithBold()
+	promptStyle := tui.NewStyle().WithForeground(tui.ColorYellow)
+	infoStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
+	successStyle := tui.NewStyle().WithForeground(tui.ColorGreen)
 
 	if app.submitted {
-		return gooey.VStack(
-			gooey.Text("Password Input Demo").Style(headerStyle),
-			gooey.Spacer(),
-			gooey.Text("Password received (%d chars)", len(app.password)).Style(successStyle),
-			gooey.Spacer(),
-			gooey.Text("Press any key to exit").Style(infoStyle),
+		return tui.VStack(
+			tui.Text("Password Input Demo").Style(headerStyle),
+			tui.Spacer(),
+			tui.Text("Password received (%d chars)", len(app.password)).Style(successStyle),
+			tui.Spacer(),
+			tui.Text("Press any key to exit").Style(infoStyle),
 		)
 	}
 
-	return gooey.VStack(
-		gooey.Text("Password Input Demo").Style(headerStyle),
-		gooey.Spacer(),
-		gooey.HStack(
-			gooey.Text("Password: ").Style(promptStyle),
-			gooey.Input(&app.password).Mask('*').Placeholder("enter password").Width(30),
+	return tui.VStack(
+		tui.Text("Password Input Demo").Style(headerStyle),
+		tui.Spacer(),
+		tui.HStack(
+			tui.Text("Password: ").Style(promptStyle),
+			tui.Input(&app.password).Mask('*').Placeholder("enter password").Width(30),
 		),
-		gooey.Spacer(),
-		gooey.Text("Enter to submit, Esc to quit").Style(infoStyle),
+		tui.Spacer(),
+		tui.Text("Enter to submit, Esc to quit").Style(infoStyle),
 	)
 }
 
 func main() {
-	if err := gooey.Run(&PasswordDemoApp{}); err != nil {
+	if err := tui.Run(&PasswordDemoApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

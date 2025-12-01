@@ -49,7 +49,7 @@ go run examples/shift_enter_demo/main.go
 
 ```go
 // In HandleEvent:
-case gooey.KeyEnter:
+case tui.KeyEnter:
     if e.Shift {
         // Shift+Enter (or backslash+Enter): Add newline
         app.buffer = insertRune(app.buffer, app.cursor, '\n')

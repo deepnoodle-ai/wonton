@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 type ShiftEnterApp struct {
@@ -12,54 +12,54 @@ type ShiftEnterApp struct {
 	shiftEntered bool
 }
 
-func (app *ShiftEnterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *ShiftEnterApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		app.lastKey = fmt.Sprintf("Key=%d Rune=%q Shift=%v Ctrl=%v Alt=%v",
 			e.Key, e.Rune, e.Shift, e.Ctrl, e.Alt)
 
-		if e.Key == gooey.KeyEnter && e.Shift {
+		if e.Key == tui.KeyEnter && e.Shift {
 			app.shiftEntered = true
 		}
 
-		if e.Key == gooey.KeyCtrlC || e.Key == gooey.KeyEscape {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Key == tui.KeyCtrlC || e.Key == tui.KeyEscape {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 	return nil
 }
 
-func (app *ShiftEnterApp) View() gooey.View {
+func (app *ShiftEnterApp) View() tui.View {
 	var statusText string
-	var statusStyle gooey.Style
+	var statusStyle tui.Style
 	if app.shiftEntered {
 		statusText = "Shift+Enter detected!"
-		statusStyle = gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+		statusStyle = tui.NewStyle().WithForeground(tui.ColorGreen).WithBold()
 	} else {
 		statusText = "Waiting..."
-		statusStyle = gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+		statusStyle = tui.NewStyle().WithForeground(tui.ColorBrightBlack)
 	}
 
-	var lastKeyView gooey.View = gooey.Empty()
+	var lastKeyView tui.View = tui.Empty()
 	if app.lastKey != "" {
-		lastKeyView = gooey.Text("Last key: %s", app.lastKey).Dim()
+		lastKeyView = tui.Text("Last key: %s", app.lastKey).Dim()
 	}
 
-	return gooey.VStack(
-		gooey.Text("Shift+Enter Detection Demo").Fg(gooey.ColorCyan).Bold(),
-		gooey.Spacer(),
-		gooey.Text("Press Shift+Enter to test detection"),
-		gooey.Spacer(),
-		gooey.Text("%s", statusText).Style(statusStyle),
-		gooey.Spacer(),
+	return tui.VStack(
+		tui.Text("Shift+Enter Detection Demo").Fg(tui.ColorCyan).Bold(),
+		tui.Spacer(),
+		tui.Text("Press Shift+Enter to test detection"),
+		tui.Spacer(),
+		tui.Text("%s", statusText).Style(statusStyle),
+		tui.Spacer(),
 		lastKeyView,
-		gooey.Spacer(),
-		gooey.Text("Press Ctrl+C or Esc to quit").Dim(),
+		tui.Spacer(),
+		tui.Text("Press Ctrl+C or Esc to quit").Dim(),
 	)
 }
 
 func main() {
-	if err := gooey.Run(&ShiftEnterApp{}); err != nil {
+	if err := tui.Run(&ShiftEnterApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

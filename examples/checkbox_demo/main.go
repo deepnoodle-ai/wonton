@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // CheckboxDemoApp demonstrates the CheckboxList declarative view.
@@ -28,19 +28,19 @@ func (app *CheckboxDemoApp) Init() error {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *CheckboxDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *CheckboxDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 		// Handle keyboard navigation
 		switch e.Key {
-		case gooey.KeyArrowUp:
+		case tui.KeyArrowUp:
 			if app.cursor > 0 {
 				app.cursor--
 			}
-		case gooey.KeyArrowDown:
+		case tui.KeyArrowDown:
 			if app.cursor < len(app.items)-1 {
 				app.cursor++
 			}
@@ -54,7 +54,7 @@ func (app *CheckboxDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view structure.
-func (app *CheckboxDemoApp) View() gooey.View {
+func (app *CheckboxDemoApp) View() tui.View {
 	// Get selected items for display
 	var selected []string
 	for i, item := range app.items {
@@ -68,48 +68,48 @@ func (app *CheckboxDemoApp) View() gooey.View {
 	}
 
 	// Build checkbox items
-	items := make([]gooey.ListItem, len(app.items))
+	items := make([]tui.ListItem, len(app.items))
 	for i, item := range app.items {
-		items[i] = gooey.ListItem{Label: item, Value: item}
+		items[i] = tui.ListItem{Label: item, Value: item}
 	}
 
-	return gooey.VStack(
+	return tui.VStack(
 		// Header
-		gooey.HeaderBar("Checkbox Demo").Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
+		tui.HeaderBar("Checkbox Demo").Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 
 		// Divider
-		gooey.Divider(),
+		tui.Divider(),
 
 		// Spacing
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
 		// Checkbox list using new declarative view
-		gooey.CheckboxList(items, app.checked, &app.cursor).
-			Fg(gooey.ColorWhite).
-			CursorFg(gooey.ColorGreen),
+		tui.CheckboxList(items, app.checked, &app.cursor).
+			Fg(tui.ColorWhite).
+			CursorFg(tui.ColorGreen),
 
 		// Spacing
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
 		// Selected items display
-		gooey.Text("%s", selectedMsg).Fg(gooey.ColorGreen),
+		tui.Text("%s", selectedMsg).Fg(tui.ColorGreen),
 
 		// Spacing
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
 		// Help text
-		gooey.Text("Press Space to toggle, Arrows to move, q to quit.").Dim(),
+		tui.Text("Press Space to toggle, Arrows to move, q to quit.").Dim(),
 
 		// Flexible spacer to push footer to bottom
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Footer
-		gooey.StatusBar("Press 'q' to quit"),
+		tui.StatusBar("Press 'q' to quit"),
 	).Padding(2)
 }
 
 func main() {
-	if err := gooey.Run(&CheckboxDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(&CheckboxDemoApp{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

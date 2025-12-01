@@ -303,15 +303,15 @@ This works because containers always call `frame.SubFrame(childBounds)` before p
 
 ```go
 // 1. Initialize terminal
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 defer terminal.Restore()
 
 // 2. Create animated layout (30 FPS)
-layout := gooey.NewAnimatedInputLayout(terminal, 30)
+layout := tui.NewAnimatedInputLayout(terminal, 30)
 
 // 3. Set up animated regions
 layout.SetAnimatedHeader(1)
-layout.SetHeaderLine(0, "My App", gooey.CreateRainbowText("My App", 20))
+layout.SetHeaderLine(0, "My App", tui.CreateRainbowText("My App", 20))
 
 // 4. Start animations
 layout.StartAnimations()
@@ -340,11 +340,11 @@ type CustomAnimation struct {
     Speed int
 }
 
-func (a *CustomAnimation) GetStyle(frame uint64, charIndex, totalChars int) gooey.Style {
+func (a *CustomAnimation) GetStyle(frame uint64, charIndex, totalChars int) tui.Style {
     // Return style based on frame counter and character position
     offset := int(frame/uint64(a.Speed)) + charIndex
     color := calculateColor(offset)
-    return gooey.NewStyle().WithFgRGB(color)
+    return tui.NewStyle().WithFgRGB(color)
 }
 ```
 
@@ -352,25 +352,25 @@ func (a *CustomAnimation) GetStyle(frame uint64, charIndex, totalChars int) gooe
 
 ```go
 // Create main container with vertical layout
-main := gooey.NewContainer(gooey.NewVBoxLayout(2))
+main := tui.NewContainer(tui.NewVBoxLayout(2))
 
 // Add header
-header := gooey.NewComposableLabel("My Application")
-header.WithStyle(gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan))
+header := tui.NewComposableLabel("My Application")
+header.WithStyle(tui.NewStyle().WithBold().WithForeground(tui.ColorCyan))
 main.AddChild(header)
 
 // Create button bar with horizontal layout
-buttonBar := gooey.NewContainer(gooey.NewHBoxLayout(2))
-buttonBar.AddChild(gooey.NewComposableButton("Save", onSave))
-buttonBar.AddChild(gooey.NewComposableButton("Cancel", onCancel))
+buttonBar := tui.NewContainer(tui.NewHBoxLayout(2))
+buttonBar.AddChild(tui.NewComposableButton("Save", onSave))
+buttonBar.AddChild(tui.NewComposableButton("Cancel", onCancel))
 main.AddChild(buttonBar)
 
 // Create content area with border and flex-grow
-content := gooey.NewContainerWithBorder(
-    gooey.NewVBoxLayout(1),
-    &gooey.RoundedBorder,
+content := tui.NewContainerWithBorder(
+    tui.NewVBoxLayout(1),
+    &tui.RoundedBorder,
 )
-contentParams := gooey.DefaultLayoutParams()
+contentParams := tui.DefaultLayoutParams()
 contentParams.Grow = 1  // Take all remaining space
 content.SetLayoutParams(contentParams)
 main.AddChild(content)
@@ -389,25 +389,25 @@ terminal.EndFrame(frame)
 
 ```go
 // Create flexbox container
-flex := gooey.NewContainer(
-    gooey.NewFlexLayout().
-        WithDirection(gooey.FlexRow).
-        WithJustify(gooey.FlexJustifySpaceBetween).
-        WithAlignItems(gooey.FlexAlignItemsCenter).
+flex := tui.NewContainer(
+    tui.NewFlexLayout().
+        WithDirection(tui.FlexRow).
+        WithJustify(tui.FlexJustifySpaceBetween).
+        WithAlignItems(tui.FlexAlignItemsCenter).
         WithSpacing(2),
 )
 
 // Add items with different flex behaviors
-label1 := gooey.NewComposableLabel("Fixed")
+label1 := tui.NewComposableLabel("Fixed")
 flex.AddChild(label1)
 
-label2 := gooey.NewComposableLabel("Grows")
-params := gooey.DefaultLayoutParams()
+label2 := tui.NewComposableLabel("Grows")
+params := tui.DefaultLayoutParams()
 params.Grow = 1  // This label will grow to fill space
 label2.SetLayoutParams(params)
 flex.AddChild(label2)
 
-label3 := gooey.NewComposableLabel("Fixed")
+label3 := tui.NewComposableLabel("Fixed")
 flex.AddChild(label3)
 ```
 
@@ -476,4 +476,4 @@ Additional documentation in `documentation/`:
 
 - `golang.org/x/term` - Terminal raw mode and control
 - `github.com/mattn/go-runewidth` - Unicode width calculations for proper alignment
-- `github.com/stretchr/testify` - Testing assertions
+- Internal `assert` and `require` packages for testing assertions

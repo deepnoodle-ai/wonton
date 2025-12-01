@@ -19,13 +19,13 @@ Three modes control how pasted content is shown:
 
 ```go
 // PasteDisplayNormal - Default: shows content as typed
-input.WithPasteDisplayMode(gooey.PasteDisplayNormal)
+input.WithPasteDisplayMode(tui.PasteDisplayNormal)
 
 // PasteDisplayPlaceholder - Shows "[pasted N lines]" instead
-input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
+input.WithPasteDisplayMode(tui.PasteDisplayPlaceholder)
 
 // PasteDisplayHidden - Inserts silently without visual feedback
-input.WithPasteDisplayMode(gooey.PasteDisplayHidden)
+input.WithPasteDisplayMode(tui.PasteDisplayHidden)
 ```
 
 **Use cases:**
@@ -41,20 +41,20 @@ Callbacks that receive paste information and can:
 - **Modify** the pasted content before insertion
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     // info.Content   - the pasted text
     // info.LineCount - number of lines (including trailing newline)
     // info.ByteCount - total bytes
 
     // Option 1: Accept as-is
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 
     // Option 2: Reject completely
-    return gooey.PasteReject, ""
+    return tui.PasteReject, ""
 
     // Option 3: Modify content
     cleaned := sanitize(info.Content)
-    return gooey.PasteModified, cleaned
+    return tui.PasteModified, cleaned
 })
 ```
 
@@ -63,13 +63,13 @@ input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, s
 #### Size Limits
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     maxBytes := 10000
     if info.ByteCount > maxBytes {
         fmt.Printf("Paste too large: %d bytes (max %d)\\n", info.ByteCount, maxBytes)
-        return gooey.PasteReject, ""
+        return tui.PasteReject, ""
     }
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
@@ -80,32 +80,32 @@ import "regexp"
 
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     cleaned := ansiRegex.ReplaceAllString(info.Content, "")
     if cleaned != info.Content {
-        return gooey.PasteModified, cleaned
+        return tui.PasteModified, cleaned
     }
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
 #### Password Field Protection
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     println("Paste not allowed in password fields")
-    return gooey.PasteReject, ""
+    return tui.PasteReject, ""
 })
 ```
 
 #### Multi-line Detection
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     if info.LineCount > 1 {
         fmt.Printf("Warning: Pasting %d lines\\n", info.LineCount)
     }
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
@@ -114,8 +114,8 @@ input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, s
 When using `PasteDisplayPlaceholder`, customize the appearance:
 
 ```go
-placeholderStyle := gooey.NewStyle().
-    WithForeground(gooey.ColorMagenta).
+placeholderStyle := tui.NewStyle().
+    WithForeground(tui.ColorMagenta).
     WithItalic()
 
 input.WithPlaceholderStyle(placeholderStyle)
@@ -205,25 +205,25 @@ import (
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     terminal.EnableRawMode()
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
-    input.WithPrompt("Paste content: ", gooey.NewStyle())
+    input := tui.NewInput(terminal)
+    input.WithPrompt("Paste content: ", tui.NewStyle())
 
     // Use placeholder for multi-line pastes
-    input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
+    input.WithPasteDisplayMode(tui.PasteDisplayPlaceholder)
 
     // Add validation and sanitization
-    input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+    input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
         // Enforce size limit
         if info.ByteCount > 5000 {
             fmt.Printf("Paste rejected: %d bytes exceeds limit\\n", info.ByteCount)
-            return gooey.PasteReject, ""
+            return tui.PasteReject, ""
         }
 
         // Strip ANSI codes
@@ -231,10 +231,10 @@ func main() {
 
         if cleaned != info.Content {
             fmt.Println("ANSI codes stripped from paste")
-            return gooey.PasteModified, cleaned
+            return tui.PasteModified, cleaned
         }
 
-        return gooey.PasteAccept, ""
+        return tui.PasteAccept, ""
     })
 
     text, _ := input.Read()
@@ -245,7 +245,7 @@ func main() {
 ### Example: Code Editor with Syntax Check
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     // For large code pastes, validate syntax
     if info.LineCount > 10 {
         fset := token.NewFileSet()
@@ -255,7 +255,7 @@ input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, s
             // Still accept it, just warn
         }
     }
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
@@ -313,7 +313,7 @@ No changes required! The enhancements are opt-in:
 ```go
 // Old code - still works exactly the same
 terminal.EnableBracketedPaste()
-input := gooey.NewInput(terminal)
+input := tui.NewInput(terminal)
 text, _ := input.Read()
 ```
 
@@ -321,9 +321,9 @@ text, _ := input.Read()
 
 ```go
 // Add a handler - existing behavior preserved
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     // Your validation logic
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
@@ -331,7 +331,7 @@ input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, s
 
 ```go
 // Opt into placeholder mode
-input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
+input.WithPasteDisplayMode(tui.PasteDisplayPlaceholder)
 ```
 
 ## Future Enhancements

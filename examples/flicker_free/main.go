@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // FlickerFreeApp demonstrates flicker-free rendering of rapidly updating content.
@@ -24,20 +24,20 @@ type FlickerFreeApp struct {
 
 	// Random generation
 	chars  []string
-	colors []gooey.RGB
+	colors []tui.RGB
 }
 
 // Init initializes the application state.
 func (app *FlickerFreeApp) Init() error {
 	// Initialize random data
 	app.chars = []string{"@", "#", "$", "%", "&", "*", "+", "=", "?", "!"}
-	app.colors = []gooey.RGB{
-		gooey.NewRGB(255, 0, 0),
-		gooey.NewRGB(0, 255, 0),
-		gooey.NewRGB(0, 0, 255),
-		gooey.NewRGB(255, 255, 0),
-		gooey.NewRGB(0, 255, 255),
-		gooey.NewRGB(255, 0, 255),
+	app.colors = []tui.RGB{
+		tui.NewRGB(255, 0, 0),
+		tui.NewRGB(0, 255, 0),
+		tui.NewRGB(0, 0, 255),
+		tui.NewRGB(255, 255, 0),
+		tui.NewRGB(0, 255, 255),
+		tui.NewRGB(255, 0, 255),
 	}
 
 	// Initialize empty quadrant data
@@ -49,21 +49,21 @@ func (app *FlickerFreeApp) Init() error {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *FlickerFreeApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *FlickerFreeApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Handle keyboard input
-		if e.Key == gooey.KeyCtrlC || e.Rune == 'q' || e.Rune == 'Q' {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Key == tui.KeyCtrlC || e.Rune == 'q' || e.Rune == 'Q' {
+			return []tui.Cmd{tui.Quit()}
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		// Update dimensions on resize
 		app.width = e.Width
 		app.height = e.Height
 		app.updateLayout()
 
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		// Update quadrant data every 3 ticks (~100ms at 30fps, faster than original 10ms but still rapid)
 		app.tickCount++
 		if app.tickCount%3 == 0 {
@@ -125,17 +125,17 @@ func (app *FlickerFreeApp) updateQuadrant(quadrant int) {
 }
 
 // View returns the declarative view structure.
-func (app *FlickerFreeApp) View() gooey.View {
-	return gooey.VStack(
+func (app *FlickerFreeApp) View() tui.View {
+	return tui.VStack(
 		// Header
-		gooey.Text("⚡ Flicker-Free Update Demo ⚡").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("Updates occur rapidly. Press Ctrl+C or Q to exit.").Fg(gooey.ColorWhite),
-		gooey.Text("--------------------------------------------------").Fg(gooey.ColorWhite),
+		tui.Text("⚡ Flicker-Free Update Demo ⚡").Bold().Fg(tui.ColorCyan),
+		tui.Text("Updates occur rapidly. Press Ctrl+C or Q to exit.").Fg(tui.ColorWhite),
+		tui.Text("--------------------------------------------------").Fg(tui.ColorWhite),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Quadrants canvas
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 			width := bounds.Dx()
 			height := bounds.Dy()
 
@@ -151,17 +151,17 @@ func (app *FlickerFreeApp) View() gooey.View {
 			midY := height / 2
 
 			// Draw quadrants with colored borders
-			quadrantColors := []gooey.Color{
-				gooey.ColorRed,
-				gooey.ColorGreen,
-				gooey.ColorBlue,
-				gooey.ColorYellow,
+			quadrantColors := []tui.Color{
+				tui.ColorRed,
+				tui.ColorGreen,
+				tui.ColorBlue,
+				tui.ColorYellow,
 			}
 
 			quadrantPositions := [][2]int{
-				{2, 1},           // Q1: top-left
-				{midX + 2, 1},    // Q2: top-right
-				{2, midY + 2},    // Q3: bottom-left
+				{2, 1},               // Q1: top-left
+				{midX + 2, 1},        // Q2: top-right
+				{2, midY + 2},        // Q3: bottom-left
 				{midX + 2, midY + 2}, // Q4: bottom-right
 			}
 
@@ -172,7 +172,7 @@ func (app *FlickerFreeApp) View() gooey.View {
 
 				// Draw quadrant label
 				label := fmt.Sprintf("Q%d", q+1)
-				labelStyle := gooey.NewStyle().WithForeground(quadrantColors[q]).WithBold()
+				labelStyle := tui.NewStyle().WithForeground(quadrantColors[q]).WithBold()
 				frame.PrintStyled(bounds.Min.X+x, bounds.Min.Y+y-1, label, labelStyle)
 
 				// Draw quadrant data
@@ -184,7 +184,7 @@ func (app *FlickerFreeApp) View() gooey.View {
 
 					// Create animated style for this line
 					color := app.colors[rand.Intn(len(app.colors))]
-					lineStyle := gooey.NewStyle().WithFgRGB(color)
+					lineStyle := tui.NewStyle().WithFgRGB(color)
 
 					// Draw the line (truncate if too long)
 					maxWidth := midX - 6
@@ -203,7 +203,7 @@ func (app *FlickerFreeApp) View() gooey.View {
 }
 
 func main() {
-	if err := gooey.Run(&FlickerFreeApp{}); err != nil {
+	if err := tui.Run(&FlickerFreeApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

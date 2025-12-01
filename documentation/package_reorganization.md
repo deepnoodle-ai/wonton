@@ -224,7 +224,7 @@ gooey/
 
 - **Clear separation of abstraction levels**: `render/` is low-level primitives, `input/` handles user input, root provides high-level widgets
 - **Consolidates fragmented input system**: All 6 input-related files in one place
-- **Simple user-facing API**: Users still do `gooey.NewContainer()`, not `widget.NewContainer()`
+- **Simple user-facing API**: Users still do `tui.NewContainer()`, not `widget.NewContainer()`
 - **Minimal breaking changes**: Most user code only imports `gooey`
 - **Clear import hierarchy**: widgets → input → render
 
@@ -320,7 +320,7 @@ Additional considerations:
 - **More breaking changes**: Users must import multiple packages
 - **Cross-cutting concerns unclear**: Where do animation and mouse live?
 - **More complex**: Higher cognitive overhead for simple use cases
-- **API verbosity**: `widget.NewContainer()` instead of `gooey.NewContainer()`
+- **API verbosity**: `widget.NewContainer()` instead of `tui.NewContainer()`
 
 #### Migration Impact
 
@@ -373,7 +373,7 @@ recording/
 
 **Root package** (23 files)
 - Keeps high-level API simple and friendly
-- Both widget systems accessible as `gooey.NewContainer()` or `gooey.NewButton()`
+- Both widget systems accessible as `tui.NewContainer()` or `tui.NewButton()`
 - Animation, mouse, recording, utilities all stay together
 - Avoids forcing users to choose between `widget/` and `component/`
 
@@ -391,8 +391,8 @@ recording/
 ```go
 import "github.com/myzie/gooey"
 
-term, _ := gooey.NewTerminal()
-container := gooey.NewContainer(gooey.NewVBoxLayout(2))
+term, _ := tui.NewTerminal()
+container := tui.NewContainer(tui.NewVBoxLayout(2))
 ```
 
 **Advanced usage (users needing low-level control):**
@@ -403,7 +403,7 @@ import (
     "github.com/myzie/gooey/input"
 )
 
-term, _ := gooey.NewTerminal()
+term, _ := tui.NewTerminal()
 style := render.NewStyle().WithFgRGB(render.RGB{255, 0, 0})
 decoder := input.NewKeyDecoder(os.Stdin)
 ```
@@ -418,7 +418,7 @@ type KeyEvent = input.KeyEvent
 var NewStyle = render.NewStyle
 ```
 
-This allows most users to continue using `gooey.Style` without importing `render/`.
+This allows most users to continue using `tui.Style` without importing `render/`.
 
 ---
 

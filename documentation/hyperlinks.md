@@ -30,7 +30,7 @@ OSC 8 is a terminal escape sequence standard for creating hyperlinks. When suppo
 
 ```go
 // Create a hyperlink
-link := gooey.NewHyperlink("https://github.com/myzie/gooey", "Gooey on GitHub")
+link := tui.NewHyperlink("https://github.com/myzie/gooey", "Gooey on GitHub")
 
 // Render it in a frame
 frame, _ := term.BeginFrame()
@@ -43,11 +43,11 @@ term.EndFrame(frame)
 By default, hyperlinks are styled blue and underlined. You can customize the style:
 
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 
 // Custom style
-customStyle := gooey.NewStyle().
-    WithForeground(gooey.ColorMagenta).
+customStyle := tui.NewStyle().
+    WithForeground(tui.ColorMagenta).
     WithBold().
     WithUnderline()
 
@@ -59,11 +59,11 @@ link = link.WithStyle(customStyle)
 You can render multiple links on the same line or throughout your UI:
 
 ```go
-linkA := gooey.NewHyperlink("https://go.dev", "Go")
-linkB := gooey.NewHyperlink("https://github.com", "GitHub")
+linkA := tui.NewHyperlink("https://go.dev", "Go")
+linkB := tui.NewHyperlink("https://github.com", "GitHub")
 
 frame.PrintHyperlink(5, 10, linkA)
-frame.PrintStyled(5 + len("Go") + 2, 10, " | ", gooey.NewStyle())
+frame.PrintStyled(5 + len("Go") + 2, 10, " | ", tui.NewStyle())
 frame.PrintHyperlink(5 + len("Go") + 5, 10, linkB)
 ```
 
@@ -72,7 +72,7 @@ frame.PrintHyperlink(5 + len("Go") + 5, 10, linkB)
 For terminals that don't support OSC 8, or when you want to explicitly show the URL, use the fallback format:
 
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 
 // Renders as: "Example (https://example.com)"
 frame.PrintHyperlinkFallback(10, 5, link)
@@ -106,7 +106,7 @@ Creates a new hyperlink with default blue underlined styling.
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://github.com", "GitHub")
+link := tui.NewHyperlink("https://github.com", "GitHub")
 ```
 
 #### `Hyperlink.WithStyle(style Style) Hyperlink`
@@ -120,8 +120,8 @@ Sets custom styling for the hyperlink.
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
-link = link.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorRed))
+link := tui.NewHyperlink("https://example.com", "Example")
+link = link.WithStyle(tui.NewStyle().WithForeground(tui.ColorRed))
 ```
 
 #### `Hyperlink.Validate() error`
@@ -132,7 +132,7 @@ Validates that the hyperlink has valid components.
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 if err := link.Validate(); err != nil {
     log.Printf("Invalid hyperlink: %v", err)
 }
@@ -153,7 +153,7 @@ Renders a clickable hyperlink using OSC 8 protocol.
 **Example:**
 ```go
 frame, _ := term.BeginFrame()
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 frame.PrintHyperlink(10, 5, link)
 term.EndFrame(frame)
 ```
@@ -171,7 +171,7 @@ Renders a hyperlink in fallback format: "Text (URL)".
 **Example:**
 ```go
 frame, _ := term.BeginFrame()
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 frame.PrintHyperlinkFallback(10, 5, link)  // Renders: "Example (https://example.com)"
 term.EndFrame(frame)
 ```
@@ -186,7 +186,7 @@ Returns the OSC 8 escape sequence to start a hyperlink.
 
 **Example:**
 ```go
-start := gooey.OSC8Start("https://example.com")
+start := tui.OSC8Start("https://example.com")
 // start = "\033]8;;https://example.com\033\\"
 ```
 
@@ -198,7 +198,7 @@ Returns the OSC 8 escape sequence to end a hyperlink.
 
 **Example:**
 ```go
-end := gooey.OSC8End()
+end := tui.OSC8End()
 // end = "\033]8;;\033\\"
 ```
 
@@ -210,7 +210,7 @@ Returns the formatted hyperlink with OSC 8 escape codes.
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 formatted := link.Format()
 // formatted = "\033]8;;https://example.com\033\\Example\033]8;;\033\\"
 ```
@@ -221,7 +221,7 @@ Returns the fallback representation: "Text (URL)".
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 fallback := link.FormatFallback()
 // fallback = "Example (https://example.com)"
 ```
@@ -232,7 +232,7 @@ Returns either OSC 8 format or fallback based on the parameter.
 
 **Example:**
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
+link := tui.NewHyperlink("https://example.com", "Example")
 
 // OSC 8 format
 osc8 := link.FormatWithOption(true)
@@ -248,10 +248,10 @@ fallback := link.FormatWithOption(false)
 ```go
 package main
 
-import "github.com/deepnoodle-ai/gooey"
+import "github.com/deepnoodle-ai/gooey/tui"
 
 func main() {
-    term, _ := gooey.NewTerminal()
+    term, _ := tui.NewTerminal()
     defer term.Close()
 
     term.EnableRawMode()
@@ -259,7 +259,7 @@ func main() {
 
     frame, _ := term.BeginFrame()
 
-    link := gooey.NewHyperlink("https://github.com", "GitHub")
+    link := tui.NewHyperlink("https://github.com", "GitHub")
     frame.PrintHyperlink(0, 0, link)
 
     term.EndFrame(frame)
@@ -283,10 +283,10 @@ resources := []Resource{
 y := 5
 for _, res := range resources {
     // Print name
-    frame.PrintStyled(5, y, fmt.Sprintf("%-20s", res.Name), gooey.NewStyle())
+    frame.PrintStyled(5, y, fmt.Sprintf("%-20s", res.Name), tui.NewStyle())
 
     // Print link
-    link := gooey.NewHyperlink(res.URL, res.URL)
+    link := tui.NewHyperlink(res.URL, res.URL)
     frame.PrintHyperlink(26, y, link)
 
     y++
@@ -297,16 +297,16 @@ for _, res := range resources {
 
 ```go
 // Red link
-redLink := gooey.NewHyperlink("https://example.com/red", "Red").
-    WithStyle(gooey.NewStyle().WithForeground(gooey.ColorRed).WithUnderline())
+redLink := tui.NewHyperlink("https://example.com/red", "Red").
+    WithStyle(tui.NewStyle().WithForeground(tui.ColorRed).WithUnderline())
 
 // Bold link
-boldLink := gooey.NewHyperlink("https://example.com/bold", "Bold").
-    WithStyle(gooey.NewStyle().WithBold().WithUnderline())
+boldLink := tui.NewHyperlink("https://example.com/bold", "Bold").
+    WithStyle(tui.NewStyle().WithBold().WithUnderline())
 
 // Custom RGB link
-customLink := gooey.NewHyperlink("https://example.com/custom", "Custom").
-    WithStyle(gooey.NewStyle().WithFgRGB(gooey.NewRGB(255, 100, 200)).WithUnderline())
+customLink := tui.NewHyperlink("https://example.com/custom", "Custom").
+    WithStyle(tui.NewStyle().WithFgRGB(tui.NewRGB(255, 100, 200)).WithUnderline())
 ```
 
 ## Security Considerations
@@ -318,19 +318,19 @@ Always validate URLs before creating hyperlinks, especially if they come from us
 ```go
 import "net/url"
 
-func createSafeLink(rawURL, text string) (gooey.Hyperlink, error) {
+func createSafeLink(rawURL, text string) (tui.Hyperlink, error) {
     // Parse and validate URL
     parsed, err := url.Parse(rawURL)
     if err != nil {
-        return gooey.Hyperlink{}, err
+        return tui.Hyperlink{}, err
     }
 
     // Only allow http(s) URLs
     if parsed.Scheme != "http" && parsed.Scheme != "https" {
-        return gooey.Hyperlink{}, fmt.Errorf("invalid URL scheme: %s", parsed.Scheme)
+        return tui.Hyperlink{}, fmt.Errorf("invalid URL scheme: %s", parsed.Scheme)
     }
 
-    return gooey.NewHyperlink(rawURL, text), nil
+    return tui.NewHyperlink(rawURL, text), nil
 }
 ```
 
@@ -340,10 +340,10 @@ Be careful with misleading link text:
 
 ```go
 // ❌ BAD: Misleading link
-badLink := gooey.NewHyperlink("https://evil.com", "https://google.com")
+badLink := tui.NewHyperlink("https://evil.com", "https://google.com")
 
 // ✅ GOOD: Clear link text
-goodLink := gooey.NewHyperlink("https://example.com", "Example Website")
+goodLink := tui.NewHyperlink("https://example.com", "Example Website")
 
 // ✅ GOOD: Show URL explicitly
 frame.PrintHyperlinkFallback(x, y, link)  // Shows "Example Website (https://example.com)"
@@ -421,18 +421,18 @@ Hyperlink rendering has minimal performance impact:
 1. **Use descriptive text:** Make link text clear and meaningful
    ```go
    // ✅ Good
-   link := gooey.NewHyperlink("https://github.com/myzie/gooey", "Gooey Repository")
+   link := tui.NewHyperlink("https://github.com/myzie/gooey", "Gooey Repository")
 
    // ❌ Avoid
-   link := gooey.NewHyperlink("https://github.com/myzie/gooey", "Click here")
+   link := tui.NewHyperlink("https://github.com/myzie/gooey", "Click here")
    ```
 
 2. **Style consistently:** Use consistent styling for all links
    ```go
-   linkStyle := gooey.NewStyle().WithForeground(gooey.ColorBlue).WithUnderline()
+   linkStyle := tui.NewStyle().WithForeground(tui.ColorBlue).WithUnderline()
 
-   link1 := gooey.NewHyperlink(url1, text1).WithStyle(linkStyle)
-   link2 := gooey.NewHyperlink(url2, text2).WithStyle(linkStyle)
+   link1 := tui.NewHyperlink(url1, text1).WithStyle(linkStyle)
+   link2 := tui.NewHyperlink(url2, text2).WithStyle(linkStyle)
    ```
 
 3. **Validate URLs:** Always validate user-provided URLs

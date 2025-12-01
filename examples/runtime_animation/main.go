@@ -4,7 +4,7 @@ import (
 	"image"
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // AnimatedApp demonstrates smooth animation using the declarative View system.
@@ -21,9 +21,9 @@ type AnimatedApp struct {
 // - TickEvent: Update animation state
 // - KeyEvent: Handle user input (q to quit)
 // - ResizeEvent: Handle terminal resize
-func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *AnimatedApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		// Update animation state on each tick
 		app.frame++
 
@@ -35,13 +35,13 @@ func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 			app.positions[i] = int((app.frame*speed + offset) % uint64(app.width))
 		}
 
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Handle user input
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		// Update canvas size on terminal resize
 		app.width = e.Width
 		app.height = e.Height
@@ -52,15 +52,15 @@ func (app *AnimatedApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 
 // View returns the declarative view structure.
 // This is called automatically by the Runtime to render the UI.
-func (app *AnimatedApp) View() gooey.View {
-	return gooey.VStack(
+func (app *AnimatedApp) View() tui.View {
+	return tui.VStack(
 		// Title
-		gooey.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(gooey.ColorCyan),
+		tui.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(tui.ColorCyan),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Animation canvas
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 			width := bounds.Dx()
 			height := bounds.Dy()
 
@@ -102,7 +102,7 @@ func (app *AnimatedApp) View() gooey.View {
 							trailFrame -= uint64(trail)
 						}
 						trailStyle := rainbowStyle(trailFrame, blockIdx)
-						trailStyle = trailStyle.WithFgRGB(gooey.NewRGB(
+						trailStyle = trailStyle.WithFgRGB(tui.NewRGB(
 							trailStyle.FgRGB.R/uint8(trail+1),
 							trailStyle.FgRGB.G/uint8(trail+1),
 							trailStyle.FgRGB.B/uint8(trail+1),
@@ -114,20 +114,20 @@ func (app *AnimatedApp) View() gooey.View {
 		}),
 
 		// Footer with controls and frame counter
-		gooey.HStack(
-			gooey.Text("Press 'q' to quit").Fg(gooey.ColorYellow),
-			gooey.Spacer(),
-			gooey.Text("Frame: %d", app.frame).Fg(gooey.ColorGreen),
+		tui.HStack(
+			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
+			tui.Spacer(),
+			tui.Text("Frame: %d", app.frame).Fg(tui.ColorGreen),
 		),
 	)
 }
 
 // rainbowStyle generates a rainbow color based on frame and block index.
 // This creates a smooth color cycling effect across the blocks.
-func rainbowStyle(frame uint64, blockIndex int) gooey.Style {
+func rainbowStyle(frame uint64, blockIndex int) tui.Style {
 	// Create a smooth rainbow gradient with enough colors for smooth animation
 	rainbowLength := 60
-	colors := gooey.SmoothRainbow(rainbowLength)
+	colors := tui.SmoothRainbow(rainbowLength)
 
 	// Calculate color index based on frame and block index
 	// The offset ensures each block has a different color
@@ -135,7 +135,7 @@ func rainbowStyle(frame uint64, blockIndex int) gooey.Style {
 	colorIndex := (blockIndex*10 + offset) % len(colors)
 	rgb := colors[colorIndex]
 
-	return gooey.NewStyle().WithFgRGB(rgb).WithBold()
+	return tui.NewStyle().WithFgRGB(rgb).WithBold()
 }
 
 func main() {
@@ -144,7 +144,7 @@ func main() {
 		positions: make([]int, 5), // 5 animated blocks
 	}
 
-	if err := gooey.Run(app, gooey.WithFPS(60)); err != nil {
+	if err := tui.Run(app, tui.WithFPS(60)); err != nil {
 		log.Fatal(err)
 	}
 }

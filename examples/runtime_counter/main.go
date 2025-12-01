@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // CounterApp is a simple application that counts up and down.
@@ -21,11 +21,11 @@ type CounterApp struct {
 // HandleEvent processes events from the runtime.
 // This method is called in a single-threaded context, so no locks are needed.
 // Return commands for any async work (HTTP requests, timers, etc.).
-func (app *CounterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *CounterApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 		switch e.Rune {
 		case '+':
@@ -33,12 +33,12 @@ func (app *CounterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		case '-':
 			app.count--
 		case 'q', 'Q':
-			return []gooey.Cmd{gooey.Quit()}
+			return []tui.Cmd{tui.Quit()}
 		case 'r', 'R':
 			app.count = 0
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		// Handle terminal resize (we don't need to do anything, View will adapt)
 		return nil
 	}
@@ -49,23 +49,23 @@ func (app *CounterApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 // View returns the declarative view of the application state.
 // This is called automatically after each event is processed.
 // Uses Gooey's declarative view system for clean, composable UI.
-func (app *CounterApp) View() gooey.View {
-	return gooey.VStack(
-		gooey.Spacer().MinHeight(2),
-		gooey.Text("Counter Application").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(2),
-		gooey.Text("Count: %d", app.count).Bold().Fg(gooey.ColorGreen),
-		gooey.Spacer().MinHeight(3),
-		gooey.Text("[+] to increment    [-] to decrement"),
-		gooey.Text("[R] to reset        [Q] to quit"),
-		gooey.Spacer(),
-		gooey.Text("Running...  |  Press q to quit").Dim(),
-	).Align(gooey.AlignCenter).Padding(2)
+func (app *CounterApp) View() tui.View {
+	return tui.VStack(
+		tui.Spacer().MinHeight(2),
+		tui.Text("Counter Application").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(2),
+		tui.Text("Count: %d", app.count).Bold().Fg(tui.ColorGreen),
+		tui.Spacer().MinHeight(3),
+		tui.Text("[+] to increment    [-] to decrement"),
+		tui.Text("[R] to reset        [Q] to quit"),
+		tui.Spacer(),
+		tui.Text("Running...  |  Press q to quit").Dim(),
+	).Align(tui.AlignCenter).Padding(2)
 }
 
 func main() {
 	// Run blocks until the application quits (when 'q' is pressed)
-	if err := gooey.Run(&CounterApp{}); err != nil {
+	if err := tui.Run(&CounterApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

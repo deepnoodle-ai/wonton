@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // GitHubUser represents a GitHub user profile response
@@ -38,37 +38,37 @@ type HTTPApp struct {
 	error   error
 }
 
-func (app *HTTPApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *HTTPApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 		switch e.Rune {
 		case '1':
 			app.loading = true
 			app.error = nil
-			return []gooey.Cmd{FetchGitHubUser("golang")}
+			return []tui.Cmd{FetchGitHubUser("golang")}
 		case '2':
 			app.loading = true
 			app.error = nil
-			return []gooey.Cmd{FetchGitHubUser("torvalds")}
+			return []tui.Cmd{FetchGitHubUser("torvalds")}
 		case '3':
 			app.loading = true
 			app.error = nil
-			return []gooey.Cmd{FetchGitHubUser("antirez")}
+			return []tui.Cmd{FetchGitHubUser("antirez")}
 		case 'c', 'C':
 			app.data = nil
 			app.error = nil
 		case 'q', 'Q':
-			return []gooey.Cmd{gooey.Quit()}
+			return []tui.Cmd{tui.Quit()}
 		}
 
 	case DataResponse:
 		app.loading = false
 		app.data = e.User
 
-	case gooey.ErrorEvent:
+	case tui.ErrorEvent:
 		app.loading = false
 		app.error = e.Err
 	}
@@ -76,111 +76,111 @@ func (app *HTTPApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *HTTPApp) View() gooey.View {
-	return gooey.VStack(
+func (app *HTTPApp) View() tui.View {
+	return tui.VStack(
 		// Title
-		gooey.Text("GitHub User Lookup").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("GitHub User Lookup").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 
 		// Keys
-		gooey.HStack(
-			gooey.Text("[1]").Fg(gooey.ColorYellow),
-			gooey.Text("golang").Fg(gooey.ColorWhite),
-			gooey.Spacer().MinWidth(2),
-			gooey.Text("[2]").Fg(gooey.ColorYellow),
-			gooey.Text("torvalds").Fg(gooey.ColorWhite),
-			gooey.Spacer().MinWidth(2),
-			gooey.Text("[3]").Fg(gooey.ColorYellow),
-			gooey.Text("antirez").Fg(gooey.ColorWhite),
-			gooey.Spacer().MinWidth(2),
-			gooey.Text("[c]").Fg(gooey.ColorYellow),
-			gooey.Text("clear").Fg(gooey.ColorWhite),
-			gooey.Spacer().MinWidth(2),
-			gooey.Text("[q]").Fg(gooey.ColorYellow),
-			gooey.Text("quit").Fg(gooey.ColorWhite),
+		tui.HStack(
+			tui.Text("[1]").Fg(tui.ColorYellow),
+			tui.Text("golang").Fg(tui.ColorWhite),
+			tui.Spacer().MinWidth(2),
+			tui.Text("[2]").Fg(tui.ColorYellow),
+			tui.Text("torvalds").Fg(tui.ColorWhite),
+			tui.Spacer().MinWidth(2),
+			tui.Text("[3]").Fg(tui.ColorYellow),
+			tui.Text("antirez").Fg(tui.ColorWhite),
+			tui.Spacer().MinWidth(2),
+			tui.Text("[c]").Fg(tui.ColorYellow),
+			tui.Text("clear").Fg(tui.ColorWhite),
+			tui.Spacer().MinWidth(2),
+			tui.Text("[q]").Fg(tui.ColorYellow),
+			tui.Text("quit").Fg(tui.ColorWhite),
 		).Gap(1),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 
 		// Content area
 		app.contentView(),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Footer
-		gooey.Text("Async HTTP demo - requests don't block the UI").Fg(gooey.ColorBrightBlack),
+		tui.Text("Async HTTP demo - requests don't block the UI").Fg(tui.ColorBrightBlack),
 	).Padding(2)
 }
 
-func (app *HTTPApp) contentView() gooey.View {
+func (app *HTTPApp) contentView() tui.View {
 	if app.loading {
-		return gooey.Text("Loading...").Fg(gooey.ColorBrightBlack)
+		return tui.Text("Loading...").Fg(tui.ColorBrightBlack)
 	}
 
 	if app.error != nil {
-		return gooey.Text("Error: %v", app.error).Fg(gooey.ColorRed)
+		return tui.Text("Error: %v", app.error).Fg(tui.ColorRed)
 	}
 
 	if app.data != nil {
 		user := app.data
 
 		// Build user details
-		var details []gooey.View
+		var details []tui.View
 
 		// Header with login and name
-		details = append(details, gooey.HStack(
-			gooey.Text("%s", user.Login).Bold().Fg(gooey.ColorCyan),
-			gooey.If(user.Name != "", gooey.Text("%s", user.Name).Fg(gooey.ColorBrightBlack)),
+		details = append(details, tui.HStack(
+			tui.Text("%s", user.Login).Bold().Fg(tui.ColorCyan),
+			tui.If(user.Name != "", tui.Text("%s", user.Name).Fg(tui.ColorBrightBlack)),
 		).Gap(1))
 
-		details = append(details, gooey.Spacer().MinHeight(1))
+		details = append(details, tui.Spacer().MinHeight(1))
 
 		// Bio
 		if user.Bio != "" {
-			details = append(details, gooey.Text("%s", user.Bio).Fg(gooey.ColorWhite).MaxWidth(76))
-			details = append(details, gooey.Spacer().MinHeight(1))
+			details = append(details, tui.Text("%s", user.Bio).Fg(tui.ColorWhite).MaxWidth(76))
+			details = append(details, tui.Spacer().MinHeight(1))
 		}
 
 		// Location and Company
 		if user.Location != "" {
-			details = append(details, gooey.HStack(
-				gooey.Text("Location:").Fg(gooey.ColorBrightBlack),
-				gooey.Text("%s", user.Location).Fg(gooey.ColorGreen),
+			details = append(details, tui.HStack(
+				tui.Text("Location:").Fg(tui.ColorBrightBlack),
+				tui.Text("%s", user.Location).Fg(tui.ColorGreen),
 			).Gap(1))
 		}
 		if user.Company != "" {
-			details = append(details, gooey.HStack(
-				gooey.Text("Company:").Fg(gooey.ColorBrightBlack),
-				gooey.Text("%s", user.Company).Fg(gooey.ColorGreen),
+			details = append(details, tui.HStack(
+				tui.Text("Company:").Fg(tui.ColorBrightBlack),
+				tui.Text("%s", user.Company).Fg(tui.ColorGreen),
 			).Gap(1))
 		}
 
-		details = append(details, gooey.Spacer().MinHeight(1))
+		details = append(details, tui.Spacer().MinHeight(1))
 
 		// Stats
-		details = append(details, gooey.HStack(
-			gooey.Text("Repos: %d", user.PublicRepos).Fg(gooey.ColorGreen),
-			gooey.Text("Followers: %d", user.Followers).Fg(gooey.ColorGreen),
-			gooey.Text("Following: %d", user.Following).Fg(gooey.ColorGreen),
+		details = append(details, tui.HStack(
+			tui.Text("Repos: %d", user.PublicRepos).Fg(tui.ColorGreen),
+			tui.Text("Followers: %d", user.Followers).Fg(tui.ColorGreen),
+			tui.Text("Following: %d", user.Following).Fg(tui.ColorGreen),
 		).Gap(2))
 
-		return gooey.VStack(details...)
+		return tui.VStack(details...)
 	}
 
-	return gooey.Text("Press 1, 2, or 3 to fetch a user").Fg(gooey.ColorBrightBlack)
+	return tui.Text("Press 1, 2, or 3 to fetch a user").Fg(tui.ColorBrightBlack)
 }
 
 // FetchGitHubUser fetches a GitHub user profile asynchronously
-func FetchGitHubUser(username string) gooey.Cmd {
-	return func() gooey.Event {
+func FetchGitHubUser(username string) tui.Cmd {
+	return func() tui.Event {
 		url := fmt.Sprintf("https://api.github.com/users/%s", username)
 		resp, err := http.Get(url)
 		if err != nil {
-			return gooey.ErrorEvent{Time: time.Now(), Err: err}
+			return tui.ErrorEvent{Time: time.Now(), Err: err}
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return gooey.ErrorEvent{
+			return tui.ErrorEvent{
 				Time: time.Now(),
 				Err:  fmt.Errorf("HTTP %d", resp.StatusCode),
 			}
@@ -188,12 +188,12 @@ func FetchGitHubUser(username string) gooey.Cmd {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return gooey.ErrorEvent{Time: time.Now(), Err: err}
+			return tui.ErrorEvent{Time: time.Now(), Err: err}
 		}
 
 		var user GitHubUser
 		if err := json.Unmarshal(body, &user); err != nil {
-			return gooey.ErrorEvent{Time: time.Now(), Err: err}
+			return tui.ErrorEvent{Time: time.Now(), Err: err}
 		}
 
 		return DataResponse{User: &user, Username: username}
@@ -201,7 +201,7 @@ func FetchGitHubUser(username string) gooey.Cmd {
 }
 
 func main() {
-	if err := gooey.Run(&HTTPApp{}); err != nil {
+	if err := tui.Run(&HTTPApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

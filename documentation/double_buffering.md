@@ -46,7 +46,7 @@ The `Terminal` struct now manages the state of the buffers.
 The buffering system is enabled by default when you create a new terminal.
 
 ```go
-terminal, err := gooey.NewTerminal()
+terminal, err := tui.NewTerminal()
 if err != nil {
     panic(err)
 }
@@ -64,7 +64,7 @@ fmt.Print("\033[31mHello\033[0m World")
 **✅ New Way (Buffered):**
 ```go
 // Set the style for subsequent writes
-terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorRed))
+terminal.SetStyle(tui.NewStyle().WithForeground(tui.ColorRed))
 terminal.Print("Hello")
 
 // Reset style (or set a new one)
@@ -88,13 +88,13 @@ Because the buffer stores `Style` objects separate from characters, you must sep
 **Complex Example:**
 ```go
 // Draw a box with a title
-terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorBlue))
+terminal.SetStyle(tui.NewStyle().WithForeground(tui.ColorBlue))
 terminal.Print("┌── ")
 
-terminal.SetStyle(gooey.NewStyle().WithBold().WithForeground(gooey.ColorWhite))
+terminal.SetStyle(tui.NewStyle().WithBold().WithForeground(tui.ColorWhite))
 terminal.Print("My Title")
 
-terminal.SetStyle(gooey.NewStyle().WithForeground(gooey.ColorBlue))
+terminal.SetStyle(tui.NewStyle().WithForeground(tui.ColorBlue))
 terminal.Println(" ──┐")
 ```
 

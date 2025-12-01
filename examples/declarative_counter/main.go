@@ -5,35 +5,35 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 type App struct {
 	count int
 }
 
-func (app *App) View() gooey.View {
-	return gooey.VStack(
-		gooey.Text("Counter Application").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(2),
-		gooey.Text("Count: %d", app.count).Bold().Fg(gooey.ColorGreen),
-		gooey.Spacer().MinHeight(2),
-		gooey.HStack(
-			gooey.Clickable("[ - ]", func() { app.count-- }).Fg(gooey.ColorRed),
-			gooey.Clickable("[ + ]", func() { app.count++ }).Fg(gooey.ColorGreen),
-			gooey.Clickable("[Reset]", func() { app.count = 0 }).Fg(gooey.ColorYellow),
+func (app *App) View() tui.View {
+	return tui.VStack(
+		tui.Text("Counter Application").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(2),
+		tui.Text("Count: %d", app.count).Bold().Fg(tui.ColorGreen),
+		tui.Spacer().MinHeight(2),
+		tui.HStack(
+			tui.Clickable("[ - ]", func() { app.count-- }).Fg(tui.ColorRed),
+			tui.Clickable("[ + ]", func() { app.count++ }).Fg(tui.ColorGreen),
+			tui.Clickable("[Reset]", func() { app.count = 0 }).Fg(tui.ColorYellow),
 		).Gap(2),
-		gooey.Spacer(),
-		gooey.Text("[+] increment  [-] decrement  [r] reset  [q] quit").Dim(),
-	).Align(gooey.AlignCenter).Padding(2)
+		tui.Spacer(),
+		tui.Text("[+] increment  [-] decrement  [r] reset  [q] quit").Dim(),
+	).Align(tui.AlignCenter).Padding(2)
 }
 
-func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		switch {
-		case e.Rune == 'q' || e.Key == gooey.KeyCtrlC:
-			return []gooey.Cmd{gooey.Quit()}
+		case e.Rune == 'q' || e.Key == tui.KeyCtrlC:
+			return []tui.Cmd{tui.Quit()}
 		case e.Rune == '+' || e.Rune == '=':
 			app.count++
 		case e.Rune == '-':
@@ -46,7 +46,7 @@ func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 func main() {
-	if err := gooey.Run(&App{}, gooey.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(&App{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

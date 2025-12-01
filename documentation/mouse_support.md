@@ -47,7 +47,7 @@ Mouse events can include keyboard modifiers:
 ### 1. Enable Mouse Tracking
 
 ```go
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 terminal.EnableMouseTracking()
 defer terminal.DisableMouseTracking()
 ```
@@ -55,25 +55,25 @@ defer terminal.DisableMouseTracking()
 ### 2. Create Mouse Handler
 
 ```go
-mouse := gooey.NewMouseHandler()
+mouse := tui.NewMouseHandler()
 ```
 
 ### 3. Define Mouse Regions
 
 ```go
-button := &gooey.MouseRegion{
+button := &tui.MouseRegion{
     X:      10,
     Y:      5,
     Width:  20,
     Height: 3,
     ZIndex: 1,
-    OnClick: func(event *gooey.MouseEvent) {
+    OnClick: func(event *tui.MouseEvent) {
         fmt.Println("Button clicked!")
     },
-    OnEnter: func(event *gooey.MouseEvent) {
+    OnEnter: func(event *tui.MouseEvent) {
         // Show hover state
     },
-    OnLeave: func(event *gooey.MouseEvent) {
+    OnLeave: func(event *tui.MouseEvent) {
         // Remove hover state
     },
 }
@@ -90,7 +90,7 @@ for {
 
     // Check for mouse event (ESC [ <)
     if buf[0] == 27 && n > 2 && buf[1] == '[' && buf[2] == '<' {
-        event, err := gooey.ParseMouseEvent(buf[2:n])
+        event, err := tui.ParseMouseEvent(buf[2:n])
         if err == nil {
             mouse.HandleEvent(event)
         }
@@ -103,11 +103,11 @@ for {
 ### Double and Triple Click Detection
 
 ```go
-region := &gooey.MouseRegion{
-    OnDoubleClick: func(event *gooey.MouseEvent) {
+region := &tui.MouseRegion{
+    OnDoubleClick: func(event *tui.MouseEvent) {
         fmt.Println("Double-clicked!")
     },
-    OnTripleClick: func(event *gooey.MouseEvent) {
+    OnTripleClick: func(event *tui.MouseEvent) {
         fmt.Println("Triple-clicked!")
     },
 }
@@ -120,15 +120,15 @@ mouse.TripleClickThreshold = 500 * time.Millisecond
 ### Drag and Drop
 
 ```go
-draggable := &gooey.MouseRegion{
-    OnDragStart: func(event *gooey.MouseEvent) {
+draggable := &tui.MouseRegion{
+    OnDragStart: func(event *tui.MouseEvent) {
         fmt.Println("Drag started")
     },
-    OnDrag: func(event *gooey.MouseEvent) {
+    OnDrag: func(event *tui.MouseEvent) {
         // Update position based on event.X, event.Y
         fmt.Printf("Dragging to (%d, %d)\n", event.X, event.Y)
     },
-    OnDragEnd: func(event *gooey.MouseEvent) {
+    OnDragEnd: func(event *tui.MouseEvent) {
         fmt.Println("Drag ended")
     },
 }
@@ -140,8 +140,8 @@ mouse.DragStartThreshold = 5 // pixels
 ### Mouse Wheel Scrolling
 
 ```go
-scrollArea := &gooey.MouseRegion{
-    OnScroll: func(event *gooey.MouseEvent) {
+scrollArea := &tui.MouseRegion{
+    OnScroll: func(event *tui.MouseEvent) {
         if event.DeltaY > 0 {
             fmt.Println("Scrolled down")
         } else if event.DeltaY < 0 {
@@ -159,15 +159,15 @@ scrollArea := &gooey.MouseRegion{
 ### Keyboard Modifiers
 
 ```go
-region := &gooey.MouseRegion{
-    OnClick: func(event *gooey.MouseEvent) {
-        if event.Modifiers&gooey.ModShift != 0 {
+region := &tui.MouseRegion{
+    OnClick: func(event *tui.MouseEvent) {
+        if event.Modifiers&tui.ModShift != 0 {
             fmt.Println("Shift+Click")
         }
-        if event.Modifiers&gooey.ModCtrl != 0 {
+        if event.Modifiers&tui.ModCtrl != 0 {
             fmt.Println("Ctrl+Click")
         }
-        if event.Modifiers&gooey.ModAlt != 0 {
+        if event.Modifiers&tui.ModAlt != 0 {
             fmt.Println("Alt+Click")
         }
     },
@@ -179,24 +179,24 @@ region := &gooey.MouseRegion{
 Overlapping regions are hit-tested in Z-index order (highest first):
 
 ```go
-background := &gooey.MouseRegion{
+background := &tui.MouseRegion{
     X:      0,
     Y:      0,
     Width:  100,
     Height: 30,
     ZIndex: 1,
-    OnClick: func(event *gooey.MouseEvent) {
+    OnClick: func(event *tui.MouseEvent) {
         fmt.Println("Background clicked")
     },
 }
 
-foreground := &gooey.MouseRegion{
+foreground := &tui.MouseRegion{
     X:      10,
     Y:      10,
     Width:  50,
     Height: 10,
     ZIndex: 2, // Higher z-index = clicked first
-    OnClick: func(event *gooey.MouseEvent) {
+    OnClick: func(event *tui.MouseEvent) {
         fmt.Println("Foreground clicked")
     },
 }
@@ -279,7 +279,7 @@ type MouseRegion struct {
 ## Configuration Options
 
 ```go
-handler := gooey.NewMouseHandler()
+handler := tui.NewMouseHandler()
 
 // Double-click detection threshold
 handler.DoubleClickThreshold = 500 * time.Millisecond

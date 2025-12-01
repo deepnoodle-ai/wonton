@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // AnimationDemoApp shows different text animation styles, one per line.
@@ -14,45 +14,45 @@ type AnimationDemoApp struct {
 // Animation definitions
 type animDef struct {
 	name string
-	anim gooey.TextAnimation
+	anim tui.TextAnimation
 	text string
 }
 
 var animations = []animDef{
-	{"Rainbow", gooey.CreateRainbowText("", 3), "Smooth rainbow color cycling"},
-	{"Reverse Rainbow", gooey.CreateReverseRainbowText("", 3), "Rainbow cycling backwards"},
-	{"Fast Rainbow", gooey.CreateRainbowText("", 1), "Faster rainbow animation"},
-	{"Cyan Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 255), 12), "Pulsing brightness effect"},
-	{"Orange Pulse", gooey.CreatePulseText(gooey.NewRGB(255, 128, 0), 12), "Warm pulsing glow"},
-	{"Green Pulse", gooey.CreatePulseText(gooey.NewRGB(0, 255, 128), 10), "Matrix-style pulse"},
+	{"Rainbow", tui.CreateRainbowText("", 3), "Smooth rainbow color cycling"},
+	{"Reverse Rainbow", tui.CreateReverseRainbowText("", 3), "Rainbow cycling backwards"},
+	{"Fast Rainbow", tui.CreateRainbowText("", 1), "Faster rainbow animation"},
+	{"Cyan Pulse", tui.CreatePulseText(tui.NewRGB(0, 255, 255), 12), "Pulsing brightness effect"},
+	{"Orange Pulse", tui.CreatePulseText(tui.NewRGB(255, 128, 0), 12), "Warm pulsing glow"},
+	{"Green Pulse", tui.CreatePulseText(tui.NewRGB(0, 255, 128), 10), "Matrix-style pulse"},
 }
 
-func (app *AnimationDemoApp) View() gooey.View {
-	return gooey.VStack(
-		gooey.Text("Text Animation Styles").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+func (app *AnimationDemoApp) View() tui.View {
+	return tui.VStack(
+		tui.Text("Text Animation Styles").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 
 		// Use ForEach with AnimatedTextView - no more Canvas needed!
-		gooey.ForEach(animations, func(anim animDef, i int) gooey.View {
-			return gooey.HStack(
-				gooey.Text("%-16s", anim.name+":").Fg(gooey.ColorBrightBlack),
-				gooey.AnimatedTextView(anim.text, anim.anim, app.frame),
+		tui.ForEach(animations, func(anim animDef, i int) tui.View {
+			return tui.HStack(
+				tui.Text("%-16s", anim.name+":").Fg(tui.ColorBrightBlack),
+				tui.AnimatedTextView(anim.text, anim.anim, app.frame),
 			)
 		}).Gap(1),
 
-		gooey.Spacer(),
-		gooey.Text("[q] quit").Fg(gooey.ColorBrightBlack),
+		tui.Spacer(),
+		tui.Text("[q] quit").Fg(tui.ColorBrightBlack),
 	).Padding(1)
 }
 
-func (app *AnimationDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *AnimationDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		app.frame = e.Frame
 
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 
@@ -60,7 +60,7 @@ func (app *AnimationDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 func main() {
-	if err := gooey.Run(&AnimationDemoApp{}); err != nil {
+	if err := tui.Run(&AnimationDemoApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -41,7 +41,7 @@ func main() {
 
     // Create picker starting in current directory
     pwd, _ := os.Getwd()
-    picker := gooey.NewFilePicker(pwd)
+    picker := tui.NewFilePicker(pwd)
 
     // Handle selection
     picker.OnSelect = func(path string) {

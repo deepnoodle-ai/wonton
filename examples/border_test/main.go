@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // BorderApp demonstrates drawing a border around the terminal
@@ -15,15 +15,15 @@ type BorderApp struct {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *BorderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *BorderApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Exit on Ctrl+C
-		if e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		// Update stored dimensions on resize
 		app.width = e.Width
 		app.height = e.Height
@@ -33,20 +33,20 @@ func (app *BorderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view structure.
-func (app *BorderApp) View() gooey.View {
+func (app *BorderApp) View() tui.View {
 	// Info text at the top
 	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)", app.width, app.height)
 
-	return gooey.VStack(
-		gooey.Text("%s", info).Fg(gooey.ColorYellow),
-		gooey.Bordered(
-			gooey.Spacer(),
-		).BorderFg(gooey.ColorCyan),
+	return tui.VStack(
+		tui.Text("%s", info).Fg(tui.ColorYellow),
+		tui.Bordered(
+			tui.Spacer(),
+		).BorderFg(tui.ColorCyan),
 	)
 }
 
 func main() {
-	if err := gooey.Run(&BorderApp{}); err != nil {
+	if err := tui.Run(&BorderApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

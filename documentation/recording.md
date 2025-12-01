@@ -25,11 +25,11 @@ Gooey provides built-in support for recording and playing back terminal sessions
 To record a terminal session, call `StartRecording()` before your main event loop and `StopRecording()` when done:
 
 ```go
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 defer terminal.Restore()
 
 // Start recording
-opts := gooey.DefaultRecordingOptions()
+opts := tui.DefaultRecordingOptions()
 opts.Title = "My Demo"
 err := terminal.StartRecording("demo.cast", opts)
 if err != nil {
@@ -58,7 +58,7 @@ type RecordingOptions struct {
 **Example with custom options:**
 
 ```go
-opts := gooey.RecordingOptions{
+opts := tui.RecordingOptions{
     Compress:      true,
     RedactSecrets: true,
     Title:         "User Onboarding Flow",
@@ -139,13 +139,13 @@ Load and play a recording with the `PlaybackController`:
 
 ```go
 // Load recording
-controller, err := gooey.LoadRecording("demo.cast")
+controller, err := tui.LoadRecording("demo.cast")
 if err != nil {
     log.Fatal(err)
 }
 
 // Create terminal for playback
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 defer terminal.Restore()
 
 // Play it back
@@ -197,8 +197,8 @@ progress := controller.GetProgress()    // Progress as 0.0-1.0
 ### Interactive Playback Example
 
 ```go
-controller, _ := gooey.LoadRecording("demo.cast")
-terminal, _ := gooey.NewTerminal()
+controller, _ := tui.LoadRecording("demo.cast")
+terminal, _ := tui.NewTerminal()
 defer terminal.Restore()
 
 // Enable raw mode for keyboard controls
@@ -209,7 +209,7 @@ defer terminal.DisableRawMode()
 go controller.Play(terminal)
 
 // Control loop
-input := gooey.NewInput(terminal)
+input := tui.NewInput(terminal)
 for {
     event, _ := input.ReadKeyWithTimeout(100 * time.Millisecond)
 
@@ -260,7 +260,7 @@ By default, recordings are gzip-compressed (`.cast` or `.cast.gz`). This typical
 
 Enable/disable compression:
 ```go
-opts := gooey.DefaultRecordingOptions()
+opts := tui.DefaultRecordingOptions()
 opts.Compress = true  // or false
 terminal.StartRecording("demo.cast", opts)
 ```
@@ -299,12 +299,12 @@ For additional control:
 ```go
 // Pause recording for sensitive operations
 terminal.PauseRecording()
-input.WithPrompt("Enter API key: ", gooey.NewStyle())
+input.WithPrompt("Enter API key: ", tui.NewStyle())
 apiKey, _ := input.ReadSimple()
 terminal.ResumeRecording()
 
 // Or test redaction
-redacted := gooey.RedactCredentials("password=secret123")
+redacted := tui.RedactCredentials("password=secret123")
 // Returns: "password=[REDACTED]"
 ```
 
@@ -333,7 +333,7 @@ For maximum security, use `PauseRecording()` during sensitive operations.
 Collapse long pauses to keep recordings concise:
 
 ```go
-opts := gooey.DefaultRecordingOptions()
+opts := tui.DefaultRecordingOptions()
 opts.IdleTimeLimit = 2.0  // Max 2 seconds between events
 
 terminal.StartRecording("demo.cast", opts)
@@ -347,7 +347,7 @@ terminal.StartRecording("demo.cast", opts)
 Continuously loop playback:
 
 ```go
-controller, _ := gooey.LoadRecording("demo.cast")
+controller, _ := tui.LoadRecording("demo.cast")
 controller.SetLoop(true)
 controller.Play(terminal) // Plays forever until stopped
 ```
@@ -496,10 +496,10 @@ package main
 import "github.com/myzie/gooey"
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Restore()
 
-    opts := gooey.DefaultRecordingOptions()
+    opts := tui.DefaultRecordingOptions()
     terminal.StartRecording("session.cast", opts)
     defer terminal.StopRecording()
 
@@ -516,8 +516,8 @@ package main
 import "github.com/myzie/gooey"
 
 func main() {
-    controller, _ := gooey.LoadRecording("session.cast")
-    terminal, _ := gooey.NewTerminal()
+    controller, _ := tui.LoadRecording("session.cast")
+    terminal, _ := tui.NewTerminal()
     defer terminal.Restore()
 
     controller.Play(terminal)

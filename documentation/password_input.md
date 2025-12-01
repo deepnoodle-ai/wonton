@@ -18,11 +18,11 @@ Gooey provides a `PasswordInput` component that implements security best practic
 ### Basic Usage (Default: Masked Characters)
 
 ```go
-terminal, _ := gooey.NewTerminal()
+terminal, _ := tui.NewTerminal()
 defer terminal.Reset()
 
-pwdInput := gooey.NewPasswordInput(terminal)
-pwdInput.WithPrompt("Password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+pwdInput := tui.NewPasswordInput(terminal)
+pwdInput.WithPrompt("Password: ", tui.NewStyle().WithForeground(tui.ColorYellow))
 
 password, err := pwdInput.Read()
 if err != nil {
@@ -41,9 +41,9 @@ By default, `PasswordInput` shows masked characters (asterisks) as you type, pro
 To disable visual feedback entirely (traditional no-echo password input):
 
 ```go
-pwdInput := gooey.NewPasswordInput(terminal)
+pwdInput := tui.NewPasswordInput(terminal)
 pwdInput.ShowCharacters(false) // Disable visual feedback (no echo)
-pwdInput.WithPrompt("Password: ", gooey.NewStyle())
+pwdInput.WithPrompt("Password: ", tui.NewStyle())
 
 password, err := pwdInput.Read()
 if err != nil {
@@ -55,7 +55,7 @@ defer password.Clear()
 ### Custom Mask Character
 
 ```go
-pwdInput := gooey.NewPasswordInput(terminal)
+pwdInput := tui.NewPasswordInput(terminal)
 pwdInput.ShowCharacters(true)
 pwdInput.WithMaskChar('•') // Use bullet points instead of asterisks
 
@@ -69,7 +69,7 @@ defer password.Clear()
 
 ```go
 pwdInput.WithPrompt("Enter your password: ",
-    gooey.NewStyle().WithForeground(gooey.ColorRed).WithBold())
+    tui.NewStyle().WithForeground(tui.ColorRed).WithBold())
 ```
 
 ### Placeholder Text
@@ -202,7 +202,7 @@ passwordStr := password.String()
 ```go
 // Bad: Password stays in memory
 type User struct {
-    Password *gooey.SecureString
+    Password *tui.SecureString
 }
 
 // Good: Hash immediately, clear original
@@ -214,7 +214,7 @@ password.Clear()
 ### 4. Enable All Security Features
 
 ```go
-pwdInput := gooey.NewPasswordInput(terminal)
+pwdInput := tui.NewPasswordInput(terminal)
 pwdInput.EnableSecureMode(true)      // iTerm2 protection
 pwdInput.DisableClipboard(true)      // Prevent accidental paste
 pwdInput.ConfirmPaste(true)          // Require confirmation
@@ -228,11 +228,11 @@ package main
 
 import (
     "fmt"
-    "github.com/deepnoodle-ai/gooey"
+    "github.com/deepnoodle-ai/gooey/tui"
 )
 
 func main() {
-    terminal, err := gooey.NewTerminal()
+    terminal, err := tui.NewTerminal()
     if err != nil {
         fmt.Printf("Error: %v\n", err)
         return
@@ -240,8 +240,8 @@ func main() {
     defer terminal.Restore()
 
     // Create password input with all security features
-    pwdInput := gooey.NewPasswordInput(terminal)
-    pwdInput.WithPrompt("Password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+    pwdInput := tui.NewPasswordInput(terminal)
+    pwdInput.WithPrompt("Password: ", tui.NewStyle().WithForeground(tui.ColorYellow))
     pwdInput.ShowCharacters(true)        // Visual feedback
     pwdInput.WithMaskChar('•')           // Custom mask
     pwdInput.WithMaxLength(64)           // Length limit
@@ -275,7 +275,7 @@ func authenticateUser(password []byte) bool {
 ### Standard Input.ReadPassword()
 
 ```go
-input := gooey.NewInput(terminal)
+input := tui.NewInput(terminal)
 password, err := input.ReadPassword()
 // Returns: string (not zeroed)
 ```
@@ -294,7 +294,7 @@ password, err := input.ReadPassword()
 ### Enhanced PasswordInput.Read()
 
 ```go
-pwdInput := gooey.NewPasswordInput(terminal)
+pwdInput := tui.NewPasswordInput(terminal)
 password, err := pwdInput.Read()
 defer password.Clear()
 // Returns: *SecureString (zeroed on Clear)
@@ -367,9 +367,9 @@ if strength < 3 {
 ### Confirmation Prompt
 
 ```go
-func readPasswordWithConfirmation(terminal *gooey.Terminal) (*gooey.SecureString, error) {
-    pwdInput := gooey.NewPasswordInput(terminal)
-    pwdInput.WithPrompt("New password: ", gooey.NewStyle())
+func readPasswordWithConfirmation(terminal *tui.Terminal) (*tui.SecureString, error) {
+    pwdInput := tui.NewPasswordInput(terminal)
+    pwdInput.WithPrompt("New password: ", tui.NewStyle())
     pwdInput.ShowCharacters(true)
 
     password1, err := pwdInput.Read()
@@ -378,7 +378,7 @@ func readPasswordWithConfirmation(terminal *gooey.Terminal) (*gooey.SecureString
     }
     defer password1.Clear()
 
-    pwdInput.WithPrompt("Confirm password: ", gooey.NewStyle())
+    pwdInput.WithPrompt("Confirm password: ", tui.NewStyle())
     password2, err := pwdInput.Read()
     if err != nil {
         return nil, err

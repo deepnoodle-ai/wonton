@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // InputFormsApp demonstrates a multi-field form using declarative UI.
@@ -21,95 +21,95 @@ type InputFormsApp struct {
 	errors    []string
 }
 
-func (app *InputFormsApp) View() gooey.View {
+func (app *InputFormsApp) View() tui.View {
 	if app.submitted {
 		// Show success screen
-		return gooey.VStack(
-			gooey.Text("Gooey Input Forms Demo").Bold().Fg(gooey.ColorCyan),
-			gooey.Text("----------------------").Fg(gooey.ColorCyan),
-			gooey.Spacer().MinHeight(1),
-			gooey.Text("Form submitted successfully!").Fg(gooey.ColorGreen),
-			gooey.Spacer().MinHeight(1),
-			gooey.Text("Name:     %s", app.name),
-			gooey.Text("Email:    %s", app.email),
-			gooey.Text("Password: %s", strings.Repeat("*", len(app.password))),
-			gooey.Spacer().MinHeight(1),
-			gooey.Text("Press Enter to exit").Dim(),
+		return tui.VStack(
+			tui.Text("Gooey Input Forms Demo").Bold().Fg(tui.ColorCyan),
+			tui.Text("----------------------").Fg(tui.ColorCyan),
+			tui.Spacer().MinHeight(1),
+			tui.Text("Form submitted successfully!").Fg(tui.ColorGreen),
+			tui.Spacer().MinHeight(1),
+			tui.Text("Name:     %s", app.name),
+			tui.Text("Email:    %s", app.email),
+			tui.Text("Password: %s", strings.Repeat("*", len(app.password))),
+			tui.Spacer().MinHeight(1),
+			tui.Text("Press Enter to exit").Dim(),
 		).Padding(2)
 	}
 
 	// Build form view
-	var children []gooey.View
+	var children []tui.View
 
 	// Title
 	children = append(children,
-		gooey.Text("Gooey Input Forms Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("----------------------").Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Gooey Input Forms Demo").Bold().Fg(tui.ColorCyan),
+		tui.Text("----------------------").Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Name field
 	children = append(children,
-		gooey.HStack(
-			gooey.Text("Name:     "),
-			gooey.Input(&app.name).Placeholder("Enter your name").Width(40),
+		tui.HStack(
+			tui.Text("Name:     "),
+			tui.Input(&app.name).Placeholder("Enter your name").Width(40),
 		),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Email field
 	children = append(children,
-		gooey.HStack(
-			gooey.Text("Email:    "),
-			gooey.Input(&app.email).Placeholder("Enter your email").Width(40),
+		tui.HStack(
+			tui.Text("Email:    "),
+			tui.Input(&app.email).Placeholder("Enter your email").Width(40),
 		),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Password field
 	children = append(children,
-		gooey.HStack(
-			gooey.Text("Password: "),
-			gooey.Input(&app.password).
+		tui.HStack(
+			tui.Text("Password: "),
+			tui.Input(&app.password).
 				Placeholder("Enter password").
 				Width(40).
 				Mask('*').
 				OnSubmit(func(string) { app.validateAndSubmit() }),
 		),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Show errors if any
 	if len(app.errors) > 0 {
 		for _, err := range app.errors {
 			children = append(children,
-				gooey.Text("- %s", err).Fg(gooey.ColorRed),
+				tui.Text("- %s", err).Fg(tui.ColorRed),
 			)
 		}
-		children = append(children, gooey.Spacer().MinHeight(1))
+		children = append(children, tui.Spacer().MinHeight(1))
 	}
 
 	// Help text
 	children = append(children,
-		gooey.Text("Tab: Navigate | Enter: Submit | Esc: Quit").Dim(),
+		tui.Text("Tab: Navigate | Enter: Submit | Esc: Quit").Dim(),
 	)
 
-	return gooey.VStack(children...).Padding(2)
+	return tui.VStack(children...).Padding(2)
 }
 
-func (app *InputFormsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *InputFormsApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		if app.submitted {
 			// After submission, quit on Enter
-			if e.Key == gooey.KeyEnter {
-				return []gooey.Cmd{gooey.Quit()}
+			if e.Key == tui.KeyEnter {
+				return []tui.Cmd{tui.Quit()}
 			}
 		}
 
 		// Handle quit keys
-		if e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 
@@ -143,7 +143,7 @@ func (app *InputFormsApp) validateAndSubmit() {
 }
 
 func main() {
-	if err := gooey.Run(&InputFormsApp{}); err != nil {
+	if err := tui.Run(&InputFormsApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

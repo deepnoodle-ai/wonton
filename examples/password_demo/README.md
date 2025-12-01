@@ -68,8 +68,8 @@ Detected terminal: iTerm.app
 
 ```go
 // Create secure password input
-pwdInput := gooey.NewPasswordInput(terminal)
-pwdInput.WithPrompt("Enter password: ", gooey.NewStyle().WithForeground(gooey.ColorYellow))
+pwdInput := tui.NewPasswordInput(terminal)
+pwdInput.WithPrompt("Enter password: ", tui.NewStyle().WithForeground(tui.ColorYellow))
 pwdInput.ShowCharacters(true)        // Show asterisks
 pwdInput.WithMaskChar('•')           // Use bullets
 pwdInput.WithMaxLength(64)           // Limit length
@@ -109,7 +109,7 @@ authenticate(password.Bytes())
    ```go
    // Bad
    type User struct {
-       Password *gooey.SecureString
+       Password *tui.SecureString
    }
 
    // Good

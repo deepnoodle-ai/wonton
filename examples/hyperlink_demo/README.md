@@ -59,14 +59,14 @@ The demo includes links to:
 
 ### Basic Link Creation
 ```go
-link := gooey.NewHyperlink("https://github.com", "GitHub")
+link := tui.NewHyperlink("https://github.com", "GitHub")
 frame.PrintHyperlink(x, y, link)
 ```
 
 ### Custom Styling
 ```go
-link := gooey.NewHyperlink("https://example.com", "Example")
-customStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta).WithBold()
+link := tui.NewHyperlink("https://example.com", "Example")
+customStyle := tui.NewStyle().WithForeground(tui.ColorMagenta).WithBold()
 link = link.WithStyle(customStyle)
 ```
 

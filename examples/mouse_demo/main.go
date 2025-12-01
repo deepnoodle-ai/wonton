@@ -6,13 +6,13 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // MouseDemoApp demonstrates mouse support using the declarative View system.
 // It shows clickable buttons, scroll areas, hover effects, and modifier detection.
 type MouseDemoApp struct {
-	mouse  *gooey.MouseHandler
+	mouse  *tui.MouseHandler
 	width  int
 	height int
 
@@ -24,24 +24,24 @@ type MouseDemoApp struct {
 	lastAction   string
 
 	// Styles
-	primaryStyle   gooey.Style
-	secondaryStyle gooey.Style
-	accentStyle    gooey.Style
-	textStyle      gooey.Style
+	primaryStyle   tui.Style
+	secondaryStyle tui.Style
+	accentStyle    tui.Style
+	textStyle      tui.Style
 }
 
 // Init initializes the application
 func (app *MouseDemoApp) Init() error {
-	app.mouse = gooey.NewMouseHandler()
+	app.mouse = tui.NewMouseHandler()
 	// app.mouse.EnableDebug() // Uncomment for debug logging
 
 	app.clickCount = make(map[string]int)
 
 	// Define color scheme
-	app.primaryStyle = gooey.NewStyle().WithBackground(gooey.ColorBlue).WithForeground(gooey.ColorWhite)
-	app.secondaryStyle = gooey.NewStyle().WithBackground(gooey.ColorMagenta).WithForeground(gooey.ColorWhite)
-	app.accentStyle = gooey.NewStyle().WithBackground(gooey.ColorCyan).WithForeground(gooey.ColorBlack)
-	app.textStyle = gooey.NewStyle().WithForeground(gooey.ColorWhite)
+	app.primaryStyle = tui.NewStyle().WithBackground(tui.ColorBlue).WithForeground(tui.ColorWhite)
+	app.secondaryStyle = tui.NewStyle().WithBackground(tui.ColorMagenta).WithForeground(tui.ColorWhite)
+	app.accentStyle = tui.NewStyle().WithBackground(tui.ColorCyan).WithForeground(tui.ColorBlack)
+	app.textStyle = tui.NewStyle().WithForeground(tui.ColorWhite)
 
 	app.lastAction = "Ready - interact with buttons below"
 
@@ -57,76 +57,76 @@ func (app *MouseDemoApp) setupMouseRegions() {
 	buttonSpacing := 3
 
 	// Button 1: Increment counter
-	app.mouse.AddRegion(&gooey.MouseRegion{
+	app.mouse.AddRegion(&tui.MouseRegion{
 		X:      10,
 		Y:      buttonY,
 		Width:  20,
 		Height: 3,
 		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
+		OnClick: func(event *tui.MouseEvent) {
 			app.clickCount["increment"]++
 			app.lastAction = fmt.Sprintf("Incremented! Count: %d", app.clickCount["increment"])
 		},
-		OnEnter: func(event *gooey.MouseEvent) {
+		OnEnter: func(event *tui.MouseEvent) {
 			app.hoverRegion = "increment"
 		},
-		OnLeave: func(event *gooey.MouseEvent) {
+		OnLeave: func(event *tui.MouseEvent) {
 			app.hoverRegion = ""
 		},
 	})
 
 	// Button 2: Reset counter
-	app.mouse.AddRegion(&gooey.MouseRegion{
+	app.mouse.AddRegion(&tui.MouseRegion{
 		X:      35,
 		Y:      buttonY,
 		Width:  20,
 		Height: 3,
 		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
+		OnClick: func(event *tui.MouseEvent) {
 			app.clickCount["increment"] = 0
 			app.lastAction = "Counter reset to 0"
 		},
-		OnEnter: func(event *gooey.MouseEvent) {
+		OnEnter: func(event *tui.MouseEvent) {
 			app.hoverRegion = "reset"
 		},
-		OnLeave: func(event *gooey.MouseEvent) {
+		OnLeave: func(event *tui.MouseEvent) {
 			app.hoverRegion = ""
 		},
 	})
 
 	// Button 3: Info button
-	app.mouse.AddRegion(&gooey.MouseRegion{
+	app.mouse.AddRegion(&tui.MouseRegion{
 		X:      60,
 		Y:      buttonY,
 		Width:  20,
 		Height: 3,
 		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
+		OnClick: func(event *tui.MouseEvent) {
 			app.lastAction = "Info: This demo showcases mouse interactions!"
 		},
-		OnDoubleClick: func(event *gooey.MouseEvent) {
+		OnDoubleClick: func(event *tui.MouseEvent) {
 			app.lastAction = "Info: You double-clicked! Try triple-click too."
 		},
-		OnTripleClick: func(event *gooey.MouseEvent) {
+		OnTripleClick: func(event *tui.MouseEvent) {
 			app.lastAction = "Info: Triple-click detected!"
 		},
-		OnEnter: func(event *gooey.MouseEvent) {
+		OnEnter: func(event *tui.MouseEvent) {
 			app.hoverRegion = "info"
 		},
-		OnLeave: func(event *gooey.MouseEvent) {
+		OnLeave: func(event *tui.MouseEvent) {
 			app.hoverRegion = ""
 		},
 	})
 
 	// Scroll area (centered panel)
 	scrollY := buttonY + buttonSpacing + 3
-	app.mouse.AddRegion(&gooey.MouseRegion{
+	app.mouse.AddRegion(&tui.MouseRegion{
 		X:      10,
 		Y:      scrollY,
 		Width:  70,
 		Height: 8,
 		ZIndex: 1,
-		OnScroll: func(event *gooey.MouseEvent) {
+		OnScroll: func(event *tui.MouseEvent) {
 			if event.DeltaY != 0 {
 				app.scrollOffset += event.DeltaY
 				if event.DeltaY > 0 {
@@ -136,31 +136,31 @@ func (app *MouseDemoApp) setupMouseRegions() {
 				}
 			}
 		},
-		OnEnter: func(event *gooey.MouseEvent) {
+		OnEnter: func(event *tui.MouseEvent) {
 			app.hoverRegion = "scroll"
 		},
-		OnLeave: func(event *gooey.MouseEvent) {
+		OnLeave: func(event *tui.MouseEvent) {
 			app.hoverRegion = ""
 		},
 	})
 
 	// Modifier detection area
 	modY := scrollY + 10
-	app.mouse.AddRegion(&gooey.MouseRegion{
+	app.mouse.AddRegion(&tui.MouseRegion{
 		X:      10,
 		Y:      modY,
 		Width:  70,
 		Height: 4,
 		ZIndex: 1,
-		OnClick: func(event *gooey.MouseEvent) {
+		OnClick: func(event *tui.MouseEvent) {
 			mods := []string{}
-			if event.Modifiers&gooey.ModShift != 0 {
+			if event.Modifiers&tui.ModShift != 0 {
 				mods = append(mods, "Shift")
 			}
-			if event.Modifiers&gooey.ModCtrl != 0 {
+			if event.Modifiers&tui.ModCtrl != 0 {
 				mods = append(mods, "Ctrl")
 			}
-			if event.Modifiers&gooey.ModAlt != 0 {
+			if event.Modifiers&tui.ModAlt != 0 {
 				mods = append(mods, "Alt")
 			}
 			if len(mods) == 0 {
@@ -171,31 +171,31 @@ func (app *MouseDemoApp) setupMouseRegions() {
 				app.lastAction = fmt.Sprintf("Click with %s modifier(s)", app.modifierInfo)
 			}
 		},
-		OnEnter: func(event *gooey.MouseEvent) {
+		OnEnter: func(event *tui.MouseEvent) {
 			app.hoverRegion = "modifier"
 		},
-		OnLeave: func(event *gooey.MouseEvent) {
+		OnLeave: func(event *tui.MouseEvent) {
 			app.hoverRegion = ""
 		},
 	})
 }
 
 // HandleEvent processes events
-func (app *MouseDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MouseDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.MouseEvent:
+	case tui.MouseEvent:
 		// Forward mouse events to the mouse handler
 		app.mouse.HandleEvent(&e)
 		return nil
 
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Handle keyboard input
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 		return nil
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
 		return nil
@@ -205,35 +205,35 @@ func (app *MouseDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view structure
-func (app *MouseDemoApp) View() gooey.View {
-	return gooey.VStack(
-		gooey.Spacer(),
-		gooey.Text("Gooey Mouse Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("Press 'q' or Ctrl+C to exit"),
-		gooey.Spacer(),
+func (app *MouseDemoApp) View() tui.View {
+	return tui.VStack(
+		tui.Spacer(),
+		tui.Text("Gooey Mouse Demo").Bold().Fg(tui.ColorCyan),
+		tui.Text("Press 'q' or Ctrl+C to exit"),
+		tui.Spacer(),
 
 		// Action buttons using Canvas for custom drawing
 		app.renderActionButtonsView(),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Scroll area
 		app.renderScrollAreaView(),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Modifier detection area
 		app.renderModifierAreaView(),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Status footer
 		app.renderFooterView(),
 	)
 }
 
-func (app *MouseDemoApp) renderActionButtonsView() gooey.View {
-	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+func (app *MouseDemoApp) renderActionButtonsView() tui.View {
+	return tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 		buttonY := 4
 
 		// Button 1: Increment
@@ -259,11 +259,11 @@ func (app *MouseDemoApp) renderActionButtonsView() gooey.View {
 	})
 }
 
-func (app *MouseDemoApp) renderScrollAreaView() gooey.View {
-	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+func (app *MouseDemoApp) renderScrollAreaView() tui.View {
+	return tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 		scrollY := 10
-		boxStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack)
-		borderStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+		boxStyle := tui.NewStyle().WithBackground(tui.ColorBrightBlack)
+		borderStyle := tui.NewStyle().WithForeground(tui.ColorCyan)
 
 		// Draw border
 		app.renderBorder(frame, 9, scrollY-1, 72, 10, borderStyle)
@@ -276,11 +276,11 @@ func (app *MouseDemoApp) renderScrollAreaView() gooey.View {
 		if app.hoverRegion == "scroll" {
 			title += " (hovering)"
 		}
-		titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorYellow)
+		titleStyle := tui.NewStyle().WithBold().WithForeground(tui.ColorYellow)
 		frame.PrintStyled(12, scrollY, title, titleStyle)
 
 		// Content with scroll offset
-		contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+		contentStyle := tui.NewStyle().WithForeground(tui.ColorWhite)
 		content := []string{
 			"Use your mouse wheel to scroll through this area.",
 			"",
@@ -308,17 +308,17 @@ func (app *MouseDemoApp) renderScrollAreaView() gooey.View {
 		}
 
 		// Scroll indicator
-		indicatorStyle := gooey.NewStyle().WithForeground(gooey.ColorCyan)
+		indicatorStyle := tui.NewStyle().WithForeground(tui.ColorCyan)
 		indicator := fmt.Sprintf("Scroll: %d/%d", startLine+1, len(content))
 		frame.PrintStyled(68, scrollY+7, indicator, indicatorStyle)
 	})
 }
 
-func (app *MouseDemoApp) renderModifierAreaView() gooey.View {
-	return gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+func (app *MouseDemoApp) renderModifierAreaView() tui.View {
+	return tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 		modY := 21
-		boxStyle := gooey.NewStyle().WithBackground(gooey.ColorBrightBlack)
-		borderStyle := gooey.NewStyle().WithForeground(gooey.ColorMagenta)
+		boxStyle := tui.NewStyle().WithBackground(tui.ColorBrightBlack)
+		borderStyle := tui.NewStyle().WithForeground(tui.ColorMagenta)
 
 		// Draw border
 		app.renderBorder(frame, 9, modY-1, 72, 6, borderStyle)
@@ -331,35 +331,35 @@ func (app *MouseDemoApp) renderModifierAreaView() gooey.View {
 		if app.hoverRegion == "modifier" {
 			title += " (hovering)"
 		}
-		titleStyle := gooey.NewStyle().WithBold().WithForeground(gooey.ColorYellow)
+		titleStyle := tui.NewStyle().WithBold().WithForeground(tui.ColorYellow)
 		frame.PrintStyled(12, modY, title, titleStyle)
 
 		// Instructions
-		instructStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
+		instructStyle := tui.NewStyle().WithForeground(tui.ColorWhite)
 		frame.PrintStyled(12, modY+1, "Click here while holding Shift, Ctrl, or Alt keys", instructStyle)
 
 		// Show last detected modifiers
 		if app.modifierInfo != "" {
-			modStyle := gooey.NewStyle().WithForeground(gooey.ColorGreen).WithBold()
+			modStyle := tui.NewStyle().WithForeground(tui.ColorGreen).WithBold()
 			frame.PrintStyled(12, modY+2, fmt.Sprintf("Last detected: %s", app.modifierInfo), modStyle)
 		}
 	})
 }
 
-func (app *MouseDemoApp) renderFooterView() gooey.View {
+func (app *MouseDemoApp) renderFooterView() tui.View {
 	sep := strings.Repeat("━", 80)
-	return gooey.VStack(
-		gooey.Text("%s", sep).Dim(),
-		gooey.HStack(
-			gooey.Text("Counter:").Fg(gooey.ColorCyan),
-			gooey.Text("%d", app.clickCount["increment"]),
-			gooey.Text("  Status:").Fg(gooey.ColorCyan),
-			gooey.Text("%s", app.lastAction),
+	return tui.VStack(
+		tui.Text("%s", sep).Dim(),
+		tui.HStack(
+			tui.Text("Counter:").Fg(tui.ColorCyan),
+			tui.Text("%d", app.clickCount["increment"]),
+			tui.Text("  Status:").Fg(tui.ColorCyan),
+			tui.Text("%s", app.lastAction),
 		),
 	)
 }
 
-func (app *MouseDemoApp) renderButton(frame gooey.RenderFrame, text string, x, y, width, height int, style gooey.Style) {
+func (app *MouseDemoApp) renderButton(frame tui.RenderFrame, text string, x, y, width, height int, style tui.Style) {
 	// Draw button background
 	app.renderBox(frame, x, y, width, height, style)
 
@@ -369,13 +369,13 @@ func (app *MouseDemoApp) renderButton(frame gooey.RenderFrame, text string, x, y
 	frame.PrintStyled(textX, textY, text, style)
 }
 
-func (app *MouseDemoApp) renderBox(frame gooey.RenderFrame, x, y, width, height int, style gooey.Style) {
+func (app *MouseDemoApp) renderBox(frame tui.RenderFrame, x, y, width, height int, style tui.Style) {
 	for row := 0; row < height; row++ {
 		frame.FillStyled(x, y+row, width, 1, ' ', style)
 	}
 }
 
-func (app *MouseDemoApp) renderBorder(frame gooey.RenderFrame, x, y, width, height int, style gooey.Style) {
+func (app *MouseDemoApp) renderBorder(frame tui.RenderFrame, x, y, width, height int, style tui.Style) {
 	// Top and bottom
 	for col := 0; col < width; col++ {
 		frame.PrintStyled(x+col, y, "─", style)
@@ -397,8 +397,8 @@ func (app *MouseDemoApp) renderBorder(frame gooey.RenderFrame, x, y, width, heig
 
 func main() {
 	// Mouse tracking is enabled via WithMouseTracking option, and mouse events are
-	// automatically delivered to HandleEvent as gooey.MouseEvent
-	if err := gooey.Run(&MouseDemoApp{}, gooey.WithMouseTracking(true)); err != nil {
+	// automatically delivered to HandleEvent as tui.MouseEvent
+	if err := tui.Run(&MouseDemoApp{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

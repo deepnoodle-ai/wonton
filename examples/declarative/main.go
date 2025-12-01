@@ -4,7 +4,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // App holds the application state.
@@ -13,36 +13,36 @@ type App struct {
 }
 
 // View returns the declarative UI for this app.
-func (app *App) View() gooey.View {
-	return gooey.VStack(
-		gooey.Text("Declarative Input Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
-		gooey.HStack(
-			gooey.Text("Name: "),
-			gooey.Input(&app.name).Placeholder("Enter your name...").Width(30),
+func (app *App) View() tui.View {
+	return tui.VStack(
+		tui.Text("Declarative Input Demo").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
+		tui.HStack(
+			tui.Text("Name: "),
+			tui.Input(&app.name).Placeholder("Enter your name...").Width(30),
 		).Gap(1),
-		gooey.IfElse(app.name != "",
-			gooey.Text("Hello, %s!", app.name).Fg(gooey.ColorGreen),
-			gooey.Text("Type your name above").Dim(),
+		tui.IfElse(app.name != "",
+			tui.Text("Hello, %s!", app.name).Fg(tui.ColorGreen),
+			tui.Text("Type your name above").Dim(),
 		),
-		gooey.Spacer(),
-		gooey.Text("Press Ctrl+C to quit").Dim(),
+		tui.Spacer(),
+		tui.Text("Press Ctrl+C to quit").Dim(),
 	).Padding(1)
 }
 
 // HandleEvent processes input events.
-func (app *App) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 	return nil
 }
 
 func main() {
-	if err := gooey.Run(&App{}); err != nil {
+	if err := tui.Run(&App{}); err != nil {
 		log.Fatal(err)
 	}
 }

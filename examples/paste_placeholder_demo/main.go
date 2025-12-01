@@ -6,15 +6,15 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // PastePlaceholderApp demonstrates the TextInput widget's paste placeholder mode.
 // Multi-line pastes are shown as "[pasted N lines]" placeholders that can be
 // deleted atomically with backspace/delete.
 type PastePlaceholderApp struct {
-	terminal *gooey.Terminal
-	input    *gooey.TextInput
+	terminal *tui.Terminal
+	input    *tui.TextInput
 	message  string
 
 	// Submitted result
@@ -29,7 +29,7 @@ func (app *PastePlaceholderApp) Init() error {
 }
 
 func (app *PastePlaceholderApp) reset() {
-	app.input = gooey.NewTextInput().
+	app.input = tui.NewTextInput().
 		WithPlaceholder("type or paste here...").
 		WithPastePlaceholderMode(true).
 		WithMultilineMode(true)
@@ -43,9 +43,9 @@ func (app *PastePlaceholderApp) Destroy() {
 	app.terminal.DisableBracketedPaste()
 }
 
-func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *PastePlaceholderApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		if app.submitted {
 			// Any key after submit resets for another try
 			app.reset()
@@ -65,9 +65,9 @@ func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		}
 
 		switch e.Key {
-		case gooey.KeyEscape, gooey.KeyCtrlC:
-			return []gooey.Cmd{gooey.Quit()}
-		case gooey.KeyEnter:
+		case tui.KeyEscape, tui.KeyCtrlC:
+			return []tui.Cmd{tui.Quit()}
+		case tui.KeyEnter:
 			if e.Shift {
 				// Shift+Enter: let TextInput handle it (inserts newline)
 				app.input.HandleKey(e)
@@ -78,7 +78,7 @@ func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 				app.submitted = true
 			}
 			return nil
-		case gooey.KeyCtrlU:
+		case tui.KeyCtrlU:
 			app.input.Clear()
 			app.message = "Cleared"
 			return nil
@@ -90,69 +90,69 @@ func (app *PastePlaceholderApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *PastePlaceholderApp) View() gooey.View {
+func (app *PastePlaceholderApp) View() tui.View {
 	if app.submitted {
 		return app.resultView()
 	}
 	return app.inputView()
 }
 
-func (app *PastePlaceholderApp) inputView() gooey.View {
+func (app *PastePlaceholderApp) inputView() tui.View {
 	// Stats
 	displayLen := len(app.input.DisplayText())
 	actualLen := len(app.input.Value())
 	statsText := fmt.Sprintf("Display: %d chars | Actual: %d chars", displayLen, actualLen)
 
-	var children []gooey.View
+	var children []tui.View
 
 	// Title
 	children = append(children,
-		gooey.Text("Paste Placeholder Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("Multi-line pastes show as '[pasted N lines]' - deleted atomically").Fg(gooey.ColorBrightBlack),
-		gooey.Text("Enter: submit | Shift+Enter: newline | ESC: quit | Ctrl+U: clear").Fg(gooey.ColorBrightBlack),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Paste Placeholder Demo").Bold().Fg(tui.ColorCyan),
+		tui.Text("Multi-line pastes show as '[pasted N lines]' - deleted atomically").Fg(tui.ColorBrightBlack),
+		tui.Text("Enter: submit | Shift+Enter: newline | ESC: quit | Ctrl+U: clear").Fg(tui.ColorBrightBlack),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Input label and widget
 	children = append(children,
-		gooey.Text("Input:").Bold(),
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
+		tui.Text("Input:").Bold(),
+		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
 			app.input.SetBounds(bounds)
 			app.input.Draw(frame)
 		}).Height(5).Width(50),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Status message
 	if app.message != "" {
-		children = append(children, gooey.Text("%s", app.message).Fg(gooey.ColorGreen))
-		children = append(children, gooey.Spacer().MinHeight(1))
+		children = append(children, tui.Text("%s", app.message).Fg(tui.ColorGreen))
+		children = append(children, tui.Spacer().MinHeight(1))
 	}
 
 	// Stats
-	children = append(children, gooey.Text("%s", statsText).Fg(gooey.ColorYellow))
+	children = append(children, tui.Text("%s", statsText).Fg(tui.ColorYellow))
 
-	return gooey.VStack(children...)
+	return tui.VStack(children...)
 }
 
-func (app *PastePlaceholderApp) resultView() gooey.View {
+func (app *PastePlaceholderApp) resultView() tui.View {
 	lines := strings.Split(app.result, "\n")
 	maxLines := 15
 
-	var children []gooey.View
+	var children []tui.View
 
 	// Title
 	children = append(children,
-		gooey.Text("Submitted Content").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Submitted Content").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Show result with line numbers using Canvas for custom formatting
 	children = append(children,
-		gooey.Canvas(func(frame gooey.RenderFrame, bounds image.Rectangle) {
-			lineNumStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
-			contentStyle := gooey.NewStyle().WithForeground(gooey.ColorWhite)
-			hintStyle := gooey.NewStyle().WithForeground(gooey.ColorBrightBlack)
+		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
+			lineNumStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
+			contentStyle := tui.NewStyle().WithForeground(tui.ColorWhite)
+			hintStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
 			width := bounds.Dx()
 
 			y := 0
@@ -173,27 +173,27 @@ func (app *PastePlaceholderApp) resultView() gooey.View {
 				y++
 			}
 		}).Height(maxLines+1).Width(80),
-		gooey.Spacer().MinHeight(1),
+		tui.Spacer().MinHeight(1),
 	)
 
 	// Stats
 	statsText := fmt.Sprintf("Total: %d chars, %d lines", len(app.result), len(lines))
 	children = append(children,
-		gooey.Text("%s", statsText).Fg(gooey.ColorYellow),
-		gooey.Spacer().MinHeight(1),
-		gooey.Text("Press any key to try again...").Fg(gooey.ColorBrightBlack),
+		tui.Text("%s", statsText).Fg(tui.ColorYellow),
+		tui.Spacer().MinHeight(1),
+		tui.Text("Press any key to try again...").Fg(tui.ColorBrightBlack),
 	)
 
-	return gooey.VStack(children...)
+	return tui.VStack(children...)
 }
 
 func main() {
 	// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of
-	// gooey.Run() because it needs to call terminal.EnableBracketedPaste() in Init(),
+	// tui.Run() because it needs to call terminal.EnableBracketedPaste() in Init(),
 	// which requires access to the terminal instance. There is currently no
-	// gooey.WithBracketedPaste() option.
+	// tui.WithBracketedPaste() option.
 
-	terminal, err := gooey.NewTerminal()
+	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
@@ -203,7 +203,7 @@ func main() {
 		terminal: terminal,
 	}
 
-	runtime := gooey.NewRuntime(terminal, app, 30)
+	runtime := tui.NewRuntime(terminal, app, 30)
 	if err := runtime.Run(); err != nil {
 		log.Fatalf("Runtime error: %v\n", err)
 	}

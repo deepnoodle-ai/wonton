@@ -53,12 +53,12 @@ package main
 
 import (
     "fmt"
-    "github.com/deepnoodle-ai/gooey"
+    "github.com/deepnoodle-ai/gooey/tui"
 )
 
 func main() {
     // Create renderer
-    renderer := gooey.NewMarkdownRenderer()
+    renderer := tui.NewMarkdownRenderer()
 
     // Render markdown
     markdown := "# Hello World\n\nThis is **bold** and this is *italic*."
@@ -84,15 +84,15 @@ package main
 
 import (
     "image"
-    "github.com/deepnoodle-ai/gooey"
+    "github.com/deepnoodle-ai/gooey/tui"
 )
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     // Create markdown widget
-    widget := gooey.NewMarkdownWidget("# My Document\n\nContent here...")
+    widget := tui.NewMarkdownWidget("# My Document\n\nContent here...")
     widget.SetBounds(image.Rect(0, 0, 80, 25))
     widget.Init()
 
@@ -106,17 +106,17 @@ func main() {
 ### Scrollable Viewer
 
 ```go
-viewer := gooey.NewMarkdownViewer(longMarkdownContent)
+viewer := tui.NewMarkdownViewer(longMarkdownContent)
 viewer.SetBounds(image.Rect(0, 0, 80, 25))
 viewer.Init()
 
 // Handle scrolling with keyboard
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyArrowDown}) // Scroll down
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyArrowUp})   // Scroll up
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyPageDown})  // Page down
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyPageUp})    // Page up
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyHome})      // Jump to top
-viewer.HandleKey(gooey.KeyEvent{Key: gooey.KeyEnd})       // Jump to bottom
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyArrowDown}) // Scroll down
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyArrowUp})   // Scroll up
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyPageDown})  // Page down
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyPageUp})    // Page up
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyHome})      // Jump to top
+viewer.HandleKey(tui.KeyEvent{Key: tui.KeyEnd})       // Jump to bottom
 ```
 
 ## API Reference
@@ -176,7 +176,7 @@ A portion of text with a specific style and optional hyperlink.
 ### Default Theme
 
 ```go
-theme := gooey.DefaultMarkdownTheme()
+theme := tui.DefaultMarkdownTheme()
 // Returns a theme with good contrast and readability:
 // - Cyan headings (bold + underline for H1)
 // - Yellow inline code
@@ -188,17 +188,17 @@ theme := gooey.DefaultMarkdownTheme()
 ### Custom Theme
 
 ```go
-theme := gooey.DefaultMarkdownTheme()
+theme := tui.DefaultMarkdownTheme()
 
 // Customize heading styles
-theme.H1Style = gooey.NewStyle().
-    WithForeground(gooey.ColorRed).
+theme.H1Style = tui.NewStyle().
+    WithForeground(tui.ColorRed).
     WithBold().
     WithUnderline()
 
 // Customize code style
-theme.CodeStyle = gooey.NewStyle().
-    WithForeground(gooey.ColorMagenta)
+theme.CodeStyle = tui.NewStyle().
+    WithForeground(tui.ColorMagenta)
 
 // Customize list markers
 theme.BulletChar = "→"
@@ -208,7 +208,7 @@ theme.NumberFmt = "%d) "
 theme.SyntaxTheme = "dracula" // or "monokai", "github", "solarized", etc.
 
 // Apply theme
-renderer := gooey.NewMarkdownRenderer()
+renderer := tui.NewMarkdownRenderer()
 renderer.WithTheme(theme)
 ```
 
@@ -251,7 +251,7 @@ type MarkdownTheme struct {
 A composable widget that renders markdown content.
 
 ```go
-widget := gooey.NewMarkdownWidget(content)
+widget := tui.NewMarkdownWidget(content)
 widget.SetBounds(image.Rect(0, 0, 80, 25))
 widget.Init()
 
@@ -259,7 +259,7 @@ widget.Init()
 widget.SetContent("# New Content")
 
 // Set custom renderer
-customRenderer := gooey.NewMarkdownRenderer().WithMaxWidth(60)
+customRenderer := tui.NewMarkdownRenderer().WithMaxWidth(60)
 widget.SetRenderer(customRenderer)
 
 // Scrolling
@@ -277,7 +277,7 @@ lineCount := widget.GetLineCount()
 A higher-level widget with built-in keyboard scrolling support.
 
 ```go
-viewer := gooey.NewMarkdownViewer(content)
+viewer := tui.NewMarkdownViewer(content)
 viewer.SetBounds(image.Rect(0, 0, 80, 25))
 viewer.Init()
 
@@ -304,7 +304,7 @@ go run examples/markdown_demo/main.go
 ### Rendering Different Elements
 
 ```go
-renderer := gooey.NewMarkdownRenderer()
+renderer := tui.NewMarkdownRenderer()
 
 // Headings
 result, _ := renderer.Render("# Heading 1\n## Heading 2")
@@ -348,13 +348,13 @@ result, _ := renderer.Render(markdown)
 ### Custom Rendering Loop
 
 ```go
-renderer := gooey.NewMarkdownRenderer().WithMaxWidth(80)
+renderer := tui.NewMarkdownRenderer().WithMaxWidth(80)
 result, _ := renderer.Render(markdown)
 
 for lineNum, line := range result.Lines {
     // Apply indentation
     for i := 0; i < line.Indent; i++ {
-        frame.Print(x+i, y+lineNum, " ", gooey.NewStyle())
+        frame.Print(x+i, y+lineNum, " ", tui.NewStyle())
     }
 
     x := line.Indent
@@ -375,7 +375,7 @@ for lineNum, line := range result.Lines {
 
 ```go
 // Set maximum width for wrapping
-renderer := gooey.NewMarkdownRenderer()
+renderer := tui.NewMarkdownRenderer()
 renderer.WithMaxWidth(60) // Wrap at 60 columns
 
 // Wrapping respects:
@@ -398,7 +398,7 @@ Available themes from Chroma (https://github.com/alecthomas/chroma):
 - And many more...
 
 ```go
-theme := gooey.DefaultMarkdownTheme()
+theme := tui.DefaultMarkdownTheme()
 theme.SyntaxTheme = "dracula"
 renderer.WithTheme(theme)
 ```
@@ -407,21 +407,21 @@ renderer.WithTheme(theme)
 
 ```go
 // Create a container with markdown and other widgets
-container := gooey.NewContainer(gooey.NewVBoxLayout(1))
+container := tui.NewContainer(tui.NewVBoxLayout(1))
 
 // Add header
-header := gooey.NewComposableLabel("Documentation Viewer")
+header := tui.NewComposableLabel("Documentation Viewer")
 container.AddChild(header)
 
 // Add markdown content
-mdWidget := gooey.NewMarkdownWidget(content)
-mdParams := gooey.DefaultLayoutParams()
+mdWidget := tui.NewMarkdownWidget(content)
+mdParams := tui.DefaultLayoutParams()
 mdParams.Grow = 1 // Take all remaining space
 mdWidget.SetLayoutParams(mdParams)
 container.AddChild(mdWidget)
 
 // Add footer
-footer := gooey.NewComposableLabel("Press q to quit")
+footer := tui.NewComposableLabel("Press q to quit")
 container.AddChild(footer)
 ```
 

@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // ProgressItem represents a single progress indicator
@@ -15,7 +15,7 @@ type ProgressItem struct {
 	Progress    int
 	Total       int
 	SpinnerOnly bool
-	Color       gooey.Color
+	Color       tui.Color
 	Complete    bool
 }
 
@@ -38,7 +38,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       100,
 			SpinnerOnly: false,
-			Color:       gooey.ColorCyan,
+			Color:       tui.ColorCyan,
 		},
 		{
 			ID:          "db",
@@ -46,7 +46,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       1,
 			SpinnerOnly: true,
-			Color:       gooey.ColorYellow,
+			Color:       tui.ColorYellow,
 		},
 		{
 			ID:          "process",
@@ -54,7 +54,7 @@ func (app *ProgressDemoApp) Init() error {
 			Progress:    0,
 			Total:       50,
 			SpinnerOnly: false,
-			Color:       gooey.ColorGreen,
+			Color:       tui.ColorGreen,
 		},
 	}
 
@@ -62,9 +62,9 @@ func (app *ProgressDemoApp) Init() error {
 }
 
 // HandleEvent processes events from the Runtime.
-func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *ProgressDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		app.frame = e.Frame
 
 		// Simulate download progress (item 0)
@@ -110,13 +110,13 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		if allComplete && app.frame > 120 { // 120 frames = 4 seconds at 30 FPS
 			// Give user a moment to see completion
 			if app.frame == 240 { // 8 seconds total
-				return []gooey.Cmd{gooey.Quit()}
+				return []tui.Cmd{tui.Quit()}
 			}
 		}
 
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 	}
 
@@ -124,43 +124,43 @@ func (app *ProgressDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view hierarchy.
-func (app *ProgressDemoApp) View() gooey.View {
+func (app *ProgressDemoApp) View() tui.View {
 	elapsed := time.Since(app.startTime).Truncate(time.Millisecond)
 
-	return gooey.VStack(
+	return tui.VStack(
 		// Header
-		gooey.HeaderBar("Multi-Progress Demo").Bg(gooey.ColorCyan).Fg(gooey.ColorBlack),
-		gooey.Spacer().MinHeight(1),
+		tui.HeaderBar("Multi-Progress Demo").Bg(tui.ColorCyan).Fg(tui.ColorBlack),
+		tui.Spacer().MinHeight(1),
 
 		// Progress items using new declarative views
-		gooey.ForEach(app.items, func(item *ProgressItem, i int) gooey.View {
+		tui.ForEach(app.items, func(item *ProgressItem, i int) tui.View {
 			// Build the item view using Loading (spinner) view
-			itemContent := gooey.HStack(
-				gooey.Loading(app.frame).Label(item.Message).Fg(item.Color),
+			itemContent := tui.HStack(
+				tui.Loading(app.frame).Label(item.Message).Fg(item.Color),
 			)
 
 			// If not spinner-only, add progress bar below using Progress view
 			if !item.SpinnerOnly {
-				return gooey.VStack(
+				return tui.VStack(
 					itemContent,
-					gooey.Progress(item.Progress, item.Total).Width(30).Fg(item.Color),
+					tui.Progress(item.Progress, item.Total).Width(30).Fg(item.Color),
 				)
 			}
 
 			return itemContent
 		}).Gap(1),
 
-		gooey.Spacer(),
+		tui.Spacer(),
 
 		// Divider before footer
-		gooey.Divider(),
-		gooey.Spacer().MinHeight(1),
+		tui.Divider(),
+		tui.Spacer().MinHeight(1),
 
 		// Bottom controls
-		gooey.HStack(
-			gooey.Text("Press 'q' to quit").Fg(gooey.ColorWhite),
-			gooey.Spacer(),
-			gooey.Text("Elapsed: %s", elapsed).Dim(),
+		tui.HStack(
+			tui.Text("Press 'q' to quit").Fg(tui.ColorWhite),
+			tui.Spacer(),
+			tui.Text("Elapsed: %s", elapsed).Dim(),
 		),
 	).Padding(2)
 }
@@ -168,7 +168,7 @@ func (app *ProgressDemoApp) View() gooey.View {
 func main() {
 	app := &ProgressDemoApp{}
 
-	if err := gooey.Run(app); err != nil {
+	if err := tui.Run(app); err != nil {
 		log.Fatal(err)
 	}
 

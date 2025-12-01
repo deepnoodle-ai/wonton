@@ -65,10 +65,10 @@ The `WrappingLabel` is a built-in widget that implements `Measurable`. It automa
 
 ```go
 // Create a wrapping label
-label := gooey.NewWrappingLabel("This text will automatically wrap if the container is too narrow.")
+label := tui.NewWrappingLabel("This text will automatically wrap if the container is too narrow.")
 
 // Add to a container (VBox supports constraints automatically)
-container := gooey.NewContainer(gooey.NewVBoxLayout(1))
+container := tui.NewContainer(tui.NewVBoxLayout(1))
 container.AddChild(label)
 ```
 
@@ -78,10 +78,10 @@ To create a custom widget that adapts to constraints:
 
 ```go
 type MyAdaptiveWidget struct {
-    gooey.BaseWidget
+    tui.BaseWidget
 }
 
-func (w *MyAdaptiveWidget) Measure(c gooey.SizeConstraints) image.Point {
+func (w *MyAdaptiveWidget) Measure(c tui.SizeConstraints) image.Point {
     // 1. Check available width
     targetWidth := 100 // Default preferred width
     if c.HasMaxWidth() && c.MaxWidth < targetWidth {
@@ -105,7 +105,7 @@ If you are manually managing a layout loop (rare), you must call `Measure` befor
 
 ```go
 // 1. Measure
-size := container.Measure(gooey.SizeConstraints{
+size := container.Measure(tui.SizeConstraints{
     MaxWidth: terminalWidth,
     MaxHeight: terminalHeight,
 })
@@ -123,7 +123,7 @@ Currently, the following layout managers support constraint propagation:
 
 ## Best Practices
 
-*   **Always use `MeasureWidget` helper:** When writing custom layouts, use `gooey.MeasureWidget(child, constraints)` instead of checking for the interface manually. It handles legacy fallback automatically.
+*   **Always use `MeasureWidget` helper:** When writing custom layouts, use `tui.MeasureWidget(child, constraints)` instead of checking for the interface manually. It handles legacy fallback automatically.
 *   **Respect Constraints:** Your `Measure` implementation MUST return a size that falls within the `MinWidth`/`MaxWidth` and `MinHeight`/`MaxHeight`. Use `constraints.Constrain(size)` to ensure this.
 *   **Cache Results:** Measuring can be expensive (e.g., text wrapping). Consider caching the result if the constraints haven't changed (like `WrappingLabel` does).
 

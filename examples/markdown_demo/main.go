@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 const sampleMarkdown = `# Gooey Markdown Renderer
@@ -49,14 +49,14 @@ func main() {
     fmt.Println("Hello, Gooey!")
 
     // Create a terminal
-    terminal, err := gooey.NewTerminal()
+    terminal, err := tui.NewTerminal()
     if err != nil {
         panic(err)
     }
     defer terminal.Restore()
 
     // Render markdown
-    renderer := gooey.NewMarkdownRenderer()
+    renderer := tui.NewMarkdownRenderer()
     result, _ := renderer.Render("# Hello World")
 }
 ` + "```" + `
@@ -102,11 +102,11 @@ type MarkdownDemoApp struct {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MarkdownDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 
 		// Handle scrolling
@@ -116,26 +116,26 @@ func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		}
 
 		switch e.Key {
-		case gooey.KeyArrowUp:
+		case tui.KeyArrowUp:
 			if app.scrollY > 0 {
 				app.scrollY--
 			}
-		case gooey.KeyArrowDown:
+		case tui.KeyArrowDown:
 			app.scrollY++
-		case gooey.KeyPageUp:
+		case tui.KeyPageUp:
 			app.scrollY -= pageSize
 			if app.scrollY < 0 {
 				app.scrollY = 0
 			}
-		case gooey.KeyPageDown:
+		case tui.KeyPageDown:
 			app.scrollY += pageSize
-		case gooey.KeyHome:
+		case tui.KeyHome:
 			app.scrollY = 0
-		case gooey.KeyEnd:
+		case tui.KeyEnd:
 			app.scrollY = 1000 // will be clamped
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
 	}
@@ -144,23 +144,23 @@ func (app *MarkdownDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative UI for this app.
-func (app *MarkdownDemoApp) View() gooey.View {
+func (app *MarkdownDemoApp) View() tui.View {
 	markdownHeight := app.height - 2
 	if markdownHeight < 1 {
 		markdownHeight = 1
 	}
 
-	return gooey.VStack(
-		gooey.Markdown(sampleMarkdown, &app.scrollY).
+	return tui.VStack(
+		tui.Markdown(sampleMarkdown, &app.scrollY).
 			Height(markdownHeight).
 			MaxWidth(app.width),
-		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
-			Bg(gooey.ColorBlue).Fg(gooey.ColorWhite),
+		tui.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
+			Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 	)
 }
 
 func main() {
-	if err := gooey.Run(&MarkdownDemoApp{}); err != nil {
+	if err := tui.Run(&MarkdownDemoApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

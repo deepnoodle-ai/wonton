@@ -5,29 +5,29 @@ import (
 	"log"
 	"time"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // MetricsApp demonstrates the performance metrics system using the Runtime architecture.
 // It shows live metrics during an animated demo and final metrics after completion.
 type MetricsApp struct {
-	terminal    *gooey.Terminal
+	terminal    *tui.Terminal
 	frame       uint64
 	demoRunning bool
 	startTime   time.Time
 	demoDone    bool
 
 	// Animation colors
-	colors []gooey.Color
+	colors []tui.Color
 
 	// Current metrics snapshot
-	metrics gooey.MetricsSnapshot
+	metrics tui.MetricsSnapshot
 }
 
 // HandleEvent processes events from the Runtime.
-func (app *MetricsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MetricsApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.TickEvent:
+	case tui.TickEvent:
 		app.frame = e.Frame
 
 		// Get current metrics before rendering
@@ -42,14 +42,14 @@ func (app *MetricsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 			app.terminal.DisableRawMode()
 		}
 
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Handle user input
-		if e.Key == gooey.KeyCtrlC {
+		if e.Key == tui.KeyCtrlC {
 			// Quit the application
-			return []gooey.Cmd{gooey.Quit()}
+			return []tui.Cmd{tui.Quit()}
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		// Terminal resized - metrics will adapt automatically
 	}
 
@@ -57,19 +57,19 @@ func (app *MetricsApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view for the current application state.
-func (app *MetricsApp) View() gooey.View {
+func (app *MetricsApp) View() tui.View {
 	if app.demoRunning {
 		return app.viewDemo()
 	} else if app.demoDone {
 		return app.viewFinalMetrics()
 	}
-	return gooey.VStack()
+	return tui.VStack()
 }
 
 // viewDemo returns the animated demo view with live metrics.
-func (app *MetricsApp) viewDemo() gooey.View {
+func (app *MetricsApp) viewDemo() tui.View {
 	// Build animated content lines
-	animatedLines := []gooey.View{}
+	animatedLines := []tui.View{}
 	for i := 0; i < 10; i++ {
 		offset := int(app.frame) + i*5
 		char := "▓▒░ "[offset%4]
@@ -82,7 +82,7 @@ func (app *MetricsApp) viewDemo() gooey.View {
 				line += " "
 			}
 		}
-		animatedLines = append(animatedLines, gooey.Text("%s", line).Fg(app.colors[colorIdx]))
+		animatedLines = append(animatedLines, tui.Text("%s", line).Fg(app.colors[colorIdx]))
 	}
 
 	// Calculate progress
@@ -94,71 +94,71 @@ func (app *MetricsApp) viewDemo() gooey.View {
 	// Animated header color
 	colorIdx := int(app.frame/10) % len(app.colors)
 
-	return gooey.VStack(
-		gooey.Spacer().MinHeight(1),
-		gooey.Text("=== Performance Metrics Demo ===").Bold().Fg(app.colors[colorIdx]),
-		gooey.Spacer().MinHeight(1),
-		gooey.VStack(animatedLines...),
-		gooey.Spacer().MinHeight(1),
+	return tui.VStack(
+		tui.Spacer().MinHeight(1),
+		tui.Text("=== Performance Metrics Demo ===").Bold().Fg(app.colors[colorIdx]),
+		tui.Spacer().MinHeight(1),
+		tui.VStack(animatedLines...),
+		tui.Spacer().MinHeight(1),
 		// Use Progress view instead of manual string building
-		gooey.HStack(
-			gooey.Text("Progress:").Fg(gooey.ColorGreen),
-			gooey.Progress(progressVal, 100).Width(40).Fg(gooey.ColorGreen).HidePercent(),
+		tui.HStack(
+			tui.Text("Progress:").Fg(tui.ColorGreen),
+			tui.Progress(progressVal, 100).Width(40).Fg(tui.ColorGreen).HidePercent(),
 		).Gap(1),
-		gooey.Spacer().MinHeight(1),
-		gooey.Text("Live Metrics:").Bold(),
-		gooey.Text("  Frames rendered: %d", app.metrics.TotalFrames),
-		gooey.Text("  Frames skipped:  %d", app.metrics.SkippedFrames),
-		gooey.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
-		gooey.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
-		gooey.Text("  Bytes written:   %d (%.1f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
-		gooey.Text("  Avg FPS:         %.2f", app.metrics.FPS()),
-		gooey.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
-		gooey.Text("  Last frame:      %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
-		gooey.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
-		gooey.Spacer(),
-		gooey.Text("Animation running... Will show final metrics in a moment"),
+		tui.Spacer().MinHeight(1),
+		tui.Text("Live Metrics:").Bold(),
+		tui.Text("  Frames rendered: %d", app.metrics.TotalFrames),
+		tui.Text("  Frames skipped:  %d", app.metrics.SkippedFrames),
+		tui.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
+		tui.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
+		tui.Text("  Bytes written:   %d (%.1f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
+		tui.Text("  Avg FPS:         %.2f", app.metrics.FPS()),
+		tui.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
+		tui.Text("  Last frame:      %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
+		tui.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
+		tui.Spacer(),
+		tui.Text("Animation running... Will show final metrics in a moment"),
 	).Padding(2)
 }
 
 // viewFinalMetrics returns the final metrics screen view.
-func (app *MetricsApp) viewFinalMetrics() gooey.View {
-	return gooey.VStack(
-		gooey.Spacer().MinHeight(1),
-		gooey.Text("=== Final Performance Metrics ===").Bold().Fg(gooey.ColorCyan),
-		gooey.Spacer().MinHeight(1),
+func (app *MetricsApp) viewFinalMetrics() tui.View {
+	return tui.VStack(
+		tui.Spacer().MinHeight(1),
+		tui.Text("=== Final Performance Metrics ===").Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Frames:").Fg(gooey.ColorYellow),
-		gooey.Text("  Total rendered:  %d", app.metrics.TotalFrames),
-		gooey.Text("  Skipped:         %d", app.metrics.SkippedFrames),
-		gooey.Text("  Average FPS:     %.2f", app.metrics.FPS()),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Frames:").Fg(tui.ColorYellow),
+		tui.Text("  Total rendered:  %d", app.metrics.TotalFrames),
+		tui.Text("  Skipped:         %d", app.metrics.SkippedFrames),
+		tui.Text("  Average FPS:     %.2f", app.metrics.FPS()),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Rendering:").Fg(gooey.ColorYellow),
-		gooey.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
-		gooey.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
-		gooey.Text("  Bytes written:   %d (%.2f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
-		gooey.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Rendering:").Fg(tui.ColorYellow),
+		tui.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
+		tui.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
+		tui.Text("  Bytes written:   %d (%.2f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
+		tui.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Timing:").Fg(gooey.ColorYellow),
-		gooey.Text("  Min frame time:  %.2fms", app.metrics.MinFrameTime.Seconds()*1000),
-		gooey.Text("  Max frame time:  %.2fms", app.metrics.MaxFrameTime.Seconds()*1000),
-		gooey.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
-		gooey.Text("  Last frame time: %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Timing:").Fg(tui.ColorYellow),
+		tui.Text("  Min frame time:  %.2fms", app.metrics.MinFrameTime.Seconds()*1000),
+		tui.Text("  Max frame time:  %.2fms", app.metrics.MaxFrameTime.Seconds()*1000),
+		tui.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
+		tui.Text("  Last frame time: %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Dirty Regions:").Fg(gooey.ColorYellow),
-		gooey.Text("  Last size:       %d cells", app.metrics.LastDirtyArea),
-		gooey.Text("  Max size:        %d cells", app.metrics.MaxDirtyArea),
-		gooey.Text("  Avg size:        %.0f cells", app.metrics.AvgDirtyArea),
-		gooey.Spacer().MinHeight(1),
+		tui.Text("Dirty Regions:").Fg(tui.ColorYellow),
+		tui.Text("  Last size:       %d cells", app.metrics.LastDirtyArea),
+		tui.Text("  Max size:        %d cells", app.metrics.MaxDirtyArea),
+		tui.Text("  Avg size:        %.0f cells", app.metrics.AvgDirtyArea),
+		tui.Spacer().MinHeight(1),
 
-		gooey.Text("Compact Summary:").Fg(gooey.ColorYellow),
-		gooey.Text("  %s", app.metrics.Compact()).Fg(gooey.ColorGreen),
+		tui.Text("Compact Summary:").Fg(tui.ColorYellow),
+		tui.Text("  %s", app.metrics.Compact()).Fg(tui.ColorGreen),
 
-		gooey.Spacer(),
-		gooey.Text("Press Ctrl+C to exit").Bold().Fg(gooey.ColorMagenta),
+		tui.Spacer(),
+		tui.Text("Press Ctrl+C to exit").Bold().Fg(tui.ColorMagenta),
 	).Padding(2)
 }
 
@@ -189,7 +189,7 @@ func (app *MetricsApp) Destroy() {
 
 func main() {
 	// Create terminal
-	terminal, err := gooey.NewTerminal()
+	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
@@ -199,18 +199,18 @@ func main() {
 	app := &MetricsApp{
 		terminal: terminal,
 		frame:    0,
-		colors: []gooey.Color{
-			gooey.ColorRed,
-			gooey.ColorYellow,
-			gooey.ColorGreen,
-			gooey.ColorCyan,
-			gooey.ColorBlue,
-			gooey.ColorMagenta,
+		colors: []tui.Color{
+			tui.ColorRed,
+			tui.ColorYellow,
+			tui.ColorGreen,
+			tui.ColorCyan,
+			tui.ColorBlue,
+			tui.ColorMagenta,
 		},
 	}
 
 	// Create and run the runtime with 60 FPS for smooth animation
-	runtime := gooey.NewRuntime(terminal, app, 60)
+	runtime := tui.NewRuntime(terminal, app, 60)
 
 	// Run the event loop (blocks until quit)
 	if err := runtime.Run(); err != nil {

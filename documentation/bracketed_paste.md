@@ -80,7 +80,7 @@ import (
 
 func main() {
     // Create terminal
-    terminal, err := gooey.NewTerminal()
+    terminal, err := tui.NewTerminal()
     if err != nil {
         log.Fatal(err)
     }
@@ -92,8 +92,8 @@ func main() {
     defer terminal.DisableBracketedPaste()
 
     // Create input handler
-    input := gooey.NewInput(terminal)
-    input.WithPrompt("Enter text: ", gooey.NewStyle())
+    input := tui.NewInput(terminal)
+    input.WithPrompt("Enter text: ", tui.NewStyle())
 
     // Read input (paste events are handled automatically)
     text, err := input.Read()
@@ -114,7 +114,7 @@ terminal.EnableBracketedPaste()
 defer terminal.DisableBracketedPaste()
 
 // Read events manually
-input := gooey.NewInput(terminal)
+input := tui.NewInput(terminal)
 for {
     event := input.ReadKeyEvent()
 
@@ -149,7 +149,7 @@ Gooey supports three different ways to display pasted content:
 You can register a callback to inspect, modify, or reject paste content:
 
 ```go
-input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
     // info contains:
     // - Content: the pasted text
     // - LineCount: number of lines
@@ -161,9 +161,9 @@ input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, s
     // - (PasteModified, newContent) to replace with modified content
 
     if info.ByteCount > 10000 {
-        return gooey.PasteReject, ""  // Too large
+        return tui.PasteReject, ""  // Too large
     }
-    return gooey.PasteAccept, ""
+    return tui.PasteAccept, ""
 })
 ```
 
@@ -297,17 +297,17 @@ import (
 )
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     terminal.EnableRawMode()
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
+    input := tui.NewInput(terminal)
     input.EnableMultiline() // Allow newlines
     input.WithPrompt("Paste or type text (Ctrl+Enter to submit):\n",
-                     gooey.NewStyle().WithForeground(gooey.ColorGreen))
+                     tui.NewStyle().WithForeground(tui.ColorGreen))
 
     text, _ := input.Read()
 
@@ -328,22 +328,22 @@ import (
 )
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     terminal.EnableRawMode()
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
-    input.WithPrompt("Enter text: ", gooey.NewStyle())
+    input := tui.NewInput(terminal)
+    input.WithPrompt("Enter text: ", tui.NewStyle())
 
     // Configure placeholder display mode
-    input.WithPasteDisplayMode(gooey.PasteDisplayPlaceholder)
+    input.WithPasteDisplayMode(tui.PasteDisplayPlaceholder)
 
     // Optional: customize placeholder style
-    placeholderStyle := gooey.NewStyle().
-        WithForeground(gooey.ColorBrightBlack).
+    placeholderStyle := tui.NewStyle().
+        WithForeground(tui.ColorBrightBlack).
         WithItalic()
     input.WithPlaceholderStyle(placeholderStyle)
 
@@ -364,19 +364,19 @@ import (
     "github.com/myzie/gooey"
 )
 
-func readSecurePassword(terminal *gooey.Terminal) (string, error) {
+func readSecurePassword(terminal *tui.Terminal) (string, error) {
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
-    input.WithPrompt("Password: ", gooey.NewStyle())
+    input := tui.NewInput(terminal)
+    input.WithPrompt("Password: ", tui.NewStyle())
     input.WithMask('*')
 
     // Reject all pastes in password field for security
-    input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+    input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
         // Could show a warning here
         println("\nPaste not allowed in password fields")
-        return gooey.PasteReject, ""
+        return tui.PasteReject, ""
     })
 
     return input.Read()
@@ -395,16 +395,16 @@ import (
 )
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     terminal.EnableRawMode()
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
+    input := tui.NewInput(terminal)
     input.EnableMultiline()
-    input.WithPrompt("Paste Go code:\n", gooey.NewStyle())
+    input.WithPrompt("Paste Go code:\n", tui.NewStyle())
 
     code, _ := input.Read()
 
@@ -437,25 +437,25 @@ func stripANSI(s string) string {
 }
 
 func main() {
-	terminal, _ := gooey.NewTerminal()
+	terminal, _ := tui.NewTerminal()
 	defer terminal.Close()
 
 	terminal.EnableRawMode()
 	terminal.EnableBracketedPaste()
 	defer terminal.DisableBracketedPaste()
 
-	input := gooey.NewInput(terminal)
-	input.WithPrompt("Paste code: ", gooey.NewStyle())
+	input := tui.NewInput(terminal)
+	input.WithPrompt("Paste code: ", tui.NewStyle())
 
 	// Strip ANSI codes from pasted content
-	input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+	input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
 		cleaned := stripANSI(info.Content)
 		if cleaned != info.Content {
 			// Content was modified - show placeholder
 			println("\n(ANSI codes stripped from paste)")
-			return gooey.PasteModified, cleaned
+			return tui.PasteModified, cleaned
 		}
-		return gooey.PasteAccept, ""
+		return tui.PasteAccept, ""
 	})
 
 	text, _ := input.Read()
@@ -474,23 +474,23 @@ import (
 )
 
 func main() {
-	terminal, _ := gooey.NewTerminal()
+	terminal, _ := tui.NewTerminal()
 	defer terminal.Close()
 
 	terminal.EnableRawMode()
 	terminal.EnableBracketedPaste()
 	defer terminal.DisableBracketedPaste()
 
-	input := gooey.NewInput(terminal)
-	input.WithPrompt("Paste content (max 1000 chars): ", gooey.NewStyle())
+	input := tui.NewInput(terminal)
+	input.WithPrompt("Paste content (max 1000 chars): ", tui.NewStyle())
 
 	// Enforce size limit
-	input.WithPasteHandler(func(info gooey.PasteInfo) (gooey.PasteHandlerDecision, string) {
+	input.WithPasteHandler(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
 		if info.ByteCount > 1000 {
 			fmt.Printf("\nPaste too large (%d chars). Maximum is 1000 chars.\n", info.ByteCount)
-			return gooey.PasteReject, ""
+			return tui.PasteReject, ""
 		}
-		return gooey.PasteAccept, ""
+		return tui.PasteAccept, ""
 	})
 
 	text, _ := input.Read()
@@ -510,17 +510,17 @@ import (
 )
 
 func main() {
-    terminal, _ := gooey.NewTerminal()
+    terminal, _ := tui.NewTerminal()
     defer terminal.Close()
 
     terminal.EnableRawMode()
     terminal.EnableBracketedPaste()
     defer terminal.DisableBracketedPaste()
 
-    input := gooey.NewInput(terminal)
+    input := tui.NewInput(terminal)
 
     for {
-        input.WithPrompt("Paste URL: ", gooey.NewStyle())
+        input.WithPrompt("Paste URL: ", tui.NewStyle())
         text, _ := input.Read()
 
         // Clean whitespace
@@ -591,7 +591,7 @@ terminal.EnableRawMode()
 terminal.EnableBracketedPaste()
 defer terminal.DisableBracketedPaste()
 
-input := gooey.NewInput(terminal)
+input := tui.NewInput(terminal)
 text, _ := input.Read()
 ```
 

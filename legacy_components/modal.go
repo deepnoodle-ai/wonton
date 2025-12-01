@@ -1,4 +1,4 @@
-package gooey
+package tui
 
 // import (
 // 	"fmt"

@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // MouseGridApp demonstrates a clickable grid with mouse support using Runtime.
@@ -33,16 +33,16 @@ func (app *MouseGridApp) Init() error {
 }
 
 // HandleEvent processes events
-func (app *MouseGridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *MouseGridApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Handle keyboard input
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 		return nil
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
 		return nil
@@ -52,30 +52,30 @@ func (app *MouseGridApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view structure
-func (app *MouseGridApp) View() gooey.View {
+func (app *MouseGridApp) View() tui.View {
 	// Color palette for the grid
-	colors := []gooey.Color{
-		gooey.ColorBrightBlack, // Off
-		gooey.ColorRed,
-		gooey.ColorGreen,
-		gooey.ColorBlue,
-		gooey.ColorYellow,
+	colors := []tui.Color{
+		tui.ColorBrightBlack, // Off
+		tui.ColorRed,
+		tui.ColorGreen,
+		tui.ColorBlue,
+		tui.ColorYellow,
 	}
 
-	return gooey.VStack(
-		gooey.Text("Mouse Grid Demo").Bold().Fg(gooey.ColorCyan),
-		gooey.Text("Click cells to toggle colors! Press 'q' or Ctrl+C to exit.").Fg(gooey.ColorWhite),
-		gooey.Spacer().MinHeight(1),
-		gooey.ColorGrid(app.gridW, app.gridH, app.gridState, colors).
+	return tui.VStack(
+		tui.Text("Mouse Grid Demo").Bold().Fg(tui.ColorCyan),
+		tui.Text("Click cells to toggle colors! Press 'q' or Ctrl+C to exit.").Fg(tui.ColorWhite),
+		tui.Spacer().MinHeight(1),
+		tui.ColorGrid(app.gridW, app.gridH, app.gridState, colors).
 			CellSize(6, 3).Gap(1),
-		gooey.Spacer(),
-	).Align(gooey.AlignCenter)
+		tui.Spacer(),
+	).Align(tui.AlignCenter)
 }
 
 func main() {
 	// Mouse tracking is enabled via WithMouseTracking option, and mouse events are
-	// automatically delivered to HandleEvent as gooey.MouseEvent
-	if err := gooey.Run(&MouseGridApp{}, gooey.WithMouseTracking(true)); err != nil {
+	// automatically delivered to HandleEvent as tui.MouseEvent
+	if err := tui.Run(&MouseGridApp{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

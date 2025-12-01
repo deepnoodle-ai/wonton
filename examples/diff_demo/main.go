@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 const sampleDiff = `diff --git a/server.go b/server.go
@@ -43,7 +43,7 @@ const sampleDiff = `diff --git a/server.go b/server.go
 
 // DiffDemoApp demonstrates the declarative DiffView.
 type DiffDemoApp struct {
-	diff    *gooey.Diff
+	diff    *tui.Diff
 	scrollY int
 	width   int
 	height  int
@@ -51,7 +51,7 @@ type DiffDemoApp struct {
 
 // Init initializes the application by parsing the diff.
 func (app *DiffDemoApp) Init() error {
-	diff, err := gooey.ParseUnifiedDiff(sampleDiff)
+	diff, err := tui.ParseUnifiedDiff(sampleDiff)
 	if err != nil {
 		return fmt.Errorf("failed to parse diff: %w", err)
 	}
@@ -60,11 +60,11 @@ func (app *DiffDemoApp) Init() error {
 }
 
 // HandleEvent processes events from the runtime.
-func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *DiffDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == gooey.KeyEscape || e.Key == gooey.KeyCtrlC {
-			return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEvent:
+		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
 		}
 
 		// Handle scrolling
@@ -74,26 +74,26 @@ func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 		}
 
 		switch e.Key {
-		case gooey.KeyArrowUp:
+		case tui.KeyArrowUp:
 			if app.scrollY > 0 {
 				app.scrollY--
 			}
-		case gooey.KeyArrowDown:
+		case tui.KeyArrowDown:
 			app.scrollY++
-		case gooey.KeyPageUp:
+		case tui.KeyPageUp:
 			app.scrollY -= pageSize
 			if app.scrollY < 0 {
 				app.scrollY = 0
 			}
-		case gooey.KeyPageDown:
+		case tui.KeyPageDown:
 			app.scrollY += pageSize
-		case gooey.KeyHome:
+		case tui.KeyHome:
 			app.scrollY = 0
-		case gooey.KeyEnd:
+		case tui.KeyEnd:
 			app.scrollY = 1000 // will be clamped
 		}
 
-	case gooey.ResizeEvent:
+	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
 	}
@@ -102,21 +102,21 @@ func (app *DiffDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 }
 
 // View returns the declarative view structure.
-func (app *DiffDemoApp) View() gooey.View {
+func (app *DiffDemoApp) View() tui.View {
 	diffHeight := app.height - 2
 	if diffHeight < 1 {
 		diffHeight = 1
 	}
 
-	statusStyle := gooey.NewStyle().
-		WithBackground(gooey.ColorBlue).
-		WithForeground(gooey.ColorWhite)
+	statusStyle := tui.NewStyle().
+		WithBackground(tui.ColorBlue).
+		WithForeground(tui.ColorWhite)
 
-	return gooey.VStack(
-		gooey.DiffView(app.diff, "go", &app.scrollY).
+	return tui.VStack(
+		tui.DiffView(app.diff, "go", &app.scrollY).
 			Height(diffHeight).
 			ShowLineNumbers(true),
-		gooey.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
+		tui.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
 			Style(statusStyle),
 	)
 }
@@ -126,7 +126,7 @@ func main() {
 	if err := app.Init(); err != nil {
 		log.Fatal(err)
 	}
-	if err := gooey.Run(app); err != nil {
+	if err := tui.Run(app); err != nil {
 		log.Fatal(err)
 	}
 }

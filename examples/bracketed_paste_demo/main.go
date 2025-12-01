@@ -5,12 +5,12 @@ import (
 	"log"
 	"strings"
 
-	"github.com/deepnoodle-ai/gooey"
+	"github.com/deepnoodle-ai/gooey/tui"
 )
 
 // BracketedPasteDemoApp demonstrates bracketed paste mode using Runtime.
 type BracketedPasteDemoApp struct {
-	terminal *gooey.Terminal
+	terminal *tui.Terminal
 	buffer   []rune
 	cursor   int
 	pastes   []PasteRecord // History of pastes
@@ -34,9 +34,9 @@ func (app *BracketedPasteDemoApp) Destroy() {
 	app.terminal.DisableBracketedPaste()
 }
 
-func (app *BracketedPasteDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
+func (app *BracketedPasteDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case gooey.KeyEvent:
+	case tui.KeyEvent:
 		// Check if this is a paste event
 		if e.Paste != "" {
 			return app.handlePaste(e.Paste)
@@ -49,7 +49,7 @@ func (app *BracketedPasteDemoApp) HandleEvent(event gooey.Event) []gooey.Cmd {
 	return nil
 }
 
-func (app *BracketedPasteDemoApp) handlePaste(content string) []gooey.Cmd {
+func (app *BracketedPasteDemoApp) handlePaste(content string) []tui.Cmd {
 	// Line endings are already normalized by the library (\r\n and \r -> \n)
 
 	// Record the paste
@@ -71,9 +71,9 @@ func (app *BracketedPasteDemoApp) handlePaste(content string) []gooey.Cmd {
 	return nil
 }
 
-func (app *BracketedPasteDemoApp) handleKey(e gooey.KeyEvent) []gooey.Cmd {
+func (app *BracketedPasteDemoApp) handleKey(e tui.KeyEvent) []tui.Cmd {
 	switch e.Key {
-	case gooey.KeyEnter:
+	case tui.KeyEnter:
 		if e.Shift {
 			// Shift+Enter: Add newline
 			app.buffer = insertRune(app.buffer, app.cursor, '\n')
@@ -86,62 +86,62 @@ func (app *BracketedPasteDemoApp) handleKey(e gooey.KeyEvent) []gooey.Cmd {
 			app.message = "Added newline"
 		}
 
-	case gooey.KeyBackspace:
+	case tui.KeyBackspace:
 		if app.cursor > 0 && len(app.buffer) > 0 {
 			app.buffer = deleteRune(app.buffer, app.cursor-1)
 			app.cursor--
 			app.message = ""
 		}
 
-	case gooey.KeyDelete:
+	case tui.KeyDelete:
 		if app.cursor < len(app.buffer) {
 			app.buffer = deleteRune(app.buffer, app.cursor)
 			app.message = ""
 		}
 
-	case gooey.KeyArrowLeft:
+	case tui.KeyArrowLeft:
 		if app.cursor > 0 {
 			app.cursor--
 		}
 		app.message = ""
 
-	case gooey.KeyArrowRight:
+	case tui.KeyArrowRight:
 		if app.cursor < len(app.buffer) {
 			app.cursor++
 		}
 		app.message = ""
 
-	case gooey.KeyArrowUp:
+	case tui.KeyArrowUp:
 		// Move cursor to previous line
 		app.moveCursorUp()
 		app.message = ""
 
-	case gooey.KeyArrowDown:
+	case tui.KeyArrowDown:
 		// Move cursor to next line
 		app.moveCursorDown()
 		app.message = ""
 
-	case gooey.KeyHome:
+	case tui.KeyHome:
 		app.cursor = 0
 		app.message = ""
 
-	case gooey.KeyEnd:
+	case tui.KeyEnd:
 		app.cursor = len(app.buffer)
 		app.message = ""
 
-	case gooey.KeyCtrlU:
+	case tui.KeyCtrlU:
 		// Clear input
 		app.buffer = []rune{}
 		app.cursor = 0
 		app.message = "Cleared input"
 
-	case gooey.KeyCtrlL:
+	case tui.KeyCtrlL:
 		// Clear paste history
 		app.pastes = nil
 		app.message = "Cleared paste history"
 
-	case gooey.KeyEscape, gooey.KeyCtrlC:
-		return []gooey.Cmd{gooey.Quit()}
+	case tui.KeyEscape, tui.KeyCtrlC:
+		return []tui.Cmd{tui.Quit()}
 
 	default:
 		// Regular character input
@@ -212,7 +212,7 @@ func (app *BracketedPasteDemoApp) moveCursorDown() {
 	app.cursor = nextLineStart + newCol
 }
 
-func (app *BracketedPasteDemoApp) View() gooey.View {
+func (app *BracketedPasteDemoApp) View() tui.View {
 	// Prepare buffer content
 	text := string(app.buffer)
 	lines := splitLines(text)
@@ -223,8 +223,8 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 	}
 
 	// Build input box content
-	inputBoxLines := make([]gooey.View, 0)
-	inputBoxLines = append(inputBoxLines, gooey.Text("┌%s┐", strings.Repeat("─", 68)).Fg(gooey.ColorCyan))
+	inputBoxLines := make([]tui.View, 0)
+	inputBoxLines = append(inputBoxLines, tui.Text("┌%s┐", strings.Repeat("─", 68)).Fg(tui.ColorCyan))
 
 	for i := 0; i < maxDisplayLines; i++ {
 		var lineContent string
@@ -236,28 +236,28 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 		}
 		// Pad to consistent width
 		lineContent = fmt.Sprintf("%-64s", lineContent)
-		inputBoxLines = append(inputBoxLines, gooey.HStack(
-			gooey.Text("│").Fg(gooey.ColorCyan),
-			gooey.Text(" %s ", lineContent),
-			gooey.Text("│").Fg(gooey.ColorCyan),
+		inputBoxLines = append(inputBoxLines, tui.HStack(
+			tui.Text("│").Fg(tui.ColorCyan),
+			tui.Text(" %s ", lineContent),
+			tui.Text("│").Fg(tui.ColorCyan),
 		))
 	}
 
-	inputBoxLines = append(inputBoxLines, gooey.Text("└%s┘", strings.Repeat("─", 68)).Fg(gooey.ColorCyan))
+	inputBoxLines = append(inputBoxLines, tui.Text("└%s┘", strings.Repeat("─", 68)).Fg(tui.ColorCyan))
 
 	// Build status and message section
 	statusLine := fmt.Sprintf("Chars: %d | Lines: %d | Cursor: %d", len(app.buffer), len(lines), app.cursor)
-	statusSection := []gooey.View{
-		gooey.Text("%s", statusLine).Dim(),
+	statusSection := []tui.View{
+		tui.Text("%s", statusLine).Dim(),
 	}
 	if app.message != "" {
-		statusSection = append(statusSection, gooey.Text("%s", app.message).Fg(gooey.ColorGreen))
+		statusSection = append(statusSection, tui.Text("%s", app.message).Fg(tui.ColorGreen))
 	} else {
-		statusSection = append(statusSection, gooey.Spacer())
+		statusSection = append(statusSection, tui.Spacer())
 	}
 
 	// Build paste history section
-	var pasteHistorySection gooey.View
+	var pasteHistorySection tui.View
 	if len(app.pastes) > 0 {
 		// Show last 5 pastes
 		startIdx := 0
@@ -265,7 +265,7 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 			startIdx = len(app.pastes) - 5
 		}
 
-		pasteItems := make([]gooey.View, 0)
+		pasteItems := make([]tui.View, 0)
 		for i := startIdx; i < len(app.pastes); i++ {
 			p := app.pastes[i]
 			preview := p.Content
@@ -275,42 +275,42 @@ func (app *BracketedPasteDemoApp) View() gooey.View {
 			preview = strings.ReplaceAll(preview, "\n", "↵")
 			preview = strings.ReplaceAll(preview, "\t", "→")
 			info := fmt.Sprintf("  #%d: %d chars, %d lines: %q", i+1, p.CharCount, p.LineCount, preview)
-			pasteItems = append(pasteItems, gooey.Text("%s", info).Dim())
+			pasteItems = append(pasteItems, tui.Text("%s", info).Dim())
 		}
 
 		if len(app.pastes) > 5 {
-			pasteItems = append(pasteItems, gooey.Text("  ... and %d more pastes", len(app.pastes)-5).Dim())
+			pasteItems = append(pasteItems, tui.Text("  ... and %d more pastes", len(app.pastes)-5).Dim())
 		}
 
-		pasteHistorySection = gooey.VStack(
-			gooey.Text("Paste History:").Bold(),
-			gooey.VStack(pasteItems...),
+		pasteHistorySection = tui.VStack(
+			tui.Text("Paste History:").Bold(),
+			tui.VStack(pasteItems...),
 		)
 	} else {
-		pasteHistorySection = gooey.Text("No pastes yet. Try pasting something!").Dim()
+		pasteHistorySection = tui.Text("No pastes yet. Try pasting something!").Dim()
 	}
 
-	return gooey.VStack(
+	return tui.VStack(
 		// Header
-		gooey.Text("╔═══════════════════════════════════════════════════════════════╗").Fg(gooey.ColorCyan),
-		gooey.Text("║          Bracketed Paste Mode Demo - Gooey Library            ║").Fg(gooey.ColorCyan).Bold(),
-		gooey.Text("╚═══════════════════════════════════════════════════════════════╝").Fg(gooey.ColorCyan),
-		gooey.Spacer(),
+		tui.Text("╔═══════════════════════════════════════════════════════════════╗").Fg(tui.ColorCyan),
+		tui.Text("║          Bracketed Paste Mode Demo - Gooey Library            ║").Fg(tui.ColorCyan).Bold(),
+		tui.Text("╚═══════════════════════════════════════════════════════════════╝").Fg(tui.ColorCyan),
+		tui.Spacer(),
 
 		// Instructions
-		gooey.Text("Try pasting text (Cmd+V / Ctrl+V). Paste events are detected!").Fg(gooey.ColorYellow),
-		gooey.Text("Type normally, use arrow keys to navigate, Enter for newlines.").Dim(),
-		gooey.Text("Ctrl+U: clear input | Ctrl+L: clear history | Esc/Ctrl+C: quit").Dim(),
-		gooey.Spacer(),
+		tui.Text("Try pasting text (Cmd+V / Ctrl+V). Paste events are detected!").Fg(tui.ColorYellow),
+		tui.Text("Type normally, use arrow keys to navigate, Enter for newlines.").Dim(),
+		tui.Text("Ctrl+U: clear input | Ctrl+L: clear history | Esc/Ctrl+C: quit").Dim(),
+		tui.Spacer(),
 
 		// Input area
-		gooey.Text("Input:").Bold(),
-		gooey.VStack(inputBoxLines...),
-		gooey.Spacer(),
+		tui.Text("Input:").Bold(),
+		tui.VStack(inputBoxLines...),
+		tui.Spacer(),
 
 		// Status and message
-		gooey.VStack(statusSection...),
-		gooey.Spacer(),
+		tui.VStack(statusSection...),
+		tui.Spacer(),
 
 		// Paste history
 		pasteHistorySection,
@@ -356,8 +356,8 @@ func splitLines(text string) []string {
 
 func main() {
 	// Note: This example uses bracketed paste mode which requires direct terminal access.
-	// It cannot use the simplified gooey.Run() API until WithBracketedPaste option is added.
-	terminal, err := gooey.NewTerminal()
+	// It cannot use the simplified tui.Run() API until WithBracketedPaste option is added.
+	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
@@ -373,7 +373,7 @@ func main() {
 	}
 
 	// Create and run the runtime
-	runtime := gooey.NewRuntime(terminal, app, 30)
+	runtime := tui.NewRuntime(terminal, app, 30)
 
 	// Convert tabs to 2 spaces in pasted content
 	runtime.SetPasteTabWidth(2)

@@ -63,13 +63,13 @@ type LayoutManager interface {
 A general-purpose widget that holds children:
 
 ```go
-container := gooey.NewContainer(layout)
+container := tui.NewContainer(layout)
 container.AddChild(widget1)
 container.AddChild(widget2)
 container.AddChild(widget3)
 
 // With border
-container := gooey.NewContainerWithBorder(layout, &gooey.SingleBorder)
+container := tui.NewContainerWithBorder(layout, &tui.SingleBorder)
 ```
 
 ### BaseWidget
@@ -78,13 +78,13 @@ Provides default implementation of ComposableWidget for embedding:
 
 ```go
 type MyWidget struct {
-    gooey.BaseWidget
+    tui.BaseWidget
     // your fields
 }
 
 func NewMyWidget() *MyWidget {
     return &MyWidget{
-        BaseWidget: gooey.NewBaseWidget(),
+        BaseWidget: tui.NewBaseWidget(),
     }
 }
 ```
@@ -96,8 +96,8 @@ func NewMyWidget() *MyWidget {
 Arranges children top to bottom:
 
 ```go
-layout := gooey.NewVBoxLayout(spacing)
-layout.WithAlignment(gooey.LayoutAlignCenter)
+layout := tui.NewVBoxLayout(spacing)
+layout.WithAlignment(tui.LayoutAlignCenter)
 layout.WithDistribute(true) // Distribute extra space
 ```
 
@@ -106,8 +106,8 @@ layout.WithDistribute(true) // Distribute extra space
 Arranges children left to right:
 
 ```go
-layout := gooey.NewHBoxLayout(spacing)
-layout.WithAlignment(gooey.LayoutAlignCenter)
+layout := tui.NewHBoxLayout(spacing)
+layout.WithAlignment(tui.LayoutAlignCenter)
 layout.WithDistribute(true)
 ```
 
@@ -116,12 +116,12 @@ layout.WithDistribute(true)
 Flexbox-style layout with advanced options:
 
 ```go
-layout := gooey.NewFlexLayout().
-    WithDirection(gooey.FlexRow).           // or FlexColumn
-    WithJustify(gooey.FlexJustifySpaceBetween). // Start, End, Center, SpaceBetween, etc.
-    WithAlignItems(gooey.FlexAlignItemsCenter). // Start, End, Center, Stretch
+layout := tui.NewFlexLayout().
+    WithDirection(tui.FlexRow).           // or FlexColumn
+    WithJustify(tui.FlexJustifySpaceBetween). // Start, End, Center, SpaceBetween, etc.
+    WithAlignItems(tui.FlexAlignItemsCenter). // Start, End, Center, Stretch
     WithSpacing(2).
-    WithWrap(gooey.FlexWrapOn)              // Enable wrapping
+    WithWrap(tui.FlexWrapOn)              // Enable wrapping
 ```
 
 ## Layout Parameters
@@ -129,10 +129,10 @@ layout := gooey.NewFlexLayout().
 Control how a widget behaves within its container:
 
 ```go
-params := gooey.DefaultLayoutParams()
+params := tui.DefaultLayoutParams()
 params.Grow = 1              // Take extra space (flex-grow)
 params.Shrink = 1            // Shrink when constrained
-params.Align = gooey.LayoutAlignCenter
+params.Align = tui.LayoutAlignCenter
 params.MarginTop = 1         // Margin around widget
 params.MarginBottom = 1
 params.PaddingLeft = 2       // Padding inside widget
@@ -144,7 +144,7 @@ widget.SetLayoutParams(params)
 ### Size Constraints
 
 ```go
-params.Constraints = gooey.SizeConstraints{
+params.Constraints = tui.SizeConstraints{
     MinWidth:  10,
     MinHeight: 3,
     MaxWidth:  50,  // 0 = no maximum
@@ -157,20 +157,20 @@ params.Constraints = gooey.SizeConstraints{
 ### ComposableButton
 
 ```go
-button := gooey.NewComposableButton("Click Me", func() {
+button := tui.NewComposableButton("Click Me", func() {
     // Handle click
 })
 
-button.Style = gooey.NewStyle().WithBackground(gooey.ColorBlue)
-button.HoverStyle = gooey.NewStyle().WithBackground(gooey.ColorCyan)
+button.Style = tui.NewStyle().WithBackground(tui.ColorBlue)
+button.HoverStyle = tui.NewStyle().WithBackground(tui.ColorCyan)
 ```
 
 ### ComposableLabel
 
 ```go
-label := gooey.NewComposableLabel("Hello World")
-label.WithStyle(gooey.NewStyle().WithForeground(gooey.ColorCyan))
-label.WithAlign(gooey.AlignCenter)
+label := tui.NewComposableLabel("Hello World")
+label.WithStyle(tui.NewStyle().WithForeground(tui.ColorCyan))
+label.WithAlign(tui.AlignCenter)
 
 // Update text
 label.SetText("New text")
@@ -179,38 +179,38 @@ label.SetText("New text")
 ### ComposableMultiLineLabel
 
 ```go
-label := gooey.NewComposableMultiLineLabel([]string{
+label := tui.NewComposableMultiLineLabel([]string{
     "Line 1",
     "Line 2",
     "Line 3",
 })
 label.WithStyle(style)
-label.WithAlign(gooey.AlignCenter)
+label.WithAlign(tui.AlignCenter)
 ```
 
 ## Example: Complex Nested Layout
 
 ```go
 // Main container with vertical layout
-main := gooey.NewContainer(gooey.NewVBoxLayout(2))
+main := tui.NewContainer(tui.NewVBoxLayout(2))
 
 // Header
-header := gooey.NewComposableLabel("My Application")
-header.WithStyle(gooey.NewStyle().WithBold().WithForeground(gooey.ColorCyan))
+header := tui.NewComposableLabel("My Application")
+header.WithStyle(tui.NewStyle().WithBold().WithForeground(tui.ColorCyan))
 main.AddChild(header)
 
 // Button bar with horizontal layout
-buttonBar := gooey.NewContainer(gooey.NewHBoxLayout(2))
-buttonBar.AddChild(gooey.NewComposableButton("Save", onSave))
-buttonBar.AddChild(gooey.NewComposableButton("Cancel", onCancel))
+buttonBar := tui.NewContainer(tui.NewHBoxLayout(2))
+buttonBar.AddChild(tui.NewComposableButton("Save", onSave))
+buttonBar.AddChild(tui.NewComposableButton("Cancel", onCancel))
 main.AddChild(buttonBar)
 
 // Content area with border
-content := gooey.NewContainerWithBorder(
-    gooey.NewVBoxLayout(1),
-    &gooey.RoundedBorder,
+content := tui.NewContainerWithBorder(
+    tui.NewVBoxLayout(1),
+    &tui.RoundedBorder,
 )
-contentParams := gooey.DefaultLayoutParams()
+contentParams := tui.DefaultLayoutParams()
 contentParams.Grow = 1 // Take remaining space
 content.SetLayoutParams(contentParams)
 main.AddChild(content)
@@ -271,7 +271,7 @@ container.Destroy() // Calls Destroy() on all children
 ### Old Approach (Absolute Positioning)
 
 ```go
-button := &gooey.Button{
+button := &tui.Button{
     X: 10,
     Y: 5,
     Label: "Click",
@@ -283,8 +283,8 @@ screen.AddWidget(button)
 ### New Approach (Composition)
 
 ```go
-container := gooey.NewContainer(gooey.NewVBoxLayout(2))
-button := gooey.NewComposableButton("Click", handler)
+container := tui.NewContainer(tui.NewVBoxLayout(2))
+button := tui.NewComposableButton("Click", handler)
 container.AddChild(button)
 
 container.SetBounds(image.Rect(0, 0, width, height))
@@ -302,22 +302,22 @@ The new system is designed to coexist with the old:
 
 ```go
 type MyCustomWidget struct {
-    gooey.BaseWidget
+    tui.BaseWidget
     text  string
-    style gooey.Style
+    style tui.Style
 }
 
 func NewMyCustomWidget(text string) *MyCustomWidget {
     w := &MyCustomWidget{
-        BaseWidget: gooey.NewBaseWidget(),
+        BaseWidget: tui.NewBaseWidget(),
         text:       text,
-        style:      gooey.NewStyle(),
+        style:      tui.NewStyle(),
     }
     w.SetMinSize(image.Point{X: len(text), Y: 1})
     return w
 }
 
-func (w *MyCustomWidget) Draw(frame gooey.RenderFrame) {
+func (w *MyCustomWidget) Draw(frame tui.RenderFrame) {
     if !w.IsVisible() {
         return
     }
@@ -327,7 +327,7 @@ func (w *MyCustomWidget) Draw(frame gooey.RenderFrame) {
     w.ClearDirty()
 }
 
-func (w *MyCustomWidget) HandleKey(event gooey.KeyEvent) bool {
+func (w *MyCustomWidget) HandleKey(event tui.KeyEvent) bool {
     // Handle keyboard input
     return false
 }
