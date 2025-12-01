@@ -1754,3 +1754,19 @@ func (t *Terminal) WriteRaw(data []byte) error {
 
 	return nil
 }
+
+// GetCell returns the cell at the given position from the back buffer.
+// Returns an empty cell if the position is out of bounds.
+// This is primarily useful for testing.
+func (t *Terminal) GetCell(x, y int) Cell {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if y < 0 || y >= len(t.backBuffer) {
+		return Cell{Char: ' '}
+	}
+	if x < 0 || x >= len(t.backBuffer[y]) {
+		return Cell{Char: ' '}
+	}
+	return t.backBuffer[y][x]
+}
