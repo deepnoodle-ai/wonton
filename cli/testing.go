@@ -1,0 +1,198 @@
+package cli
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"os"
+	"strings"
+	"testing"
+)
+
+// TestResult contains the results of a test run.
+type TestResult struct {
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	Events   []map[string]any // Structured events if JSON output was used
+	Err      error
+}
+
+// TestOption configures a test run.
+type TestOption func(*testConfig)
+
+type testConfig struct {
+	args   []string
+	stdin  io.Reader
+	env    map[string]string
+	json   bool
+}
+
+// TestArgs sets the command-line arguments for the test.
+func TestArgs(args ...string) TestOption {
+	return func(c *testConfig) {
+		c.args = args
+	}
+}
+
+// TestStdin sets the stdin input for the test.
+func TestStdin(input string) TestOption {
+	return func(c *testConfig) {
+		c.stdin = strings.NewReader(input)
+	}
+}
+
+// TestEnv sets an environment variable for the test.
+func TestEnv(key, value string) TestOption {
+	return func(c *testConfig) {
+		if c.env == nil {
+			c.env = make(map[string]string)
+		}
+		c.env[key] = value
+	}
+}
+
+// TestJSON enables JSON output mode for the test.
+func TestJSON() TestOption {
+	return func(c *testConfig) {
+		c.json = true
+	}
+}
+
+// Test runs the application with the given options and returns the result.
+// This is useful for testing CLI commands in unit tests.
+func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
+	t.Helper()
+
+	cfg := &testConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	// Set up I/O capture
+	var stdout, stderr bytes.Buffer
+	origStdout, origStderr := a.stdout, a.stderr
+	origStdin := a.stdin
+	a.stdout = &stdout
+	a.stderr = &stderr
+	if cfg.stdin != nil {
+		a.stdin = cfg.stdin
+	}
+
+	// Set environment variables
+	for key, value := range cfg.env {
+		t.Setenv(key, value)
+	}
+
+	// Add --json flag if requested
+	args := cfg.args
+	if cfg.json {
+		args = append(args, "--json")
+	}
+
+	// Run the command
+	err := a.RunArgs(args)
+
+	// Restore I/O
+	a.stdout = origStdout
+	a.stderr = origStderr
+	a.stdin = origStdin
+
+	result := &TestResult{
+		ExitCode: GetExitCode(err),
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		Err:      err,
+	}
+
+	// Parse JSON events if JSON mode was used
+	if cfg.json && stdout.Len() > 0 {
+		result.Events = parseJSONEvents(stdout.String())
+	}
+
+	return result
+}
+
+// parseJSONEvents parses newline-delimited JSON into events.
+func parseJSONEvents(s string) []map[string]any {
+	var events []map[string]any
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err == nil {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+// Contains checks if the stdout contains the given substring.
+func (r *TestResult) Contains(s string) bool {
+	return strings.Contains(r.Stdout, s)
+}
+
+// StderrContains checks if the stderr contains the given substring.
+func (r *TestResult) StderrContains(s string) bool {
+	return strings.Contains(r.Stderr, s)
+}
+
+// Success returns true if the command succeeded (exit code 0).
+func (r *TestResult) Success() bool {
+	return r.ExitCode == 0
+}
+
+// Failed returns true if the command failed (exit code != 0).
+func (r *TestResult) Failed() bool {
+	return r.ExitCode != 0
+}
+
+// EventCount returns the number of JSON events captured.
+func (r *TestResult) EventCount() int {
+	return len(r.Events)
+}
+
+// GetEvent returns the event at the given index, or nil if out of bounds.
+func (r *TestResult) GetEvent(i int) map[string]any {
+	if i >= 0 && i < len(r.Events) {
+		return r.Events[i]
+	}
+	return nil
+}
+
+// TestApp creates a new app configured for testing.
+// It disables interactive mode and captures all output.
+func TestApp(name, description string) *App {
+	app := New(name, description)
+	app.isInteractive = false
+	app.stdin = strings.NewReader("")
+	app.stdout = &bytes.Buffer{}
+	app.stderr = &bytes.Buffer{}
+	return app
+}
+
+// CaptureOutput is a helper that captures stdout/stderr during a function call.
+func CaptureOutput(fn func()) (stdout, stderr string) {
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stderr = wErr
+
+	fn()
+
+	wOut.Close()
+	wErr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var bufOut, bufErr bytes.Buffer
+	io.Copy(&bufOut, rOut)
+	io.Copy(&bufErr, rErr)
+
+	return bufOut.String(), bufErr.String()
+}
