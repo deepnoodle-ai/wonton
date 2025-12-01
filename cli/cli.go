@@ -10,6 +10,8 @@ import (
 	"os"
 	"reflect"
 	"strings"
+
+	"github.com/deepnoodle-ai/gooey/color"
 )
 
 // App is the main CLI application.
@@ -36,20 +38,22 @@ type App struct {
 	stderr io.Writer
 
 	// Runtime state
-	isInteractive      bool
-	forceInteractive   *bool // For testing - if set, overrides TTY detection
+	isInteractive    bool
+	forceInteractive *bool // For testing - if set, overrides TTY detection
+	colorEnabled     bool  // Whether to use colored output
 }
 
 // New creates a new CLI application.
 func New(name, description string) *App {
 	return &App{
-		name:        name,
-		description: description,
-		commands:    make(map[string]*Command),
-		groups:      make(map[string]*Group),
-		stdin:       os.Stdin,
-		stdout:      os.Stdout,
-		stderr:      os.Stderr,
+		name:         name,
+		description:  description,
+		commands:     make(map[string]*Command),
+		groups:       make(map[string]*Group),
+		stdin:        os.Stdin,
+		stdout:       os.Stdout,
+		stderr:       os.Stderr,
+		colorEnabled: color.IsTerminal(os.Stdout),
 	}
 }
 
@@ -267,46 +271,88 @@ func (a *App) findCommand(name string) (*Command, error) {
 func (a *App) showHelp() error {
 	var sb strings.Builder
 
-	sb.WriteString(a.name)
+	// App name and description
+	if a.colorEnabled {
+		sb.WriteString(color.Bold(color.BrightCyan.Apply(a.name)))
+	} else {
+		sb.WriteString(a.name)
+	}
 	if a.description != "" {
 		sb.WriteString(" - ")
 		sb.WriteString(a.description)
 	}
 	sb.WriteString("\n\n")
 
+	// Version
 	if a.version != "" {
-		sb.WriteString("Version: ")
+		if a.colorEnabled {
+			sb.WriteString(color.Yellow.Apply("Version:"))
+		} else {
+			sb.WriteString("Version:")
+		}
+		sb.WriteString(" ")
 		sb.WriteString(a.version)
 		sb.WriteString("\n\n")
 	}
 
-	sb.WriteString("Usage:\n")
-	sb.WriteString("  ")
+	// Usage section
+	if a.colorEnabled {
+		sb.WriteString(color.Yellow.Apply("Usage:"))
+	} else {
+		sb.WriteString("Usage:")
+	}
+	sb.WriteString("\n  ")
 	sb.WriteString(a.name)
 	sb.WriteString(" <command> [flags] [args]\n\n")
 
+	// Commands section
 	if len(a.commands) > 0 {
-		sb.WriteString("Commands:\n")
+		if a.colorEnabled {
+			sb.WriteString(color.Yellow.Apply("Commands:"))
+		} else {
+			sb.WriteString("Commands:")
+		}
+		sb.WriteString("\n")
 		for name, cmd := range a.commands {
 			if cmd.hidden {
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
+			if a.colorEnabled {
+				sb.WriteString(fmt.Sprintf("  %-15s %s\n", color.Green.Apply(name), cmd.description))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
+			}
 		}
 		sb.WriteString("\n")
 	}
 
+	// Command groups section
 	if len(a.groups) > 0 {
-		sb.WriteString("Command Groups:\n")
+		if a.colorEnabled {
+			sb.WriteString(color.Yellow.Apply("Command Groups:"))
+		} else {
+			sb.WriteString("Command Groups:")
+		}
+		sb.WriteString("\n")
 		for name, group := range a.groups {
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+			if a.colorEnabled {
+				sb.WriteString(fmt.Sprintf("  %-15s %s\n", color.Green.Apply(name), group.description))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+			}
 		}
 		sb.WriteString("\n")
 	}
 
+	// Help hint
 	sb.WriteString("Run '")
-	sb.WriteString(a.name)
-	sb.WriteString(" <command> --help' for more information on a command.\n")
+	if a.colorEnabled {
+		sb.WriteString(color.Cyan.Apply(a.name + " <command> --help"))
+	} else {
+		sb.WriteString(a.name)
+		sb.WriteString(" <command> --help")
+	}
+	sb.WriteString("' for more information on a command.\n")
 
 	fmt.Fprint(a.stdout, sb.String())
 	return nil
@@ -334,7 +380,17 @@ func (g *Group) Command(name, description string, opts ...CommandOption) *Comman
 func (g *Group) commandList() string {
 	var sb strings.Builder
 	for name, cmd := range g.commands {
-		sb.WriteString(fmt.Sprintf("  %s %s - %s\n", g.name, name, cmd.description))
+		if g.app.colorEnabled {
+			sb.WriteString(fmt.Sprintf("  %s %s - %s\n", color.Green.Apply(g.name), color.Green.Apply(name), cmd.description))
+		} else {
+			sb.WriteString(fmt.Sprintf("  %s %s - %s\n", g.name, name, cmd.description))
+		}
 	}
 	return sb.String()
+}
+
+// SetColorEnabled enables or disables colored output.
+func (a *App) SetColorEnabled(enabled bool) *App {
+	a.colorEnabled = enabled
+	return a
 }

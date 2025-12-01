@@ -3,13 +3,30 @@ package assert
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/deepnoodle-ai/gooey/color"
 )
+
+// colorEnabled controls whether colored output is used.
+// It defaults to true if stderr is a terminal.
+var colorEnabled = color.IsTerminal(os.Stderr)
+
+// SetColorEnabled enables or disables colored output.
+func SetColorEnabled(enabled bool) {
+	colorEnabled = enabled
+}
+
+// ColorEnabled returns whether colored output is enabled.
+func ColorEnabled() bool {
+	return colorEnabled
+}
 
 // formatMessage formats the optional message and arguments.
 func formatMessage(msgAndArgs ...any) string {
@@ -44,7 +61,11 @@ func formatLabeledOutput(content ...labeledContent) string {
 	}
 	var output string
 	for _, v := range content {
-		output += "\t" + v.label + ":" + strings.Repeat(" ", longestLabel-len(v.label)) + "\t" + indentMessageLines(v.content, longestLabel) + "\n"
+		label := v.label
+		if colorEnabled {
+			label = color.Cyan.Apply(v.label)
+		}
+		output += "\t" + label + ":" + strings.Repeat(" ", longestLabel-len(v.label)) + "\t" + indentMessageLines(v.content, longestLabel) + "\n"
 	}
 	return output
 }
@@ -292,12 +313,22 @@ func formatListDiff(listA, listB any, extraA, extraB []any) string {
 	var msg bytes.Buffer
 	msg.WriteString("elements differ")
 	if len(extraA) > 0 {
-		msg.WriteString("\n\nextra elements in list A:\n")
-		msg.WriteString(fmt.Sprintf("%#v", extraA))
+		if colorEnabled {
+			msg.WriteString("\n\n" + color.Red.Apply("extra elements in list A:") + "\n")
+			msg.WriteString(color.Red.Apply(fmt.Sprintf("%#v", extraA)))
+		} else {
+			msg.WriteString("\n\nextra elements in list A:\n")
+			msg.WriteString(fmt.Sprintf("%#v", extraA))
+		}
 	}
 	if len(extraB) > 0 {
-		msg.WriteString("\n\nextra elements in list B:\n")
-		msg.WriteString(fmt.Sprintf("%#v", extraB))
+		if colorEnabled {
+			msg.WriteString("\n\n" + color.Green.Apply("extra elements in list B:") + "\n")
+			msg.WriteString(color.Green.Apply(fmt.Sprintf("%#v", extraB)))
+		} else {
+			msg.WriteString("\n\nextra elements in list B:\n")
+			msg.WriteString(fmt.Sprintf("%#v", extraB))
+		}
 	}
 	msg.WriteString("\n\nlistA:\n")
 	msg.WriteString(fmt.Sprintf("%#v", listA))
@@ -308,10 +339,18 @@ func formatListDiff(listA, listB any, extraA, extraB []any) string {
 
 // formatUnequalValues formats two values for display when they are not equal.
 func formatUnequalValues(expected, actual any) (string, string) {
+	var expStr, actStr string
 	if reflect.TypeOf(expected) != reflect.TypeOf(actual) {
-		return fmt.Sprintf("%T(%#v)", expected, expected), fmt.Sprintf("%T(%#v)", actual, actual)
+		expStr = fmt.Sprintf("%T(%#v)", expected, expected)
+		actStr = fmt.Sprintf("%T(%#v)", actual, actual)
+	} else {
+		expStr = fmt.Sprintf("%#v", expected)
+		actStr = fmt.Sprintf("%#v", actual)
 	}
-	return fmt.Sprintf("%#v", expected), fmt.Sprintf("%#v", actual)
+	if colorEnabled {
+		return color.Red.Apply(expStr), color.Green.Apply(actStr)
+	}
+	return expStr, actStr
 }
 
 // formatDiff returns a diff of two values if they are comparable.
@@ -331,6 +370,13 @@ func formatDiff(expected, actual any) string {
 	a := fmt.Sprintf("%#v", actual)
 	if e == a {
 		return ""
+	}
+	if colorEnabled {
+		return "\n\nDiff:\n" +
+			color.Red.Apply("--- expected") + "\n" +
+			color.Green.Apply("+++ actual") + "\n" +
+			color.Red.Apply("-"+e) + "\n" +
+			color.Green.Apply("+"+a)
 	}
 	return "\n\nDiff:\n--- expected\n+++ actual\n-" + e + "\n+" + a
 }

@@ -39,19 +39,23 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/deepnoodle-ai/gooey/color"
 )
 
-// ANSI escape codes
+// ANSI escape codes - using color package constants where possible
 const (
-	ansiEsc          = '\u001b'
-	ansiReset        = "\u001b[0m"
-	ansiFaint        = "\u001b[2m"
-	ansiResetFaint   = "\u001b[22m"
-	ansiBrightRed    = "\u001b[91m"
-	ansiBrightGreen  = "\u001b[92m"
-	ansiBrightYellow = "\u001b[93m"
-	ansiBrightBlue   = "\u001b[94m"
-	ansiBrightCyan   = "\u001b[96m"
+	ansiEsc        = '\u001b'
+	ansiReset      = "\u001b[0m"
+	ansiFaint      = "\u001b[2m"
+	ansiResetFaint = "\u001b[22m"
+)
+
+// Level colors using the color package
+var (
+	levelColorInfo  = color.BrightGreen
+	levelColorWarn  = color.BrightYellow
+	levelColorError = color.BrightRed
 )
 
 const (
@@ -253,7 +257,7 @@ func (h *Handler) appendTime(buf *buffer, t time.Time, color int16) {
 	}
 }
 
-func (h *Handler) appendLevel(buf *buffer, level slog.Level, color int16) {
+func (h *Handler) appendLevel(buf *buffer, level slog.Level, colorOverride int16) {
 	formatLevel := func(base string, offset slog.Level) []byte {
 		if offset == 0 {
 			return []byte(base)
@@ -264,18 +268,18 @@ func (h *Handler) appendLevel(buf *buffer, level slog.Level, color int16) {
 	}
 
 	if !h.opts.NoColor {
-		if color >= 0 {
-			appendAnsiColor(buf, uint8(color), false)
+		if colorOverride >= 0 {
+			appendAnsiColor(buf, uint8(colorOverride), false)
 		} else {
 			switch {
 			case level < slog.LevelInfo:
 				// Debug: no color (faint is applied to whole line in some styles)
 			case level < slog.LevelWarn:
-				buf.WriteString(ansiBrightGreen)
+				buf.WriteString("\u001b[" + levelColorInfo.ForegroundCode() + "m")
 			case level < slog.LevelError:
-				buf.WriteString(ansiBrightYellow)
+				buf.WriteString("\u001b[" + levelColorWarn.ForegroundCode() + "m")
 			default:
-				buf.WriteString(ansiBrightRed)
+				buf.WriteString("\u001b[" + levelColorError.ForegroundCode() + "m")
 			}
 		}
 	}
