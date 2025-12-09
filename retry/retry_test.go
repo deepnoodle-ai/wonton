@@ -3,6 +3,7 @@ package retry
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -185,4 +186,68 @@ func TestErrorUnwrap(t *testing.T) {
 	retryErr := &Error{Last: originalErr, Attempts: 3}
 
 	require.True(t, errors.Is(retryErr, originalErr))
+}
+
+func TestBackoffWithJitterRange(t *testing.T) {
+	rand.Seed(1)
+	cfg := Config{
+		InitialBackoff:    time.Second,
+		MaxBackoff:        time.Second,
+		BackoffMultiplier: 1,
+		Jitter:            0.5,
+	}
+
+	delay := Backoff(1, cfg)
+	require.True(t, delay >= 500*time.Millisecond && delay <= 1500*time.Millisecond,
+		"delay should be within jitter range, got %s", delay)
+}
+
+func TestSkipPermanentFunction(t *testing.T) {
+	predicate := SkipPermanent()
+	require.True(t, predicate(errors.New("temporary")))
+	require.False(t, predicate(MarkPermanent(errors.New("permanent"))))
+}
+
+func TestMarkPermanentNil(t *testing.T) {
+	require.Nil(t, MarkPermanent(nil))
+}
+
+func TestDoSimplePropagatesError(t *testing.T) {
+	err := DoSimple(context.Background(), func() error {
+		return errors.New("boom")
+	}, WithMaxAttempts(2), WithBackoff(time.Millisecond, time.Millisecond))
+
+	require.Error(t, err)
+}
+
+func TestDoAggregatesErrors(t *testing.T) {
+	attempts := 0
+
+	_, err := Do(context.Background(), func() (int, error) {
+		attempts++
+		return 0, errors.New("fail")
+	}, WithMaxAttempts(3), WithBackoff(time.Millisecond, time.Millisecond))
+
+	require.Error(t, err)
+
+	var retryErr *Error
+	require.ErrorAs(t, err, &retryErr)
+	require.Equal(t, 3, retryErr.Attempts)
+	require.Len(t, retryErr.Errors, 3)
+}
+
+func TestDoZeroMaxAttemptsReliesOnContext(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	}, WithMaxAttempts(0), WithBackoff(time.Millisecond, time.Millisecond))
+
+	require.Error(t, err)
+
+	var retryErr *Error
+	require.ErrorAs(t, err, &retryErr)
+	require.True(t, errors.Is(retryErr.Last, context.DeadlineExceeded))
+	require.Greater(t, retryErr.Attempts, 0)
 }

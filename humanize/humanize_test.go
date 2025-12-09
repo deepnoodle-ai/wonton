@@ -209,3 +209,46 @@ func TestTruncate(t *testing.T) {
 		require.Equal(t, tt.expected, result, "Truncate(%q, %d)", tt.input, tt.maxLen)
 	}
 }
+
+func TestTruncateWithSuffix(t *testing.T) {
+	tests := []struct {
+		input    string
+		maxLen   int
+		suffix   string
+		expected string
+	}{
+		{"hello world", 8, "~", "hello w~"},
+		{"hello", 10, "...", "hello"},
+		{"lengthy", 3, "..", "l.."},
+	}
+
+	for _, tt := range tests {
+		result := TruncateWithSuffix(tt.input, tt.maxLen, tt.suffix)
+		require.Equal(t, tt.expected, result)
+	}
+}
+
+func TestNumberWithSeparator(t *testing.T) {
+	require.Equal(t, "1.234.567", NumberWithSeparator(1234567, "."))
+	require.Equal(t, "-9 876", NumberWithSeparator(-9876, " "))
+	require.Equal(t, "100", NumberWithSeparator(100, "_"))
+}
+
+func TestFloat(t *testing.T) {
+	require.Equal(t, "3.14", Float(3.14159, 2))
+	require.Equal(t, "2.0000", Float(2, 4))
+	require.Equal(t, "-0.50", Float(-0.5, 2))
+}
+
+func TestTime(t *testing.T) {
+	now := time.Now()
+	require.Equal(t, "just now", Time(now))
+	require.Contains(t, Time(now.Add(-2*time.Minute)), "ago")
+	require.Contains(t, Time(now.Add(3*time.Minute)), "in")
+}
+
+func TestPlural(t *testing.T) {
+	require.Equal(t, "item", Plural(1, "item", "items"))
+	require.Equal(t, "items", Plural(2, "item", "items"))
+	require.Equal(t, "items", Plural(0, "item", "items"))
+}

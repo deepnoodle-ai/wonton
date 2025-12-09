@@ -1,8 +1,10 @@
 package env
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,6 +202,167 @@ func TestParse_Expand(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.Equal(t, "/home/user/app/data", cfg.Path)
+}
+
+func TestParse_WithOnSet(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST" default:"localhost"`
+		Port int    `env:"PORT"`
+	}
+
+	envVars := map[string]string{
+		"PORT": "8080",
+	}
+
+	seen := map[string]struct {
+		envVar    string
+		value     any
+		isDefault bool
+	}{}
+
+	_, err := Parse[Config](
+		WithEnvironment(envVars),
+		WithOnSet(func(fieldName, envVar string, value any, isDefault bool) {
+			seen[fieldName] = struct {
+				envVar    string
+				value     any
+				isDefault bool
+			}{envVar: envVar, value: value, isDefault: isDefault}
+		}),
+	)
+	require.NoError(t, err)
+
+	hostCall, ok := seen["Host"]
+	require.True(t, ok, "Host should trigger OnSet")
+	require.Equal(t, "localhost", hostCall.value)
+	require.True(t, hostCall.isDefault, "Host should be marked as default")
+	require.True(t, strings.HasSuffix(hostCall.envVar, "HOST"), "env var should end with HOST")
+
+	portCall, ok := seen["Port"]
+	require.True(t, ok, "Port should trigger OnSet")
+	require.Equal(t, 8080, portCall.value)
+	require.False(t, portCall.isDefault, "Port should come from env vars")
+}
+
+func TestParse_WithUseFieldName(t *testing.T) {
+	type Config struct {
+		APIKey  string
+		Timeout time.Duration
+	}
+
+	envVars := map[string]string{
+		"A_P_I_KEY": "secret",
+		"TIMEOUT": "45s",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(envVars),
+		WithUseFieldName(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "secret", cfg.APIKey)
+	require.Equal(t, 45*time.Second, cfg.Timeout)
+}
+
+func TestParse_CustomParserOption(t *testing.T) {
+	type Endpoint string
+
+	type Config struct {
+		Base Endpoint `env:"BASE"`
+	}
+
+	envVars := map[string]string{
+		"BASE": "https://api.example.com",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(envVars),
+		WithParser(func(value string) (Endpoint, error) {
+			if value == "" {
+				return "", fmt.Errorf("empty endpoint")
+			}
+			return Endpoint(value), nil
+		}),
+	)
+	require.NoError(t, err)
+	require.Equal(t, Endpoint("https://api.example.com"), cfg.Base)
+}
+
+func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	first := filepath.Join(tmpDir, "first.env")
+	second := filepath.Join(tmpDir, "second.env")
+
+	require.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
+	require.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
+
+	type Config struct {
+		Value string `env:"VALUE"`
+		Extra string `env:"EXTRA"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithEnvFile(first, second),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "one", cfg.Value, "first env file should win when key already set")
+	require.Equal(t, "from_second", cfg.Extra)
+}
+
+func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	first := filepath.Join(tmpDir, "first.json")
+	second := filepath.Join(tmpDir, "second.json")
+
+	require.NoError(t, os.WriteFile(first, []byte(`{"host":"first","port":8080}`), 0644))
+	require.NoError(t, os.WriteFile(second, []byte(`{"host":"second"}`), 0644))
+
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithJSONFile(first, second),
+	)
+	require.NoError(t, err)
+	require.Equal(t, "second", cfg.Host, "later JSON file should override")
+	require.Equal(t, 8080, cfg.Port, "unchanged field should come from the first file")
+}
+
+func TestParseInto_UpdatesExistingStruct(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT" default:"80"`
+	}
+
+	cfg := Config{Host: "initial"}
+	err := ParseInto(&cfg, WithEnvironment(map[string]string{
+		"HOST": "parsed",
+	}))
+	require.NoError(t, err)
+	require.Equal(t, "parsed", cfg.Host)
+	require.Equal(t, 80, cfg.Port, "default should populate missing field")
+}
+
+func TestParse_RequiredIfNoDefault(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"HOST": "localhost",
+		}),
+		WithRequiredIfNoDefault(),
+	)
+	require.Error(t, err)
+	require.True(t, HasError[*VarNotSetError](err))
 }
 
 func TestParse_UseFieldName(t *testing.T) {
