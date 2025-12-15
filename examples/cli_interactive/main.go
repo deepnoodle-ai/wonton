@@ -26,17 +26,16 @@ import (
 )
 
 func main() {
-	app := cli.New("interactive", "Demonstrates interactive mode dispatch")
-	app.Version("1.0.0")
+	app := cli.New("interactive").
+		Description("Demonstrates interactive mode dispatch").
+		Version("1.0.0")
 
 	// Command with separate interactive and non-interactive handlers
-	app.Command("select", "Select a model").
-		AddFlag(&cli.Flag{
-			Name:        "model",
-			Short:       "m",
-			Description: "Model to use (for non-interactive mode)",
-			Default:     "",
-		}).
+	app.Command("select").
+		Description("Select a model").
+		Flags(
+			&cli.StringFlag{Name: "model", Short: "m", Help: "Model to use (for non-interactive mode)"},
+		).
 		Interactive(func(ctx *cli.Context) error {
 			// Rich interactive TUI selection
 			models := []string{
@@ -67,7 +66,8 @@ func main() {
 		})
 
 	// Confirmation prompt
-	app.Command("confirm", "Demonstrate confirmation").
+	app.Command("confirm").
+		Description("Demonstrate confirmation").
 		Interactive(func(ctx *cli.Context) error {
 			confirmed, err := cli.ConfirmPrompt(ctx, "Are you sure you want to proceed?")
 			if err != nil {
@@ -87,7 +87,8 @@ func main() {
 		})
 
 	// Text input prompt
-	app.Command("input", "Demonstrate text input").
+	app.Command("input").
+		Description("Demonstrate text input").
 		Interactive(func(ctx *cli.Context) error {
 			name, err := cli.NewInput(ctx, "Enter your name:").
 				Placeholder("John Doe").
@@ -106,7 +107,8 @@ func main() {
 		})
 
 	// Command that works both ways but adapts
-	app.Command("info", "Show information (adapts to mode)").
+	app.Command("info").
+		Description("Show information (adapts to mode)").
 		Run(func(ctx *cli.Context) error {
 			if ctx.Interactive() {
 				// Rich formatted output for terminal
@@ -128,7 +130,8 @@ func main() {
 		})
 
 	// Full interactive app using Wonton
-	app.Command("dashboard", "Interactive dashboard").
+	app.Command("dashboard").
+		Description("Interactive dashboard").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("dashboard requires an interactive terminal")

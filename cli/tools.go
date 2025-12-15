@@ -68,16 +68,16 @@ func (c *Command) toToolSchema() ToolSchema {
 
 	// Add flags as parameters
 	for _, f := range c.flags {
-		if f.Hidden {
+		if f.IsHidden() {
 			continue
 		}
 		param := ParamSchema{
-			Description: f.Description,
-			Enum:        f.Enum,
+			Description: f.GetHelp(),
+			Enum:        f.GetEnum(),
 		}
 
 		// Determine type from default value
-		switch f.Default.(type) {
+		switch f.GetDefault().(type) {
 		case bool:
 			param.Type = "boolean"
 		case int, int64:
@@ -88,14 +88,15 @@ func (c *Command) toToolSchema() ToolSchema {
 			param.Type = "string"
 		}
 
-		if f.Default != nil && f.Default != "" && f.Default != false && f.Default != 0 {
-			param.Default = f.Default
+		def := f.GetDefault()
+		if def != nil && def != "" && def != false && def != 0 {
+			param.Default = def
 		}
 
-		schema.Parameters[f.Name] = param
+		schema.Parameters[f.GetName()] = param
 
-		if f.Required {
-			schema.Required = append(schema.Required, f.Name)
+		if f.IsRequired() {
+			schema.Required = append(schema.Required, f.GetName())
 		}
 	}
 

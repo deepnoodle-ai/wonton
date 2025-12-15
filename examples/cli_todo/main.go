@@ -45,25 +45,28 @@ var tasks = []Task{
 }
 
 func main() {
-	app := cli.New("todo", "A todo list manager with TUI support")
-	app.Version("1.0.0")
+	app := cli.New("todo").
+		Description("A todo list manager with TUI support").
+		Version("1.0.0")
 
 	// Global flags
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "json",
-		Description: "Output as JSON",
-		Default:     false,
-	})
+	app.GlobalFlags(
+		&cli.BoolFlag{Name: "json", Help: "Output as JSON"},
+	)
 
 	// Add a new task (CLI mode)
-	app.Command("add", "Add a new task", cli.WithArgs("title")).
-		AddFlag(&cli.Flag{
-			Name:        "priority",
-			Short:       "p",
-			Description: "Task priority",
-			Default:     "medium",
-			Enum:        []string{"low", "medium", "high"},
-		}).
+	app.Command("add").
+		Description("Add a new task").
+		Args("title").
+		Flags(
+			&cli.StringFlag{
+				Name:  "priority",
+				Short: "p",
+				Help:  "Task priority",
+				Value: "medium",
+				Enum:  []string{"low", "medium", "high"},
+			},
+		).
 		Run(func(ctx *cli.Context) error {
 			title := ctx.Arg(0)
 			if title == "" {
@@ -90,22 +93,24 @@ func main() {
 		})
 
 	// List tasks (CLI mode)
-	app.Command("list", "List all tasks").
+	app.Command("list").
+		Description("List all tasks").
 		Alias("ls").
-		AddFlag(&cli.Flag{
-			Name:        "filter",
-			Short:       "f",
-			Description: "Filter tasks",
-			Default:     "all",
-			Enum:        []string{"all", "pending", "done"},
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "priority",
-			Short:       "p",
-			Description: "Filter by priority",
-			Default:     "",
-			Enum:        []string{"", "low", "medium", "high"},
-		}).
+		Flags(
+			&cli.StringFlag{
+				Name:  "filter",
+				Short: "f",
+				Help:  "Filter tasks",
+				Value: "all",
+				Enum:  []string{"all", "pending", "done"},
+			},
+			&cli.StringFlag{
+				Name:  "priority",
+				Short: "p",
+				Help:  "Filter by priority",
+				Enum:  []string{"", "low", "medium", "high"},
+			},
+		).
 		Run(func(ctx *cli.Context) error {
 			filter := ctx.String("filter")
 			priorityFilter := ctx.String("priority")
@@ -150,8 +155,10 @@ func main() {
 		})
 
 	// Complete a task (CLI mode)
-	app.Command("complete", "Mark a task as complete", cli.WithArgs("id")).
+	app.Command("complete").
+		Description("Mark a task as complete").
 		Alias("done").
+		Args("id").
 		Run(func(ctx *cli.Context) error {
 			id := ctx.Int("id")
 			if id == 0 {
@@ -179,8 +186,10 @@ func main() {
 		})
 
 	// Delete a task (CLI mode)
-	app.Command("delete", "Delete a task", cli.WithArgs("id")).
+	app.Command("delete").
+		Description("Delete a task").
 		Alias("rm").
+		Args("id").
 		Run(func(ctx *cli.Context) error {
 			var id int
 			if ctx.NArg() > 0 {
@@ -202,8 +211,9 @@ func main() {
 		})
 
 	// Interactive TUI mode
-	app.Command("tui", "Open interactive TUI mode").
-		Alias("ui", "interactive").
+	app.Command("tui").
+		Description("Open interactive TUI mode").
+		Aliases("ui", "interactive").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("TUI mode requires an interactive terminal").
@@ -218,7 +228,8 @@ func main() {
 		})
 
 	// Quick add with interactive prompt
-	app.Command("quick-add", "Add task with interactive prompts").
+	app.Command("quick-add").
+		Description("Add task with interactive prompts").
 		Alias("qa").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {

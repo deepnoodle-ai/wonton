@@ -10,7 +10,7 @@
 //
 //	go run examples/cli_agent/main.go --help
 //	go run examples/cli_agent/main.go tools
-//	go run examples/cli_agent/main.go read-file ./go.mod
+//	go run examples/cli_agent/main.go files:read ./go.mod
 //	go run examples/cli_agent/main.go search --pattern "func main"
 //	go run examples/cli_agent/main.go execute ls -la
 package main
@@ -45,26 +45,30 @@ type SearchParams struct {
 }
 
 func main() {
-	app := cli.New("agent", "An AI agent CLI with tool support")
-	app.Version("1.0.0")
+	app := cli.New("agent").
+		Description("An AI agent CLI with tool support").
+		Version("1.0.0")
 
 	// Add global --json flag for structured output
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "json",
-		Description: "Output as JSON",
-		Default:     false,
-	})
+	app.GlobalFlags(
+		&cli.BoolFlag{Name: "json", Help: "Output as JSON"},
+	)
 
 	// Built-in command to output tool schemas
-	app.Command("tools", "Output tool schemas as JSON").
+	app.Command("tools").
+		Description("Output tool schemas as JSON").
 		Run(cli.PrintToolsJSON)
 
 	// File operations group
-	files := app.Group("files", "File operations")
+	files := app.Group("files").
+		Description("File operations")
 
 	// Read file tool
-	files.Command("read", "Read a file", cli.WithArgs("path"), cli.WithTool()).
+	files.Command("read").
+		Description("Read a file").
 		Long("Read the contents of a file. Returns the file content as text.").
+		Args("path").
+		Tool().
 		Run(func(ctx *cli.Context) error {
 			path := ctx.Arg(0)
 			if path == "" {
@@ -92,9 +96,10 @@ func main() {
 		})
 
 	// Write file tool
-	files.Command("write", "Write to a file", cli.WithTool()).
-		AddArg(&cli.Arg{Name: "path", Description: "File path", Required: true}).
-		AddArg(&cli.Arg{Name: "content", Description: "Content to write", Required: true}).
+	files.Command("write").
+		Description("Write to a file").
+		Args("path", "content").
+		Tool().
 		Run(func(ctx *cli.Context) error {
 			path := ctx.Arg(0)
 			content := ctx.Arg(1)
@@ -118,14 +123,13 @@ func main() {
 		})
 
 	// List directory tool
-	files.Command("list", "List directory contents", cli.WithTool()).
-		AddArg(&cli.Arg{Name: "path", Description: "Directory path", Required: false}).
-		AddFlag(&cli.Flag{
-			Name:        "recursive",
-			Short:       "r",
-			Description: "List recursively",
-			Default:     false,
-		}).
+	files.Command("list").
+		Description("List directory contents").
+		Args("path?").
+		Flags(
+			&cli.BoolFlag{Name: "recursive", Short: "r", Help: "List recursively"},
+		).
+		Tool().
 		Run(func(ctx *cli.Context) error {
 			path := ctx.Arg(0)
 			if path == "" {
@@ -169,24 +173,14 @@ func main() {
 		})
 
 	// Search tool
-	app.Command("search", "Search for patterns in files", cli.WithTool()).
-		AddFlag(&cli.Flag{
-			Name:        "pattern",
-			Short:       "p",
-			Description: "Search pattern",
-			Required:    true,
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "path",
-			Description: "Search path",
-			Default:     ".",
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "glob",
-			Short:       "g",
-			Description: "File pattern",
-			Default:     "*.go",
-		}).
+	app.Command("search").
+		Description("Search for patterns in files").
+		Flags(
+			&cli.StringFlag{Name: "pattern", Short: "p", Help: "Search pattern", Required: true},
+			&cli.StringFlag{Name: "path", Help: "Search path", Value: "."},
+			&cli.StringFlag{Name: "glob", Short: "g", Help: "File pattern", Value: "*.go"},
+		).
+		Tool().
 		Run(func(ctx *cli.Context) error {
 			pattern := ctx.String("pattern")
 			searchPath := ctx.String("path")
@@ -245,14 +239,13 @@ func main() {
 		})
 
 	// Execute command tool (with safety restrictions)
-	app.Command("execute", "Execute a shell command", cli.WithTool()).
-		AddArg(&cli.Arg{Name: "command", Description: "Command to execute", Required: true}).
-		AddFlag(&cli.Flag{
-			Name:        "timeout",
-			Short:       "t",
-			Description: "Timeout in seconds",
-			Default:     30,
-		}).
+	app.Command("execute").
+		Description("Execute a shell command").
+		Args("command...").
+		Flags(
+			&cli.IntFlag{Name: "timeout", Short: "t", Help: "Timeout in seconds", Value: 30},
+		).
+		Tool().
 		Run(func(ctx *cli.Context) error {
 			args := ctx.Args()
 			if len(args) == 0 {
@@ -295,7 +288,8 @@ func main() {
 		})
 
 	// Demo: Generate tool schema from struct
-	app.Command("schema", "Generate schema from struct type").
+	app.Command("schema").
+		Description("Generate schema from struct type").
 		Run(func(ctx *cli.Context) error {
 			// Generate schema from struct definition
 			schema := cli.GenerateToolSchemaFromStruct[SearchParams]("search", "Search for patterns in files")

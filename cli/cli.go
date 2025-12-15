@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/color"
@@ -25,7 +24,7 @@ type App struct {
 	middleware []Middleware
 
 	// Global flags
-	globalFlags     []*Flag
+	globalFlags     []Flag
 	globalFlagsDefs any
 
 	// Config resolution
@@ -44,10 +43,10 @@ type App struct {
 }
 
 // New creates a new CLI application.
-func New(name, description string) *App {
+// Use builder methods like Description() and Version() to configure the app.
+func New(name string) *App {
 	return &App{
 		name:         name,
-		description:  description,
 		commands:     make(map[string]*Command),
 		groups:       make(map[string]*Group),
 		stdin:        os.Stdin,
@@ -57,29 +56,36 @@ func New(name, description string) *App {
 	}
 }
 
+// Description sets the application description.
+func (a *App) Description(desc string) *App {
+	a.description = desc
+	return a
+}
+
 // Version sets the application version.
 func (a *App) Version(v string) *App {
 	a.version = v
 	return a
 }
 
-// Command registers a new command.
-func (a *App) Command(name, description string, opts ...CommandOption) *Command {
-	cmd := newCommand(name, description, a)
-	for _, opt := range opts {
-		opt(cmd)
+// Command registers a new command or returns an existing one.
+// Use builder methods like Description(), Args(), and Flags() to configure the command.
+func (a *App) Command(name string) *Command {
+	if existing, ok := a.commands[name]; ok {
+		return existing
 	}
+	cmd := newCommand(name, a)
 	a.commands[name] = cmd
 	return cmd
 }
 
 // Group creates a command group for organizing subcommands.
-func (a *App) Group(name, description string) *Group {
+// Use builder methods like Description() to configure the group.
+func (a *App) Group(name string) *Group {
 	g := &Group{
-		name:        name,
-		description: description,
-		app:         a,
-		commands:    make(map[string]*Command),
+		name:     name,
+		app:      a,
+		commands: make(map[string]*Command),
 	}
 	a.groups[name] = g
 	return g
@@ -92,26 +98,15 @@ func (a *App) Use(mw ...Middleware) *App {
 }
 
 // AddGlobalFlag adds a global flag available to all commands.
-func (a *App) AddGlobalFlag(f *Flag) *App {
+func (a *App) AddGlobalFlag(f Flag) *App {
 	a.globalFlags = append(a.globalFlags, f)
 	return a
 }
 
-// GlobalFlags adds global flags from a struct type using reflection.
-func GlobalFlags[T any]() func(*App) {
-	return func(a *App) {
-		var t T
-		// Use parseStructFlags to extract flags from the struct
-		dummyCmd := &Command{flags: make([]*Flag, 0)}
-		parseStructFlags(dummyCmd, reflect.TypeOf(t))
-		a.globalFlags = append(a.globalFlags, dummyCmd.flags...)
-		a.globalFlagsDefs = t
-	}
-}
-
-// WithGlobalFlags is an app option that adds global flags from a struct.
-func WithGlobalFlags[T any]() func(*App) {
-	return GlobalFlags[T]()
+// GlobalFlags adds multiple global flags available to all commands.
+func (a *App) GlobalFlags(flags ...Flag) *App {
+	a.globalFlags = append(a.globalFlags, flags...)
+	return a
 }
 
 // Run executes the CLI application with os.Args.
@@ -366,13 +361,17 @@ type Group struct {
 	commands    map[string]*Command
 }
 
+// Description sets the group description.
+func (g *Group) Description(desc string) *Group {
+	g.description = desc
+	return g
+}
+
 // Command adds a command to the group.
-func (g *Group) Command(name, description string, opts ...CommandOption) *Command {
-	cmd := newCommand(name, description, g.app)
+// Use builder methods like Description(), Args(), and Flags() to configure the command.
+func (g *Group) Command(name string) *Command {
+	cmd := newCommand(name, g.app)
 	cmd.group = g
-	for _, opt := range opts {
-		opt(cmd)
-	}
 	g.commands[name] = cmd
 	return cmd
 }

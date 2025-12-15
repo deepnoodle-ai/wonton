@@ -164,8 +164,8 @@ func (r *TestResult) GetEvent(i int) map[string]any {
 
 // TestApp creates a new app configured for testing.
 // It disables interactive mode and captures all output.
-func TestApp(name, description string) *App {
-	app := New(name, description)
+func TestApp(name string) *App {
+	app := New(name)
 	app.isInteractive = false
 	app.stdin = strings.NewReader("")
 	app.stdout = &bytes.Buffer{}

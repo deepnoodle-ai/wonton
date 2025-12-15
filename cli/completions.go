@@ -123,15 +123,15 @@ func (a *App) GenerateFishCompletion(w io.Writer) error {
 
 		// Add flags for each command
 		for _, flag := range cmd.flags {
-			if flag.Hidden {
+			if flag.IsHidden() {
 				continue
 			}
-			if flag.Short != "" {
+			if flag.GetShort() != "" {
 				sb.WriteString(fmt.Sprintf("complete -c %s -n '__fish_seen_subcommand_from %s' -s '%s' -l '%s' -d '%s'\n",
-					a.name, name, flag.Short, flag.Name, escapeFish(flag.Description)))
+					a.name, name, flag.GetShort(), flag.GetName(), escapeFish(flag.GetHelp())))
 			} else {
 				sb.WriteString(fmt.Sprintf("complete -c %s -n '__fish_seen_subcommand_from %s' -l '%s' -d '%s'\n",
-					a.name, name, flag.Name, escapeFish(flag.Description)))
+					a.name, name, flag.GetName(), escapeFish(flag.GetHelp())))
 			}
 		}
 	}
@@ -160,7 +160,7 @@ func CompletionCommand() *Command {
 	cmd := &Command{
 		name:        "completion",
 		description: "Generate shell completion scripts",
-		flags:       make([]*Flag, 0),
+		flags:       make([]Flag, 0),
 		args:        make([]*Arg, 0),
 	}
 	cmd.AddArg(&Arg{

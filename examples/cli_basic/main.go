@@ -25,26 +25,21 @@ import (
 
 func main() {
 	// Create a new CLI application
-	app := cli.New("myapp", "A demonstration CLI application")
-	app.Version("1.0.0")
+	app := cli.New("myapp").
+		Description("A demonstration CLI application").
+		Version("1.0.0")
 
 	// Add shell completion support
 	app.AddCompletionCommand()
 
 	// Simple command with an argument
-	app.Command("greet", "Greet someone", cli.WithArgs("name")).
-		AddFlag(&cli.Flag{
-			Name:        "loud",
-			Short:       "l",
-			Description: "Greet loudly",
-			Default:     false,
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "times",
-			Short:       "t",
-			Description: "Number of times to greet",
-			Default:     1,
-		}).
+	app.Command("greet").
+		Description("Greet someone").
+		Args("name?").
+		Flags(
+			&cli.BoolFlag{Name: "loud", Short: "l", Help: "Greet loudly"},
+			&cli.IntFlag{Name: "times", Short: "t", Help: "Number of times to greet", Value: 1},
+		).
 		Run(func(ctx *cli.Context) error {
 			name := ctx.Arg(0)
 			if name == "" {
@@ -64,8 +59,9 @@ func main() {
 		})
 
 	// Command with multiple aliases
-	app.Command("generate", "Generate something").
-		Alias("gen", "g").
+	app.Command("generate").
+		Description("Generate something").
+		Aliases("gen", "g").
 		Long("Generate various outputs. This command has aliases 'gen' and 'g'.").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Generating... (use 'gen' or 'g' as shortcuts)")
@@ -73,9 +69,11 @@ func main() {
 		})
 
 	// Command group for organizing related commands
-	users := app.Group("users", "User management commands")
+	users := app.Group("users").
+		Description("User management commands")
 
-	users.Command("list", "List all users").
+	users.Command("list").
+		Description("List all users").
 		Alias("ls").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Users:")
@@ -85,14 +83,18 @@ func main() {
 			return nil
 		})
 
-	users.Command("create", "Create a new user", cli.WithArgs("username")).
-		AddFlag(&cli.Flag{
-			Name:        "role",
-			Short:       "r",
-			Description: "User role",
-			Default:     "user",
-			Enum:        []string{"admin", "user", "guest"},
-		}).
+	users.Command("create").
+		Description("Create a new user").
+		Args("username").
+		Flags(
+			&cli.StringFlag{
+				Name:  "role",
+				Short: "r",
+				Help:  "User role",
+				Value: "user",
+				Enum:  []string{"admin", "user", "guest"},
+			},
+		).
 		Run(func(ctx *cli.Context) error {
 			username := ctx.Arg(0)
 			role := ctx.String("role")
@@ -100,7 +102,9 @@ func main() {
 			return nil
 		})
 
-	users.Command("delete", "Delete a user", cli.WithArgs("username")).
+	users.Command("delete").
+		Description("Delete a user").
+		Args("username").
 		Run(func(ctx *cli.Context) error {
 			username := ctx.Arg(0)
 			ctx.Printf("Deleted user '%s'\n", username)
@@ -108,7 +112,8 @@ func main() {
 		})
 
 	// Hidden command (won't show in help)
-	app.Command("secret", "Secret command").
+	app.Command("secret").
+		Description("Secret command").
 		Hidden().
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("You found the secret command!")
@@ -116,7 +121,8 @@ func main() {
 		})
 
 	// Deprecated command
-	app.Command("old-greet", "Old greeting command").
+	app.Command("old-greet").
+		Description("Old greeting command").
 		Deprecated("Use 'greet' instead").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Hello from the old command!")

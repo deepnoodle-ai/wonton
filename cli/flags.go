@@ -73,74 +73,83 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		}
 
 		parts := strings.Split(tag, ",")
-		flag := &Flag{
-			Name:        parts[0],
-			Description: field.Tag.Get("help"),
-			EnvVar:      field.Tag.Get("env"),
-		}
-
-		// Short flag
+		name := parts[0]
+		short := ""
 		if len(parts) > 1 {
-			flag.Short = parts[1]
+			short = parts[1]
 		}
 
-		// Default value
-		if def := field.Tag.Get("default"); def != "" {
-			flag.Default = parseDefaultValue(field.Type, def)
-		} else {
-			// Set type-appropriate zero default
-			switch field.Type.Kind() {
-			case reflect.Bool:
-				flag.Default = false
-			case reflect.String:
-				flag.Default = ""
-			case reflect.Int, reflect.Int64:
-				flag.Default = 0
-			case reflect.Float64:
-				flag.Default = 0.0
+		help := field.Tag.Get("help")
+		envVar := field.Tag.Get("env")
+		enumStr := field.Tag.Get("enum")
+		var enum []string
+		if enumStr != "" {
+			enum = strings.Split(enumStr, ",")
+		}
+		_, required := field.Tag.Lookup("required")
+		_, hidden := field.Tag.Lookup("hidden")
+
+		// Create typed flag based on field type
+		switch field.Type.Kind() {
+		case reflect.Bool:
+			defVal := false
+			if def := field.Tag.Get("default"); def != "" {
+				defVal = def == "true" || def == "1"
 			}
+			c.flags = append(c.flags, &BoolFlag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+			})
+		case reflect.String:
+			defVal := field.Tag.Get("default")
+			c.flags = append(c.flags, &StringFlag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+				Enum:     enum,
+			})
+		case reflect.Int, reflect.Int64:
+			defVal := 0
+			if def := field.Tag.Get("default"); def != "" {
+				if v, err := strconv.Atoi(def); err == nil {
+					defVal = v
+				}
+			}
+			c.flags = append(c.flags, &IntFlag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+			})
+		case reflect.Float64:
+			defVal := 0.0
+			if def := field.Tag.Get("default"); def != "" {
+				if v, err := strconv.ParseFloat(def, 64); err == nil {
+					defVal = v
+				}
+			}
+			c.flags = append(c.flags, &Float64Flag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+			})
 		}
-
-		// Enum values
-		if enum := field.Tag.Get("enum"); enum != "" {
-			flag.Enum = strings.Split(enum, ",")
-		}
-
-		// Required
-		if _, ok := field.Tag.Lookup("required"); ok {
-			flag.Required = true
-		}
-
-		// Hidden
-		if _, ok := field.Tag.Lookup("hidden"); ok {
-			flag.Hidden = true
-		}
-
-		c.flags = append(c.flags, flag)
-	}
-}
-
-func parseDefaultValue(t reflect.Type, s string) any {
-	switch t.Kind() {
-	case reflect.Bool:
-		return s == "true" || s == "1"
-	case reflect.Int:
-		if v, err := strconv.Atoi(s); err == nil {
-			return v
-		}
-		return 0
-	case reflect.Int64:
-		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-			return v
-		}
-		return int64(0)
-	case reflect.Float64:
-		if v, err := strconv.ParseFloat(s, 64); err == nil {
-			return v
-		}
-		return 0.0
-	default:
-		return s
 	}
 }
 

@@ -15,6 +15,7 @@ type Context struct {
 	args        []string
 	positional  []string
 	flags       map[string]any
+	setFlags    map[string]bool // Flags explicitly set by user (or env var)
 	interactive bool
 
 	// I/O
@@ -166,8 +167,10 @@ func (c *Context) Bool(name string) bool {
 
 // IsSet returns true if a flag was explicitly set.
 func (c *Context) IsSet(name string) bool {
-	_, ok := c.flags[name]
-	return ok
+	if c.setFlags == nil {
+		return false
+	}
+	return c.setFlags[name]
 }
 
 // Output helpers

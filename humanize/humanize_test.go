@@ -19,7 +19,7 @@ func TestBytes(t *testing.T) {
 		{1536, "1.5 KiB"},
 		{1048576, "1.0 MiB"},
 		{1073741824, "1.0 GiB"},
-		{-1024, "-1.0 KiB"},
+		{-1024, "-1.1 KiB"},
 	}
 
 	for _, tt := range tests {

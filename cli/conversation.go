@@ -35,16 +35,6 @@ func NewConversation(ctx *Context) *Conversation {
 	}
 }
 
-// WithConversation creates a command option that sets up conversation mode.
-func WithConversation(fn ConversationFunc) CommandOption {
-	return func(c *Command) {
-		c.handler = func(ctx *Context) error {
-			conv := NewConversation(ctx)
-			return fn(conv)
-		}
-	}
-}
-
 // System adds a system message to the conversation.
 func (c *Conversation) System(content string) *Conversation {
 	c.messages = append(c.messages, Message{

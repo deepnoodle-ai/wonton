@@ -35,23 +35,17 @@ type Config struct {
 }
 
 func main() {
-	app := cli.New("wizard", "Configuration wizard demo")
-	app.Version("1.0.0")
+	app := cli.New("wizard").
+		Description("Configuration wizard demo").
+		Version("1.0.0")
 
 	// Init command - runs the setup wizard
-	app.Command("init", "Initialize a new project with a wizard").
-		AddFlag(&cli.Flag{
-			Name:        "quick",
-			Short:       "q",
-			Description: "Use defaults without prompts",
-			Default:     false,
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "name",
-			Short:       "n",
-			Description: "Project name (for quick mode)",
-			Default:     "",
-		}).
+	app.Command("init").
+		Description("Initialize a new project with a wizard").
+		Flags(
+			&cli.BoolFlag{Name: "quick", Short: "q", Help: "Use defaults without prompts"},
+			&cli.StringFlag{Name: "name", Short: "n", Help: "Project name (for quick mode)"},
+		).
 		Interactive(func(ctx *cli.Context) error {
 			// Full interactive wizard
 			wizard := &WizardApp{
@@ -93,7 +87,8 @@ func main() {
 		})
 
 	// Step-by-step command using prompts
-	app.Command("setup", "Step-by-step setup using prompts").
+	app.Command("setup").
+		Description("Step-by-step setup using prompts").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("setup requires an interactive terminal")
@@ -168,9 +163,11 @@ func main() {
 		})
 
 	// Config group
-	config := app.Group("config", "Configuration management")
+	config := app.Group("config").
+		Description("Configuration management")
 
-	config.Command("show", "Show current configuration").
+	config.Command("show").
+		Description("Show current configuration").
 		Run(func(ctx *cli.Context) error {
 			// Simulated config
 			ctx.Println("Current Configuration:")
@@ -184,7 +181,8 @@ func main() {
 			return nil
 		})
 
-	config.Command("edit", "Edit configuration interactively").
+	config.Command("edit").
+		Description("Edit configuration interactively").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("edit requires an interactive terminal")

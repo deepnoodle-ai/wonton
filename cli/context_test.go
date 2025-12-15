@@ -11,8 +11,14 @@ func newTestContext(flags map[string]any, args ...string) *Context {
 	if flags == nil {
 		flags = make(map[string]any)
 	}
+	// Also populate setFlags for all passed flags
+	setFlags := make(map[string]bool)
+	for name := range flags {
+		setFlags[name] = true
+	}
 	return &Context{
 		flags:      flags,
+		setFlags:   setFlags,
 		positional: args,
 		stdout:     &bytes.Buffer{},
 		stderr:     &bytes.Buffer{},

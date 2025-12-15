@@ -24,36 +24,17 @@ import (
 )
 
 func main() {
-	app := cli.New("globalflags", "Demonstrates global flags and configuration")
-	app.Version("1.0.0")
+	app := cli.New("globalflags").
+		Description("Demonstrates global flags and configuration").
+		Version("1.0.0")
 
 	// Add global flags available to ALL commands
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "verbose",
-		Short:       "v",
-		Description: "Enable verbose output",
-		Default:     false,
-	})
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "config",
-		Short:       "c",
-		Description: "Config file path",
-		Default:     "",
-		EnvVar:      "MYAPP_CONFIG",
-	})
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "output",
-		Short:       "o",
-		Description: "Output format",
-		Default:     "text",
-		Enum:        []string{"text", "json", "yaml"},
-	})
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "quiet",
-		Short:       "q",
-		Description: "Suppress non-essential output",
-		Default:     false,
-	})
+	app.GlobalFlags(
+		&cli.BoolFlag{Name: "verbose", Short: "v", Help: "Enable verbose output"},
+		&cli.StringFlag{Name: "config", Short: "c", Help: "Config file path", EnvVar: "MYAPP_CONFIG"},
+		&cli.StringFlag{Name: "output", Short: "o", Help: "Output format", Value: "text", Enum: []string{"text", "json", "yaml"}},
+		&cli.BoolFlag{Name: "quiet", Short: "q", Help: "Suppress non-essential output"},
+	)
 
 	// Global middleware that runs before every command
 	app.Use(
@@ -93,7 +74,8 @@ func main() {
 	)
 
 	// Simple command that uses global flags
-	app.Command("run", "Run the main operation").
+	app.Command("run").
+		Description("Run the main operation").
 		Run(func(ctx *cli.Context) error {
 			verbose := ctx.Bool("verbose")
 			output := ctx.String("output")
@@ -128,7 +110,8 @@ func main() {
 		})
 
 	// List command
-	app.Command("list", "List items").
+	app.Command("list").
+		Description("List items").
 		Run(func(ctx *cli.Context) error {
 			output := ctx.String("output")
 			verbose := ctx.Bool("verbose")
@@ -172,9 +155,11 @@ func main() {
 		})
 
 	// Command group that also uses global flags
-	users := app.Group("users", "User management")
+	users := app.Group("users").
+		Description("User management")
 
-	users.Command("list", "List users").
+	users.Command("list").
+		Description("List users").
 		Run(func(ctx *cli.Context) error {
 			output := ctx.String("output")
 
@@ -187,7 +172,9 @@ func main() {
 			return nil
 		})
 
-	users.Command("get", "Get user details", cli.WithArgs("username")).
+	users.Command("get").
+		Description("Get user details").
+		Args("username").
 		Run(func(ctx *cli.Context) error {
 			username := ctx.Arg(0)
 			output := ctx.String("output")
@@ -208,7 +195,8 @@ func main() {
 		})
 
 	// Show how to check global flags in any command
-	app.Command("debug", "Show current configuration").
+	app.Command("debug").
+		Description("Show current configuration").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Current Configuration:")
 			ctx.Printf("  --verbose: %v\n", ctx.Bool("verbose"))

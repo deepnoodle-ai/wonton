@@ -28,11 +28,13 @@ import (
 )
 
 func main() {
-	app := cli.New("chatdemo", "Demonstrates conversation patterns")
-	app.Version("1.0.0")
+	app := cli.New("chatdemo").
+		Description("Demonstrates conversation patterns").
+		Version("1.0.0")
 
 	// Simple chat command using conversation pattern
-	app.Command("chat", "Start a chat session").
+	app.Command("chat").
+		Description("Start a chat session").
 		Run(func(ctx *cli.Context) error {
 			conv := cli.NewConversation(ctx)
 			conv.System("You are a helpful assistant. This is a demo - responses are simulated.")
@@ -69,7 +71,8 @@ func main() {
 		})
 
 	// REPL-style command
-	app.Command("repl", "Start a REPL session").
+	app.Command("repl").
+		Description("Start a REPL session").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("REPL Demo")
 			ctx.Println("Commands: help, history, clear, quit")
@@ -123,7 +126,8 @@ func main() {
 		})
 
 	// Full TUI chat using Wonton
-	app.Command("tui", "Full TUI chat interface").
+	app.Command("tui").
+		Description("Full TUI chat interface").
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("TUI mode requires an interactive terminal")
@@ -142,7 +146,9 @@ func main() {
 		})
 
 	// Streaming demo
-	app.Command("stream", "Demonstrate streaming output", cli.WithArgs("prompt")).
+	app.Command("stream").
+		Description("Demonstrate streaming output").
+		Args("prompt?").
 		Run(func(ctx *cli.Context) error {
 			prompt := ctx.Arg(0)
 			if prompt == "" {

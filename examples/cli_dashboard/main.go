@@ -49,24 +49,21 @@ type Process struct {
 }
 
 func main() {
-	app := cli.New("dashboard", "System monitoring dashboard")
-	app.Version("1.0.0")
+	app := cli.New("dashboard").
+		Description("System monitoring dashboard").
+		Version("1.0.0")
 
 	// Global flags
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "json",
-		Description: "Output as JSON",
-		Default:     false,
-	})
+	app.GlobalFlags(
+		&cli.BoolFlag{Name: "json", Help: "Output as JSON"},
+	)
 
 	// Quick status check (CLI mode)
-	app.Command("status", "Show current system status").
-		AddFlag(&cli.Flag{
-			Name:        "verbose",
-			Short:       "v",
-			Description: "Show detailed status",
-			Default:     false,
-		}).
+	app.Command("status").
+		Description("Show current system status").
+		Flags(
+			&cli.BoolFlag{Name: "verbose", Short: "v", Help: "Show detailed status"},
+		).
 		Run(func(ctx *cli.Context) error {
 			metrics := getMetrics()
 			verbose := ctx.Bool("verbose")
@@ -100,21 +97,13 @@ func main() {
 		})
 
 	// Process list (CLI mode)
-	app.Command("processes", "List running processes").
+	app.Command("processes").
+		Description("List running processes").
 		Alias("ps").
-		AddFlag(&cli.Flag{
-			Name:        "limit",
-			Short:       "n",
-			Description: "Number of processes to show",
-			Default:     10,
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "sort",
-			Short:       "s",
-			Description: "Sort by field",
-			Default:     "cpu",
-			Enum:        []string{"cpu", "memory", "pid"},
-		}).
+		Flags(
+			&cli.IntFlag{Name: "limit", Short: "n", Help: "Number of processes to show", Value: 10},
+			&cli.StringFlag{Name: "sort", Short: "s", Help: "Sort by field", Value: "cpu", Enum: []string{"cpu", "memory", "pid"}},
+		).
 		Run(func(ctx *cli.Context) error {
 			limit := ctx.Int("limit")
 			processes := getProcesses(limit)
@@ -137,14 +126,12 @@ func main() {
 		})
 
 	// Live monitoring dashboard (TUI mode)
-	app.Command("monitor", "Open live monitoring dashboard").
-		Alias("mon", "live").
-		AddFlag(&cli.Flag{
-			Name:        "refresh",
-			Short:       "r",
-			Description: "Refresh interval in seconds",
-			Default:     1,
-		}).
+	app.Command("monitor").
+		Description("Open live monitoring dashboard").
+		Aliases("mon", "live").
+		Flags(
+			&cli.IntFlag{Name: "refresh", Short: "r", Help: "Refresh interval in seconds", Value: 1},
+		).
 		Run(func(ctx *cli.Context) error {
 			if !ctx.Interactive() {
 				return cli.Error("monitor requires an interactive terminal").
@@ -170,20 +157,12 @@ func main() {
 		})
 
 	// Watch a specific metric with progress indicator
-	app.Command("watch", "Watch a specific metric").
-		AddFlag(&cli.Flag{
-			Name:        "metric",
-			Short:       "m",
-			Description: "Metric to watch",
-			Default:     "cpu",
-			Enum:        []string{"cpu", "memory", "disk", "network"},
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "duration",
-			Short:       "d",
-			Description: "Watch duration in seconds",
-			Default:     10,
-		}).
+	app.Command("watch").
+		Description("Watch a specific metric").
+		Flags(
+			&cli.StringFlag{Name: "metric", Short: "m", Help: "Metric to watch", Value: "cpu", Enum: []string{"cpu", "memory", "disk", "network"}},
+			&cli.IntFlag{Name: "duration", Short: "d", Help: "Watch duration in seconds", Value: 10},
+		).
 		Run(func(ctx *cli.Context) error {
 			metric := ctx.String("metric")
 			duration := ctx.Int("duration")

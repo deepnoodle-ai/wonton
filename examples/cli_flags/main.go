@@ -36,11 +36,14 @@ type RunFlags struct {
 }
 
 func main() {
-	app := cli.New("flagdemo", "Demonstrates flags and validation")
-	app.Version("1.0.0")
+	app := cli.New("flagdemo").
+		Description("Demonstrates flags and validation").
+		Version("1.0.0")
 
 	// Command using struct-based flags
-	runCmd := app.Command("run", "Run a prompt", cli.WithArgs("prompt"))
+	runCmd := app.Command("run").
+		Description("Run a prompt").
+		Args("prompt")
 	cli.ParseFlags[RunFlags](runCmd)
 	runCmd.Run(func(ctx *cli.Context) error {
 		// Bind flags to struct
@@ -61,20 +64,22 @@ func main() {
 	})
 
 	// Command with required flag
-	app.Command("deploy", "Deploy to environment").
-		AddFlag(&cli.Flag{
-			Name:        "environment",
-			Short:       "e",
-			Description: "Target environment",
-			Required:    true,
-			Enum:        []string{"dev", "staging", "prod"},
-		}).
-		AddFlag(&cli.Flag{
-			Name:        "force",
-			Short:       "f",
-			Description: "Force deployment",
-			Default:     false,
-		}).
+	app.Command("deploy").
+		Description("Deploy to environment").
+		Flags(
+			&cli.StringFlag{
+				Name:     "environment",
+				Short:    "e",
+				Help:     "Target environment",
+				Required: true,
+				Enum:     []string{"dev", "staging", "prod"},
+			},
+			&cli.BoolFlag{
+				Name:  "force",
+				Short: "f",
+				Help:  "Force deployment",
+			},
+		).
 		Run(func(ctx *cli.Context) error {
 			env := ctx.String("environment")
 			force := ctx.Bool("force")
@@ -83,21 +88,27 @@ func main() {
 		})
 
 	// Command with argument range validation (1-3 args)
-	app.Command("add", "Add items (1-3 items)", cli.WithArgsRange(1, 3)).
+	app.Command("add").
+		Description("Add items (1-3 items)").
+		ArgsRange(1, 3).
 		Run(func(ctx *cli.Context) error {
 			ctx.Printf("Adding %d items: %v\n", ctx.NArg(), ctx.Args())
 			return nil
 		})
 
 	// Command with exact args validation
-	app.Command("pair", "Pair two items", cli.WithExactArgs(2)).
+	app.Command("pair").
+		Description("Pair two items").
+		ExactArgs(2).
 		Run(func(ctx *cli.Context) error {
 			ctx.Printf("Pairing: %s <-> %s\n", ctx.Arg(0), ctx.Arg(1))
 			return nil
 		})
 
 	// Command with no args validation
-	app.Command("status", "Show status (no arguments)", cli.WithNoArgs()).
+	app.Command("status").
+		Description("Show status (no arguments)").
+		NoArgs().
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Status: OK")
 			ctx.Println("Version: 1.0.0")
@@ -106,9 +117,10 @@ func main() {
 		})
 
 	// Command with custom validation
-	app.Command("set", "Set a value",
-		cli.WithArgs("key", "value"),
-		cli.WithValidation(func(ctx *cli.Context) error {
+	app.Command("set").
+		Description("Set a value").
+		Args("key", "value").
+		Validate(func(ctx *cli.Context) error {
 			key := ctx.Arg(0)
 			if key == "" {
 				return cli.Error("key cannot be empty")
@@ -127,20 +139,23 @@ func main() {
 				}
 			}
 			return nil
-		}),
-	).Run(func(ctx *cli.Context) error {
-		ctx.Printf("Set %s = %s\n", ctx.Arg(0), ctx.Arg(1))
-		return nil
-	})
+		}).
+		Run(func(ctx *cli.Context) error {
+			ctx.Printf("Set %s = %s\n", ctx.Arg(0), ctx.Arg(1))
+			return nil
+		})
 
 	// Command with env var for sensitive data
-	app.Command("auth", "Authenticate").
-		AddFlag(&cli.Flag{
-			Name:        "token",
-			Description: "API token",
-			EnvVar:      "MYAPP_TOKEN",
-			Required:    true,
-		}).
+	app.Command("auth").
+		Description("Authenticate").
+		Flags(
+			&cli.StringFlag{
+				Name:     "token",
+				Help:     "API token",
+				EnvVar:   "MYAPP_TOKEN",
+				Required: true,
+			},
+		).
 		Run(func(ctx *cli.Context) error {
 			token := ctx.String("token")
 			// Don't print the actual token!

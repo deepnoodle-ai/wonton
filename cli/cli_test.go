@@ -10,7 +10,7 @@ import (
 )
 
 func TestAppBasic(t *testing.T) {
-	app := New("test", "Test application")
+	app := New("test").Description("Test application")
 	require.Equal(t, "test", app.name)
 	require.Equal(t, "Test application", app.description)
 }
@@ -19,8 +19,10 @@ func TestCommand(t *testing.T) {
 	var executed bool
 	var receivedArg string
 
-	app := New("test", "Test application")
-	app.Command("greet", "Greet someone", WithArgs("name")).
+	app := New("test").Description("Test application")
+	app.Command("greet").
+		Description("Greet someone").
+		Args("name").
 		Run(func(ctx *Context) error {
 			executed = true
 			receivedArg = ctx.Arg(0)
@@ -38,17 +40,20 @@ func TestFlags(t *testing.T) {
 	var temp float64
 	var verbose bool
 
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run something")
-	cmd.AddFlag(&Flag{Name: "model", Short: "m", Default: "default"})
-	cmd.AddFlag(&Flag{Name: "temp", Short: "t", Default: 0.7})
-	cmd.AddFlag(&Flag{Name: "verbose", Short: "v", Default: false})
-	cmd.Run(func(ctx *Context) error {
-		model = ctx.String("model")
-		temp = ctx.Float64("temp")
-		verbose = ctx.Bool("verbose")
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run something").
+		Flags(
+			&StringFlag{Name: "model", Short: "m", Value: "default"},
+			&Float64Flag{Name: "temp", Short: "t", Value: 0.7},
+			&BoolFlag{Name: "verbose", Short: "v"},
+		).
+		Run(func(ctx *Context) error {
+			model = ctx.String("model")
+			temp = ctx.Float64("temp")
+			verbose = ctx.Bool("verbose")
+			return nil
+		})
 
 	// Test defaults
 	err := app.RunArgs([]string{"run"})
@@ -68,13 +73,14 @@ func TestFlags(t *testing.T) {
 func TestFlagsEqualsStyle(t *testing.T) {
 	var value string
 
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "config", Default: ""})
-	cmd.Run(func(ctx *Context) error {
-		value = ctx.String("config")
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "config"}).
+		Run(func(ctx *Context) error {
+			value = ctx.String("config")
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run", "--config=myfile.yaml"})
 	require.NoError(t, err)
@@ -82,12 +88,13 @@ func TestFlagsEqualsStyle(t *testing.T) {
 }
 
 func TestRequiredFlag(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "required", Required: true})
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "required", Required: true}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run"})
 	require.Error(t, err)
@@ -95,12 +102,13 @@ func TestRequiredFlag(t *testing.T) {
 }
 
 func TestEnumFlag(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "format", Enum: []string{"json", "yaml", "text"}, Default: "text"})
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "format", Enum: []string{"json", "yaml", "text"}, Value: "text"}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	// Valid value
 	err := app.RunArgs([]string{"run", "--format", "json"})
@@ -113,8 +121,10 @@ func TestEnumFlag(t *testing.T) {
 }
 
 func TestRequiredArg(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("greet", "Greet", WithArgs("name")).
+	app := New("test").Description("Test")
+	app.Command("greet").
+		Description("Greet").
+		Args("name").
 		Run(func(ctx *Context) error {
 			return nil
 		})
@@ -127,8 +137,10 @@ func TestRequiredArg(t *testing.T) {
 func TestOptionalArg(t *testing.T) {
 	var name string
 
-	app := New("test", "Test")
-	app.Command("greet", "Greet", WithArgs("name?")).
+	app := New("test").Description("Test")
+	app.Command("greet").
+		Description("Greet").
+		Args("name?").
 		Run(func(ctx *Context) error {
 			name = ctx.Arg(0)
 			return nil
@@ -146,9 +158,10 @@ func TestOptionalArg(t *testing.T) {
 func TestGroup(t *testing.T) {
 	var executed bool
 
-	app := New("test", "Test")
-	users := app.Group("users", "User management")
-	users.Command("list", "List users").
+	app := New("test").Description("Test")
+	users := app.Group("users").Description("User management")
+	users.Command("list").
+		Description("List users").
 		Run(func(ctx *Context) error {
 			executed = true
 			return nil
@@ -162,7 +175,7 @@ func TestGroup(t *testing.T) {
 func TestMiddleware(t *testing.T) {
 	var order []string
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.Use(func(next Handler) Handler {
 		return func(ctx *Context) error {
 			order = append(order, "global-before")
@@ -172,7 +185,8 @@ func TestMiddleware(t *testing.T) {
 		}
 	})
 
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Use(func(next Handler) Handler {
 			return func(ctx *Context) error {
 				order = append(order, "cmd-before")
@@ -202,10 +216,10 @@ func TestMiddleware(t *testing.T) {
 func TestHelp(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test application")
+	app := New("test").Description("Test application")
 	app.Version("1.0.0")
 	app.stdout = &buf
-	app.Command("run", "Run something")
+	app.Command("run").Description("Run something")
 
 	app.RunArgs([]string{"help"})
 
@@ -219,13 +233,15 @@ func TestHelp(t *testing.T) {
 func TestCommandHelp(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	cmd := app.Command("run", "Run something", WithArgs("file"))
-	cmd.AddFlag(&Flag{Name: "verbose", Short: "v", Description: "Verbose output", Default: false})
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app.Command("run").
+		Description("Run something").
+		Args("file").
+		Flags(&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run", "--help"})
 	require.True(t, IsHelpRequested(err))
@@ -238,13 +254,15 @@ func TestCommandHelp(t *testing.T) {
 }
 
 func TestToolSchema(t *testing.T) {
-	app := New("agent", "AI Agent")
-	cmd := app.Command("create-file", "Create a file").Tool()
-	cmd.AddArg(&Arg{Name: "path", Description: "File path", Required: true})
-	cmd.AddArg(&Arg{Name: "content", Description: "File content", Required: true})
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app := New("agent").Description("AI Agent")
+	app.Command("create-file").
+		Description("Create a file").
+		Tool().
+		AddArg(&Arg{Name: "path", Description: "File path", Required: true}).
+		AddArg(&Arg{Name: "content", Description: "File content", Required: true}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	schemas := app.GetToolSchemas()
 	require.Len(t, schemas, 1)
@@ -259,8 +277,9 @@ func TestToolSchema(t *testing.T) {
 func TestContext(t *testing.T) {
 	var gotCtx *Context
 
-	app := New("test", "Test")
-	app.Command("run", "Run").
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			gotCtx = ctx
 			return nil
@@ -275,9 +294,10 @@ func TestContext(t *testing.T) {
 func TestContextOutput(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			ctx.Println("Hello")
 			ctx.Printf("Count: %d\n", 42)
@@ -304,18 +324,19 @@ func TestError(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "count", Default: 0})
-	cmd.Validate(func(ctx *Context) error {
-		if ctx.Int("count") > 10 {
-			return Error("count must be <= 10")
-		}
-		return nil
-	})
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&IntFlag{Name: "count", Value: 0}).
+		Validate(func(ctx *Context) error {
+			if ctx.Int("count") > 10 {
+				return Error("count must be <= 10")
+			}
+			return nil
+		}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run", "--count", "15"})
 	require.Error(t, err)
@@ -325,8 +346,9 @@ func TestValidation(t *testing.T) {
 func TestDoubleDash(t *testing.T) {
 	var args []string
 
-	app := New("test", "Test")
-	app.Command("run", "Run").
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			args = ctx.Args()
 			return nil
@@ -340,15 +362,18 @@ func TestDoubleDash(t *testing.T) {
 func TestMultipleShortFlags(t *testing.T) {
 	var verbose, debug bool
 
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "verbose", Short: "v", Default: false})
-	cmd.AddFlag(&Flag{Name: "debug", Short: "d", Default: false})
-	cmd.Run(func(ctx *Context) error {
-		verbose = ctx.Bool("verbose")
-		debug = ctx.Bool("debug")
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(
+			&BoolFlag{Name: "verbose", Short: "v"},
+			&BoolFlag{Name: "debug", Short: "d"},
+		).
+		Run(func(ctx *Context) error {
+			verbose = ctx.Bool("verbose")
+			debug = ctx.Bool("debug")
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run", "-vd"})
 	require.NoError(t, err)
@@ -357,9 +382,10 @@ func TestMultipleShortFlags(t *testing.T) {
 }
 
 func TestRecoverMiddleware(t *testing.T) {
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.Use(Recover())
-	app.Command("panic", "Panic").
+	app.Command("panic").
+		Description("Panic").
 		Run(func(ctx *Context) error {
 			panic("test panic")
 		})
@@ -372,7 +398,7 @@ func TestRecoverMiddleware(t *testing.T) {
 func TestBeforeAfterMiddleware(t *testing.T) {
 	var order []string
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.Use(
 		Before(func(ctx *Context) error {
 			order = append(order, "before")
@@ -383,7 +409,8 @@ func TestBeforeAfterMiddleware(t *testing.T) {
 			return nil
 		}),
 	)
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			order = append(order, "run")
 			return nil
@@ -394,8 +421,9 @@ func TestBeforeAfterMiddleware(t *testing.T) {
 }
 
 func TestUnknownCommand(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("run", "Run").
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			return nil
 		})
@@ -408,7 +436,7 @@ func TestUnknownCommand(t *testing.T) {
 func TestVersion(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.Version("1.2.3")
 	app.stdout = &buf
 
@@ -419,8 +447,9 @@ func TestVersion(t *testing.T) {
 func TestCommandAlias(t *testing.T) {
 	var executed bool
 
-	app := New("test", "Test")
-	app.Command("generate", "Generate something").
+	app := New("test").Description("Test")
+	app.Command("generate").
+		Description("Generate something").
 		Alias("gen", "g").
 		Run(func(ctx *Context) error {
 			executed = true
@@ -448,9 +477,10 @@ func TestCommandAlias(t *testing.T) {
 func TestGroupCommandAlias(t *testing.T) {
 	var executed bool
 
-	app := New("test", "Test")
-	users := app.Group("users", "User management")
-	users.Command("list", "List users").
+	app := New("test").Description("Test")
+	users := app.Group("users").Description("User management")
+	users.Command("list").
+		Description("List users").
 		Alias("ls", "l").
 		Run(func(ctx *Context) error {
 			executed = true
@@ -479,8 +509,8 @@ type RunFlags struct {
 }
 
 func TestParseFlagsGeneric(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run something")
+	app := New("test").Description("Test")
+	cmd := app.Command("run").Description("Run something")
 
 	// Use ParseFlags to set up flags from struct
 	ParseFlags[RunFlags](cmd)
@@ -492,33 +522,33 @@ func TestParseFlagsGeneric(t *testing.T) {
 	require.Len(t, cmd.flags, 5)
 
 	// Find model flag
-	var modelFlag *Flag
+	var modelFlag Flag
 	for _, f := range cmd.flags {
-		if f.Name == "model" {
+		if f.GetName() == "model" {
 			modelFlag = f
 			break
 		}
 	}
 	require.NotNil(t, modelFlag)
-	require.Equal(t, "m", modelFlag.Short)
-	require.Equal(t, "claude-sonnet", modelFlag.Default)
-	require.Equal(t, "Model to use", modelFlag.Description)
+	require.Equal(t, "m", modelFlag.GetShort())
+	require.Equal(t, "claude-sonnet", modelFlag.GetDefault())
+	require.Equal(t, "Model to use", modelFlag.GetHelp())
 
 	// Find format flag and check enum
-	var formatFlag *Flag
+	var formatFlag Flag
 	for _, f := range cmd.flags {
-		if f.Name == "format" {
+		if f.GetName() == "format" {
 			formatFlag = f
 			break
 		}
 	}
 	require.NotNil(t, formatFlag)
-	require.Equal(t, []string{"json", "text", "yaml"}, formatFlag.Enum)
+	require.Equal(t, []string{"json", "text", "yaml"}, formatFlag.GetEnum())
 }
 
 func TestBindFlagsGeneric(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
+	app := New("test").Description("Test")
+	cmd := app.Command("run").Description("Run")
 
 	ParseFlags[RunFlags](cmd)
 
@@ -541,8 +571,8 @@ func TestBindFlagsGeneric(t *testing.T) {
 }
 
 func TestBindFlagsDefaults(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
+	app := New("test").Description("Test")
+	cmd := app.Command("run").Description("Run")
 
 	ParseFlags[RunFlags](cmd)
 
@@ -565,14 +595,14 @@ func TestBindFlagsDefaults(t *testing.T) {
 }
 
 func TestRequireFlagsMiddleware(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	// Note: No default set, so IsSet will return false if not provided
-	cmd.AddFlag(&Flag{Name: "config"})
-	cmd.Use(RequireFlags("config"))
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "config"}).
+		Use(RequireFlags("config")).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	// Missing required flag
 	err := app.RunArgs([]string{"run"})
@@ -585,13 +615,14 @@ func TestRequireFlagsMiddleware(t *testing.T) {
 }
 
 func TestRequireInteractiveMiddleware(t *testing.T) {
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.isInteractive = false // Force non-interactive
-	cmd := app.Command("run", "Run")
-	cmd.Use(RequireInteractive())
-	cmd.Run(func(ctx *Context) error {
-		return nil
-	})
+	app.Command("run").
+		Description("Run").
+		Use(RequireInteractive()).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	err := app.RunArgs([]string{"run"})
 	require.Error(t, err)
@@ -601,10 +632,10 @@ func TestRequireInteractiveMiddleware(t *testing.T) {
 func TestLoggerMiddleware(t *testing.T) {
 	var stderr bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stderr = &stderr
 	app.Use(Logger())
-	app.Command("run", "Run").Run(func(ctx *Context) error {
+	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		return nil
 	})
 
@@ -619,10 +650,10 @@ func TestLoggerMiddleware(t *testing.T) {
 func TestLoggerMiddlewareWithError(t *testing.T) {
 	var stderr bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stderr = &stderr
 	app.Use(Logger())
-	app.Command("run", "Run").Run(func(ctx *Context) error {
+	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		return Error("test error")
 	})
 
@@ -664,12 +695,16 @@ func TestToolSchemaFromStruct(t *testing.T) {
 }
 
 func TestToolSchemaWithFlags(t *testing.T) {
-	app := New("agent", "AI Agent")
-	cmd := app.Command("run", "Run a prompt").Tool()
-	cmd.AddFlag(&Flag{Name: "model", Description: "Model to use", Default: "claude-sonnet"})
-	cmd.AddFlag(&Flag{Name: "temperature", Description: "Temperature", Default: 0.7})
-	cmd.AddFlag(&Flag{Name: "stream", Description: "Stream output", Default: false})
-	cmd.Run(func(ctx *Context) error { return nil })
+	app := New("agent").Description("AI Agent")
+	app.Command("run").
+		Description("Run a prompt").
+		Tool().
+		Flags(
+			&StringFlag{Name: "model", Help: "Model to use", Value: "claude-sonnet"},
+			&Float64Flag{Name: "temperature", Help: "Temperature", Value: 0.7},
+			&BoolFlag{Name: "stream", Help: "Stream output"},
+		).
+		Run(func(ctx *Context) error { return nil })
 
 	schemas := app.GetToolSchemas()
 	require.Len(t, schemas, 1)
@@ -687,9 +722,10 @@ func TestToolSchemaWithFlags(t *testing.T) {
 }
 
 func TestToolSchemaInGroup(t *testing.T) {
-	app := New("agent", "AI Agent")
-	files := app.Group("files", "File operations")
-	files.Command("create", "Create a file").
+	app := New("agent").Description("AI Agent")
+	files := app.Group("files").Description("File operations")
+	files.Command("create").
+		Description("Create a file").
 		Tool().
 		AddArg(&Arg{Name: "path", Required: true}).
 		Run(func(ctx *Context) error { return nil })
@@ -702,8 +738,9 @@ func TestToolSchemaInGroup(t *testing.T) {
 }
 
 func TestToolsJSON(t *testing.T) {
-	app := New("agent", "AI Agent")
-	app.Command("read", "Read a file").
+	app := New("agent").Description("AI Agent")
+	app.Command("read").
+		Description("Read a file").
 		Tool().
 		AddArg(&Arg{Name: "path", Required: true}).
 		Run(func(ctx *Context) error { return nil })
@@ -718,8 +755,8 @@ func TestContextNArg(t *testing.T) {
 	var narg int
 	var args []string
 
-	app := New("test", "Test")
-	app.Command("run", "Run").Run(func(ctx *Context) error {
+	app := New("test").Description("Test")
+	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		narg = ctx.NArg()
 		args = ctx.Args()
 		return nil
@@ -731,12 +768,18 @@ func TestContextNArg(t *testing.T) {
 }
 
 func TestContextFlagTypes(t *testing.T) {
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "str", Default: ""})
-	cmd.AddFlag(&Flag{Name: "num", Default: 0})
-	cmd.AddFlag(&Flag{Name: "float", Default: 0.0})
-	cmd.AddFlag(&Flag{Name: "bool", Default: false})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(
+			&StringFlag{Name: "str"},
+			&IntFlag{Name: "num"},
+			&Float64Flag{Name: "float"},
+			&BoolFlag{Name: "bool"},
+		).
+		Run(func(ctx *Context) error {
+			return nil
+		})
 
 	var str string
 	var num int
@@ -744,7 +787,7 @@ func TestContextFlagTypes(t *testing.T) {
 	var flt float64
 	var b bool
 
-	cmd.Run(func(ctx *Context) error {
+	app.Command("run").Run(func(ctx *Context) error {
 		str = ctx.String("str")
 		num = ctx.Int("num")
 		num64 = ctx.Int64("num")
@@ -774,10 +817,10 @@ func TestExitError(t *testing.T) {
 func TestHiddenCommand(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	app.Command("visible", "Visible command").Run(func(ctx *Context) error { return nil })
-	app.Command("hidden", "Hidden command").Hidden().Run(func(ctx *Context) error { return nil })
+	app.Command("visible").Description("Visible command").Run(func(ctx *Context) error { return nil })
+	app.Command("hidden").Description("Hidden command").Hidden().Run(func(ctx *Context) error { return nil })
 
 	app.RunArgs([]string{"help"})
 
@@ -790,10 +833,12 @@ func TestHiddenCommand(t *testing.T) {
 func TestDeprecatedCommand(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	cmd := app.Command("old", "Old command").Deprecated("Use 'new' instead")
-	cmd.Run(func(ctx *Context) error { return nil })
+	app.Command("old").
+		Description("Old command").
+		Deprecated("Use 'new' instead").
+		Run(func(ctx *Context) error { return nil })
 
 	// Command should still work
 	err := app.RunArgs([]string{"old"})
@@ -809,11 +854,12 @@ func TestDeprecatedCommand(t *testing.T) {
 func TestLongDescription(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	cmd := app.Command("run", "Run something")
-	cmd.Long("This is a longer description that provides more detail about what the command does.")
-	cmd.Run(func(ctx *Context) error { return nil })
+	app.Command("run").
+		Description("Run something").
+		Long("This is a longer description that provides more detail about what the command does.").
+		Run(func(ctx *Context) error { return nil })
 
 	app.RunArgs([]string{"run", "--help"})
 	output := buf.String()
@@ -823,12 +869,15 @@ func TestLongDescription(t *testing.T) {
 func TestHiddenFlag(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "visible", Description: "Visible flag", Default: ""})
-	cmd.AddFlag(&Flag{Name: "hidden", Description: "Hidden flag", Default: "", Hidden: true})
-	cmd.Run(func(ctx *Context) error { return nil })
+	app.Command("run").
+		Description("Run").
+		Flags(
+			&StringFlag{Name: "visible", Help: "Visible flag"},
+			&StringFlag{Name: "hidden", Help: "Hidden flag", Hidden: true},
+		).
+		Run(func(ctx *Context) error { return nil })
 
 	app.RunArgs([]string{"run", "--help"})
 	output := buf.String()
@@ -849,37 +898,19 @@ func TestEnvVarForFlag(t *testing.T) {
 
 	var key string
 
-	app := New("test", "Test")
-	cmd := app.Command("run", "Run")
-	cmd.AddFlag(&Flag{Name: "api-key", EnvVar: "TEST_API_KEY", Required: true})
-	cmd.Run(func(ctx *Context) error {
-		key = ctx.String("api-key")
-		return nil
-	})
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "api-key", EnvVar: "TEST_API_KEY", Required: true}).
+		Run(func(ctx *Context) error {
+			key = ctx.String("api-key")
+			return nil
+		})
 
 	// Should use env var when flag not provided
 	err := app.RunArgs([]string{"run"})
 	require.NoError(t, err)
 	require.Equal(t, "secret-key", key)
-}
-
-func TestCommandWithOption(t *testing.T) {
-	var executed bool
-
-	app := New("test", "Test")
-	app.Command("run", "Run", WithArgs("name"), WithTool()).
-		Run(func(ctx *Context) error {
-			executed = true
-			return nil
-		})
-
-	err := app.RunArgs([]string{"run", "test"})
-	require.NoError(t, err)
-	require.True(t, executed)
-
-	// Verify it's marked as a tool
-	cmd := app.commands["run"]
-	require.True(t, cmd.isTool)
 }
 
 func TestErrorf(t *testing.T) {
@@ -889,8 +920,10 @@ func TestErrorf(t *testing.T) {
 
 // Test app.Test() infrastructure
 func TestAppTestInfrastructure(t *testing.T) {
-	app := New("test", "Test app")
-	app.Command("echo", "Echo input", WithArgs("message")).
+	app := New("test").Description("Test app")
+	app.Command("echo").
+		Description("Echo input").
+		Args("message").
 		Run(func(ctx *Context) error {
 			ctx.Printf("Echo: %s\n", ctx.Arg(0))
 			return nil
@@ -905,9 +938,10 @@ func TestAppTestInfrastructure(t *testing.T) {
 }
 
 func TestAppTestWithEnv(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("run", "Run").
-		AddFlag(&Flag{Name: "key", EnvVar: "TEST_KEY", Required: true}).
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&StringFlag{Name: "key", EnvVar: "TEST_KEY", Required: true}).
 		Run(func(ctx *Context) error {
 			ctx.Printf("Key: %s\n", ctx.String("key"))
 			return nil
@@ -923,8 +957,8 @@ func TestAppTestWithEnv(t *testing.T) {
 }
 
 func TestAppTestFailure(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("fail", "Fail").Run(func(ctx *Context) error {
+	app := New("test").Description("Test")
+	app.Command("fail").Description("Fail").Run(func(ctx *Context) error {
 		return Error("intentional failure")
 	})
 
@@ -939,10 +973,10 @@ func TestAppTestFailure(t *testing.T) {
 func TestHiddenCommandsNotInHelp(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	app.Command("public", "Public command").Run(func(ctx *Context) error { return nil })
-	app.Command("secret", "Secret command").Hidden().Run(func(ctx *Context) error { return nil })
+	app.Command("public").Description("Public command").Run(func(ctx *Context) error { return nil })
+	app.Command("secret").Description("Secret command").Hidden().Run(func(ctx *Context) error { return nil })
 
 	app.RunArgs([]string{"help"})
 
@@ -955,10 +989,11 @@ func TestHiddenCommandsNotInHelp(t *testing.T) {
 func TestInteractiveDispatch(t *testing.T) {
 	var handlerCalled string
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.ForceInteractive(true) // Force interactive mode for testing
 
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Interactive(func(ctx *Context) error {
 			handlerCalled = "interactive"
 			return nil
@@ -976,10 +1011,11 @@ func TestInteractiveDispatch(t *testing.T) {
 func TestNonInteractiveDispatch(t *testing.T) {
 	var handlerCalled string
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.ForceInteractive(false) // Force non-interactive mode for testing
 
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Interactive(func(ctx *Context) error {
 			handlerCalled = "interactive"
 			return nil
@@ -997,11 +1033,12 @@ func TestNonInteractiveDispatch(t *testing.T) {
 func TestFallbackToDefaultHandler(t *testing.T) {
 	var handlerCalled string
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.isInteractive = true
 
 	// Only set default handler, no interactive/non-interactive
-	app.Command("run", "Run").
+	app.Command("run").
+		Description("Run").
 		Run(func(ctx *Context) error {
 			handlerCalled = "default"
 			return nil
@@ -1014,8 +1051,10 @@ func TestFallbackToDefaultHandler(t *testing.T) {
 
 // Test ArgsRange validation
 func TestArgsRange(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("add", "Add items", WithArgsRange(1, 3)).
+	app := New("test").Description("Test")
+	app.Command("add").
+		Description("Add items").
+		ArgsRange(1, 3).
 		Run(func(ctx *Context) error { return nil })
 
 	// Too few args
@@ -1037,8 +1076,10 @@ func TestArgsRange(t *testing.T) {
 }
 
 func TestExactArgs(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("pair", "Pair two items", WithExactArgs(2)).
+	app := New("test").Description("Test")
+	app.Command("pair").
+		Description("Pair two items").
+		ExactArgs(2).
 		Run(func(ctx *Context) error { return nil })
 
 	// Too few
@@ -1055,8 +1096,10 @@ func TestExactArgs(t *testing.T) {
 }
 
 func TestNoArgs(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("status", "Show status", WithNoArgs()).
+	app := New("test").Description("Test")
+	app.Command("status").
+		Description("Show status").
+		NoArgs().
 		Run(func(ctx *Context) error { return nil })
 
 	// No args - ok
@@ -1070,16 +1113,17 @@ func TestNoArgs(t *testing.T) {
 }
 
 func TestWithValidation(t *testing.T) {
-	app := New("test", "Test")
-	app.Command("set", "Set value",
-		WithArgs("value"),
-		WithValidation(func(ctx *Context) error {
+	app := New("test").Description("Test")
+	app.Command("set").
+		Description("Set value").
+		Args("value").
+		Validate(func(ctx *Context) error {
 			if ctx.Arg(0) == "invalid" {
 				return Error("invalid value")
 			}
 			return nil
-		}),
-	).Run(func(ctx *Context) error { return nil })
+		}).
+		Run(func(ctx *Context) error { return nil })
 
 	err := app.RunArgs([]string{"set", "valid"})
 	require.NoError(t, err)
@@ -1094,11 +1138,13 @@ func TestGlobalFlags(t *testing.T) {
 	var verbose bool
 	var config string
 
-	app := New("test", "Test")
-	app.AddGlobalFlag(&Flag{Name: "verbose", Short: "v", Default: false, Description: "Verbose output"})
-	app.AddGlobalFlag(&Flag{Name: "config", Short: "c", Default: "", Description: "Config file"})
+	app := New("test").Description("Test")
+	app.GlobalFlags(
+		&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"},
+		&StringFlag{Name: "config", Short: "c", Help: "Config file"},
+	)
 
-	app.Command("run", "Run").Run(func(ctx *Context) error {
+	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		verbose = ctx.Bool("verbose")
 		config = ctx.String("config")
 		return nil
@@ -1114,13 +1160,14 @@ func TestGlobalFlags(t *testing.T) {
 func TestGlobalFlagsInHelp(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("test", "Test")
+	app := New("test").Description("Test")
 	app.stdout = &buf
-	app.AddGlobalFlag(&Flag{Name: "verbose", Short: "v", Default: false, Description: "Verbose output"})
+	app.GlobalFlags(&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"})
 
-	cmd := app.Command("run", "Run something")
-	cmd.AddFlag(&Flag{Name: "output", Short: "o", Default: "", Description: "Output file"})
-	cmd.Run(func(ctx *Context) error { return nil })
+	app.Command("run").
+		Description("Run something").
+		Flags(&StringFlag{Name: "output", Short: "o", Help: "Output file"}).
+		Run(func(ctx *Context) error { return nil })
 
 	app.RunArgs([]string{"run", "--help"})
 
@@ -1135,9 +1182,9 @@ func TestGlobalFlagsInHelp(t *testing.T) {
 func TestBashCompletion(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("myapp", "My application")
-	app.Command("run", "Run something").Run(func(ctx *Context) error { return nil })
-	app.Command("build", "Build something").Run(func(ctx *Context) error { return nil })
+	app := New("myapp").Description("My application")
+	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
+	app.Command("build").Description("Build something").Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateBashCompletion(&buf)
 	require.NoError(t, err)
@@ -1152,8 +1199,8 @@ func TestBashCompletion(t *testing.T) {
 func TestZshCompletion(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("myapp", "My application")
-	app.Command("run", "Run something").Run(func(ctx *Context) error { return nil })
+	app := New("myapp").Description("My application")
+	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateZshCompletion(&buf)
 	require.NoError(t, err)
@@ -1166,10 +1213,11 @@ func TestZshCompletion(t *testing.T) {
 func TestFishCompletion(t *testing.T) {
 	var buf bytes.Buffer
 
-	app := New("myapp", "My application")
-	cmd := app.Command("run", "Run something")
-	cmd.AddFlag(&Flag{Name: "verbose", Short: "v", Description: "Be verbose"})
-	cmd.Run(func(ctx *Context) error { return nil })
+	app := New("myapp").Description("My application")
+	app.Command("run").
+		Description("Run something").
+		Flags(&BoolFlag{Name: "verbose", Short: "v", Help: "Be verbose"}).
+		Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateFishCompletion(&buf)
 	require.NoError(t, err)
@@ -1181,7 +1229,7 @@ func TestFishCompletion(t *testing.T) {
 }
 
 func TestAddCompletionCommand(t *testing.T) {
-	app := New("myapp", "My app")
+	app := New("myapp").Description("My app")
 	app.AddCompletionCommand()
 
 	require.Contains(t, app.commands, "completion")
@@ -1257,7 +1305,7 @@ func TestTestResultHelpers(t *testing.T) {
 }
 
 func TestTestApp(t *testing.T) {
-	app := TestApp("test", "Test app")
+	app := TestApp("test")
 	require.False(t, app.isInteractive)
 	require.NotNil(t, app.stdin)
 	require.NotNil(t, app.stdout)

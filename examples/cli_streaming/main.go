@@ -22,18 +22,19 @@ import (
 )
 
 func main() {
-	app := cli.New("streamdemo", "Demonstrates streaming and progress")
-	app.Version("1.0.0")
+	app := cli.New("streamdemo").
+		Description("Demonstrates streaming and progress").
+		Version("1.0.0")
 
 	// Add global --json flag for JSON output mode
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "json",
-		Description: "Output as JSON events",
-		Default:     false,
-	})
+	app.GlobalFlags(
+		&cli.BoolFlag{Name: "json", Help: "Output as JSON events"},
+	)
 
 	// Streaming text generation
-	app.Command("generate", "Generate text with streaming", cli.WithArgs("prompt")).
+	app.Command("generate").
+		Description("Generate text with streaming").
+		Args("prompt").
 		Run(func(ctx *cli.Context) error {
 			prompt := ctx.Arg(0)
 			if prompt == "" {
@@ -67,13 +68,11 @@ func main() {
 		})
 
 	// Download with progress
-	app.Command("download", "Simulate a download with progress").
-		AddFlag(&cli.Flag{
-			Name:        "size",
-			Short:       "s",
-			Description: "File size in MB",
-			Default:     10,
-		}).
+	app.Command("download").
+		Description("Simulate a download with progress").
+		Flags(
+			&cli.IntFlag{Name: "size", Short: "s", Help: "File size in MB", Value: 10},
+		).
 		Run(func(ctx *cli.Context) error {
 			size := ctx.Int("size")
 
@@ -91,7 +90,8 @@ func main() {
 		})
 
 	// Multi-step process
-	app.Command("process", "Run a multi-step process").
+	app.Command("process").
+		Description("Run a multi-step process").
 		Run(func(ctx *cli.Context) error {
 			steps := []string{
 				"Initializing...",
@@ -117,7 +117,9 @@ func main() {
 		})
 
 	// Streaming with progress messages
-	app.Command("analyze", "Analyze with streaming output", cli.WithArgs("input")).
+	app.Command("analyze").
+		Description("Analyze with streaming output").
+		Args("input").
 		Run(func(ctx *cli.Context) error {
 			input := ctx.Arg(0)
 			if input == "" {
@@ -155,13 +157,11 @@ func main() {
 		})
 
 	// Batch operation with progress
-	app.Command("batch", "Process items in batch").
-		AddFlag(&cli.Flag{
-			Name:        "count",
-			Short:       "n",
-			Description: "Number of items to process",
-			Default:     20,
-		}).
+	app.Command("batch").
+		Description("Process items in batch").
+		Flags(
+			&cli.IntFlag{Name: "count", Short: "n", Help: "Number of items to process", Value: 20},
+		).
 		Run(func(ctx *cli.Context) error {
 			count := ctx.Int("count")
 
@@ -186,13 +186,11 @@ func main() {
 		})
 
 	// Simple spinner
-	app.Command("wait", "Show a simple wait spinner").
-		AddFlag(&cli.Flag{
-			Name:        "seconds",
-			Short:       "s",
-			Description: "Seconds to wait",
-			Default:     3,
-		}).
+	app.Command("wait").
+		Description("Show a simple wait spinner").
+		Flags(
+			&cli.IntFlag{Name: "seconds", Short: "s", Help: "Seconds to wait", Value: 3},
+		).
 		Run(func(ctx *cli.Context) error {
 			seconds := ctx.Int("seconds")
 
