@@ -92,6 +92,10 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 	state.onSubmit = onSubmit
 	state.binding = binding
 
+	// Sync multiline mode (in case it changed)
+	state.input.MultilineMode = multiline
+	state.multiline = multiline
+
 	// Sync value from binding
 	if binding != nil {
 		currentValue := state.input.Value()

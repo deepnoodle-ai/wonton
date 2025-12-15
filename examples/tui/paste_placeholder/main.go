@@ -46,9 +46,13 @@ func (app *PastePlaceholderApp) HandleEvent(event tui.Event) []tui.Cmd {
 			// Toggle focus between input and content viewer
 			app.contentFocus = !app.contentFocus
 		case tui.KeyCtrlU:
-			app.input = ""
-			app.scrollY = 0
-			app.status = "Try pasting multi-line text (e.g. some code)"
+			// Only clear everything when content viewer is focused
+			// When input is focused, the TextInput handles Ctrl+U (delete to line start)
+			if app.contentFocus {
+				app.input = ""
+				app.scrollY = 0
+				app.status = "Try pasting multi-line text (e.g. some code)"
+			}
 		case tui.KeyArrowUp:
 			if app.contentFocus && app.scrollY > 0 {
 				app.scrollY--

@@ -314,40 +314,59 @@ func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
 	return x, y
 }
 
-// cursorUp moves cursor to the previous visual line, maintaining x position where possible.
-// Returns new cursor position (byte offset).
-func (t *TextInput) cursorUp(displayText string) int {
+// lineRange represents the byte range of a visual line.
+type lineRange struct {
+	start, end int
+}
+
+// getVisualLines builds a list of visual line boundaries accounting for wrapping.
+func (t *TextInput) getVisualLines(displayText string) []lineRange {
 	bounds := t.GetBounds()
 	width := bounds.Dx()
 	if width <= 0 {
 		width = 80 // fallback
 	}
 
-	// Build line info: each entry is (startBytePos, endBytePos) for a visual line
-	type lineInfo struct {
-		start, end int
-	}
-	var lines []lineInfo
+	var lines []lineRange
 	lineStart := 0
 	x := 0
 
 	for i, r := range displayText {
 		if r == '\n' {
-			lines = append(lines, lineInfo{lineStart, i})
+			lines = append(lines, lineRange{lineStart, i})
 			lineStart = i + 1
 			x = 0
 			continue
 		}
 		charWidth := runewidth.RuneWidth(r)
 		if x+charWidth > width {
-			lines = append(lines, lineInfo{lineStart, i})
+			lines = append(lines, lineRange{lineStart, i})
 			lineStart = i
 			x = charWidth
 		} else {
 			x += charWidth
 		}
 	}
-	lines = append(lines, lineInfo{lineStart, len(displayText)})
+	lines = append(lines, lineRange{lineStart, len(displayText)})
+	return lines
+}
+
+// getCurrentLineRange returns the start and end byte positions of the current visual line.
+func (t *TextInput) getCurrentLineRange(displayText string) (start, end int) {
+	lines := t.getVisualLines(displayText)
+	for _, line := range lines {
+		if t.CursorPos >= line.start && t.CursorPos <= line.end {
+			return line.start, line.end
+		}
+	}
+	// Fallback: entire text
+	return 0, len(displayText)
+}
+
+// cursorUp moves cursor to the previous visual line, maintaining x position where possible.
+// Returns new cursor position (byte offset).
+func (t *TextInput) cursorUp(displayText string) int {
+	lines := t.getVisualLines(displayText)
 
 	// Find which line the cursor is on
 	cursorLine := 0
@@ -356,8 +375,7 @@ func (t *TextInput) cursorUp(displayText string) int {
 		if t.CursorPos >= line.start && t.CursorPos <= line.end {
 			cursorLine = i
 			// Calculate x offset within this line
-			for j, r := range displayText[line.start:t.CursorPos] {
-				_ = j
+			for _, r := range displayText[line.start:t.CursorPos] {
 				cursorXOffset += runewidth.RuneWidth(r)
 			}
 			break
@@ -385,37 +403,7 @@ func (t *TextInput) cursorUp(displayText string) int {
 // cursorDown moves cursor to the next visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
 func (t *TextInput) cursorDown(displayText string) int {
-	bounds := t.GetBounds()
-	width := bounds.Dx()
-	if width <= 0 {
-		width = 80 // fallback
-	}
-
-	// Build line info: each entry is (startBytePos, endBytePos) for a visual line
-	type lineInfo struct {
-		start, end int
-	}
-	var lines []lineInfo
-	lineStart := 0
-	x := 0
-
-	for i, r := range displayText {
-		if r == '\n' {
-			lines = append(lines, lineInfo{lineStart, i})
-			lineStart = i + 1
-			x = 0
-			continue
-		}
-		charWidth := runewidth.RuneWidth(r)
-		if x+charWidth > width {
-			lines = append(lines, lineInfo{lineStart, i})
-			lineStart = i
-			x = charWidth
-		} else {
-			x += charWidth
-		}
-	}
-	lines = append(lines, lineInfo{lineStart, len(displayText)})
+	lines := t.getVisualLines(displayText)
 
 	// Find which line the cursor is on
 	cursorLine := 0
@@ -424,8 +412,7 @@ func (t *TextInput) cursorDown(displayText string) int {
 		if t.CursorPos >= line.start && t.CursorPos <= line.end {
 			cursorLine = i
 			// Calculate x offset within this line
-			for j, r := range displayText[line.start:t.CursorPos] {
-				_ = j
+			for _, r := range displayText[line.start:t.CursorPos] {
 				cursorXOffset += runewidth.RuneWidth(r)
 			}
 			break
@@ -759,17 +746,49 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 		}
 		return true
 	case KeyHome, KeyCtrlA:
-		t.CursorPos = 0
+		if t.MultilineMode {
+			lineStart, _ := t.getCurrentLineRange(displayText)
+			t.CursorPos = lineStart
+		} else {
+			t.CursorPos = 0
+		}
 		t.MarkDirty()
 		return true
 	case KeyEnd, KeyCtrlE:
-		t.CursorPos = t.displayLen()
+		if t.MultilineMode {
+			_, lineEnd := t.getCurrentLineRange(displayText)
+			t.CursorPos = lineEnd
+		} else {
+			t.CursorPos = t.displayLen()
+		}
 		t.MarkDirty()
 		return true
 	case KeyCtrlU:
 		// Delete from cursor to beginning of line
 		if t.CursorPos > 0 {
-			t.deleteToBeginning()
+			if t.MultilineMode {
+				// Find last newline before cursor and count runes to delete
+				dt := t.DisplayText()
+				cursorPos := t.CursorPos
+				if cursorPos > len(dt) {
+					cursorPos = len(dt)
+				}
+				textBeforeCursor := dt[:cursorPos]
+				lastNewline := strings.LastIndex(textBeforeCursor, "\n")
+				var runesToDelete int
+				if lastNewline == -1 {
+					// No newline found, delete to start
+					runesToDelete = utf8.RuneCountInString(textBeforeCursor)
+				} else {
+					// Delete from cursor to just after the newline
+					runesToDelete = utf8.RuneCountInString(textBeforeCursor[lastNewline+1:])
+				}
+				for i := 0; i < runesToDelete && t.CursorPos > 0; i++ {
+					t.deleteBackward()
+				}
+			} else {
+				t.deleteToBeginning()
+			}
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
@@ -779,7 +798,22 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 	case KeyCtrlK:
 		// Delete from cursor to end of line
 		if t.CursorPos < t.displayLen() {
-			t.deleteToEnd()
+			if t.MultilineMode {
+				// Delete forward until we hit a newline or end of text
+				for t.CursorPos < t.displayLen() {
+					dt := t.DisplayText()
+					if t.CursorPos < len(dt) {
+						// Check if char at cursor is newline
+						r, _ := utf8.DecodeRuneInString(dt[t.CursorPos:])
+						if r == '\n' {
+							break
+						}
+					}
+					t.deleteForward()
+				}
+			} else {
+				t.deleteToEnd()
+			}
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
