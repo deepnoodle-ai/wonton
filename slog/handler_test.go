@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestHandler_BasicOutput(t *testing.T) {
@@ -21,8 +21,8 @@ func TestHandler_BasicOutput(t *testing.T) {
 	logger.Info("hello world")
 
 	output := buf.String()
-	require.Contains(t, output, "INF")
-	require.Contains(t, output, "hello world")
+	assert.Contains(t, output, "INF")
+	assert.Contains(t, output, "hello world")
 }
 
 func TestHandler_Levels(t *testing.T) {
@@ -49,7 +49,7 @@ func TestHandler_Levels(t *testing.T) {
 			logger.Log(context.Background(), tt.level, "test message")
 
 			output := buf.String()
-			require.Contains(t, output, tt.expected)
+			assert.Contains(t, output, tt.expected)
 		})
 	}
 }
@@ -68,10 +68,10 @@ func TestHandler_Attributes(t *testing.T) {
 	)
 
 	output := buf.String()
-	require.Contains(t, output, "name=alice")
-	require.Contains(t, output, "age=30")
-	require.Contains(t, output, "active=true")
-	require.Contains(t, output, "score=98.5")
+	assert.Contains(t, output, "name=alice")
+	assert.Contains(t, output, "age=30")
+	assert.Contains(t, output, "active=true")
+	assert.Contains(t, output, "score=98.5")
 }
 
 func TestHandler_Groups(t *testing.T) {
@@ -86,8 +86,8 @@ func TestHandler_Groups(t *testing.T) {
 	))
 
 	output := buf.String()
-	require.Contains(t, output, "user.name=bob")
-	require.Contains(t, output, "user.id=123")
+	assert.Contains(t, output, "user.name=bob")
+	assert.Contains(t, output, "user.id=123")
 }
 
 func TestHandler_WithGroup(t *testing.T) {
@@ -102,8 +102,8 @@ func TestHandler_WithGroup(t *testing.T) {
 	)
 
 	output := buf.String()
-	require.Contains(t, output, "request.method=GET")
-	require.Contains(t, output, "request.path=/api/users")
+	assert.Contains(t, output, "request.method=GET")
+	assert.Contains(t, output, "request.path=/api/users")
 }
 
 func TestHandler_WithAttrs(t *testing.T) {
@@ -118,8 +118,8 @@ func TestHandler_WithAttrs(t *testing.T) {
 	logger.Info("started")
 
 	output := buf.String()
-	require.Contains(t, output, "service=api")
-	require.Contains(t, output, "version=2")
+	assert.Contains(t, output, "service=api")
+	assert.Contains(t, output, "version=2")
 }
 
 func TestHandler_ColoredOutput(t *testing.T) {
@@ -132,7 +132,7 @@ func TestHandler_ColoredOutput(t *testing.T) {
 
 	output := buf.String()
 	// Should contain ANSI escape codes
-	require.Contains(t, output, "\u001b[")
+	assert.Contains(t, output, "\u001b[")
 }
 
 func TestHandler_NoColorOutput(t *testing.T) {
@@ -145,7 +145,7 @@ func TestHandler_NoColorOutput(t *testing.T) {
 
 	output := buf.String()
 	// Should not contain ANSI escape codes
-	require.NotContains(t, output, "\u001b[")
+	assert.NotContains(t, output, "\u001b[")
 }
 
 func TestHandler_LevelFiltering(t *testing.T) {
@@ -163,10 +163,10 @@ func TestHandler_LevelFiltering(t *testing.T) {
 	logger.Error("error message")
 
 	output := buf.String()
-	require.NotContains(t, output, "debug message")
-	require.NotContains(t, output, "info message")
-	require.Contains(t, output, "warn message")
-	require.Contains(t, output, "error message")
+	assert.NotContains(t, output, "debug message")
+	assert.NotContains(t, output, "info message")
+	assert.Contains(t, output, "warn message")
+	assert.Contains(t, output, "error message")
 }
 
 func TestHandler_ReplaceAttr(t *testing.T) {
@@ -188,7 +188,7 @@ func TestHandler_ReplaceAttr(t *testing.T) {
 
 	output := buf.String()
 	// Should start with level, not time
-	require.True(t, strings.HasPrefix(output, "INF"))
+	assert.True(t, strings.HasPrefix(output, "INF"))
 }
 
 func TestHandler_CustomTimeFormat(t *testing.T) {
@@ -204,7 +204,7 @@ func TestHandler_CustomTimeFormat(t *testing.T) {
 
 	output := buf.String()
 	// Kitchen format is like "3:04PM"
-	require.Regexp(t, `\d{1,2}:\d{2}(AM|PM)`, output)
+	assert.Regexp(t, `\d{1,2}:\d{2}(AM|PM)`, output)
 }
 
 func TestHandler_Err(t *testing.T) {
@@ -217,8 +217,8 @@ func TestHandler_Err(t *testing.T) {
 	logger.Error("failed to connect", Err(err))
 
 	output := buf.String()
-	require.Contains(t, output, "err=")
-	require.Contains(t, output, "connection refused")
+	assert.Contains(t, output, "err=")
+	assert.Contains(t, output, "connection refused")
 }
 
 func TestHandler_ColoredAttr(t *testing.T) {
@@ -234,7 +234,7 @@ func TestHandler_ColoredAttr(t *testing.T) {
 
 	output := buf.String()
 	// Should contain color codes around the attributes
-	require.Contains(t, output, "\u001b[")
+	assert.Contains(t, output, "\u001b[")
 }
 
 func TestHandler_Duration(t *testing.T) {
@@ -248,7 +248,7 @@ func TestHandler_Duration(t *testing.T) {
 	)
 
 	output := buf.String()
-	require.Contains(t, output, "elapsed=150ms")
+	assert.Contains(t, output, "elapsed=150ms")
 }
 
 func TestHandler_AddSource(t *testing.T) {
@@ -264,7 +264,7 @@ func TestHandler_AddSource(t *testing.T) {
 
 	output := buf.String()
 	// Should contain file:line
-	require.Contains(t, output, "handler_test.go:")
+	assert.Contains(t, output, "handler_test.go:")
 }
 
 func TestHandler_EmptyMessage(t *testing.T) {
@@ -276,7 +276,7 @@ func TestHandler_EmptyMessage(t *testing.T) {
 	logger.Info("", slog.String("key", "value"))
 
 	output := buf.String()
-	require.Contains(t, output, "key=value")
+	assert.Contains(t, output, "key=value")
 }
 
 func TestHandler_QuotedStrings(t *testing.T) {
@@ -292,7 +292,7 @@ func TestHandler_QuotedStrings(t *testing.T) {
 
 	output := buf.String()
 	// Strings with spaces should be quoted
-	require.Contains(t, output, `"hello world"`)
+	assert.Contains(t, output, `"hello world"`)
 }
 
 func TestHandler_Concurrent(t *testing.T) {
@@ -315,21 +315,21 @@ func TestHandler_Concurrent(t *testing.T) {
 
 	output := buf.String()
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	require.Len(t, lines, 100)
+	assert.Len(t, lines, 100)
 }
 
 func TestDefaultOptions(t *testing.T) {
 	opts := DefaultOptions()
-	require.NotNil(t, opts)
-	require.Equal(t, slog.LevelInfo, opts.Level)
-	require.Equal(t, time.StampMilli, opts.TimeFormat)
+	assert.NotNil(t, opts)
+	assert.Equal(t, slog.LevelInfo, opts.Level)
+	assert.Equal(t, time.StampMilli, opts.TimeFormat)
 }
 
 func TestColorConstants(t *testing.T) {
-	require.Equal(t, uint8(0), ColorBlack)
-	require.Equal(t, uint8(1), ColorRed)
-	require.Equal(t, uint8(2), ColorGreen)
-	require.Equal(t, uint8(9), ColorBrightRed)
+	assert.Equal(t, uint8(0), ColorBlack)
+	assert.Equal(t, uint8(1), ColorRed)
+	assert.Equal(t, uint8(2), ColorGreen)
+	assert.Equal(t, uint8(9), ColorBrightRed)
 }
 
 func BenchmarkHandler(b *testing.B) {

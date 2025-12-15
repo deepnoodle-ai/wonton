@@ -4,18 +4,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestNewHyperlink(t *testing.T) {
 	link := NewHyperlink("https://example.com", "Example")
 
-	require.Equal(t, "https://example.com", link.URL)
-	require.Equal(t, "Example", link.Text)
-	require.NotNil(t, link.Style)
+	assert.Equal(t, "https://example.com", link.URL)
+	assert.Equal(t, "Example", link.Text)
+	assert.NotNil(t, link.Style)
 	// Default style should be blue and underlined
-	require.True(t, link.Style.Underline)
-	require.Equal(t, ColorBlue, link.Style.Foreground)
+	assert.True(t, link.Style.Underline)
+	assert.Equal(t, ColorBlue, link.Style.Foreground)
 }
 
 func TestHyperlink_BasicWithStyle(t *testing.T) {
@@ -24,9 +24,9 @@ func TestHyperlink_BasicWithStyle(t *testing.T) {
 
 	link = link.WithStyle(customStyle)
 
-	require.Equal(t, ColorRed, link.Style.Foreground)
-	require.True(t, link.Style.Bold)
-	require.False(t, link.Style.Underline) // Should not have underline anymore
+	assert.Equal(t, ColorRed, link.Style.Foreground)
+	assert.True(t, link.Style.Bold)
+	assert.False(t, link.Style.Underline) // Should not have underline anymore
 }
 
 func TestHyperlink_Validate(t *testing.T) {
@@ -76,9 +76,9 @@ func TestHyperlink_Validate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.link.Validate()
 			if tt.wantErr {
-				require.Error(t, err)
+				assert.Error(t, err)
 			} else {
-				require.NoError(t, err)
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -89,13 +89,13 @@ func TestOSC8Start(t *testing.T) {
 	result := OSC8Start(url)
 
 	// Should contain OSC 8 start sequence
-	require.Contains(t, result, "\033]8;;")
-	require.Contains(t, result, url)
-	require.Contains(t, result, "\033\\")
+	assert.Contains(t, result, "\033]8;;")
+	assert.Contains(t, result, url)
+	assert.Contains(t, result, "\033\\")
 
 	// Should match expected format exactly
 	expected := "\033]8;;https://example.com\033\\"
-	require.Equal(t, expected, result)
+	assert.Equal(t, expected, result)
 }
 
 func TestOSC8End(t *testing.T) {
@@ -103,7 +103,7 @@ func TestOSC8End(t *testing.T) {
 
 	// Should be the OSC 8 end sequence
 	expected := "\033]8;;\033\\"
-	require.Equal(t, expected, result)
+	assert.Equal(t, expected, result)
 }
 
 func TestHyperlink_Format(t *testing.T) {
@@ -145,15 +145,15 @@ func TestHyperlink_Format(t *testing.T) {
 			result := tt.link.Format()
 
 			// Should contain OSC 8 start
-			require.Contains(t, result, "\033]8;;"+tt.link.URL+"\033\\")
+			assert.Contains(t, result, "\033]8;;"+tt.link.URL+"\033\\")
 			// Should contain the text
-			require.Contains(t, result, tt.link.Text)
+			assert.Contains(t, result, tt.link.Text)
 			// Should contain OSC 8 end
-			require.Contains(t, result, "\033]8;;\033\\")
+			assert.Contains(t, result, "\033]8;;\033\\")
 
 			// If we have a specific expected value, check it
 			if tt.want != "" && tt.link.Style.IsEmpty() {
-				require.Equal(t, tt.want, result)
+				assert.Equal(t, tt.want, result)
 			}
 		})
 	}
@@ -179,11 +179,11 @@ func TestHyperlink_FormatFallback(t *testing.T) {
 			result := tt.link.FormatFallback()
 
 			// Should contain the text
-			require.Contains(t, result, tt.link.Text)
+			assert.Contains(t, result, tt.link.Text)
 			// Should contain the URL in parentheses
-			require.Contains(t, result, "("+tt.link.URL+")")
+			assert.Contains(t, result, "("+tt.link.URL+")")
 			// Should not contain OSC 8 sequences
-			require.NotContains(t, result, "\033]8;;")
+			assert.NotContains(t, result, "\033]8;;")
 		})
 	}
 }
@@ -193,33 +193,33 @@ func TestHyperlink_FormatWithOption(t *testing.T) {
 
 	// Test with OSC 8 enabled
 	osc8Result := link.FormatWithOption(true)
-	require.Contains(t, osc8Result, "\033]8;;")
+	assert.Contains(t, osc8Result, "\033]8;;")
 
 	// Test with OSC 8 disabled (fallback)
 	fallbackResult := link.FormatWithOption(false)
-	require.NotContains(t, fallbackResult, "\033]8;;")
-	require.Contains(t, fallbackResult, "(https://example.com)")
+	assert.NotContains(t, fallbackResult, "\033]8;;")
+	assert.Contains(t, fallbackResult, "(https://example.com)")
 }
 
 func TestTerminalRenderFrame_PrintHyperlink(t *testing.T) {
 	term := NewTestTerminal(80, 24, &strings.Builder{})
 
 	frame, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	link := NewHyperlink("https://example.com", "Example")
 	err = frame.PrintHyperlink(0, 0, link)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	err = term.EndFrame(frame)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestTerminalRenderFrame_PrintHyperlink_InvalidLink(t *testing.T) {
 	term := NewTestTerminal(80, 24, &strings.Builder{})
 
 	frame, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Link with empty URL should fall back to printing just text
 	link := Hyperlink{
@@ -228,24 +228,24 @@ func TestTerminalRenderFrame_PrintHyperlink_InvalidLink(t *testing.T) {
 		Style: NewStyle(),
 	}
 	err = frame.PrintHyperlink(0, 0, link)
-	require.NoError(t, err) // Should not error, just fall back
+	assert.NoError(t, err) // Should not error, just fall back
 
 	err = term.EndFrame(frame)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestTerminalRenderFrame_PrintHyperlinkFallback(t *testing.T) {
 	term := NewTestTerminal(80, 24, &strings.Builder{})
 
 	frame, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	link := NewHyperlink("https://example.com", "Example")
 	err = frame.PrintHyperlinkFallback(0, 0, link)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	err = term.EndFrame(frame)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestHyperlink_StylePreservation(t *testing.T) {
@@ -256,12 +256,12 @@ func TestHyperlink_StylePreservation(t *testing.T) {
 	formatted := link.Format()
 
 	// Should contain ANSI codes for magenta, bold, and italic
-	require.Contains(t, formatted, "35") // Magenta foreground
-	require.Contains(t, formatted, "1")  // Bold
-	require.Contains(t, formatted, "3")  // Italic
+	assert.Contains(t, formatted, "35") // Magenta foreground
+	assert.Contains(t, formatted, "1")  // Bold
+	assert.Contains(t, formatted, "3")  // Italic
 
 	// Should contain reset code
-	require.Contains(t, formatted, "\033[0m")
+	assert.Contains(t, formatted, "\033[0m")
 }
 
 func TestHyperlink_MultipleLinks(t *testing.T) {
@@ -275,14 +275,14 @@ func TestHyperlink_MultipleLinks(t *testing.T) {
 	f3 := link3.Format()
 
 	// Each should contain its own URL
-	require.Contains(t, f1, "example.com")
-	require.Contains(t, f2, "github.com")
-	require.Contains(t, f3, "google.com")
+	assert.Contains(t, f1, "example.com")
+	assert.Contains(t, f2, "github.com")
+	assert.Contains(t, f3, "google.com")
 
 	// Each should contain its own text
-	require.Contains(t, f1, "Example")
-	require.Contains(t, f2, "GitHub")
-	require.Contains(t, f3, "Google")
+	assert.Contains(t, f1, "Example")
+	assert.Contains(t, f2, "GitHub")
+	assert.Contains(t, f3, "Google")
 }
 
 func TestHyperlink_SpecialCharacters(t *testing.T) {
@@ -314,16 +314,16 @@ func TestHyperlink_SpecialCharacters(t *testing.T) {
 
 			// Validate should pass
 			err := link.Validate()
-			require.NoError(t, err)
+			assert.NoError(t, err)
 
 			// Format should work
 			formatted := link.Format()
-			require.Contains(t, formatted, tt.text)
+			assert.Contains(t, formatted, tt.text)
 
 			// Fallback should work
 			fallback := link.FormatFallback()
-			require.Contains(t, fallback, tt.text)
-			require.Contains(t, fallback, tt.url)
+			assert.Contains(t, fallback, tt.text)
+			assert.Contains(t, fallback, tt.url)
 		})
 	}
 }
@@ -335,14 +335,14 @@ func TestOSC8_EscapeSequenceFormat(t *testing.T) {
 	end := OSC8End()
 
 	// Start sequence: ESC ] 8 ; ; URL ESC \
-	require.True(t, strings.HasPrefix(start, "\033]8;;"))
-	require.True(t, strings.HasSuffix(start, "\033\\"))
+	assert.True(t, strings.HasPrefix(start, "\033]8;;"))
+	assert.True(t, strings.HasSuffix(start, "\033\\"))
 
 	// End sequence: ESC ] 8 ; ; ESC \
-	require.Equal(t, "\033]8;;\033\\", end)
+	assert.Equal(t, "\033]8;;\033\\", end)
 
 	// Combined should be valid
 	combined := start + "text" + end
-	require.Contains(t, combined, url)
-	require.Contains(t, combined, "text")
+	assert.Contains(t, combined, url)
+	assert.Contains(t, combined, "text")
 }

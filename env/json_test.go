@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestReadJSONFile(t *testing.T) {
@@ -22,27 +22,27 @@ func TestReadJSONFile(t *testing.T) {
 		}
 	}`
 
-	require.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
 
 	values, err := ReadJSONFile(jsonFile)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, "localhost", values["host"])
-	require.Equal(t, float64(8080), values["port"])
-	require.Equal(t, true, values["debug"])
-	require.Equal(t, "dbhost", values["database_host"])
-	require.Equal(t, float64(5432), values["database_port"])
+	assert.Equal(t, "localhost", values["host"])
+	assert.Equal(t, float64(8080), values["port"])
+	assert.Equal(t, true, values["debug"])
+	assert.Equal(t, "dbhost", values["database_host"])
+	assert.Equal(t, float64(5432), values["database_port"])
 }
 
 func TestParseJSON(t *testing.T) {
 	data := []byte(`{"key": "value", "nested": {"a": 1, "b": 2}}`)
 
 	values, err := ParseJSON(data)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, "value", values["key"])
-	require.Equal(t, float64(1), values["nested_a"])
-	require.Equal(t, float64(2), values["nested_b"])
+	assert.Equal(t, "value", values["key"])
+	assert.Equal(t, float64(1), values["nested_a"])
+	assert.Equal(t, float64(2), values["nested_b"])
 }
 
 func TestParseJSON_DeeplyNested(t *testing.T) {
@@ -57,9 +57,9 @@ func TestParseJSON_DeeplyNested(t *testing.T) {
 	}`)
 
 	values, err := ParseJSON(data)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, "deep", values["level1_level2_level3_value"])
+	assert.Equal(t, "deep", values["level1_level2_level3_value"])
 }
 
 func TestWriteJSONFile(t *testing.T) {
@@ -71,13 +71,13 @@ func TestWriteJSONFile(t *testing.T) {
 		"port": 8080,
 	}
 
-	require.NoError(t, WriteJSONFile(input, outFile))
+	assert.NoError(t, WriteJSONFile(input, outFile))
 
 	// Read back
 	values, err := ReadJSONFile(outFile)
-	require.NoError(t, err)
-	require.Equal(t, "localhost", values["host"])
-	require.Equal(t, float64(8080), values["port"])
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", values["host"])
+	assert.Equal(t, float64(8080), values["port"])
 }
 
 func TestParse_WithJSONFile(t *testing.T) {
@@ -88,7 +88,7 @@ func TestParse_WithJSONFile(t *testing.T) {
 		"host": "json-host",
 		"port": 9000
 	}`
-	require.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
 
 	type Config struct {
 		Host string `env:"HOST"`
@@ -100,9 +100,9 @@ func TestParse_WithJSONFile(t *testing.T) {
 		WithEnvironment(map[string]string{}),
 		WithJSONFile(jsonFile),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "json-host", cfg.Host)
-	require.Equal(t, 9000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "json-host", cfg.Host)
+	assert.Equal(t, 9000, cfg.Port)
 }
 
 func TestParse_EnvOverridesJSON(t *testing.T) {
@@ -113,7 +113,7 @@ func TestParse_EnvOverridesJSON(t *testing.T) {
 		"host": "json-host",
 		"port": 9000
 	}`
-	require.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
 
 	type Config struct {
 		Host string `env:"HOST"`
@@ -127,7 +127,7 @@ func TestParse_EnvOverridesJSON(t *testing.T) {
 		}),
 		WithJSONFile(jsonFile),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "env-host", cfg.Host) // From env
-	require.Equal(t, 9000, cfg.Port)       // From JSON
+	assert.NoError(t, err)
+	assert.Equal(t, "env-host", cfg.Host) // From env
+	assert.Equal(t, 9000, cfg.Port)       // From JSON
 }

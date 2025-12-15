@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestBytes(t *testing.T) {
@@ -19,12 +19,12 @@ func TestBytes(t *testing.T) {
 		{1536, "1.5 KiB"},
 		{1048576, "1.0 MiB"},
 		{1073741824, "1.0 GiB"},
-		{-1024, "-1.1 KiB"},
+		{-1024, "-1.0 KiB"},
 	}
 
 	for _, tt := range tests {
 		result := Bytes(tt.input)
-		require.Equal(t, tt.expected, result, "Bytes(%d)", tt.input)
+		assert.Equal(t, tt.expected, result, "Bytes(%d)", tt.input)
 	}
 }
 
@@ -41,7 +41,7 @@ func TestBytesSI(t *testing.T) {
 
 	for _, tt := range tests {
 		result := BytesSI(tt.input)
-		require.Equal(t, tt.expected, result, "BytesSI(%d)", tt.input)
+		assert.Equal(t, tt.expected, result, "BytesSI(%d)", tt.input)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Duration(tt.input)
-		require.Equal(t, tt.expected, result, "Duration(%v)", tt.input)
+		assert.Equal(t, tt.expected, result, "Duration(%v)", tt.input)
 	}
 }
 
@@ -81,7 +81,7 @@ func TestDurationShort(t *testing.T) {
 
 	for _, tt := range tests {
 		result := DurationShort(tt.input)
-		require.Equal(t, tt.expected, result, "DurationShort(%v)", tt.input)
+		assert.Equal(t, tt.expected, result, "DurationShort(%v)", tt.input)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestRelativeTime(t *testing.T) {
 
 	for _, tt := range tests {
 		result := RelativeTime(tt.input, now)
-		require.Equal(t, tt.expected, result, "RelativeTime(%v)", tt.input)
+		assert.Equal(t, tt.expected, result, "RelativeTime(%v)", tt.input)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Number(tt.input)
-		require.Equal(t, tt.expected, result, "Number(%d)", tt.input)
+		assert.Equal(t, tt.expected, result, "Number(%d)", tt.input)
 	}
 }
 
@@ -144,7 +144,7 @@ func TestPercentage(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Percentage(tt.value, tt.total)
-		require.Equal(t, tt.expected, result, "Percentage(%v, %v)", tt.value, tt.total)
+		assert.Equal(t, tt.expected, result, "Percentage(%v, %v)", tt.value, tt.total)
 	}
 }
 
@@ -169,7 +169,7 @@ func TestOrdinal(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Ordinal(tt.input)
-		require.Equal(t, tt.expected, result, "Ordinal(%d)", tt.input)
+		assert.Equal(t, tt.expected, result, "Ordinal(%d)", tt.input)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestPluralWord(t *testing.T) {
 
 	for _, tt := range tests {
 		result := PluralWord(tt.count, tt.singular, tt.plural)
-		require.Equal(t, tt.expected, result, "PluralWord(%d, %q, %q)", tt.count, tt.singular, tt.plural)
+		assert.Equal(t, tt.expected, result, "PluralWord(%d, %q, %q)", tt.count, tt.singular, tt.plural)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Truncate(tt.input, tt.maxLen)
-		require.Equal(t, tt.expected, result, "Truncate(%q, %d)", tt.input, tt.maxLen)
+		assert.Equal(t, tt.expected, result, "Truncate(%q, %d)", tt.input, tt.maxLen)
 	}
 }
 
@@ -224,31 +224,31 @@ func TestTruncateWithSuffix(t *testing.T) {
 
 	for _, tt := range tests {
 		result := TruncateWithSuffix(tt.input, tt.maxLen, tt.suffix)
-		require.Equal(t, tt.expected, result)
+		assert.Equal(t, tt.expected, result)
 	}
 }
 
 func TestNumberWithSeparator(t *testing.T) {
-	require.Equal(t, "1.234.567", NumberWithSeparator(1234567, "."))
-	require.Equal(t, "-9 876", NumberWithSeparator(-9876, " "))
-	require.Equal(t, "100", NumberWithSeparator(100, "_"))
+	assert.Equal(t, "1.234.567", NumberWithSeparator(1234567, "."))
+	assert.Equal(t, "-9 876", NumberWithSeparator(-9876, " "))
+	assert.Equal(t, "100", NumberWithSeparator(100, "_"))
 }
 
 func TestFloat(t *testing.T) {
-	require.Equal(t, "3.14", Float(3.14159, 2))
-	require.Equal(t, "2.0000", Float(2, 4))
-	require.Equal(t, "-0.50", Float(-0.5, 2))
+	assert.Equal(t, "3.14", Float(3.14159, 2))
+	assert.Equal(t, "2.0000", Float(2, 4))
+	assert.Equal(t, "-0.50", Float(-0.5, 2))
 }
 
 func TestTime(t *testing.T) {
 	now := time.Now()
-	require.Equal(t, "just now", Time(now))
-	require.Contains(t, Time(now.Add(-2*time.Minute)), "ago")
-	require.Contains(t, Time(now.Add(3*time.Minute)), "in")
+	assert.Equal(t, "just now", Time(now))
+	assert.Contains(t, Time(now.Add(-2*time.Minute)), "ago")
+	assert.Contains(t, Time(now.Add(3*time.Minute)), "in")
 }
 
 func TestPlural(t *testing.T) {
-	require.Equal(t, "item", Plural(1, "item", "items"))
-	require.Equal(t, "items", Plural(2, "item", "items"))
-	require.Equal(t, "items", Plural(0, "item", "items"))
+	assert.Equal(t, "item", Plural(1, "item", "items"))
+	assert.Equal(t, "items", Plural(2, "item", "items"))
+	assert.Equal(t, "items", Plural(0, "item", "items"))
 }

@@ -8,61 +8,111 @@ import (
 )
 
 // NoError asserts that a function returned a nil error.
-func NoError(t TestingT, err error, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
+func NoError(t TestingT, err error, msgAndArgs ...any) {
+	helper(t)
+	if !checkNoError(t, err, msgAndArgs...) {
+		t.FailNow()
 	}
-	if err == nil {
-		return true
-	}
-	return Fail(t, fmt.Sprintf("Received unexpected error:\n%+v", err), msgAndArgs...)
 }
 
 // Error asserts that a function returned a non-nil error.
-func Error(t TestingT, err error, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
+func Error(t TestingT, err error, msgAndArgs ...any) {
+	helper(t)
+	if !checkError(t, err, msgAndArgs...) {
+		t.FailNow()
 	}
-	if err != nil {
-		return true
-	}
-	return Fail(t, "An error is expected but got nil", msgAndArgs...)
 }
 
 // EqualError asserts that an error's message equals the expected string.
-func EqualError(t TestingT, theError error, errString string, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
+func EqualError(t TestingT, theError error, errString string, msgAndArgs ...any) {
+	helper(t)
+	if !checkEqualError(t, theError, errString, msgAndArgs...) {
+		t.FailNow()
 	}
-	if !Error(t, theError, msgAndArgs...) {
-		return false
-	}
-	if theError.Error() != errString {
-		return Fail(t, fmt.Sprintf("Error message not equal:\n\texpected: %q\n\tactual  : %q", errString, theError.Error()), msgAndArgs...)
-	}
-	return true
 }
 
 // ErrorContains asserts that an error's message contains the expected substring.
-func ErrorContains(t TestingT, theError error, contains string, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
+func ErrorContains(t TestingT, theError error, contains string, msgAndArgs ...any) {
+	helper(t)
+	if !checkErrorContains(t, theError, contains, msgAndArgs...) {
+		t.FailNow()
 	}
-	if !Error(t, theError, msgAndArgs...) {
+}
+
+// ErrorIs asserts that at least one of the errors in err's chain matches target.
+func ErrorIs(t TestingT, err, target error, msgAndArgs ...any) {
+	helper(t)
+	if !checkErrorIs(t, err, target, msgAndArgs...) {
+		t.FailNow()
+	}
+}
+
+// NotErrorIs asserts that none of the errors in err's chain matches target.
+func NotErrorIs(t TestingT, err, target error, msgAndArgs ...any) {
+	helper(t)
+	if !checkNotErrorIs(t, err, target, msgAndArgs...) {
+		t.FailNow()
+	}
+}
+
+// ErrorAs asserts that at least one of the errors in err's chain matches target.
+func ErrorAs(t TestingT, err error, target any, msgAndArgs ...any) {
+	helper(t)
+	if !checkErrorAs(t, err, target, msgAndArgs...) {
+		t.FailNow()
+	}
+}
+
+// NotErrorAs asserts that none of the errors in err's chain matches target.
+func NotErrorAs(t TestingT, err error, target any, msgAndArgs ...any) {
+	helper(t)
+	if !checkNotErrorAs(t, err, target, msgAndArgs...) {
+		t.FailNow()
+	}
+}
+
+// --- Internal check functions ---
+
+func checkNoError(t TestingT, err error, msgAndArgs ...any) bool {
+	helper(t)
+	if err == nil {
+		return true
+	}
+	return fail(t, fmt.Sprintf("Received unexpected error:\n%+v", err), msgAndArgs...)
+}
+
+func checkError(t TestingT, err error, msgAndArgs ...any) bool {
+	helper(t)
+	if err != nil {
+		return true
+	}
+	return fail(t, "An error is expected but got nil", msgAndArgs...)
+}
+
+func checkEqualError(t TestingT, theError error, errString string, msgAndArgs ...any) bool {
+	helper(t)
+	if !checkError(t, theError, msgAndArgs...) {
 		return false
 	}
-	if !strings.Contains(theError.Error(), contains) {
-		return Fail(t, fmt.Sprintf("Error %q does not contain %q", theError.Error(), contains), msgAndArgs...)
+	if theError.Error() != errString {
+		return fail(t, fmt.Sprintf("Error message not equal:\n\texpected: %q\n\tactual  : %q", errString, theError.Error()), msgAndArgs...)
 	}
 	return true
 }
 
-// ErrorIs asserts that at least one of the errors in err's chain matches target.
-// This is a wrapper for errors.Is.
-func ErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
+func checkErrorContains(t TestingT, theError error, contains string, msgAndArgs ...any) bool {
+	helper(t)
+	if !checkError(t, theError, msgAndArgs...) {
+		return false
 	}
+	if !strings.Contains(theError.Error(), contains) {
+		return fail(t, fmt.Sprintf("Error %q does not contain %q", theError.Error(), contains), msgAndArgs...)
+	}
+	return true
+}
+
+func checkErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
+	helper(t)
 	if errors.Is(err, target) {
 		return true
 	}
@@ -71,18 +121,14 @@ func ErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
 		expectedText = target.Error()
 	}
 	if err == nil {
-		return Fail(t, fmt.Sprintf("Expected error with %q in chain but got nil", expectedText), msgAndArgs...)
+		return fail(t, fmt.Sprintf("Expected error with %q in chain but got nil", expectedText), msgAndArgs...)
 	}
 	chain := buildErrorChainString(err)
-	return Fail(t, fmt.Sprintf("Target error should be in err chain:\n\texpected: %q\n\tin chain: %s", expectedText, chain), msgAndArgs...)
+	return fail(t, fmt.Sprintf("Target error should be in err chain:\n\texpected: %q\n\tin chain: %s", expectedText, chain), msgAndArgs...)
 }
 
-// NotErrorIs asserts that none of the errors in err's chain matches target.
-// This is a wrapper for errors.Is.
-func NotErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
-	}
+func checkNotErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
+	helper(t)
 	if !errors.Is(err, target) {
 		return true
 	}
@@ -91,37 +137,29 @@ func NotErrorIs(t TestingT, err, target error, msgAndArgs ...any) bool {
 		expectedText = target.Error()
 	}
 	chain := buildErrorChainString(err)
-	return Fail(t, fmt.Sprintf("Target error should NOT be in err chain:\n\tfound: %q\n\tin chain: %s", expectedText, chain), msgAndArgs...)
+	return fail(t, fmt.Sprintf("Target error should NOT be in err chain:\n\tfound: %q\n\tin chain: %s", expectedText, chain), msgAndArgs...)
 }
 
-// ErrorAs asserts that at least one of the errors in err's chain matches target,
-// and if so, sets target to that error value.
-// This is a wrapper for errors.As.
-func ErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
-	}
+func checkErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
+	helper(t)
 	if errors.As(err, target) {
 		return true
 	}
 	expectedType := reflect.TypeOf(target).Elem().String()
 	if err == nil {
-		return Fail(t, fmt.Sprintf("An error is expected but got nil.\n\texpected: %s", expectedType), msgAndArgs...)
+		return fail(t, fmt.Sprintf("An error is expected but got nil.\n\texpected: %s", expectedType), msgAndArgs...)
 	}
 	chain := buildErrorChainString(err)
-	return Fail(t, fmt.Sprintf("Should be in error chain:\n\texpected: %s\n\tin chain: %s", expectedType, chain), msgAndArgs...)
+	return fail(t, fmt.Sprintf("Should be in error chain:\n\texpected: %s\n\tin chain: %s", expectedType, chain), msgAndArgs...)
 }
 
-// NotErrorAs asserts that none of the errors in err's chain matches target.
-func NotErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
-	if h, ok := t.(tHelper); ok {
-		h.Helper()
-	}
+func checkNotErrorAs(t TestingT, err error, target any, msgAndArgs ...any) bool {
+	helper(t)
 	if !errors.As(err, target) {
 		return true
 	}
 	chain := buildErrorChainString(err)
-	return Fail(t, fmt.Sprintf("Target error should NOT be in err chain:\n\tfound: %s\n\tin chain: %s", reflect.TypeOf(target).Elem().String(), chain), msgAndArgs...)
+	return fail(t, fmt.Sprintf("Target error should NOT be in err chain:\n\tfound: %s\n\tin chain: %s", reflect.TypeOf(target).Elem().String(), chain), msgAndArgs...)
 }
 
 // buildErrorChainString returns a string representation of the error chain.

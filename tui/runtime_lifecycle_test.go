@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // testRuntimeModel is a simple model for testing runtime lifecycle
@@ -76,11 +76,11 @@ func TestRuntimeQuit(t *testing.T) {
 
 	// Run should return without error
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify the model was executed
-	require.NotNil(t, model.executed.Load())
-	require.Equal(t, 1, model.counter.Load())
+	assert.NotNil(t, model.executed.Load())
+	assert.Equal(t, 1, model.counter.Load())
 }
 
 // TestRuntimeSendEvent tests that SendEvent works correctly
@@ -100,10 +100,10 @@ func TestRuntimeSendEvent(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify all events were processed
-	require.Equal(t, 3, model.counter.Load())
+	assert.Equal(t, 3, model.counter.Load())
 }
 
 // TestRuntimePanic tests that the runtime handles panics
@@ -131,7 +131,7 @@ func TestRuntimePanic(t *testing.T) {
 	// }()
 	//
 	// err := runtime.Run()
-	// require.Error(t, err, "should return error on panic")
+	// assert.Error(t, err, "should return error on panic")
 }
 
 // TestRuntimeMultipleQuits tests that multiple quit commands don't cause issues
@@ -151,7 +151,7 @@ func TestRuntimeMultipleQuits(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 // TestRuntimeConcurrentEvents tests that events can be sent concurrently
@@ -180,10 +180,10 @@ func TestRuntimeConcurrentEvents(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify we got all events
-	require.Equal(t, 10, model.counter.Load())
+	assert.Equal(t, 10, model.counter.Load())
 }
 
 // TestRuntimeEventOrdering tests that events are processed in order
@@ -239,11 +239,11 @@ func TestRuntimeEventOrdering(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify events were processed in order
 	tracker.mu.Lock()
-	require.Equal(t, []int{1, 2, 3, 4, 5}, tracker.order)
+	assert.Equal(t, []int{1, 2, 3, 4, 5}, tracker.order)
 	tracker.mu.Unlock()
 }
 
@@ -306,9 +306,9 @@ func TestRuntimeFPS(t *testing.T) {
 	err := runtime.Run()
 	elapsed := time.Since(start)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// With 60 FPS and 5 ticks, should take roughly 5/60 = 83ms
 	// Allow for some variance
-	require.True(t, elapsed < 200*time.Millisecond, "Runtime took too long: %v", elapsed)
+	assert.True(t, elapsed < 200*time.Millisecond, "Runtime took too long: %v", elapsed)
 }

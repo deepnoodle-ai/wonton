@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestDebugInfo(t *testing.T) {
 	info := NewDebugInfo()
-	require.NotNil(t, info)
-	require.NotNil(t, info.Custom)
+	assert.NotNil(t, info)
+	assert.NotNil(t, info.Custom)
 }
 
 func TestDebugInfoUpdate(t *testing.T) {
@@ -19,27 +19,27 @@ func TestDebugInfoUpdate(t *testing.T) {
 
 	// Test KeyEvent
 	info.Update(KeyEvent{Rune: 'a'})
-	require.Contains(t, info.LastEvent, "'a'")
-	require.Equal(t, uint64(1), info.EventCount)
+	assert.Contains(t, info.LastEvent, "'a'")
+	assert.Equal(t, uint64(1), info.EventCount)
 
 	// Test ResizeEvent
 	info.Update(ResizeEvent{Width: 80, Height: 24})
-	require.Equal(t, image.Pt(80, 24), info.TerminalSize)
+	assert.Equal(t, image.Pt(80, 24), info.TerminalSize)
 
 	// Test MouseEvent
 	info.Update(MouseEvent{Type: MouseClick, X: 10, Y: 5})
-	require.Contains(t, info.LastEvent, "Mouse")
+	assert.Contains(t, info.LastEvent, "Mouse")
 }
 
 func TestDebugInfoCustomValues(t *testing.T) {
 	info := NewDebugInfo()
 
 	info.Set("custom", "value")
-	require.Equal(t, "value", info.Custom["custom"])
+	assert.Equal(t, "value", info.Custom["custom"])
 
 	info.Clear("custom")
 	_, exists := info.Custom["custom"]
-	require.False(t, exists)
+	assert.False(t, exists)
 }
 
 func TestDebugViewSize(t *testing.T) {
@@ -50,8 +50,8 @@ func TestDebugViewSize(t *testing.T) {
 	view := Debug(info)
 	w, h := view.size(100, 100)
 
-	require.True(t, w > 0, "width should be positive")
-	require.True(t, h > 0, "height should be positive")
+	assert.True(t, w > 0, "width should be positive")
+	assert.True(t, h > 0, "height should be positive")
 }
 
 func TestDebugViewPosition(t *testing.T) {
@@ -59,10 +59,10 @@ func TestDebugViewPosition(t *testing.T) {
 	view := Debug(info)
 
 	view.Position(DebugTopLeft)
-	require.Equal(t, DebugTopLeft, view.position)
+	assert.Equal(t, DebugTopLeft, view.position)
 
 	view.Position(DebugBottomRight)
-	require.Equal(t, DebugBottomRight, view.position)
+	assert.Equal(t, DebugBottomRight, view.position)
 }
 
 func TestDebugViewBuildLines(t *testing.T) {
@@ -75,7 +75,7 @@ func TestDebugViewBuildLines(t *testing.T) {
 	view := Debug(info)
 	lines := view.buildLines()
 
-	require.True(t, len(lines) >= 3, "should have at least FPS, Frame, Events lines")
+	assert.True(t, len(lines) >= 3, "should have at least FPS, Frame, Events lines")
 
 	// Check that custom values are included
 	found := false
@@ -85,31 +85,31 @@ func TestDebugViewBuildLines(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, found, "custom values should be in lines")
+	assert.True(t, found, "custom values should be in lines")
 }
 
 func TestDebugViewNilInfo(t *testing.T) {
 	view := Debug(nil)
 	lines := view.buildLines()
-	require.Len(t, lines, 1)
-	require.Contains(t, lines[0], "no info")
+	assert.Len(t, lines, 1)
+	assert.Contains(t, lines[0], "no info")
 }
 
 func TestDebugWrapper(t *testing.T) {
 	app := &testDebugApp{}
 	wrapper := WrapWithDebug(app)
 
-	require.NotNil(t, wrapper.Info)
-	require.True(t, wrapper.enabled)
+	assert.NotNil(t, wrapper.Info)
+	assert.True(t, wrapper.enabled)
 
 	// Test View is passed through
 	view := wrapper.View()
-	require.NotNil(t, view)
+	assert.NotNil(t, view)
 
 	// Check FPS is calculated after multiple calls
 	time.Sleep(10 * time.Millisecond)
 	wrapper.View()
-	require.True(t, wrapper.Info.FrameTime > 0)
+	assert.True(t, wrapper.Info.FrameTime > 0)
 }
 
 func TestDebugWrapperHandleEvent(t *testing.T) {
@@ -117,10 +117,10 @@ func TestDebugWrapperHandleEvent(t *testing.T) {
 	wrapper := WrapWithDebug(app)
 
 	cmds := wrapper.HandleEvent(KeyEvent{Rune: 'x'})
-	require.NotNil(t, cmds)
-	require.Len(t, cmds, 1)
+	assert.NotNil(t, cmds)
+	assert.Len(t, cmds, 1)
 
-	require.Equal(t, uint64(1), wrapper.Info.EventCount)
+	assert.Equal(t, uint64(1), wrapper.Info.EventCount)
 }
 
 func TestDebugWrapperDisable(t *testing.T) {
@@ -131,7 +131,7 @@ func TestDebugWrapperDisable(t *testing.T) {
 
 	// Events should not be tracked when disabled
 	wrapper.HandleEvent(KeyEvent{Rune: 'a'})
-	require.Equal(t, uint64(0), wrapper.Info.EventCount)
+	assert.Equal(t, uint64(0), wrapper.Info.EventCount)
 }
 
 // testDebugApp is a simple app for testing the debug wrapper.

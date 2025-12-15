@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // TestRuntimeKeyboardInput verifies that the Runtime properly handles keyboard events.
@@ -31,11 +31,11 @@ func TestRuntimeKeyboardInput(t *testing.T) {
 
 	// We can't easily test the full runtime without a real TTY,
 	// but we can verify the Runtime structure is set up correctly
-	require.NotNil(t, runtime)
-	require.NotNil(t, runtime.terminal)
-	require.NotNil(t, runtime.app)
-	require.NotNil(t, runtime.events)
-	require.NotNil(t, runtime.cmds)
+	assert.NotNil(t, runtime)
+	assert.NotNil(t, runtime.terminal)
+	assert.NotNil(t, runtime.app)
+	assert.NotNil(t, runtime.events)
+	assert.NotNil(t, runtime.cmds)
 
 	_ = stdin // suppress unused warning
 }
@@ -68,10 +68,10 @@ func TestRuntimeEnablesRawMode(t *testing.T) {
 		fps:    30,
 	}
 
-	require.NotNil(t, runtime.events)
-	require.NotNil(t, runtime.cmds)
-	require.NotNil(t, runtime.done)
-	require.Equal(t, 30, runtime.fps)
+	assert.NotNil(t, runtime.events)
+	assert.NotNil(t, runtime.cmds)
+	assert.NotNil(t, runtime.done)
+	assert.Equal(t, 30, runtime.fps)
 }
 
 // TestRuntimeSendsInitialResizeEvent verifies that the Runtime sends an initial ResizeEvent.
@@ -90,7 +90,7 @@ func TestRuntimeSendsInitialResizeEvent(t *testing.T) {
 	}
 
 	// Verify the runtime is set up correctly
-	require.NotNil(t, runtime.events)
+	assert.NotNil(t, runtime.events)
 	_ = app // app is used to show test setup
 
 	// Manually send a resize event to simulate what the runtime does
@@ -103,9 +103,9 @@ func TestRuntimeSendsInitialResizeEvent(t *testing.T) {
 	// Read the event
 	event := <-runtime.events
 	resizeEvent, ok := event.(ResizeEvent)
-	require.True(t, ok, "should be a ResizeEvent")
-	require.Equal(t, 80, resizeEvent.Width)
-	require.Equal(t, 24, resizeEvent.Height)
+	assert.True(t, ok, "should be a ResizeEvent")
+	assert.Equal(t, 80, resizeEvent.Width)
+	assert.Equal(t, 24, resizeEvent.Height)
 }
 
 type testEventTracker struct {

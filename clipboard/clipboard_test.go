@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestAvailable(t *testing.T) {
@@ -24,11 +24,11 @@ func TestReadWrite(t *testing.T) {
 	// Test write and read
 	testText := "wonton clipboard test " + time.Now().String()
 	err := Write(testText)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	result, err := Read()
-	require.NoError(t, err)
-	require.Equal(t, testText, result)
+	assert.NoError(t, err)
+	assert.Equal(t, testText, result)
 
 	// Restore original content
 	if original != "" {
@@ -45,7 +45,7 @@ func TestWriteContext(t *testing.T) {
 	defer cancel()
 
 	err := WriteContext(ctx, "test")
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestReadContext(t *testing.T) {
@@ -57,7 +57,7 @@ func TestReadContext(t *testing.T) {
 	defer cancel()
 
 	_, err := ReadContext(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestClear(t *testing.T) {
@@ -69,9 +69,9 @@ func TestClear(t *testing.T) {
 	_ = Write("content to clear")
 
 	err := Clear()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	result, err := Read()
-	require.NoError(t, err)
-	require.Equal(t, "", result)
+	assert.NoError(t, err)
+	assert.Equal(t, "", result)
 }

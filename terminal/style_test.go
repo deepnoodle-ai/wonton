@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 func TestNewStyle(t *testing.T) {
@@ -33,7 +32,7 @@ func TestStyle_WithBackground(t *testing.T) {
 func TestStyle_WithFgRGB(t *testing.T) {
 	rgb := NewRGB(255, 128, 0)
 	style := NewStyle().WithFgRGB(rgb)
-	require.NotNil(t, style.FgRGB)
+	assert.NotNil(t, style.FgRGB)
 	assert.Equal(t, uint8(255), style.FgRGB.R)
 	assert.Equal(t, uint8(128), style.FgRGB.G)
 	assert.Equal(t, uint8(0), style.FgRGB.B)
@@ -42,7 +41,7 @@ func TestStyle_WithFgRGB(t *testing.T) {
 func TestStyle_WithBgRGB(t *testing.T) {
 	rgb := NewRGB(0, 128, 255)
 	style := NewStyle().WithBgRGB(rgb)
-	require.NotNil(t, style.BgRGB)
+	assert.NotNil(t, style.BgRGB)
 	assert.Equal(t, uint8(0), style.BgRGB.R)
 	assert.Equal(t, uint8(128), style.BgRGB.G)
 	assert.Equal(t, uint8(255), style.BgRGB.B)
@@ -228,7 +227,7 @@ func TestGradient_SingleStep(t *testing.T) {
 	start := NewRGB(255, 0, 0)
 	end := NewRGB(0, 255, 0)
 	colors := Gradient(start, end, 1)
-	require.Len(t, colors, 1)
+	assert.Len(t, colors, 1)
 	assert.Equal(t, start, colors[0])
 }
 
@@ -236,7 +235,7 @@ func TestGradient_TwoSteps(t *testing.T) {
 	start := NewRGB(0, 0, 0)
 	end := NewRGB(255, 255, 255)
 	colors := Gradient(start, end, 2)
-	require.Len(t, colors, 2)
+	assert.Len(t, colors, 2)
 	assert.Equal(t, start, colors[0])
 	assert.Equal(t, end, colors[1])
 }
@@ -245,7 +244,7 @@ func TestGradient_MultipleSteps(t *testing.T) {
 	start := NewRGB(255, 0, 0)
 	end := NewRGB(0, 0, 255)
 	colors := Gradient(start, end, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	assert.Equal(t, start, colors[0])
 	assert.Equal(t, end, colors[4])
 	// Middle color should be a blend
@@ -255,13 +254,13 @@ func TestGradient_MultipleSteps(t *testing.T) {
 
 func TestRainbowGradient_SingleStep(t *testing.T) {
 	colors := RainbowGradient(1)
-	require.Len(t, colors, 1)
+	assert.Len(t, colors, 1)
 	assert.Equal(t, NewRGB(255, 0, 0), colors[0])
 }
 
 func TestRainbowGradient_MultipleSteps(t *testing.T) {
 	colors := RainbowGradient(10)
-	require.Len(t, colors, 10)
+	assert.Len(t, colors, 10)
 	// First should be red
 	assert.Equal(t, NewRGB(255, 0, 0), colors[0])
 	// Should have variation in colors
@@ -270,7 +269,7 @@ func TestRainbowGradient_MultipleSteps(t *testing.T) {
 
 func TestSmoothRainbow(t *testing.T) {
 	colors := SmoothRainbow(10)
-	require.Len(t, colors, 10)
+	assert.Len(t, colors, 10)
 	// Should have distinct colors
 	uniqueColors := make(map[RGB]bool)
 	for _, c := range colors {
@@ -287,7 +286,7 @@ func TestMultiGradient_EmptyStops(t *testing.T) {
 func TestMultiGradient_SingleStop(t *testing.T) {
 	stop := NewRGB(128, 128, 128)
 	colors := MultiGradient([]RGB{stop}, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	for _, c := range colors {
 		assert.Equal(t, stop, c)
 	}
@@ -300,7 +299,7 @@ func TestMultiGradient_MultipleStops(t *testing.T) {
 		NewRGB(0, 0, 255), // Blue
 	}
 	colors := MultiGradient(stops, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	assert.Equal(t, stops[0], colors[0])
 	assert.Equal(t, stops[2], colors[4])
 }

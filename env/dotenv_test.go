@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestReadEnvFile(t *testing.T) {
@@ -37,20 +37,20 @@ MULTILINE="line1\nline2"
 API_KEY: secret123
 `
 
-	require.NoError(t, os.WriteFile(envFile, []byte(content), 0644))
+	assert.NoError(t, os.WriteFile(envFile, []byte(content), 0644))
 
 	env, err := ReadEnvFile(envFile)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
-	require.Equal(t, "localhost", env["HOST"])
-	require.Equal(t, "8080", env["PORT"])
-	require.Equal(t, "Hello, World!", env["MESSAGE"])
-	require.Equal(t, "single quoted", env["SINGLE"])
-	require.Equal(t, "true", env["DEBUG"])
-	require.Equal(t, "", env["EMPTY"])
-	require.Equal(t, "test", env["VALUE"])
-	require.Equal(t, "line1\nline2", env["MULTILINE"])
-	require.Equal(t, "secret123", env["API_KEY"])
+	assert.Equal(t, "localhost", env["HOST"])
+	assert.Equal(t, "8080", env["PORT"])
+	assert.Equal(t, "Hello, World!", env["MESSAGE"])
+	assert.Equal(t, "single quoted", env["SINGLE"])
+	assert.Equal(t, "true", env["DEBUG"])
+	assert.Equal(t, "", env["EMPTY"])
+	assert.Equal(t, "test", env["VALUE"])
+	assert.Equal(t, "line1\nline2", env["MULTILINE"])
+	assert.Equal(t, "secret123", env["API_KEY"])
 }
 
 func TestParseEnvString(t *testing.T) {
@@ -58,9 +58,9 @@ func TestParseEnvString(t *testing.T) {
 FOO=bar
 BAZ=qux
 `)
-	require.NoError(t, err)
-	require.Equal(t, "bar", env["FOO"])
-	require.Equal(t, "qux", env["BAZ"])
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", env["FOO"])
+	assert.Equal(t, "qux", env["BAZ"])
 }
 
 func TestLoadEnvFile(t *testing.T) {
@@ -77,17 +77,17 @@ func TestLoadEnvFile(t *testing.T) {
 	// Create temp .env file
 	tmpDir := t.TempDir()
 	envFile := filepath.Join(tmpDir, ".env")
-	require.NoError(t, os.WriteFile(envFile, []byte("TEST_LOAD_VAR=from_file\n"), 0644))
+	assert.NoError(t, os.WriteFile(envFile, []byte("TEST_LOAD_VAR=from_file\n"), 0644))
 
 	// Test: Load does NOT override existing
 	os.Setenv("TEST_LOAD_VAR", "existing")
-	require.NoError(t, LoadEnvFile(envFile))
-	require.Equal(t, "existing", os.Getenv("TEST_LOAD_VAR"))
+	assert.NoError(t, LoadEnvFile(envFile))
+	assert.Equal(t, "existing", os.Getenv("TEST_LOAD_VAR"))
 
 	// Test: Load sets non-existing
 	os.Unsetenv("TEST_LOAD_VAR")
-	require.NoError(t, LoadEnvFile(envFile))
-	require.Equal(t, "from_file", os.Getenv("TEST_LOAD_VAR"))
+	assert.NoError(t, LoadEnvFile(envFile))
+	assert.Equal(t, "from_file", os.Getenv("TEST_LOAD_VAR"))
 }
 
 func TestOverloadEnvFile(t *testing.T) {
@@ -104,12 +104,12 @@ func TestOverloadEnvFile(t *testing.T) {
 	// Create temp .env file
 	tmpDir := t.TempDir()
 	envFile := filepath.Join(tmpDir, ".env")
-	require.NoError(t, os.WriteFile(envFile, []byte("TEST_OVERLOAD_VAR=from_file\n"), 0644))
+	assert.NoError(t, os.WriteFile(envFile, []byte("TEST_OVERLOAD_VAR=from_file\n"), 0644))
 
 	// Test: Overload DOES override existing
 	os.Setenv("TEST_OVERLOAD_VAR", "existing")
-	require.NoError(t, OverloadEnvFile(envFile))
-	require.Equal(t, "from_file", os.Getenv("TEST_OVERLOAD_VAR"))
+	assert.NoError(t, OverloadEnvFile(envFile))
+	assert.Equal(t, "from_file", os.Getenv("TEST_OVERLOAD_VAR"))
 }
 
 func TestWriteEnvFile(t *testing.T) {
@@ -122,14 +122,14 @@ func TestWriteEnvFile(t *testing.T) {
 		"ESCAPE": "line1\nline2",
 	}
 
-	require.NoError(t, WriteEnvFile(input, outFile))
+	assert.NoError(t, WriteEnvFile(input, outFile))
 
 	// Read back
 	env, err := ReadEnvFile(outFile)
-	require.NoError(t, err)
-	require.Equal(t, "value", env["SIMPLE"])
-	require.Equal(t, "has spaces", env["QUOTED"])
-	require.Equal(t, "line1\nline2", env["ESCAPE"])
+	assert.NoError(t, err)
+	assert.Equal(t, "value", env["SIMPLE"])
+	assert.Equal(t, "has spaces", env["QUOTED"])
+	assert.Equal(t, "line1\nline2", env["ESCAPE"])
 }
 
 func TestParseEnvWithEscapes(t *testing.T) {
@@ -147,8 +147,8 @@ func TestParseEnvWithEscapes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			env, err := ParseEnvString(tt.input)
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, env["VAR"])
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, env["VAR"])
 		})
 	}
 }
@@ -160,10 +160,10 @@ GOOD=value
 this line has no separator
 ALSO_GOOD=another
 `)
-	require.NoError(t, err)
-	require.Len(t, env, 2)
-	require.Equal(t, "value", env["GOOD"])
-	require.Equal(t, "another", env["ALSO_GOOD"])
+	assert.NoError(t, err)
+	assert.Len(t, env, 2)
+	assert.Equal(t, "value", env["GOOD"])
+	assert.Equal(t, "another", env["ALSO_GOOD"])
 }
 
 func TestParseEnv_Comments(t *testing.T) {
@@ -179,9 +179,9 @@ PORT=8080
 
 VALUE=test
 `)
-	require.NoError(t, err)
-	require.Len(t, env, 3)
-	require.Equal(t, "localhost", env["HOST"])
-	require.Equal(t, "8080", env["PORT"])
-	require.Equal(t, "test", env["VALUE"])
+	assert.NoError(t, err)
+	assert.Len(t, env, 3)
+	assert.Equal(t, "localhost", env["HOST"])
+	assert.Equal(t, "8080", env["PORT"])
+	assert.Equal(t, "test", env["VALUE"])
 }

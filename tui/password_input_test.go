@@ -3,21 +3,21 @@ package tui
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestNewPasswordInput(t *testing.T) {
 	terminal := &Terminal{}
 	pwdInput := NewPasswordInput(terminal)
 
-	require.NotNil(t, pwdInput)
-	require.Equal(t, terminal, pwdInput.terminal)
-	require.Equal(t, "Password: ", pwdInput.prompt)
-	require.True(t, pwdInput.showCharacters) // Default is true for visual feedback
-	require.Equal(t, '*', pwdInput.maskChar)
-	require.True(t, pwdInput.enableSecureMode)
-	require.True(t, pwdInput.disableClipboard)
-	require.True(t, pwdInput.confirmPaste)
+	assert.NotNil(t, pwdInput)
+	assert.Equal(t, terminal, pwdInput.terminal)
+	assert.Equal(t, "Password: ", pwdInput.prompt)
+	assert.True(t, pwdInput.showCharacters) // Default is true for visual feedback
+	assert.Equal(t, '*', pwdInput.maskChar)
+	assert.True(t, pwdInput.enableSecureMode)
+	assert.True(t, pwdInput.disableClipboard)
+	assert.True(t, pwdInput.confirmPaste)
 }
 
 func TestPasswordInput_WithPrompt(t *testing.T) {
@@ -27,8 +27,8 @@ func TestPasswordInput_WithPrompt(t *testing.T) {
 	style := NewStyle().WithForeground(ColorRed)
 	pwdInput.WithPrompt("Enter PIN: ", style)
 
-	require.Equal(t, "Enter PIN: ", pwdInput.prompt)
-	require.Equal(t, style, pwdInput.promptStyle)
+	assert.Equal(t, "Enter PIN: ", pwdInput.prompt)
+	assert.Equal(t, style, pwdInput.promptStyle)
 }
 
 func TestPasswordInput_WithPlaceholder(t *testing.T) {
@@ -37,7 +37,7 @@ func TestPasswordInput_WithPlaceholder(t *testing.T) {
 
 	pwdInput.WithPlaceholder("(hidden)")
 
-	require.Equal(t, "(hidden)", pwdInput.placeholder)
+	assert.Equal(t, "(hidden)", pwdInput.placeholder)
 }
 
 func TestPasswordInput_WithMaxLength(t *testing.T) {
@@ -46,7 +46,7 @@ func TestPasswordInput_WithMaxLength(t *testing.T) {
 
 	pwdInput.WithMaxLength(64)
 
-	require.Equal(t, 64, pwdInput.maxLength)
+	assert.Equal(t, 64, pwdInput.maxLength)
 }
 
 func TestPasswordInput_WithMaskChar(t *testing.T) {
@@ -55,7 +55,7 @@ func TestPasswordInput_WithMaskChar(t *testing.T) {
 
 	pwdInput.WithMaskChar('•')
 
-	require.Equal(t, '•', pwdInput.maskChar)
+	assert.Equal(t, '•', pwdInput.maskChar)
 }
 
 func TestPasswordInput_ShowCharacters(t *testing.T) {
@@ -63,10 +63,10 @@ func TestPasswordInput_ShowCharacters(t *testing.T) {
 	pwdInput := NewPasswordInput(terminal)
 
 	pwdInput.ShowCharacters(true)
-	require.True(t, pwdInput.showCharacters)
+	assert.True(t, pwdInput.showCharacters)
 
 	pwdInput.ShowCharacters(false)
-	require.False(t, pwdInput.showCharacters)
+	assert.False(t, pwdInput.showCharacters)
 }
 
 func TestPasswordInput_EnableSecureMode(t *testing.T) {
@@ -74,10 +74,10 @@ func TestPasswordInput_EnableSecureMode(t *testing.T) {
 	pwdInput := NewPasswordInput(terminal)
 
 	pwdInput.EnableSecureMode(false)
-	require.False(t, pwdInput.enableSecureMode)
+	assert.False(t, pwdInput.enableSecureMode)
 
 	pwdInput.EnableSecureMode(true)
-	require.True(t, pwdInput.enableSecureMode)
+	assert.True(t, pwdInput.enableSecureMode)
 }
 
 func TestPasswordInput_DisableClipboard(t *testing.T) {
@@ -85,10 +85,10 @@ func TestPasswordInput_DisableClipboard(t *testing.T) {
 	pwdInput := NewPasswordInput(terminal)
 
 	pwdInput.DisableClipboard(false)
-	require.False(t, pwdInput.disableClipboard)
+	assert.False(t, pwdInput.disableClipboard)
 
 	pwdInput.DisableClipboard(true)
-	require.True(t, pwdInput.disableClipboard)
+	assert.True(t, pwdInput.disableClipboard)
 }
 
 func TestPasswordInput_ConfirmPaste(t *testing.T) {
@@ -96,10 +96,10 @@ func TestPasswordInput_ConfirmPaste(t *testing.T) {
 	pwdInput := NewPasswordInput(terminal)
 
 	pwdInput.ConfirmPaste(false)
-	require.False(t, pwdInput.confirmPaste)
+	assert.False(t, pwdInput.confirmPaste)
 
 	pwdInput.ConfirmPaste(true)
-	require.True(t, pwdInput.confirmPaste)
+	assert.True(t, pwdInput.confirmPaste)
 }
 
 func TestPasswordInput_ChainedConfiguration(t *testing.T) {
@@ -115,14 +115,14 @@ func TestPasswordInput_ChainedConfiguration(t *testing.T) {
 		DisableClipboard(true).
 		ConfirmPaste(false)
 
-	require.Equal(t, "PIN: ", pwdInput.prompt)
-	require.Equal(t, "1234", pwdInput.placeholder)
-	require.Equal(t, 4, pwdInput.maxLength)
-	require.Equal(t, '•', pwdInput.maskChar)
-	require.True(t, pwdInput.showCharacters)
-	require.True(t, pwdInput.enableSecureMode)
-	require.True(t, pwdInput.disableClipboard)
-	require.False(t, pwdInput.confirmPaste)
+	assert.Equal(t, "PIN: ", pwdInput.prompt)
+	assert.Equal(t, "1234", pwdInput.placeholder)
+	assert.Equal(t, 4, pwdInput.maxLength)
+	assert.Equal(t, '•', pwdInput.maskChar)
+	assert.True(t, pwdInput.showCharacters)
+	assert.True(t, pwdInput.enableSecureMode)
+	assert.True(t, pwdInput.disableClipboard)
+	assert.False(t, pwdInput.confirmPaste)
 }
 
 // SecureString tests
@@ -131,34 +131,34 @@ func TestNewSecureString(t *testing.T) {
 	data := []byte("password123")
 	ss := NewSecureString(data)
 
-	require.NotNil(t, ss)
-	require.Equal(t, data, ss.data)
+	assert.NotNil(t, ss)
+	assert.Equal(t, data, ss.data)
 }
 
 func TestSecureString_String(t *testing.T) {
 	data := []byte("password123")
 	ss := NewSecureString(data)
 
-	require.Equal(t, "password123", ss.String())
+	assert.Equal(t, "password123", ss.String())
 
 	// Test nil
 	var nilSS *SecureString
-	require.Equal(t, "", nilSS.String())
+	assert.Equal(t, "", nilSS.String())
 
 	// Test nil data
 	ss2 := &SecureString{data: nil}
-	require.Equal(t, "", ss2.String())
+	assert.Equal(t, "", ss2.String())
 }
 
 func TestSecureString_Bytes(t *testing.T) {
 	data := []byte("password123")
 	ss := NewSecureString(data)
 
-	require.Equal(t, data, ss.Bytes())
+	assert.Equal(t, data, ss.Bytes())
 
 	// Test nil
 	var nilSS *SecureString
-	require.Nil(t, nilSS.Bytes())
+	assert.Nil(t, nilSS.Bytes())
 }
 
 func TestSecureString_Len(t *testing.T) {
@@ -175,41 +175,41 @@ func TestSecureString_Len(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := NewSecureString(tt.data)
-			require.Equal(t, tt.expected, ss.Len())
+			assert.Equal(t, tt.expected, ss.Len())
 		})
 	}
 
 	// Test nil
 	var nilSS *SecureString
-	require.Equal(t, 0, nilSS.Len())
+	assert.Equal(t, 0, nilSS.Len())
 
 	// Test nil data
 	ss := &SecureString{data: nil}
-	require.Equal(t, 0, ss.Len())
+	assert.Equal(t, 0, ss.Len())
 }
 
 func TestSecureString_Clear(t *testing.T) {
 	data := []byte("password123")
 	ss := NewSecureString(data)
 
-	require.Equal(t, "password123", ss.String())
-	require.Equal(t, 11, ss.Len())
+	assert.Equal(t, "password123", ss.String())
+	assert.Equal(t, 11, ss.Len())
 
 	ss.Clear()
 
 	// Data should be zeroed
 	for _, b := range data {
-		require.Equal(t, byte(0), b)
+		assert.Equal(t, byte(0), b)
 	}
 
 	// SecureString should be empty
-	require.Nil(t, ss.data)
-	require.Equal(t, 0, ss.Len())
-	require.True(t, ss.IsEmpty())
+	assert.Nil(t, ss.data)
+	assert.Equal(t, 0, ss.Len())
+	assert.True(t, ss.IsEmpty())
 
 	// Calling Clear again should be safe
 	ss.Clear()
-	require.Nil(t, ss.data)
+	assert.Nil(t, ss.data)
 
 	// Test nil SecureString
 	var nilSS *SecureString
@@ -230,7 +230,7 @@ func TestSecureString_IsEmpty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.expected, tt.ss.IsEmpty())
+			assert.Equal(t, tt.expected, tt.ss.IsEmpty())
 		})
 	}
 }
@@ -244,19 +244,19 @@ func TestSecureString_MemoryZeroing(t *testing.T) {
 	ss := NewSecureString(password)
 
 	// Verify password is stored correctly
-	require.Equal(t, string(original), ss.String())
+	assert.Equal(t, string(original), ss.String())
 
 	// Clear the password
 	ss.Clear()
 
 	// Verify original buffer was zeroed
 	for i, b := range password {
-		require.Equal(t, byte(0), b, "byte at index %d not zeroed", i)
+		assert.Equal(t, byte(0), b, "byte at index %d not zeroed", i)
 	}
 
 	// Verify SecureString is empty
-	require.True(t, ss.IsEmpty())
-	require.Equal(t, "", ss.String())
+	assert.True(t, ss.IsEmpty())
+	assert.Equal(t, "", ss.String())
 }
 
 func TestSecureString_DeferredClear(t *testing.T) {
@@ -266,8 +266,8 @@ func TestSecureString_DeferredClear(t *testing.T) {
 		defer ss.Clear()
 
 		// Use password
-		require.Equal(t, "password123", ss.String())
-		require.Equal(t, 11, ss.Len())
+		assert.Equal(t, "password123", ss.String())
+		assert.Equal(t, 11, ss.Len())
 	}()
 
 	// After function returns, Clear should have been called
@@ -286,14 +286,14 @@ func TestSecureString_MultipleReferences(t *testing.T) {
 	ss1.Clear()
 
 	// Verify first is cleared
-	require.True(t, ss1.IsEmpty())
+	assert.True(t, ss1.IsEmpty())
 	for _, b := range data1 {
-		require.Equal(t, byte(0), b)
+		assert.Equal(t, byte(0), b)
 	}
 
 	// Verify second is unchanged
-	require.False(t, ss2.IsEmpty())
-	require.Equal(t, "password2", ss2.String())
+	assert.False(t, ss2.IsEmpty())
+	assert.Equal(t, "password2", ss2.String())
 }
 
 // Integration-style tests (require user interaction - commented out by default)
@@ -304,7 +304,7 @@ func TestPasswordInput_Read_Interactive(t *testing.T) {
 	// Uncomment to test interactively
 
 	terminal, err := NewTerminal()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	defer terminal.Restore()
 
 	pwdInput := NewPasswordInput(terminal)
@@ -312,11 +312,11 @@ func TestPasswordInput_Read_Interactive(t *testing.T) {
 	pwdInput.ShowCharacters(true)
 
 	password, err := pwdInput.Read()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	defer password.Clear()
 
 	t.Logf("Password length: %d", password.Len())
-	require.Greater(t, password.Len(), 0)
+	assert.Greater(t, password.Len(), 0)
 }
 */
 

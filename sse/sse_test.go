@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestReaderBasic(t *testing.T) {
@@ -20,12 +20,12 @@ data: hello world
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, "message", event.Event)
-	require.Equal(t, "hello world", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, "message", event.Event)
+	assert.Equal(t, "hello world", event.Data)
 
 	_, err = reader.Read()
-	require.Equal(t, io.EOF, err)
+	assert.Equal(t, io.EOF, err)
 }
 
 func TestReaderMultipleEvents(t *testing.T) {
@@ -44,11 +44,11 @@ data: third
 		if err == io.EOF {
 			break
 		}
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		events = append(events, event.Data)
 	}
 
-	require.Equal(t, []string{"first", "second", "third"}, events)
+	assert.Equal(t, []string{"first", "second", "third"}, events)
 }
 
 func TestReaderMultilineData(t *testing.T) {
@@ -60,8 +60,8 @@ data: line 3
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, "line 1\nline 2\nline 3", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, "line 1\nline 2\nline 3", event.Data)
 }
 
 func TestReaderWithID(t *testing.T) {
@@ -73,10 +73,10 @@ data: payload
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, "123", event.ID)
-	require.Equal(t, "update", event.Event)
-	require.Equal(t, "payload", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, "123", event.ID)
+	assert.Equal(t, "update", event.Event)
+	assert.Equal(t, "payload", event.Data)
 }
 
 func TestReaderWithRetry(t *testing.T) {
@@ -87,9 +87,9 @@ data: reconnect info
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, 5000, event.Retry)
-	require.Equal(t, "reconnect info", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, 5000, event.Retry)
+	assert.Equal(t, "reconnect info", event.Data)
 }
 
 func TestReaderComments(t *testing.T) {
@@ -101,8 +101,8 @@ data: actual data
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, "actual data", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, "actual data", event.Data)
 }
 
 func TestReaderNoSpace(t *testing.T) {
@@ -113,8 +113,8 @@ func TestReaderNoSpace(t *testing.T) {
 	reader := NewReader(strings.NewReader(data))
 
 	event, err := reader.Read()
-	require.NoError(t, err)
-	require.Equal(t, "no-space", event.Data)
+	assert.NoError(t, err)
+	assert.Equal(t, "no-space", event.Data)
 }
 
 func TestEventJSON(t *testing.T) {
@@ -128,9 +128,9 @@ func TestEventJSON(t *testing.T) {
 	}
 
 	err := event.JSON(&result)
-	require.NoError(t, err)
-	require.Equal(t, "hello", result.Message)
-	require.Equal(t, 42, result.Count)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", result.Message)
+	assert.Equal(t, 42, result.Count)
 }
 
 func TestStream(t *testing.T) {
@@ -147,8 +147,8 @@ data: three
 		return nil
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, []string{"one", "two", "three"}, events)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"one", "two", "three"}, events)
 }
 
 func TestParseString(t *testing.T) {
@@ -160,16 +160,16 @@ data: {"text": "hello"}
 
 `
 	events, err := ParseString(data)
-	require.NoError(t, err)
-	require.Len(t, events, 2)
-	require.Equal(t, "ping", events[0].Event)
-	require.Equal(t, "message", events[1].Event)
+	assert.NoError(t, err)
+	assert.Len(t, events, 2)
+	assert.Equal(t, "ping", events[0].Event)
+	assert.Equal(t, "message", events[1].Event)
 }
 
 func TestClientConnect(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "text/event-stream", r.Header.Get("Accept"))
+		assert.Equal(t, "text/event-stream", r.Header.Get("Accept"))
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -205,7 +205,7 @@ func TestClientConnect(t *testing.T) {
 	default:
 	}
 
-	require.Equal(t, []string{"event 1", "event 2"}, received)
+	assert.Equal(t, []string{"event 1", "event 2"}, received)
 }
 
 func TestClientLastEventID(t *testing.T) {
@@ -230,8 +230,8 @@ func TestClientLastEventID(t *testing.T) {
 	for range events {
 	}
 
-	require.Equal(t, "123", receivedLastEventID)
-	require.Equal(t, "456", client.LastEventID)
+	assert.Equal(t, "123", receivedLastEventID)
+	assert.Equal(t, "456", client.LastEventID)
 }
 
 func TestHTTPError(t *testing.T) {
@@ -252,20 +252,20 @@ func TestHTTPError(t *testing.T) {
 	}
 
 	err := <-errs
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	var httpErr *HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	require.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
+	assert.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
 }
 
 func TestEventIsEmpty(t *testing.T) {
 	empty := Event{}
-	require.True(t, empty.IsEmpty())
+	assert.True(t, empty.IsEmpty())
 
 	withData := Event{Data: "something"}
-	require.False(t, withData.IsEmpty())
+	assert.False(t, withData.IsEmpty())
 
 	withEvent := Event{Event: "ping"}
-	require.False(t, withEvent.IsEmpty())
+	assert.False(t, withEvent.IsEmpty())
 }

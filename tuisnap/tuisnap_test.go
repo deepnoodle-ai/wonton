@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // mockView is a simple view for testing
@@ -35,7 +35,7 @@ func TestSanitizeName(t *testing.T) {
 
 	for _, tt := range tests {
 		result := sanitizeName(tt.input)
-		require.Equal(t, tt.expected, result, "sanitizeName(%q)", tt.input)
+		assert.Equal(t, tt.expected, result, "sanitizeName(%q)", tt.input)
 	}
 }
 
@@ -45,10 +45,10 @@ func TestGenerateDiff(t *testing.T) {
 
 	diff := generateDiff(expected, actual)
 
-	require.Contains(t, diff, "--- Expected")
-	require.Contains(t, diff, "+++ Actual")
-	require.Contains(t, diff, "line2")
-	require.Contains(t, diff, "modified")
+	assert.Contains(t, diff, "--- Expected")
+	assert.Contains(t, diff, "+++ Actual")
+	assert.Contains(t, diff, "line2")
+	assert.Contains(t, diff, "modified")
 }
 
 func TestGenerateDiffIdentical(t *testing.T) {
@@ -56,8 +56,8 @@ func TestGenerateDiffIdentical(t *testing.T) {
 	diff := generateDiff(text, text)
 
 	// Should only contain headers, no actual diff content
-	require.True(t, strings.HasPrefix(diff, "--- Expected"))
-	require.True(t, strings.Contains(diff, "+++ Actual"))
+	assert.True(t, strings.HasPrefix(diff, "--- Expected"))
+	assert.True(t, strings.Contains(diff, "+++ Actual"))
 	// No @@ markers for identical content
-	require.False(t, strings.Contains(diff, "@@"))
+	assert.False(t, strings.Contains(diff, "@@"))
 }

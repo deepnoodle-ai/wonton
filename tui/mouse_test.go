@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 func TestParseMouseEvent_SGR_LeftClick(t *testing.T) {
@@ -12,8 +11,8 @@ func TestParseMouseEvent_SGR_LeftClick(t *testing.T) {
 	seq := []byte("<0;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, 9, event.X) // 0-based, so 10-1
 	assert.Equal(t, 4, event.Y) // 0-based, so 5-1
 	assert.Equal(t, MouseButtonLeft, event.Button)
@@ -24,8 +23,8 @@ func TestParseMouseEvent_SGR_RightClick(t *testing.T) {
 	seq := []byte("<2;15;20M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, 14, event.X)
 	assert.Equal(t, 19, event.Y)
 	assert.Equal(t, MouseButtonRight, event.Button)
@@ -36,8 +35,8 @@ func TestParseMouseEvent_SGR_MiddleClick(t *testing.T) {
 	seq := []byte("<1;25;30M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, 24, event.X)
 	assert.Equal(t, 29, event.Y)
 	assert.Equal(t, MouseButtonMiddle, event.Button)
@@ -49,8 +48,8 @@ func TestParseMouseEvent_SGR_Release(t *testing.T) {
 	seq := []byte("<0;10;5m")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseButtonNone, event.Button)
 	assert.Equal(t, MouseRelease, event.Type)
 }
@@ -60,8 +59,8 @@ func TestParseMouseEvent_SGR_WheelUp(t *testing.T) {
 	seq := []byte("<64;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseButtonWheelUp, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 }
@@ -71,8 +70,8 @@ func TestParseMouseEvent_SGR_WheelDown(t *testing.T) {
 	seq := []byte("<65;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseButtonWheelDown, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 }
@@ -82,8 +81,8 @@ func TestParseMouseEvent_SGR_Drag(t *testing.T) {
 	seq := []byte("<32;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseDrag, event.Type)
 }
 
@@ -115,8 +114,8 @@ func TestParseMouseEvent_LargeCoordinates(t *testing.T) {
 	seq := []byte("<0;250;300M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, 249, event.X)
 	assert.Equal(t, 299, event.Y)
 }

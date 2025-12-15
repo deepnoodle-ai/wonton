@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func newTestContext(flags map[string]any, args ...string) *Context {
@@ -30,7 +30,7 @@ func TestContextIntParsesString(t *testing.T) {
 		"count": "42",
 	})
 
-	require.Equal(t, 42, ctx.Int("count"))
+	assert.Equal(t, 42, ctx.Int("count"))
 }
 
 func TestContextFloat64ParsesVariousTypes(t *testing.T) {
@@ -40,9 +40,9 @@ func TestContextFloat64ParsesVariousTypes(t *testing.T) {
 		"fromStr":   "3.14",
 	})
 
-	require.Equal(t, 5.0, ctx.Float64("fromInt"))
-	require.Equal(t, 10.0, ctx.Float64("fromInt64"))
-	require.InDelta(t, 3.14, ctx.Float64("fromStr"), 0.0001)
+	assert.Equal(t, 5.0, ctx.Float64("fromInt"))
+	assert.Equal(t, 10.0, ctx.Float64("fromInt64"))
+	assert.InDelta(t, 3.14, ctx.Float64("fromStr"), 0.0001)
 }
 
 func TestContextBoolParsesStrings(t *testing.T) {
@@ -51,9 +51,9 @@ func TestContextBoolParsesStrings(t *testing.T) {
 		"falsey": "0",
 	})
 
-	require.True(t, ctx.Bool("truthy"))
-	require.False(t, ctx.Bool("falsey"))
-	require.False(t, ctx.Bool("missing"))
+	assert.True(t, ctx.Bool("truthy"))
+	assert.False(t, ctx.Bool("falsey"))
+	assert.False(t, ctx.Bool("missing"))
 }
 
 func TestContextIsSet(t *testing.T) {
@@ -61,15 +61,15 @@ func TestContextIsSet(t *testing.T) {
 		"flag": true,
 	})
 
-	require.True(t, ctx.IsSet("flag"))
-	require.False(t, ctx.IsSet("other"))
+	assert.True(t, ctx.IsSet("flag"))
+	assert.False(t, ctx.IsSet("other"))
 }
 
 func TestContextArgs(t *testing.T) {
 	ctx := newTestContext(nil, "first", "second")
 
-	require.Equal(t, 2, ctx.NArg())
-	require.Equal(t, "first", ctx.Arg(0))
-	require.Equal(t, "second", ctx.Arg(1))
-	require.Equal(t, "", ctx.Arg(2))
+	assert.Equal(t, 2, ctx.NArg())
+	assert.Equal(t, "first", ctx.Arg(0))
+	assert.Equal(t, "second", ctx.Arg(1))
+	assert.Equal(t, "", ctx.Arg(2))
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 func TestNewTestTerminal(t *testing.T) {
@@ -52,7 +51,7 @@ func TestTerminal_MoveCursor_Negative(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
 	// Should not panic with negative coordinates
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.MoveCursor(-5, -10)
 	})
 
@@ -63,7 +62,7 @@ func TestTerminal_MoveCursor_Negative(t *testing.T) {
 func TestTerminal_MoveCursor_BeyondBounds(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.MoveCursor(100, 50)
 	})
 
@@ -90,23 +89,23 @@ func TestTerminal_BeginEndFrame(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
 	frame, err := term.BeginFrame()
-	require.NoError(t, err)
-	require.NotNil(t, frame)
+	assert.NoError(t, err)
+	assert.NotNil(t, frame)
 
 	err = term.EndFrame(frame)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestTerminal_BeginFrame_ConcurrentBlocking(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
 	frame1, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// This should block or error because frame1 is still active
 	// In test mode, it might just succeed, but in real usage it would block
 	// Let's just verify we can get a frame
-	require.NotNil(t, frame1)
+	assert.NotNil(t, frame1)
 
 	term.EndFrame(frame1)
 }
@@ -116,16 +115,16 @@ func TestTerminal_MultipleFrames(t *testing.T) {
 
 	// Should be able to create multiple frames sequentially
 	frame1, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	frame1.SetCell(5, 5, 'A', NewStyle())
 	err = term.EndFrame(frame1)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	frame2, err := term.BeginFrame()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	frame2.SetCell(10, 10, 'B', NewStyle())
 	err = term.EndFrame(frame2)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, 'A', term.backBuffer[5][5].Char)
 	assert.Equal(t, 'B', term.backBuffer[10][10].Char)
@@ -181,7 +180,7 @@ func TestTerminal_PrintAt_OutOfBounds(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
 	// Should not panic
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.PrintAt(-1, -1, "Test")
 		term.PrintAt(100, 100, "Test")
 	})
@@ -292,7 +291,7 @@ func TestTerminal_Fill(t *testing.T) {
 func TestTerminal_Fill_OutOfBounds(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.Fill(-5, -5, 10, 10, '*')
 		term.Fill(100, 100, 10, 10, '*')
 	})
@@ -329,7 +328,7 @@ func TestTerminal_HideCursor_ShowCursor(t *testing.T) {
 	buf := &bytes.Buffer{}
 	term := NewTestTerminal(80, 24, buf)
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.HideCursor()
 		term.ShowCursor()
 	})
@@ -398,7 +397,7 @@ func TestTerminal_SetCell_ViaFrame(t *testing.T) {
 	err := frame.SetCell(10, 5, 'X', NewStyle())
 	term.EndFrame(frame)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 'X', term.backBuffer[5][10].Char)
 }
 
@@ -420,7 +419,7 @@ func TestTerminal_FrameOperations_NoPanic(t *testing.T) {
 	frame.SetCell(20, 20, 'B', NewStyle())
 
 	// Should not panic during EndFrame
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.EndFrame(frame)
 	})
 

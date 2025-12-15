@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestDoSuccess(t *testing.T) {
@@ -17,8 +17,8 @@ func TestDoSuccess(t *testing.T) {
 		return "success", nil
 	})
 
-	require.NoError(t, err)
-	require.Equal(t, "success", result)
+	assert.NoError(t, err)
+	assert.Equal(t, "success", result)
 }
 
 func TestDoEventualSuccess(t *testing.T) {
@@ -33,9 +33,9 @@ func TestDoEventualSuccess(t *testing.T) {
 		return 42, nil
 	}, WithMaxAttempts(5), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.NoError(t, err)
-	require.Equal(t, 42, result)
-	require.Equal(t, 3, attempts)
+	assert.NoError(t, err)
+	assert.Equal(t, 42, result)
+	assert.Equal(t, 3, attempts)
 }
 
 func TestDoMaxAttempts(t *testing.T) {
@@ -47,13 +47,13 @@ func TestDoMaxAttempts(t *testing.T) {
 		return 0, errors.New("always fail")
 	}, WithMaxAttempts(3), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.Error(t, err)
-	require.Equal(t, 3, attempts)
+	assert.Error(t, err)
+	assert.Equal(t, 3, attempts)
 
 	var retryErr *Error
-	require.True(t, errors.As(err, &retryErr))
-	require.Equal(t, 3, retryErr.Attempts)
-	require.Len(t, retryErr.Errors, 3)
+	assert.True(t, errors.As(err, &retryErr))
+	assert.Equal(t, 3, retryErr.Attempts)
+	assert.Len(t, retryErr.Errors, 3)
 }
 
 func TestDoContextCancellation(t *testing.T) {
@@ -66,8 +66,8 @@ func TestDoContextCancellation(t *testing.T) {
 	}, WithMaxAttempts(100), WithBackoff(100*time.Millisecond, 100*time.Millisecond))
 
 	elapsed := time.Since(start)
-	require.Error(t, err)
-	require.True(t, elapsed < 200*time.Millisecond, "should have cancelled quickly")
+	assert.Error(t, err)
+	assert.True(t, elapsed < 200*time.Millisecond, "should have cancelled quickly")
 }
 
 func TestDoRetryIf(t *testing.T) {
@@ -87,8 +87,8 @@ func TestDoRetryIf(t *testing.T) {
 		}),
 	)
 
-	require.Error(t, err)
-	require.Equal(t, 1, attempts, "should not retry permanent errors")
+	assert.Error(t, err)
+	assert.Equal(t, 1, attempts, "should not retry permanent errors")
 }
 
 func TestDoPermanentError(t *testing.T) {
@@ -107,9 +107,9 @@ func TestDoPermanentError(t *testing.T) {
 		WithRetryIf(SkipPermanent()),
 	)
 
-	require.Error(t, err)
-	require.Equal(t, 2, attempts)
-	require.True(t, IsPermanent(errors.Unwrap(err)))
+	assert.Error(t, err)
+	assert.Equal(t, 2, attempts)
+	assert.True(t, IsPermanent(errors.Unwrap(err)))
 }
 
 func TestDoOnRetry(t *testing.T) {
@@ -126,8 +126,8 @@ func TestDoOnRetry(t *testing.T) {
 		}),
 	)
 
-	require.Error(t, err)
-	require.Equal(t, []int{1, 2}, retries, "OnRetry called for attempts 1 and 2")
+	assert.Error(t, err)
+	assert.Equal(t, []int{1, 2}, retries, "OnRetry called for attempts 1 and 2")
 }
 
 func TestDoSimple(t *testing.T) {
@@ -142,8 +142,8 @@ func TestDoSimple(t *testing.T) {
 		return nil
 	}, WithMaxAttempts(5), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.NoError(t, err)
-	require.Equal(t, 2, attempts)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, attempts)
 }
 
 func TestBackoff(t *testing.T) {
@@ -168,7 +168,7 @@ func TestBackoff(t *testing.T) {
 
 	for _, tt := range tests {
 		result := Backoff(tt.attempt, cfg)
-		require.Equal(t, tt.expected, result, "Backoff(%d)", tt.attempt)
+		assert.Equal(t, tt.expected, result, "Backoff(%d)", tt.attempt)
 	}
 }
 
@@ -176,16 +176,16 @@ func TestConstantBackoff(t *testing.T) {
 	cfg := DefaultConfig()
 	WithConstantBackoff(500 * time.Millisecond)(&cfg)
 
-	require.Equal(t, 500*time.Millisecond, cfg.InitialBackoff)
-	require.Equal(t, 500*time.Millisecond, cfg.MaxBackoff)
-	require.Equal(t, 1.0, cfg.BackoffMultiplier)
+	assert.Equal(t, 500*time.Millisecond, cfg.InitialBackoff)
+	assert.Equal(t, 500*time.Millisecond, cfg.MaxBackoff)
+	assert.Equal(t, 1.0, cfg.BackoffMultiplier)
 }
 
 func TestErrorUnwrap(t *testing.T) {
 	originalErr := errors.New("original")
 	retryErr := &Error{Last: originalErr, Attempts: 3}
 
-	require.True(t, errors.Is(retryErr, originalErr))
+	assert.True(t, errors.Is(retryErr, originalErr))
 }
 
 func TestBackoffWithJitterRange(t *testing.T) {
@@ -198,18 +198,18 @@ func TestBackoffWithJitterRange(t *testing.T) {
 	}
 
 	delay := Backoff(1, cfg)
-	require.True(t, delay >= 500*time.Millisecond && delay <= 1500*time.Millisecond,
+	assert.True(t, delay >= 500*time.Millisecond && delay <= 1500*time.Millisecond,
 		"delay should be within jitter range, got %s", delay)
 }
 
 func TestSkipPermanentFunction(t *testing.T) {
 	predicate := SkipPermanent()
-	require.True(t, predicate(errors.New("temporary")))
-	require.False(t, predicate(MarkPermanent(errors.New("permanent"))))
+	assert.True(t, predicate(errors.New("temporary")))
+	assert.False(t, predicate(MarkPermanent(errors.New("permanent"))))
 }
 
 func TestMarkPermanentNil(t *testing.T) {
-	require.Nil(t, MarkPermanent(nil))
+	assert.Nil(t, MarkPermanent(nil))
 }
 
 func TestDoSimplePropagatesError(t *testing.T) {
@@ -217,7 +217,7 @@ func TestDoSimplePropagatesError(t *testing.T) {
 		return errors.New("boom")
 	}, WithMaxAttempts(2), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.Error(t, err)
+	assert.Error(t, err)
 }
 
 func TestDoAggregatesErrors(t *testing.T) {
@@ -228,12 +228,12 @@ func TestDoAggregatesErrors(t *testing.T) {
 		return 0, errors.New("fail")
 	}, WithMaxAttempts(3), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	var retryErr *Error
-	require.ErrorAs(t, err, &retryErr)
-	require.Equal(t, 3, retryErr.Attempts)
-	require.Len(t, retryErr.Errors, 3)
+	assert.ErrorAs(t, err, &retryErr)
+	assert.Equal(t, 3, retryErr.Attempts)
+	assert.Len(t, retryErr.Errors, 3)
 }
 
 func TestDoZeroMaxAttemptsReliesOnContext(t *testing.T) {
@@ -244,10 +244,10 @@ func TestDoZeroMaxAttemptsReliesOnContext(t *testing.T) {
 		return 0, errors.New("fail")
 	}, WithMaxAttempts(0), WithBackoff(time.Millisecond, time.Millisecond))
 
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	var retryErr *Error
-	require.ErrorAs(t, err, &retryErr)
-	require.True(t, errors.Is(retryErr.Last, context.DeadlineExceeded))
-	require.Greater(t, retryErr.Attempts, 0)
+	assert.ErrorAs(t, err, &retryErr)
+	assert.True(t, errors.Is(retryErr.Last, context.DeadlineExceeded))
+	assert.Greater(t, retryErr.Attempts, 0)
 }

@@ -12,13 +12,12 @@ parsing to rich terminal UIs with animations.
 
 | Package       | Import Path                                 | Purpose                                                    |
 | ------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| **assert**    | `github.com/deepnoodle-ai/wonton/assert`    | Test assertions with clean error messages (testify-like)   |
+| **assert**    | `github.com/deepnoodle-ai/wonton/assert`    | Test assertions (fail immediately; use NonFatal for soft)  |
 | **cli**       | `github.com/deepnoodle-ai/wonton/cli`       | CLI framework with commands, flags, config, and middleware |
 | **clipboard** | `github.com/deepnoodle-ai/wonton/clipboard` | Cross-platform system clipboard access                     |
 | **color**     | `github.com/deepnoodle-ai/wonton/color`     | ANSI color types, RGB, HSL, and gradient utilities         |
 | **env**       | `github.com/deepnoodle-ai/wonton/env`       | Config loading from env vars, .env files, and JSON         |
 | **humanize**  | `github.com/deepnoodle-ai/wonton/humanize`  | Human-readable formatting for bytes, durations, numbers    |
-| **require**   | `github.com/deepnoodle-ai/wonton/require`   | Test assertions that fail immediately (wraps assert)       |
 | **retry**     | `github.com/deepnoodle-ai/wonton/retry`     | Retry logic with exponential backoff and jitter            |
 | **slog**      | `github.com/deepnoodle-ai/wonton/slog`      | Colorized slog.Handler for terminal output                 |
 | **sse**       | `github.com/deepnoodle-ai/wonton/sse`       | Server-Sent Events (SSE) stream parser and client          |

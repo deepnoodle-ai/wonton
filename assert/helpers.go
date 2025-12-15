@@ -392,8 +392,8 @@ func typeAndKind(v any) (reflect.Type, reflect.Kind) {
 	return t, k
 }
 
-// checkPanic checks if a function panics and returns the panic value.
-func checkPanic(f func()) (didPanic bool, panicValue any) {
+// doPanicCheck checks if a function panics and returns the panic value.
+func doPanicCheck(f func()) (didPanic bool, panicValue any) {
 	didPanic = true
 	defer func() {
 		panicValue = recover()

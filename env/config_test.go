@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestParse_BasicTypes(t *testing.T) {
@@ -31,13 +31,13 @@ func TestParse_BasicTypes(t *testing.T) {
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(env))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.True(t, cfg.Debug)
-	require.Equal(t, 30*time.Second, cfg.Timeout)
-	require.Equal(t, 0.5, cfg.Rate)
-	require.Equal(t, uint(100), cfg.MaxConns)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.True(t, cfg.Debug)
+	assert.Equal(t, 30*time.Second, cfg.Timeout)
+	assert.Equal(t, 0.5, cfg.Rate)
+	assert.Equal(t, uint(100), cfg.MaxConns)
 }
 
 func TestParse_Defaults(t *testing.T) {
@@ -47,9 +47,9 @@ func TestParse_Defaults(t *testing.T) {
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 3000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 3000, cfg.Port)
 }
 
 func TestParse_Required(t *testing.T) {
@@ -58,8 +58,8 @@ func TestParse_Required(t *testing.T) {
 	}
 
 	_, err := Parse[Config](WithEnvironment(map[string]string{}))
-	require.Error(t, err)
-	require.True(t, HasError[*VarNotSetError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*VarNotSetError](err))
 }
 
 func TestParse_NotEmpty(t *testing.T) {
@@ -70,8 +70,8 @@ func TestParse_NotEmpty(t *testing.T) {
 	_, err := Parse[Config](WithEnvironment(map[string]string{
 		"API_KEY": "",
 	}))
-	require.Error(t, err)
-	require.True(t, HasError[*EmptyVarError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*EmptyVarError](err))
 }
 
 func TestParse_Prefix(t *testing.T) {
@@ -89,9 +89,9 @@ func TestParse_Prefix(t *testing.T) {
 		WithEnvironment(env),
 		WithPrefix("MYAPP"),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "example.com", cfg.Host)
-	require.Equal(t, 9000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "example.com", cfg.Host)
+	assert.Equal(t, 9000, cfg.Port)
 }
 
 func TestParse_Stage(t *testing.T) {
@@ -109,18 +109,18 @@ func TestParse_Stage(t *testing.T) {
 
 	// Without stage - use default vars
 	cfg, err := Parse[Config](WithEnvironment(env))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 3000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 3000, cfg.Port)
 
 	// With stage - use stage-prefixed vars
 	cfg, err = Parse[Config](
 		WithEnvironment(env),
 		WithStage("PROD"),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "prod.example.com", cfg.Host)
-	require.Equal(t, 443, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "prod.example.com", cfg.Host)
+	assert.Equal(t, 443, cfg.Port)
 }
 
 func TestParse_Slices(t *testing.T) {
@@ -133,9 +133,9 @@ func TestParse_Slices(t *testing.T) {
 		"HOSTS": "a.com,b.com,c.com",
 		"PORTS": "80, 443, 8080",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, []string{"a.com", "b.com", "c.com"}, cfg.Hosts)
-	require.Equal(t, []int{80, 443, 8080}, cfg.Ports)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a.com", "b.com", "c.com"}, cfg.Hosts)
+	assert.Equal(t, []int{80, 443, 8080}, cfg.Ports)
 }
 
 func TestParse_Maps(t *testing.T) {
@@ -146,8 +146,8 @@ func TestParse_Maps(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"HEADERS": "Content-Type:application/json, Accept:*/*",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, map[string]string{
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]string{
 		"Content-Type": "application/json",
 		"Accept":       "*/*",
 	}, cfg.Headers)
@@ -167,16 +167,16 @@ func TestParse_NestedStructs(t *testing.T) {
 		"DB_HOST": "dbhost",
 		"DB_PORT": "5432",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "dbhost", cfg.Database.Host)
-	require.Equal(t, 5432, cfg.Database.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "dbhost", cfg.Database.Host)
+	assert.Equal(t, 5432, cfg.Database.Port)
 }
 
 func TestParse_FileLoading(t *testing.T) {
 	// Create temp file with content
 	tmpDir := t.TempDir()
 	secretFile := filepath.Join(tmpDir, "secret.txt")
-	require.NoError(t, os.WriteFile(secretFile, []byte("super-secret"), 0600))
+	assert.NoError(t, os.WriteFile(secretFile, []byte("super-secret"), 0600))
 
 	type Config struct {
 		Secret string `env:"SECRET_FILE,file"`
@@ -185,8 +185,8 @@ func TestParse_FileLoading(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"SECRET_FILE": secretFile,
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "super-secret", cfg.Secret)
+	assert.NoError(t, err)
+	assert.Equal(t, "super-secret", cfg.Secret)
 }
 
 func TestParse_Expand(t *testing.T) {
@@ -200,8 +200,8 @@ func TestParse_Expand(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"PATH_TEMPLATE": "$HOME/app/data",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "/home/user/app/data", cfg.Path)
+	assert.NoError(t, err)
+	assert.Equal(t, "/home/user/app/data", cfg.Path)
 }
 
 func TestParse_WithOnSet(t *testing.T) {
@@ -230,18 +230,18 @@ func TestParse_WithOnSet(t *testing.T) {
 			}{envVar: envVar, value: value, isDefault: isDefault}
 		}),
 	)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	hostCall, ok := seen["Host"]
-	require.True(t, ok, "Host should trigger OnSet")
-	require.Equal(t, "localhost", hostCall.value)
-	require.True(t, hostCall.isDefault, "Host should be marked as default")
-	require.True(t, strings.HasSuffix(hostCall.envVar, "HOST"), "env var should end with HOST")
+	assert.True(t, ok, "Host should trigger OnSet")
+	assert.Equal(t, "localhost", hostCall.value)
+	assert.True(t, hostCall.isDefault, "Host should be marked as default")
+	assert.True(t, strings.HasSuffix(hostCall.envVar, "HOST"), "env var should end with HOST")
 
 	portCall, ok := seen["Port"]
-	require.True(t, ok, "Port should trigger OnSet")
-	require.Equal(t, 8080, portCall.value)
-	require.False(t, portCall.isDefault, "Port should come from env vars")
+	assert.True(t, ok, "Port should trigger OnSet")
+	assert.Equal(t, 8080, portCall.value)
+	assert.False(t, portCall.isDefault, "Port should come from env vars")
 }
 
 func TestParse_WithUseFieldName(t *testing.T) {
@@ -259,9 +259,9 @@ func TestParse_WithUseFieldName(t *testing.T) {
 		WithEnvironment(envVars),
 		WithUseFieldName(),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "secret", cfg.APIKey)
-	require.Equal(t, 45*time.Second, cfg.Timeout)
+	assert.NoError(t, err)
+	assert.Equal(t, "secret", cfg.APIKey)
+	assert.Equal(t, 45*time.Second, cfg.Timeout)
 }
 
 func TestParse_CustomParserOption(t *testing.T) {
@@ -284,8 +284,8 @@ func TestParse_CustomParserOption(t *testing.T) {
 			return Endpoint(value), nil
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, Endpoint("https://api.example.com"), cfg.Base)
+	assert.NoError(t, err)
+	assert.Equal(t, Endpoint("https://api.example.com"), cfg.Base)
 }
 
 func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
@@ -294,8 +294,8 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.env")
 	second := filepath.Join(tmpDir, "second.env")
 
-	require.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
-	require.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
+	assert.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
 
 	type Config struct {
 		Value string `env:"VALUE"`
@@ -306,9 +306,9 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 		WithEnvironment(map[string]string{}),
 		WithEnvFile(first, second),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "one", cfg.Value, "first env file should win when key already set")
-	require.Equal(t, "from_second", cfg.Extra)
+	assert.NoError(t, err)
+	assert.Equal(t, "one", cfg.Value, "first env file should win when key already set")
+	assert.Equal(t, "from_second", cfg.Extra)
 }
 
 func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
@@ -317,8 +317,8 @@ func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.json")
 	second := filepath.Join(tmpDir, "second.json")
 
-	require.NoError(t, os.WriteFile(first, []byte(`{"host":"first","port":8080}`), 0644))
-	require.NoError(t, os.WriteFile(second, []byte(`{"host":"second"}`), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte(`{"host":"first","port":8080}`), 0644))
+	assert.NoError(t, os.WriteFile(second, []byte(`{"host":"second"}`), 0644))
 
 	type Config struct {
 		Host string `env:"HOST"`
@@ -329,9 +329,9 @@ func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
 		WithEnvironment(map[string]string{}),
 		WithJSONFile(first, second),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "second", cfg.Host, "later JSON file should override")
-	require.Equal(t, 8080, cfg.Port, "unchanged field should come from the first file")
+	assert.NoError(t, err)
+	assert.Equal(t, "second", cfg.Host, "later JSON file should override")
+	assert.Equal(t, 8080, cfg.Port, "unchanged field should come from the first file")
 }
 
 func TestParseInto_UpdatesExistingStruct(t *testing.T) {
@@ -344,9 +344,9 @@ func TestParseInto_UpdatesExistingStruct(t *testing.T) {
 	err := ParseInto(&cfg, WithEnvironment(map[string]string{
 		"HOST": "parsed",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "parsed", cfg.Host)
-	require.Equal(t, 80, cfg.Port, "default should populate missing field")
+	assert.NoError(t, err)
+	assert.Equal(t, "parsed", cfg.Host)
+	assert.Equal(t, 80, cfg.Port, "default should populate missing field")
 }
 
 func TestParse_RequiredIfNoDefault(t *testing.T) {
@@ -361,8 +361,8 @@ func TestParse_RequiredIfNoDefault(t *testing.T) {
 		}),
 		WithRequiredIfNoDefault(),
 	)
-	require.Error(t, err)
-	require.True(t, HasError[*VarNotSetError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*VarNotSetError](err))
 }
 
 func TestParse_UseFieldName(t *testing.T) {
@@ -378,9 +378,9 @@ func TestParse_UseFieldName(t *testing.T) {
 		}),
 		WithUseFieldName(),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "myhost", cfg.ServerHost)
-	require.Equal(t, 9999, cfg.ServerPort)
+	assert.NoError(t, err)
+	assert.Equal(t, "myhost", cfg.ServerHost)
+	assert.Equal(t, 9999, cfg.ServerPort)
 }
 
 func TestParse_CustomParser(t *testing.T) {
@@ -415,8 +415,8 @@ func TestParse_CustomParser(t *testing.T) {
 			}
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, LevelWarn, cfg.LogLevel)
+	assert.NoError(t, err)
+	assert.Equal(t, LevelWarn, cfg.LogLevel)
 }
 
 func TestParse_OnSet(t *testing.T) {
@@ -434,11 +434,11 @@ func TestParse_OnSet(t *testing.T) {
 			setCalls = append(setCalls, field)
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.Contains(t, setCalls, "Host")
-	require.Contains(t, setCalls, "Port")
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.Contains(t, setCalls, "Host")
+	assert.Contains(t, setCalls, "Port")
 }
 
 func TestParse_IgnoredField(t *testing.T) {
@@ -451,9 +451,9 @@ func TestParse_IgnoredField(t *testing.T) {
 		"HOST":   "localhost",
 		"SECRET": "should-be-ignored",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Empty(t, cfg.Secret)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Empty(t, cfg.Secret)
 }
 
 func TestParse_BooleanVariants(t *testing.T) {
@@ -474,13 +474,13 @@ func TestParse_BooleanVariants(t *testing.T) {
 		"E": "0",
 		"F": "no",
 	}))
-	require.NoError(t, err)
-	require.True(t, cfg.A)
-	require.True(t, cfg.B)
-	require.True(t, cfg.C)
-	require.False(t, cfg.D)
-	require.False(t, cfg.E)
-	require.False(t, cfg.F)
+	assert.NoError(t, err)
+	assert.True(t, cfg.A)
+	assert.True(t, cfg.B)
+	assert.True(t, cfg.C)
+	assert.False(t, cfg.D)
+	assert.False(t, cfg.E)
+	assert.False(t, cfg.F)
 }
 
 func TestParse_Pointers(t *testing.T) {
@@ -493,11 +493,11 @@ func TestParse_Pointers(t *testing.T) {
 		"HOST": "example.com",
 		"PORT": "8080",
 	}))
-	require.NoError(t, err)
-	require.NotNil(t, cfg.Host)
-	require.NotNil(t, cfg.Port)
-	require.Equal(t, "example.com", *cfg.Host)
-	require.Equal(t, 8080, *cfg.Port)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Host)
+	assert.NotNil(t, cfg.Port)
+	assert.Equal(t, "example.com", *cfg.Host)
+	assert.Equal(t, 8080, *cfg.Port)
 }
 
 func TestParse_EmbeddedStruct(t *testing.T) {
@@ -516,10 +516,10 @@ func TestParse_EmbeddedStruct(t *testing.T) {
 		"PORT": "8080",
 		"NAME": "myapp",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.Equal(t, "myapp", cfg.Name)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.Equal(t, "myapp", cfg.Name)
 }
 
 func TestParse_AggregateErrors(t *testing.T) {
@@ -532,12 +532,12 @@ func TestParse_AggregateErrors(t *testing.T) {
 	_, err := Parse[Config](WithEnvironment(map[string]string{
 		"C": "not-a-number",
 	}))
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	// Should have multiple errors
 	aggErr, ok := err.(*AggregateError)
-	require.True(t, ok)
-	require.GreaterOrEqual(t, len(aggErr.Errors), 2) // A missing, B missing, C parse error
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(aggErr.Errors), 2) // A missing, B missing, C parse error
 }
 
 func TestMust_Panics(t *testing.T) {
@@ -545,7 +545,7 @@ func TestMust_Panics(t *testing.T) {
 		Required string `env:"REQUIRED,required"`
 	}
 
-	require.Panics(t, func() {
+	assert.Panics(t, func() {
 		Must[Config](WithEnvironment(map[string]string{}))
 	})
 }
@@ -555,9 +555,9 @@ func TestMust_Success(t *testing.T) {
 		Host string `env:"HOST" default:"localhost"`
 	}
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		cfg := Must[Config](WithEnvironment(map[string]string{}))
-		require.Equal(t, "localhost", cfg.Host)
+		assert.Equal(t, "localhost", cfg.Host)
 	})
 }
 
@@ -576,7 +576,7 @@ func TestToUpperSnakeCase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			require.Equal(t, tt.expected, toUpperSnakeCase(tt.input))
+			assert.Equal(t, tt.expected, toUpperSnakeCase(tt.input))
 		})
 	}
 }

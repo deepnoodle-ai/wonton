@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestAppBasic(t *testing.T) {
 	app := New("test").Description("Test application")
-	require.Equal(t, "test", app.name)
-	require.Equal(t, "Test application", app.description)
+	assert.Equal(t, "test", app.name)
+	assert.Equal(t, "Test application", app.description)
 }
 
 func TestCommand(t *testing.T) {
@@ -30,9 +30,9 @@ func TestCommand(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"greet", "World"})
-	require.NoError(t, err)
-	require.True(t, executed)
-	require.Equal(t, "World", receivedArg)
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, "World", receivedArg)
 }
 
 func TestFlags(t *testing.T) {
@@ -57,17 +57,17 @@ func TestFlags(t *testing.T) {
 
 	// Test defaults
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.Equal(t, "default", model)
-	require.InDelta(t, 0.7, temp, 0.001)
-	require.False(t, verbose)
+	assert.NoError(t, err)
+	assert.Equal(t, "default", model)
+	assert.InDelta(t, 0.7, temp, 0.001)
+	assert.False(t, verbose)
 
 	// Test with flags
 	err = app.RunArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v"})
-	require.NoError(t, err)
-	require.Equal(t, "gpt-4", model)
-	require.InDelta(t, 0.9, temp, 0.001)
-	require.True(t, verbose)
+	assert.NoError(t, err)
+	assert.Equal(t, "gpt-4", model)
+	assert.InDelta(t, 0.9, temp, 0.001)
+	assert.True(t, verbose)
 }
 
 func TestFlagsEqualsStyle(t *testing.T) {
@@ -83,8 +83,8 @@ func TestFlagsEqualsStyle(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run", "--config=myfile.yaml"})
-	require.NoError(t, err)
-	require.Equal(t, "myfile.yaml", value)
+	assert.NoError(t, err)
+	assert.Equal(t, "myfile.yaml", value)
 }
 
 func TestRequiredFlag(t *testing.T) {
@@ -97,8 +97,8 @@ func TestRequiredFlag(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing required flag")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required flag")
 }
 
 func TestEnumFlag(t *testing.T) {
@@ -112,12 +112,12 @@ func TestEnumFlag(t *testing.T) {
 
 	// Valid value
 	err := app.RunArgs([]string{"run", "--format", "json"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Invalid value
 	err = app.RunArgs([]string{"run", "--format", "xml"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid value")
 }
 
 func TestRequiredArg(t *testing.T) {
@@ -130,8 +130,8 @@ func TestRequiredArg(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"greet"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing required argument")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required argument")
 }
 
 func TestOptionalArg(t *testing.T) {
@@ -147,12 +147,12 @@ func TestOptionalArg(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"greet"})
-	require.NoError(t, err)
-	require.Empty(t, name)
+	assert.NoError(t, err)
+	assert.Empty(t, name)
 
 	err = app.RunArgs([]string{"greet", "World"})
-	require.NoError(t, err)
-	require.Equal(t, "World", name)
+	assert.NoError(t, err)
+	assert.Equal(t, "World", name)
 }
 
 func TestGroup(t *testing.T) {
@@ -168,8 +168,8 @@ func TestGroup(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"users:list"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 }
 
 func TestMiddleware(t *testing.T) {
@@ -201,10 +201,10 @@ func TestMiddleware(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	// Middleware is applied in reverse order: cmd middleware wraps first, then global
 	// So execution is: cmd-before -> global-before -> handler -> global-after -> cmd-after
-	require.Equal(t, []string{
+	assert.Equal(t, []string{
 		"cmd-before",
 		"global-before",
 		"handler",
@@ -224,10 +224,10 @@ func TestHelp(t *testing.T) {
 	app.RunArgs([]string{"help"})
 
 	output := buf.String()
-	require.Contains(t, output, "test")
-	require.Contains(t, output, "Test application")
-	require.Contains(t, output, "1.0.0")
-	require.Contains(t, output, "run")
+	assert.Contains(t, output, "test")
+	assert.Contains(t, output, "Test application")
+	assert.Contains(t, output, "1.0.0")
+	assert.Contains(t, output, "run")
 }
 
 func TestCommandHelp(t *testing.T) {
@@ -244,13 +244,13 @@ func TestCommandHelp(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run", "--help"})
-	require.True(t, IsHelpRequested(err))
+	assert.True(t, IsHelpRequested(err))
 
 	output := buf.String()
-	require.Contains(t, output, "run")
-	require.Contains(t, output, "Run something")
-	require.Contains(t, output, "--verbose")
-	require.Contains(t, output, "<file>")
+	assert.Contains(t, output, "run")
+	assert.Contains(t, output, "Run something")
+	assert.Contains(t, output, "--verbose")
+	assert.Contains(t, output, "<file>")
 }
 
 func TestToolSchema(t *testing.T) {
@@ -265,13 +265,13 @@ func TestToolSchema(t *testing.T) {
 		})
 
 	schemas := app.GetToolSchemas()
-	require.Len(t, schemas, 1)
+	assert.Len(t, schemas, 1)
 
 	schema := schemas[0]
-	require.Equal(t, "create-file", schema.Name)
-	require.Equal(t, "Create a file", schema.Description)
-	require.Contains(t, schema.Required, "path")
-	require.Contains(t, schema.Required, "content")
+	assert.Equal(t, "create-file", schema.Name)
+	assert.Equal(t, "Create a file", schema.Description)
+	assert.Contains(t, schema.Required, "path")
+	assert.Contains(t, schema.Required, "content")
 }
 
 func TestContext(t *testing.T) {
@@ -286,9 +286,9 @@ func TestContext(t *testing.T) {
 		})
 
 	err := app.RunContext(context.Background(), []string{"run"})
-	require.NoError(t, err)
-	require.NotNil(t, gotCtx)
-	require.NotNil(t, gotCtx.Context())
+	assert.NoError(t, err)
+	assert.NotNil(t, gotCtx)
+	assert.NotNil(t, gotCtx.Context())
 }
 
 func TestContextOutput(t *testing.T) {
@@ -306,7 +306,7 @@ func TestContextOutput(t *testing.T) {
 
 	app.RunArgs([]string{"run"})
 
-	require.Equal(t, "Hello\nCount: 42\n", buf.String())
+	assert.Equal(t, "Hello\nCount: 42\n", buf.String())
 }
 
 func TestError(t *testing.T) {
@@ -317,10 +317,10 @@ func TestError(t *testing.T) {
 		Detail("detail 2")
 
 	msg := err.Error()
-	require.Contains(t, msg, "something failed")
-	require.Contains(t, msg, "try again")
-	require.Contains(t, msg, "detail 1")
-	require.Equal(t, "FAILED", err.ErrorCode())
+	assert.Contains(t, msg, "something failed")
+	assert.Contains(t, msg, "try again")
+	assert.Contains(t, msg, "detail 1")
+	assert.Equal(t, "FAILED", err.ErrorCode())
 }
 
 func TestValidation(t *testing.T) {
@@ -339,8 +339,8 @@ func TestValidation(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run", "--count", "15"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "count must be <= 10")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "count must be <= 10")
 }
 
 func TestDoubleDash(t *testing.T) {
@@ -355,8 +355,8 @@ func TestDoubleDash(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run", "--", "-flag-like", "--another"})
-	require.NoError(t, err)
-	require.Equal(t, []string{"-flag-like", "--another"}, args)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"-flag-like", "--another"}, args)
 }
 
 func TestMultipleShortFlags(t *testing.T) {
@@ -376,9 +376,9 @@ func TestMultipleShortFlags(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run", "-vd"})
-	require.NoError(t, err)
-	require.True(t, verbose)
-	require.True(t, debug)
+	assert.NoError(t, err)
+	assert.True(t, verbose)
+	assert.True(t, debug)
 }
 
 func TestRecoverMiddleware(t *testing.T) {
@@ -391,8 +391,8 @@ func TestRecoverMiddleware(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"panic"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "panic")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "panic")
 }
 
 func TestBeforeAfterMiddleware(t *testing.T) {
@@ -417,7 +417,7 @@ func TestBeforeAfterMiddleware(t *testing.T) {
 		})
 
 	app.RunArgs([]string{"run"})
-	require.Equal(t, []string{"before", "run", "after"}, order)
+	assert.Equal(t, []string{"before", "run", "after"}, order)
 }
 
 func TestUnknownCommand(t *testing.T) {
@@ -429,8 +429,8 @@ func TestUnknownCommand(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"unknown"})
-	require.Error(t, err)
-	require.True(t, strings.Contains(err.Error(), "unknown command"))
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "unknown command"))
 }
 
 func TestVersion(t *testing.T) {
@@ -441,7 +441,7 @@ func TestVersion(t *testing.T) {
 	app.stdout = &buf
 
 	app.RunArgs([]string{"version"})
-	require.Equal(t, "1.2.3\n", buf.String())
+	assert.Equal(t, "1.2.3\n", buf.String())
 }
 
 func TestCommandAlias(t *testing.T) {
@@ -458,20 +458,20 @@ func TestCommandAlias(t *testing.T) {
 
 	// Test using alias
 	err := app.RunArgs([]string{"gen"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 
 	// Test using another alias
 	executed = false
 	err = app.RunArgs([]string{"g"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 
 	// Test original name still works
 	executed = false
 	err = app.RunArgs([]string{"generate"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 }
 
 func TestGroupCommandAlias(t *testing.T) {
@@ -489,14 +489,14 @@ func TestGroupCommandAlias(t *testing.T) {
 
 	// Test using alias
 	err := app.RunArgs([]string{"users:ls"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 
 	// Test short alias
 	executed = false
 	err = app.RunArgs([]string{"users:l"})
-	require.NoError(t, err)
-	require.True(t, executed)
+	assert.NoError(t, err)
+	assert.True(t, executed)
 }
 
 // RunFlags is a test struct for flag parsing
@@ -519,7 +519,7 @@ func TestParseFlagsGeneric(t *testing.T) {
 	})
 
 	// Verify flags were registered
-	require.Len(t, cmd.flags, 5)
+	assert.Len(t, cmd.flags, 5)
 
 	// Find model flag
 	var modelFlag Flag
@@ -529,10 +529,10 @@ func TestParseFlagsGeneric(t *testing.T) {
 			break
 		}
 	}
-	require.NotNil(t, modelFlag)
-	require.Equal(t, "m", modelFlag.GetShort())
-	require.Equal(t, "claude-sonnet", modelFlag.GetDefault())
-	require.Equal(t, "Model to use", modelFlag.GetHelp())
+	assert.NotNil(t, modelFlag)
+	assert.Equal(t, "m", modelFlag.GetShort())
+	assert.Equal(t, "claude-sonnet", modelFlag.GetDefault())
+	assert.Equal(t, "Model to use", modelFlag.GetHelp())
 
 	// Find format flag and check enum
 	var formatFlag Flag
@@ -542,8 +542,8 @@ func TestParseFlagsGeneric(t *testing.T) {
 			break
 		}
 	}
-	require.NotNil(t, formatFlag)
-	require.Equal(t, []string{"json", "text", "yaml"}, formatFlag.GetEnum())
+	assert.NotNil(t, formatFlag)
+	assert.Equal(t, []string{"json", "text", "yaml"}, formatFlag.GetEnum())
 }
 
 func TestBindFlagsGeneric(t *testing.T) {
@@ -561,13 +561,13 @@ func TestBindFlagsGeneric(t *testing.T) {
 
 	// Test with custom values
 	err := app.RunArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v", "--count", "10"})
-	require.NoError(t, err)
-	require.NotNil(t, boundFlags)
-	require.Equal(t, "gpt-4", boundFlags.Model)
-	require.InDelta(t, 0.9, boundFlags.Temp, 0.001)
-	require.True(t, boundFlags.Verbose)
-	require.Equal(t, 10, boundFlags.Count)
-	require.Equal(t, "text", boundFlags.Format) // default
+	assert.NoError(t, err)
+	assert.NotNil(t, boundFlags)
+	assert.Equal(t, "gpt-4", boundFlags.Model)
+	assert.InDelta(t, 0.9, boundFlags.Temp, 0.001)
+	assert.True(t, boundFlags.Verbose)
+	assert.Equal(t, 10, boundFlags.Count)
+	assert.Equal(t, "text", boundFlags.Format) // default
 }
 
 func TestBindFlagsDefaults(t *testing.T) {
@@ -585,13 +585,13 @@ func TestBindFlagsDefaults(t *testing.T) {
 
 	// Run with no flags - should use defaults
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.NotNil(t, boundFlags)
-	require.Equal(t, "claude-sonnet", boundFlags.Model)
-	require.InDelta(t, 0.7, boundFlags.Temp, 0.001)
-	require.False(t, boundFlags.Verbose)
-	require.Equal(t, 5, boundFlags.Count)
-	require.Equal(t, "text", boundFlags.Format)
+	assert.NoError(t, err)
+	assert.NotNil(t, boundFlags)
+	assert.Equal(t, "claude-sonnet", boundFlags.Model)
+	assert.InDelta(t, 0.7, boundFlags.Temp, 0.001)
+	assert.False(t, boundFlags.Verbose)
+	assert.Equal(t, 5, boundFlags.Count)
+	assert.Equal(t, "text", boundFlags.Format)
 }
 
 func TestRequireFlagsMiddleware(t *testing.T) {
@@ -606,12 +606,12 @@ func TestRequireFlagsMiddleware(t *testing.T) {
 
 	// Missing required flag
 	err := app.RunArgs([]string{"run"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "required flag not set")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "required flag not set")
 
 	// With required flag
 	err = app.RunArgs([]string{"run", "--config", "test.yaml"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 }
 
 func TestRequireInteractiveMiddleware(t *testing.T) {
@@ -625,8 +625,8 @@ func TestRequireInteractiveMiddleware(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "interactive terminal")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive terminal")
 }
 
 func TestLoggerMiddleware(t *testing.T) {
@@ -640,11 +640,11 @@ func TestLoggerMiddleware(t *testing.T) {
 	})
 
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	output := stderr.String()
-	require.Contains(t, output, "Running: run")
-	require.Contains(t, output, "Done: run")
+	assert.Contains(t, output, "Running: run")
+	assert.Contains(t, output, "Done: run")
 }
 
 func TestLoggerMiddlewareWithError(t *testing.T) {
@@ -658,11 +658,11 @@ func TestLoggerMiddlewareWithError(t *testing.T) {
 	})
 
 	err := app.RunArgs([]string{"run"})
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	output := stderr.String()
-	require.Contains(t, output, "Running: run")
-	require.Contains(t, output, "Failed: run")
+	assert.Contains(t, output, "Running: run")
+	assert.Contains(t, output, "Failed: run")
 }
 
 func TestToolSchemaFromStruct(t *testing.T) {
@@ -674,24 +674,24 @@ func TestToolSchemaFromStruct(t *testing.T) {
 
 	schema := GenerateToolSchemaFromStruct[CreateFileParams]("create-file", "Create a file")
 
-	require.Equal(t, "create-file", schema.Name)
-	require.Equal(t, "Create a file", schema.Description)
+	assert.Equal(t, "create-file", schema.Name)
+	assert.Equal(t, "Create a file", schema.Description)
 
 	// Check parameters
-	require.Contains(t, schema.Parameters, "path")
-	require.Equal(t, "string", schema.Parameters["path"].Type)
-	require.Equal(t, "File path", schema.Parameters["path"].Description)
+	assert.Contains(t, schema.Parameters, "path")
+	assert.Equal(t, "string", schema.Parameters["path"].Type)
+	assert.Equal(t, "File path", schema.Parameters["path"].Description)
 
-	require.Contains(t, schema.Parameters, "content")
-	require.Equal(t, "string", schema.Parameters["content"].Type)
+	assert.Contains(t, schema.Parameters, "content")
+	assert.Equal(t, "string", schema.Parameters["content"].Type)
 
-	require.Contains(t, schema.Parameters, "force")
-	require.Equal(t, "boolean", schema.Parameters["force"].Type)
+	assert.Contains(t, schema.Parameters, "force")
+	assert.Equal(t, "boolean", schema.Parameters["force"].Type)
 
 	// Check required
-	require.Contains(t, schema.Required, "path")
-	require.Contains(t, schema.Required, "content")
-	require.NotContains(t, schema.Required, "force")
+	assert.Contains(t, schema.Required, "path")
+	assert.Contains(t, schema.Required, "content")
+	assert.NotContains(t, schema.Required, "force")
 }
 
 func TestToolSchemaWithFlags(t *testing.T) {
@@ -707,18 +707,18 @@ func TestToolSchemaWithFlags(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	schemas := app.GetToolSchemas()
-	require.Len(t, schemas, 1)
+	assert.Len(t, schemas, 1)
 
 	schema := schemas[0]
-	require.Equal(t, "run", schema.Name)
+	assert.Equal(t, "run", schema.Name)
 
 	// Check parameter types
-	require.Equal(t, "string", schema.Parameters["model"].Type)
-	require.Equal(t, "claude-sonnet", schema.Parameters["model"].Default)
+	assert.Equal(t, "string", schema.Parameters["model"].Type)
+	assert.Equal(t, "claude-sonnet", schema.Parameters["model"].Default)
 
-	require.Equal(t, "number", schema.Parameters["temperature"].Type)
+	assert.Equal(t, "number", schema.Parameters["temperature"].Type)
 
-	require.Equal(t, "boolean", schema.Parameters["stream"].Type)
+	assert.Equal(t, "boolean", schema.Parameters["stream"].Type)
 }
 
 func TestToolSchemaInGroup(t *testing.T) {
@@ -731,10 +731,10 @@ func TestToolSchemaInGroup(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	schemas := app.GetToolSchemas()
-	require.Len(t, schemas, 1)
+	assert.Len(t, schemas, 1)
 
 	// Should be prefixed with group name
-	require.Equal(t, "files:create", schemas[0].Name)
+	assert.Equal(t, "files:create", schemas[0].Name)
 }
 
 func TestToolsJSON(t *testing.T) {
@@ -746,9 +746,9 @@ func TestToolsJSON(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	jsonStr, err := app.ToolsJSON()
-	require.NoError(t, err)
-	require.Contains(t, jsonStr, "read")
-	require.Contains(t, jsonStr, "path")
+	assert.NoError(t, err)
+	assert.Contains(t, jsonStr, "read")
+	assert.Contains(t, jsonStr, "path")
 }
 
 func TestContextNArg(t *testing.T) {
@@ -763,8 +763,8 @@ func TestContextNArg(t *testing.T) {
 	})
 
 	app.RunArgs([]string{"run", "a", "b", "c"})
-	require.Equal(t, 3, narg)
-	require.Equal(t, []string{"a", "b", "c"}, args)
+	assert.Equal(t, 3, narg)
+	assert.Equal(t, []string{"a", "b", "c"}, args)
 }
 
 func TestContextFlagTypes(t *testing.T) {
@@ -797,21 +797,21 @@ func TestContextFlagTypes(t *testing.T) {
 	})
 
 	err := app.RunArgs([]string{"run", "--str", "hello", "--num", "42", "--float", "3.14", "--bool"})
-	require.NoError(t, err)
-	require.Equal(t, "hello", str)
-	require.Equal(t, 42, num)
-	require.Equal(t, int64(42), num64)
-	require.InDelta(t, 3.14, flt, 0.001)
-	require.True(t, b)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", str)
+	assert.Equal(t, 42, num)
+	assert.Equal(t, int64(42), num64)
+	assert.InDelta(t, 3.14, flt, 0.001)
+	assert.True(t, b)
 }
 
 func TestExitError(t *testing.T) {
 	err := Exit(42)
-	require.Equal(t, 42, GetExitCode(err))
+	assert.Equal(t, 42, GetExitCode(err))
 
 	exitErr, ok := err.(*ExitError)
-	require.True(t, ok)
-	require.Equal(t, 42, exitErr.Code)
+	assert.True(t, ok)
+	assert.Equal(t, 42, exitErr.Code)
 }
 
 func TestHiddenCommand(t *testing.T) {
@@ -825,7 +825,7 @@ func TestHiddenCommand(t *testing.T) {
 	app.RunArgs([]string{"help"})
 
 	output := buf.String()
-	require.Contains(t, output, "visible")
+	assert.Contains(t, output, "visible")
 	// Hidden command should still exist but help display logic would hide it
 	// (Note: current implementation doesn't filter hidden in showHelp - could be added)
 }
@@ -842,13 +842,13 @@ func TestDeprecatedCommand(t *testing.T) {
 
 	// Command should still work
 	err := app.RunArgs([]string{"old"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Help should show deprecation
 	app.RunArgs([]string{"old", "--help"})
 	output := buf.String()
-	require.Contains(t, output, "DEPRECATED")
-	require.Contains(t, output, "Use 'new' instead")
+	assert.Contains(t, output, "DEPRECATED")
+	assert.Contains(t, output, "Use 'new' instead")
 }
 
 func TestLongDescription(t *testing.T) {
@@ -863,7 +863,7 @@ func TestLongDescription(t *testing.T) {
 
 	app.RunArgs([]string{"run", "--help"})
 	output := buf.String()
-	require.Contains(t, output, "longer description")
+	assert.Contains(t, output, "longer description")
 }
 
 func TestHiddenFlag(t *testing.T) {
@@ -881,8 +881,8 @@ func TestHiddenFlag(t *testing.T) {
 
 	app.RunArgs([]string{"run", "--help"})
 	output := buf.String()
-	require.Contains(t, output, "visible")
-	require.NotContains(t, output, "Hidden flag")
+	assert.Contains(t, output, "visible")
+	assert.NotContains(t, output, "Hidden flag")
 }
 
 func TestIsTTY(t *testing.T) {
@@ -909,13 +909,13 @@ func TestEnvVarForFlag(t *testing.T) {
 
 	// Should use env var when flag not provided
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.Equal(t, "secret-key", key)
+	assert.NoError(t, err)
+	assert.Equal(t, "secret-key", key)
 }
 
 func TestErrorf(t *testing.T) {
 	err := Errorf("failed with value: %d", 42)
-	require.Contains(t, err.Error(), "failed with value: 42")
+	assert.Contains(t, err.Error(), "failed with value: 42")
 }
 
 // Test app.Test() infrastructure
@@ -931,10 +931,10 @@ func TestAppTestInfrastructure(t *testing.T) {
 
 	result := app.Test(t, TestArgs("echo", "hello"))
 
-	require.True(t, result.Success())
-	require.Equal(t, 0, result.ExitCode)
-	require.Contains(t, result.Stdout, "Echo: hello")
-	require.True(t, result.Contains("hello"))
+	assert.True(t, result.Success())
+	assert.Equal(t, 0, result.ExitCode)
+	assert.Contains(t, result.Stdout, "Echo: hello")
+	assert.True(t, result.Contains("hello"))
 }
 
 func TestAppTestWithEnv(t *testing.T) {
@@ -952,8 +952,8 @@ func TestAppTestWithEnv(t *testing.T) {
 		TestEnv("TEST_KEY", "secret-value"),
 	)
 
-	require.True(t, result.Success())
-	require.Contains(t, result.Stdout, "Key: secret-value")
+	assert.True(t, result.Success())
+	assert.Contains(t, result.Stdout, "Key: secret-value")
 }
 
 func TestAppTestFailure(t *testing.T) {
@@ -964,9 +964,9 @@ func TestAppTestFailure(t *testing.T) {
 
 	result := app.Test(t, TestArgs("fail"))
 
-	require.True(t, result.Failed())
-	require.Equal(t, 1, result.ExitCode)
-	require.NotNil(t, result.Err)
+	assert.True(t, result.Failed())
+	assert.Equal(t, 1, result.ExitCode)
+	assert.NotNil(t, result.Err)
 }
 
 // Test hidden commands filtering
@@ -981,8 +981,8 @@ func TestHiddenCommandsNotInHelp(t *testing.T) {
 	app.RunArgs([]string{"help"})
 
 	output := buf.String()
-	require.Contains(t, output, "public")
-	require.NotContains(t, output, "secret")
+	assert.Contains(t, output, "public")
+	assert.NotContains(t, output, "secret")
 }
 
 // Test Interactive/NonInteractive dispatch
@@ -1004,8 +1004,8 @@ func TestInteractiveDispatch(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.Equal(t, "interactive", handlerCalled)
+	assert.NoError(t, err)
+	assert.Equal(t, "interactive", handlerCalled)
 }
 
 func TestNonInteractiveDispatch(t *testing.T) {
@@ -1026,8 +1026,8 @@ func TestNonInteractiveDispatch(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.Equal(t, "non-interactive", handlerCalled)
+	assert.NoError(t, err)
+	assert.Equal(t, "non-interactive", handlerCalled)
 }
 
 func TestFallbackToDefaultHandler(t *testing.T) {
@@ -1045,8 +1045,8 @@ func TestFallbackToDefaultHandler(t *testing.T) {
 		})
 
 	err := app.RunArgs([]string{"run"})
-	require.NoError(t, err)
-	require.Equal(t, "default", handlerCalled)
+	assert.NoError(t, err)
+	assert.Equal(t, "default", handlerCalled)
 }
 
 // Test ArgsRange validation
@@ -1059,20 +1059,20 @@ func TestArgsRange(t *testing.T) {
 
 	// Too few args
 	err := app.RunArgs([]string{"add"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "at least 1 argument")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "at least 1 argument")
 
 	// Correct number
 	err = app.RunArgs([]string{"add", "a"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	err = app.RunArgs([]string{"add", "a", "b", "c"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Too many args
 	err = app.RunArgs([]string{"add", "a", "b", "c", "d"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "at most 3 argument")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "at most 3 argument")
 }
 
 func TestExactArgs(t *testing.T) {
@@ -1084,15 +1084,15 @@ func TestExactArgs(t *testing.T) {
 
 	// Too few
 	err := app.RunArgs([]string{"pair", "a"})
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	// Exact
 	err = app.RunArgs([]string{"pair", "a", "b"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Too many
 	err = app.RunArgs([]string{"pair", "a", "b", "c"})
-	require.Error(t, err)
+	assert.Error(t, err)
 }
 
 func TestNoArgs(t *testing.T) {
@@ -1104,12 +1104,12 @@ func TestNoArgs(t *testing.T) {
 
 	// No args - ok
 	err := app.RunArgs([]string{"status"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// With args - error
 	err = app.RunArgs([]string{"status", "extra"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "accepts no arguments")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "accepts no arguments")
 }
 
 func TestWithValidation(t *testing.T) {
@@ -1126,11 +1126,11 @@ func TestWithValidation(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	err := app.RunArgs([]string{"set", "valid"})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	err = app.RunArgs([]string{"set", "invalid"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid value")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid value")
 }
 
 // Test global flags
@@ -1152,9 +1152,9 @@ func TestGlobalFlags(t *testing.T) {
 
 	// Use global flags
 	err := app.RunArgs([]string{"run", "-v", "-c", "myconfig.yaml"})
-	require.NoError(t, err)
-	require.True(t, verbose)
-	require.Equal(t, "myconfig.yaml", config)
+	assert.NoError(t, err)
+	assert.True(t, verbose)
+	assert.Equal(t, "myconfig.yaml", config)
 }
 
 func TestGlobalFlagsInHelp(t *testing.T) {
@@ -1172,10 +1172,10 @@ func TestGlobalFlagsInHelp(t *testing.T) {
 	app.RunArgs([]string{"run", "--help"})
 
 	output := buf.String()
-	require.Contains(t, output, "Flags:")
-	require.Contains(t, output, "output")
-	require.Contains(t, output, "Global Flags:")
-	require.Contains(t, output, "verbose")
+	assert.Contains(t, output, "Flags:")
+	assert.Contains(t, output, "output")
+	assert.Contains(t, output, "Global Flags:")
+	assert.Contains(t, output, "verbose")
 }
 
 // Test shell completions
@@ -1187,13 +1187,13 @@ func TestBashCompletion(t *testing.T) {
 	app.Command("build").Description("Build something").Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateBashCompletion(&buf)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	output := buf.String()
-	require.Contains(t, output, "myapp")
-	require.Contains(t, output, "run")
-	require.Contains(t, output, "build")
-	require.Contains(t, output, "complete -F")
+	assert.Contains(t, output, "myapp")
+	assert.Contains(t, output, "run")
+	assert.Contains(t, output, "build")
+	assert.Contains(t, output, "complete -F")
 }
 
 func TestZshCompletion(t *testing.T) {
@@ -1203,11 +1203,11 @@ func TestZshCompletion(t *testing.T) {
 	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateZshCompletion(&buf)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	output := buf.String()
-	require.Contains(t, output, "#compdef myapp")
-	require.Contains(t, output, "run")
+	assert.Contains(t, output, "#compdef myapp")
+	assert.Contains(t, output, "run")
 }
 
 func TestFishCompletion(t *testing.T) {
@@ -1220,26 +1220,26 @@ func TestFishCompletion(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	err := app.GenerateFishCompletion(&buf)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	output := buf.String()
-	require.Contains(t, output, "complete -c myapp")
-	require.Contains(t, output, "run")
-	require.Contains(t, output, "verbose")
+	assert.Contains(t, output, "complete -c myapp")
+	assert.Contains(t, output, "run")
+	assert.Contains(t, output, "verbose")
 }
 
 func TestAddCompletionCommand(t *testing.T) {
 	app := New("myapp").Description("My app")
 	app.AddCompletionCommand()
 
-	require.Contains(t, app.commands, "completion")
+	assert.Contains(t, app.commands, "completion")
 
 	var buf bytes.Buffer
 	app.stdout = &buf
 
 	err := app.RunArgs([]string{"completion", "bash"})
-	require.NoError(t, err)
-	require.Contains(t, buf.String(), "complete -F")
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "complete -F")
 }
 
 // Test conversation basics
@@ -1258,10 +1258,10 @@ func TestConversationHistory(t *testing.T) {
 	conv.AddMessage("assistant", "Hi there!")
 
 	history := conv.History()
-	require.Len(t, history, 3)
-	require.Equal(t, "system", history[0].Role)
-	require.Equal(t, "user", history[1].Role)
-	require.Equal(t, "assistant", history[2].Role)
+	assert.Len(t, history, 3)
+	assert.Equal(t, "system", history[0].Role)
+	assert.Equal(t, "user", history[1].Role)
+	assert.Equal(t, "assistant", history[2].Role)
 }
 
 func TestConversationReply(t *testing.T) {
@@ -1278,9 +1278,9 @@ func TestConversationReply(t *testing.T) {
 	conv := NewConversation(ctx)
 	conv.Reply("", "Hello, world!")
 
-	require.Contains(t, buf.String(), "Hello, world!")
-	require.Len(t, conv.History(), 1)
-	require.Equal(t, "assistant", conv.History()[0].Role)
+	assert.Contains(t, buf.String(), "Hello, world!")
+	assert.Len(t, conv.History(), 1)
+	assert.Equal(t, "assistant", conv.History()[0].Role)
 }
 
 // Test TestResult helpers
@@ -1295,19 +1295,19 @@ func TestTestResultHelpers(t *testing.T) {
 		},
 	}
 
-	require.True(t, result.Success())
-	require.False(t, result.Failed())
-	require.True(t, result.Contains("hello"))
-	require.True(t, result.StderrContains("warning"))
-	require.Equal(t, 2, result.EventCount())
-	require.NotNil(t, result.GetEvent(0))
-	require.Nil(t, result.GetEvent(10))
+	assert.True(t, result.Success())
+	assert.False(t, result.Failed())
+	assert.True(t, result.Contains("hello"))
+	assert.True(t, result.StderrContains("warning"))
+	assert.Equal(t, 2, result.EventCount())
+	assert.NotNil(t, result.GetEvent(0))
+	assert.Nil(t, result.GetEvent(10))
 }
 
 func TestTestApp(t *testing.T) {
 	app := TestApp("test")
-	require.False(t, app.isInteractive)
-	require.NotNil(t, app.stdin)
-	require.NotNil(t, app.stdout)
-	require.NotNil(t, app.stderr)
+	assert.False(t, app.isInteractive)
+	assert.NotNil(t, app.stdin)
+	assert.NotNil(t, app.stdout)
+	assert.NotNil(t, app.stderr)
 }
