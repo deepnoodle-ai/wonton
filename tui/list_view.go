@@ -234,8 +234,8 @@ func CheckboxList(items []ListItem, checked []bool, cursor *int) *checkboxListVi
 		cursor:        cursor,
 		style:         NewStyle(),
 		cursorStyle:   NewStyle().WithBold(),
-		checkedChar:   "☑",
-		uncheckedChar: "☐",
+		checkedChar:   "[x]",
+		uncheckedChar: "[ ]",
 	}
 }
 

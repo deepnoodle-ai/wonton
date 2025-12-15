@@ -22,26 +22,24 @@ func (app *BorderApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
 	case tui.ResizeEvent:
 		// Update stored dimensions on resize
 		app.width = e.Width
 		app.height = e.Height
 	}
-
 	return nil
 }
 
 // View returns the declarative view structure.
 func (app *BorderApp) View() tui.View {
 	// Info text at the top
-	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)", app.width, app.height)
+	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)",
+		app.width, app.height)
 
 	return tui.VStack(
 		tui.Text("%s", info).Fg(tui.ColorYellow),
-		tui.Bordered(
-			tui.Spacer(),
-		).BorderFg(tui.ColorCyan),
+		tui.Bordered(tui.Spacer()).
+			BorderFg(tui.ColorCyan),
 	)
 }
 
