@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
@@ -42,6 +43,10 @@ type TextInput struct {
 	// Multiline mode
 	MultilineMode bool // When true, Shift+Enter inserts newlines
 	SubmitOnEnter bool // When true, Enter triggers OnSubmit (default: true)
+
+	// Cursor blink
+	CursorBlink         bool          // When true, cursor blinks
+	CursorBlinkInterval time.Duration // Blink interval (default 530ms)
 
 	// Internal
 	focused  bool
@@ -147,6 +152,19 @@ func (t *TextInput) WithStyle(style Style) *TextInput {
 	return t
 }
 
+// WithCursorBlink enables or disables cursor blinking.
+func (t *TextInput) WithCursorBlink(enabled bool) *TextInput {
+	t.CursorBlink = enabled
+	return t
+}
+
+// WithCursorBlinkInterval sets the cursor blink interval.
+// Default is 530ms if not set.
+func (t *TextInput) WithCursorBlinkInterval(interval time.Duration) *TextInput {
+	t.CursorBlinkInterval = interval
+	return t
+}
+
 // Draw renders the input
 func (t *TextInput) Draw(frame RenderFrame) {
 	bounds := t.GetBounds()
@@ -198,7 +216,7 @@ func (t *TextInput) Draw(frame RenderFrame) {
 				style = t.PasteStyle
 			}
 
-			// Handle segment character by character to deal with newlines
+			// Handle segment character by character to deal with newlines and wrapping
 			for _, r := range seg.display {
 				if r == '\n' {
 					// Move to next line
@@ -212,8 +230,12 @@ func (t *TextInput) Draw(frame RenderFrame) {
 
 				charWidth := runewidth.RuneWidth(r)
 				if x+charWidth > drawX+width {
-					// Would overflow line - truncate
-					break
+					// Wrap to next line
+					y++
+					x = drawX
+					if y >= drawY+height {
+						break
+					}
 				}
 
 				frame.PrintStyled(x, y, string(r), style)
@@ -228,26 +250,40 @@ func (t *TextInput) Draw(frame RenderFrame) {
 
 	// Draw cursor if focused
 	if t.focused {
-		// Calculate cursor position accounting for newlines
-		cursorX, cursorY := t.getCursorXY(drawX, drawY, width)
+		// Check if cursor should be visible (blinking logic)
+		cursorVisible := true
+		if t.CursorBlink {
+			interval := t.CursorBlinkInterval
+			if interval == 0 {
+				interval = 530 * time.Millisecond // Default blink rate
+			}
+			// Use time-based blinking: cursor visible for first half of interval
+			phase := time.Now().UnixMilli() % int64(interval.Milliseconds()*2)
+			cursorVisible = phase < int64(interval.Milliseconds())
+		}
 
-		if cursorY < drawY+height && cursorX < drawX+width {
-			charUnderCursor := " "
-			if showingPlaceholder {
-				// Show first char of placeholder under cursor
-				r, _ := utf8.DecodeRuneInString(t.Placeholder)
-				charUnderCursor = string(r)
-			} else if t.CursorPos < len(displayText) {
-				r, _ := utf8.DecodeRuneInString(displayText[t.CursorPos:])
-				if r != '\n' {
-					if t.MaskChar != 0 {
-						charUnderCursor = string(t.MaskChar)
-					} else {
-						charUnderCursor = string(r)
+		if cursorVisible {
+			// Calculate cursor position accounting for newlines
+			cursorX, cursorY := t.getCursorXY(drawX, drawY, width)
+
+			if cursorY < drawY+height && cursorX < drawX+width {
+				charUnderCursor := " "
+				if showingPlaceholder {
+					// Show first char of placeholder under cursor
+					r, _ := utf8.DecodeRuneInString(t.Placeholder)
+					charUnderCursor = string(r)
+				} else if t.CursorPos < len(displayText) {
+					r, _ := utf8.DecodeRuneInString(displayText[t.CursorPos:])
+					if r != '\n' {
+						if t.MaskChar != 0 {
+							charUnderCursor = string(t.MaskChar)
+						} else {
+							charUnderCursor = string(r)
+						}
 					}
 				}
+				frame.PrintStyled(cursorX, cursorY, charUnderCursor, t.CursorStyle)
 			}
-			frame.PrintStyled(cursorX, cursorY, charUnderCursor, t.CursorStyle)
 		}
 	}
 }
@@ -266,14 +302,152 @@ func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
 			y++
 			x = startX
 		} else {
-			x += runewidth.RuneWidth(r)
-			if x >= startX+width {
-				// Wrap would occur - for now just stop at edge
-				x = startX + width - 1
+			charWidth := runewidth.RuneWidth(r)
+			if x+charWidth > startX+width {
+				// Wrap to next line
+				y++
+				x = startX
 			}
+			x += charWidth
 		}
 	}
 	return x, y
+}
+
+// cursorUp moves cursor to the previous visual line, maintaining x position where possible.
+// Returns new cursor position (byte offset).
+func (t *TextInput) cursorUp(displayText string) int {
+	bounds := t.GetBounds()
+	width := bounds.Dx()
+	if width <= 0 {
+		width = 80 // fallback
+	}
+
+	// Build line info: each entry is (startBytePos, endBytePos) for a visual line
+	type lineInfo struct {
+		start, end int
+	}
+	var lines []lineInfo
+	lineStart := 0
+	x := 0
+
+	for i, r := range displayText {
+		if r == '\n' {
+			lines = append(lines, lineInfo{lineStart, i})
+			lineStart = i + 1
+			x = 0
+			continue
+		}
+		charWidth := runewidth.RuneWidth(r)
+		if x+charWidth > width {
+			lines = append(lines, lineInfo{lineStart, i})
+			lineStart = i
+			x = charWidth
+		} else {
+			x += charWidth
+		}
+	}
+	lines = append(lines, lineInfo{lineStart, len(displayText)})
+
+	// Find which line the cursor is on
+	cursorLine := 0
+	cursorXOffset := 0
+	for i, line := range lines {
+		if t.CursorPos >= line.start && t.CursorPos <= line.end {
+			cursorLine = i
+			// Calculate x offset within this line
+			for j, r := range displayText[line.start:t.CursorPos] {
+				_ = j
+				cursorXOffset += runewidth.RuneWidth(r)
+			}
+			break
+		}
+	}
+
+	// Move to previous line
+	if cursorLine == 0 {
+		return t.CursorPos // Already on first line
+	}
+
+	prevLine := lines[cursorLine-1]
+	// Find position on previous line at same x offset
+	targetX := 0
+	for i, r := range displayText[prevLine.start:prevLine.end] {
+		charWidth := runewidth.RuneWidth(r)
+		if targetX+charWidth > cursorXOffset {
+			return prevLine.start + i
+		}
+		targetX += charWidth
+	}
+	return prevLine.end
+}
+
+// cursorDown moves cursor to the next visual line, maintaining x position where possible.
+// Returns new cursor position (byte offset).
+func (t *TextInput) cursorDown(displayText string) int {
+	bounds := t.GetBounds()
+	width := bounds.Dx()
+	if width <= 0 {
+		width = 80 // fallback
+	}
+
+	// Build line info: each entry is (startBytePos, endBytePos) for a visual line
+	type lineInfo struct {
+		start, end int
+	}
+	var lines []lineInfo
+	lineStart := 0
+	x := 0
+
+	for i, r := range displayText {
+		if r == '\n' {
+			lines = append(lines, lineInfo{lineStart, i})
+			lineStart = i + 1
+			x = 0
+			continue
+		}
+		charWidth := runewidth.RuneWidth(r)
+		if x+charWidth > width {
+			lines = append(lines, lineInfo{lineStart, i})
+			lineStart = i
+			x = charWidth
+		} else {
+			x += charWidth
+		}
+	}
+	lines = append(lines, lineInfo{lineStart, len(displayText)})
+
+	// Find which line the cursor is on
+	cursorLine := 0
+	cursorXOffset := 0
+	for i, line := range lines {
+		if t.CursorPos >= line.start && t.CursorPos <= line.end {
+			cursorLine = i
+			// Calculate x offset within this line
+			for j, r := range displayText[line.start:t.CursorPos] {
+				_ = j
+				cursorXOffset += runewidth.RuneWidth(r)
+			}
+			break
+		}
+	}
+
+	// Move to next line
+	if cursorLine >= len(lines)-1 {
+		return t.CursorPos // Already on last line
+	}
+
+	nextLine := lines[cursorLine+1]
+	// Find position on next line at same x offset
+	targetX := 0
+	for i, r := range displayText[nextLine.start:nextLine.end] {
+		charWidth := runewidth.RuneWidth(r)
+		if targetX+charWidth > cursorXOffset {
+			return nextLine.start + i
+		}
+		targetX += charWidth
+	}
+	return nextLine.end
 }
 
 // findSegmentAtPos returns the segment index and offset within segment for a display position
@@ -442,6 +616,66 @@ func (t *TextInput) deleteForward() bool {
 	return true
 }
 
+// deleteToBeginning deletes everything from cursor to beginning
+func (t *TextInput) deleteToBeginning() {
+	if t.CursorPos == 0 {
+		return
+	}
+	// Keep deleting backward until we reach the beginning
+	for t.CursorPos > 0 {
+		t.deleteBackward()
+	}
+}
+
+// deleteToEnd deletes everything from cursor to end
+func (t *TextInput) deleteToEnd() {
+	displayLen := t.displayLen()
+	if t.CursorPos >= displayLen {
+		return
+	}
+	// Keep deleting forward until we reach the end
+	for t.CursorPos < t.displayLen() {
+		t.deleteForward()
+	}
+}
+
+// deleteWordBackward deletes the word before the cursor
+func (t *TextInput) deleteWordBackward() {
+	if t.CursorPos == 0 {
+		return
+	}
+
+	displayText := t.DisplayText()
+
+	// Skip any trailing whitespace
+	for t.CursorPos > 0 {
+		r, w := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
+		if !isWordChar(r) {
+			t.deleteBackward()
+			displayText = t.DisplayText()
+		} else {
+			_ = w
+			break
+		}
+	}
+
+	// Delete word characters
+	for t.CursorPos > 0 {
+		r, _ := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
+		if isWordChar(r) {
+			t.deleteBackward()
+			displayText = t.DisplayText()
+		} else {
+			break
+		}
+	}
+}
+
+// isWordChar returns true if r is a word character (alphanumeric or underscore)
+func isWordChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+
 // mergeAdjacentTextSegments combines adjacent regular text segments
 // (not special segments like pastes or newlines)
 func (t *TextInput) mergeAdjacentTextSegments() {
@@ -488,6 +722,26 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			t.MarkDirty()
 		}
 		return true
+	case KeyArrowUp:
+		if t.MultilineMode {
+			newPos := t.cursorUp(displayText)
+			if newPos != t.CursorPos {
+				t.CursorPos = newPos
+				t.MarkDirty()
+			}
+			return true
+		}
+		return false // Let app handle if not multiline
+	case KeyArrowDown:
+		if t.MultilineMode {
+			newPos := t.cursorDown(displayText)
+			if newPos != t.CursorPos {
+				t.CursorPos = newPos
+				t.MarkDirty()
+			}
+			return true
+		}
+		return false // Let app handle if not multiline
 	case KeyBackspace:
 		if t.deleteBackward() {
 			if t.OnChange != nil {
@@ -504,13 +758,43 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			t.MarkDirty()
 		}
 		return true
-	case KeyHome:
+	case KeyHome, KeyCtrlA:
 		t.CursorPos = 0
 		t.MarkDirty()
 		return true
-	case KeyEnd:
+	case KeyEnd, KeyCtrlE:
 		t.CursorPos = t.displayLen()
 		t.MarkDirty()
+		return true
+	case KeyCtrlU:
+		// Delete from cursor to beginning of line
+		if t.CursorPos > 0 {
+			t.deleteToBeginning()
+			if t.OnChange != nil {
+				t.OnChange(t.Value())
+			}
+			t.MarkDirty()
+		}
+		return true
+	case KeyCtrlK:
+		// Delete from cursor to end of line
+		if t.CursorPos < t.displayLen() {
+			t.deleteToEnd()
+			if t.OnChange != nil {
+				t.OnChange(t.Value())
+			}
+			t.MarkDirty()
+		}
+		return true
+	case KeyCtrlW:
+		// Delete word backward
+		if t.CursorPos > 0 {
+			t.deleteWordBackward()
+			if t.OnChange != nil {
+				t.OnChange(t.Value())
+			}
+			t.MarkDirty()
+		}
 		return true
 	case KeyEnter:
 		if event.Shift && t.MultilineMode {

@@ -2,209 +2,137 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// PastePlaceholderApp demonstrates the TextInput widget's paste placeholder mode.
-// Multi-line pastes are shown as "[pasted N lines]" placeholders that can be
-// deleted atomically with backspace/delete.
+// PastePlaceholderApp demonstrates the Input component's paste placeholder mode.
+//
+// When paste placeholder mode is enabled, multi-line pastes are collapsed into
+// a single "[pasted N lines]" placeholder in the display. The actual content is
+// preserved and returned by Value(). The placeholder can be deleted atomically
+// with a single backspace.
 type PastePlaceholderApp struct {
-	terminal *tui.Terminal
-	input    *tui.TextInput
-	message  string
-
-	// Submitted result
-	submitted bool
-	result    string
+	input        string
+	status       string
+	scrollY      int  // scroll position for content viewer
+	contentFocus bool // true when content viewer has focus
 }
 
 func (app *PastePlaceholderApp) Init() error {
-	app.terminal.EnableBracketedPaste()
-	app.reset()
+	app.status = "Try pasting multi-line text (e.g. some code)"
 	return nil
-}
-
-func (app *PastePlaceholderApp) reset() {
-	app.input = tui.NewTextInput().
-		WithPlaceholder("type or paste here...").
-		WithPastePlaceholderMode(true).
-		WithMultilineMode(true)
-	app.input.SetFocused(true)
-	app.message = "Paste multi-line text to see the placeholder!"
-	app.submitted = false
-	app.result = ""
-}
-
-func (app *PastePlaceholderApp) Destroy() {
-	app.terminal.DisableBracketedPaste()
 }
 
 func (app *PastePlaceholderApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		if app.submitted {
-			// Any key after submit resets for another try
-			app.reset()
-			return nil
-		}
-
-		// Check for paste
+		// Update status on paste
 		if e.Paste != "" {
-			app.input.HandlePaste(e.Paste)
 			lines := strings.Split(e.Paste, "\n")
 			if len(lines) > 1 {
-				app.message = fmt.Sprintf("Pasted %d lines - backspace deletes entire paste", len(lines))
+				app.status = "Pasted as placeholder — Backspace deletes it all at once"
 			} else {
-				app.message = fmt.Sprintf("Pasted %d chars", len(e.Paste))
+				app.status = "Pasted (single line, no placeholder)"
 			}
-			return nil
 		}
 
 		switch e.Key {
 		case tui.KeyEscape, tui.KeyCtrlC:
 			return []tui.Cmd{tui.Quit()}
-		case tui.KeyEnter:
-			if e.Shift {
-				// Shift+Enter: let TextInput handle it (inserts newline)
-				app.input.HandleKey(e)
-				app.message = ""
-			} else {
-				// Enter: submit
-				app.result = app.input.Value()
-				app.submitted = true
-			}
-			return nil
+		case tui.KeyTab:
+			// Toggle focus between input and content viewer
+			app.contentFocus = !app.contentFocus
 		case tui.KeyCtrlU:
-			app.input.Clear()
-			app.message = "Cleared"
-			return nil
-		default:
-			app.input.HandleKey(e)
-			app.message = ""
+			app.input = ""
+			app.scrollY = 0
+			app.status = "Try pasting multi-line text (e.g. some code)"
+		case tui.KeyArrowUp:
+			if app.contentFocus && app.scrollY > 0 {
+				app.scrollY--
+			}
+		case tui.KeyArrowDown:
+			if app.contentFocus {
+				app.scrollY++
+			}
 		}
 	}
 	return nil
 }
 
 func (app *PastePlaceholderApp) View() tui.View {
-	if app.submitted {
-		return app.resultView()
-	}
-	return app.inputView()
-}
-
-func (app *PastePlaceholderApp) inputView() tui.View {
-	// Stats
-	displayLen := len(app.input.DisplayText())
-	actualLen := len(app.input.Value())
-	statsText := fmt.Sprintf("Display: %d chars | Actual: %d chars", displayLen, actualLen)
-
-	var children []tui.View
-
-	// Title
-	children = append(children,
-		tui.Text("Paste Placeholder Demo").Bold().Fg(tui.ColorCyan),
-		tui.Text("Multi-line pastes show as '[pasted N lines]' - deleted atomically").Fg(tui.ColorBrightBlack),
-		tui.Text("Enter: submit | Shift+Enter: newline | ESC: quit | Ctrl+U: clear").Fg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
-	)
-
-	// Input label and widget
-	children = append(children,
-		tui.Text("Input:").Bold(),
-		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
-			app.input.SetBounds(bounds)
-			app.input.Draw(frame)
-		}).Height(5).Width(50),
-		tui.Spacer().MinHeight(1),
-	)
-
-	// Status message
-	if app.message != "" {
-		children = append(children, tui.Text("%s", app.message).Fg(tui.ColorGreen))
-		children = append(children, tui.Spacer().MinHeight(1))
+	// Count actual lines
+	actualLines := 0
+	if app.input != "" {
+		actualLines = strings.Count(app.input, "\n") + 1
 	}
 
-	// Stats
-	children = append(children, tui.Text("%s", statsText).Fg(tui.ColorYellow))
-
-	return tui.VStack(children...)
-}
-
-func (app *PastePlaceholderApp) resultView() tui.View {
-	lines := strings.Split(app.result, "\n")
-	maxLines := 15
-
-	var children []tui.View
-
-	// Title
-	children = append(children,
-		tui.Text("Submitted Content").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
-	)
-
-	// Show result with line numbers using Canvas for custom formatting
-	children = append(children,
-		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
-			lineNumStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
-			contentStyle := tui.NewStyle().WithForeground(tui.ColorWhite)
-			hintStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
-			width := bounds.Dx()
-
-			y := 0
-			for i, line := range lines {
-				if i >= maxLines {
-					frame.PrintStyled(0, y, fmt.Sprintf("... (%d more lines)", len(lines)-maxLines), hintStyle)
-					break
-				}
-				if y >= bounds.Dy() {
-					break
-				}
-				frame.PrintStyled(0, y, fmt.Sprintf("%3d │ ", i+1), lineNumStyle)
-				displayLine := line
-				if len(displayLine) > width-8 {
-					displayLine = displayLine[:width-11] + "..."
-				}
-				frame.PrintStyled(6, y, displayLine, contentStyle)
-				y++
+	// Build content lines for the scrollable view
+	var contentView tui.View
+	if app.input == "" {
+		contentView = tui.Text("(empty)").Fg(tui.ColorBrightBlack)
+	} else {
+		lines := strings.Split(app.input, "\n")
+		lineViews := make([]tui.View, len(lines))
+		for i, line := range lines {
+			if line == "" {
+				lineViews[i] = tui.Text(" ") // show empty lines
+			} else {
+				lineViews[i] = tui.Text("%s", line).Fg(tui.ColorWhite)
 			}
-		}).Height(maxLines+1).Width(80),
-		tui.Spacer().MinHeight(1),
-	)
+		}
+		contentView = tui.VStack(lineViews...)
+	}
 
-	// Stats
-	statsText := fmt.Sprintf("Total: %d chars, %d lines", len(app.result), len(lines))
-	children = append(children,
-		tui.Text("%s", statsText).Fg(tui.ColorYellow),
+	return tui.VStack(
+		// Header
+		tui.Text("Paste Placeholder Mode").Bold().Fg(tui.ColorCyan),
+		tui.Text("Paste multi-line text to see it collapse into a placeholder.").Fg(tui.ColorBrightBlack),
+		tui.Text("You can type before and after the placeholder.").Fg(tui.ColorBrightBlack),
 		tui.Spacer().MinHeight(1),
-		tui.Text("Press any key to try again...").Fg(tui.ColorBrightBlack),
-	)
 
-	return tui.VStack(children...)
+		// Input using declarative Input component
+		tui.HStack(
+			tui.Text("Input: ").Fg(tui.ColorCyan),
+			tui.Input(&app.input).
+				Placeholder("Type or paste here...").
+				PastePlaceholder(true).
+				Multiline(true).
+				Width(50),
+		),
+		tui.Spacer().MinHeight(1),
+
+		// Status message
+		tui.Text("%s", app.status).Fg(tui.ColorGreen),
+		tui.Spacer().MinHeight(1),
+
+		// Scrollable bordered text area for actual content
+		app.contentViewer(contentView, actualLines),
+
+		// Help
+		tui.Spacer().MinHeight(1),
+		tui.Text("Shift+Enter: newline | Tab: switch focus | ↑/↓: scroll | Ctrl+U: reset | ESC: quit").Fg(tui.ColorBrightBlack),
+	)
+}
+
+func (app *PastePlaceholderApp) contentViewer(content tui.View, lineCount int) tui.View {
+	borderColor := tui.ColorBrightBlack
+	if app.contentFocus {
+		borderColor = tui.ColorCyan
+	}
+	return tui.Size(60, 10, tui.Bordered(
+		tui.Scroll(content, &app.scrollY),
+	).Border(&tui.RoundedBorder).
+		Title(fmt.Sprintf(" Actual Content (%d chars, %d lines) ", len(app.input), lineCount)).
+		TitleStyle(tui.NewStyle().WithForeground(tui.ColorYellow)).
+		BorderFg(borderColor))
 }
 
 func main() {
-	// Note: This example uses the old pattern (NewTerminal + NewRuntime) instead of
-	// tui.Run() because it needs to call terminal.EnableBracketedPaste() in Init(),
-	// which requires access to the terminal instance. There is currently no
-	// tui.WithBracketedPaste() option.
-
-	terminal, err := tui.NewTerminal()
+	err := tui.Run(&PastePlaceholderApp{}, tui.WithBracketedPaste(true))
 	if err != nil {
-		log.Fatalf("Failed to create terminal: %v\n", err)
-	}
-	defer terminal.Close()
-
-	app := &PastePlaceholderApp{
-		terminal: terminal,
-	}
-
-	runtime := tui.NewRuntime(terminal, app, 30)
-	if err := runtime.Run(); err != nil {
-		log.Fatalf("Runtime error: %v\n", err)
+		log.Fatal(err)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"sync"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // InputRegistry manages text inputs for focus and key routing.
@@ -20,13 +22,17 @@ type inputRegistryImpl struct {
 }
 
 type inputState struct {
-	id          string
-	input       *TextInput
-	binding     *string
-	bounds      image.Rectangle
-	onChange    func(string)
-	onSubmit    func(string)
-	placeholder string
+	id               string
+	input            *TextInput
+	binding          *string
+	bounds           image.Rectangle
+	onChange         func(string)
+	onSubmit         func(string)
+	placeholder      string
+	placeholderStyle *Style
+	pastePlaceholder bool
+	cursorBlink      bool
+	multiline        bool
 }
 
 // Clear clears all registered inputs (called before each render).
@@ -37,7 +43,7 @@ func (r *inputRegistryImpl) Clear() {
 }
 
 // Register adds or updates an input.
-func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, mask rune, onChange, onSubmit func(string)) *inputState {
+func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, placeholderStyle *Style, mask rune, pastePlaceholder bool, cursorBlink bool, multiline bool, onChange, onSubmit func(string)) *inputState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -51,15 +57,31 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 		if placeholder != "" {
 			ti.WithPlaceholder(placeholder)
 		}
+		if placeholderStyle != nil {
+			ti.PlaceholderStyle = *placeholderStyle
+		}
+		if pastePlaceholder {
+			ti.WithPastePlaceholderMode(true)
+		}
+		if cursorBlink {
+			ti.WithCursorBlink(true)
+		}
+		if multiline {
+			ti.WithMultilineMode(true)
+		}
 		// Sync initial value from binding
 		if binding != nil && *binding != "" {
 			ti.SetValue(*binding)
 		}
 		state = &inputState{
-			id:          id,
-			input:       ti,
-			binding:     binding,
-			placeholder: placeholder,
+			id:               id,
+			input:            ti,
+			binding:          binding,
+			placeholder:      placeholder,
+			placeholderStyle: placeholderStyle,
+			pastePlaceholder: pastePlaceholder,
+			cursorBlink:      cursorBlink,
+			multiline:        multiline,
 		}
 		r.inputs[id] = state
 	}
@@ -162,6 +184,18 @@ func (r *inputRegistryImpl) HandleKey(event KeyEvent) bool {
 		return false
 	}
 
+	// Handle paste events
+	if event.Paste != "" {
+		handled := state.input.HandlePaste(event.Paste)
+		if handled && state.binding != nil {
+			*state.binding = state.input.Value()
+			if state.onChange != nil {
+				state.onChange(*state.binding)
+			}
+		}
+		return handled
+	}
+
 	// Handle Tab for focus navigation
 	if event.Key == KeyTab && !event.Shift {
 		r.FocusNext()
@@ -212,13 +246,17 @@ func (r *inputRegistryImpl) HandleClick(x, y int) bool {
 
 // inputView wraps a TextInput for declarative use
 type inputView struct {
-	id          string
-	binding     *string
-	placeholder string
-	mask        rune
-	onChange    func(string)
-	onSubmit    func(string)
-	width       int
+	id               string
+	binding          *string
+	placeholder      string
+	placeholderStyle *Style
+	mask             rune
+	onChange         func(string)
+	onSubmit         func(string)
+	width            int
+	pastePlaceholder bool
+	cursorBlink      bool
+	multiline        bool
 }
 
 // Input creates a text input view bound to a string pointer.
@@ -252,6 +290,12 @@ func (i *inputView) Placeholder(text string) *inputView {
 	return i
 }
 
+// PlaceholderStyle sets the style for the placeholder text.
+func (i *inputView) PlaceholderStyle(style Style) *inputView {
+	i.placeholderStyle = &style
+	return i
+}
+
 // Mask sets a mask character for password input.
 func (i *inputView) Mask(r rune) *inputView {
 	i.mask = r
@@ -276,12 +320,69 @@ func (i *inputView) Width(w int) *inputView {
 	return i
 }
 
+// PastePlaceholder enables paste placeholder mode.
+// When enabled, multi-line pastes are collapsed into "[pasted N lines]"
+// placeholders that can be deleted atomically with backspace.
+func (i *inputView) PastePlaceholder(enabled bool) *inputView {
+	i.pastePlaceholder = enabled
+	return i
+}
+
+// CursorBlink enables or disables cursor blinking.
+func (i *inputView) CursorBlink(enabled bool) *inputView {
+	i.cursorBlink = enabled
+	return i
+}
+
+// Multiline enables multiline input where Shift+Enter inserts newlines.
+func (i *inputView) Multiline(enabled bool) *inputView {
+	i.multiline = enabled
+	return i
+}
+
+// calcWrappedHeight calculates how many lines text will take when wrapped at width
+func calcWrappedHeight(text string, width int) int {
+	if width <= 0 || text == "" {
+		return 1
+	}
+
+	lines := 1
+	x := 0
+	for _, r := range text {
+		if r == '\n' {
+			lines++
+			x = 0
+			continue
+		}
+		charWidth := runewidth.StringWidth(string(r))
+		if x+charWidth > width {
+			lines++
+			x = charWidth
+		} else {
+			x += charWidth
+		}
+	}
+	return lines
+}
+
 func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
 	w := i.width
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
 	}
-	return w, 1
+
+	// Calculate height based on content wrapping
+	h := 1
+	if i.binding != nil && *i.binding != "" && w > 0 {
+		// Get the display text (need to check registry for paste placeholders)
+		displayText := *i.binding
+		if state, exists := inputRegistry.inputs[i.id]; exists {
+			displayText = state.input.DisplayText()
+		}
+		h = calcWrappedHeight(displayText, w)
+	}
+
+	return w, h
 }
 
 func (i *inputView) render(ctx *RenderContext) {
@@ -291,10 +392,11 @@ func (i *inputView) render(ctx *RenderContext) {
 	}
 
 	// Register this input - use absolute bounds for click registration
-	state := inputRegistry.Register(i.id, i.binding, ctx.AbsoluteBounds(), i.placeholder, i.mask, i.onChange, i.onSubmit)
+	inputBounds := ctx.AbsoluteBounds()
+	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.onChange, i.onSubmit)
 
-	// Update TextInput bounds (use absolute bounds)
-	state.input.SetBounds(ctx.AbsoluteBounds())
+	// Update TextInput bounds
+	state.input.SetBounds(inputBounds)
 
 	// Draw the TextInput - pass the underlying frame
 	state.input.Draw(ctx.frame)

@@ -10,6 +10,7 @@ type runConfig struct {
 	alternateScreen bool
 	hideCursor      bool
 	mouseTracking   bool
+	bracketedPaste  bool
 	pasteTabWidth   int
 }
 
@@ -55,6 +56,15 @@ func WithHideCursor(hide bool) RunOption {
 func WithMouseTracking(enabled bool) RunOption {
 	return func(c *runConfig) {
 		c.mouseTracking = enabled
+	}
+}
+
+// WithBracketedPaste enables bracketed paste mode.
+// When enabled, the terminal can distinguish pasted text from typed text,
+// allowing proper handling of multi-line pastes.
+func WithBracketedPaste(enabled bool) RunOption {
+	return func(c *runConfig) {
+		c.bracketedPaste = enabled
 	}
 }
 
@@ -135,14 +145,20 @@ func Run(app any, opts ...RunOption) error {
 	if cfg.mouseTracking {
 		terminal.EnableMouseTracking()
 	}
+	if cfg.bracketedPaste {
+		terminal.EnableBracketedPaste()
+	}
 
 	// Create and configure runtime
 	runtime := NewRuntime(terminal, app, cfg.fps)
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 
-	// Ensure mouse tracking is disabled on cleanup (terminal.Close doesn't handle this)
+	// Ensure these modes are disabled on cleanup (terminal.Close doesn't handle this)
 	if cfg.mouseTracking {
 		defer terminal.DisableMouseTracking()
+	}
+	if cfg.bracketedPaste {
+		defer terminal.DisableBracketedPaste()
 	}
 
 	// Run the application
