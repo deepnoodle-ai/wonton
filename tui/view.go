@@ -1,16 +1,15 @@
 package tui
 
-import "image"
-
 // View is the core interface for declarative UI.
 // Views form a tree structure where containers measure and position children.
 //
 // Methods are unexported - users compose views using builder functions like
 // Text(), VStack(), HStack(), etc. rather than implementing View directly.
 type View interface {
-	// render draws this view to the given frame within the specified bounds.
-	// The bounds are in the frame's coordinate system.
-	render(frame RenderFrame, bounds image.Rectangle)
+	// render draws this view using the provided render context.
+	// The context provides both drawing capabilities and contextual information
+	// like the animation frame counter.
+	render(ctx *RenderContext)
 
 	// size returns the preferred size of this view given maximum constraints.
 	// maxWidth/maxHeight of 0 means unconstrained.
@@ -33,8 +32,8 @@ func Empty() View {
 	return emptyView{}
 }
 
-func (e emptyView) render(frame RenderFrame, bounds image.Rectangle) {}
-func (e emptyView) size(maxWidth, maxHeight int) (int, int)          { return 0, 0 }
+func (e emptyView) render(ctx *RenderContext) {}
+func (e emptyView) size(maxWidth, maxHeight int) (int, int) { return 0, 0 }
 
 // spacerView expands to fill available space
 type spacerView struct {
@@ -72,7 +71,7 @@ func (s *spacerView) flex() int {
 	return s.flexFactor
 }
 
-func (s *spacerView) render(frame RenderFrame, bounds image.Rectangle) {
+func (s *spacerView) render(ctx *RenderContext) {
 	// Spacer renders nothing - it just takes up space
 }
 

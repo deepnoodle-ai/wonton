@@ -1,7 +1,5 @@
 package tui
 
-import "image"
-
 // fillView fills available space with a character
 type fillView struct {
 	char  rune
@@ -46,13 +44,12 @@ func (f *fillView) Style(s Style) *fillView {
 	return f
 }
 
-func (f *fillView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (f *fillView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-	subFrame := frame.SubFrame(bounds)
-	width, height := subFrame.Size()
-	subFrame.FillStyled(0, 0, width, height, f.char, f.style)
+	ctx.FillStyled(0, 0, width, height, f.char, f.style)
 }
 
 func (f *fillView) size(maxWidth, maxHeight int) (int, int) {

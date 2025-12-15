@@ -64,20 +64,18 @@ func (s *scrollView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *scrollView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (s *scrollView) render(ctx *RenderContext) {
+	viewportWidth, viewportHeight := ctx.Size()
+	if viewportWidth == 0 || viewportHeight == 0 {
 		return
 	}
-
-	viewportWidth := bounds.Dx()
-	viewportHeight := bounds.Dy()
 
 	// Measure inner content without height constraint to get full content height
 	_, contentHeight := s.inner.size(viewportWidth, 0)
 
 	// If content fits in viewport, just render directly
 	if contentHeight <= viewportHeight {
-		s.inner.render(frame, bounds)
+		s.inner.render(ctx)
 		return
 	}
 
@@ -109,17 +107,18 @@ func (s *scrollView) render(frame RenderFrame, bounds image.Rectangle) {
 	}
 
 	// Create an offset render frame that translates coordinates
-	subFrame := frame.SubFrame(bounds)
 	offsetFrame := &scrollRenderFrame{
-		inner:   subFrame,
+		inner:   ctx.RenderFrame(),
 		offsetY: scrollY,
 		clipH:   viewportHeight,
 		clipW:   viewportWidth,
 	}
 
-	// Render inner content with full height bounds, offset frame handles clipping
-	contentBounds := image.Rect(0, 0, viewportWidth, contentHeight)
-	s.inner.render(offsetFrame, contentBounds)
+	// Create a new context with the scroll frame, preserving the frame counter
+	scrollCtx := ctx.WithFrame(offsetFrame)
+
+	// Render inner content
+	s.inner.render(scrollCtx)
 }
 
 // scrollRenderFrame wraps a RenderFrame and applies a vertical offset,

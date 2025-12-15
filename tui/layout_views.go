@@ -124,15 +124,16 @@ func (v *vStack) size(maxWidth, maxHeight int) (int, int) {
 	return maxChildWidth, totalHeight
 }
 
-func (v *vStack) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(v.children) == 0 {
+func (v *vStack) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(v.children) == 0 {
 		return
 	}
 
 	// Re-measure with actual bounds to get correct sizes
-	v.size(bounds.Dx(), bounds.Dy())
+	v.size(width, height)
 
-	currentY := bounds.Min.Y
+	currentY := 0
 
 	for i, child := range v.children {
 		size := v.childSizes[i]
@@ -141,25 +142,25 @@ func (v *vStack) render(frame RenderFrame, bounds image.Rectangle) {
 		}
 
 		// Calculate X position based on alignment
-		x := bounds.Min.X
+		x := 0
 		switch v.alignment {
 		case AlignCenter:
-			x = bounds.Min.X + (bounds.Dx()-size.X)/2
+			x = (width - size.X) / 2
 		case AlignRight:
-			x = bounds.Max.X - size.X
+			x = width - size.X
 		}
 
 		// Clip to bounds
-		if currentY >= bounds.Max.Y {
+		if currentY >= height {
 			break
 		}
 		childHeight := size.Y
-		if currentY+childHeight > bounds.Max.Y {
-			childHeight = bounds.Max.Y - currentY
+		if currentY+childHeight > height {
+			childHeight = height - currentY
 		}
 
-		childBounds := image.Rect(x, currentY, x+size.X, currentY+childHeight)
-		child.render(frame, childBounds)
+		childCtx := ctx.SubContext(image.Rect(x, currentY, x+size.X, currentY+childHeight))
+		child.render(childCtx)
 
 		currentY += size.Y + v.gap
 	}
@@ -282,15 +283,16 @@ func (h *hStack) size(maxWidth, maxHeight int) (int, int) {
 	return totalWidth, maxChildHeight
 }
 
-func (h *hStack) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(h.children) == 0 {
+func (h *hStack) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(h.children) == 0 {
 		return
 	}
 
 	// Re-measure with actual bounds
-	h.size(bounds.Dx(), bounds.Dy())
+	h.size(width, height)
 
-	currentX := bounds.Min.X
+	currentX := 0
 
 	for i, child := range h.children {
 		size := h.childSizes[i]
@@ -299,25 +301,25 @@ func (h *hStack) render(frame RenderFrame, bounds image.Rectangle) {
 		}
 
 		// Calculate Y position based on alignment
-		y := bounds.Min.Y
+		y := 0
 		switch h.alignment {
 		case AlignCenter:
-			y = bounds.Min.Y + (bounds.Dy()-size.Y)/2
+			y = (height - size.Y) / 2
 		case AlignRight:
-			y = bounds.Max.Y - size.Y
+			y = height - size.Y
 		}
 
 		// Clip to bounds
-		if currentX >= bounds.Max.X {
+		if currentX >= width {
 			break
 		}
 		childWidth := size.X
-		if currentX+childWidth > bounds.Max.X {
-			childWidth = bounds.Max.X - currentX
+		if currentX+childWidth > width {
+			childWidth = width - currentX
 		}
 
-		childBounds := image.Rect(currentX, y, currentX+childWidth, y+size.Y)
-		child.render(frame, childBounds)
+		childCtx := ctx.SubContext(image.Rect(currentX, y, currentX+childWidth, y+size.Y))
+		child.render(childCtx)
 
 		currentX += size.X + h.gap
 	}
@@ -367,13 +369,14 @@ func (z *zStack) size(maxWidth, maxHeight int) (int, int) {
 	return maxW, maxH
 }
 
-func (z *zStack) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(z.children) == 0 {
+func (z *zStack) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(z.children) == 0 {
 		return
 	}
 
 	// Re-measure with actual bounds
-	z.size(bounds.Dx(), bounds.Dy())
+	z.size(width, height)
 
 	// Render children back-to-front (first child at bottom)
 	for i, child := range z.children {
@@ -383,17 +386,17 @@ func (z *zStack) render(frame RenderFrame, bounds image.Rectangle) {
 		var x, y int
 		switch z.alignment {
 		case AlignLeft:
-			x = bounds.Min.X
-			y = bounds.Min.Y
+			x = 0
+			y = 0
 		case AlignCenter:
-			x = bounds.Min.X + (bounds.Dx()-size.X)/2
-			y = bounds.Min.Y + (bounds.Dy()-size.Y)/2
+			x = (width - size.X) / 2
+			y = (height - size.Y) / 2
 		case AlignRight:
-			x = bounds.Max.X - size.X
-			y = bounds.Max.Y - size.Y
+			x = width - size.X
+			y = height - size.Y
 		}
 
-		childBounds := image.Rect(x, y, x+size.X, y+size.Y)
-		child.render(frame, childBounds)
+		childCtx := ctx.SubContext(image.Rect(x, y, x+size.X, y+size.Y))
+		child.render(childCtx)
 	}
 }

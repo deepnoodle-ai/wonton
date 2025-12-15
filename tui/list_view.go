@@ -110,6 +110,13 @@ func (l *selectListView) Height(h int) *selectListView {
 	return l
 }
 
+// Size sets both width and height at once.
+func (l *selectListView) Size(w, h int) *selectListView {
+	l.width = w
+	l.height = h
+	return l
+}
+
 func (l *selectListView) size(maxWidth, maxHeight int) (int, int) {
 	// Calculate width from items
 	w := l.width
@@ -141,13 +148,11 @@ func (l *selectListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (l *selectListView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(l.items) == 0 {
+func (l *selectListView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(l.items) == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	height := bounds.Dy()
 
 	selectedIdx := 0
 	if l.selected != nil {
@@ -173,16 +178,17 @@ func (l *selectListView) render(frame RenderFrame, bounds image.Rectangle) {
 		// Draw cursor
 		if l.showCursor {
 			if isSelected {
-				subFrame.PrintStyled(0, y, l.cursorChar, style)
+				ctx.PrintStyled(0, y, l.cursorChar, style)
 			}
 			x = cursorW
 		}
 
 		// Draw item label
-		subFrame.PrintTruncated(x, y, item.Label, style)
+		ctx.PrintTruncated(x, y, item.Label, style)
 
 		// Register clickable region
 		if l.onSelect != nil {
+			bounds := ctx.AbsoluteBounds()
 			itemBounds := image.Rect(
 				bounds.Min.X,
 				bounds.Min.Y+y,
@@ -296,6 +302,13 @@ func (c *checkboxListView) Height(h int) *checkboxListView {
 	return c
 }
 
+// Size sets both width and height at once.
+func (c *checkboxListView) Size(w, h int) *checkboxListView {
+	c.width = w
+	c.height = h
+	return c
+}
+
 func (c *checkboxListView) size(maxWidth, maxHeight int) (int, int) {
 	w := c.width
 	if w == 0 {
@@ -322,13 +335,11 @@ func (c *checkboxListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *checkboxListView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(c.items) == 0 {
+func (c *checkboxListView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(c.items) == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	height := bounds.Dy()
 
 	cursorIdx := 0
 	if c.cursor != nil {
@@ -352,13 +363,14 @@ func (c *checkboxListView) render(frame RenderFrame, bounds image.Rectangle) {
 		if isChecked {
 			checkChar = c.checkedChar
 		}
-		subFrame.PrintStyled(0, y, checkChar, style)
+		ctx.PrintStyled(0, y, checkChar, style)
 
 		// Draw label
-		subFrame.PrintTruncated(checkW+1, y, item.Label, style)
+		ctx.PrintTruncated(checkW+1, y, item.Label, style)
 
 		// Register clickable region
 		if c.onToggle != nil {
+			bounds := ctx.AbsoluteBounds()
 			itemBounds := image.Rect(
 				bounds.Min.X,
 				bounds.Min.Y+y,
@@ -474,6 +486,13 @@ func (r *radioListView) Height(h int) *radioListView {
 	return r
 }
 
+// Size sets both width and height at once.
+func (r *radioListView) Size(w, h int) *radioListView {
+	r.width = w
+	r.height = h
+	return r
+}
+
 func (r *radioListView) size(maxWidth, maxHeight int) (int, int) {
 	w := r.width
 	if w == 0 {
@@ -500,13 +519,11 @@ func (r *radioListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (r *radioListView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(r.items) == 0 {
+func (r *radioListView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(r.items) == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	height := bounds.Dy()
 
 	selectedIdx := 0
 	if r.selected != nil {
@@ -528,13 +545,14 @@ func (r *radioListView) render(frame RenderFrame, bounds image.Rectangle) {
 		if isSelected {
 			radioChar = r.selectedChar
 		}
-		subFrame.PrintStyled(0, y, radioChar, style)
+		ctx.PrintStyled(0, y, radioChar, style)
 
 		// Draw label
-		subFrame.PrintTruncated(radioW+1, y, item.Label, style)
+		ctx.PrintTruncated(radioW+1, y, item.Label, style)
 
 		// Register clickable region
 		if r.onSelect != nil || r.selected != nil {
+			bounds := ctx.AbsoluteBounds()
 			itemBounds := image.Rect(
 				bounds.Min.X,
 				bounds.Min.Y+y,
@@ -640,17 +658,17 @@ func (m *meterView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (m *meterView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (m *meterView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	x := 0
 
 	// Draw label
 	if m.label != "" {
-		subFrame.PrintStyled(x, 0, m.label+": ", m.labelStyle)
+		ctx.PrintStyled(x, 0, m.label+": ", m.labelStyle)
 		labelW, _ := MeasureText(m.label)
 		x += labelW + 2
 	}
@@ -668,18 +686,18 @@ func (m *meterView) render(frame RenderFrame, bounds image.Rectangle) {
 	// Draw empty background
 	emptyStyle := NewStyle().WithForeground(ColorBrightBlack)
 	for i := 0; i < barWidth; i++ {
-		subFrame.SetCell(x+i, 0, m.emptyChar, emptyStyle)
+		ctx.SetCell(x+i, 0, m.emptyChar, emptyStyle)
 	}
 
 	// Draw filled portion
 	for i := 0; i < fillWidth; i++ {
-		subFrame.SetCell(x+i, 0, m.filledChar, m.style)
+		ctx.SetCell(x+i, 0, m.filledChar, m.style)
 	}
 	x += barWidth
 
 	// Draw value
 	if m.showValue && m.max > 0 {
 		percent := (m.value * 100) / m.max
-		subFrame.PrintStyled(x, 0, fmt.Sprintf(" %d%%", percent), m.style)
+		ctx.PrintStyled(x, 0, fmt.Sprintf(" %d%%", percent), m.style)
 	}
 }

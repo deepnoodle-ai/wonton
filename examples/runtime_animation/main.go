@@ -1,7 +1,6 @@
 package main
 
 import (
-	"image"
 	"log"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -9,32 +8,18 @@ import (
 
 // AnimatedApp demonstrates smooth animation using the declarative View system.
 // It renders animated blocks moving across the screen with rainbow color cycling.
+// This example uses CanvasContext to access the animation frame counter.
 type AnimatedApp struct {
-	frame     uint64
-	positions []int
-	width     int
-	height    int
+	width  int
+	height int
 }
 
 // HandleEvent processes events from the Runtime.
 // For this demo, we handle:
-// - TickEvent: Update animation state
 // - KeyEvent: Handle user input (q to quit)
 // - ResizeEvent: Handle terminal resize
 func (app *AnimatedApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
-	case tui.TickEvent:
-		// Update animation state on each tick
-		app.frame++
-
-		// Update positions for each animated block
-		// Each block moves at a different speed and offset
-		for i := range app.positions {
-			speed := uint64(i+1) * 2 // Different speeds for visual interest
-			offset := uint64(i * 15) // Stagger the starting positions
-			app.positions[i] = int((app.frame*speed + offset) % uint64(app.width))
-		}
-
 	case tui.KeyEvent:
 		// Handle user input
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
@@ -59,13 +44,12 @@ func (app *AnimatedApp) View() tui.View {
 
 		tui.Spacer(),
 
-		// Animation canvas
-		tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
-			width := bounds.Dx()
-			height := bounds.Dy()
+		// Animation canvas using CanvasContext for frame counter access
+		tui.CanvasContext(func(ctx *tui.RenderContext) {
+			width, height := ctx.Size()
+			frame := ctx.Frame() // Get animation frame from context
 
 			// Draw animated blocks
-			// We'll draw multiple blocks at different vertical positions
 			numBlocks := 5
 			blockHeight := height / numBlocks
 
@@ -75,49 +59,49 @@ func (app *AnimatedApp) View() tui.View {
 					break
 				}
 
-				// Get the position for this block
-				if blockIdx < len(app.positions) {
-					x := app.positions[blockIdx]
+				// Calculate position from frame counter
+				speed := uint64(blockIdx+1) * 2
+				offset := uint64(blockIdx * 15)
+				x := int((frame*speed + offset) % uint64(width))
 
-					// Ensure position is within bounds
-					if x < 0 || x >= width {
-						continue
+				// Ensure position is within bounds
+				if x < 0 || x >= width {
+					continue
+				}
+
+				// Draw a solid block (█)
+				blockChar := '█'
+				blockStyle := rainbowStyle(frame, blockIdx)
+				ctx.SetCell(x, y, blockChar, blockStyle)
+
+				// Draw a trail of semi-filled blocks for visual effect
+				trailLength := 4
+				for trail := 1; trail <= trailLength; trail++ {
+					trailX := x - trail
+					if trailX < 0 {
+						break
 					}
-
-					// Draw a solid block (█)
-					blockChar := '█'
-					blockStyle := rainbowStyle(app.frame, blockIdx)
-					frame.SetCell(bounds.Min.X+x, bounds.Min.Y+y, blockChar, blockStyle)
-
-					// Draw a trail of semi-filled blocks for visual effect
-					trailLength := 4
-					for trail := 1; trail <= trailLength; trail++ {
-						trailX := x - trail
-						if trailX < 0 {
-							break
-						}
-						// Avoid uint64 underflow when frame < trail
-						trailFrame := app.frame
-						if trailFrame >= uint64(trail) {
-							trailFrame -= uint64(trail)
-						}
-						trailStyle := rainbowStyle(trailFrame, blockIdx)
-						trailStyle = trailStyle.WithFgRGB(tui.NewRGB(
-							trailStyle.FgRGB.R/uint8(trail+1),
-							trailStyle.FgRGB.G/uint8(trail+1),
-							trailStyle.FgRGB.B/uint8(trail+1),
-						))
-						frame.SetCell(bounds.Min.X+trailX, bounds.Min.Y+y, '▒', trailStyle)
+					// Avoid uint64 underflow when frame < trail
+					trailFrame := frame
+					if trailFrame >= uint64(trail) {
+						trailFrame -= uint64(trail)
 					}
+					trailStyle := rainbowStyle(trailFrame, blockIdx)
+					trailStyle = trailStyle.WithFgRGB(tui.NewRGB(
+						trailStyle.FgRGB.R/uint8(trail+1),
+						trailStyle.FgRGB.G/uint8(trail+1),
+						trailStyle.FgRGB.B/uint8(trail+1),
+					))
+					ctx.SetCell(trailX, y, '▒', trailStyle)
 				}
 			}
 		}),
 
-		// Footer with controls and frame counter
+		// Footer with controls
 		tui.HStack(
 			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
 			tui.Spacer(),
-			tui.Text("Frame: %d", app.frame).Fg(tui.ColorGreen),
+			tui.Text("Using ctx.Frame() for animation").Info(),
 		),
 	)
 }
@@ -139,10 +123,7 @@ func rainbowStyle(frame uint64, blockIndex int) tui.Style {
 }
 
 func main() {
-	app := &AnimatedApp{
-		frame:     0,
-		positions: make([]int, 5), // 5 animated blocks
-	}
+	app := &AnimatedApp{}
 
 	if err := tui.Run(app, tui.WithFPS(60)); err != nil {
 		log.Fatal(err)

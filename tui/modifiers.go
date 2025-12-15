@@ -65,21 +65,23 @@ func (p *paddingView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + paddingW, innerH + paddingH
 }
 
-func (p *paddingView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (p *paddingView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
 	// Calculate inner bounds
 	innerBounds := image.Rect(
-		bounds.Min.X+p.left,
-		bounds.Min.Y+p.top,
-		bounds.Max.X-p.right,
-		bounds.Max.Y-p.bottom,
+		p.left,
+		p.top,
+		width-p.right,
+		height-p.bottom,
 	)
 
-	if !innerBounds.Empty() {
-		p.inner.render(frame, innerBounds)
+	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+		innerCtx := ctx.SubContext(innerBounds)
+		p.inner.render(innerCtx)
 	}
 }
 
@@ -189,11 +191,12 @@ func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *sizeView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (s *sizeView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-	s.inner.render(frame, bounds)
+	s.inner.render(ctx)
 }
 
 // Width modifier methods for view types
@@ -280,28 +283,26 @@ func (f *borderedView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + borderSize, innerH + borderSize
 }
 
-func (f *borderedView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (f *borderedView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
 	if f.border == nil {
 		// No border, just render inner
-		f.inner.render(frame, bounds)
+		f.inner.render(ctx)
 		return
 	}
 
 	// Draw border
-	w, h := bounds.Dx(), bounds.Dy()
-	subFrame := frame.SubFrame(bounds)
-
 	// Top border
-	subFrame.PrintTruncated(0, 0, f.border.TopLeft, f.borderStyle)
+	ctx.PrintTruncated(0, 0, f.border.TopLeft, f.borderStyle)
 	for x := 1; x < w-1; x++ {
-		subFrame.PrintTruncated(x, 0, f.border.Horizontal, f.borderStyle)
+		ctx.PrintTruncated(x, 0, f.border.Horizontal, f.borderStyle)
 	}
 	if w > 1 {
-		subFrame.PrintTruncated(w-1, 0, f.border.TopRight, f.borderStyle)
+		ctx.PrintTruncated(w-1, 0, f.border.TopRight, f.borderStyle)
 	}
 
 	// Title in top border
@@ -312,37 +313,33 @@ func (f *borderedView) render(frame RenderFrame, bounds image.Rectangle) {
 			titleW = maxTitleW
 		}
 		titleX := 2
-		subFrame.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], f.titleStyle)
+		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], f.titleStyle)
 	}
 
 	// Side borders
 	for y := 1; y < h-1; y++ {
-		subFrame.PrintTruncated(0, y, f.border.Vertical, f.borderStyle)
+		ctx.PrintTruncated(0, y, f.border.Vertical, f.borderStyle)
 		if w > 1 {
-			subFrame.PrintTruncated(w-1, y, f.border.Vertical, f.borderStyle)
+			ctx.PrintTruncated(w-1, y, f.border.Vertical, f.borderStyle)
 		}
 	}
 
 	// Bottom border
 	if h > 1 {
-		subFrame.PrintTruncated(0, h-1, f.border.BottomLeft, f.borderStyle)
+		ctx.PrintTruncated(0, h-1, f.border.BottomLeft, f.borderStyle)
 		for x := 1; x < w-1; x++ {
-			subFrame.PrintTruncated(x, h-1, f.border.Horizontal, f.borderStyle)
+			ctx.PrintTruncated(x, h-1, f.border.Horizontal, f.borderStyle)
 		}
 		if w > 1 {
-			subFrame.PrintTruncated(w-1, h-1, f.border.BottomRight, f.borderStyle)
+			ctx.PrintTruncated(w-1, h-1, f.border.BottomRight, f.borderStyle)
 		}
 	}
 
 	// Inner content (1 cell padding for border)
-	innerBounds := image.Rect(
-		bounds.Min.X+1,
-		bounds.Min.Y+1,
-		bounds.Max.X-1,
-		bounds.Max.Y-1,
-	)
-	if !innerBounds.Empty() {
-		f.inner.render(frame, innerBounds)
+	innerBounds := image.Rect(1, 1, w-1, h-1)
+	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+		innerCtx := ctx.SubContext(innerBounds)
+		f.inner.render(innerCtx)
 	}
 }
 

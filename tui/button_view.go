@@ -129,18 +129,18 @@ func (c *clickableView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *clickableView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (c *clickableView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
 	// Register this clickable for click handling
-	// bounds are already in global coordinates
+	// use absolute bounds for interactive registration
 	if c.callback != nil {
-		interactiveRegistry.RegisterButton(bounds, c.callback)
+		interactiveRegistry.RegisterButton(ctx.AbsoluteBounds(), c.callback)
 	}
 
 	// Render the label
-	subFrame := frame.SubFrame(bounds)
-	subFrame.PrintTruncated(0, 0, c.label, c.style)
+	ctx.PrintTruncated(0, 0, c.label, c.style)
 }

@@ -284,18 +284,18 @@ func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (i *inputView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (i *inputView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	// Register this input
-	state := inputRegistry.Register(i.id, i.binding, bounds, i.placeholder, i.mask, i.onChange, i.onSubmit)
+	// Register this input - use absolute bounds for click registration
+	state := inputRegistry.Register(i.id, i.binding, ctx.AbsoluteBounds(), i.placeholder, i.mask, i.onChange, i.onSubmit)
 
-	// Update TextInput bounds
-	state.input.SetBounds(bounds)
+	// Update TextInput bounds (use absolute bounds)
+	state.input.SetBounds(ctx.AbsoluteBounds())
 
-	// Draw the TextInput
-	subFrame := frame.SubFrame(bounds)
-	state.input.Draw(subFrame)
+	// Draw the TextInput - pass the underlying frame
+	state.input.Draw(ctx.frame)
 }

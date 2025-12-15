@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"image"
 	"os"
 	"sync"
 	"time"
@@ -387,11 +386,14 @@ func (r *Runtime) render() {
 
 		view := app.View()
 		width, height := frame.Size()
-		bounds := image.Rect(0, 0, width, height)
+
+		// Create render context with frame counter for animations
+		ctx := NewRenderContext(frame, r.frame)
+
 		// Measure phase (populates cached child sizes)
 		view.size(width, height)
 		// Render phase
-		view.render(frame, bounds)
+		view.render(ctx)
 	}
 
 	// Flush to screen (diffs and sends only dirty regions)

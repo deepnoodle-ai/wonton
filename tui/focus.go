@@ -1,7 +1,5 @@
 package tui
 
-import "image"
-
 // Focus returns a command that sets focus to the specified input ID.
 // Use this in HandleEvent to programmatically focus an input.
 //
@@ -61,8 +59,9 @@ func (f *focusableView) size(maxWidth, maxHeight int) (int, int) {
 	return f.inner.size(maxWidth, maxHeight)
 }
 
-func (f *focusableView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (f *focusableView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
@@ -73,10 +72,8 @@ func (f *focusableView) render(frame RenderFrame, bounds image.Rectangle) {
 
 	if isFocused && !f.focusStyle.IsEmpty() {
 		// Apply focus style as background/border
-		subFrame := frame.SubFrame(bounds)
-		width, height := subFrame.Size()
-		subFrame.FillStyled(0, 0, width, height, ' ', f.focusStyle)
+		ctx.FillStyled(0, 0, width, height, ' ', f.focusStyle)
 	}
 
-	f.inner.render(frame, bounds)
+	f.inner.render(ctx)
 }

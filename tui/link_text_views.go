@@ -1,7 +1,5 @@
 package tui
 
-import "image"
-
 // hyperlinkView displays a clickable hyperlink (declarative view)
 type hyperlinkView struct {
 	url     string
@@ -88,20 +86,19 @@ func (h *hyperlinkView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (h *hyperlinkView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (h *hyperlinkView) render(ctx *RenderContext) {
+	w, ht := ctx.Size()
+	if w == 0 || ht == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	// Create the hyperlink with OSC 8 support
 	link := NewHyperlink(h.url, h.text).WithStyle(h.style)
 
 	if h.showURL {
-		subFrame.PrintHyperlinkFallback(0, 0, link)
+		ctx.PrintHyperlinkFallback(0, 0, link)
 	} else {
-		subFrame.PrintHyperlink(0, 0, link)
+		ctx.PrintHyperlink(0, 0, link)
 	}
 }
 
@@ -171,22 +168,22 @@ func (l *linkRowView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (l *linkRowView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (l *linkRowView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	x := 0
 
 	// Draw label
-	subFrame.PrintStyled(x, 0, l.label, l.labelStyle)
+	ctx.PrintStyled(x, 0, l.label, l.labelStyle)
 	labelW, _ := MeasureText(l.label)
 	x += labelW + l.gap
 
 	// Draw link
 	link := NewHyperlink(l.url, l.linkText).WithStyle(l.linkStyle)
-	subFrame.PrintHyperlink(x, 0, link)
+	ctx.PrintHyperlink(x, 0, link)
 }
 
 // wrappedTextView displays text with wrapping and alignment
@@ -293,32 +290,29 @@ func (w *wrappedTextView) size(maxWidth, maxHeight int) (int, int) {
 	return width, height
 }
 
-func (w *wrappedTextView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (wt *wrappedTextView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
-	width := bounds.Dx()
-	height := bounds.Dy()
-
 	// Fill background if requested
-	if w.fillBg {
+	if wt.fillBg {
 		for y := 0; y < height; y++ {
 			for x := 0; x < width; x++ {
-				subFrame.SetCell(x, y, ' ', w.style)
+				ctx.SetCell(x, y, ' ', wt.style)
 			}
 		}
 	}
 
 	// Process text
-	displayText := w.text
-	if !w.truncate && width > 0 {
+	displayText := wt.text
+	if !wt.truncate && width > 0 {
 		displayText = WrapText(displayText, width)
 	}
 
 	// Align text
-	displayText = AlignText(displayText, width, w.align)
+	displayText = AlignText(displayText, width, wt.align)
 
 	// Render
 	lines := splitLinesSimple(displayText)
@@ -326,10 +320,10 @@ func (w *wrappedTextView) render(frame RenderFrame, bounds image.Rectangle) {
 		if y >= height {
 			break
 		}
-		if w.truncate {
-			subFrame.PrintTruncated(0, y, line, w.style)
+		if wt.truncate {
+			ctx.PrintTruncated(0, y, line, wt.style)
 		} else {
-			subFrame.PrintStyled(0, y, line, w.style)
+			ctx.PrintStyled(0, y, line, wt.style)
 		}
 	}
 }
@@ -414,21 +408,21 @@ func (l *linkListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (l *linkListView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(l.links) == 0 {
+func (l *linkListView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(l.links) == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	y := 0
 	rowHeight := 1 + l.spacing
 
 	for _, link := range l.links {
-		if y >= bounds.Dy() {
+		if y >= height {
 			break
 		}
 		styledLink := link.WithStyle(l.style)
-		subFrame.PrintHyperlink(0, y, styledLink)
+		ctx.PrintHyperlink(0, y, styledLink)
 		y += rowHeight
 	}
 }
@@ -478,29 +472,29 @@ func (i *inlineLinkView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (i *inlineLinkView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(i.links) == 0 {
+func (i *inlineLinkView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(i.links) == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	x := 0
 	sepW, _ := MeasureText(i.separator)
 	sepStyle := NewStyle() // plain style for separator
 
 	for idx, link := range i.links {
-		if x >= bounds.Dx() {
+		if x >= width {
 			break
 		}
 
 		styledLink := link.WithStyle(i.style)
-		subFrame.PrintHyperlink(x, 0, styledLink)
+		ctx.PrintHyperlink(x, 0, styledLink)
 		linkW, _ := MeasureText(link.Text)
 		x += linkW
 
 		// Add separator (except after last link)
 		if idx < len(i.links)-1 {
-			subFrame.PrintStyled(x, 0, i.separator, sepStyle)
+			ctx.PrintStyled(x, 0, i.separator, sepStyle)
 			x += sepW
 		}
 	}

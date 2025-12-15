@@ -34,8 +34,12 @@ Run `go run ./examples/<name> --help` to inspect per-command usage.
 - `markdown_demo`: Renders markdown with syntax highlighting and adaptive layout.
 - `runtime_http`: Fetches GitHub data asynchronously and streams updates into
   the UI.
-- `progress_spinners`, `animation_demo`, and `flicker_free`: Show animation
-  primitives, tick events, and rendering optimizations.
+- `animation_demo`: Demonstrates the fluent animation API (`.Rainbow()`, `.Pulse()`,
+  `.Wave()`) for text views.
+- `declarative_animation` and `runtime_animation`: Show `CanvasContext` for custom
+  animations with access to the frame counter via `ctx.Frame()`.
+- `progress_spinners` and `flicker_free`: Loading spinners, tick events, and
+  rendering optimizations.
 - `mouse_demo` and `mouse_grid`: Pointer interaction patterns.
 - `file_picker_demo`, `input_forms`, `checkbox_demo`, and `password_demo`:
   Ready-made widgets (pickers, forms, toggle inputs).

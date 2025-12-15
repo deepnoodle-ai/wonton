@@ -124,6 +124,13 @@ func (t *tableView) Height(h int) *tableView {
 	return t
 }
 
+// Size sets both width and height at once.
+func (t *tableView) Size(w, h int) *tableView {
+	t.width = w
+	t.height = h
+	return t
+}
+
 // calculateColumnWidths computes the actual width for each column.
 func (t *tableView) calculateColumnWidths() {
 	if len(t.columns) == 0 {
@@ -180,13 +187,13 @@ func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(t.columns) == 0 {
+func (t *tableView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(t.columns) == 0 {
 		return
 	}
 
 	t.calculateColumnWidths()
-	subFrame := frame.SubFrame(bounds)
 
 	currentY := 0
 
@@ -194,26 +201,26 @@ func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
 	if t.showHeader {
 		currentX := 0
 		for i, col := range t.columns {
-			width := t.columnWidths[i]
+			w := t.columnWidths[i]
 			title := col.Title
 			// Truncate if needed
-			if runewidth.StringWidth(title) > width {
-				title = runewidth.Truncate(title, width, "…")
+			if runewidth.StringWidth(title) > w {
+				title = runewidth.Truncate(title, w, "…")
 			}
 			// Pad
-			padding := width - runewidth.StringWidth(title)
+			padding := w - runewidth.StringWidth(title)
 			if padding > 0 {
 				title += repeatStr(" ", padding)
 			}
 
-			subFrame.PrintStyled(currentX, currentY, title, t.headerStyle)
-			currentX += width
+			ctx.PrintStyled(currentX, currentY, title, t.headerStyle)
+			currentX += w
 		}
 		currentY++
 	}
 
 	// Calculate available height for rows
-	availableHeight := bounds.Dy()
+	availableHeight := height
 	if t.showHeader {
 		availableHeight--
 	}
@@ -265,23 +272,24 @@ func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
 			if colIdx >= len(t.columnWidths) {
 				break
 			}
-			width := t.columnWidths[colIdx]
+			w := t.columnWidths[colIdx]
 
 			// Truncate/Pad
-			if runewidth.StringWidth(cell) > width {
-				cell = runewidth.Truncate(cell, width, "…")
+			if runewidth.StringWidth(cell) > w {
+				cell = runewidth.Truncate(cell, w, "…")
 			}
-			padding := width - runewidth.StringWidth(cell)
+			padding := w - runewidth.StringWidth(cell)
 			paddedCell := cell
 			if padding > 0 {
 				paddedCell += repeatStr(" ", padding)
 			}
 
-			subFrame.PrintStyled(currentX, currentY+i, paddedCell, style)
-			currentX += width
+			ctx.PrintStyled(currentX, currentY+i, paddedCell, style)
+			currentX += w
 		}
 
 		// Register clickable region for this row
+		bounds := ctx.AbsoluteBounds()
 		rowBounds := image.Rect(
 			bounds.Min.X,
 			bounds.Min.Y+currentY+i,

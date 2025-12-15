@@ -4,9 +4,10 @@ import "image"
 
 // canvasView allows imperative drawing within the declarative tree
 type canvasView struct {
-	draw   func(frame RenderFrame, bounds image.Rectangle)
-	width  int
-	height int
+	draw        func(frame RenderFrame, bounds image.Rectangle)
+	drawContext func(ctx *RenderContext)
+	width       int
+	height      int
 }
 
 // Canvas creates a view that calls a custom draw function.
@@ -23,6 +24,27 @@ func Canvas(draw func(frame RenderFrame, bounds image.Rectangle)) *canvasView {
 		draw:   draw,
 		width:  0,
 		height: 0,
+	}
+}
+
+// CanvasContext creates a view with access to the full RenderContext.
+// Use this when you need access to context information like the animation
+// frame counter (ctx.Frame()) for custom animations.
+//
+// Example:
+//
+//	CanvasContext(func(ctx *RenderContext) {
+//	    w, h := ctx.Size()
+//	    frame := ctx.Frame()  // Animation frame counter
+//	    // Custom drawing using frame for animation timing
+//	    x := int(frame) % w
+//	    ctx.SetCell(x, 0, '█', style)
+//	})
+func CanvasContext(draw func(ctx *RenderContext)) *canvasView {
+	return &canvasView{
+		drawContext: draw,
+		width:       0,
+		height:      0,
 	}
 }
 
@@ -69,17 +91,23 @@ func (c *canvasView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *canvasView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || c.draw == nil {
+func (c *canvasView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	// Create a subframe for the canvas bounds
-	subFrame := frame.SubFrame(bounds)
+	// Use context-aware draw function if provided
+	if c.drawContext != nil {
+		c.drawContext(ctx)
+		return
+	}
 
-	// Call the custom draw function with the subframe
-	// The bounds passed to the draw function are relative to the subframe
-	c.draw(subFrame, image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+	// Fall back to legacy draw function
+	if c.draw != nil {
+		// The bounds passed to the draw function are relative to the context
+		c.draw(ctx.frame, image.Rect(0, 0, w, h))
+	}
 }
 
 // Canvas is flexible - it can expand to fill available space

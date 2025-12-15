@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"image"
-
 	"github.com/mattn/go-runewidth"
 )
 
@@ -103,13 +101,11 @@ func (m *markdownView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (m *markdownView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (m *markdownView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Render markdown content
 	m.renderContent(width)
@@ -117,8 +113,6 @@ func (m *markdownView) render(frame RenderFrame, bounds image.Rectangle) {
 	if m.rendered == nil {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	// Get scroll position
 	scrollY := 0
@@ -160,10 +154,10 @@ func (m *markdownView) render(frame RenderFrame, bounds image.Rectangle) {
 		for _, seg := range line.Segments {
 			if seg.Hyperlink != nil {
 				// Render as hyperlink
-				subFrame.PrintHyperlink(x, y, *seg.Hyperlink)
+				ctx.PrintHyperlink(x, y, *seg.Hyperlink)
 			} else {
 				// Render as styled text
-				subFrame.PrintStyled(x, y, seg.Text, seg.Style)
+				ctx.PrintStyled(x, y, seg.Text, seg.Style)
 			}
 
 			x += runewidth.StringWidth(seg.Text)

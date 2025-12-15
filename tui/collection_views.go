@@ -1,7 +1,5 @@
 package tui
 
-import "image"
-
 // ForEach maps a slice of items to views using a mapper function.
 // The resulting views are arranged in a VStack by default.
 //
@@ -55,8 +53,8 @@ func (f *forEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *forEachView[T]) render(frame RenderFrame, bounds image.Rectangle) {
-	f.buildStack().render(frame, bounds)
+func (f *forEachView[T]) render(ctx *RenderContext) {
+	f.buildStack().render(ctx)
 }
 
 // Gap sets the spacing between items (like VStack.Gap).
@@ -116,8 +114,8 @@ func (f *hForEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *hForEachView[T]) render(frame RenderFrame, bounds image.Rectangle) {
-	f.buildStack().render(frame, bounds)
+func (f *hForEachView[T]) render(ctx *RenderContext) {
+	f.buildStack().render(ctx)
 }
 
 // Gap sets the spacing between items (like HStack.Gap).

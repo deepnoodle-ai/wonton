@@ -271,15 +271,13 @@ func (t *treeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (t *treeView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || t.root == nil {
+func (t *treeView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || t.root == nil {
 		return
 	}
 
 	nodes := t.flatten()
-	width := bounds.Dx()
-	height := bounds.Dy()
-	subFrame := frame.SubFrame(bounds)
 
 	// Get scroll position
 	scrollY := 0
@@ -318,10 +316,10 @@ func (t *treeView) render(frame RenderFrame, bounds image.Rectangle) {
 			if level < len(fn.ancestors) {
 				if fn.ancestors[level] {
 					// Draw vertical line
-					subFrame.PrintStyled(x, y, t.branchChars.Vertical+" ", branchStyle)
+					ctx.PrintStyled(x, y, t.branchChars.Vertical+" ", branchStyle)
 				} else {
 					// Draw space
-					subFrame.PrintStyled(x, y, "  ", branchStyle)
+					ctx.PrintStyled(x, y, "  ", branchStyle)
 				}
 			}
 			x += 2
@@ -333,7 +331,7 @@ func (t *treeView) render(frame RenderFrame, bounds image.Rectangle) {
 			if fn.isLast {
 				connector = t.branchChars.Corner
 			}
-			subFrame.PrintStyled(x-2, y, connector+t.branchChars.Horizontal, branchStyle)
+			ctx.PrintStyled(x-2, y, connector+t.branchChars.Horizontal, branchStyle)
 		}
 
 		// Draw expand/collapse indicator
@@ -352,7 +350,7 @@ func (t *treeView) render(frame RenderFrame, bounds image.Rectangle) {
 			style = t.selectedSty
 		}
 
-		subFrame.PrintStyled(x, y, indicator+" ", style)
+		ctx.PrintStyled(x, y, indicator+" ", style)
 		x += runewidth.StringWidth(indicator) + 1
 
 		// Draw label
@@ -361,9 +359,10 @@ func (t *treeView) render(frame RenderFrame, bounds image.Rectangle) {
 		if x+labelWidth > width {
 			label = truncateToWidth(label, width-x)
 		}
-		subFrame.PrintStyled(x, y, label, style)
+		ctx.PrintStyled(x, y, label, style)
 
 		// Register clickable region
+		bounds := ctx.AbsoluteBounds()
 		clickBounds := image.Rect(
 			bounds.Min.X,
 			bounds.Min.Y+y,
