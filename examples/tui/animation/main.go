@@ -8,9 +8,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-type App struct {
-	width int
-}
+type App struct{}
 
 func (app *App) View() tui.View {
 	return tui.VStack(
@@ -20,6 +18,7 @@ func (app *App) View() tui.View {
 		tui.CanvasContext(func(ctx *tui.RenderContext) {
 			app.drawBlocks(ctx)
 		}),
+		tui.Spacer().MinHeight(1),
 		tui.HStack(
 			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
 			tui.Spacer(),
@@ -87,19 +86,12 @@ func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
-	case tui.ResizeEvent:
-		app.width = e.Width
 	}
 	return nil
 }
 
 func main() {
-	app := &App{
-		width: 80,
-	}
-
-	if err := tui.Run(app, tui.WithFPS(60)); err != nil {
+	if err := tui.Run(&App{}, tui.WithFPS(60)); err != nil {
 		log.Fatal(err)
 	}
 }
