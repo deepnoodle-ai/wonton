@@ -63,7 +63,7 @@ func (app *MetricsApp) View() tui.View {
 	} else if app.demoDone {
 		return app.viewFinalMetrics()
 	}
-	return tui.VStack()
+	return tui.Stack()
 }
 
 // viewDemo returns the animated demo view with live metrics.
@@ -94,14 +94,14 @@ func (app *MetricsApp) viewDemo() tui.View {
 	// Animated header color
 	colorIdx := int(app.frame/10) % len(app.colors)
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Spacer().MinHeight(1),
 		tui.Text("=== Performance Metrics Demo ===").Bold().Fg(app.colors[colorIdx]),
 		tui.Spacer().MinHeight(1),
-		tui.VStack(animatedLines...),
+		tui.Stack(animatedLines...),
 		tui.Spacer().MinHeight(1),
 		// Use Progress view instead of manual string building
-		tui.HStack(
+		tui.Group(
 			tui.Text("Progress:").Fg(tui.ColorGreen),
 			tui.Progress(progressVal, 100).Width(40).Fg(tui.ColorGreen).HidePercent(),
 		).Gap(1),
@@ -123,7 +123,7 @@ func (app *MetricsApp) viewDemo() tui.View {
 
 // viewFinalMetrics returns the final metrics screen view.
 func (app *MetricsApp) viewFinalMetrics() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Spacer().MinHeight(1),
 		tui.Text("=== Final Performance Metrics ===").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(1),

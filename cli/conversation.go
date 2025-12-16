@@ -153,8 +153,8 @@ type conversationInputApp struct {
 }
 
 func (a *conversationInputApp) View() tui.View {
-	return tui.VStack(
-		tui.HStack(
+	return tui.Stack(
+		tui.Group(
 			tui.Text("%s", a.conv.prompt),
 			tui.Input(a.value).Width(60),
 		),
@@ -257,10 +257,10 @@ func (v *ConversationView) View(input *string) tui.View {
 
 	views = append(views, tui.Spacer())
 	views = append(views, tui.Divider())
-	views = append(views, tui.HStack(
+	views = append(views, tui.Group(
 		tui.Text("> "),
 		tui.Input(input).Placeholder("Type a message...").Width(60).OnSubmit(v.onSubmit),
 	))
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }

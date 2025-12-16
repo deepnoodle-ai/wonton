@@ -77,13 +77,13 @@ func (app *HTTPApp) HandleEvent(event tui.Event) []tui.Cmd {
 }
 
 func (app *HTTPApp) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		// Title
 		tui.Text("GitHub User Lookup").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(1),
 
 		// Keys
-		tui.HStack(
+		tui.Group(
 			tui.Text("[1]").Fg(tui.ColorYellow),
 			tui.Text("golang").Fg(tui.ColorWhite),
 			tui.Spacer().MinWidth(2),
@@ -127,7 +127,7 @@ func (app *HTTPApp) contentView() tui.View {
 		var details []tui.View
 
 		// Header with login and name
-		details = append(details, tui.HStack(
+		details = append(details, tui.Group(
 			tui.Text("%s", user.Login).Bold().Fg(tui.ColorCyan),
 			tui.If(user.Name != "", tui.Text("%s", user.Name).Fg(tui.ColorBrightBlack)),
 		).Gap(1))
@@ -142,13 +142,13 @@ func (app *HTTPApp) contentView() tui.View {
 
 		// Location and Company
 		if user.Location != "" {
-			details = append(details, tui.HStack(
+			details = append(details, tui.Group(
 				tui.Text("Location:").Fg(tui.ColorBrightBlack),
 				tui.Text("%s", user.Location).Fg(tui.ColorGreen),
 			).Gap(1))
 		}
 		if user.Company != "" {
-			details = append(details, tui.HStack(
+			details = append(details, tui.Group(
 				tui.Text("Company:").Fg(tui.ColorBrightBlack),
 				tui.Text("%s", user.Company).Fg(tui.ColorGreen),
 			).Gap(1))
@@ -157,13 +157,13 @@ func (app *HTTPApp) contentView() tui.View {
 		details = append(details, tui.Spacer().MinHeight(1))
 
 		// Stats
-		details = append(details, tui.HStack(
+		details = append(details, tui.Group(
 			tui.Text("Repos: %d", user.PublicRepos).Fg(tui.ColorGreen),
 			tui.Text("Followers: %d", user.Followers).Fg(tui.ColorGreen),
 			tui.Text("Following: %d", user.Following).Fg(tui.ColorGreen),
 		).Gap(2))
 
-		return tui.VStack(details...)
+		return tui.Stack(details...)
 	}
 
 	return tui.Text("Press 1, 2, or 3 to fetch a user").Fg(tui.ColorBrightBlack)

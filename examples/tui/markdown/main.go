@@ -150,7 +150,7 @@ func (app *MarkdownDemoApp) View() tui.View {
 		markdownHeight = 1
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Markdown(sampleMarkdown, &app.scrollY).
 			Height(markdownHeight).
 			MaxWidth(app.width),

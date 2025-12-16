@@ -112,7 +112,7 @@ func (app *DiffDemoApp) View() tui.View {
 		WithBackground(tui.ColorBlue).
 		WithForeground(tui.ColorWhite)
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.DiffView(app.diff, "go", &app.scrollY).
 			Height(diffHeight).
 			ShowLineNumbers(true),

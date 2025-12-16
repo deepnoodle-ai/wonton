@@ -21,7 +21,7 @@ type forEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
-	cached    *vStack // cached result for rendering
+	cached    *stack // cached result for rendering
 }
 
 // Separator sets a view to be rendered between each item.
@@ -30,7 +30,7 @@ func (f *forEachView[T]) Separator(sep View) *forEachView[T] {
 	return f
 }
 
-func (f *forEachView[T]) buildStack() *vStack {
+func (f *forEachView[T]) buildStack() *stack {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -43,7 +43,7 @@ func (f *forEachView[T]) buildStack() *vStack {
 		views = append(views, f.mapper(item, i))
 	}
 
-	f.cached = VStack(views...)
+	f.cached = Stack(views...)
 	return f.cached
 }
 
@@ -83,7 +83,7 @@ type hForEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
-	cached    *hStack
+	cached    *group
 }
 
 // Separator sets a view to be rendered between each item.
@@ -92,7 +92,7 @@ func (f *hForEachView[T]) Separator(sep View) *hForEachView[T] {
 	return f
 }
 
-func (f *hForEachView[T]) buildStack() *hStack {
+func (f *hForEachView[T]) buildStack() *group {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -105,7 +105,7 @@ func (f *hForEachView[T]) buildStack() *hStack {
 		views = append(views, f.mapper(item, i))
 	}
 
-	f.cached = HStack(views...)
+	f.cached = Group(views...)
 	return f.cached
 }
 

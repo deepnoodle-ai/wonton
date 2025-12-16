@@ -11,7 +11,7 @@ import (
 type App struct{}
 
 func (app *App) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(1),
 		// Use CanvasContext to access the animation frame counter
@@ -19,7 +19,7 @@ func (app *App) View() tui.View {
 			app.drawBlocks(ctx)
 		}),
 		tui.Spacer().MinHeight(1),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
 			tui.Spacer(),
 			tui.Text("CanvasContext demo").Info(),

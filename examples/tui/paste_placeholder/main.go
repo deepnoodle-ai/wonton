@@ -53,7 +53,7 @@ func (app *PastePlaceholderApp) View() tui.View {
 		actualLines = strings.Count(app.input, "\n") + 1
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		// Header
 		tui.Text("Paste Placeholder Mode").Bold().Fg(tui.ColorCyan),
 		tui.Text("Paste multi-line text to see it collapse into a placeholder.").Fg(tui.ColorBrightBlack),

@@ -223,7 +223,7 @@ func (t *textAreaView) render(ctx *RenderContext) {
 				lineViews[i] = Text("%s", line).Style(t.textStyle)
 			}
 		}
-		contentView = VStack(lineViews...)
+		contentView = Stack(lineViews...)
 	}
 
 	// Build the scrollable content

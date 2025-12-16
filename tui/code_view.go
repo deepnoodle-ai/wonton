@@ -19,7 +19,6 @@ type codeView struct {
 	scrollY     *int
 	height      int
 	highlighted [][]StyledSegment
-	lastHash    uint64
 }
 
 // Code creates a code view with syntax highlighting.

@@ -175,7 +175,7 @@ func (app *FilePickerDemoApp) View() tui.View {
 		pickerHeight = 5
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("FILE PICKER DEMO").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(1),
 		tui.FilePicker(app.files, &app.filter, &app.selected).

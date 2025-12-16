@@ -96,7 +96,7 @@ func (a *streamApp) View() tui.View {
 		return tui.Text("%s", text)
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", text),
 		tui.Loading(a.frame),
 	)
@@ -236,23 +236,23 @@ func (a *progressApp) View() tui.View {
 	}
 
 	if a.progress.completed {
-		return tui.VStack(views...)
+		return tui.Stack(views...)
 	}
 
 	// Show progress indicator
 	if a.progress.total > 0 {
-		views = append(views, tui.HStack(
+		views = append(views, tui.Group(
 			tui.Loading(a.frame),
 			tui.Text(" %s (%d/%d)", a.progress.message, a.progress.current, a.progress.total),
 		).Gap(1))
 	} else {
-		views = append(views, tui.HStack(
+		views = append(views, tui.Group(
 			tui.Loading(a.frame),
 			tui.Text(" %s", a.progress.message),
 		).Gap(1))
 	}
 
-	return tui.VStack(views...)
+	return tui.Stack(views...)
 }
 
 func (a *progressApp) HandleEvent(event tui.Event) []tui.Cmd {

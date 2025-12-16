@@ -88,32 +88,32 @@ func (p *paddingView) render(ctx *RenderContext) {
 // Padding modifier methods for stack types
 
 // Padding adds equal padding on all sides of a VStack.
-func (v *vStack) Padding(n int) View {
+func (v *stack) Padding(n int) View {
 	return Padding(n, v)
 }
 
 // PaddingHV adds horizontal and vertical padding to a VStack.
-func (v *vStack) PaddingHV(h, vpad int) View {
+func (v *stack) PaddingHV(h, vpad int) View {
 	return PaddingHV(h, vpad, v)
 }
 
 // PaddingLTRB adds specific padding to each side of a VStack.
-func (v *vStack) PaddingLTRB(left, top, right, bottom int) View {
+func (v *stack) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, v)
 }
 
 // Padding adds equal padding on all sides of an HStack.
-func (h *hStack) Padding(n int) View {
+func (h *group) Padding(n int) View {
 	return Padding(n, h)
 }
 
 // PaddingHV adds horizontal and vertical padding to an HStack.
-func (h *hStack) PaddingHV(hpad, v int) View {
+func (h *group) PaddingHV(hpad, v int) View {
 	return PaddingHV(hpad, v, h)
 }
 
 // PaddingLTRB adds specific padding to each side of an HStack.
-func (h *hStack) PaddingLTRB(left, top, right, bottom int) View {
+func (h *group) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, h)
 }
 
@@ -387,12 +387,12 @@ func (f *borderedView) render(ctx *RenderContext) {
 // Bordered modifier methods for stack types
 
 // Bordered wraps a VStack with a border.
-func (v *vStack) Bordered() *borderedView {
+func (v *stack) Bordered() *borderedView {
 	return Bordered(v)
 }
 
 // Bordered wraps an HStack with a border.
-func (h *hStack) Bordered() *borderedView {
+func (h *group) Bordered() *borderedView {
 	return Bordered(h)
 }
 
@@ -413,11 +413,11 @@ func Background(char rune, style Style, inner View) View {
 }
 
 // Bg adds a background color to a VStack.
-func (v *vStack) Bg(c Color) View {
+func (v *stack) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), v)
 }
 
 // Bg adds a background color to an HStack.
-func (h *hStack) Bg(c Color) View {
+func (h *group) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), h)
 }

@@ -300,10 +300,6 @@ func TestMultipleAfterCommands(t *testing.T) {
 
 // TestCommandErrorHandling tests how commands handle errors
 func TestCommandErrorHandling(t *testing.T) {
-	type errorEvent struct {
-		err error
-	}
-
 	// Command that returns an error event
 	cmd := func() Event {
 		return ErrorEvent{

@@ -24,7 +24,7 @@ func (app *TableDemoApp) View() tui.View {
 		tableHeight = 5
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text(" Table Demo ").Bold().Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 		tui.Divider(),
 		tui.Spacer().MinHeight(1),

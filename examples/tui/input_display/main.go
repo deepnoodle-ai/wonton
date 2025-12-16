@@ -14,10 +14,10 @@ type App struct {
 
 // View returns the declarative UI for this app.
 func (app *App) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Declarative Input Demo").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(1),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Name: "),
 			tui.Input(&app.name).Placeholder("Enter your name...").Width(30),
 		).Gap(1),

@@ -13,12 +13,12 @@ type App struct {
 }
 
 func (app *App) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Counter Application").Bold().Fg(tui.ColorCyan),
 		tui.Spacer().MinHeight(2),
 		tui.Text("Count: %d", app.count).Bold().Fg(tui.ColorGreen),
 		tui.Spacer().MinHeight(2),
-		tui.HStack(
+		tui.Group(
 			tui.Clickable("[ - ]", func() { app.count-- }).Fg(tui.ColorRed),
 			tui.Clickable("[ + ]", func() { app.count++ }).Fg(tui.ColorGreen),
 			tui.Clickable("[Reset]", func() { app.count = 0 }).Fg(tui.ColorYellow),

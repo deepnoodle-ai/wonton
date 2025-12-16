@@ -46,7 +46,7 @@ func (app *HyperlinkApp) View() tui.View {
 		remaining = 0
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Spacer().MinHeight(1),
 		// Title and description
 		tui.Text("OSC 8 Hyperlink Support Demo").Bold().Fg(tui.ColorCyan),
@@ -57,21 +57,21 @@ func (app *HyperlinkApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Example 1: Default styled hyperlink
-		tui.HStack(
+		tui.Group(
 			tui.Text("1. Default styled link: "),
 			tui.Link("https://github.com/myzie/wonton", "Wonton on GitHub"),
 		).Gap(0),
 		tui.Spacer().MinHeight(1),
 
 		// Example 2: Custom styled hyperlink
-		tui.HStack(
+		tui.Group(
 			tui.Text("2. Custom styled link: "),
 			tui.Link("https://example.com", "Example.com").Fg(tui.ColorMagenta).Bold(),
 		).Gap(0),
 		tui.Spacer().MinHeight(1),
 
 		// Example 3: Multiple links on same line
-		tui.HStack(
+		tui.Group(
 			tui.Text("3. Multiple links: "),
 			tui.InlineLinks(" | ",
 				tui.NewHyperlink("https://go.dev", "Go"),
@@ -82,21 +82,21 @@ func (app *HyperlinkApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Example 4: Link with emoji
-		tui.HStack(
+		tui.Group(
 			tui.Text("4. Link with emoji: "),
 			tui.Link("https://www.anthropic.com", "🤖 Anthropic"),
 		).Gap(0),
 		tui.Spacer().MinHeight(1),
 
 		// Example 5: Fallback format (showing URL)
-		tui.HStack(
+		tui.Group(
 			tui.Text("5. Fallback format: "),
 			tui.Link("https://golang.org", "Go Programming").ShowURL(),
 		).Gap(0),
 		tui.Spacer().MinHeight(1),
 
 		// Example 6: Long URL
-		tui.HStack(
+		tui.Group(
 			tui.Text("6. Long URL: "),
 			tui.Link(
 				"https://example.com/very/long/path/to/resource?with=many&query=params&and=more#section",
@@ -106,7 +106,7 @@ func (app *HyperlinkApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Example 7: Different link styles
-		tui.HStack(
+		tui.Group(
 			tui.Text("7. Different styles: "),
 			tui.InlineLinks("  ",
 				tui.NewHyperlink("https://example.com/red", "Red").
@@ -120,9 +120,9 @@ func (app *HyperlinkApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Example 8: Links in a table-like layout
-		tui.HStack(
+		tui.Group(
 			tui.Spacer(),
-			tui.VStack(
+			tui.Stack(
 				tui.Text("8. Table of links:").Bold(),
 				tui.LinkRow("Documentation", "https://pkg.go.dev", "https://pkg.go.dev").LabelFg(tui.ColorWhite),
 				tui.LinkRow("Source Code", "https://github.com", "https://github.com").LabelFg(tui.ColorWhite),
@@ -134,9 +134,9 @@ func (app *HyperlinkApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Information box at the bottom
-		tui.HStack(
+		tui.Group(
 			tui.Spacer(),
-			tui.VStack(
+			tui.Stack(
 				tui.Text("Terminal Support Information:").Bold(),
 				tui.Text("✓ Supported: iTerm2, WezTerm, kitty, foot, Rio, and others").Fg(tui.ColorGreen),
 				tui.Text("✗ Not supported: Most terminals will show the text without clickable links").Fg(tui.ColorYellow),

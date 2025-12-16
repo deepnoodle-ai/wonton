@@ -130,7 +130,7 @@ func (a *promptApp) View() tui.View {
 		items = append(items, tui.Text("%s%s", prefix, opt).Style(style))
 	}
 
-	return tui.VStack(items...)
+	return tui.Stack(items...)
 }
 
 func (a *promptApp) HandleEvent(event tui.Event) []tui.Cmd {
@@ -229,7 +229,7 @@ type inputApp struct {
 }
 
 func (a *inputApp) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", a.input.label).Bold(),
 		tui.Spacer().MinHeight(1),
 		tui.Input(a.value).Placeholder(a.input.placeholder).Width(40),
