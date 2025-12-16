@@ -149,59 +149,6 @@ func (ca *ChainedAnimation) GetCurrentStep(frame uint64) *AnimationStep {
 	return &ca.steps[len(ca.steps)-1]
 }
 
-// ViewAnimationChain combines multiple view modifiers in a chain.
-type ViewAnimationChain struct {
-	modifiers []func(View) View
-}
-
-// NewViewAnimationChain creates a new view animation chain.
-func NewViewAnimationChain() *ViewAnimationChain {
-	return &ViewAnimationChain{
-		modifiers: make([]func(View) View, 0),
-	}
-}
-
-// WithFade adds a fade effect to the chain.
-func (vac *ViewAnimationChain) WithFade(animation *Animation, minOpacity, maxOpacity float64) *ViewAnimationChain {
-	vac.modifiers = append(vac.modifiers, func(v View) View {
-		return Fade(v, animation, minOpacity, maxOpacity)
-	})
-	return vac
-}
-
-// WithBrightness adds a brightness effect to the chain.
-func (vac *ViewAnimationChain) WithBrightness(animation *Animation, minBright, maxBright float64) *ViewAnimationChain {
-	vac.modifiers = append(vac.modifiers, func(v View) View {
-		return Brightness(v, animation, minBright, maxBright)
-	})
-	return vac
-}
-
-// WithAnimatedBorder adds an animated border to the chain.
-func (vac *ViewAnimationChain) WithAnimatedBorder(animation BorderAnimation) *ViewAnimationChain {
-	vac.modifiers = append(vac.modifiers, func(v View) View {
-		return AnimatedBordered(v, animation)
-	})
-	return vac
-}
-
-// WithGlobalWave adds a global wave effect to the chain.
-func (vac *ViewAnimationChain) WithGlobalWave(amplitude, frequency float64, speed int, direction WaveDirection) *ViewAnimationChain {
-	vac.modifiers = append(vac.modifiers, func(v View) View {
-		return GlobalWave(v, amplitude, frequency, speed, direction)
-	})
-	return vac
-}
-
-// Apply applies all modifiers in the chain to a view.
-func (vac *ViewAnimationChain) Apply(view View) View {
-	result := view
-	for _, modifier := range vac.modifiers {
-		result = modifier(result)
-	}
-	return result
-}
-
 // Preset animation combinations
 
 // PresetPulsingBorder creates a pulsing border animation preset.

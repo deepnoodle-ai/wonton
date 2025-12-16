@@ -4,19 +4,19 @@ import "image"
 
 // animatedBorderedView wraps a view with an animated border.
 type animatedBorderedView struct {
-	inner            View
-	border           *BorderStyle
-	borderAnimation  BorderAnimation
-	title            string
-	titleStyle       Style
+	inner             View
+	border            *BorderStyle
+	borderAnimation   BorderAnimation
+	title             string
+	titleStyle        Style
 	staticBorderStyle Style
 }
 
 // AnimatedBordered wraps a view with an animated border.
 func AnimatedBordered(inner View, animation BorderAnimation) *animatedBorderedView {
 	return &animatedBorderedView{
-		inner:             inner,
-		border:            &BorderStyle{
+		inner: inner,
+		border: &BorderStyle{
 			TopLeft: "┌", TopRight: "┐", BottomLeft: "└", BottomRight: "┘",
 			Horizontal: "─", Vertical: "│",
 		},
@@ -182,163 +182,3 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 		f.inner.render(innerCtx)
 	}
 }
-
-// fadeView applies a fade/brightness animation to a view.
-type fadeView struct {
-	inner      View
-	animation  *Animation
-	minOpacity float64
-	maxOpacity float64
-}
-
-// Fade wraps a view with a fade animation.
-// The animation controls opacity from minOpacity to maxOpacity.
-func Fade(inner View, animation *Animation, minOpacity, maxOpacity float64) *fadeView {
-	return &fadeView{
-		inner:      inner,
-		animation:  animation,
-		minOpacity: minOpacity,
-		maxOpacity: maxOpacity,
-	}
-}
-
-func (f *fadeView) size(maxWidth, maxHeight int) (int, int) {
-	return f.inner.size(maxWidth, maxHeight)
-}
-
-func (f *fadeView) render(ctx *RenderContext) {
-	// Update animation
-	f.animation.Update(ctx.Frame())
-
-	// Calculate current opacity
-	opacity := f.minOpacity + (f.maxOpacity-f.minOpacity)*f.animation.Value()
-
-	// Create a wrapper that applies opacity to all cells
-	wrappedFrame := &opacityFrame{
-		inner:   ctx.RenderFrame(),
-		opacity: opacity,
-	}
-
-	wrappedCtx := ctx.WithFrame(wrappedFrame)
-	f.inner.render(wrappedCtx)
-}
-
-// opacityFrame wraps a RenderFrame and applies opacity to all rendered cells.
-type opacityFrame struct {
-	inner   RenderFrame
-	opacity float64
-}
-
-func (o *opacityFrame) SetCell(x, y int, char rune, style Style) error {
-	// Adjust brightness based on opacity
-	if style.FgRGB != nil && (style.FgRGB.R != 0 || style.FgRGB.G != 0 || style.FgRGB.B != 0) {
-		style = style.WithFgRGB(RGB{
-			R: uint8(float64(style.FgRGB.R) * o.opacity),
-			G: uint8(float64(style.FgRGB.G) * o.opacity),
-			B: uint8(float64(style.FgRGB.B) * o.opacity),
-		})
-	}
-	if style.BgRGB != nil && (style.BgRGB.R != 0 || style.BgRGB.G != 0 || style.BgRGB.B != 0) {
-		style = style.WithBgRGB(RGB{
-			R: uint8(float64(style.BgRGB.R) * o.opacity),
-			G: uint8(float64(style.BgRGB.G) * o.opacity),
-			B: uint8(float64(style.BgRGB.B) * o.opacity),
-		})
-	}
-	return o.inner.SetCell(x, y, char, style)
-}
-
-func (o *opacityFrame) Size() (int, int)                                             { return o.inner.Size() }
-func (o *opacityFrame) PrintStyled(x, y int, text string, style Style) error        { return o.inner.PrintStyled(x, y, text, style) }
-func (o *opacityFrame) PrintTruncated(x, y int, text string, style Style) error     { return o.inner.PrintTruncated(x, y, text, style) }
-func (o *opacityFrame) FillStyled(x, y, w, h int, char rune, style Style) error     { return o.inner.FillStyled(x, y, w, h, char, style) }
-func (o *opacityFrame) Fill(char rune, style Style) error                           { return o.inner.Fill(char, style) }
-func (o *opacityFrame) PrintHyperlink(x, y int, link Hyperlink) error               { return o.inner.PrintHyperlink(x, y, link) }
-func (o *opacityFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) error       { return o.inner.PrintHyperlinkFallback(x, y, link) }
-func (o *opacityFrame) GetBounds() image.Rectangle                                  { return o.inner.GetBounds() }
-func (o *opacityFrame) SubFrame(bounds image.Rectangle) RenderFrame                 { return &opacityFrame{inner: o.inner.SubFrame(bounds), opacity: o.opacity} }
-
-// brightnessView applies animated brightness changes to a view.
-type brightnessView struct {
-	inner      View
-	animation  *Animation
-	minBright  float64
-	maxBright  float64
-	colorTint  *RGB // Optional color to blend in
-}
-
-// Brightness wraps a view with a brightness animation.
-func Brightness(inner View, animation *Animation, minBright, maxBright float64) *brightnessView {
-	return &brightnessView{
-		inner:     inner,
-		animation: animation,
-		minBright: minBright,
-		maxBright: maxBright,
-	}
-}
-
-// WithColorTint adds a color tint that becomes stronger as brightness increases.
-func (b *brightnessView) WithColorTint(color RGB) *brightnessView {
-	b.colorTint = &color
-	return b
-}
-
-func (b *brightnessView) size(maxWidth, maxHeight int) (int, int) {
-	return b.inner.size(maxWidth, maxHeight)
-}
-
-func (b *brightnessView) render(ctx *RenderContext) {
-	b.animation.Update(ctx.Frame())
-	brightness := b.minBright + (b.maxBright-b.minBright)*b.animation.Value()
-
-	wrappedFrame := &brightnessFrame{
-		inner:      ctx.RenderFrame(),
-		brightness: brightness,
-		colorTint:  b.colorTint,
-	}
-
-	wrappedCtx := ctx.WithFrame(wrappedFrame)
-	b.inner.render(wrappedCtx)
-}
-
-type brightnessFrame struct {
-	inner      RenderFrame
-	brightness float64
-	colorTint  *RGB
-}
-
-func (b *brightnessFrame) SetCell(x, y int, char rune, style Style) error {
-	// Apply brightness
-	if style.FgRGB != nil && (style.FgRGB.R != 0 || style.FgRGB.G != 0 || style.FgRGB.B != 0) {
-		r := float64(style.FgRGB.R) * b.brightness
-		g := float64(style.FgRGB.G) * b.brightness
-		bl := float64(style.FgRGB.B) * b.brightness
-
-		// Apply color tint if specified
-		if b.colorTint != nil {
-			tintStrength := (b.brightness - 0.5) * 0.3 // Tint gets stronger with brightness
-			if tintStrength > 0 {
-				r = r*(1-tintStrength) + float64(b.colorTint.R)*tintStrength
-				g = g*(1-tintStrength) + float64(b.colorTint.G)*tintStrength
-				bl = bl*(1-tintStrength) + float64(b.colorTint.B)*tintStrength
-			}
-		}
-
-		style = style.WithFgRGB(RGB{
-			R: uint8(min(255, r)),
-			G: uint8(min(255, g)),
-			B: uint8(min(255, bl)),
-		})
-	}
-	return b.inner.SetCell(x, y, char, style)
-}
-
-func (b *brightnessFrame) Size() (int, int)                                             { return b.inner.Size() }
-func (b *brightnessFrame) PrintStyled(x, y int, text string, style Style) error        { return b.inner.PrintStyled(x, y, text, style) }
-func (b *brightnessFrame) PrintTruncated(x, y int, text string, style Style) error     { return b.inner.PrintTruncated(x, y, text, style) }
-func (b *brightnessFrame) FillStyled(x, y, w, h int, char rune, style Style) error     { return b.inner.FillStyled(x, y, w, h, char, style) }
-func (b *brightnessFrame) Fill(char rune, style Style) error                           { return b.inner.Fill(char, style) }
-func (b *brightnessFrame) PrintHyperlink(x, y int, link Hyperlink) error               { return b.inner.PrintHyperlink(x, y, link) }
-func (b *brightnessFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) error       { return b.inner.PrintHyperlinkFallback(x, y, link) }
-func (b *brightnessFrame) GetBounds() image.Rectangle                                  { return b.inner.GetBounds() }
-func (b *brightnessFrame) SubFrame(bounds image.Rectangle) RenderFrame                 { return &brightnessFrame{inner: b.inner.SubFrame(bounds), brightness: b.brightness, colorTint: b.colorTint} }
