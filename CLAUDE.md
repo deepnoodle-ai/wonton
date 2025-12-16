@@ -16,7 +16,10 @@ parsing to rich terminal UIs with animations.
 | **cli**       | `github.com/deepnoodle-ai/wonton/cli`       | CLI framework with commands, flags, config, and middleware |
 | **clipboard** | `github.com/deepnoodle-ai/wonton/clipboard` | Cross-platform system clipboard access                     |
 | **color**     | `github.com/deepnoodle-ai/wonton/color`     | ANSI color types, RGB, HSL, and gradient utilities         |
+| **crawler**   | `github.com/deepnoodle-ai/wonton/crawler`   | Web crawler with configurable fetchers, parsers, and caching |
 | **env**       | `github.com/deepnoodle-ai/wonton/env`       | Config loading from env vars, .env files, and JSON         |
+| **fetch**     | `github.com/deepnoodle-ai/wonton/fetch`     | Web page fetching interfaces and HTTP implementation       |
+| **htmlparse** | `github.com/deepnoodle-ai/wonton/htmlparse` | HTML parsing, metadata extraction, link extraction         |
 | **htmltomd**  | `github.com/deepnoodle-ai/wonton/htmltomd`  | HTML to Markdown conversion for LLMs/AI agents             |
 | **humanize**  | `github.com/deepnoodle-ai/wonton/humanize`  | Human-readable formatting for bytes, durations, numbers    |
 | **retry**     | `github.com/deepnoodle-ai/wonton/retry`     | Retry logic with exponential backoff and jitter            |
@@ -26,3 +29,4 @@ parsing to rich terminal UIs with animations.
 | **tui**       | `github.com/deepnoodle-ai/wonton/tui`       | Full TUI library with declarative views and runtime        |
 | **tuisnap**   | `github.com/deepnoodle-ai/wonton/tuisnap`   | Snapshot testing utilities for TUI applications            |
 | **unidiff**   | `github.com/deepnoodle-ai/wonton/unidiff`   | Unified diff parsing for display and analysis              |
+| **web**       | `github.com/deepnoodle-ai/wonton/web`       | URL manipulation, text normalization, media detection      |
