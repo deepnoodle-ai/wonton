@@ -8,17 +8,15 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-// InputRegistry manages text inputs for focus and key routing.
+// inputRegistry manages text input state (bindings, callbacks, etc.)
+// Focus management is delegated to the global focusManager.
 var inputRegistry = &inputRegistryImpl{
-	inputs:  make(map[string]*inputState),
-	focused: "",
+	inputs: make(map[string]*inputState),
 }
 
 type inputRegistryImpl struct {
-	mu      sync.Mutex
-	inputs  map[string]*inputState
-	focused string
-	order   []string // track registration order for tab navigation
+	mu     sync.Mutex
+	inputs map[string]*inputState
 }
 
 type inputState struct {
@@ -33,17 +31,73 @@ type inputState struct {
 	pastePlaceholder bool
 	cursorBlink      bool
 	multiline        bool
+	maxHeight        int
+	focused          bool
 }
 
-// Clear clears all registered inputs (called before each render).
+// Focusable interface implementation for inputState
+
+func (s *inputState) FocusID() string {
+	return s.id
+}
+
+func (s *inputState) IsFocused() bool {
+	return s.focused
+}
+
+func (s *inputState) SetFocused(focused bool) {
+	s.focused = focused
+	s.input.SetFocused(focused)
+}
+
+func (s *inputState) FocusBounds() image.Rectangle {
+	return s.bounds
+}
+
+func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
+	// Handle paste events
+	if event.Paste != "" {
+		handled := s.input.HandlePaste(event.Paste)
+		if handled && s.binding != nil {
+			*s.binding = s.input.Value()
+			if s.onChange != nil {
+				s.onChange(*s.binding)
+			}
+		}
+		return handled
+	}
+
+	// Handle Enter for submit (but not in multiline mode with Shift)
+	if event.Key == KeyEnter && !event.Shift && !s.multiline {
+		if s.onSubmit != nil {
+			s.onSubmit(s.input.Value())
+		}
+		return true
+	}
+
+	// Route to TextInput
+	handled := s.input.HandleKey(event)
+
+	// Sync value back to binding
+	if handled && s.binding != nil {
+		*s.binding = s.input.Value()
+		if s.onChange != nil {
+			s.onChange(*s.binding)
+		}
+	}
+
+	return handled
+}
+
+// Clear clears input tracking (called before each render).
 func (r *inputRegistryImpl) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.order = r.order[:0]
+	// Note: we don't clear the inputs map, just let focusManager handle order
 }
 
 // Register adds or updates an input.
-func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, placeholderStyle *Style, mask rune, pastePlaceholder bool, cursorBlink bool, multiline bool, onChange, onSubmit func(string)) *inputState {
+func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, placeholderStyle *Style, mask rune, pastePlaceholder bool, cursorBlink bool, multiline bool, maxHeight int, onChange, onSubmit func(string)) *inputState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -69,6 +123,9 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 		if multiline {
 			ti.WithMultilineMode(true)
 		}
+		if maxHeight > 0 {
+			ti.WithMaxHeight(maxHeight)
+		}
 		// Sync initial value from binding
 		if binding != nil && *binding != "" {
 			ti.SetValue(*binding)
@@ -82,6 +139,7 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 			pastePlaceholder: pastePlaceholder,
 			cursorBlink:      cursorBlink,
 			multiline:        multiline,
+			maxHeight:        maxHeight,
 		}
 		r.inputs[id] = state
 	}
@@ -96,6 +154,10 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 	state.input.MultilineMode = multiline
 	state.multiline = multiline
 
+	// Sync max height (in case it changed)
+	state.input.MaxHeight = maxHeight
+	state.maxHeight = maxHeight
+
 	// Sync value from binding
 	if binding != nil {
 		currentValue := state.input.Value()
@@ -104,148 +166,27 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 		}
 	}
 
-	// Track registration order
-	r.order = append(r.order, id)
-
-	// Auto-focus first input if none focused
-	if r.focused == "" {
-		r.focused = id
-		state.input.SetFocused(true)
-	} else {
-		state.input.SetFocused(r.focused == id)
-	}
+	// Register with the global focus manager
+	focusManager.Register(state)
 
 	return state
 }
 
-// GetFocused returns the currently focused input.
+// GetFocused returns the currently focused input state (if any input is focused).
 func (r *inputRegistryImpl) GetFocused() *inputState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.focused == "" {
+
+	focused := focusManager.GetFocused()
+	if focused == nil {
 		return nil
 	}
-	return r.inputs[r.focused]
-}
 
-// SetFocus sets focus to a specific input.
-func (r *inputRegistryImpl) SetFocus(id string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Unfocus previous
-	if prev, exists := r.inputs[r.focused]; exists {
-		prev.input.SetFocused(false)
+	// Check if the focused element is an input
+	if state, ok := focused.(*inputState); ok {
+		return state
 	}
-
-	r.focused = id
-
-	// Focus new
-	if next, exists := r.inputs[id]; exists {
-		next.input.SetFocused(true)
-	}
-}
-
-// FocusNext moves focus to the next input.
-func (r *inputRegistryImpl) FocusNext() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if len(r.order) == 0 {
-		return
-	}
-
-	currentIdx := -1
-	for i, id := range r.order {
-		if id == r.focused {
-			currentIdx = i
-			break
-		}
-	}
-
-	// Unfocus current
-	if prev, exists := r.inputs[r.focused]; exists {
-		prev.input.SetFocused(false)
-	}
-
-	// Focus next (wrap around)
-	nextIdx := (currentIdx + 1) % len(r.order)
-	r.focused = r.order[nextIdx]
-
-	if next, exists := r.inputs[r.focused]; exists {
-		next.input.SetFocused(true)
-	}
-}
-
-// HandleKey routes a key event to the focused input.
-// Returns true if the event was handled.
-func (r *inputRegistryImpl) HandleKey(event KeyEvent) bool {
-	r.mu.Lock()
-	state := r.inputs[r.focused]
-	r.mu.Unlock()
-
-	if state == nil {
-		return false
-	}
-
-	// Handle paste events
-	if event.Paste != "" {
-		handled := state.input.HandlePaste(event.Paste)
-		if handled && state.binding != nil {
-			*state.binding = state.input.Value()
-			if state.onChange != nil {
-				state.onChange(*state.binding)
-			}
-		}
-		return handled
-	}
-
-	// Handle Tab for focus navigation
-	if event.Key == KeyTab && !event.Shift {
-		r.FocusNext()
-		return true
-	}
-
-	// Handle Enter for submit
-	if event.Key == KeyEnter && !event.Shift {
-		if state.onSubmit != nil {
-			state.onSubmit(state.input.Value())
-		}
-		return true
-	}
-
-	// Route to TextInput
-	handled := state.input.HandleKey(event)
-
-	// Sync value back to binding
-	if handled && state.binding != nil {
-		*state.binding = state.input.Value()
-		if state.onChange != nil {
-			state.onChange(*state.binding)
-		}
-	}
-
-	return handled
-}
-
-// HandleClick checks if a click hit any input and focuses it.
-func (r *inputRegistryImpl) HandleClick(x, y int) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	pt := image.Pt(x, y)
-	for id, state := range r.inputs {
-		if pt.In(state.bounds) {
-			// Unfocus previous
-			if prev, exists := r.inputs[r.focused]; exists {
-				prev.input.SetFocused(false)
-			}
-			r.focused = id
-			state.input.SetFocused(true)
-			return true
-		}
-	}
-	return false
+	return nil
 }
 
 // inputView wraps a TextInput for declarative use
@@ -258,9 +199,14 @@ type inputView struct {
 	onChange         func(string)
 	onSubmit         func(string)
 	width            int
+	maxHeight        int // Maximum height in lines (0 = unlimited)
 	pastePlaceholder bool
 	cursorBlink      bool
 	multiline        bool
+
+	// Focus styling
+	style      *Style // Normal style (optional)
+	focusStyle *Style // Style when focused (optional)
 }
 
 // Input creates a text input view bound to a string pointer.
@@ -344,6 +290,28 @@ func (i *inputView) Multiline(enabled bool) *inputView {
 	return i
 }
 
+// MaxHeight sets the maximum height in lines for a multiline input.
+// When content exceeds this height, the input becomes scrollable.
+// Overflow indicators (▲/▼) show when content exists above/below.
+// A value of 0 means unlimited height (default).
+func (i *inputView) MaxHeight(lines int) *inputView {
+	i.maxHeight = lines
+	return i
+}
+
+// Style sets the style for the input text.
+func (i *inputView) Style(s Style) *inputView {
+	i.style = &s
+	return i
+}
+
+// FocusStyle sets the style applied when this input is focused.
+// If not set, the normal style is used.
+func (i *inputView) FocusStyle(s Style) *inputView {
+	i.focusStyle = &s
+	return i
+}
+
 // calcWrappedHeight calculates how many lines text will take when wrapped at width
 func calcWrappedHeight(text string, width int) int {
 	if width <= 0 || text == "" {
@@ -386,6 +354,11 @@ func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
 		h = calcWrappedHeight(displayText, w)
 	}
 
+	// Apply max height constraint
+	if i.maxHeight > 0 && h > i.maxHeight {
+		h = i.maxHeight
+	}
+
 	return w, h
 }
 
@@ -395,9 +368,19 @@ func (i *inputView) render(ctx *RenderContext) {
 		return
 	}
 
+	// Determine if this input is focused
+	isFocused := focusManager.GetFocusedID() == i.id
+
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
-	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.onChange, i.onSubmit)
+	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit)
+
+	// Apply focus-aware styling to the TextInput
+	if isFocused && i.focusStyle != nil {
+		state.input.Style = *i.focusStyle
+	} else if i.style != nil {
+		state.input.Style = *i.style
+	}
 
 	// Update TextInput bounds
 	state.input.SetBounds(inputBounds)

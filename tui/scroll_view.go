@@ -108,10 +108,11 @@ func (s *scrollView) render(ctx *RenderContext) {
 
 	// Create an offset render frame that translates coordinates
 	offsetFrame := &scrollRenderFrame{
-		inner:   ctx.RenderFrame(),
-		offsetY: scrollY,
-		clipH:   viewportHeight,
-		clipW:   viewportWidth,
+		inner:         ctx.RenderFrame(),
+		offsetY:       scrollY,
+		clipH:         viewportHeight,
+		clipW:         viewportWidth,
+		contentHeight: contentHeight,
 	}
 
 	// Create a new context with the scroll frame, preserving the frame counter
@@ -124,11 +125,12 @@ func (s *scrollView) render(ctx *RenderContext) {
 // scrollRenderFrame wraps a RenderFrame and applies a vertical offset,
 // only rendering cells that fall within the visible viewport.
 type scrollRenderFrame struct {
-	inner   RenderFrame
-	offsetX int // X offset for subframes (from padding, etc.)
-	offsetY int // scroll offset (how many rows to skip from top)
-	clipH   int // viewport height
-	clipW   int // viewport width
+	inner         RenderFrame
+	offsetX       int // X offset for subframes (from padding, etc.)
+	offsetY       int // scroll offset (how many rows to skip from top)
+	clipH         int // viewport height
+	clipW         int // viewport width
+	contentHeight int // full content height (for Size() reporting)
 }
 
 func (f *scrollRenderFrame) SetCell(x, y int, char rune, style Style) error {
@@ -174,7 +176,9 @@ func (f *scrollRenderFrame) FillStyled(x, y, width, height int, char rune, style
 }
 
 func (f *scrollRenderFrame) Size() (width, height int) {
-	return f.clipW, f.clipH
+	// Report full content height so inner views render all content,
+	// even parts that are scrolled out of view (they get clipped by SetCell/PrintStyled)
+	return f.clipW, f.contentHeight
 }
 
 func (f *scrollRenderFrame) GetBounds() image.Rectangle {
@@ -185,11 +189,12 @@ func (f *scrollRenderFrame) GetBounds() image.Rectangle {
 func (f *scrollRenderFrame) SubFrame(rect image.Rectangle) RenderFrame {
 	// Create a subframe that accumulates X offset and adjusts Y offset
 	return &scrollRenderFrame{
-		inner:   f.inner,
-		offsetX: f.offsetX + rect.Min.X, // Accumulate X offset
-		offsetY: f.offsetY - rect.Min.Y, // Adjust Y offset for nested bounds
-		clipH:   f.clipH,
-		clipW:   f.clipW,
+		inner:         f.inner,
+		offsetX:       f.offsetX + rect.Min.X, // Accumulate X offset
+		offsetY:       f.offsetY - rect.Min.Y, // Adjust Y offset for nested bounds
+		clipH:         f.clipH,
+		clipW:         f.clipW,
+		contentHeight: rect.Dy(), // Use subframe's height for content
 	}
 }
 

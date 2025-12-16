@@ -28,6 +28,7 @@ type TextInput struct {
 	PlaceholderStyle Style
 	CursorStyle      Style
 	PasteStyle       Style // Style for paste placeholders
+	OverflowStyle    Style // Style for overflow indicators (▲/▼)
 
 	// Callbacks
 	OnChange func(value string)
@@ -43,6 +44,10 @@ type TextInput struct {
 	// Multiline mode
 	MultilineMode bool // When true, Shift+Enter inserts newlines
 	SubmitOnEnter bool // When true, Enter triggers OnSubmit (default: true)
+
+	// Scrolling (for multiline with MaxHeight)
+	MaxHeight    int // Maximum visible lines (0 = unlimited)
+	ScrollOffset int // First visible line (0-indexed)
 
 	// Cursor blink
 	CursorBlink         bool          // When true, cursor blinks
@@ -62,6 +67,7 @@ func NewTextInput() *TextInput {
 		PlaceholderStyle: NewStyle().WithForeground(ColorBrightBlack),
 		CursorStyle:      NewStyle().WithBackground(ColorWhite).WithForeground(ColorBlack),
 		PasteStyle:       NewStyle().WithForeground(ColorBrightBlack).WithItalic(),
+		OverflowStyle:    NewStyle().WithForeground(ColorBrightBlack),
 		segments:         []inputSegment{},
 		SubmitOnEnter:    true,
 	}
@@ -165,6 +171,13 @@ func (t *TextInput) WithCursorBlinkInterval(interval time.Duration) *TextInput {
 	return t
 }
 
+// WithMaxHeight sets the maximum visible height in lines.
+// When content exceeds this, the input becomes scrollable with overflow indicators.
+func (t *TextInput) WithMaxHeight(lines int) *TextInput {
+	t.MaxHeight = lines
+	return t
+}
+
 // Draw renders the input
 func (t *TextInput) Draw(frame RenderFrame) {
 	bounds := t.GetBounds()
@@ -207,9 +220,34 @@ func (t *TextInput) Draw(frame RenderFrame) {
 		}
 		frame.PrintStyled(drawX, drawY, maskedText, t.Style)
 	} else {
-		// Draw segments with appropriate styles, handling newlines
+		// Calculate total visual lines and cursor line for scrolling
+		totalLines := t.countVisualLines(width)
+		cursorLine := t.getCursorLine(width)
+
+		// Auto-scroll to keep cursor visible
+		if t.MaxHeight > 0 && totalLines > height {
+			// Ensure cursor is within visible range
+			if cursorLine < t.ScrollOffset {
+				t.ScrollOffset = cursorLine
+			} else if cursorLine >= t.ScrollOffset+height {
+				t.ScrollOffset = cursorLine - height + 1
+			}
+			// Clamp scroll offset
+			maxScroll := totalLines - height
+			if t.ScrollOffset > maxScroll {
+				t.ScrollOffset = maxScroll
+			}
+			if t.ScrollOffset < 0 {
+				t.ScrollOffset = 0
+			}
+		} else {
+			t.ScrollOffset = 0
+		}
+
+		// Draw segments with appropriate styles, handling newlines and scrolling
 		x := drawX
-		y := drawY
+		visualLine := 0
+
 		for _, seg := range t.segments {
 			style := t.Style
 			if seg.isPaste {
@@ -220,31 +258,38 @@ func (t *TextInput) Draw(frame RenderFrame) {
 			for _, r := range seg.display {
 				if r == '\n' {
 					// Move to next line
-					y++
+					visualLine++
 					x = drawX
-					if y >= drawY+height {
-						break
-					}
 					continue
 				}
 
 				charWidth := runewidth.RuneWidth(r)
 				if x+charWidth > drawX+width {
 					// Wrap to next line
-					y++
+					visualLine++
 					x = drawX
-					if y >= drawY+height {
-						break
-					}
 				}
 
-				frame.PrintStyled(x, y, string(r), style)
+				// Only draw if within visible range
+				if visualLine >= t.ScrollOffset && visualLine < t.ScrollOffset+height {
+					screenY := drawY + (visualLine - t.ScrollOffset)
+					frame.PrintStyled(x, screenY, string(r), style)
+				}
 				x += charWidth
 			}
+		}
 
-			if y >= drawY+height {
-				break
-			}
+		// Draw overflow indicators
+		hasContentAbove := t.ScrollOffset > 0
+		hasContentBelow := t.ScrollOffset+height < totalLines
+
+		if hasContentAbove {
+			// Draw ▲ indicator at top-right
+			frame.PrintStyled(drawX+width-1, drawY, "▲", t.OverflowStyle)
+		}
+		if hasContentBelow {
+			// Draw ▼ indicator at bottom-right
+			frame.PrintStyled(drawX+width-1, drawY+height-1, "▼", t.OverflowStyle)
 		}
 	}
 
@@ -263,26 +308,34 @@ func (t *TextInput) Draw(frame RenderFrame) {
 		}
 
 		if cursorVisible {
-			// Calculate cursor position accounting for newlines
-			cursorX, cursorY := t.getCursorXY(drawX, drawY, width)
+			// Calculate cursor position accounting for newlines and scroll offset
+			cursorLine := t.getCursorLine(width)
+			cursorX := t.getCursorXInLine(width)
 
-			if cursorY < drawY+height && cursorX < drawX+width {
-				charUnderCursor := " "
-				if showingPlaceholder {
-					// Show first char of placeholder under cursor
-					r, _ := utf8.DecodeRuneInString(t.Placeholder)
-					charUnderCursor = string(r)
-				} else if t.CursorPos < len(displayText) {
-					r, _ := utf8.DecodeRuneInString(displayText[t.CursorPos:])
-					if r != '\n' {
-						if t.MaskChar != 0 {
-							charUnderCursor = string(t.MaskChar)
-						} else {
-							charUnderCursor = string(r)
+			// Only draw cursor if it's in the visible range
+			screenLine := cursorLine - t.ScrollOffset
+			if screenLine >= 0 && screenLine < height {
+				cursorScreenX := drawX + cursorX
+				cursorScreenY := drawY + screenLine
+
+				if cursorScreenX < drawX+width {
+					charUnderCursor := " "
+					if showingPlaceholder {
+						// Show first char of placeholder under cursor
+						r, _ := utf8.DecodeRuneInString(t.Placeholder)
+						charUnderCursor = string(r)
+					} else if t.CursorPos < len(displayText) {
+						r, _ := utf8.DecodeRuneInString(displayText[t.CursorPos:])
+						if r != '\n' {
+							if t.MaskChar != 0 {
+								charUnderCursor = string(t.MaskChar)
+							} else {
+								charUnderCursor = string(r)
+							}
 						}
 					}
+					frame.PrintStyled(cursorScreenX, cursorScreenY, charUnderCursor, t.CursorStyle)
 				}
-				frame.PrintStyled(cursorX, cursorY, charUnderCursor, t.CursorStyle)
 			}
 		}
 	}
@@ -312,6 +365,90 @@ func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
 		}
 	}
 	return x, y
+}
+
+// countVisualLines returns the total number of visual lines (accounting for wrapping)
+func (t *TextInput) countVisualLines(width int) int {
+	if width <= 0 {
+		return 1
+	}
+	displayText := t.DisplayText()
+	if displayText == "" {
+		return 1
+	}
+
+	lines := 1
+	x := 0
+	for _, r := range displayText {
+		if r == '\n' {
+			lines++
+			x = 0
+			continue
+		}
+		charWidth := runewidth.RuneWidth(r)
+		if x+charWidth > width {
+			lines++
+			x = charWidth
+		} else {
+			x += charWidth
+		}
+	}
+	return lines
+}
+
+// getCursorLine returns which visual line (0-indexed) the cursor is on
+func (t *TextInput) getCursorLine(width int) int {
+	if width <= 0 {
+		return 0
+	}
+	displayText := t.DisplayText()
+
+	line := 0
+	x := 0
+	for i, r := range displayText {
+		if i >= t.CursorPos {
+			break
+		}
+		if r == '\n' {
+			line++
+			x = 0
+		} else {
+			charWidth := runewidth.RuneWidth(r)
+			if x+charWidth > width {
+				line++
+				x = charWidth
+			} else {
+				x += charWidth
+			}
+		}
+	}
+	return line
+}
+
+// getCursorXInLine returns the x position of the cursor within its current line
+func (t *TextInput) getCursorXInLine(width int) int {
+	if width <= 0 {
+		return 0
+	}
+	displayText := t.DisplayText()
+
+	x := 0
+	for i, r := range displayText {
+		if i >= t.CursorPos {
+			break
+		}
+		if r == '\n' {
+			x = 0
+		} else {
+			charWidth := runewidth.RuneWidth(r)
+			if x+charWidth > width {
+				x = charWidth
+			} else {
+				x += charWidth
+			}
+		}
+	}
+	return x
 }
 
 // lineRange represents the byte range of a visual line.

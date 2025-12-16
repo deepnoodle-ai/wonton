@@ -5,6 +5,9 @@ package tui
 //
 // Methods are unexported - users compose views using builder functions like
 // Text(), VStack(), HStack(), etc. rather than implementing View directly.
+//
+// For custom focusable components, use FocusableView() to wrap any view
+// with focus handling capabilities.
 type View interface {
 	// render draws this view using the provided render context.
 	// The context provides both drawing capabilities and contextual information

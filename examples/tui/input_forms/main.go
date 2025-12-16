@@ -73,8 +73,7 @@ func (app *InputFormsApp) View() tui.View {
 			tui.Input(&app.password).
 				Placeholder("Enter password").
 				Width(40).
-				Mask('*').
-				OnSubmit(func(string) { app.validateAndSubmit() }),
+				Mask('*'),
 		),
 		tui.Spacer().MinHeight(1),
 	)
@@ -89,9 +88,18 @@ func (app *InputFormsApp) View() tui.View {
 		children = append(children, tui.Spacer().MinHeight(1))
 	}
 
+	// Submit button (focusable via Tab)
+	children = append(children,
+		tui.Button("[ Submit ]", func() { app.validateAndSubmit() }).
+			ID("submit-btn").
+			Fg(tui.ColorGreen).
+			FocusStyle(tui.NewStyle().WithBackground(tui.ColorGreen).WithForeground(tui.ColorBlack)),
+		tui.Spacer().MinHeight(1),
+	)
+
 	// Help text
 	children = append(children,
-		tui.Text("Tab: Navigate | Enter: Submit | Esc: Quit").Dim(),
+		tui.Text("Tab/Shift+Tab: Navigate | Enter/Space: Activate | Esc: Quit").Dim(),
 	)
 
 	return tui.VStack(children...).Padding(2)

@@ -223,6 +223,12 @@ type borderedView struct {
 	title       string
 	titleStyle  Style
 	borderStyle Style
+
+	// Focus-aware styling
+	focusID         string // Watch this focus ID for styling changes
+	focusBorderFg   Color  // Border color when focused
+	hasFocusBorder  bool   // true if focusBorderFg was set
+	focusTitleStyle *Style // Title style when focused
 }
 
 // Bordered wraps a view with a border (optional title).
@@ -255,6 +261,26 @@ func (f *borderedView) TitleStyle(s Style) *borderedView {
 // BorderFg sets the border foreground color.
 func (f *borderedView) BorderFg(c Color) *borderedView {
 	f.borderStyle = f.borderStyle.WithForeground(c)
+	return f
+}
+
+// FocusID sets the focus ID to watch for styling changes.
+// When the element with this ID is focused, focus styles will be applied.
+func (f *borderedView) FocusID(id string) *borderedView {
+	f.focusID = id
+	return f
+}
+
+// FocusBorderFg sets the border color when the watched element is focused.
+func (f *borderedView) FocusBorderFg(c Color) *borderedView {
+	f.focusBorderFg = c
+	f.hasFocusBorder = true
+	return f
+}
+
+// FocusTitleStyle sets the title style when the watched element is focused.
+func (f *borderedView) FocusTitleStyle(s Style) *borderedView {
+	f.focusTitleStyle = &s
 	return f
 }
 
@@ -295,14 +321,29 @@ func (f *borderedView) render(ctx *RenderContext) {
 		return
 	}
 
+	// Determine if the watched element is focused
+	isFocused := f.focusID != "" && focusManager.GetFocusedID() == f.focusID
+
+	// Choose border style based on focus
+	borderStyle := f.borderStyle
+	if isFocused && f.hasFocusBorder {
+		borderStyle = NewStyle().WithForeground(f.focusBorderFg)
+	}
+
+	// Choose title style based on focus
+	titleStyle := f.titleStyle
+	if isFocused && f.focusTitleStyle != nil {
+		titleStyle = *f.focusTitleStyle
+	}
+
 	// Draw border
 	// Top border
-	ctx.PrintTruncated(0, 0, f.border.TopLeft, f.borderStyle)
+	ctx.PrintTruncated(0, 0, f.border.TopLeft, borderStyle)
 	for x := 1; x < w-1; x++ {
-		ctx.PrintTruncated(x, 0, f.border.Horizontal, f.borderStyle)
+		ctx.PrintTruncated(x, 0, f.border.Horizontal, borderStyle)
 	}
 	if w > 1 {
-		ctx.PrintTruncated(w-1, 0, f.border.TopRight, f.borderStyle)
+		ctx.PrintTruncated(w-1, 0, f.border.TopRight, borderStyle)
 	}
 
 	// Title in top border
@@ -313,25 +354,25 @@ func (f *borderedView) render(ctx *RenderContext) {
 			titleW = maxTitleW
 		}
 		titleX := 2
-		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], f.titleStyle)
+		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], titleStyle)
 	}
 
 	// Side borders
 	for y := 1; y < h-1; y++ {
-		ctx.PrintTruncated(0, y, f.border.Vertical, f.borderStyle)
+		ctx.PrintTruncated(0, y, f.border.Vertical, borderStyle)
 		if w > 1 {
-			ctx.PrintTruncated(w-1, y, f.border.Vertical, f.borderStyle)
+			ctx.PrintTruncated(w-1, y, f.border.Vertical, borderStyle)
 		}
 	}
 
 	// Bottom border
 	if h > 1 {
-		ctx.PrintTruncated(0, h-1, f.border.BottomLeft, f.borderStyle)
+		ctx.PrintTruncated(0, h-1, f.border.BottomLeft, borderStyle)
 		for x := 1; x < w-1; x++ {
-			ctx.PrintTruncated(x, h-1, f.border.Horizontal, f.borderStyle)
+			ctx.PrintTruncated(x, h-1, f.border.Horizontal, borderStyle)
 		}
 		if w > 1 {
-			ctx.PrintTruncated(w-1, h-1, f.border.BottomRight, f.borderStyle)
+			ctx.PrintTruncated(w-1, h-1, f.border.BottomRight, borderStyle)
 		}
 	}
 
