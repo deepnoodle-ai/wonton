@@ -4,7 +4,7 @@ package tui
 // Views form a tree structure where containers measure and position children.
 //
 // Methods are unexported - users compose views using builder functions like
-// Text(), VStack(), HStack(), etc. rather than implementing View directly.
+// Text(), Stack(), HStack(), etc. rather than implementing View directly.
 //
 // For custom focusable components, use FocusableView() to wrap any view
 // with focus handling capabilities.
@@ -35,7 +35,7 @@ func Empty() View {
 	return emptyView{}
 }
 
-func (e emptyView) render(ctx *RenderContext) {}
+func (e emptyView) render(ctx *RenderContext)               {}
 func (e emptyView) size(maxWidth, maxHeight int) (int, int) { return 0, 0 }
 
 // spacerView expands to fill available space
@@ -46,7 +46,7 @@ type spacerView struct {
 }
 
 // Spacer returns a flexible view that expands to fill available space.
-// In a VStack, it fills vertical space. In an HStack, it fills horizontal space.
+// In a Stack, it fills vertical space. In an HStack, it fills horizontal space.
 func Spacer() *spacerView {
 	return &spacerView{flexFactor: 1}
 }

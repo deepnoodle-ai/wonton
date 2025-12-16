@@ -73,7 +73,7 @@ func (app *CheckboxDemoApp) View() tui.View {
 		items[i] = tui.ListItem{Label: item, Value: item}
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		// Header
 		tui.HeaderBar("Checkbox Demo").Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 

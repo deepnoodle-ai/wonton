@@ -10,6 +10,18 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+// InputCursorStyle represents different cursor rendering styles for text input
+type InputCursorStyle int
+
+const (
+	// InputCursorBlock renders a block cursor (default)
+	InputCursorBlock InputCursorStyle = iota
+	// InputCursorUnderline renders an underline cursor
+	InputCursorUnderline
+	// InputCursorBar renders a vertical bar/beam cursor
+	InputCursorBar
+)
+
 // inputSegment represents a portion of input text
 type inputSegment struct {
 	display string // What is shown to the user
@@ -49,9 +61,11 @@ type TextInput struct {
 	MaxHeight    int // Maximum visible lines (0 = unlimited)
 	ScrollOffset int // First visible line (0-indexed)
 
-	// Cursor blink
-	CursorBlink         bool          // When true, cursor blinks
-	CursorBlinkInterval time.Duration // Blink interval (default 530ms)
+	// Cursor appearance
+	CursorBlink         bool             // When true, cursor blinks
+	CursorBlinkInterval time.Duration    // Blink interval (default 530ms)
+	CursorShape         InputCursorStyle // Shape of the cursor (block, underline, bar)
+	CursorColor         *Color           // Custom cursor color (nil = use default style)
 
 	// Internal
 	focused  bool
@@ -168,6 +182,20 @@ func (t *TextInput) WithCursorBlink(enabled bool) *TextInput {
 // Default is 530ms if not set.
 func (t *TextInput) WithCursorBlinkInterval(interval time.Duration) *TextInput {
 	t.CursorBlinkInterval = interval
+	return t
+}
+
+// WithCursorShape sets the cursor shape/style.
+// Options are: InputCursorBlock (default), InputCursorUnderline, InputCursorBar.
+func (t *TextInput) WithCursorShape(shape InputCursorStyle) *TextInput {
+	t.CursorShape = shape
+	return t
+}
+
+// WithCursorColor sets a custom cursor color.
+// If not set, uses the CursorStyle colors (default: white background, black foreground).
+func (t *TextInput) WithCursorColor(color Color) *TextInput {
+	t.CursorColor = &color
 	return t
 }
 
@@ -319,6 +347,13 @@ func (t *TextInput) Draw(frame RenderFrame) {
 				cursorScreenY := drawY + screenLine
 
 				if cursorScreenX < drawX+width {
+					// Determine cursor style and character
+					cursorStyle := t.CursorStyle
+					if t.CursorColor != nil {
+						// Override with custom cursor color
+						cursorStyle = cursorStyle.WithBackground(*t.CursorColor)
+					}
+
 					charUnderCursor := " "
 					if showingPlaceholder {
 						// Show first char of placeholder under cursor
@@ -334,7 +369,31 @@ func (t *TextInput) Draw(frame RenderFrame) {
 							}
 						}
 					}
-					frame.PrintStyled(cursorScreenX, cursorScreenY, charUnderCursor, t.CursorStyle)
+
+					// Render based on cursor shape
+					switch t.CursorShape {
+					case InputCursorBlock:
+						// Default block cursor - inverted character
+						frame.PrintStyled(cursorScreenX, cursorScreenY, charUnderCursor, cursorStyle)
+
+					case InputCursorUnderline:
+						// Underline cursor - show character with underline
+						underlineStyle := t.Style
+						if t.CursorColor != nil {
+							underlineStyle = underlineStyle.WithForeground(*t.CursorColor).WithUnderline()
+						} else {
+							underlineStyle = underlineStyle.WithUnderline()
+						}
+						frame.PrintStyled(cursorScreenX, cursorScreenY, charUnderCursor, underlineStyle)
+
+					case InputCursorBar:
+						// Bar/beam cursor - vertical line character
+						barStyle := t.Style
+						if t.CursorColor != nil {
+							barStyle = barStyle.WithForeground(*t.CursorColor)
+						}
+						frame.PrintStyled(cursorScreenX, cursorScreenY, "│", barStyle)
+					}
 				}
 			}
 		}

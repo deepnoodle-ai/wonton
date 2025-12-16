@@ -58,12 +58,12 @@ func (d *ClaudeStyleDemo) View() tui.View {
 	inputLines := strings.Count(d.input, "\n") + 1
 	footerHeight := 1 + inputLines + 1
 
-	return tui.VStack(
+	return tui.Stack(
 		// Scrollable message area, anchored to bottom
 		tui.Scroll(d.renderMessages(), &d.scrollY).Bottom(),
 
 		// Fixed footer: separator + input area
-		tui.Height(footerHeight, tui.VStack(
+		tui.Height(footerHeight, tui.Stack(
 			tui.Divider().Fg(tui.ColorCyan),
 			d.renderInputArea(),
 		)),
@@ -192,8 +192,8 @@ func (d *ClaudeStyleDemo) renderMessages() tui.View {
 		messageViews = append(messageViews, d.renderMessage(msg))
 	}
 
-	// Wrap in a VStack with left padding
-	return tui.PaddingHV(2, 0, tui.VStack(messageViews...))
+	// Wrap in a Stack with left padding
+	return tui.PaddingHV(2, 0, tui.Stack(messageViews...))
 }
 
 // renderMessage returns a view for a single message
@@ -222,9 +222,9 @@ func (d *ClaudeStyleDemo) renderMessage(msg Message) tui.View {
 		}
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", header).Bold().Fg(headerColor),
-		tui.PaddingHV(2, 0, tui.VStack(contentViews...)),
+		tui.PaddingHV(2, 0, tui.Stack(contentViews...)),
 	)
 }
 
@@ -251,7 +251,7 @@ func (d *ClaudeStyleDemo) renderInputArea() tui.View {
 		}
 
 		inputViews = append(inputViews,
-			tui.HStack(
+			tui.Group(
 				tui.Text("%s", prefix).Bold().Fg(tui.ColorGreen),
 				tui.Text("%s", displayLine),
 			),
@@ -261,10 +261,10 @@ func (d *ClaudeStyleDemo) renderInputArea() tui.View {
 	// Help text at the bottom, right-aligned
 	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
 
-	return tui.VStack(
-		tui.VStack(inputViews...),
+	return tui.Stack(
+		tui.Stack(inputViews...),
 		tui.Spacer(),
-		tui.HStack(
+		tui.Group(
 			tui.Spacer(),
 			tui.Text("%s", helpText).Dim(),
 		),

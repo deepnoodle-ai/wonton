@@ -87,17 +87,17 @@ func (p *paddingView) render(ctx *RenderContext) {
 
 // Padding modifier methods for stack types
 
-// Padding adds equal padding on all sides of a VStack.
+// Padding adds equal padding on all sides of a Stack.
 func (v *stack) Padding(n int) View {
 	return Padding(n, v)
 }
 
-// PaddingHV adds horizontal and vertical padding to a VStack.
+// PaddingHV adds horizontal and vertical padding to a Stack.
 func (v *stack) PaddingHV(h, vpad int) View {
 	return PaddingHV(h, vpad, v)
 }
 
-// PaddingLTRB adds specific padding to each side of a VStack.
+// PaddingLTRB adds specific padding to each side of a Stack.
 func (v *stack) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, v)
 }
@@ -386,7 +386,7 @@ func (f *borderedView) render(ctx *RenderContext) {
 
 // Bordered modifier methods for stack types
 
-// Bordered wraps a VStack with a border.
+// Bordered wraps a Stack with a border.
 func (v *stack) Bordered() *borderedView {
 	return Bordered(v)
 }
@@ -412,7 +412,7 @@ func Background(char rune, style Style, inner View) View {
 	}
 }
 
-// Bg adds a background color to a VStack.
+// Bg adds a background color to a Stack.
 func (v *stack) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), v)
 }

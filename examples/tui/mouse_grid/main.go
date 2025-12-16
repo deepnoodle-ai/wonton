@@ -62,7 +62,7 @@ func (app *MouseGridApp) View() tui.View {
 		tui.ColorYellow,
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Mouse Grid Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Click cells to toggle colors! Press 'q' or Ctrl+C to exit.").Fg(tui.ColorWhite),
 		tui.Spacer().MinHeight(1),

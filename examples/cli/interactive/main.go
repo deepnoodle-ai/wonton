@@ -184,7 +184,7 @@ func (app *DashboardApp) View() tui.View {
 
 	views = append(views, tui.Text("Use arrow keys to navigate, Enter to select, q to quit").Dim())
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *DashboardApp) HandleEvent(event tui.Event) []tui.Cmd {

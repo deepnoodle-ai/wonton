@@ -22,7 +22,7 @@ func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 }
 
 func (app *App) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Composition Demo").Bold().Fg(tui.ColorCyan),
 
 		tui.Spacer().MinHeight(1),
@@ -31,7 +31,7 @@ func (app *App) View() tui.View {
 
 		tui.Spacer().MinHeight(1),
 
-		tui.HStack(
+		tui.Group(
 			tui.Clickable(" + ", func() { app.counter++ }).Fg(tui.ColorGreen),
 			tui.Clickable(" - ", func() { app.counter-- }).Fg(tui.ColorRed),
 			tui.Clickable("Reset", func() { app.counter = 0 }),
@@ -39,7 +39,7 @@ func (app *App) View() tui.View {
 
 		tui.Spacer().MinHeight(1),
 
-		tui.VStack(
+		tui.Stack(
 			tui.Text("Nested VBox").Fg(tui.ColorMagenta),
 			tui.Text("Item 1"),
 			tui.Text("Item 2"),

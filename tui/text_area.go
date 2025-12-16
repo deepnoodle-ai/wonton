@@ -29,11 +29,25 @@ type textAreaView struct {
 	title           string
 	titleStyle      Style
 	focusTitleStyle *Style
+	leftBorderOnly  bool
 
 	// Text styling
 	textStyle        Style
 	emptyPlaceholder string
 	emptyStyle       Style
+
+	// Line numbers
+	showLineNumbers  bool
+	lineNumberStyle  Style
+	lineNumberFg     Color
+	hasLineNumberFg  bool
+
+	// Current line highlighting
+	highlightCurrentLine bool
+	currentLineStyle     Style
+	hasCurrentLineStyle  bool
+	cursorLine           *int // pointer to external cursor line position
+	internalCursorLine   int  // internal cursor line if cursorLine is nil
 }
 
 // TextArea creates a scrollable text display component.
@@ -60,6 +74,7 @@ func TextArea(binding *string) *textAreaView {
 		emptyPlaceholder: "(empty)",
 		emptyStyle:       NewStyle().WithForeground(ColorBrightBlack),
 		titleStyle:       NewStyle().WithForeground(ColorYellow),
+		lineNumberStyle:  NewStyle().WithForeground(ColorBrightBlack),
 	}
 }
 
@@ -165,6 +180,55 @@ func (t *textAreaView) FocusBorderFg(c Color) *textAreaView {
 	return t
 }
 
+// LeftBorderOnly shows only the left border (no top, right, or bottom borders).
+// This creates a minimal left-side accent line for the text area.
+func (t *textAreaView) LeftBorderOnly() *textAreaView {
+	t.leftBorderOnly = true
+	t.bordered = true
+	if t.border == nil {
+		t.border = &RoundedBorder
+	}
+	return t
+}
+
+// LineNumbers enables line numbers on the left side of the text area.
+func (t *textAreaView) LineNumbers(show bool) *textAreaView {
+	t.showLineNumbers = show
+	return t
+}
+
+// LineNumberStyle sets the style for line numbers.
+func (t *textAreaView) LineNumberStyle(s Style) *textAreaView {
+	t.lineNumberStyle = s
+	return t
+}
+
+// LineNumberFg sets the foreground color for line numbers.
+func (t *textAreaView) LineNumberFg(c Color) *textAreaView {
+	t.lineNumberFg = c
+	t.hasLineNumberFg = true
+	return t
+}
+
+// HighlightCurrentLine enables highlighting of the current line where the cursor is.
+func (t *textAreaView) HighlightCurrentLine(highlight bool) *textAreaView {
+	t.highlightCurrentLine = highlight
+	return t
+}
+
+// CurrentLineStyle sets the style for the highlighted current line.
+func (t *textAreaView) CurrentLineStyle(s Style) *textAreaView {
+	t.currentLineStyle = s
+	t.hasCurrentLineStyle = true
+	return t
+}
+
+// CursorLine binds the cursor line position to an external variable.
+func (t *textAreaView) CursorLine(line *int) *textAreaView {
+	t.cursorLine = line
+	return t
+}
+
 func (t *textAreaView) getContent() string {
 	if t.binding != nil {
 		return *t.binding
@@ -187,6 +251,21 @@ func (t *textAreaView) setScrollY(y int) {
 	}
 }
 
+func (t *textAreaView) getCursorLine() int {
+	if t.cursorLine != nil {
+		return *t.cursorLine
+	}
+	return t.internalCursorLine
+}
+
+func (t *textAreaView) setCursorLine(line int) {
+	if t.cursorLine != nil {
+		*t.cursorLine = line
+	} else {
+		t.internalCursorLine = line
+	}
+}
+
 func (t *textAreaView) size(maxWidth, maxHeight int) (int, int) {
 	w := t.width
 	h := t.height
@@ -197,6 +276,24 @@ func (t *textAreaView) size(maxWidth, maxHeight int) (int, int) {
 		h = maxHeight
 	}
 	return w, h
+}
+
+// lineNumberWidth calculates the width needed for line numbers.
+func (t *textAreaView) lineNumberWidth() int {
+	if !t.showLineNumbers {
+		return 0
+	}
+	content := t.getContent()
+	lines := strings.Split(content, "\n")
+	maxLine := len(lines)
+
+	// Calculate width needed for the largest line number
+	width := 1
+	for maxLine >= 10 {
+		maxLine /= 10
+		width++
+	}
+	return width + 1 // number + space
 }
 
 func (t *textAreaView) render(ctx *RenderContext) {
@@ -216,12 +313,60 @@ func (t *textAreaView) render(ctx *RenderContext) {
 	} else {
 		lines := strings.Split(content, "\n")
 		lineViews := make([]View, len(lines))
+		lnWidth := t.lineNumberWidth()
+		cursorLine := t.getCursorLine()
+
+		// Determine line number style
+		lnStyle := t.lineNumberStyle
+		if t.hasLineNumberFg {
+			lnStyle = lnStyle.WithForeground(t.lineNumberFg)
+		}
+
+		// Determine current line highlight style
+		currentLineStyle := t.currentLineStyle
+		if !t.hasCurrentLineStyle {
+			// Default to a subtle background highlight
+			currentLineStyle = NewStyle().WithBackground(ColorBrightBlack)
+		}
+
 		for i, line := range lines {
-			if line == "" {
-				lineViews[i] = Text(" ") // preserve empty lines
+			var lineView View
+
+			// Build the line content with optional line number
+			if t.showLineNumbers {
+				lineNum := i + 1
+				lineNumText := fmt.Sprintf("%*d ", lnWidth-1, lineNum)
+				lineNumView := Text("%s", lineNumText).Style(lnStyle)
+
+				var textView View
+				if line == "" {
+					textView = Text(" ") // preserve empty lines
+				} else {
+					textView = Text("%s", line).Style(t.textStyle)
+				}
+
+				// Apply current line highlighting if enabled
+				if t.highlightCurrentLine && i == cursorLine {
+					textView = Text("%s", line).Style(t.textStyle.Merge(currentLineStyle))
+					lineNumView = Text("%s", lineNumText).Style(lnStyle.Merge(currentLineStyle))
+				}
+
+				lineView = Group(lineNumView, textView)
 			} else {
-				lineViews[i] = Text("%s", line).Style(t.textStyle)
+				// No line numbers, just the text
+				if line == "" {
+					lineView = Text(" ") // preserve empty lines
+				} else {
+					lineStyle := t.textStyle
+					// Apply current line highlighting if enabled
+					if t.highlightCurrentLine && i == cursorLine {
+						lineStyle = lineStyle.Merge(currentLineStyle)
+					}
+					lineView = Text("%s", line).Style(lineStyle)
+				}
 			}
+
+			lineViews[i] = lineView
 		}
 		contentView = Stack(lineViews...)
 	}
@@ -275,6 +420,22 @@ func (t *textAreaView) render(ctx *RenderContext) {
 func (t *textAreaView) renderBordered(ctx *RenderContext, w, h int, content *scrollView, scrollY *int, borderStyle, titleStyle Style) {
 	border := t.border
 
+	if t.leftBorderOnly {
+		// Only draw the left border
+		for y := 0; y < h; y++ {
+			ctx.PrintTruncated(0, y, border.Vertical, borderStyle)
+		}
+
+		// Inner content area (offset by 1 for left border)
+		innerBounds := image.Rect(1, 0, w, h)
+		if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+			innerCtx := ctx.SubContext(innerBounds)
+			content.render(innerCtx)
+		}
+		return
+	}
+
+	// Draw full border (original behavior)
 	// Draw top border with title
 	ctx.PrintTruncated(0, 0, border.TopLeft, borderStyle)
 	bx := 1
@@ -351,33 +512,95 @@ func (h *textAreaFocusHandler) FocusBounds() image.Rectangle {
 
 func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 	scrollY := h.area.getScrollY()
+	cursorLine := h.area.getCursorLine()
+	content := h.area.getContent()
+	lines := strings.Split(content, "\n")
+	maxLine := len(lines) - 1
 	handled := false
 
 	switch event.Key {
 	case KeyArrowUp:
-		if scrollY > 0 {
+		// Move cursor line up if current line highlighting is enabled
+		if h.area.highlightCurrentLine && cursorLine > 0 {
+			cursorLine--
+			handled = true
+			// Auto-scroll if needed
+			if cursorLine < scrollY {
+				scrollY = cursorLine
+			}
+		} else if scrollY > 0 {
 			scrollY--
 			handled = true
 		}
 	case KeyArrowDown:
-		scrollY++
-		handled = true
+		// Move cursor line down if current line highlighting is enabled
+		if h.area.highlightCurrentLine && cursorLine < maxLine {
+			cursorLine++
+			handled = true
+			// Auto-scroll if needed
+			_, viewHeight := h.area.size(0, 0)
+			if h.area.bordered && !h.area.leftBorderOnly {
+				viewHeight -= 2 // account for border
+			}
+			if cursorLine >= scrollY+viewHeight {
+				scrollY = cursorLine - viewHeight + 1
+			}
+		} else {
+			scrollY++
+			handled = true
+		}
 	case KeyPageUp:
-		scrollY -= 5
+		if h.area.highlightCurrentLine {
+			cursorLine -= 5
+			if cursorLine < 0 {
+				cursorLine = 0
+			}
+			scrollY = cursorLine
+		} else {
+			scrollY -= 5
+		}
 		if scrollY < 0 {
 			scrollY = 0
 		}
 		handled = true
 	case KeyPageDown:
-		scrollY += 5
+		if h.area.highlightCurrentLine {
+			cursorLine += 5
+			if cursorLine > maxLine {
+				cursorLine = maxLine
+			}
+			scrollY = cursorLine
+		} else {
+			scrollY += 5
+		}
 		handled = true
 	case KeyHome:
+		if h.area.highlightCurrentLine {
+			cursorLine = 0
+		}
 		scrollY = 0
+		handled = true
+	case KeyEnd:
+		if h.area.highlightCurrentLine {
+			cursorLine = maxLine
+			// Scroll to the bottom
+			_, viewHeight := h.area.size(0, 0)
+			if h.area.bordered && !h.area.leftBorderOnly {
+				viewHeight -= 2 // account for border
+			}
+			scrollY = maxLine - viewHeight + 1
+			if scrollY < 0 {
+				scrollY = 0
+			}
+		}
 		handled = true
 	}
 
 	if handled {
 		h.area.setScrollY(scrollY)
+		if h.area.highlightCurrentLine {
+			h.area.setCursorLine(cursorLine)
+		}
 	}
 	return handled
 }

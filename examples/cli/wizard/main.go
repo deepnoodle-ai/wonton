@@ -297,7 +297,7 @@ func (app *WizardApp) View() tui.View {
 		views = append(views, tui.Text("Enter: Continue  Backspace: Go Back  q: Quit").Dim())
 	}
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *WizardApp) progressBar() tui.View {
@@ -307,7 +307,7 @@ func (app *WizardApp) progressBar() tui.View {
 		current = total
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Progress(current, total).Width(50).Fg(tui.ColorCyan),
 		tui.Text("Step %d of %d: %s", current+1, total, stepTitles[app.step]).Dim(),
 	)
@@ -502,7 +502,7 @@ func (app *WizardApp) summaryView() []tui.View {
 		tui.Spacer().MinHeight(1),
 		tui.Text("Please review your configuration:"),
 		tui.Spacer().MinHeight(1),
-		tui.Bordered(tui.VStack(
+		tui.Bordered(tui.Stack(
 			tui.KeyValue("Project Name", app.config.ProjectName),
 			tui.KeyValue("Language", app.config.Language),
 			tui.KeyValue("Framework", app.config.Framework),
@@ -653,7 +653,7 @@ func (app *ConfigEditor) View() tui.View {
 	views = append(views, tui.Divider())
 	views = append(views, tui.Text("j/k: Navigate  Enter: Edit  s: Save  q: Quit").Dim())
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *ConfigEditor) configRow(item configItem, selected bool) tui.View {
@@ -664,7 +664,7 @@ func (app *ConfigEditor) configRow(item configItem, selected bool) tui.View {
 		style = style.WithForeground(tui.ColorCyan)
 	}
 
-	return tui.HStack(
+	return tui.Group(
 		tui.Text("%s", prefix).Style(style),
 		tui.Text("%-15s", item.key).Bold(),
 		tui.Text(": "),

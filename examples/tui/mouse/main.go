@@ -206,7 +206,7 @@ func (app *MouseDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 // View returns the declarative view structure
 func (app *MouseDemoApp) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Spacer(),
 		tui.Text("Wonton Mouse Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Press 'q' or Ctrl+C to exit"),
@@ -348,9 +348,9 @@ func (app *MouseDemoApp) renderModifierAreaView() tui.View {
 
 func (app *MouseDemoApp) renderFooterView() tui.View {
 	sep := strings.Repeat("━", 80)
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", sep).Dim(),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Counter:").Fg(tui.ColorCyan),
 			tui.Text("%d", app.clickCount["increment"]),
 			tui.Text("  Status:").Fg(tui.ColorCyan),

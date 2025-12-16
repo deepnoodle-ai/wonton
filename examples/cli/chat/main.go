@@ -238,7 +238,7 @@ func (app *ChatApp) View() tui.View {
 
 	views = append(views, tui.Spacer())
 	views = append(views, tui.Divider())
-	views = append(views, tui.HStack(
+	views = append(views, tui.Group(
 		tui.Text("> "),
 		tui.Input(&app.input).
 			Placeholder("Type a message...").
@@ -247,7 +247,7 @@ func (app *ChatApp) View() tui.View {
 	))
 	views = append(views, tui.Text("Press Enter to send, Ctrl+C to quit").Dim())
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *ChatApp) onSubmit(text string) {

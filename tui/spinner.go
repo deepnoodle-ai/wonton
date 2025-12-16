@@ -143,6 +143,30 @@ func (s *Spinner) WithStyle(style Style) *Spinner {
 	return s
 }
 
+// Fg sets the foreground color for the spinner.
+func (s *Spinner) Fg(c Color) *Spinner {
+	s.style = s.style.WithForeground(c)
+	return s
+}
+
+// Bg sets the background color for the spinner.
+func (s *Spinner) Bg(c Color) *Spinner {
+	s.style = s.style.WithBackground(c)
+	return s
+}
+
+// Bold makes the spinner bold.
+func (s *Spinner) Bold() *Spinner {
+	s.style = s.style.WithBold()
+	return s
+}
+
+// Dim makes the spinner dimmed.
+func (s *Spinner) Dim() *Spinner {
+	s.style = s.style.WithDim()
+	return s
+}
+
 // WithMessage sets the spinner message
 func (s *Spinner) WithMessage(message string) *Spinner {
 	s.message = message

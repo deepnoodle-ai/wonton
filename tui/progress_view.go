@@ -7,16 +7,18 @@ import (
 
 // progressView displays a progress bar (declarative view)
 type progressView struct {
-	current      int
-	total        int
-	width        int
-	filledChar   rune
-	emptyChar    rune
-	style        Style
-	emptyStyle   Style
-	showPercent  bool
-	showFraction bool
-	label        string
+	current       int
+	total         int
+	width         int
+	filledChar    rune
+	emptyChar     rune
+	emptyPattern  string // if set, overrides emptyChar with a repeating pattern
+	style         Style
+	emptyStyle    Style
+	percentStyle  *Style // style for percentage text (if not set, uses style)
+	showPercent   bool
+	showFraction  bool
+	label         string
 }
 
 // Progress creates a declarative progress bar view.
@@ -53,6 +55,21 @@ func (p *progressView) FilledChar(c rune) *progressView {
 // EmptyChar sets the character used for the empty portion.
 func (p *progressView) EmptyChar(c rune) *progressView {
 	p.emptyChar = c
+	p.emptyPattern = "" // clear pattern if set
+	return p
+}
+
+// EmptyPattern sets a repeating pattern for the empty portion instead of a single character.
+// The pattern will repeat to fill the unfilled space.
+//
+// Example:
+//
+//	Progress(50, 100).EmptyPattern("·-")  // Repeats "·-·-·-..."
+//	Progress(30, 100).EmptyPattern("░▒")   // Repeats "░▒░▒░▒..."
+func (p *progressView) EmptyPattern(pattern string) *progressView {
+	if pattern != "" {
+		p.emptyPattern = pattern
+	}
 	return p
 }
 
@@ -89,6 +106,23 @@ func (p *progressView) ShowPercent() *progressView {
 // HidePercent disables percentage display.
 func (p *progressView) HidePercent() *progressView {
 	p.showPercent = false
+	return p
+}
+
+// PercentStyle sets the style for the percentage text.
+// If not set, the filled portion style is used.
+func (p *progressView) PercentStyle(s Style) *progressView {
+	p.percentStyle = &s
+	return p
+}
+
+// PercentFg sets the foreground color for the percentage text.
+func (p *progressView) PercentFg(c Color) *progressView {
+	if p.percentStyle == nil {
+		s := NewStyle()
+		p.percentStyle = &s
+	}
+	*p.percentStyle = p.percentStyle.WithForeground(c)
 	return p
 }
 
@@ -188,8 +222,18 @@ func (a *animatedProgressView) render(ctx *RenderContext) {
 	}
 
 	// Draw empty background
-	for i := 0; i < barWidth; i++ {
-		ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+	if p.emptyPattern != "" {
+		// Use repeating pattern for empty portion
+		patternRunes := []rune(p.emptyPattern)
+		for i := 0; i < barWidth; i++ {
+			char := patternRunes[i%len(patternRunes)]
+			ctx.SetCell(x+i, 0, char, p.emptyStyle)
+		}
+	} else {
+		// Use single character for empty portion
+		for i := 0; i < barWidth; i++ {
+			ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+		}
 	}
 
 	frame := ctx.Frame()
@@ -236,10 +280,18 @@ func (a *animatedProgressView) render(ctx *RenderContext) {
 	if p.showPercent && p.total > 0 {
 		percent := (p.current * 100) / p.total
 		text := fmt.Sprintf(" %3d%%", percent)
-		ctx.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	} else if p.showFraction {
 		text := fmt.Sprintf(" %d/%d", p.current, p.total)
-		ctx.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	}
 }
 
@@ -306,8 +358,18 @@ func (p *progressView) render(ctx *RenderContext) {
 	}
 
 	// Draw empty background
-	for i := 0; i < barWidth; i++ {
-		ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+	if p.emptyPattern != "" {
+		// Use repeating pattern for empty portion
+		patternRunes := []rune(p.emptyPattern)
+		for i := 0; i < barWidth; i++ {
+			char := patternRunes[i%len(patternRunes)]
+			ctx.SetCell(x+i, 0, char, p.emptyStyle)
+		}
+	} else {
+		// Use single character for empty portion
+		for i := 0; i < barWidth; i++ {
+			ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+		}
 	}
 
 	// Draw filled portion
@@ -320,10 +382,18 @@ func (p *progressView) render(ctx *RenderContext) {
 	if p.showPercent && p.total > 0 {
 		percent := (p.current * 100) / p.total
 		text := fmt.Sprintf(" %3d%%", percent)
-		ctx.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	} else if p.showFraction {
 		text := fmt.Sprintf(" %d/%d", p.current, p.total)
-		ctx.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	}
 }
 

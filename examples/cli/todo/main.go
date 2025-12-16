@@ -323,7 +323,7 @@ func (app *TodoApp) View() tui.View {
 	}
 
 	// Filter tabs
-	views = append(views, tui.HStack(
+	views = append(views, tui.Group(
 		app.filterButton("All", "all"),
 		app.filterButton("Pending", "pending"),
 		app.filterButton("Done", "done"),
@@ -333,7 +333,7 @@ func (app *TodoApp) View() tui.View {
 	// Task list
 	filtered := app.filteredTasks()
 	if len(filtered) == 0 {
-		views = append(views, tui.VStack(tui.Text("No tasks found").Dim()).Padding(1))
+		views = append(views, tui.Stack(tui.Text("No tasks found").Dim()).Padding(1))
 	} else {
 		for i, task := range filtered {
 			views = append(views, app.taskRow(task, i == app.cursor))
@@ -351,7 +351,7 @@ func (app *TodoApp) View() tui.View {
 	views = append(views, tui.Divider())
 	views = append(views, tui.Text("j/k: Navigate  Enter: Toggle  d: Delete  a: Add  1-3: Filter  q: Quit").Dim())
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *TodoApp) filterButton(label, value string) tui.View {
@@ -397,7 +397,7 @@ func (app *TodoApp) taskRow(task Task, selected bool) tui.View {
 		rowStyle = rowStyle.WithForeground(tui.ColorCyan)
 	}
 
-	return tui.HStack(
+	return tui.Group(
 		tui.Text("%s", prefix).Style(rowStyle),
 		tui.Text("%s", checkbox).Style(rowStyle),
 		tui.Text(" #%-3d ", task.ID).Dim(),

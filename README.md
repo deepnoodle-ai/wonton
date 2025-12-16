@@ -27,7 +27,7 @@ import (
 type counter struct{ n int }
 
 func (c *counter) View() tui.View {
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Count: %d", c.n),
 		tui.Clickable("[+]", func() { c.n++ }),
 		tui.Clickable("Reset", func() { c.n = 0 }),

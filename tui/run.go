@@ -89,7 +89,7 @@ func WithPasteTabWidth(width int) RunOption {
 //	}
 //
 //	func (app *MyApp) View() tui.View {
-//	    return tui.VStack(
+//	    return tui.Stack(
 //	        tui.Text("Count: %d", app.count),
 //	        tui.Clickable("[+]", func() { app.count++ }),
 //	    )

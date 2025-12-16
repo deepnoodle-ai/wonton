@@ -10,7 +10,7 @@ runtime that keeps your application logic single-threaded.
 - **Application**: implement `tui.Application` by providing a `View() tui.View`.
   Optionally implement `tui.EventHandler` to respond to keyboard, mouse, tick,
   and custom events.
-- **Views**: compose UI using helpers like `tui.VStack`, `tui.HStack`,
+- **Views**: compose UI using helpers like `tui.Stack`, `tui.HStack`,
   `tui.Text`, `tui.Table`, `tui.SelectList`, `tui.Markdown`, and `tui.Spacer`.
   Views are immutable; rebuild them on every `View()` call from your state.
 - **Events & commands**: `HandleEvent` receives events (e.g., `tui.KeyEvent`,
@@ -46,7 +46,7 @@ func (app *inbox) View() tui.View {
 		}
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Inbox (%d)", len(visible)).Bold(),
 		tui.Text("Type to filter, Enter to open, q to quit").Dim(),
 		tui.SelectListStrings(visible, &app.selected).

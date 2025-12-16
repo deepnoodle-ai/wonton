@@ -36,7 +36,7 @@ func (app *BorderApp) View() tui.View {
 	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)",
 		app.width, app.height)
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", info).Fg(tui.ColorYellow),
 		tui.Bordered(tui.Spacer()).
 			BorderFg(tui.ColorCyan),

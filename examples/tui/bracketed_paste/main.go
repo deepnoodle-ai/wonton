@@ -236,7 +236,7 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		}
 		// Pad to consistent width
 		lineContent = fmt.Sprintf("%-64s", lineContent)
-		inputBoxLines = append(inputBoxLines, tui.HStack(
+		inputBoxLines = append(inputBoxLines, tui.Group(
 			tui.Text("│").Fg(tui.ColorCyan),
 			tui.Text(" %s ", lineContent),
 			tui.Text("│").Fg(tui.ColorCyan),
@@ -282,15 +282,15 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 			pasteItems = append(pasteItems, tui.Text("  ... and %d more pastes", len(app.pastes)-5).Dim())
 		}
 
-		pasteHistorySection = tui.VStack(
+		pasteHistorySection = tui.Stack(
 			tui.Text("Paste History:").Bold(),
-			tui.VStack(pasteItems...),
+			tui.Stack(pasteItems...),
 		)
 	} else {
 		pasteHistorySection = tui.Text("No pastes yet. Try pasting something!").Dim()
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		// Header
 		tui.Text("╔═══════════════════════════════════════════════════════════════╗").Fg(tui.ColorCyan),
 		tui.Text("║          Bracketed Paste Mode Demo - Wonton Library            ║").Fg(tui.ColorCyan).Bold(),
@@ -305,11 +305,11 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 
 		// Input area
 		tui.Text("Input:").Bold(),
-		tui.VStack(inputBoxLines...),
+		tui.Stack(inputBoxLines...),
 		tui.Spacer(),
 
 		// Status and message
-		tui.VStack(statusSection...),
+		tui.Stack(statusSection...),
 		tui.Spacer(),
 
 		// Paste history

@@ -213,7 +213,7 @@ type DashboardApp struct {
 func (app *DashboardApp) View() tui.View {
 	views := []tui.View{
 		// Header
-		tui.HStack(
+		tui.Group(
 			tui.Text("System Dashboard").Bold().Fg(tui.ColorCyan),
 			tui.Spacer(),
 			tui.Text("[%s]", time.Now().Format("15:04:05")).Dim(),
@@ -222,7 +222,7 @@ func (app *DashboardApp) View() tui.View {
 	}
 
 	// View tabs
-	views = append(views, tui.HStack(
+	views = append(views, tui.Group(
 		app.tabButton("Overview", "overview"),
 		app.tabButton("Processes", "processes"),
 		app.tabButton("Network", "network"),
@@ -245,7 +245,7 @@ func (app *DashboardApp) View() tui.View {
 	views = append(views, tui.Divider())
 	views = append(views, tui.Text("1-3: Switch Views  r: Refresh  q: Quit").Dim())
 
-	return tui.VStack(views...).Padding(1)
+	return tui.Stack(views...).Padding(1)
 }
 
 func (app *DashboardApp) tabButton(label, value string) tui.View {
@@ -286,7 +286,7 @@ func (app *DashboardApp) overviewView() []tui.View {
 
 	return []tui.View{
 		// CPU
-		tui.HStack(
+		tui.Group(
 			tui.Text("CPU").Bold().Width(10),
 			tui.Progress(int(m.CPUUsage), 100).Width(40).Fg(cpuColor),
 			tui.Text(" %5.1f%%", m.CPUUsage),
@@ -294,7 +294,7 @@ func (app *DashboardApp) overviewView() []tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Memory
-		tui.HStack(
+		tui.Group(
 			tui.Text("Memory").Bold().Width(10),
 			tui.Progress(m.MemoryUsed, m.MemoryTotal).Width(40).Fg(memColor),
 			tui.Text(" %d/%d MB", m.MemoryUsed, m.MemoryTotal),
@@ -302,7 +302,7 @@ func (app *DashboardApp) overviewView() []tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Disk
-		tui.HStack(
+		tui.Group(
 			tui.Text("Disk").Bold().Width(10),
 			tui.Progress(m.DiskUsed, m.DiskTotal).Width(40).Fg(diskColor),
 			tui.Text(" %d/%d GB", m.DiskUsed, m.DiskTotal),
@@ -310,13 +310,13 @@ func (app *DashboardApp) overviewView() []tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Load average
-		tui.HStack(
+		tui.Group(
 			tui.Text("Load Avg").Bold().Width(10),
 			tui.Text("%.2f  %.2f  %.2f", m.LoadAvg[0], m.LoadAvg[1], m.LoadAvg[2]),
 		),
 
 		// Uptime
-		tui.HStack(
+		tui.Group(
 			tui.Text("Uptime").Bold().Width(10),
 			tui.Text("%s", formatDuration(m.Uptime)),
 		),
@@ -348,7 +348,7 @@ func (app *DashboardApp) historyChart() tui.View {
 
 func (app *DashboardApp) processesView() []tui.View {
 	views := []tui.View{
-		tui.HStack(
+		tui.Group(
 			tui.Text("PID").Bold().Width(8),
 			tui.Text("NAME").Bold().Width(20),
 			tui.Text("CPU%%").Bold().Width(8),
@@ -371,7 +371,7 @@ func (app *DashboardApp) processesView() []tui.View {
 			statusView = statusView.Fg(tui.ColorGreen)
 		}
 
-		views = append(views, tui.HStack(
+		views = append(views, tui.Group(
 			tui.Text("%d", p.PID).Width(8),
 			tui.Text("%s", truncate(p.Name, 18)).Width(20),
 			cpuView.Width(8),
@@ -389,13 +389,13 @@ func (app *DashboardApp) networkView() []tui.View {
 		tui.Text("Network Traffic").Bold(),
 		tui.Divider(),
 		tui.Spacer().MinHeight(1),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Inbound:").Width(12),
 			tui.Text("%d KB/s", m.NetworkIn).Fg(tui.ColorGreen),
 			tui.Text("  ").Width(4),
 			tui.Loading(app.frame),
 		),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Outbound:").Width(12),
 			tui.Text("%d KB/s", m.NetworkOut).Fg(tui.ColorCyan),
 		),

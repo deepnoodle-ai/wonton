@@ -24,7 +24,7 @@ type InputFormsApp struct {
 func (app *InputFormsApp) View() tui.View {
 	if app.submitted {
 		// Show success screen
-		return tui.VStack(
+		return tui.Stack(
 			tui.Text("Wonton Input Forms Demo").Bold().Fg(tui.ColorCyan),
 			tui.Text("----------------------").Fg(tui.ColorCyan),
 			tui.Spacer().MinHeight(1),
@@ -50,7 +50,7 @@ func (app *InputFormsApp) View() tui.View {
 
 	// Name field
 	children = append(children,
-		tui.HStack(
+		tui.Group(
 			tui.Text("Name:     "),
 			tui.Input(&app.name).Placeholder("Enter your name").Width(40),
 		),
@@ -59,7 +59,7 @@ func (app *InputFormsApp) View() tui.View {
 
 	// Email field
 	children = append(children,
-		tui.HStack(
+		tui.Group(
 			tui.Text("Email:    "),
 			tui.Input(&app.email).Placeholder("Enter your email").Width(40),
 		),
@@ -68,7 +68,7 @@ func (app *InputFormsApp) View() tui.View {
 
 	// Password field
 	children = append(children,
-		tui.HStack(
+		tui.Group(
 			tui.Text("Password: "),
 			tui.Input(&app.password).
 				Placeholder("Enter password").
@@ -102,7 +102,7 @@ func (app *InputFormsApp) View() tui.View {
 		tui.Text("Tab/Shift+Tab: Navigate | Enter/Space: Activate | Esc: Quit").Dim(),
 	)
 
-	return tui.VStack(children...).Padding(2)
+	return tui.Stack(children...).Padding(2)
 }
 
 func (app *InputFormsApp) HandleEvent(event tui.Event) []tui.Cmd {

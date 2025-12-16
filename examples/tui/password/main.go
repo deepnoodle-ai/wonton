@@ -37,7 +37,7 @@ func (app *PasswordDemoApp) View() tui.View {
 	successStyle := tui.NewStyle().WithForeground(tui.ColorGreen)
 
 	if app.submitted {
-		return tui.VStack(
+		return tui.Stack(
 			tui.Text("Password Input Demo").Style(headerStyle),
 			tui.Spacer(),
 			tui.Text("Password received (%d chars)", len(app.password)).Style(successStyle),
@@ -46,10 +46,10 @@ func (app *PasswordDemoApp) View() tui.View {
 		)
 	}
 
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("Password Input Demo").Style(headerStyle),
 		tui.Spacer(),
-		tui.HStack(
+		tui.Group(
 			tui.Text("Password: ").Style(promptStyle),
 			tui.Input(&app.password).Mask('*').Placeholder("enter password").Width(30),
 		),

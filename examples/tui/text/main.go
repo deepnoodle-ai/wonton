@@ -24,16 +24,16 @@ func (app *TextDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 func (app *TextDemoApp) View() tui.View {
 	longText := "This is a very long sentence that should automatically wrap when it reaches the boundary of the container. It serves as a demonstration of the text wrapping capability."
 
-	return tui.VStack(
+	return tui.Stack(
 		// Header
 		tui.Text("Text Wrapping & Alignment Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Press Q or Ctrl+C to exit").Fg(tui.ColorWhite),
 		tui.Divider(),
 
-		// 2x2 Grid using nested HStack and VStack
-		tui.VStack(
+		// 2x2 Grid using nested HStack and Stack
+		tui.Stack(
 			// Top row
-			tui.HStack(
+			tui.Group(
 				// Top Left: Wrapped, Left Aligned
 				tui.WrappedText("WRAPPED LEFT:\n"+longText).
 					Bg(tui.ColorBlue).Fg(tui.ColorWhite).FillBg(),
@@ -45,7 +45,7 @@ func (app *TextDemoApp) View() tui.View {
 			),
 
 			// Bottom row
-			tui.HStack(
+			tui.Group(
 				// Bottom Left: Wrapped, Right Aligned
 				tui.WrappedText("WRAPPED RIGHT:\n"+longText).
 					Right().

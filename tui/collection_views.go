@@ -1,7 +1,7 @@
 package tui
 
 // ForEach maps a slice of items to views using a mapper function.
-// The resulting views are arranged in a VStack by default.
+// The resulting views are arranged in a Stack by default.
 //
 // Example:
 //
@@ -57,7 +57,7 @@ func (f *forEachView[T]) render(ctx *RenderContext) {
 	f.buildStack().render(ctx)
 }
 
-// Gap sets the spacing between items (like VStack.Gap).
+// Gap sets the spacing between items (like Stack.Gap).
 func (f *forEachView[T]) Gap(n int) *forEachView[T] {
 	f.buildStack().gap = n
 	return f

@@ -21,6 +21,8 @@ type inputFieldView struct {
 	maxHeight        int
 	pastePlaceholder bool
 	cursorBlink      bool
+	cursorShape      InputCursorStyle
+	cursorColor      *Color
 	multiline        bool
 
 	// Label configuration
@@ -28,12 +30,18 @@ type inputFieldView struct {
 	labelStyle      Style
 	focusLabelStyle *Style
 
+	// Prompt configuration (left-side caret/prompt character)
+	prompt      string // Optional prompt character (e.g., ">", "❯", etc.)
+	promptStyle Style
+	hasPrompt   bool
+
 	// Border configuration
-	bordered       bool
-	border         *BorderStyle
-	borderFg       Color
-	focusBorderFg  Color
-	hasFocusBorder bool
+	bordered          bool
+	border            *BorderStyle
+	borderFg          Color
+	focusBorderFg     Color
+	hasFocusBorder    bool
+	horizontalBarOnly bool // If true, only draw top and bottom borders
 }
 
 // InputField creates a high-level input component with optional label and border.
@@ -180,20 +188,68 @@ func (f *inputFieldView) FocusBorderFg(c Color) *inputFieldView {
 	return f
 }
 
+// HorizontalBorderOnly enables horizontal bar border style (top and bottom only).
+// This creates a cleaner look with just horizontal lines above and below the input.
+func (f *inputFieldView) HorizontalBorderOnly() *inputFieldView {
+	f.bordered = true
+	f.horizontalBarOnly = true
+	return f
+}
+
+// Prompt sets a prompt character displayed on the left side of the input.
+// Common examples: ">", "❯", "$", etc.
+func (f *inputFieldView) Prompt(text string) *inputFieldView {
+	f.prompt = text
+	f.hasPrompt = true
+	return f
+}
+
+// PromptStyle sets the style for the prompt character.
+func (f *inputFieldView) PromptStyle(s Style) *inputFieldView {
+	f.promptStyle = s
+	return f
+}
+
+// CursorShape sets the cursor shape/style for the input.
+// Options are: InputCursorBlock (default), InputCursorUnderline, InputCursorBar.
+func (f *inputFieldView) CursorShape(shape InputCursorStyle) *inputFieldView {
+	f.cursorShape = shape
+	return f
+}
+
+// CursorColor sets a custom cursor color.
+func (f *inputFieldView) CursorColor(color Color) *inputFieldView {
+	f.cursorColor = &color
+	return f
+}
+
 func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
 	// Account for border if present
 	borderSize := 0
-	if f.bordered && f.border != nil {
+	if f.bordered && f.border != nil && !f.horizontalBarOnly {
 		borderSize = 2
 	}
 
 	// Calculate input width
 	totalW := f.width
 
-	// Inner width for content calculation (input area inside border)
+	// Account for prompt width
+	promptW := 0
+	if f.hasPrompt && f.prompt != "" {
+		promptW, _ = MeasureText(f.prompt)
+		promptW++ // Add space after prompt
+	}
+
+	// Inner width for content calculation (input area inside border and prompt)
 	innerW := totalW
-	if f.bordered {
+	if f.bordered && !f.horizontalBarOnly {
 		innerW = totalW - borderSize
+		if innerW < 1 {
+			innerW = 1
+		}
+	}
+	if f.hasPrompt {
+		innerW -= promptW
 		if innerW < 1 {
 			innerW = 1
 		}
@@ -214,14 +270,24 @@ func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
 		h = f.maxHeight
 	}
 
-	// If bordered, label is embedded in border, so no extra width needed
-	// If not bordered, add label width to total
-	if !f.bordered && f.label != "" {
+	// If bordered (full border), label is embedded in border, so no extra width needed
+	// If not bordered or horizontal bar only, add label width to total
+	if (!f.bordered || f.horizontalBarOnly) && f.label != "" {
 		labelW, _ := MeasureText(f.label)
 		totalW += labelW
 	}
 
-	totalH := h + borderSize
+	// Add prompt width to total
+	if f.hasPrompt {
+		totalW += promptW
+	}
+
+	totalH := h
+	if f.bordered && !f.horizontalBarOnly {
+		totalH += borderSize
+	} else if f.horizontalBarOnly {
+		totalH += 2 // Top and bottom bars
+	}
 
 	// Apply constraints
 	if maxWidth > 0 && totalW > maxWidth {
@@ -243,14 +309,19 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 	// Determine if this input is focused
 	isFocused := focusManager.GetFocusedID() == f.id
 
-	if f.bordered && f.border != nil {
-		// Draw bordered input with label embedded in top border
+	if f.bordered && f.border != nil && !f.horizontalBarOnly {
+		// Draw full bordered input with label embedded in top border
 		f.renderBorderedInput(ctx, 0, w, h, isFocused)
+	} else if f.horizontalBarOnly {
+		// Draw horizontal bar style (top and bottom only)
+		f.renderHorizontalBarInput(ctx, 0, w, h, isFocused)
 	} else {
-		// Draw label to the left of input (no border case)
-		labelW := 0
+		// Draw label and/or prompt to the left of input (no border case)
+		x := 0
+
+		// Draw label if present
 		if f.label != "" {
-			labelW, _ = MeasureText(f.label)
+			labelW, _ := MeasureText(f.label)
 			labelStyle := f.labelStyle
 			if isFocused {
 				if f.focusLabelStyle != nil {
@@ -259,15 +330,27 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 					labelStyle = NewStyle().WithForeground(ColorCyan).WithBold()
 				}
 			}
-			ctx.PrintTruncated(0, 0, f.label, labelStyle)
+			ctx.PrintTruncated(x, 0, f.label, labelStyle)
+			x += labelW
 		}
 
-		// Draw input after label
-		inputW := w - labelW
+		// Draw prompt if present
+		if f.hasPrompt && f.prompt != "" {
+			promptStyle := f.promptStyle
+			if promptStyle.IsEmpty() {
+				promptStyle = NewStyle().WithForeground(ColorBrightBlack)
+			}
+			ctx.PrintTruncated(x, 0, f.prompt+" ", promptStyle)
+			promptW, _ := MeasureText(f.prompt)
+			x += promptW + 1
+		}
+
+		// Draw input after label and prompt
+		inputW := w - x
 		if inputW <= 0 {
 			return
 		}
-		inputBounds := image.Rect(labelW, 0, labelW+inputW, h)
+		inputBounds := image.Rect(x, 0, x+inputW, h)
 		inputCtx := ctx.SubContext(inputBounds)
 		f.renderInput(inputCtx, isFocused)
 	}
@@ -355,10 +438,101 @@ func (f *inputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, is
 	}
 }
 
+func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h int, isFocused bool) {
+	// Determine border color based on focus
+	borderStyle := NewStyle()
+	if isFocused {
+		if f.hasFocusBorder {
+			borderStyle = borderStyle.WithForeground(f.focusBorderFg)
+		} else {
+			borderStyle = borderStyle.WithForeground(ColorCyan)
+		}
+	} else if f.borderFg != 0 {
+		borderStyle = borderStyle.WithForeground(f.borderFg)
+	}
+
+	// Determine label style based on focus
+	labelStyle := f.labelStyle
+	if isFocused {
+		if f.focusLabelStyle != nil {
+			labelStyle = *f.focusLabelStyle
+		} else {
+			labelStyle = NewStyle().WithForeground(ColorCyan).WithBold()
+		}
+	}
+
+	// Get border character (use horizontal from border style, or default to simple line)
+	borderChar := "─"
+	if f.border != nil {
+		borderChar = f.border.Horizontal
+	}
+
+	// Draw top border
+	topY := 0
+	if f.label != "" && w > 4 {
+		// Draw label on the left, then fill rest with border
+		label := strings.TrimSuffix(strings.TrimSuffix(f.label, ": "), ":")
+		labelText := " " + label + " "
+		labelW, _ := MeasureText(labelText)
+		maxLabelW := w - 2
+		if labelW > maxLabelW {
+			labelW = maxLabelW
+		}
+		ctx.PrintTruncated(x, topY, labelText, labelStyle)
+		// Fill rest of line with border
+		for bx := x + labelW; bx < x+w; bx++ {
+			ctx.PrintTruncated(bx, topY, borderChar, borderStyle)
+		}
+	} else {
+		// No label, just draw full border
+		for bx := x; bx < x+w; bx++ {
+			ctx.PrintTruncated(bx, topY, borderChar, borderStyle)
+		}
+	}
+
+	// Draw prompt if present (on the input line)
+	inputY := 1
+	inputX := x
+	if f.hasPrompt && f.prompt != "" {
+		promptStyle := f.promptStyle
+		if promptStyle.IsEmpty() {
+			promptStyle = NewStyle().WithForeground(ColorBrightBlack)
+		}
+		ctx.PrintTruncated(inputX, inputY, f.prompt+" ", promptStyle)
+		promptW, _ := MeasureText(f.prompt)
+		inputX += promptW + 1
+	}
+
+	// Draw input content (between borders)
+	contentHeight := h - 2
+	if contentHeight > 0 {
+		inputW := w - (inputX - x)
+		if inputW > 0 {
+			inputBounds := image.Rect(inputX, inputY, inputX+inputW, inputY+contentHeight)
+			inputCtx := ctx.SubContext(inputBounds)
+			f.renderInput(inputCtx, isFocused)
+		}
+	}
+
+	// Draw bottom border
+	bottomY := h - 1
+	for bx := x; bx < x+w; bx++ {
+		ctx.PrintTruncated(bx, bottomY, borderChar, borderStyle)
+	}
+}
+
 func (f *inputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
 	state := inputRegistry.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit)
+
+	// Apply cursor customizations if set
+	if f.cursorShape != InputCursorBlock {
+		state.input.CursorShape = f.cursorShape
+	}
+	if f.cursorColor != nil {
+		state.input.CursorColor = f.cursorColor
+	}
 
 	// Update TextInput bounds
 	state.input.SetBounds(inputBounds)

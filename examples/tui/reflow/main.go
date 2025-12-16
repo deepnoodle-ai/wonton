@@ -77,12 +77,12 @@ func (app *ReflowApp) View() tui.View {
 		Bold()
 
 	// Main layout with everything centered
-	return tui.VStack(
+	return tui.Stack(
 		tui.Text("%s", debugInfo),
 		tui.Spacer(),
-		tui.HStack(
+		tui.Group(
 			tui.Spacer(),
-			tui.VStack(
+			tui.Stack(
 				borderedBox,
 				tui.Spacer().MinHeight(1),
 				button,

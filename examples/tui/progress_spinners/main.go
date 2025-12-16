@@ -127,7 +127,7 @@ func (app *ProgressDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 func (app *ProgressDemoApp) View() tui.View {
 	elapsed := time.Since(app.startTime).Truncate(time.Millisecond)
 
-	return tui.VStack(
+	return tui.Stack(
 		// Header
 		tui.HeaderBar("Multi-Progress Demo").Bg(tui.ColorCyan).Fg(tui.ColorBlack),
 		tui.Spacer().MinHeight(1),
@@ -135,13 +135,13 @@ func (app *ProgressDemoApp) View() tui.View {
 		// Progress items using new declarative views
 		tui.ForEach(app.items, func(item *ProgressItem, i int) tui.View {
 			// Build the item view using Loading (spinner) view
-			itemContent := tui.HStack(
+			itemContent := tui.Group(
 				tui.Loading(app.frame).Label(item.Message).Fg(item.Color),
 			)
 
 			// If not spinner-only, add progress bar below using Progress view
 			if !item.SpinnerOnly {
-				return tui.VStack(
+				return tui.Stack(
 					itemContent,
 					tui.Progress(item.Progress, item.Total).Width(30).Fg(item.Color),
 				)
@@ -157,7 +157,7 @@ func (app *ProgressDemoApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		// Bottom controls
-		tui.HStack(
+		tui.Group(
 			tui.Text("Press 'q' to quit").Fg(tui.ColorWhite),
 			tui.Spacer(),
 			tui.Text("Elapsed: %s", elapsed).Dim(),

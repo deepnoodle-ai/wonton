@@ -25,17 +25,24 @@ func (app *TableDemoApp) View() tui.View {
 	}
 
 	return tui.Stack(
-		tui.Text(" Table Demo ").Bold().Bg(tui.ColorBlue).Fg(tui.ColorWhite),
+		tui.Text(" Table Demo - Enhanced Features ").Bold().Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 		tui.Divider(),
 		tui.Spacer().MinHeight(1),
 		tui.Table(app.columns, &app.selected).
 			Rows(app.rows).
 			Height(tableHeight).
+			UppercaseHeaders(true).
+			MaxColumnWidth(25).
+			InvertSelectedColors(true).
+			HeaderBottomBorder(true).
+			SelectedBg(tui.ColorBlue).
+			SelectedFg(tui.ColorWhite).
 			OnSelect(func(row int) {
 				// Handle row click
 			}),
 		tui.Spacer().MinHeight(1),
 		tui.Text("Selected Row: %d", app.selected+1).Fg(tui.ColorGreen),
+		tui.Text("Features: Uppercase headers, max column width, color inversion, header border").Dim(),
 		tui.Text("Press Arrows to move, q to quit.").Dim(),
 		tui.Spacer(),
 		tui.Text(" Press 'q' to quit ").Bg(tui.ColorBrightBlack).Fg(tui.ColorWhite),
