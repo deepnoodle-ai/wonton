@@ -79,8 +79,8 @@ func main() {
 			),
 			tui.Group(
 				tui.Text("[").Fg(tui.ColorWhite),
-				tui.Text(repeat("█", filled)).Fg(tui.ColorGreen),
-				tui.Text(repeat("░", empty)).Fg(tui.ColorBrightBlack),
+				tui.Text("%s", repeat("█", filled)).Fg(tui.ColorGreen),
+				tui.Text("%s", repeat("░", empty)).Fg(tui.ColorBrightBlack),
 				tui.Text("]").Fg(tui.ColorWhite),
 				tui.Text(" %3d%%", i).Fg(tui.ColorYellow),
 			),
@@ -105,18 +105,18 @@ func main() {
 				if j < i {
 					status = tui.Group(
 						tui.Text("  ✓ ").Fg(tui.ColorGreen),
-						tui.Text(t).Fg(tui.ColorGreen),
+						tui.Text("%s", t).Fg(tui.ColorGreen),
 					)
 				} else if j == i {
 					status = tui.Group(
 						tui.Text("  ◐ ").Fg(tui.ColorYellow),
-						tui.Text(t).Fg(tui.ColorYellow),
+						tui.Text("%s", t).Fg(tui.ColorYellow),
 						tui.Text("..."),
 					)
 				} else {
 					status = tui.Group(
 						tui.Text("  ○ ").Fg(tui.ColorBrightBlack),
-						tui.Text(t).Fg(tui.ColorBrightBlack),
+						tui.Text("%s", t).Fg(tui.ColorBrightBlack),
 					)
 				}
 				lines = append(lines, status)
@@ -133,7 +133,7 @@ func main() {
 		for _, t := range tasks {
 			lines = append(lines, tui.Group(
 				tui.Text("  ✓ ").Fg(tui.ColorGreen),
-				tui.Text(t).Fg(tui.ColorGreen),
+				tui.Text("%s", t).Fg(tui.ColorGreen),
 			))
 		}
 		lines = append(lines, tui.Text(""))
