@@ -17,6 +17,7 @@ parsing to rich terminal UIs with animations.
 | **clipboard** | `github.com/deepnoodle-ai/wonton/clipboard` | Cross-platform system clipboard access                     |
 | **color**     | `github.com/deepnoodle-ai/wonton/color`     | ANSI color types, RGB, HSL, and gradient utilities         |
 | **env**       | `github.com/deepnoodle-ai/wonton/env`       | Config loading from env vars, .env files, and JSON         |
+| **htmltomd**  | `github.com/deepnoodle-ai/wonton/htmltomd`  | HTML to Markdown conversion for LLMs/AI agents             |
 | **humanize**  | `github.com/deepnoodle-ai/wonton/humanize`  | Human-readable formatting for bytes, durations, numbers    |
 | **retry**     | `github.com/deepnoodle-ai/wonton/retry`     | Retry logic with exponential backoff and jitter            |
 | **slog**      | `github.com/deepnoodle-ai/wonton/slog`      | Colorized slog.Handler for terminal output                 |

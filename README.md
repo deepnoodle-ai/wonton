@@ -66,6 +66,8 @@ exit.
   callbacks.
 - `slog`: Colorized `log/slog` handler that understands structured attributes.
 - `assert`: Lightweight testing helpers with detailed diffs.
+- `htmltomd`: HTML to Markdown conversion for LLMs/AI agents, gracefully
+  handles malformed HTML.
 - `humanize`: Helpers for formatting numbers, durations, relative times, and
   byte sizes.
 - `sse`: Streaming parser and reconnecting HTTP client for Server-Sent Events.
