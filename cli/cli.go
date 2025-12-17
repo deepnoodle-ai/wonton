@@ -27,6 +27,11 @@ type App struct {
 	// Global flags
 	globalFlags []Flag
 
+	// Root handler (runs when no command specified)
+	handler    Handler
+	args       []*Arg
+	validators []func(*Context) error
+
 	// I/O
 	stdin  io.Reader
 	stdout io.Writer
@@ -108,6 +113,48 @@ func (a *App) GlobalFlags(flags ...Flag) *App {
 	return a
 }
 
+// Action sets the root handler that executes when no command is specified.
+func (a *App) Action(h Handler) *App {
+	a.handler = h
+	return a
+}
+
+// Args sets the positional argument names for the root command.
+// Append "?" to make an argument optional (e.g., "name?").
+func (a *App) Args(names ...string) *App {
+	for _, name := range names {
+		required := true
+		if strings.HasSuffix(name, "?") {
+			name = strings.TrimSuffix(name, "?")
+			required = false
+		}
+		a.args = append(a.args, &Arg{
+			Name:     name,
+			Required: required,
+		})
+	}
+	return a
+}
+
+// Validate adds a validation function for the root command.
+func (a *App) Validate(v func(*Context) error) *App {
+	a.validators = append(a.validators, v)
+	return a
+}
+
+// rootCommand returns a Command that wraps the app's root handler for execution.
+func (a *App) rootCommand() *Command {
+	return &Command{
+		name:        a.name,
+		description: a.description,
+		app:         a,
+		handler:     a.handler,
+		flags:       nil, // global flags are automatically included
+		args:        a.args,
+		validators:  a.validators,
+	}
+}
+
 // Run executes the CLI application with os.Args.
 func (a *App) Run() error {
 	return a.RunContext(context.Background(), os.Args[1:])
@@ -142,7 +189,7 @@ func (a *App) RunContext(ctx context.Context, args []string) error {
 
 	// Handle built-in commands
 	switch cmdName {
-	case "", "help":
+	case "help":
 		return a.showHelp()
 	case "version":
 		if a.version != "" {
@@ -151,13 +198,33 @@ func (a *App) RunContext(ctx context.Context, args []string) error {
 		return nil
 	}
 
-	// Find the command
-	cmd, subCmdArgs, err := a.findCommand(cmdName, cmdArgs)
-	if err != nil {
-		return err
+	// Find the command (or use root handler)
+	var cmd *Command
+	if cmdName == "" {
+		if a.handler == nil {
+			return a.showHelp()
+		}
+		// Use root handler
+		cmd = a.rootCommand()
+	} else {
+		var subCmdArgs []string
+		var err error
+		cmd, subCmdArgs, err = a.findCommand(cmdName, cmdArgs)
+		if err != nil {
+			// If command not found but app has root handler,
+			// treat first arg as positional arg to root handler
+			if a.handler != nil {
+				cmd = a.rootCommand()
+				// Put cmdName back as first arg
+				cmdArgs = append([]string{cmdName}, cmdArgs...)
+			} else {
+				return err
+			}
+		} else {
+			// Update cmdArgs if we consumed a subcommand name
+			cmdArgs = subCmdArgs
+		}
 	}
-	// Update cmdArgs if we consumed a subcommand name
-	cmdArgs = subCmdArgs
 
 	// Create execution context
 	execCtx := &Context{
@@ -267,8 +334,19 @@ func (a *App) findCommand(name string, args []string) (*Command, []string, error
 					}
 				}
 			}
+			// Not a subcommand - if group has handler, treat as positional args
+			if group.handler != nil {
+				return group.asCommand(), args, nil
+			}
+			// No handler - unknown subcommand
+			return nil, nil, fmt.Errorf("unknown subcommand '%s' for group '%s'\n\nAvailable commands:\n%s",
+				subName, name, group.commandList())
 		}
-		// No valid subcommand provided - show group help
+		// No args provided
+		if group.handler != nil {
+			return group.asCommand(), args, nil
+		}
+		// No handler - requires a subcommand
 		return nil, nil, fmt.Errorf("group '%s' requires a subcommand\n\nAvailable commands:\n%s",
 			name, group.commandList())
 	}
@@ -355,6 +433,13 @@ type Group struct {
 	description string
 	app         *App
 	commands    map[string]*Command
+
+	// Handler for running group without subcommand
+	handler    Handler
+	flags      []Flag
+	args       []*Arg
+	middleware []Middleware
+	validators []func(*Context) error
 }
 
 // Description sets the group description.
@@ -370,6 +455,61 @@ func (g *Group) Command(name string) *Command {
 	cmd.group = g
 	g.commands[name] = cmd
 	return cmd
+}
+
+// Action sets the handler that runs when the group is invoked without a subcommand.
+func (g *Group) Action(h Handler) *Group {
+	g.handler = h
+	return g
+}
+
+// Flags adds typed flags to the group.
+func (g *Group) Flags(flags ...Flag) *Group {
+	g.flags = append(g.flags, flags...)
+	return g
+}
+
+// Args sets the positional argument names for the group.
+// Append "?" to make an argument optional (e.g., "name?").
+func (g *Group) Args(names ...string) *Group {
+	for _, name := range names {
+		required := true
+		if strings.HasSuffix(name, "?") {
+			name = strings.TrimSuffix(name, "?")
+			required = false
+		}
+		g.args = append(g.args, &Arg{
+			Name:     name,
+			Required: required,
+		})
+	}
+	return g
+}
+
+// Use adds middleware to the group.
+func (g *Group) Use(mw ...Middleware) *Group {
+	g.middleware = append(g.middleware, mw...)
+	return g
+}
+
+// Validate adds a validation function for the group.
+func (g *Group) Validate(v func(*Context) error) *Group {
+	g.validators = append(g.validators, v)
+	return g
+}
+
+// asCommand returns a Command that wraps the group for execution.
+func (g *Group) asCommand() *Command {
+	return &Command{
+		name:        g.name,
+		description: g.description,
+		app:         g.app,
+		handler:     g.handler,
+		flags:       g.flags,
+		args:        g.args,
+		middleware:  g.middleware,
+		validators:  g.validators,
+	}
 }
 
 func (g *Group) commandList() string {

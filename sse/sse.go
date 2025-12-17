@@ -32,8 +32,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 )
 
 // Event represents a single Server-Sent Event.
@@ -74,6 +74,13 @@ func NewReader(r io.Reader) *Reader {
 	}
 }
 
+// Buffer sets the buffer size for reading lines. The default max line size
+// is 64KB. Use this if you need to read events with very long lines.
+// Must be called before the first call to Read.
+func (r *Reader) Buffer(maxLineSize int) {
+	r.scanner.Buffer(make([]byte, 0, maxLineSize), maxLineSize)
+}
+
 // Read reads the next event from the stream.
 // Returns io.EOF when the stream ends.
 func (r *Reader) Read() (Event, error) {
@@ -112,8 +119,7 @@ func (r *Reader) Read() (Event, error) {
 			r.event.ID = value
 		case "retry":
 			// Parse retry as integer milliseconds
-			var retry int
-			if _, err := parseDecimal(value, &retry); err == nil {
+			if retry, err := strconv.Atoi(value); err == nil && retry >= 0 {
 				r.event.Retry = retry
 			}
 		}
@@ -134,24 +140,6 @@ func (r *Reader) Read() (Event, error) {
 	return Event{}, io.EOF
 }
 
-// parseDecimal parses a decimal string into an int.
-func parseDecimal(s string, v *int) (string, error) {
-	s = strings.TrimSpace(s)
-	if len(s) == 0 {
-		return s, nil
-	}
-	result := 0
-	for i, c := range s {
-		if c < '0' || c > '9' {
-			*v = result
-			return s[i:], nil
-		}
-		result = result*10 + int(c-'0')
-	}
-	*v = result
-	return "", nil
-}
-
 // Stream reads all events from r and calls fn for each event.
 // Stops on error or when the stream ends.
 func Stream(r io.Reader, fn func(Event) error) error {
@@ -170,7 +158,7 @@ func Stream(r io.Reader, fn func(Event) error) error {
 	}
 }
 
-// Client is an SSE client that handles HTTP connections and automatic reconnection.
+// Client is an SSE client that handles HTTP connections.
 type Client struct {
 	// URL is the SSE endpoint.
 	URL string
@@ -181,19 +169,15 @@ type Client struct {
 	// HTTPClient is the HTTP client to use. If nil, http.DefaultClient is used.
 	HTTPClient *http.Client
 
-	// LastEventID is sent as Last-Event-ID header on reconnection.
+	// LastEventID is sent as Last-Event-ID header if set.
 	LastEventID string
-
-	// ReconnectTime is the default reconnection delay.
-	ReconnectTime time.Duration
 }
 
 // NewClient creates a new SSE client for the given URL.
 func NewClient(url string) *Client {
 	return &Client{
-		URL:           url,
-		Headers:       make(http.Header),
-		ReconnectTime: 3 * time.Second,
+		URL:     url,
+		Headers: make(http.Header),
 	}
 }
 
@@ -250,6 +234,13 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 		return
 	}
 
+	// Validate Content-Type (should be text/event-stream, possibly with charset)
+	ct := resp.Header.Get("Content-Type")
+	if ct != "" && !strings.HasPrefix(ct, "text/event-stream") {
+		errs <- &HTTPError{StatusCode: resp.StatusCode, Status: "unexpected content-type: " + ct}
+		return
+	}
+
 	reader := NewReader(resp.Body)
 	for {
 		select {
@@ -271,11 +262,6 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 		// Update Last-Event-ID
 		if event.ID != "" {
 			c.LastEventID = event.ID
-		}
-
-		// Update reconnect time if specified
-		if event.Retry > 0 {
-			c.ReconnectTime = time.Duration(event.Retry) * time.Millisecond
 		}
 
 		select {

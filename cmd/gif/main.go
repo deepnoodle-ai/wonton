@@ -1,196 +1,167 @@
 // Command gif converts terminal recordings (.cast files) to animated GIFs
-// and provides utilities for creating simple animated GIFs.
-//
-// Usage:
-//
-//	gif cast <input.cast> <output.gif>   Convert asciinema recording to GIF
-//	gif demo <output.gif>                Create a demo animation
-//	gif info <input.cast>                Show information about a cast file
-//
-// Options for cast conversion:
-//
-//	-cols     Number of terminal columns (default: from .cast file)
-//	-rows     Number of terminal rows (default: from .cast file)
-//	-speed    Playback speed multiplier (default: 1.0)
-//	-maxidle  Max idle time in seconds (default: 2.0)
-//	-padding  Padding around terminal in pixels (default: 8)
-//	-fps      Target frames per second (default: 10)
-//	-fontsize Font size in points (default: 14)
-//	-bitmap   Use bitmap font instead of TTF
+// and provides utilities for creating animated GIFs.
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/gif"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
+	app := cli.New("gif").
+		Description("Terminal recording to GIF converter").
+		Version("1.0.0")
 
-	cmd := os.Args[1]
-	switch cmd {
-	case "cast":
-		if len(os.Args) < 4 {
-			fmt.Fprintln(os.Stderr, "Usage: gif cast [options] <input.cast> <output.gif>")
+	// Cast command - convert .cast files to GIFs
+	app.Command("cast").
+		Description("Convert asciinema recording to GIF").
+		Args("input", "output").
+		Flags(
+			&cli.IntFlag{Name: "cols", Short: "c", Help: "Terminal columns (0 = from file)", Value: 0},
+			&cli.IntFlag{Name: "rows", Short: "r", Help: "Terminal rows (0 = from file)", Value: 0},
+			&cli.Float64Flag{Name: "speed", Short: "s", Help: "Playback speed multiplier", Value: 1.0},
+			&cli.Float64Flag{Name: "maxidle", Short: "m", Help: "Max idle time between events (seconds)", Value: 2.0},
+			&cli.IntFlag{Name: "padding", Short: "p", Help: "Padding around terminal (pixels)", Value: 8},
+			&cli.IntFlag{Name: "fps", Short: "f", Help: "Target frames per second", Value: 10},
+			&cli.Float64Flag{Name: "fontsize", Help: "Font size in points", Value: 14},
+			&cli.BoolFlag{Name: "bitmap", Short: "b", Help: "Use bitmap font instead of TTF"},
+		).
+		Run(castCmd)
+
+	// Info command - show cast file information
+	app.Command("info").
+		Description("Show information about a cast file").
+		Args("file").
+		Run(infoCmd)
+
+	// Demo command - create a demo animation
+	app.Command("demo").
+		Description("Create a demo bouncing ball animation").
+		Args("output").
+		Flags(
+			&cli.IntFlag{Name: "width", Short: "w", Help: "GIF width in pixels", Value: 200},
+			&cli.IntFlag{Name: "height", Short: "h", Help: "GIF height in pixels", Value: 150},
+			&cli.IntFlag{Name: "frames", Short: "f", Help: "Number of frames", Value: 60},
+		).
+		Run(demoCmd)
+
+	if err := app.Run(); err != nil {
+		if !cli.IsHelpRequested(err) {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		castCmd(os.Args[2:])
-	case "demo":
-		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: gif demo <output.gif>")
-			os.Exit(1)
-		}
-		demoCmd(os.Args[2])
-	case "info":
-		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: gif info <input.cast>")
-			os.Exit(1)
-		}
-		infoCmd(os.Args[2])
-	case "-h", "--help", "help":
-		printUsage()
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
-		printUsage()
-		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Println(`gif - Terminal recording to GIF converter
+func castCmd(ctx *cli.Context) error {
+	inputFile := ctx.Arg(0)
+	outputFile := ctx.Arg(1)
 
-Usage:
-  gif cast [options] <input.cast> <output.gif>   Convert .cast to GIF
-  gif demo <output.gif>                          Create demo animation
-  gif info <input.cast>                          Show cast file info
-
-Cast options:
-  -cols int       Terminal columns (default: from file)
-  -rows int       Terminal rows (default: from file)
-  -speed float    Playback speed multiplier (default: 1.0)
-  -maxidle float  Max idle time between events in seconds (default: 2.0)
-  -padding int    Padding around terminal in pixels (default: 8)
-  -fps int        Target frames per second (default: 10)
-  -fontsize float Font size in points (default: 14)
-  -bitmap         Use bitmap font instead of TTF
-
-Examples:
-  gif cast session.cast output.gif
-  gif cast -speed 2.0 -maxidle 1.0 session.cast output.gif
-  gif info session.cast
-  gif demo animation.gif`)
-}
-
-func castCmd(args []string) {
-	fs := flag.NewFlagSet("cast", flag.ExitOnError)
-	cols := fs.Int("cols", 0, "Terminal columns (0 = from file)")
-	rows := fs.Int("rows", 0, "Terminal rows (0 = from file)")
-	speed := fs.Float64("speed", 1.0, "Playback speed multiplier")
-	maxIdle := fs.Float64("maxidle", 2.0, "Max idle time between events")
-	padding := fs.Int("padding", 8, "Padding in pixels")
-	fps := fs.Int("fps", 10, "Target frames per second")
-	fontSize := fs.Float64("fontsize", 14, "Font size in points")
-	useBitmap := fs.Bool("bitmap", false, "Use bitmap font instead of TTF")
-	fs.Parse(args)
-
-	if fs.NArg() < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: gif cast [options] <input.cast> <output.gif>")
-		os.Exit(1)
+	if !strings.HasSuffix(strings.ToLower(outputFile), ".gif") {
+		return fmt.Errorf("output file must have .gif extension: %s", outputFile)
 	}
-
-	inputFile := fs.Arg(0)
-	outputFile := fs.Arg(1)
 
 	// Get cast info for display
 	info, err := gif.GetCastInfo(inputFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", inputFile, err)
-		os.Exit(1)
+		return fmt.Errorf("loading %s: %w", inputFile, err)
 	}
+
+	cols := ctx.Int("cols")
+	rows := ctx.Int("rows")
 
 	termCols := info.Width
 	termRows := info.Height
-	if *cols > 0 {
-		termCols = *cols
+	if cols > 0 {
+		termCols = cols
 	}
-	if *rows > 0 {
-		termRows = *rows
+	if rows > 0 {
+		termRows = rows
 	}
 
-	fmt.Printf("Converting %s (%dx%d terminal, %d events, %.1fs)...\n",
+	ctx.Printf("Converting %s (%dx%d terminal, %d events, %.1fs)...\n",
 		inputFile, termCols, termRows, info.EventCount, info.Duration)
 
 	opts := gif.CastOptions{
-		Cols:      *cols,
-		Rows:      *rows,
-		Speed:     *speed,
-		MaxIdle:   *maxIdle,
-		FPS:       *fps,
-		Padding:   *padding,
-		FontSize:  *fontSize,
-		UseBitmap: *useBitmap,
+		Cols:      cols,
+		Rows:      rows,
+		Speed:     ctx.Float64("speed"),
+		MaxIdle:   ctx.Float64("maxidle"),
+		FPS:       ctx.Int("fps"),
+		Padding:   ctx.Int("padding"),
+		FontSize:  ctx.Float64("fontsize"),
+		UseBitmap: ctx.Bool("bitmap"),
 	}
 
 	g, err := gif.RenderCast(inputFile, opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error rendering: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("rendering: %w", err)
 	}
 
 	if err := g.Save(outputFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving %s: %v\n", outputFile, err)
-		os.Exit(1)
+		return fmt.Errorf("saving %s: %w", outputFile, err)
 	}
 
-	fmt.Printf("Created %s (%d frames)\n", outputFile, g.FrameCount())
+	ctx.Success("Created %s (%d frames)", outputFile, g.FrameCount())
+	return nil
 }
 
-func infoCmd(filename string) {
+func infoCmd(ctx *cli.Context) error {
+	filename := ctx.Arg(0)
+
 	info, err := gif.GetCastInfo(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	fmt.Printf("File:       %s\n", filename)
-	fmt.Printf("Dimensions: %dx%d\n", info.Width, info.Height)
-	fmt.Printf("Duration:   %.2fs\n", info.Duration)
-	fmt.Printf("Events:     %d\n", info.EventCount)
+	ctx.Printf("File:       %s\n", filename)
+	ctx.Printf("Dimensions: %dx%d\n", info.Width, info.Height)
+	ctx.Printf("Duration:   %.2fs\n", info.Duration)
+	ctx.Printf("Events:     %d\n", info.EventCount)
 	if info.Title != "" {
-		fmt.Printf("Title:      %s\n", info.Title)
+		ctx.Printf("Title:      %s\n", info.Title)
 	}
 	if info.Timestamp > 0 {
 		t := time.Unix(info.Timestamp, 0)
-		fmt.Printf("Recorded:   %s\n", t.Format(time.RFC3339))
+		ctx.Printf("Recorded:   %s\n", t.Format(time.RFC3339))
 	}
+	return nil
 }
 
-func demoCmd(outputFile string) {
-	fmt.Println("Creating demo animation...")
+func demoCmd(ctx *cli.Context) error {
+	outputFile := ctx.Arg(0)
+
+	if !strings.HasSuffix(strings.ToLower(outputFile), ".gif") {
+		return fmt.Errorf("output file must have .gif extension: %s", outputFile)
+	}
+
+	width := ctx.Int("width")
+	height := ctx.Int("height")
+	frames := ctx.Int("frames")
+
+	ctx.Println("Creating demo animation...")
 
 	// Create a simple bouncing ball animation
-	g := gif.New(200, 150)
+	g := gif.New(width, height)
 	g.SetLoopCount(0)
 
-	ballX, ballY := 50, 50
+	ballX, ballY := width/4, height/3
 	velX, velY := 5, 3
 	radius := 15
 
-	for frame := 0; frame < 60; frame++ {
+	for frame := 0; frame < frames; frame++ {
 		x, y := ballX, ballY // Capture for closure
 		g.AddFrameWithDelay(func(f *gif.Frame) {
 			// Background
 			f.Fill(gif.RGB(32, 32, 48))
 
 			// Border
-			f.DrawRect(5, 5, 190, 140, gif.RGB(100, 100, 120))
+			f.DrawRect(5, 5, width-10, height-10, gif.RGB(100, 100, 120))
 
 			// Ball shadow
 			f.FillCircle(x+3, y+3, radius-2, gif.RGB(20, 20, 30))
@@ -205,18 +176,18 @@ func demoCmd(outputFile string) {
 		ballY += velY
 
 		// Bounce off walls
-		if ballX-radius <= 5 || ballX+radius >= 195 {
+		if ballX-radius <= 5 || ballX+radius >= width-5 {
 			velX = -velX
 		}
-		if ballY-radius <= 5 || ballY+radius >= 145 {
+		if ballY-radius <= 5 || ballY+radius >= height-5 {
 			velY = -velY
 		}
 	}
 
 	if err := g.Save(outputFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	fmt.Printf("Created %s (%d frames)\n", outputFile, g.FrameCount())
+	ctx.Success("Created %s (%d frames)", outputFile, g.FrameCount())
+	return nil
 }

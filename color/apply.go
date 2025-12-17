@@ -3,6 +3,8 @@ package color
 import (
 	"fmt"
 	"os"
+
+	"github.com/deepnoodle-ai/wonton/tty"
 )
 
 // ANSI escape code constants
@@ -65,24 +67,20 @@ func (c Color) Sprint(args ...any) string {
 	return c.Apply(fmt.Sprint(args...))
 }
 
-// IsTerminal returns true if the given file is a terminal.
+// IsTerminal reports whether f is a terminal.
+// This is a convenience wrapper around tty.IsTerminal.
 func IsTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return tty.IsTerminal(f)
 }
 
 // ShouldColorize returns true if colors should be used for the given output.
 // It checks both that the output is a terminal AND that NO_COLOR is not set.
 // This is the recommended way to determine if colors should be enabled.
 func ShouldColorize(f *os.File) bool {
-	// Check NO_COLOR environment variable first
 	if _, exists := os.LookupEnv("NO_COLOR"); exists {
 		return false
 	}
-	return IsTerminal(f)
+	return tty.IsTerminal(f)
 }
 
 // Enabled controls whether Colorize and ColorizeRGB produce colored output.

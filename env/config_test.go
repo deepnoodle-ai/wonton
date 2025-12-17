@@ -42,8 +42,8 @@ func TestParse_BasicTypes(t *testing.T) {
 
 func TestParse_Defaults(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
-		Port int    `env:"PORT" default:"3000"`
+		Host string `env:"HOST" envDefault:"localhost"`
+		Port int    `env:"PORT" envDefault:"3000"`
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
@@ -206,7 +206,7 @@ func TestParse_Expand(t *testing.T) {
 
 func TestParse_WithOnSet(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 		Port int    `env:"PORT"`
 	}
 
@@ -337,7 +337,7 @@ func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
 func TestParseInto_UpdatesExistingStruct(t *testing.T) {
 	type Config struct {
 		Host string `env:"HOST"`
-		Port int    `env:"PORT" default:"80"`
+		Port int    `env:"PORT" envDefault:"80"`
 	}
 
 	cfg := Config{Host: "initial"}
@@ -421,7 +421,7 @@ func TestParse_CustomParser(t *testing.T) {
 
 func TestParse_OnSet(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 		Port int    `env:"PORT"`
 	}
 
@@ -552,7 +552,7 @@ func TestMust_Panics(t *testing.T) {
 
 func TestMust_Success(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 	}
 
 	assert.NotPanics(t, func() {
@@ -787,7 +787,7 @@ func TestParse_WithTagName(t *testing.T) {
 
 func TestParse_DefaultWithoutEnvTag(t *testing.T) {
 	type Config struct {
-		Host string `default:"localhost"`
+		Host string `envDefault:"localhost"`
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
@@ -797,7 +797,7 @@ func TestParse_DefaultWithoutEnvTag(t *testing.T) {
 
 func TestParse_DefaultParseError(t *testing.T) {
 	type Config struct {
-		Port int `default:"not-a-number"`
+		Port int `envDefault:"not-a-number"`
 	}
 
 	_, err := Parse[Config](WithEnvironment(map[string]string{}))
@@ -1251,25 +1251,25 @@ func TestParse_JSONWithNonStringValue(t *testing.T) {
 	assert.Equal(t, 0.5, cfg.Rate)
 }
 
-func TestParse_JSONNonStringToNonConvertible(t *testing.T) {
+func TestParse_JSONTypeMismatch(t *testing.T) {
 	tmpDir := t.TempDir()
 	jsonFile := filepath.Join(tmpDir, "config.json")
 
-	// Boolean can't be directly assigned to string
+	// Boolean can't be unmarshalled into string - standard JSON behavior
 	content := `{"host": true}`
 	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
 
 	type Config struct {
-		Host string `env:"HOST"`
+		Host string `json:"host" env:"HOST"`
 	}
 
-	cfg, err := Parse[Config](
+	_, err := Parse[Config](
 		WithEnvironment(map[string]string{}),
 		WithJSONFile(jsonFile),
 	)
-	// Should succeed using Sprint conversion
-	assert.NoError(t, err)
-	assert.Equal(t, "true", cfg.Host)
+	// Standard json.Unmarshal returns error on type mismatch
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot unmarshal")
 }
 
 func TestParse_OnSetWithStageVar(t *testing.T) {
@@ -1302,7 +1302,7 @@ func TestParse_OnSetWithStageVar(t *testing.T) {
 
 func TestParse_MissingEnvFileSkipped(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 	}
 
 	cfg, err := Parse[Config](
@@ -1316,7 +1316,7 @@ func TestParse_MissingEnvFileSkipped(t *testing.T) {
 
 func TestParse_MissingJSONFileSkipped(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 	}
 
 	cfg, err := Parse[Config](
@@ -1350,7 +1350,7 @@ func TestParse_ConvertibleTypes(t *testing.T) {
 
 func TestParse_OnSetWithDefaultNoEnvTag(t *testing.T) {
 	type Config struct {
-		Host string `default:"localhost"`
+		Host string `envDefault:"localhost"`
 	}
 
 	var setCalls []string

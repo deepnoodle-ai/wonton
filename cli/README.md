@@ -95,3 +95,77 @@ ok, err := ctx.Confirm("Continue?")
 ```
 
 Prompts require an interactive terminal and return an error if run non-interactively.
+
+## Root and group actions
+
+Both the app and command groups can have their own action handlers that run when
+invoked without a subcommand. This is useful for commands like `git remote`
+which lists remotes when run alone but also has subcommands like `git remote add`.
+
+### App-level action
+
+Set a root handler that runs when the app is invoked without any command:
+
+```go
+app := cli.New("cat").
+    Description("Concatenate files").
+    Args("file?").
+    Action(func(ctx *cli.Context) error {
+        if ctx.NArg() == 0 {
+            // Read from stdin
+            return copyStdin(ctx)
+        }
+        // Read from file
+        return readFile(ctx.Arg(0))
+    })
+
+// These all work:
+// cat              -> reads stdin (root action)
+// cat file.txt     -> reads file.txt (root action with arg)
+// cat --help       -> shows help
+```
+
+### Group-level action
+
+Groups can also have actions that run when the group is invoked without a subcommand:
+
+```go
+app := cli.New("myapp").Description("My application")
+
+// Group with both an action and subcommands
+users := app.Group("users").
+    Description("User management").
+    Flags(&cli.BoolFlag{Name: "all", Short: "a", Help: "Show all users"}).
+    Action(func(ctx *cli.Context) error {
+        // Runs when: myapp users or myapp users -a
+        if ctx.Bool("all") {
+            return listAllUsers()
+        }
+        return listActiveUsers()
+    })
+
+// Subcommands take precedence over the group action
+users.Command("add").
+    Description("Add a user").
+    Args("name").
+    Run(func(ctx *cli.Context) error {
+        return addUser(ctx.Arg(0))
+    })
+
+users.Command("remove").
+    Description("Remove a user").
+    Args("name").
+    Run(func(ctx *cli.Context) error {
+        return removeUser(ctx.Arg(0))
+    })
+
+// These all work:
+// myapp users           -> lists active users (group action)
+// myapp users -a        -> lists all users (group action with flag)
+// myapp users add bob   -> adds user bob (subcommand)
+// myapp users remove jo -> removes user jo (subcommand)
+```
+
+When both an action and subcommands exist, subcommands are matched first. If the
+argument doesn't match any subcommand, it's passed to the action as a positional
+argument.

@@ -2,22 +2,23 @@
 //
 // Usage:
 //
-//	htmltomd <url-or-file>
+//	htmltomd [options] <url-or-file>
 //	htmltomd https://example.com
 //	htmltomd ./page.html
 //	cat page.html | htmltomd -
 //
 // Options:
 //
-//	-refs      Use referenced link style [text][n] instead of inline [text](url)
-//	-setext    Use setext-style headings (underlined) for h1/h2
-//	-indent    Use indented code blocks instead of fenced
-//	-bullet    Bullet character for lists (default "-")
-//	-skip      Comma-separated tags to skip (e.g. "nav,footer,aside")
+//	-r, --refs      Use referenced link style [text][n] instead of inline [text](url)
+//	-s, --setext    Use setext-style headings (underlined) for h1/h2
+//	-i, --indent    Use indented code blocks instead of fenced
+//	-b, --bullet    Bullet character for lists (default "-")
+//	--skip          Comma-separated tags to skip (e.g. "nav,footer,aside")
+//	-t, --timeout   HTTP request timeout (default 30s)
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,86 +26,113 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/cli"
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/htmltomd"
 )
 
+const version = "1.0.0"
+
 func main() {
-	refs := flag.Bool("refs", false, "use referenced link style")
-	setext := flag.Bool("setext", false, "use setext-style headings")
-	indent := flag.Bool("indent", false, "use indented code blocks")
-	bullet := flag.String("bullet", "-", "bullet character for lists")
-	skip := flag.String("skip", "", "comma-separated tags to skip")
-	timeout := flag.Duration("timeout", 30*time.Second, "HTTP request timeout")
+	app := cli.New("htmltomd").
+		Description("Convert HTML to Markdown").
+		Version(version)
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <url-or-file>\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Converts HTML to Markdown from a URL, local file, or stdin.\n\n")
-		fmt.Fprintf(os.Stderr, "Arguments:\n")
-		fmt.Fprintf(os.Stderr, "  <url-or-file>  URL to fetch, path to local file, or - for stdin\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
+	// Default command for conversion
+	app.Command("convert").
+		Description("Convert HTML to Markdown from a URL, file, or stdin").
+		Args("source").
+		Flags(
+			cli.Bool("refs", "r").Help("Use referenced link style [text][n]"),
+			cli.Bool("setext", "s").Help("Use setext-style headings (underlined)"),
+			cli.Bool("indent", "i").Help("Use indented code blocks instead of fenced"),
+			cli.String("bullet", "b").Default("-").Help("Bullet character for lists"),
+			cli.String("skip", "").Help("Comma-separated tags to skip (e.g. nav,footer,aside)"),
+			cli.Duration("timeout", "t").Default(30*time.Second).Help("HTTP request timeout"),
+		).
+		Run(runConvert)
+
+	// Make convert the default command by handling args directly
+	args := os.Args[1:]
+
+	// If first arg doesn't start with - and isn't "help" or "version", treat as convert
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") &&
+		args[0] != "help" && args[0] != "version" && args[0] != "convert" {
+		args = append([]string{"convert"}, args...)
+	} else if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
+		// If no args or first arg is a flag, prepend convert
+		args = append([]string{"convert"}, args...)
 	}
 
-	flag.Parse()
+	if err := app.RunArgs(args); err != nil {
+		// Don't print help errors (already shown)
+		if _, ok := err.(*cli.HelpRequested); !ok {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+}
 
-	if flag.NArg() != 1 {
-		flag.Usage()
-		os.Exit(1)
+func runConvert(ctx *cli.Context) error {
+	source := ctx.Arg(0)
+	if source == "" {
+		return fmt.Errorf("missing source argument (URL, file path, or - for stdin)")
 	}
 
-	input := flag.Arg(0)
+	// Get options
+	opts := htmltomd.DefaultOptions()
 
+	if ctx.Bool("refs") {
+		opts.LinkStyle = htmltomd.LinkStyleReferenced
+	}
+	if ctx.Bool("setext") {
+		opts.HeadingStyle = htmltomd.HeadingStyleSetext
+	}
+	if ctx.Bool("indent") {
+		opts.CodeBlockStyle = htmltomd.CodeBlockStyleIndented
+	}
+	if bullet := ctx.String("bullet"); bullet != "" {
+		opts.BulletChar = bullet
+	}
+	if skip := ctx.String("skip"); skip != "" {
+		opts.SkipTags = strings.Split(skip, ",")
+	}
+
+	timeout := 30 * time.Second
+	if t := ctx.String("timeout"); t != "" {
+		if d, err := time.ParseDuration(t); err == nil {
+			timeout = d
+		}
+	}
+
+	// Read input
 	var body []byte
 	var err error
 
 	switch {
-	case input == "-":
-		// Read from stdin
-		body, err = io.ReadAll(os.Stdin)
+	case source == "-":
+		body, err = io.ReadAll(ctx.Stdin())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("reading stdin: %w", err)
 		}
 
-	case isURL(input):
-		// Fetch from URL
-		body, err = fetchURL(input, *timeout)
+	case isURL(source):
+		body, err = fetchURL(ctx, source, timeout)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 
 	default:
-		// Read from local file
-		body, err = os.ReadFile(input)
+		body, err = os.ReadFile(source)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("reading file: %w", err)
 		}
-	}
-
-	// Build options
-	opts := htmltomd.DefaultOptions()
-
-	if *refs {
-		opts.LinkStyle = htmltomd.LinkStyleReferenced
-	}
-	if *setext {
-		opts.HeadingStyle = htmltomd.HeadingStyleSetext
-	}
-	if *indent {
-		opts.CodeBlockStyle = htmltomd.CodeBlockStyleIndented
-	}
-	if *bullet != "" {
-		opts.BulletChar = *bullet
-	}
-	if *skip != "" {
-		opts.SkipTags = strings.Split(*skip, ",")
 	}
 
 	// Convert and output
 	md := htmltomd.ConvertWithOptions(string(body), opts)
-	fmt.Println(md)
+	ctx.Println(md)
+	return nil
 }
 
 // isURL returns true if the input looks like a URL.
@@ -119,13 +147,24 @@ func isURL(input string) bool {
 			!strings.Contains(input, string(os.PathSeparator)))
 }
 
-// fetchURL fetches content from a URL.
-func fetchURL(url string, timeout time.Duration) ([]byte, error) {
+// fetchURL fetches content from a URL, showing a spinner in interactive mode.
+func fetchURL(ctx *cli.Context, url string, timeout time.Duration) ([]byte, error) {
 	// Ensure URL has a scheme
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
 	}
 
+	// In interactive mode, show a nice spinner
+	if ctx.Interactive() {
+		return fetchWithSpinner(ctx.Context(), url, timeout)
+	}
+
+	// Non-interactive: just fetch
+	return fetchSimple(url, timeout)
+}
+
+// fetchSimple does a basic HTTP fetch without UI.
+func fetchSimple(url string, timeout time.Duration) ([]byte, error) {
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -134,8 +173,61 @@ func fetchURL(url string, timeout time.Duration) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+// fetchWithSpinner fetches a URL while showing a spinner.
+func fetchWithSpinner(ctx context.Context, url string, timeout time.Duration) ([]byte, error) {
+	// Create result channels
+	type result struct {
+		body []byte
+		err  error
+	}
+	done := make(chan result, 1)
+
+	// Start fetch in background
+	go func() {
+		body, err := fetchSimple(url, timeout)
+		done <- result{body, err}
+	}()
+
+	// Spinner frames (dots style)
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	frame := 0
+	msg := "Fetching " + truncateURL(url, 50)
+
+	ticker := time.NewTicker(80 * time.Millisecond)
+	defer ticker.Stop()
+
+	// Hide cursor and prepare for spinner
+	fmt.Fprint(os.Stderr, "\033[?25l") // Hide cursor
+	defer fmt.Fprint(os.Stderr, "\033[?25h") // Show cursor on exit
+
+	for {
+		select {
+		case r := <-done:
+			// Clear spinner line
+			fmt.Fprint(os.Stderr, "\r\033[K")
+			return r.body, r.err
+
+		case <-ticker.C:
+			frame = (frame + 1) % len(frames)
+			fmt.Fprintf(os.Stderr, "\r%s %s", color.Cyan.Apply(frames[frame]), msg)
+
+		case <-ctx.Done():
+			fmt.Fprint(os.Stderr, "\r\033[K")
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// truncateURL shortens a URL for display.
+func truncateURL(url string, maxLen int) string {
+	if len(url) <= maxLen {
+		return url
+	}
+	return url[:maxLen-3] + "..."
 }

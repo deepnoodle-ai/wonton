@@ -3105,3 +3105,367 @@ func TestHelpTheme(t *testing.T) {
 
 	assert.NotNil(t, app.helpTheme)
 }
+
+// Test App.Action - root handler that runs when no command is specified
+
+func TestAppAction(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test").
+		Action(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// Running with no args should execute the root action
+	err := app.RunArgs([]string{})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestAppActionWithArgs(t *testing.T) {
+	var receivedArg string
+
+	app := New("test").Description("Test").
+		Args("file?").
+		Action(func(ctx *Context) error {
+			if ctx.NArg() > 0 {
+				receivedArg = ctx.Arg(0)
+			}
+			return nil
+		})
+
+	// Running with positional arg
+	err := app.RunArgs([]string{"myfile.txt"})
+	assert.NoError(t, err)
+	assert.Equal(t, "myfile.txt", receivedArg)
+}
+
+func TestAppActionWithGlobalFlags(t *testing.T) {
+	var verbose bool
+
+	app := New("test").Description("Test").
+		GlobalFlags(&BoolFlag{Name: "verbose", Short: "v"}).
+		Action(func(ctx *Context) error {
+			verbose = ctx.Bool("verbose")
+			return nil
+		})
+
+	// Running with global flag
+	err := app.RunArgs([]string{"-v"})
+	assert.NoError(t, err)
+	assert.True(t, verbose)
+}
+
+func TestAppActionShowsHelpWhenNoAction(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test app")
+	app.stdout = &buf
+	app.SetColorEnabled(false)
+
+	// No action defined, should show help
+	err := app.RunArgs([]string{})
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "test")
+}
+
+// Test Group.Action - handler that runs when group is invoked without subcommand
+
+func TestGroupAction(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Action(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// Running group without subcommand should execute the group action
+	err := app.RunArgs([]string{"users"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestGroupActionWithSubcommands(t *testing.T) {
+	var groupExecuted bool
+	var subExecuted bool
+
+	app := New("test").Description("Test")
+	users := app.Group("users").
+		Description("User management").
+		Action(func(ctx *Context) error {
+			groupExecuted = true
+			return nil
+		})
+
+	users.Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error {
+			subExecuted = true
+			return nil
+		})
+
+	// Running group without subcommand executes group action
+	err := app.RunArgs([]string{"users"})
+	assert.NoError(t, err)
+	assert.True(t, groupExecuted)
+	assert.False(t, subExecuted)
+
+	// Reset
+	groupExecuted = false
+
+	// Running with subcommand executes subcommand, not group action
+	err = app.RunArgs([]string{"users", "list"})
+	assert.NoError(t, err)
+	assert.False(t, groupExecuted)
+	assert.True(t, subExecuted)
+}
+
+func TestGroupActionWithArgs(t *testing.T) {
+	var receivedArg string
+
+	app := New("test").Description("Test")
+	app.Group("files").
+		Description("File operations").
+		Args("path?").
+		Action(func(ctx *Context) error {
+			if ctx.NArg() > 0 {
+				receivedArg = ctx.Arg(0)
+			}
+			return nil
+		})
+
+	// Running group with positional arg (not a subcommand)
+	err := app.RunArgs([]string{"files", "/tmp/myfile"})
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/myfile", receivedArg)
+}
+
+func TestGroupActionWithFlags(t *testing.T) {
+	var all bool
+
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Flags(&BoolFlag{Name: "all", Short: "a"}).
+		Action(func(ctx *Context) error {
+			all = ctx.Bool("all")
+			return nil
+		})
+
+	err := app.RunArgs([]string{"users", "-a"})
+	assert.NoError(t, err)
+	assert.True(t, all)
+}
+
+func TestGroupWithoutActionRequiresSubcommand(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error { return nil })
+
+	// Group without action should error when no subcommand provided
+	err := app.RunArgs([]string{"users"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a subcommand")
+}
+
+func TestGroupUnknownSubcommandWithAction(t *testing.T) {
+	var receivedArg string
+
+	app := New("test").Description("Test")
+	users := app.Group("users").
+		Description("User management").
+		Args("name?").
+		Action(func(ctx *Context) error {
+			if ctx.NArg() > 0 {
+				receivedArg = ctx.Arg(0)
+			}
+			return nil
+		})
+
+	users.Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error { return nil })
+
+	// "john" is not a subcommand, so it should be passed to the group action as an arg
+	err := app.RunArgs([]string{"users", "john"})
+	assert.NoError(t, err)
+	assert.Equal(t, "john", receivedArg)
+}
+
+func TestGroupUnknownSubcommandWithoutAction(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error { return nil })
+
+	// "john" is not a subcommand and there's no action, should error
+	err := app.RunArgs([]string{"users", "john"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown subcommand 'john'")
+}
+
+func TestAppActionWithCommands(t *testing.T) {
+	var rootExecuted bool
+	var cmdExecuted bool
+
+	app := New("test").Description("Test").
+		Action(func(ctx *Context) error {
+			rootExecuted = true
+			return nil
+		})
+
+	app.Command("status").
+		Description("Show status").
+		Run(func(ctx *Context) error {
+			cmdExecuted = true
+			return nil
+		})
+
+	// Command should take precedence
+	err := app.RunArgs([]string{"status"})
+	assert.NoError(t, err)
+	assert.False(t, rootExecuted)
+	assert.True(t, cmdExecuted)
+
+	// Reset
+	cmdExecuted = false
+
+	// No args should run root action
+	err = app.RunArgs([]string{})
+	assert.NoError(t, err)
+	assert.True(t, rootExecuted)
+	assert.False(t, cmdExecuted)
+}
+
+func TestAppActionWithMiddleware(t *testing.T) {
+	var order []string
+
+	app := New("test").Description("Test").
+		Use(func(next Handler) Handler {
+			return func(ctx *Context) error {
+				order = append(order, "before")
+				err := next(ctx)
+				order = append(order, "after")
+				return err
+			}
+		}).
+		Action(func(ctx *Context) error {
+			order = append(order, "action")
+			return nil
+		})
+
+	err := app.RunArgs([]string{})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"before", "action", "after"}, order)
+}
+
+func TestAppActionWithValidation(t *testing.T) {
+	app := New("test").Description("Test").
+		Args("file?"). // Optional arg so we can test custom validation
+		Validate(func(ctx *Context) error {
+			if ctx.NArg() == 0 {
+				return Errorf("file argument required")
+			}
+			return nil
+		}).
+		Action(func(ctx *Context) error {
+			return nil
+		})
+
+	// Should fail custom validation
+	err := app.RunArgs([]string{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "file argument required")
+
+	// Should pass validation
+	err = app.RunArgs([]string{"myfile.txt"})
+	assert.NoError(t, err)
+}
+
+func TestGroupActionWithMiddleware(t *testing.T) {
+	var order []string
+
+	app := New("test").Description("Test")
+	app.Group("files").
+		Description("File operations").
+		Use(func(next Handler) Handler {
+			return func(ctx *Context) error {
+				order = append(order, "before")
+				err := next(ctx)
+				order = append(order, "after")
+				return err
+			}
+		}).
+		Action(func(ctx *Context) error {
+			order = append(order, "action")
+			return nil
+		})
+
+	err := app.RunArgs([]string{"files"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"before", "action", "after"}, order)
+}
+
+func TestGroupActionWithValidation(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Group("files").
+		Description("File operations").
+		Validate(func(ctx *Context) error {
+			if ctx.NArg() == 0 {
+				return Errorf("path argument required")
+			}
+			return nil
+		}).
+		Action(func(ctx *Context) error {
+			return nil
+		})
+
+	// Should fail validation
+	err := app.RunArgs([]string{"files"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "path argument required")
+
+	// Should pass validation
+	err = app.RunArgs([]string{"files", "/tmp"})
+	assert.NoError(t, err)
+}
+
+func TestAppActionHelpFlag(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test app").
+		Action(func(ctx *Context) error {
+			return nil
+		})
+	app.stdout = &buf
+	app.SetColorEnabled(false)
+
+	// --help should show help, not run action
+	err := app.RunArgs([]string{"--help"})
+	assert.True(t, IsHelpRequested(err))
+	assert.Contains(t, buf.String(), "test")
+}
+
+func TestGroupActionHelpFlag(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test app")
+	app.stdout = &buf
+	app.SetColorEnabled(false)
+
+	app.Group("users").
+		Description("User management").
+		Action(func(ctx *Context) error {
+			return nil
+		})
+
+	// users --help should show help for the group action
+	err := app.RunArgs([]string{"users", "--help"})
+	assert.True(t, IsHelpRequested(err))
+}

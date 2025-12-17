@@ -269,3 +269,43 @@ func TestEventIsEmpty(t *testing.T) {
 	withEvent := Event{Event: "ping"}
 	assert.False(t, withEvent.IsEmpty())
 }
+
+func TestReaderBuffer(t *testing.T) {
+	// Create a line longer than the default 64KB
+	longData := strings.Repeat("x", 100000)
+	data := "data: " + longData + "\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+	reader.Buffer(200000) // Set buffer large enough
+
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, longData, event.Data)
+}
+
+func TestContentTypeValidation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<html>not sse</html>"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+
+	// Drain events channel
+	for range events {
+	}
+
+	err := <-errs
+	assert.Error(t, err)
+
+	var httpErr *HTTPError
+	assert.ErrorAs(t, err, &httpErr)
+	assert.Contains(t, httpErr.Status, "unexpected content-type")
+}

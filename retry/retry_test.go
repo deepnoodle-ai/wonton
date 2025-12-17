@@ -109,7 +109,10 @@ func TestDoPermanentError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Equal(t, 2, attempts)
-	assert.True(t, IsPermanent(errors.Unwrap(err)))
+	// Use LastError() since Unwrap() now returns []error for Go 1.20+ multi-error support
+	var retryErr *Error
+	assert.ErrorAs(t, err, &retryErr)
+	assert.True(t, IsPermanent(retryErr.LastError()))
 }
 
 func TestDoOnRetry(t *testing.T) {
@@ -183,9 +186,17 @@ func TestConstantBackoff(t *testing.T) {
 
 func TestErrorUnwrap(t *testing.T) {
 	originalErr := errors.New("original")
-	retryErr := &Error{Last: originalErr, Attempts: 3}
+	otherErr := errors.New("other")
+	retryErr := &Error{
+		Last:     originalErr,
+		Attempts: 3,
+		Errors:   []error{otherErr, originalErr},
+	}
 
+	// errors.Is traverses the Unwrap() []error slice
 	assert.True(t, errors.Is(retryErr, originalErr))
+	assert.True(t, errors.Is(retryErr, otherErr))
+	assert.Equal(t, originalErr, retryErr.LastError())
 }
 
 func TestBackoffWithJitterRange(t *testing.T) {
@@ -250,4 +261,213 @@ func TestDoZeroMaxAttemptsReliesOnContext(t *testing.T) {
 	assert.ErrorAs(t, err, &retryErr)
 	assert.True(t, errors.Is(retryErr.Last, context.DeadlineExceeded))
 	assert.Greater(t, retryErr.Attempts, 0)
+}
+
+// mockTimer is a Timer that returns immediately for testing.
+type mockTimer struct {
+	delays []time.Duration
+}
+
+func (m *mockTimer) After(d time.Duration) <-chan time.Time {
+	m.delays = append(m.delays, d)
+	ch := make(chan time.Time, 1)
+	ch <- time.Now()
+	return ch
+}
+
+func TestWithTimer(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(4),
+		WithBackoff(100*time.Millisecond, time.Second),
+		WithJitter(0), // No jitter for deterministic testing
+		WithTimer(mock),
+	)
+
+	assert.Error(t, err)
+	// 4 attempts = 3 delays (after attempts 1, 2, 3)
+	assert.Len(t, mock.delays, 3)
+	// Exponential: 100ms, 200ms, 400ms
+	assert.Equal(t, 100*time.Millisecond, mock.delays[0])
+	assert.Equal(t, 200*time.Millisecond, mock.delays[1])
+	assert.Equal(t, 400*time.Millisecond, mock.delays[2])
+}
+
+func TestLinearBackoff(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:  100 * time.Millisecond,
+		LinearIncrement: 50 * time.Millisecond,
+		MaxBackoff:      300 * time.Millisecond,
+		Jitter:          0,
+	}
+
+	tests := []struct {
+		attempt  int
+		expected time.Duration
+	}{
+		{1, 100 * time.Millisecond},  // 100 + 0*50
+		{2, 150 * time.Millisecond},  // 100 + 1*50
+		{3, 200 * time.Millisecond},  // 100 + 2*50
+		{4, 250 * time.Millisecond},  // 100 + 3*50
+		{5, 300 * time.Millisecond},  // 100 + 4*50 = 300 (at cap)
+		{6, 300 * time.Millisecond},  // capped
+	}
+
+	for _, tt := range tests {
+		result := LinearBackoff(tt.attempt, cfg)
+		assert.Equal(t, tt.expected, result, "LinearBackoff(%d)", tt.attempt)
+	}
+}
+
+func TestWithLinearBackoff(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(4),
+		WithLinearBackoff(100*time.Millisecond, 50*time.Millisecond, time.Second),
+		WithJitter(0),
+		WithTimer(mock),
+	)
+
+	assert.Error(t, err)
+	assert.Len(t, mock.delays, 3)
+	// Linear: 100ms, 150ms, 200ms
+	assert.Equal(t, 100*time.Millisecond, mock.delays[0])
+	assert.Equal(t, 150*time.Millisecond, mock.delays[1])
+	assert.Equal(t, 200*time.Millisecond, mock.delays[2])
+}
+
+func TestFullJitterBackoff(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:    100 * time.Millisecond,
+		MaxBackoff:        time.Second,
+		BackoffMultiplier: 2.0,
+	}
+
+	// Full jitter should return values between 0 and ceiling
+	for i := 0; i < 100; i++ {
+		delay := FullJitterBackoff(1, cfg)
+		assert.True(t, delay >= 0 && delay <= 100*time.Millisecond,
+			"delay should be between 0 and 100ms, got %s", delay)
+	}
+
+	// At attempt 3, ceiling is 100ms * 2^2 = 400ms
+	for i := 0; i < 100; i++ {
+		delay := FullJitterBackoff(3, cfg)
+		assert.True(t, delay >= 0 && delay <= 400*time.Millisecond,
+			"delay should be between 0 and 400ms, got %s", delay)
+	}
+}
+
+func TestWithFullJitter(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(3),
+		WithBackoff(100*time.Millisecond, time.Second),
+		WithFullJitter(),
+		WithTimer(mock),
+	)
+
+	assert.Error(t, err)
+	assert.Len(t, mock.delays, 2)
+	// Full jitter: random between 0 and ceiling
+	assert.True(t, mock.delays[0] >= 0 && mock.delays[0] <= 100*time.Millisecond)
+	assert.True(t, mock.delays[1] >= 0 && mock.delays[1] <= 200*time.Millisecond)
+}
+
+func TestRetrier(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	retrier := NewRetrier(
+		WithMaxAttempts(3),
+		WithBackoff(10*time.Millisecond, 100*time.Millisecond),
+		WithJitter(0),
+		WithTimer(mock),
+	)
+
+	// First use
+	attempts := 0
+	err := retrier.Do(ctx, func() error {
+		attempts++
+		if attempts < 2 {
+			return errors.New("fail")
+		}
+		return nil
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, attempts)
+
+	// Reuse the same retrier
+	mock.delays = nil
+	attempts = 0
+	err = retrier.Do(ctx, func() error {
+		attempts++
+		return errors.New("always fail")
+	})
+	assert.Error(t, err)
+	assert.Equal(t, 3, attempts)
+	assert.Len(t, mock.delays, 2) // 3 attempts = 2 delays
+}
+
+func TestRetrierConfig(t *testing.T) {
+	retrier := NewRetrier(
+		WithMaxAttempts(5),
+		WithBackoff(200*time.Millisecond, 5*time.Second),
+	)
+
+	cfg := retrier.Config()
+	assert.Equal(t, 5, cfg.MaxAttempts)
+	assert.Equal(t, 200*time.Millisecond, cfg.InitialBackoff)
+	assert.Equal(t, 5*time.Second, cfg.MaxBackoff)
+}
+
+func TestDelayFuncZeroAttempt(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:    100 * time.Millisecond,
+		MaxBackoff:        time.Second,
+		BackoffMultiplier: 2.0,
+		LinearIncrement:   50 * time.Millisecond,
+	}
+
+	// All delay functions should return 0 for attempt <= 0
+	assert.Equal(t, time.Duration(0), ExponentialBackoff(0, cfg))
+	assert.Equal(t, time.Duration(0), ExponentialBackoff(-1, cfg))
+	assert.Equal(t, time.Duration(0), LinearBackoff(0, cfg))
+	assert.Equal(t, time.Duration(0), ConstantBackoff(0, cfg))
+	assert.Equal(t, time.Duration(0), FullJitterBackoff(0, cfg))
+}
+
+func TestWithDelayFunc(t *testing.T) {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	// Custom delay function that always returns 42ms
+	customDelay := func(attempt int, cfg *Config) time.Duration {
+		return 42 * time.Millisecond
+	}
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(3),
+		WithDelayFunc(customDelay),
+		WithTimer(mock),
+	)
+
+	assert.Error(t, err)
+	assert.Len(t, mock.delays, 2)
+	assert.Equal(t, 42*time.Millisecond, mock.delays[0])
+	assert.Equal(t, 42*time.Millisecond, mock.delays[1])
 }

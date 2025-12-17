@@ -5,8 +5,8 @@
 // Basic usage:
 //
 //	type Config struct {
-//	    Host string `env:"HOST" default:"localhost"`
-//	    Port int    `env:"PORT" default:"8080"`
+//	    Host string `env:"HOST" envDefault:"localhost"`
+//	    Port int    `env:"PORT" envDefault:"8080"`
 //	}
 //
 //	cfg, err := env.Parse[Config]()
@@ -22,6 +22,7 @@ package env
 
 import (
 	"encoding"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -71,6 +72,10 @@ type Options struct {
 
 	// OnSet is called whenever a field value is set.
 	OnSet OnSetFunc
+
+	// RequireConfigFile causes an error if no config file (.env or JSON) is loaded.
+	// By default, missing config files are silently skipped.
+	RequireConfigFile bool
 }
 
 // ParserFunc parses a string value into a typed value.
@@ -164,6 +169,15 @@ func WithOnSet(fn OnSetFunc) Option {
 	}
 }
 
+// WithRequireConfigFile causes parsing to fail if no config file is loaded.
+// Use this when your application requires configuration from at least one
+// .env or JSON file, but doesn't care which specific file provides it.
+func WithRequireConfigFile() Option {
+	return func(o *Options) {
+		o.RequireConfigFile = true
+	}
+}
+
 // Parse parses environment variables into a struct of type T.
 func Parse[T any](opts ...Option) (T, error) {
 	var result T
@@ -196,7 +210,7 @@ func ParseInto(v any, opts ...Option) error {
 	// Build options
 	options := &Options{
 		TagName:        "env",
-		DefaultTagName: "default",
+		DefaultTagName: "envDefault",
 	}
 	for _, opt := range opts {
 		opt(options)
@@ -214,34 +228,42 @@ func ParseInto(v any, opts ...Option) error {
 	}
 
 	// Load .env files
+	configFileLoaded := false
 	for _, file := range options.EnvFiles {
-		if envVars, err := ReadEnvFile(file); err == nil {
-			for k, v := range envVars {
-				if _, exists := environ[k]; !exists {
-					environ[k] = v
-				}
+		envVars, err := ReadEnvFile(file)
+		if err != nil {
+			continue // Silently skip missing .env files
+		}
+		configFileLoaded = true
+		for k, v := range envVars {
+			if _, exists := environ[k]; !exists {
+				environ[k] = v
 			}
 		}
-		// Silently skip missing .env files
 	}
 
-	// Load JSON files
-	jsonValues := make(map[string]any)
+	// Load JSON files using standard json.Unmarshal (respects json tags)
 	for _, file := range options.JSONFiles {
-		if values, err := ReadJSONFile(file); err == nil {
-			for k, v := range values {
-				jsonValues[k] = v
-			}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			continue // Silently skip missing JSON files
 		}
-		// Silently skip missing JSON files
+		if err := json.Unmarshal(data, v); err != nil {
+			return &ParseError{Err: fmt.Errorf("failed to parse JSON file %q: %w", file, err)}
+		}
+		configFileLoaded = true
 	}
 
-	// Parse struct
+	// Check if at least one config file was loaded
+	if options.RequireConfigFile && !configFileLoaded {
+		return &ParseError{Err: fmt.Errorf("no config file found (tried: %v, %v)", options.EnvFiles, options.JSONFiles)}
+	}
+
+	// Parse struct (env vars override JSON values)
 	parser := &structParser{
-		options:    options,
-		environ:    environ,
-		jsonValues: jsonValues,
-		errors:     &AggregateError{},
+		options: options,
+		environ: environ,
+		errors:  &AggregateError{},
 	}
 
 	parser.parseStruct(rv, "")
@@ -254,10 +276,9 @@ func ParseInto(v any, opts ...Option) error {
 
 // structParser handles the reflection-based parsing.
 type structParser struct {
-	options    *Options
-	environ    map[string]string
-	jsonValues map[string]any
-	errors     *AggregateError
+	options *Options
+	environ map[string]string
+	errors  *AggregateError
 }
 
 func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
@@ -312,10 +333,14 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	// Get tag values
 	envTag := field.Tag.Get(p.options.TagName)
 	defaultValue := field.Tag.Get(p.options.DefaultTagName)
+	// Also support "default" as a fallback
+	if defaultValue == "" {
+		defaultValue = field.Tag.Get("default")
+	}
 
 	// Parse tag options (env:"VAR,required,file")
 	var envVar string
-	var required, notEmpty, loadFile, expand bool
+	var required, notEmpty, loadFile, expand, unset bool
 
 	if envTag == "-" {
 		return // Ignored field
@@ -334,6 +359,8 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 				loadFile = true
 			case "expand":
 				expand = true
+			case "unset":
+				unset = true
 			}
 		}
 	}
@@ -345,7 +372,7 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		} else {
 			// No env var, just apply default if present
 			if defaultValue != "" {
-				if err := p.setFieldValue(fv, defaultValue, field.Type); err != nil {
+				if err := p.setFieldValue(fv, defaultValue, field); err != nil {
 					p.errors.Errors = append(p.errors.Errors, &FieldError{
 						Field: field.Name,
 						Err:   err,
@@ -385,31 +412,13 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		}
 	}
 
-	// Try JSON values (lowercase key matching)
+	// Apply default only if not found in env and field is still zero
+	// (JSON values are loaded before env parsing, so non-zero means JSON set it)
 	if !found {
-		jsonKey := strings.ToLower(envVar)
-		if v, ok := p.jsonValues[jsonKey]; ok {
-			if s, ok := v.(string); ok {
-				value = s
-				found = true
-			} else {
-				// Handle non-string JSON values
-				if err := p.setFieldFromAny(fv, v); err != nil {
-					p.errors.Errors = append(p.errors.Errors, &FieldError{
-						Field:  field.Name,
-						EnvVar: fullEnvVar,
-						Err:    err,
-					})
-				} else if p.options.OnSet != nil {
-					p.options.OnSet(field.Name, fullEnvVar, fv.Interface(), false)
-				}
-				return
-			}
+		// If field already has a value (e.g., from JSON), keep it
+		if !fv.IsZero() {
+			return
 		}
-	}
-
-	// Apply default if not found
-	if !found {
 		if defaultValue != "" {
 			value = defaultValue
 			found = true
@@ -454,7 +463,7 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	}
 
 	// Set the field value
-	if err := p.setFieldValue(fv, value, field.Type); err != nil {
+	if err := p.setFieldValue(fv, value, field); err != nil {
 		p.errors.Errors = append(p.errors.Errors, &FieldError{
 			Field:  field.Name,
 			EnvVar: fullEnvVar,
@@ -468,6 +477,11 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		isDefault := !p.hasEnvVar(fullEnvVar)
 		p.options.OnSet(field.Name, fullEnvVar, fv.Interface(), isDefault)
 	}
+
+	// Unset the env var after reading (useful for secrets)
+	if unset {
+		os.Unsetenv(fullEnvVar)
+	}
 }
 
 func (p *structParser) hasEnvVar(name string) bool {
@@ -480,7 +494,9 @@ func (p *structParser) hasEnvVar(name string) bool {
 	return ok
 }
 
-func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.Type) error {
+func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.StructField) error {
+	t := sf.Type
+
 	// Check for custom parser
 	if p.options.FuncMap != nil {
 		if parser, ok := p.options.FuncMap[t]; ok {
@@ -498,7 +514,10 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.T
 		if fv.IsNil() {
 			fv.Set(reflect.New(fv.Type().Elem()))
 		}
-		return p.setFieldValue(fv.Elem(), value, fv.Type().Elem())
+		// Create a modified StructField with the element type for recursive call
+		elemSf := sf
+		elemSf.Type = fv.Type().Elem()
+		return p.setFieldValue(fv.Elem(), value, elemSf)
 	}
 
 	// Check for TextUnmarshaler
@@ -506,6 +525,16 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.T
 		if tu, ok := fv.Addr().Interface().(encoding.TextUnmarshaler); ok {
 			return tu.UnmarshalText([]byte(value))
 		}
+	}
+
+	// Special case for time.Location
+	if t == reflect.TypeOf(time.Location{}) {
+		loc, err := time.LoadLocation(value)
+		if err != nil {
+			return fmt.Errorf("invalid timezone: %w", err)
+		}
+		fv.Set(reflect.ValueOf(*loc))
+		return nil
 	}
 
 	// Built-in types
@@ -530,7 +559,7 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.T
 			fv.SetInt(int64(d))
 			return nil
 		}
-		i, err := strconv.ParseInt(value, 0, fv.Type().Bits())
+		i, err := strconv.ParseInt(value, 0, t.Bits())
 		if err != nil {
 			return err
 		}
@@ -551,10 +580,10 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.T
 		fv.SetFloat(f)
 
 	case reflect.Slice:
-		return p.setSliceValue(fv, value)
+		return p.setSliceValue(fv, value, sf)
 
 	case reflect.Map:
-		return p.setMapValue(fv, value)
+		return p.setMapValue(fv, value, sf)
 
 	default:
 		return fmt.Errorf("unsupported type: %s", fv.Kind())
@@ -563,17 +592,26 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, t reflect.T
 	return nil
 }
 
-func (p *structParser) setSliceValue(fv reflect.Value, value string) error {
+func (p *structParser) setSliceValue(fv reflect.Value, value string, sf reflect.StructField) error {
 	if value == "" {
 		return nil
 	}
 
-	parts := strings.Split(value, ",")
+	separator := sf.Tag.Get("envSeparator")
+	if separator == "" {
+		separator = ","
+	}
+
+	parts := strings.Split(value, separator)
 	slice := reflect.MakeSlice(fv.Type(), len(parts), len(parts))
+
+	// Create a struct field for element type
+	elemSf := sf
+	elemSf.Type = fv.Type().Elem()
 
 	for i, part := range parts {
 		part = strings.TrimSpace(part)
-		if err := p.setFieldValue(slice.Index(i), part, fv.Type().Elem()); err != nil {
+		if err := p.setFieldValue(slice.Index(i), part, elemSf); err != nil {
 			return fmt.Errorf("element %d: %w", i, err)
 		}
 	}
@@ -582,28 +620,44 @@ func (p *structParser) setSliceValue(fv reflect.Value, value string) error {
 	return nil
 }
 
-func (p *structParser) setMapValue(fv reflect.Value, value string) error {
+func (p *structParser) setMapValue(fv reflect.Value, value string, sf reflect.StructField) error {
 	if value == "" {
 		return nil
 	}
 
+	separator := sf.Tag.Get("envSeparator")
+	if separator == "" {
+		separator = ","
+	}
+
+	keyValSeparator := sf.Tag.Get("envKeyValSeparator")
+	if keyValSeparator == "" {
+		keyValSeparator = ":"
+	}
+
 	m := reflect.MakeMap(fv.Type())
-	pairs := strings.Split(value, ",")
+	pairs := strings.Split(value, separator)
+
+	// Create struct fields for key and value types
+	keySf := sf
+	keySf.Type = fv.Type().Key()
+	valSf := sf
+	valSf.Type = fv.Type().Elem()
 
 	for _, pair := range pairs {
 		pair = strings.TrimSpace(pair)
-		k, v, ok := strings.Cut(pair, ":")
+		k, v, ok := strings.Cut(pair, keyValSeparator)
 		if !ok {
-			return fmt.Errorf("invalid map entry: %q (expected key:value)", pair)
+			return fmt.Errorf("invalid map entry: %q (expected key%svalue)", pair, keyValSeparator)
 		}
 
 		key := reflect.New(fv.Type().Key()).Elem()
 		val := reflect.New(fv.Type().Elem()).Elem()
 
-		if err := p.setFieldValue(key, strings.TrimSpace(k), fv.Type().Key()); err != nil {
+		if err := p.setFieldValue(key, strings.TrimSpace(k), keySf); err != nil {
 			return fmt.Errorf("map key %q: %w", k, err)
 		}
-		if err := p.setFieldValue(val, strings.TrimSpace(v), fv.Type().Elem()); err != nil {
+		if err := p.setFieldValue(val, strings.TrimSpace(v), valSf); err != nil {
 			return fmt.Errorf("map value for %q: %w", k, err)
 		}
 
@@ -612,23 +666,6 @@ func (p *structParser) setMapValue(fv reflect.Value, value string) error {
 
 	fv.Set(m)
 	return nil
-}
-
-func (p *structParser) setFieldFromAny(fv reflect.Value, val any) error {
-	rv := reflect.ValueOf(val)
-	if rv.Type().AssignableTo(fv.Type()) {
-		fv.Set(rv)
-		return nil
-	}
-
-	// Try to convert
-	if rv.Type().ConvertibleTo(fv.Type()) {
-		fv.Set(rv.Convert(fv.Type()))
-		return nil
-	}
-
-	// Fall back to string conversion
-	return p.setFieldValue(fv, fmt.Sprint(val), fv.Type())
 }
 
 // isSpecialType returns true for types that should be parsed as values, not structs.
