@@ -1,10 +1,7 @@
 package termsession
 
 import (
-	"bufio"
-	"compress/gzip"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -22,20 +19,21 @@ import (
 //
 // All methods are safe for concurrent use.
 type Player struct {
-	events       []RecordingEvent
-	header       RecordingHeader
-	output       io.Writer
-	currentIndex int
-	startTime    time.Time
-	pauseTime    time.Time
-	totalPaused  time.Duration
-	paused       bool
-	speed        float64
-	loop         bool
-	maxIdle      float64
-	mu           sync.RWMutex
-	stopChan     chan struct{}
-	stopped      bool
+	events         []RecordingEvent // original events
+	adjustedEvents []RecordingEvent // events with maxIdle applied (nil if maxIdle <= 0)
+	header         RecordingHeader
+	output         io.Writer
+	currentIndex   int
+	startTime      time.Time
+	pauseTime      time.Time
+	totalPaused    time.Duration
+	paused         bool
+	speed          float64
+	loop           bool
+	maxIdle        float64
+	mu             sync.RWMutex
+	stopChan       chan struct{}
+	stopped        bool
 }
 
 // PlayerOptions configures playback behavior.
@@ -76,82 +74,9 @@ func DefaultPlayerOptions() PlayerOptions {
 //	}
 //	player.Play() // Blocks until playback completes
 func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
-	file, err := os.Open(filename)
+	header, events, err := LoadCastFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open recording: %w", err)
-	}
-	defer file.Close()
-
-	var reader io.Reader = file
-
-	// Detect gzip compression by checking magic bytes
-	magic := make([]byte, 2)
-	if _, err := io.ReadFull(file, magic); err != nil {
-		return nil, fmt.Errorf("failed to read file header: %w", err)
-	}
-	if _, err := file.Seek(0, 0); err != nil {
-		return nil, fmt.Errorf("failed to seek: %w", err)
-	}
-
-	if magic[0] == 0x1f && magic[1] == 0x8b {
-		gzipReader, err := gzip.NewReader(file)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-		}
-		defer gzipReader.Close()
-		reader = gzipReader
-	}
-
-	scanner := bufio.NewScanner(reader)
-
-	// Read header (first line)
-	if !scanner.Scan() {
-		return nil, fmt.Errorf("empty recording file")
-	}
-
-	var header RecordingHeader
-	if err := json.Unmarshal(scanner.Bytes(), &header); err != nil {
-		return nil, fmt.Errorf("failed to parse header: %w", err)
-	}
-
-	// Read events (remaining lines)
-	var events []RecordingEvent
-	for scanner.Scan() {
-		var raw []interface{}
-		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
-			// Skip malformed lines
-			continue
-		}
-
-		if len(raw) < 3 {
-			// Skip incomplete events
-			continue
-		}
-
-		// Parse [time, type, data] array
-		timeVal, ok := raw[0].(float64)
-		if !ok {
-			continue
-		}
-		typeVal, ok := raw[1].(string)
-		if !ok {
-			continue
-		}
-		dataVal, ok := raw[2].(string)
-		if !ok {
-			continue
-		}
-
-		event := RecordingEvent{
-			Time: timeVal,
-			Type: typeVal,
-			Data: dataVal,
-		}
-		events = append(events, event)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading recording: %w", err)
+		return nil, err
 	}
 
 	output := opts.Output
@@ -164,16 +89,26 @@ func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
 		speed = 1.0
 	}
 
-	return &Player{
+	p := &Player{
 		events:   events,
-		header:   header,
+		header:   *header,
 		output:   output,
 		speed:    speed,
 		loop:     opts.Loop,
 		maxIdle:  opts.MaxIdle,
 		stopChan: make(chan struct{}),
-	}, nil
+	}
+
+	// Precompute adjusted events if maxIdle is configured
+	if opts.MaxIdle > 0 {
+		p.adjustedEvents = p.applyMaxIdle(events)
+	}
+
+	return p, nil
 }
+
+// ErrPlayerStopped is returned when Play() is called on a stopped player.
+var ErrPlayerStopped = errors.New("player has been stopped and cannot be restarted")
 
 // Play starts playback of the recording.
 //
@@ -183,6 +118,9 @@ func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
 //
 // If Loop is enabled, playback will restart from the beginning when it
 // reaches the end. Call Stop() from another goroutine to end looped playback.
+//
+// After Stop() is called, the player cannot be restarted. Create a new
+// player if you need to play the recording again.
 //
 // Example:
 //
@@ -195,17 +133,20 @@ func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
 //	player.Pause()
 func (p *Player) Play() error {
 	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrPlayerStopped
+	}
 	p.startTime = time.Now()
 	p.currentIndex = 0
 	p.paused = false
-	p.stopped = false
 	p.totalPaused = 0
 	p.mu.Unlock()
 
-	// Preprocess events to apply maxIdle if configured
+	// Use precomputed adjusted events if maxIdle was configured
 	events := p.events
-	if p.maxIdle > 0 {
-		events = p.applyMaxIdle(events)
+	if p.adjustedEvents != nil {
+		events = p.adjustedEvents
 	}
 
 	for {
@@ -390,6 +331,15 @@ func (p *Player) Stop() {
 	}
 }
 
+// activeEvents returns the events slice to use for playback
+// (adjustedEvents if maxIdle was configured, otherwise events).
+func (p *Player) activeEvents() []RecordingEvent {
+	if p.adjustedEvents != nil {
+		return p.adjustedEvents
+	}
+	return p.events
+}
+
 // SetSpeed changes the playback speed multiplier.
 //
 // The speed is adjusted smoothly to prevent jumps in playback position.
@@ -405,10 +355,12 @@ func (p *Player) SetSpeed(speed float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	events := p.activeEvents()
+
 	// Adjust timing to prevent jumps when speed changes
-	if !p.paused && p.currentIndex < len(p.events) {
+	if !p.paused && p.currentIndex < len(events) {
 		elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
-		currentEventTime := p.events[p.currentIndex].Time
+		currentEventTime := events[p.currentIndex].Time
 
 		// Calculate new start time to maintain position
 		newElapsed := currentEventTime / speed
@@ -444,9 +396,11 @@ func (p *Player) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	events := p.activeEvents()
+
 	// Find the event closest to the target time
 	targetIndex := 0
-	for i, event := range p.events {
+	for i, event := range events {
 		if event.Time > seconds {
 			break
 		}
@@ -469,34 +423,38 @@ func (p *Player) GetHeader() RecordingHeader {
 
 // GetDuration returns the total duration of the recording in seconds.
 //
+// If MaxIdle was configured, returns the adjusted duration (with idle times capped).
 // Returns 0 if the recording has no events.
 func (p *Player) GetDuration() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if len(p.events) == 0 {
+	events := p.activeEvents()
+	if len(events) == 0 {
 		return 0
 	}
-	return p.events[len(p.events)-1].Time
+	return events[len(events)-1].Time
 }
 
 // GetPosition returns the current playback position in seconds.
 //
 // This is the timestamp of the current event being played.
+// If MaxIdle was configured, returns the adjusted position.
 func (p *Player) GetPosition() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if p.currentIndex >= len(p.events) {
-		if len(p.events) == 0 {
+	events := p.activeEvents()
+	if p.currentIndex >= len(events) {
+		if len(events) == 0 {
 			return 0
 		}
-		return p.events[len(p.events)-1].Time
+		return events[len(events)-1].Time
 	}
 	if p.currentIndex == 0 {
 		return 0
 	}
-	return p.events[p.currentIndex].Time
+	return events[p.currentIndex].Time
 }
 
 // GetProgress returns playback progress as a fraction between 0.0 and 1.0.

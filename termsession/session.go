@@ -1,3 +1,5 @@
+//go:build unix
+
 package termsession
 
 import (
@@ -128,7 +130,16 @@ func (s *Session) Record(filename string, opts RecordingOptions) error {
 	s.recorder = recorder
 	s.mu.Unlock()
 
-	return s.Start()
+	if err := s.Start(); err != nil {
+		// Clean up recorder on start failure
+		s.mu.Lock()
+		s.recorder = nil
+		s.mu.Unlock()
+		recorder.Close()
+		return err
+	}
+
+	return nil
 }
 
 // Start begins the PTY session without recording.
@@ -158,7 +169,6 @@ func (s *Session) Start() error {
 		s.mu.Unlock()
 		return fmt.Errorf("session already started")
 	}
-	s.started = true
 	s.mu.Unlock()
 
 	// Get user's shell if no command specified
@@ -189,10 +199,16 @@ func (s *Session) Start() error {
 		oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 		if err != nil {
 			s.pty.Close()
+			s.pty = nil
 			return fmt.Errorf("failed to enable raw mode: %w", err)
 		}
 		s.oldState = oldState
 	}
+
+	// Mark as started only after all setup succeeds
+	s.mu.Lock()
+	s.started = true
+	s.mu.Unlock()
 
 	// Sync initial terminal size
 	s.syncSize()

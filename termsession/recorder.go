@@ -142,11 +142,13 @@ type Recorder struct {
 	gzipWriter    *gzip.Writer
 	startTime     time.Time
 	lastEventTime time.Time
+	timeAdjust    float64 // cumulative time adjustment for idle clamping
 	mu            sync.Mutex
 	compress      bool
 	redactSecrets bool
 	idleTimeLimit float64
 	paused        bool
+	closed        bool
 	width         int
 	height        int
 }
@@ -244,7 +246,7 @@ func (r *Recorder) RecordOutput(data string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.paused {
+	if r.paused || r.closed {
 		return
 	}
 
@@ -259,15 +261,15 @@ func (r *Recorder) RecordOutput(data string) {
 	if r.idleTimeLimit > 0 {
 		timeSinceLastEvent := now.Sub(r.lastEventTime).Seconds()
 		if timeSinceLastEvent > r.idleTimeLimit {
-			// Clamp the elapsed time to prevent huge gaps
-			elapsed = r.lastEventTime.Sub(r.startTime).Seconds() + r.idleTimeLimit
+			// Accumulate the excess time so subsequent events stay consistent
+			r.timeAdjust += timeSinceLastEvent - r.idleTimeLimit
 		}
 	}
 
 	r.lastEventTime = now
 
 	event := RecordingEvent{
-		Time: elapsed,
+		Time: elapsed - r.timeAdjust,
 		Type: "o",
 		Data: data,
 	}
@@ -294,7 +296,7 @@ func (r *Recorder) RecordInput(data string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.paused {
+	if r.paused || r.closed {
 		return
 	}
 
@@ -309,14 +311,15 @@ func (r *Recorder) RecordInput(data string) {
 	if r.idleTimeLimit > 0 {
 		timeSinceLastEvent := now.Sub(r.lastEventTime).Seconds()
 		if timeSinceLastEvent > r.idleTimeLimit {
-			elapsed = r.lastEventTime.Sub(r.startTime).Seconds() + r.idleTimeLimit
+			// Accumulate the excess time so subsequent events stay consistent
+			r.timeAdjust += timeSinceLastEvent - r.idleTimeLimit
 		}
 	}
 
 	r.lastEventTime = now
 
 	event := RecordingEvent{
-		Time: elapsed,
+		Time: elapsed - r.timeAdjust,
 		Type: "i",
 		Data: data,
 	}
@@ -406,8 +409,19 @@ func (r *Recorder) Flush() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.closed {
+		return nil
+	}
+
 	if r.writer != nil {
-		return r.writer.Flush()
+		if err := r.writer.Flush(); err != nil {
+			return err
+		}
+	}
+	if r.gzipWriter != nil {
+		if err := r.gzipWriter.Flush(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -425,23 +439,33 @@ func (r *Recorder) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.closed {
+		return nil
+	}
+	r.closed = true
+
+	var firstErr error
+
 	if r.writer != nil {
-		if err := r.writer.Flush(); err != nil {
-			return err
+		if err := r.writer.Flush(); err != nil && firstErr == nil {
+			firstErr = err
 		}
+		r.writer = nil
 	}
 
 	if r.gzipWriter != nil {
-		if err := r.gzipWriter.Close(); err != nil {
-			return err
+		if err := r.gzipWriter.Close(); err != nil && firstErr == nil {
+			firstErr = err
 		}
+		r.gzipWriter = nil
 	}
 
 	if r.file != nil {
-		if err := r.file.Close(); err != nil {
-			return err
+		if err := r.file.Close(); err != nil && firstErr == nil {
+			firstErr = err
 		}
+		r.file = nil
 	}
 
-	return nil
+	return firstErr
 }
