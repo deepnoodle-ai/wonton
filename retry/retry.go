@@ -455,6 +455,15 @@ func doWithConfig[T any](ctx context.Context, fn func() (T, error), cfg *Config)
 	attempt := 0
 
 	for {
+		// Check context before each attempt (including the first)
+		if ctx.Err() != nil {
+			return zero, &Error{
+				Last:     ctx.Err(),
+				Attempts: attempt,
+				Errors:   append(errs, ctx.Err()),
+			}
+		}
+
 		attempt++
 
 		result, err := fn()
