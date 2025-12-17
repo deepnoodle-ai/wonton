@@ -4,7 +4,7 @@ package tui
 // Views form a tree structure where containers measure and position children.
 //
 // Methods are unexported - users compose views using builder functions like
-// Text(), Stack(), HStack(), etc. rather than implementing View directly.
+// Text(), Stack(), Group(), etc. rather than implementing View directly.
 //
 // For custom focusable components, use FocusableView() to wrap any view
 // with focus handling capabilities.
@@ -46,7 +46,7 @@ type spacerView struct {
 }
 
 // Spacer returns a flexible view that expands to fill available space.
-// In a Stack, it fills vertical space. In an HStack, it fills horizontal space.
+// In a Stack, it fills vertical space. In a Group, it fills horizontal space.
 //
 // Spacers are useful for pushing content to edges or distributing space:
 //
@@ -56,7 +56,7 @@ type spacerView struct {
 //	    Text("Bottom"),
 //	)
 //
-//	HStack(
+//	Group(
 //	    Text("Left"),
 //	    Spacer(),        // Pushes right content to edge
 //	    Text("Right"),

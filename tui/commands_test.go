@@ -139,7 +139,7 @@ func TestSequentialCommands(t *testing.T) {
 			}
 			return nil
 		},
-		renderFunc: func(frame RenderFrame) {},
+		renderFunc: func() View { return Text("test") },
 	}
 
 	runtime := NewRuntime(terminal, app, 30)
@@ -205,7 +205,7 @@ func TestCommandReturningCommand(t *testing.T) {
 			}
 			return nil
 		},
-		renderFunc: func(frame RenderFrame) {},
+		renderFunc: func() View { return Text("test") },
 	}
 
 	runtime := NewRuntime(terminal, app, 30)
@@ -344,7 +344,7 @@ func TestConcurrentCommandExecution(t *testing.T) {
 			}
 			return nil
 		},
-		renderFunc: func(frame RenderFrame) {},
+		renderFunc: func() View { return Text("test") },
 	}
 
 	runtime := NewRuntime(terminal, app, 30)

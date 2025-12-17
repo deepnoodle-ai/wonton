@@ -38,7 +38,7 @@
 // # Core Concepts
 //
 // View Tree: The UI is built as a tree of View components. Containers like
-// Stack, HStack, and ZStack arrange children, while leaf views like Text,
+// Stack, Group, and ZStack arrange children, while leaf views like Text,
 // Button, and Input display content.
 //
 // Event Loop: The Runtime manages a single-threaded event loop that processes
@@ -55,7 +55,7 @@
 //  1. Measurement: Each view calculates its preferred size given constraints
 //  2. Rendering: Each view draws itself within its allocated space
 //
-// Layout containers (Stack, HStack, etc.) coordinate child sizing:
+// Layout containers (Stack, Group, etc.) coordinate child sizing:
 //
 //	Stack(              // Vertical stack
 //	    Text("Header"),
@@ -73,7 +73,7 @@
 // Layout Containers:
 //
 //	Stack(children...)   // Vertical layout
-//	HStack(children...)  // Horizontal layout
+//	Group(children...)   // Horizontal layout
 //	ZStack(children...)  // Layered (z-axis) layout
 //
 // Interactive Elements:
@@ -200,15 +200,15 @@
 //
 // Scrolling: ScrollView for content larger than viewport:
 //
-//	ScrollView(&app.scrollY, content).Height(20)
+//	Scroll(content, &app.scrollY).Height(20)
 //
-// Tables: TableView for tabular data:
+// Tables: Table for tabular data:
 //
-//	TableView(headers, rows).Border(&tui.SingleBorder)
+//	Table(headers, &app.selected).Rows(rows)
 //
-// Markdown: MarkdownView for rich formatted text:
+// Markdown: Markdown for rich formatted text:
 //
-//	MarkdownView(mdContent).Width(80)
+//	Markdown(mdContent).Width(80)
 //
 // Code Highlighting: CodeView with syntax highlighting:
 //

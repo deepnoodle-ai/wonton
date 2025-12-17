@@ -57,7 +57,10 @@ func (b *buttonState) HandleKeyEvent(event KeyEvent) bool {
 func (r *buttonRegistryImpl) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// Don't clear buttons map, just let focusManager handle order
+	// Clear map to prevent memory leaks from transient IDs (buttons with closure callbacks)
+	for k := range r.buttons {
+		delete(r.buttons, k)
+	}
 }
 
 // Register adds or updates a button.

@@ -12,6 +12,7 @@ type stack struct {
 	children   []View
 	gap        int
 	alignment  Alignment
+	flexFactor int
 	childSizes []image.Point // cached during size() for use in render()
 }
 
@@ -30,10 +31,23 @@ type stack struct {
 //	).Gap(1).Align(AlignCenter)
 func Stack(children ...View) *stack {
 	return &stack{
-		children:  children,
-		gap:       0,
-		alignment: AlignLeft,
+		children:   children,
+		gap:        0,
+		alignment:  AlignLeft,
+		flexFactor: 0,
 	}
+}
+
+// Flex sets the flex factor for this stack.
+// Used when this stack is a child of another flex container.
+func (s *stack) Flex(factor int) *stack {
+	s.flexFactor = factor
+	return s
+}
+
+// flex implements the Flexible interface.
+func (s *stack) flex() int {
+	return s.flexFactor
 }
 
 // Gap sets the spacing between children in number of rows.

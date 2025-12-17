@@ -30,7 +30,7 @@ func (app *TextDemoApp) View() tui.View {
 		tui.Text("Press Q or Ctrl+C to exit").Fg(tui.ColorWhite),
 		tui.Divider(),
 
-		// 2x2 Grid using nested HStack and Stack
+		// 2x2 Grid using nested Group and Stack
 		tui.Stack(
 			// Top row
 			tui.Group(

@@ -171,7 +171,7 @@ func main() {
 }
 ```
 
-### Layout with HStack and VStack
+### Layout with Stack and Group
 
 ```go
 func (a *app) View() tui.View {
@@ -181,7 +181,7 @@ func (a *app) View() tui.View {
 		tui.Divider(),
 
 		// Main content area (horizontal)
-		tui.HStack(
+		tui.Group(
 			// Left sidebar
 			tui.Stack(
 				tui.Text("Menu").Bold(),
@@ -358,11 +358,11 @@ func (a *app) View() tui.View {
 	return tui.Stack(
 		tui.Text("Download Progress").Bold(),
 
-		tui.ProgressBar(a.progress, 100).
+		tui.Progress(a.progress, 100).
 			Width(40).
-			ShowPercentage(true),
+			ShowPercent(),
 
-		tui.Spinner().Active(a.loading),
+		tui.Loading(a.frame).Label("Loading..."),
 
 		tui.Text("Status: %s", a.status).Dim(),
 	).Gap(1)
@@ -373,152 +373,152 @@ func (a *app) View() tui.View {
 
 ### Application Types
 
-| Type | Description |
-|------|-------------|
-| `Application` | Main interface for declarative UI apps |
-| `EventHandler` | Optional interface for handling events |
-| `Initializable` | Optional interface for initialization |
-| `Destroyable` | Optional interface for cleanup |
-| `View` | Core interface for UI components |
-| `RenderContext` | Drawing context with animation frame |
+| Type            | Description                            |
+| --------------- | -------------------------------------- |
+| `Application`   | Main interface for declarative UI apps |
+| `EventHandler`  | Optional interface for handling events |
+| `Initializable` | Optional interface for initialization  |
+| `Destroyable`   | Optional interface for cleanup         |
+| `View`          | Core interface for UI components       |
+| `RenderContext` | Drawing context with animation frame   |
 
 ### Runtime Functions
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Run` | Starts application runtime | `app Application, opts ...RuntimeOption` | `error` |
-| `WithFPS` | Sets frame rate | `fps int` | `RuntimeOption` |
-| `WithMouseTracking` | Enables mouse support | `enabled bool` | `RuntimeOption` |
-| `Quit` | Returns quit command | none | `Cmd` |
+| Function            | Description                | Inputs                                   | Outputs         |
+| ------------------- | -------------------------- | ---------------------------------------- | --------------- |
+| `Run`               | Starts application runtime | `app Application, opts ...RuntimeOption` | `error`         |
+| `WithFPS`           | Sets frame rate            | `fps int`                                | `RuntimeOption` |
+| `WithMouseTracking` | Enables mouse support      | `enabled bool`                           | `RuntimeOption` |
+| `Quit`              | Returns quit command       | none                                     | `Cmd`           |
 
 ### Layout Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Stack` | Vertical stack layout | `children ...View` | `*StackView` |
-| `HStack` | Horizontal stack layout | `children ...View` | `*HStackView` |
-| `ZStack` | Layered stack layout | `children ...View` | `*ZStackView` |
-| `Spacer` | Flexible spacing | none | `*spacerView` |
-| `Empty` | Empty view | none | `View` |
+| Function | Description             | Inputs             | Outputs       |
+| -------- | ----------------------- | ------------------ | ------------- |
+| `Stack`  | Vertical stack layout   | `children ...View` | `*StackView`  |
+| `Group`  | Horizontal stack layout | `children ...View` | `*GroupView`  |
+| `ZStack` | Layered stack layout    | `children ...View` | `*ZStackView` |
+| `Spacer` | Flexible spacing        | none               | `*spacerView` |
+| `Empty`  | Empty view              | none               | `View`        |
 
 ### Text Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Text` | Formatted text | `format string, args ...interface{}` | `*TextView` |
-| `Markdown` | Markdown renderer | `content string` | `*MarkdownView` |
+| Function   | Description       | Inputs                               | Outputs         |
+| ---------- | ----------------- | ------------------------------------ | --------------- |
+| `Text`     | Formatted text    | `format string, args ...interface{}` | `*TextView`     |
+| `Markdown` | Markdown renderer | `content string`                     | `*MarkdownView` |
 
 ### Input Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `InputField` | Text input | `value *string` | `*InputFieldView` |
-| `PasswordInput` | Password input | `value *string` | `*PasswordInputView` |
-| `TextArea` | Multi-line text input | `value *string` | `*TextAreaView` |
+| Function        | Description           | Inputs          | Outputs              |
+| --------------- | --------------------- | --------------- | -------------------- |
+| `InputField`    | Text input            | `value *string` | `*InputFieldView`    |
+| `PasswordInput` | Password input        | `value *string` | `*PasswordInputView` |
+| `TextArea`      | Multi-line text input | `value *string` | `*TextAreaView`      |
 
 ### Selection Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `SelectList` | Selectable list | `items []interface{}, selected *int` | `*SelectListView` |
-| `SelectListStrings` | String list | `items []string, selected *int` | `*SelectListView` |
-| `Button` | Clickable button | `label string, onClick func()` | `*ButtonView` |
+| Function            | Description      | Inputs                               | Outputs           |
+| ------------------- | ---------------- | ------------------------------------ | ----------------- |
+| `SelectList`        | Selectable list  | `items []interface{}, selected *int` | `*SelectListView` |
+| `SelectListStrings` | String list      | `items []string, selected *int`      | `*SelectListView` |
+| `Button`            | Clickable button | `label string, onClick func()`       | `*ButtonView`     |
 
 ### Display Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Table` | Data table | `headers []string, rows [][]string` | `*TableView` |
-| `ListView` | Scrollable list | `items []string` | `*ListViewView` |
-| `TreeView` | Hierarchical tree | `root *TreeNode` | `*TreeViewView` |
-| `ProgressBar` | Progress indicator | `value, max int` | `*ProgressView` |
-| `Spinner` | Loading spinner | none | `*SpinnerView` |
-| `Divider` | Horizontal line | none | `*DividerView` |
+| Function         | Description        | Inputs                              | Outputs         |
+| ---------------- | ------------------ | ----------------------------------- | --------------- |
+| `Table`          | Data table         | `headers []string, rows [][]string` | `*TableView`    |
+| `FilterableList` | Scrollable list    | `items []string`                    | `*ListView`     |
+| `Tree`           | Hierarchical tree  | `root *TreeNode`                    | `*TreeView`     |
+| `Progress`       | Progress indicator | `value, max int`                    | `*ProgressView` |
+| `Loading`        | Loading spinner    | none                                | `*LoadingView`  |
+| `Divider`        | Horizontal line    | none                                | `*DividerView`  |
 
 ### Container Views
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Border` | Border container | `child View` | `*BorderView` |
-| `Padding` | Padding container | `child View, padding int` | `*PaddingView` |
-| `ScrollView` | Scrollable container | `child View` | `*ScrollView` |
+| Function     | Description          | Inputs                    | Outputs        |
+| ------------ | -------------------- | ------------------------- | -------------- |
+| `Border`     | Border container     | `child View`              | `*BorderView`  |
+| `Padding`    | Padding container    | `child View, padding int` | `*PaddingView` |
+| `ScrollView` | Scrollable container | `child View`              | `*ScrollView`  |
 
 ### Custom Drawing
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `Canvas` | Custom drawing area | `draw func(ctx *RenderContext)` | `*CanvasView` |
+| Function        | Description         | Inputs                          | Outputs       |
+| --------------- | ------------------- | ------------------------------- | ------------- |
+| `Canvas`        | Custom drawing area | `draw func(ctx *RenderContext)` | `*CanvasView` |
 | `CanvasContext` | Canvas with context | `draw func(ctx *RenderContext)` | `*CanvasView` |
 
 ### View Modifiers
 
 Most views support fluent modifier methods:
 
-| Modifier | Description | Example |
-|----------|-------------|---------|
-| `.Width(int)` | Sets fixed width | `tui.Text("Hello").Width(20)` |
-| `.Height(int)` | Sets fixed height | `tui.Stack(...).Height(10)` |
-| `.MinWidth(int)` | Sets minimum width | `tui.InputField(&s).MinWidth(30)` |
-| `.MaxWidth(int)` | Sets maximum width | `tui.Text(long).MaxWidth(80)` |
-| `.Flex(int)` | Sets flex factor | `tui.Stack(...).Flex(1)` |
-| `.Border(bool)` | Adds border | `tui.Stack(...).Border(true)` |
-| `.Padding(int)` | Adds padding | `tui.Text("Hi").Padding(2)` |
-| `.Gap(int)` | Sets spacing (Stack/HStack) | `tui.Stack(...).Gap(1)` |
-| `.Centered()` | Centers content | `tui.Text("Title").Centered()` |
-| `.Focused(bool)` | Sets focus state | `tui.InputField(&s).Focused(true)` |
+| Modifier         | Description                | Example                            |
+| ---------------- | -------------------------- | ---------------------------------- |
+| `.Width(int)`    | Sets fixed width           | `tui.Text("Hello").Width(20)`      |
+| `.Height(int)`   | Sets fixed height          | `tui.Stack(...).Height(10)`        |
+| `.MinWidth(int)` | Sets minimum width         | `tui.InputField(&s).MinWidth(30)`  |
+| `.MaxWidth(int)` | Sets maximum width         | `tui.Text(long).MaxWidth(80)`      |
+| `.Flex(int)`     | Sets flex factor           | `tui.Stack(...).Flex(1)`           |
+| `.Border(bool)`  | Adds border                | `tui.Stack(...).Border(true)`      |
+| `.Padding(int)`  | Adds padding               | `tui.Text("Hi").Padding(2)`        |
+| `.Gap(int)`      | Sets spacing (Stack/Group) | `tui.Stack(...).Gap(1)`            |
+| `.Centered()`    | Centers content            | `tui.Text("Title").Centered()`     |
+| `.Focused(bool)` | Sets focus state           | `tui.InputField(&s).Focused(true)` |
 
 ### Text Style Modifiers
 
-| Modifier | Description |
-|----------|-------------|
-| `.Bold()` | Bold text |
-| `.Dim()` | Dimmed text |
-| `.Italic()` | Italic text |
-| `.Underline()` | Underlined text |
-| `.Color(Color)` | Sets foreground color |
+| Modifier          | Description           |
+| ----------------- | --------------------- |
+| `.Bold()`         | Bold text             |
+| `.Dim()`          | Dimmed text           |
+| `.Italic()`       | Italic text           |
+| `.Underline()`    | Underlined text       |
+| `.Color(Color)`   | Sets foreground color |
 | `.BgColor(Color)` | Sets background color |
 
 ### Semantic Style Modifiers
 
-| Modifier | Description |
-|----------|-------------|
-| `.Success()` | Green bold text |
-| `.Error()` | Red bold text |
+| Modifier     | Description      |
+| ------------ | ---------------- |
+| `.Success()` | Green bold text  |
+| `.Error()`   | Red bold text    |
 | `.Warning()` | Yellow bold text |
-| `.Info()` | Cyan text |
-| `.Muted()` | Dim gray text |
-| `.Hint()` | Dim italic text |
+| `.Info()`    | Cyan text        |
+| `.Muted()`   | Dim gray text    |
+| `.Hint()`    | Dim italic text  |
 
 ### Animation Modifiers
 
-| Modifier | Description | Parameters |
-|----------|-------------|------------|
-| `.Rainbow(speed)` | Rainbow color cycle | `speed int` |
-| `.RainbowReverse(speed)` | Reverse rainbow | `speed int` |
-| `.Pulse(color, speed)` | Pulsing brightness | `color Color, speed int` |
-| `.Wave(speed, colors...)` | Wave color effect | `speed int, colors ...Color` |
-| `.Slide(speed, base, highlight)` | Sliding highlight | `speed int, base, highlight Color` |
-| `.SlideReverse(speed, base, highlight)` | Reverse slide | `speed int, base, highlight Color` |
-| `.Sparkle(speed, base, highlight)` | Sparkle effect | `speed int, base, highlight Color` |
-| `.Typewriter(speed, base, cursor)` | Typewriter reveal | `speed int, base, cursor Color` |
-| `.Glitch(speed, color1, color2)` | Glitch effect | `speed int, color1, color2 Color` |
+| Modifier                                | Description         | Parameters                         |
+| --------------------------------------- | ------------------- | ---------------------------------- |
+| `.Rainbow(speed)`                       | Rainbow color cycle | `speed int`                        |
+| `.RainbowReverse(speed)`                | Reverse rainbow     | `speed int`                        |
+| `.Pulse(color, speed)`                  | Pulsing brightness  | `color Color, speed int`           |
+| `.Wave(speed, colors...)`               | Wave color effect   | `speed int, colors ...Color`       |
+| `.Slide(speed, base, highlight)`        | Sliding highlight   | `speed int, base, highlight Color` |
+| `.SlideReverse(speed, base, highlight)` | Reverse slide       | `speed int, base, highlight Color` |
+| `.Sparkle(speed, base, highlight)`      | Sparkle effect      | `speed int, base, highlight Color` |
+| `.Typewriter(speed, base, cursor)`      | Typewriter reveal   | `speed int, base, cursor Color`    |
+| `.Glitch(speed, color1, color2)`        | Glitch effect       | `speed int, color1, color2 Color`  |
 
 ### Event Types
 
-| Event | Description | Fields |
-|-------|-------------|--------|
-| `KeyEvent` | Keyboard input | `Rune rune, Key Key, Modifiers KeyModifier` |
-| `MouseEvent` | Mouse input | `X, Y int, Button MouseButton, Action MouseAction` |
-| `TickEvent` | Frame tick | `Frame uint64` |
-| `WindowSizeEvent` | Terminal resize | `Width, Height int` |
+| Event             | Description     | Fields                                             |
+| ----------------- | --------------- | -------------------------------------------------- |
+| `KeyEvent`        | Keyboard input  | `Rune rune, Key Key, Modifiers KeyModifier`        |
+| `MouseEvent`      | Mouse input     | `X, Y int, Button MouseButton, Action MouseAction` |
+| `TickEvent`       | Frame tick      | `Frame uint64`                                     |
+| `WindowSizeEvent` | Terminal resize | `Width, Height int`                                |
 
 ### Command Types
 
-| Type | Description |
-|------|-------------|
-| `Cmd` | Function returning Event (runs async) |
-| `Quit()` | Exits application |
-| `Tick` | Periodic timer |
+| Type     | Description                           |
+| -------- | ------------------------------------- |
+| `Cmd`    | Function returning Event (runs async) |
+| `Quit()` | Exits application                     |
+| `Tick`   | Periodic timer                        |
 
 ## Architecture
 

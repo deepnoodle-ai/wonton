@@ -117,17 +117,17 @@ func (v *stack) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, v)
 }
 
-// Padding adds equal padding on all sides of an HStack.
+// Padding adds equal padding on all sides of a Group.
 func (h *group) Padding(n int) View {
 	return Padding(n, h)
 }
 
-// PaddingHV adds horizontal and vertical padding to an HStack.
+// PaddingHV adds horizontal and vertical padding to a Group.
 func (h *group) PaddingHV(hpad, v int) View {
 	return PaddingHV(hpad, v, h)
 }
 
-// PaddingLTRB adds specific padding to each side of an HStack.
+// PaddingLTRB adds specific padding to each side of a Group.
 func (h *group) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, h)
 }
@@ -445,7 +445,7 @@ func (v *stack) Bordered() *borderedView {
 	return Bordered(v)
 }
 
-// Bordered wraps an HStack with a border.
+// Bordered wraps a Group with a border.
 func (h *group) Bordered() *borderedView {
 	return Bordered(h)
 }
@@ -471,7 +471,7 @@ func (v *stack) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), v)
 }
 
-// Bg adds a background color to an HStack.
+// Bg adds a background color to a Group.
 func (h *group) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), h)
 }

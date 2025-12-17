@@ -157,8 +157,8 @@ func TestButtonRegistry_Clear(t *testing.T) {
 	// Clear should not panic
 	registry.Clear()
 
-	// Buttons map should still have the entry (Clear doesn't remove buttons)
-	assert.Equal(t, 1, len(registry.buttons))
+	// Buttons map should be cleared to prevent memory leaks
+	assert.Equal(t, 0, len(registry.buttons))
 }
 
 func TestInteractiveRegistry_RegisterRegion(t *testing.T) {

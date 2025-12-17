@@ -7,11 +7,11 @@ type group struct {
 	children   []View
 	gap        int
 	alignment  Alignment
+	flexFactor int
 	childSizes []image.Point
 }
 
 // Group creates a group that arranges children left-to-right (horizontal layout).
-// This is commonly called HStack in other UI frameworks.
 //
 // Children are laid out horizontally with optional spacing and alignment.
 // Flexible children (like Spacer) will expand to fill available space.
@@ -25,10 +25,23 @@ type group struct {
 //	).Gap(2).Align(AlignCenter)
 func Group(children ...View) *group {
 	return &group{
-		children:  children,
-		gap:       0,
-		alignment: AlignLeft,
+		children:   children,
+		gap:        0,
+		alignment:  AlignLeft,
+		flexFactor: 0,
 	}
+}
+
+// Flex sets the flex factor for this group.
+// Used when this group is a child of another flex container.
+func (g *group) Flex(factor int) *group {
+	g.flexFactor = factor
+	return g
+}
+
+// flex implements the Flexible interface.
+func (g *group) flex() int {
+	return g.flexFactor
 }
 
 // Gap sets the spacing between children in number of columns.
@@ -194,14 +207,10 @@ func (g *group) render(ctx *RenderContext) {
 	}
 }
 
-// HStack is an alias for Group, providing a more intuitive name for horizontal layout.
-// This matches naming conventions from SwiftUI and other declarative UI frameworks.
-//
 // Example:
 //
-//	HStack(
+//	Group(
 //	    Text("Left"),
 //	    Spacer(),
 //	    Text("Right"),
 //	)
-var HStack = Group

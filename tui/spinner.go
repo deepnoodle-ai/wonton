@@ -9,6 +9,8 @@ import (
 )
 
 // Spinner represents an animated loading spinner widget
+//
+// Deprecated: Use Loading() for declarative spinner.
 type Spinner struct {
 	frames       []string
 	interval     time.Duration // Time per frame
@@ -128,6 +130,8 @@ var (
 )
 
 // NewSpinner creates a new spinner widget
+//
+// Deprecated: Use Loading() for declarative spinner.
 func NewSpinner(style SpinnerStyle) *Spinner {
 	return &Spinner{
 		frames:     style.Frames,
@@ -196,6 +200,8 @@ func (s *Spinner) Draw(frame RenderFrame, x, y int) {
 }
 
 // ProgressBar represents a progress bar widget
+//
+// Deprecated: Use Progress() for declarative progress bar.
 type ProgressBar struct {
 	Total       int
 	Current     int
@@ -209,6 +215,8 @@ type ProgressBar struct {
 }
 
 // NewProgressBar creates a new progress bar widget
+//
+// Deprecated: Use Progress() for declarative progress bar.
 func NewProgressBar(total int) *ProgressBar {
 	return &ProgressBar{
 		Total:       total,

@@ -47,6 +47,10 @@ func (fm *FocusManager) Clear() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 	fm.order = fm.order[:0]
+	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
+	for k := range fm.focusables {
+		delete(fm.focusables, k)
+	}
 }
 
 // Register adds a focusable element to the manager.

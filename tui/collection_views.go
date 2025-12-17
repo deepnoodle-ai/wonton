@@ -63,7 +63,7 @@ func (f *forEachView[T]) Gap(n int) *forEachView[T] {
 	return f
 }
 
-// HForEach is like ForEach but arranges items horizontally in an HStack.
+// HForEach is like ForEach but arranges items horizontally in a Group.
 //
 // Example:
 //
@@ -118,7 +118,7 @@ func (f *hForEachView[T]) render(ctx *RenderContext) {
 	f.buildStack().render(ctx)
 }
 
-// Gap sets the spacing between items (like HStack.Gap).
+// Gap sets the spacing between items (like Group.Gap).
 func (f *hForEachView[T]) Gap(n int) *hForEachView[T] {
 	f.buildStack().gap = n
 	return f
