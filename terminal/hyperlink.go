@@ -5,18 +5,54 @@ import (
 	"strings"
 )
 
-// Hyperlink represents a clickable hyperlink in the terminal using OSC 8 protocol.
-// OSC 8 is supported by many modern terminals including iTerm2, WezTerm, kitty,
-// and others. For unsupported terminals, it gracefully falls back to showing
-// the text with the URL in parentheses.
+// Hyperlink represents a clickable hyperlink in the terminal using the OSC 8 protocol.
+//
+// OSC 8 is a terminal escape sequence standard that makes text clickable.
+// When clicked, the terminal opens the URL in the default browser.
+//
+// # Terminal Support
+//
+// OSC 8 is supported by many modern terminals:
+//   - iTerm2 (macOS)
+//   - WezTerm (cross-platform)
+//   - kitty (Linux, macOS)
+//   - Windows Terminal
+//   - GNOME Terminal 3.26+
+//   - Konsole 18.08+
+//   - Hyper
+//
+// For unsupported terminals, the escape codes are ignored and only the text is shown.
+//
+// # Usage
+//
+// Create hyperlinks and render them using RenderFrame:
+//
+//	link := terminal.NewHyperlink("https://example.com", "Click here")
+//	frame.PrintHyperlink(10, 5, link)
+//
+// Or use the fallback format for terminals without OSC 8 support:
+//
+//	frame.PrintHyperlinkFallback(10, 5, link) // Prints: Click here (https://example.com)
+//
+// # Styling
+//
+// Hyperlinks have a default style (blue, underlined) but can be customized:
+//
+//	link := terminal.NewHyperlink("https://example.com", "Click here")
+//	link = link.WithStyle(terminal.NewStyle().WithForeground(terminal.ColorGreen))
 type Hyperlink struct {
 	URL   string // The target URL (e.g., "https://example.com")
 	Text  string // The display text (e.g., "Click here")
-	Style Style  // Optional styling for the link text
+	Style Style  // Styling for the link text (default: blue, underlined)
 }
 
-// NewHyperlink creates a new hyperlink with the given URL and display text.
-// The URL is validated to ensure it's a valid URL format.
+// NewHyperlink creates a new Hyperlink with the given URL and display text.
+// The hyperlink is given a default style (blue foreground, underlined).
+//
+// Example:
+//
+//	link := terminal.NewHyperlink("https://golang.org", "Go Website")
+//	frame.PrintHyperlink(x, y, link)
 func NewHyperlink(url, text string) Hyperlink {
 	return Hyperlink{
 		URL:   url,

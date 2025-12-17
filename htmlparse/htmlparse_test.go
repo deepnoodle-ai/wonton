@@ -2,6 +2,7 @@ package htmlparse
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -978,4 +979,239 @@ func TestBranding_Complete(t *testing.T) {
 	assert.Equal(t, "/favicon.ico", b.Favicon)
 	assert.Equal(t, "/apple-icon.png", b.AppleIcon)
 	assert.Equal(t, "/logo.svg", b.Logo)
+}
+
+// Examples for godoc
+
+func ExampleParse() {
+	html := `<html><body><h1>Hello, World!</h1><p>This is a paragraph.</p></body></html>`
+	doc, err := Parse(html)
+	if err != nil {
+		panic(err)
+	}
+
+	text := doc.Text()
+	fmt.Println(text)
+	// Output: Hello, World! This is a paragraph.
+}
+
+func ExampleDocument_Metadata() {
+	html := `<html>
+	<head>
+		<title>My Page</title>
+		<meta name="description" content="A sample page">
+		<meta property="og:image" content="https://example.com/image.png">
+	</head>
+	<body>Content</body>
+	</html>`
+
+	doc, _ := Parse(html)
+	meta := doc.Metadata()
+
+	fmt.Println(meta.Title)
+	fmt.Println(meta.Description)
+	if meta.OpenGraph != nil {
+		fmt.Println(meta.OpenGraph.Image)
+	}
+	// Output:
+	// My Page
+	// A sample page
+	// https://example.com/image.png
+}
+
+func ExampleDocument_Links() {
+	html := `<html><body>
+		<a href="https://example.com">Example Site</a>
+		<a href="/about">About Us</a>
+	</body></html>`
+
+	doc, _ := Parse(html)
+	links := doc.Links()
+
+	for _, link := range links {
+		fmt.Printf("%s -> %s\n", link.Text, link.URL)
+	}
+	// Output:
+	// Example Site -> https://example.com
+	// About Us -> /about
+}
+
+func ExampleDocument_FilteredLinks() {
+	html := `<html><body>
+		<a href="/page1">Internal Page 1</a>
+		<a href="https://example.com/page2">Internal Page 2</a>
+		<a href="https://other.com">External Site</a>
+	</body></html>`
+
+	doc, _ := Parse(html)
+
+	// Get only internal links
+	internal := doc.FilteredLinks(LinkFilter{
+		BaseURL:  "https://example.com",
+		Internal: true,
+	})
+
+	for _, link := range internal {
+		fmt.Println(link.URL)
+	}
+	// Output:
+	// https://example.com/page1
+	// https://example.com/page2
+}
+
+func ExampleDocument_Images() {
+	html := `<html><body>
+		<img src="photo.jpg" alt="A photo">
+		<img src="icon.png" alt="Icon">
+	</body></html>`
+
+	doc, _ := Parse(html)
+	images := doc.Images()
+
+	for _, img := range images {
+		fmt.Printf("%s: %s\n", img.Alt, img.URL)
+	}
+	// Output:
+	// A photo: photo.jpg
+	// Icon: icon.png
+}
+
+func ExampleDocument_Transform() {
+	html := `<html>
+	<body>
+		<nav><a href="/">Home</a></nav>
+		<main>
+			<h1>Article Title</h1>
+			<p>Main content here.</p>
+		</main>
+		<footer>Copyright 2024</footer>
+		<script>console.log("hi")</script>
+	</body>
+	</html>`
+
+	doc, _ := Parse(html)
+
+	// Extract only main content, exclude navigation and scripts
+	clean := doc.Transform(&TransformOptions{
+		OnlyMainContent: true,
+	})
+
+	// The output will contain only the main content area
+	fmt.Println(strings.Contains(clean, "Article Title"))
+	fmt.Println(strings.Contains(clean, "Main content"))
+	fmt.Println(strings.Contains(clean, "<nav>"))
+	fmt.Println(strings.Contains(clean, "<script>"))
+	// Output:
+	// true
+	// true
+	// false
+	// false
+}
+
+func ExampleDocument_Transform_withFilters() {
+	html := `<html><body>
+		<div role="dialog">Cookie notice</div>
+		<div class="modal-popup">Subscribe!</div>
+		<p>Real content here</p>
+	</body></html>`
+
+	doc, _ := Parse(html)
+
+	// Exclude modals and dialogs
+	clean := doc.Transform(&TransformOptions{
+		ExcludeFilters: []ElementFilter{
+			{Attr: "role", AttrEquals: "dialog"},
+			{Attr: "class", AttrContains: "modal"},
+		},
+	})
+
+	fmt.Println(strings.Contains(clean, "Real content"))
+	fmt.Println(strings.Contains(clean, "Cookie notice"))
+	fmt.Println(strings.Contains(clean, "Subscribe"))
+	// Output:
+	// true
+	// false
+	// false
+}
+
+func ExampleDocument_Text() {
+	html := `<html>
+	<head>
+		<title>Page Title</title>
+		<script>alert('hi')</script>
+	</head>
+	<body>
+		<h1>Hello</h1>
+		<p>This is <strong>bold</strong> text.</p>
+	</body>
+	</html>`
+
+	doc, _ := Parse(html)
+	text := doc.Text()
+
+	fmt.Println(text)
+	// Output: Hello This is bold text.
+}
+
+func ExampleDocument_Branding() {
+	html := `<html>
+	<head>
+		<meta name="theme-color" content="#0066cc">
+		<link rel="icon" href="/favicon.ico">
+	</head>
+	<body>
+		<img src="/logo.svg" class="site-logo" alt="Company Logo">
+	</body>
+	</html>`
+
+	doc, _ := Parse(html)
+	brand := doc.Branding()
+
+	fmt.Println(brand.ThemeColor)
+	fmt.Println(brand.Favicon)
+	fmt.Println(brand.Logo)
+	// Output:
+	// #0066cc
+	// /favicon.ico
+	// /logo.svg
+}
+
+func ExampleElementFilter_Matches() {
+	filter := ElementFilter{
+		Attr:         "class",
+		AttrContains: "modal",
+	}
+
+	// Test various elements
+	fmt.Println(filter.Matches("div", map[string]string{"class": "modal-dialog"}))
+	fmt.Println(filter.Matches("div", map[string]string{"class": "container"}))
+	fmt.Println(filter.Matches("span", map[string]string{"class": "my-modal"}))
+	// Output:
+	// true
+	// false
+	// true
+}
+
+func ExampleStandardExcludeFilters() {
+	html := `<html><body>
+		<nav>Navigation</nav>
+		<div role="dialog">Cookie banner</div>
+		<script>alert('ad')</script>
+		<p>Real content</p>
+	</body></html>`
+
+	doc, _ := Parse(html)
+
+	// Use standard filters to clean content
+	clean := doc.Transform(&TransformOptions{
+		ExcludeFilters: StandardExcludeFilters,
+	})
+
+	fmt.Println(strings.Contains(clean, "Real content"))
+	fmt.Println(strings.Contains(clean, "Navigation"))
+	fmt.Println(strings.Contains(clean, "Cookie banner"))
+	// Output:
+	// true
+	// false
+	// false
 }

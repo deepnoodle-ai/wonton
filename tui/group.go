@@ -10,7 +10,19 @@ type group struct {
 	childSizes []image.Point
 }
 
-// Group creates a group that arranges children left-to-right.
+// Group creates a group that arranges children left-to-right (horizontal layout).
+// This is commonly called HStack in other UI frameworks.
+//
+// Children are laid out horizontally with optional spacing and alignment.
+// Flexible children (like Spacer) will expand to fill available space.
+//
+// Example:
+//
+//	Group(
+//	    Text("Left"),
+//	    Spacer(),
+//	    Text("Right"),
+//	).Gap(2).Align(AlignCenter)
 func Group(children ...View) *group {
 	return &group{
 		children:  children,
@@ -19,13 +31,15 @@ func Group(children ...View) *group {
 	}
 }
 
-// Gap sets the spacing between children.
+// Gap sets the spacing between children in number of columns.
+// Only visible children (non-zero size) contribute to spacing.
 func (g *group) Gap(n int) *group {
 	g.gap = n
 	return g
 }
 
-// Align sets the vertical alignment of children.
+// Align sets the vertical alignment of children within the group.
+// Options: AlignLeft (top), AlignCenter (middle), AlignRight (bottom).
 func (g *group) Align(a Alignment) *group {
 	g.alignment = a
 	return g
@@ -179,3 +193,15 @@ func (g *group) render(ctx *RenderContext) {
 		renderedVisible = true
 	}
 }
+
+// HStack is an alias for Group, providing a more intuitive name for horizontal layout.
+// This matches naming conventions from SwiftUI and other declarative UI frameworks.
+//
+// Example:
+//
+//	HStack(
+//	    Text("Left"),
+//	    Spacer(),
+//	    Text("Right"),
+//	)
+var HStack = Group

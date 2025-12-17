@@ -1,3 +1,46 @@
+// Package crawler provides a concurrent web crawler with pluggable fetchers,
+// parsers, and caching support. It is designed for extracting structured data
+// from websites while respecting domain-specific crawling rules.
+//
+// The crawler supports multiple follow behaviors (same domain, related subdomains,
+// or any domain), custom parsing logic per domain, and configurable rate limiting.
+// It uses a worker pool architecture for efficient concurrent crawling.
+//
+// Basic usage:
+//
+//	// Create a crawler with basic options
+//	crawler, err := crawler.New(crawler.Options{
+//		Workers:        5,
+//		MaxURLs:        1000,
+//		RequestDelay:   time.Second,
+//		DefaultFetcher: fetch.NewMockFetcher(),
+//		FollowBehavior: crawler.FollowSameDomain,
+//	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	// Crawl URLs and process results
+//	err = crawler.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *crawler.Result) {
+//		if result.Error != nil {
+//			log.Printf("Error crawling %s: %v", result.URL, result.Error)
+//			return
+//		}
+//		// Process the page content
+//		fmt.Printf("Crawled: %s\n", result.URL)
+//	})
+//
+// Advanced features include domain-specific parsers and fetchers using rules:
+//
+//	// Add a parser for a specific domain
+//	rule := crawler.NewParserRule("*.example.com", myParser,
+//		crawler.WithParserMatchType(crawler.MatchGlob),
+//		crawler.WithParserPriority(10))
+//	crawler.AddParserRules(rule)
+//
+// The crawler automatically discovers and follows links based on the configured
+// follow behavior, handles caching to avoid redundant fetches, and provides
+// real-time statistics about crawling progress.
 package crawler
 
 import (
@@ -16,47 +59,125 @@ import (
 	"github.com/deepnoodle-ai/wonton/fetch"
 )
 
-// FollowBehavior is used to determine how to follow links.
+// FollowBehavior determines which discovered links the crawler will follow.
+// This controls how the crawler expands beyond the initial seed URLs.
 type FollowBehavior string
 
 const (
-	FollowAny               FollowBehavior = "any"
-	FollowSameDomain        FollowBehavior = "same-domain"
+	// FollowAny follows all discovered links regardless of domain.
+	// Use with caution as this can lead to crawling the entire web.
+	FollowAny FollowBehavior = "any"
+
+	// FollowSameDomain only follows links that share the exact same hostname
+	// as the page they were discovered on. For example, links on example.com
+	// will only follow to other example.com pages, not to sub.example.com.
+	FollowSameDomain FollowBehavior = "same-domain"
+
+	// FollowRelatedSubdomains follows links that share the same base domain,
+	// including subdomains. For example, links on example.com will follow to
+	// both example.com and sub.example.com pages.
 	FollowRelatedSubdomains FollowBehavior = "related-subdomains"
-	FollowNone              FollowBehavior = "none"
+
+	// FollowNone does not follow any discovered links. Only the initial
+	// seed URLs provided to Crawl() will be processed.
+	FollowNone FollowBehavior = "none"
 )
 
-// Result represents the result of one page being crawled.
+// Result represents the outcome of crawling a single page. It contains
+// the fetched content, any parsed data, discovered links, and potential errors.
 type Result struct {
-	URL      *url.URL
-	Parsed   any
-	Links    []string
+	// URL is the parsed URL that was crawled
+	URL *url.URL
+
+	// Parsed contains the result of running a Parser on the page, if a parser
+	// was configured for this domain. The type depends on the Parser implementation.
+	Parsed any
+
+	// Links contains all URLs discovered on the page that passed the
+	// follow behavior filter. These may be enqueued for future crawling.
+	Links []string
+
+	// Response is the raw fetch response including HTML content and metadata
 	Response *fetch.Response
-	Error    error
+
+	// Error contains any error that occurred during fetching or parsing.
+	// If non-nil, other fields may be incomplete or empty.
+	Error error
 }
 
-// ProcessCallback is called with the fetch request and parsed result (if any)
+// Callback is invoked for each page processed by the crawler. It receives
+// the crawl result which includes the fetched page, parsed data (if a parser
+// was configured), discovered links, and any errors.
+//
+// The callback is called synchronously by worker goroutines, so it should
+// return quickly to avoid blocking crawling progress. For expensive processing,
+// consider dispatching to a separate goroutine or queue.
 type Callback func(ctx context.Context, result *Result)
 
-// Options used to configure a crawler.
+// Options configures a Crawler instance. Use this to specify worker count,
+// rate limiting, caching, parsers, fetchers, and link-following behavior.
 type Options struct {
-	MaxURLs              int
-	Workers              int
-	Cache                cache.Cache
-	RequestDelay         time.Duration
-	KnownURLs            []string
-	ParserRules          []*ParserRule
-	DefaultParser        Parser
-	FetcherRules         []*FetcherRule
-	DefaultFetcher       fetch.Fetcher
-	FollowBehavior       FollowBehavior
-	Logger               *slog.Logger
-	ShowProgress         bool
+	// MaxURLs limits the total number of URLs that will be processed.
+	// Set to 0 for unlimited (use with caution).
+	MaxURLs int
+
+	// Workers specifies the number of concurrent worker goroutines.
+	// More workers increase throughput but also increase load on target sites.
+	Workers int
+
+	// Cache stores fetched pages to avoid redundant requests. If nil, no caching is used.
+	Cache cache.Cache
+
+	// RequestDelay adds a delay between requests from each worker.
+	// Use this to be respectful of target servers and avoid overwhelming them.
+	RequestDelay time.Duration
+
+	// KnownURLs is a list of URLs that are already known and should not be processed again.
+	// This is useful for resuming interrupted crawls.
+	KnownURLs []string
+
+	// ParserRules defines domain-specific parsers. When a URL matches a rule's pattern,
+	// the associated parser is used to extract structured data from the page.
+	ParserRules []*ParserRule
+
+	// DefaultParser is used for domains that don't match any ParserRule.
+	// If nil and no rule matches, pages are fetched but not parsed.
+	DefaultParser Parser
+
+	// FetcherRules defines domain-specific fetchers. When a URL matches a rule's pattern,
+	// the associated fetcher is used to retrieve the page.
+	FetcherRules []*FetcherRule
+
+	// DefaultFetcher is used for domains that don't match any FetcherRule.
+	// This field is required - the crawler cannot function without a default fetcher.
+	DefaultFetcher fetch.Fetcher
+
+	// FollowBehavior determines which discovered links will be followed.
+	// Defaults to FollowSameDomain if not specified.
+	FollowBehavior FollowBehavior
+
+	// Logger is used for debug, info, and error messages. If nil, uses slog.Default().
+	Logger *slog.Logger
+
+	// ShowProgress enables periodic logging of crawl statistics.
+	ShowProgress bool
+
+	// ShowProgressInterval controls how often progress is logged.
+	// Defaults to 30 seconds if ShowProgress is true and this is not set.
 	ShowProgressInterval time.Duration
-	QueueSize            int
+
+	// QueueSize sets the buffer size for the URL queue.
+	// Larger queues can improve throughput but use more memory.
+	// Defaults to 10000 if not specified.
+	QueueSize int
 }
 
-// Crawler is used to crawl the web.
+// Crawler orchestrates concurrent web crawling with configurable fetchers,
+// parsers, and caching. It manages a pool of workers that process URLs from
+// a queue, following links according to the configured follow behavior.
+//
+// Crawler is safe for concurrent use after creation, but should not be modified
+// while crawling is in progress. Use New() to create instances.
 type Crawler struct {
 	processedURLs        sync.Map
 	queue                chan string
@@ -79,7 +200,22 @@ type Crawler struct {
 	cancel               context.CancelFunc
 }
 
-// New creates a new crawler.
+// New creates a new Crawler with the specified options. It validates and sets
+// default values for optional fields, compiles rule patterns, and initializes
+// the worker queue.
+//
+// Returns an error if any parser or fetcher rules have invalid patterns, or if
+// required configuration is missing.
+//
+// Example:
+//
+//	crawler, err := crawler.New(crawler.Options{
+//		Workers:        5,
+//		MaxURLs:        1000,
+//		RequestDelay:   time.Second,
+//		DefaultFetcher: fetch.NewMockFetcher(),
+//		FollowBehavior: crawler.FollowSameDomain,
+//	})
 func New(opts Options) (*Crawler, error) {
 	logger := opts.Logger
 	if logger == nil {
@@ -179,8 +315,30 @@ func (c *Crawler) getActiveWorkers() int64 {
 	return atomic.LoadInt64(&c.activeWorkers)
 }
 
-// Crawl the provided URLs and call the callback for each processed page.
-// Links may be followed depending on the configured follow behavior.
+// Crawl begins crawling from the provided seed URLs, invoking the callback
+// for each page processed. The crawler will follow discovered links according
+// to the configured FollowBehavior.
+//
+// Crawl blocks until all reachable URLs have been processed, the context is
+// canceled, MaxURLs is reached, or an unrecoverable error occurs. Workers will
+// process pages concurrently according to the Workers setting.
+//
+// The callback is invoked synchronously by worker goroutines for each page.
+// If the callback needs to perform expensive operations, it should dispatch
+// work to separate goroutines to avoid blocking the crawler.
+//
+// Returns an error if the crawler is already running or if the context is
+// canceled before crawling begins.
+//
+// Example:
+//
+//	err := crawler.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *crawler.Result) {
+//		if result.Error != nil {
+//			log.Printf("Error: %v", result.Error)
+//			return
+//		}
+//		fmt.Printf("Crawled %s: found %d links\n", result.URL, len(result.Links))
+//	})
 func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) error {
 	if c.running {
 		return errors.New("crawler is already running")
@@ -225,6 +383,11 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	return nil
 }
 
+// Stop gracefully stops the crawler by canceling its context. This signals
+// workers to finish their current tasks and stop processing new URLs.
+//
+// Stop is safe to call concurrently and can be called multiple times.
+// It does nothing if the crawler is not currently running.
 func (c *Crawler) Stop() {
 	if c.cancel != nil {
 		c.cancel()
@@ -475,7 +638,12 @@ func (c *Crawler) progressReporter(ctx context.Context) {
 	}
 }
 
-// GetStats returns the current crawling statistics
+// GetStats returns the current crawling statistics, including counts of
+// processed, succeeded, and failed URLs. The returned statistics are safe
+// to read concurrently and reflect the latest state.
+//
+// The statistics continue to accumulate across multiple calls to Crawl()
+// on the same Crawler instance.
 func (c *Crawler) GetStats() *CrawlerStats {
 	return c.stats
 }

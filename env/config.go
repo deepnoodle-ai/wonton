@@ -2,6 +2,10 @@
 // .env files, and JSON files. It supports struct tags for automatic binding,
 // variable prefixes, stage-based configuration, and aggregate error handling.
 //
+// The package is designed for both simple and complex configuration scenarios,
+// with support for nested structs, slices, maps, custom parsers, and validation.
+// All parsing errors are collected and reported together for better debugging.
+//
 // Basic usage:
 //
 //	type Config struct {
@@ -10,6 +14,9 @@
 //	}
 //
 //	cfg, err := env.Parse[Config]()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //
 // With options:
 //
@@ -18,6 +25,22 @@
 //	    env.WithEnvFile(".env"),
 //	    env.WithJSONFile("config.json"),
 //	)
+//
+// Supported struct tag options:
+//   - env:"VAR" - environment variable name
+//   - env:"VAR,required" - field must be set
+//   - env:"VAR,notEmpty" - field must be non-empty
+//   - env:"VAR,file" - value is a file path, load file contents
+//   - env:"VAR,expand" - expand $VAR references in value
+//   - env:"VAR,unset" - unset env var after reading (useful for secrets)
+//   - envDefault:"value" - default value if not set
+//   - envPrefix:"PREFIX_" - prefix for nested struct fields
+//   - envSeparator:"," - separator for slice/map parsing
+//   - envKeyValSeparator:":" - separator for map key:value pairs
+//
+// The package supports all basic Go types (string, bool, int, uint, float),
+// time.Duration, time.Location, slices, maps, pointers, and any type
+// implementing encoding.TextUnmarshaler.
 package env
 
 import (
@@ -31,7 +54,9 @@ import (
 	"time"
 )
 
-// Options configures the parsing behavior.
+// Options configures the parsing behavior for Parse and ParseInto.
+// Options are typically set using functional option helpers like WithPrefix,
+// WithEnvFile, etc., rather than by constructing this struct directly.
 type Options struct {
 	// Environment is a custom map of environment variables.
 	// If nil, os.Environ() is used.
@@ -78,13 +103,17 @@ type Options struct {
 	RequireConfigFile bool
 }
 
-// ParserFunc parses a string value into a typed value.
+// ParserFunc is a function that parses a string value into a typed value.
+// It is used with WithParser to provide custom parsing logic for specific types.
 type ParserFunc func(value string) (any, error)
 
-// OnSetFunc is called when a field is set.
+// OnSetFunc is a callback function that is invoked when a field value is set during parsing.
+// It receives the field name, environment variable name, parsed value, and whether the
+// value came from a default.
 type OnSetFunc func(fieldName, envVar string, value any, isDefault bool)
 
-// Option is a functional option for configuring parsing.
+// Option is a functional option for configuring the parsing behavior.
+// Use the With* functions to create options for Parse and ParseInto.
 type Option func(*Options)
 
 // WithPrefix sets the environment variable prefix.
@@ -94,8 +123,13 @@ func WithPrefix(prefix string) Option {
 	}
 }
 
-// WithStage enables stage-based variable resolution.
-// Example: WithStage("PROD") causes PORT to look for PROD_PORT first.
+// WithStage enables stage-based variable resolution. When set, the parser
+// looks for stage-prefixed variables before falling back to the base variable.
+//
+// This is useful for multi-environment configurations where some variables
+// differ per environment while others remain the same.
+//
+// Example: WithStage("PROD") causes PORT to look for PROD_PORT first, then PORT.
 func WithStage(stage string) Option {
 	return func(o *Options) {
 		o.Stage = stage
@@ -149,7 +183,21 @@ func WithUseFieldName() Option {
 	}
 }
 
-// WithParser adds a custom parser for a specific type.
+// WithParser adds a custom parser for a specific type T. This allows you to
+// define how to parse environment variable strings into custom types.
+//
+// Example:
+//
+//	type IPAddr struct{ net.IP }
+//	cfg, err := env.Parse[Config](
+//	    env.WithParser(func(s string) (IPAddr, error) {
+//	        ip := net.ParseIP(s)
+//	        if ip == nil {
+//	            return IPAddr{}, fmt.Errorf("invalid IP")
+//	        }
+//	        return IPAddr{ip}, nil
+//	    }),
+//	)
 func WithParser[T any](parser func(string) (T, error)) Option {
 	return func(o *Options) {
 		if o.FuncMap == nil {
@@ -162,7 +210,27 @@ func WithParser[T any](parser func(string) (T, error)) Option {
 	}
 }
 
-// WithOnSet registers a callback for when fields are set.
+// WithOnSet registers a callback that is called whenever a field value is set
+// during parsing. This is useful for logging, debugging, or tracking which
+// configuration values came from defaults vs environment variables.
+//
+// The callback receives:
+//   - fieldName: the struct field name
+//   - envVar: the full environment variable name (with prefix/stage if applicable)
+//   - value: the parsed value that was set
+//   - isDefault: true if the value came from envDefault tag, false if from environment
+//
+// Example:
+//
+//	cfg, err := env.Parse[Config](
+//	    env.WithOnSet(func(field, envVar string, value any, isDefault bool) {
+//	        if isDefault {
+//	            log.Printf("%s using default value", field)
+//	        } else {
+//	            log.Printf("%s loaded from %s", field, envVar)
+//	        }
+//	    }),
+//	)
 func WithOnSet(fn OnSetFunc) Option {
 	return func(o *Options) {
 		o.OnSet = fn
@@ -178,7 +246,25 @@ func WithRequireConfigFile() Option {
 	}
 }
 
-// Parse parses environment variables into a struct of type T.
+// Parse parses environment variables into a struct of type T and returns the populated struct.
+// This is the primary entry point for configuration loading.
+//
+// The function loads configuration in the following order (later sources override earlier):
+//  1. .env files (if specified with WithEnvFile)
+//  2. JSON files (if specified with WithJSONFile)
+//  3. Environment variables (always take precedence)
+//
+// Example:
+//
+//	type Config struct {
+//	    Host string `env:"HOST" envDefault:"localhost"`
+//	    Port int    `env:"PORT" envDefault:"8080"`
+//	}
+//
+//	cfg, err := env.Parse[Config](
+//	    env.WithEnvFile(".env"),
+//	    env.WithPrefix("MYAPP"),
+//	)
 func Parse[T any](opts ...Option) (T, error) {
 	var result T
 	if err := ParseInto(&result, opts...); err != nil {
@@ -187,7 +273,14 @@ func Parse[T any](opts ...Option) (T, error) {
 	return result, nil
 }
 
-// Must wraps Parse and panics on error.
+// Must wraps Parse and panics on error. Useful for initialization where
+// configuration errors should be fatal.
+//
+// Example:
+//
+//	var cfg = env.Must[Config](
+//	    env.WithEnvFile(".env"),
+//	)
 func Must[T any](opts ...Option) T {
 	result, err := Parse[T](opts...)
 	if err != nil {
@@ -197,6 +290,13 @@ func Must[T any](opts ...Option) T {
 }
 
 // ParseInto parses environment variables into an existing struct pointer.
+// Unlike Parse, this modifies an existing struct in place, which is useful
+// when you need to preserve unexported fields or embed configuration in a larger struct.
+//
+// Example:
+//
+//	cfg := Config{internalField: "preserved"}
+//	err := env.ParseInto(&cfg, env.WithEnvFile(".env"))
 func ParseInto(v any, opts ...Option) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {

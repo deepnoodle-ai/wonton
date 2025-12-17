@@ -11,6 +11,144 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
+// Example demonstrates basic configuration parsing with default values.
+func Example() {
+	type Config struct {
+		Host string `env:"HOST" envDefault:"localhost"`
+		Port int    `env:"PORT" envDefault:"8080"`
+	}
+
+	// Parse with defaults (no environment variables set)
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Host: %s, Port: %d\n", cfg.Host, cfg.Port)
+	// Output: Host: localhost, Port: 8080
+}
+
+// Example_withPrefix demonstrates using a prefix for all environment variables.
+func Example_withPrefix() {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	env := map[string]string{
+		"MYAPP_HOST": "api.example.com",
+		"MYAPP_PORT": "443",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithPrefix("MYAPP"),
+	)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Host: %s, Port: %d\n", cfg.Host, cfg.Port)
+	// Output: Host: api.example.com, Port: 443
+}
+
+// Example_nestedStructs demonstrates configuration with nested structs.
+func Example_nestedStructs() {
+	type Database struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	type Config struct {
+		Database Database `envPrefix:"DB_"`
+	}
+
+	env := map[string]string{
+		"DB_HOST": "postgres.example.com",
+		"DB_PORT": "5432",
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(env))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Database: %s:%d\n", cfg.Database.Host, cfg.Database.Port)
+	// Output: Database: postgres.example.com:5432
+}
+
+// Example_slicesAndMaps demonstrates parsing slices and maps from environment variables.
+func Example_slicesAndMaps() {
+	type Config struct {
+		Hosts  []string          `env:"HOSTS"`
+		Labels map[string]string `env:"LABELS"`
+	}
+
+	env := map[string]string{
+		"HOSTS":  "host1,host2,host3",
+		"LABELS": "env:prod,region:us-west",
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(env))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Hosts: %v\n", cfg.Hosts)
+	fmt.Printf("Labels: %v\n", cfg.Labels)
+	// Output:
+	// Hosts: [host1 host2 host3]
+	// Labels: map[env:prod region:us-west]
+}
+
+// Example_customParser demonstrates using a custom parser for a user-defined type.
+func Example_customParser() {
+	type LogLevel int
+	const (
+		Debug LogLevel = iota
+		Info
+		Warn
+		Error
+	)
+
+	type Config struct {
+		Level LogLevel `env:"LOG_LEVEL"`
+	}
+
+	env := map[string]string{
+		"LOG_LEVEL": "warn",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithParser(func(s string) (LogLevel, error) {
+			switch strings.ToLower(s) {
+			case "debug":
+				return Debug, nil
+			case "info":
+				return Info, nil
+			case "warn":
+				return Warn, nil
+			case "error":
+				return Error, nil
+			default:
+				return 0, fmt.Errorf("invalid log level: %s", s)
+			}
+		}),
+	)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Log Level: %d (Warn)\n", cfg.Level)
+	// Output: Log Level: 2 (Warn)
+}
+
 func TestParse_BasicTypes(t *testing.T) {
 	type Config struct {
 		Host     string        `env:"HOST"`

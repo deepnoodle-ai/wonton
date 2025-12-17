@@ -11,7 +11,16 @@ import (
 	"time"
 )
 
-// Player plays back recorded terminal sessions
+// Player plays back recorded terminal sessions with timing preservation.
+//
+// Player loads asciinema v2 format recordings and plays them back to an
+// io.Writer, preserving the original timing between events. It supports
+// speed adjustment, pause/resume, seeking, and looping.
+//
+// Playback is performed in a blocking manner by Play(), or you can run
+// it in a goroutine and control it with the various control methods.
+//
+// All methods are safe for concurrent use.
 type Player struct {
 	events       []RecordingEvent
 	header       RecordingHeader
@@ -29,15 +38,17 @@ type Player struct {
 	stopped      bool
 }
 
-// PlayerOptions configures playback behavior
+// PlayerOptions configures playback behavior.
 type PlayerOptions struct {
-	Speed   float64   // Playback speed multiplier (default: 1.0)
-	Loop    bool      // Loop playback when finished
-	MaxIdle float64   // Max idle time between events (0 = preserve original)
+	Speed   float64   // Playback speed multiplier (1.0 = normal speed, 2.0 = 2x, etc.)
+	Loop    bool      // Loop playback when finished (restart from beginning)
+	MaxIdle float64   // Max idle time between events in seconds (0 = preserve original timing)
 	Output  io.Writer // Output destination (default: os.Stdout)
 }
 
-// DefaultPlayerOptions returns sensible defaults
+// DefaultPlayerOptions returns sensible defaults for playback.
+//
+// Returns options with normal speed (1.0), no looping, and output to stdout.
 func DefaultPlayerOptions() PlayerOptions {
 	return PlayerOptions{
 		Speed:   1.0,
@@ -47,7 +58,23 @@ func DefaultPlayerOptions() PlayerOptions {
 	}
 }
 
-// NewPlayer loads a recording file and creates a player
+// NewPlayer creates a new player from a .cast recording file.
+//
+// The recording file is loaded completely into memory. Files can be
+// gzip-compressed (detected automatically). Invalid or malformed events
+// are silently skipped during loading.
+//
+// Example:
+//
+//	player, err := NewPlayer("demo.cast", PlayerOptions{
+//	    Speed: 2.0,
+//	    MaxIdle: 1.0,
+//	    Output: os.Stdout,
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	player.Play() // Blocks until playback completes
 func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -148,7 +175,24 @@ func NewPlayer(filename string, opts PlayerOptions) (*Player, error) {
 	}, nil
 }
 
-// Play starts playback of the recording (blocks until complete or stopped)
+// Play starts playback of the recording.
+//
+// This method blocks until playback completes, is stopped via Stop(),
+// or an error occurs. Events are written to the configured output writer
+// with timing preserved according to the speed multiplier.
+//
+// If Loop is enabled, playback will restart from the beginning when it
+// reaches the end. Call Stop() from another goroutine to end looped playback.
+//
+// Example:
+//
+//	// Blocking playback
+//	err := player.Play()
+//
+//	// Playback in background with controls
+//	go player.Play()
+//	time.Sleep(5 * time.Second)
+//	player.Pause()
 func (p *Player) Play() error {
 	p.mu.Lock()
 	p.startTime = time.Now()
@@ -283,7 +327,11 @@ func (p *Player) applyMaxIdle(events []RecordingEvent) []RecordingEvent {
 	return result
 }
 
-// Pause pauses playback
+// Pause pauses playback.
+//
+// Playback can be resumed with Resume(). While paused, no events
+// are written to the output. The pause time is tracked internally
+// to prevent time jumps when resuming.
 func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -294,7 +342,9 @@ func (p *Player) Pause() {
 	}
 }
 
-// Resume resumes playback
+// Resume resumes a paused playback.
+//
+// If playback is not paused, this is a no-op.
 func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -306,7 +356,7 @@ func (p *Player) Resume() {
 	}
 }
 
-// TogglePause toggles pause/resume
+// TogglePause toggles between paused and playing states.
 func (p *Player) TogglePause() {
 	p.mu.RLock()
 	paused := p.paused
@@ -319,14 +369,17 @@ func (p *Player) TogglePause() {
 	}
 }
 
-// IsPaused returns true if playback is paused
+// IsPaused returns true if playback is currently paused.
 func (p *Player) IsPaused() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.paused
 }
 
-// Stop stops playback completely
+// Stop stops playback immediately and permanently.
+//
+// After calling Stop, the player cannot be restarted. Create a new
+// player if you need to play the recording again.
 func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -337,7 +390,13 @@ func (p *Player) Stop() {
 	}
 }
 
-// SetSpeed sets the playback speed multiplier
+// SetSpeed changes the playback speed multiplier.
+//
+// The speed is adjusted smoothly to prevent jumps in playback position.
+// Values less than or equal to 0 are ignored. Common values:
+//   - 0.5 = half speed (slower)
+//   - 1.0 = normal speed
+//   - 2.0 = double speed (faster)
 func (p *Player) SetSpeed(speed float64) {
 	if speed <= 0 {
 		return
@@ -360,21 +419,27 @@ func (p *Player) SetSpeed(speed float64) {
 	p.speed = speed
 }
 
-// Speed returns the current playback speed
+// Speed returns the current playback speed multiplier.
 func (p *Player) Speed() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.speed
 }
 
-// SetLoop enables or disables looping
+// SetLoop enables or disables looping.
+//
+// When enabled, playback restarts from the beginning when it reaches the end.
 func (p *Player) SetLoop(loop bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.loop = loop
 }
 
-// Seek jumps to a specific time offset in the recording
+// Seek jumps to a specific time offset in the recording.
+//
+// The time is specified in seconds from the start of the recording.
+// Seeking adjusts the playback position to the event closest to the
+// target time. This can be called during playback.
 func (p *Player) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -395,12 +460,16 @@ func (p *Player) Seek(seconds float64) {
 	p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
 }
 
-// GetHeader returns the recording metadata
+// GetHeader returns the recording metadata.
+//
+// This includes terminal dimensions, title, timestamp, and environment variables.
 func (p *Player) GetHeader() RecordingHeader {
 	return p.header
 }
 
-// GetDuration returns the total duration of the recording in seconds
+// GetDuration returns the total duration of the recording in seconds.
+//
+// Returns 0 if the recording has no events.
 func (p *Player) GetDuration() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -411,7 +480,9 @@ func (p *Player) GetDuration() float64 {
 	return p.events[len(p.events)-1].Time
 }
 
-// GetPosition returns the current playback position in seconds
+// GetPosition returns the current playback position in seconds.
+//
+// This is the timestamp of the current event being played.
 func (p *Player) GetPosition() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -428,7 +499,9 @@ func (p *Player) GetPosition() float64 {
 	return p.events[p.currentIndex].Time
 }
 
-// GetProgress returns playback progress as a value between 0.0 and 1.0
+// GetProgress returns playback progress as a fraction between 0.0 and 1.0.
+//
+// Returns 0.0 at the start, 1.0 at the end, and values in between during playback.
 func (p *Player) GetProgress() float64 {
 	duration := p.GetDuration()
 	if duration == 0 {
@@ -437,7 +510,7 @@ func (p *Player) GetProgress() float64 {
 	return p.GetPosition() / duration
 }
 
-// EventCount returns the total number of events in the recording
+// EventCount returns the total number of events in the recording.
 func (p *Player) EventCount() int {
 	return len(p.events)
 }

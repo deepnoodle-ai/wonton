@@ -1,20 +1,61 @@
-// Package htmltomd converts HTML to Markdown format.
+// Package htmltomd converts HTML to Markdown format with graceful handling
+// of malformed input.
 //
-// The converter is designed to be graceful with malformed HTML, using
-// golang.org/x/net/html for robust parsing. It supports common HTML elements
-// and provides customization options for different Markdown styles.
+// This package is ideal for preparing web content for LLM consumption or
+// generating clean documentation from HTML sources. It uses golang.org/x/net/html
+// for robust parsing and handles malformed HTML gracefully, prioritizing best-effort
+// conversion over strict correctness.
 //
-// Basic usage:
+// # Features
 //
-//	md := htmltomd.Convert("<h1>Hello</h1><p>World</p>")
-//	// Output: "# Hello\n\nWorld"
+// - Robust parsing of both well-formed and malformed HTML
+// - Customizable output styles (ATX vs Setext headings, inline vs referenced links)
+// - Support for all common HTML elements including tables, lists, code blocks
+// - Automatic skipping of script, style, and other non-content tags
+// - Configurable tag filtering to exclude unwanted content
+// - Proper handling of Unicode, emoji, and wide characters
 //
-// With options:
+// # Basic Usage
 //
-//	md := htmltomd.ConvertWithOptions(html, &htmltomd.Options{
-//	    LinkStyle:   htmltomd.LinkStyleReferenced,
-//	    HeadingStyle: htmltomd.HeadingStyleSetext,
-//	})
+// Convert HTML to Markdown using default options:
+//
+//	html := "<h1>Getting Started</h1><p>Welcome to our <strong>API</strong>.</p>"
+//	md := htmltomd.Convert(html)
+//	// Output: "# Getting Started\n\nWelcome to our **API**."
+//
+// # Custom Options
+//
+// Control the conversion style with Options:
+//
+//	opts := &htmltomd.Options{
+//	    LinkStyle:      htmltomd.LinkStyleReferenced,  // Use [text][1] style links
+//	    HeadingStyle:   htmltomd.HeadingStyleSetext,   // Use underlined h1/h2
+//	    CodeBlockStyle: htmltomd.CodeBlockStyleIndented, // Use 4-space indentation
+//	    BulletChar:     "*",                            // Use * for bullets
+//	    SkipTags:       []string{"nav", "footer"},      // Skip these tags
+//	}
+//	md := htmltomd.ConvertWithOptions(html, opts)
+//
+// # Supported HTML Elements
+//
+// The converter handles a wide range of HTML elements:
+//
+//   - Headings: h1-h6
+//   - Text formatting: strong, b, em, i, del, s, strike, code
+//   - Links: a (preserves href and title attributes)
+//   - Images: img (preserves src and alt attributes)
+//   - Lists: ul, ol, li with full nesting support
+//   - Blockquotes: blockquote with nesting
+//   - Code blocks: pre, code with language detection from class attributes
+//   - Tables: table, thead, tbody, tr, th, td
+//   - Horizontal rules: hr
+//   - Line breaks: br
+//
+// # Error Handling
+//
+// The converter never returns errors. Instead, it gracefully handles invalid
+// HTML by using best-effort parsing. If HTML is completely unparseable, it
+// falls back to stripping tags and normalizing whitespace.
 package htmltomd
 
 import (
@@ -63,27 +104,61 @@ const (
 	CodeBlockStyleIndented
 )
 
-// Options configures the HTML to Markdown conversion.
+// Options configures the HTML to Markdown conversion process.
+//
+// All fields are optional and will use sensible defaults if not specified.
+// The zero value of Options produces default behavior equivalent to
+// DefaultOptions().
+//
+// Example customization:
+//
+//	opts := &htmltomd.Options{
+//	    LinkStyle:      htmltomd.LinkStyleReferenced,  // Collect links at end
+//	    HeadingStyle:   htmltomd.HeadingStyleSetext,   // Underline h1 and h2
+//	    CodeBlockStyle: htmltomd.CodeBlockStyleIndented, // 4-space indented code
+//	    BulletChar:     "*",                            // Use asterisks
+//	    SkipTags:       []string{"nav", "footer"},      // Ignore navigation
+//	}
 type Options struct {
-	// LinkStyle controls how links are rendered. Default is inline.
+	// LinkStyle controls how links are rendered in the output.
+	// Default is LinkStyleInline, which renders links as [text](url).
+	// Use LinkStyleReferenced to collect link references at the end.
 	LinkStyle LinkStyle
 
-	// HeadingStyle controls how headings are rendered. Default is ATX (#).
+	// HeadingStyle controls how headings are rendered in the output.
+	// Default is HeadingStyleATX, which uses # prefix (e.g., ## Heading).
+	// Use HeadingStyleSetext for h1 and h2 with underlines (=== or ---).
 	HeadingStyle HeadingStyle
 
-	// CodeBlockStyle controls how code blocks are rendered. Default is fenced.
+	// CodeBlockStyle controls how code blocks are rendered in the output.
+	// Default is CodeBlockStyleFenced, which uses ``` fences.
+	// Use CodeBlockStyleIndented for 4-space indented code blocks.
 	CodeBlockStyle CodeBlockStyle
 
 	// BulletChar is the character used for unordered list items.
-	// Default is "-".
+	// Valid values are "-", "*", or "+". Default is "-".
 	BulletChar string
 
-	// SkipTags is a list of HTML tag names to skip entirely.
+	// SkipTags is a list of HTML tag names to skip entirely during conversion.
 	// Content within these tags will not appear in the output.
+	// Tag names are case-insensitive. The tags "script", "style", "head",
+	// and "noscript" are always skipped regardless of this setting.
+	//
+	// Example: []string{"nav", "footer", "aside"}
 	SkipTags []string
 }
 
 // DefaultOptions returns the default conversion options.
+//
+// The defaults are:
+//   - LinkStyle: LinkStyleInline (renders as [text](url))
+//   - HeadingStyle: HeadingStyleATX (renders as # Heading)
+//   - CodeBlockStyle: CodeBlockStyleFenced (renders with ``` fences)
+//   - BulletChar: "-" (unordered lists use hyphens)
+//   - SkipTags: nil (no additional tags skipped beyond defaults)
+//
+// Note that script, style, head, and noscript tags are always skipped
+// regardless of options.
 func DefaultOptions() *Options {
 	return &Options{
 		LinkStyle:      LinkStyleInline,
@@ -95,11 +170,41 @@ func DefaultOptions() *Options {
 }
 
 // Convert converts HTML to Markdown using default options.
+//
+// This is a convenience function equivalent to ConvertWithOptions(htmlContent, DefaultOptions()).
+// It handles malformed HTML gracefully and never returns an error.
+//
+// Example:
+//
+//	html := "<h1>Title</h1><p>Content with <strong>bold</strong> text.</p>"
+//	md := htmltomd.Convert(html)
+//	// Returns: "# Title\n\nContent with **bold** text."
 func Convert(htmlContent string) string {
 	return ConvertWithOptions(htmlContent, DefaultOptions())
 }
 
 // ConvertWithOptions converts HTML to Markdown with custom options.
+//
+// This function provides full control over the conversion process through the
+// Options parameter. If opts is nil, default options are used.
+//
+// The conversion handles malformed HTML gracefully, using golang.org/x/net/html's
+// error recovery. If HTML parsing fails completely, the function falls back to
+// stripping tags and normalizing whitespace.
+//
+// Examples:
+//
+//	// Use referenced links instead of inline
+//	opts := &htmltomd.Options{LinkStyle: htmltomd.LinkStyleReferenced}
+//	md := htmltomd.ConvertWithOptions(html, opts)
+//
+//	// Skip navigation and footer elements
+//	opts := &htmltomd.Options{SkipTags: []string{"nav", "footer"}}
+//	md := htmltomd.ConvertWithOptions(html, opts)
+//
+//	// Use Setext-style headings (underlined)
+//	opts := &htmltomd.Options{HeadingStyle: htmltomd.HeadingStyleSetext}
+//	md := htmltomd.ConvertWithOptions(html, opts)
 func ConvertWithOptions(htmlContent string, opts *Options) string {
 	if opts == nil {
 		opts = DefaultOptions()

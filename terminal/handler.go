@@ -6,7 +6,52 @@ import (
 	"time"
 )
 
-// MouseHandler manages mouse regions and events with advanced features
+// MouseHandler manages mouse regions and dispatches events to them.
+//
+// MouseHandler provides a higher-level abstraction over raw mouse events,
+// implementing:
+//   - Region-based event routing (only regions under the cursor receive events)
+//   - Click detection (press + release without movement)
+//   - Double-click and triple-click detection with configurable thresholds
+//   - Drag detection with configurable movement threshold
+//   - Enter/leave events when mouse moves between regions
+//   - Z-index based layering for overlapping regions
+//   - Event capture during drag operations
+//
+// # Basic Usage
+//
+//	handler := terminal.NewMouseHandler()
+//
+//	// Add a clickable region
+//	region := &terminal.MouseRegion{
+//	    X: 10, Y: 5,
+//	    Width: 15, Height: 1,
+//	    OnClick: func(e *terminal.MouseEvent) {
+//	        fmt.Println("Button clicked!")
+//	    },
+//	}
+//	handler.AddRegion(region)
+//
+//	// Route mouse events to regions
+//	event := &terminal.MouseEvent{...}
+//	handler.HandleEvent(event)
+//
+// # Event Flow
+//
+// When a mouse event is received:
+//  1. The handler finds the topmost region (highest ZIndex) under the cursor
+//  2. If the region changed, OnLeave is called on the old region and OnEnter on the new
+//  3. The event is dispatched to the appropriate handler (OnClick, OnDrag, etc.)
+//  4. Click detection tracks press/release to synthesize click events
+//  5. Drag detection starts when movement exceeds DragStartThreshold
+//
+// # Configuration
+//
+// The handler has configurable thresholds:
+//   - DoubleClickThreshold: max time between clicks for double-click (default 500ms)
+//   - TripleClickThreshold: max time between clicks for triple-click (default 500ms)
+//   - ClickMoveThreshold: max pixel movement to count as click (default 2)
+//   - DragStartThreshold: min pixel movement to start drag (default 5)
 type MouseHandler struct {
 	regions         []*MouseRegion
 	hoveredRegion   *MouseRegion

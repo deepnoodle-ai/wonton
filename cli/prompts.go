@@ -4,11 +4,19 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// Prompt helpers for interactive CLI commands.
+// This file provides prompt helpers for interactive CLI commands.
 // These wrap the tui package to provide simple blocking prompts.
 
 // Select displays a selection prompt and returns the selected index.
+//
+// The user can navigate with arrow keys or j/k and select with Enter.
 // Returns -1 and an error if cancelled or not interactive.
+//
+//	idx, err := ctx.Select("Choose environment:", "dev", "staging", "prod")
+//	if err != nil {
+//	    return err
+//	}
+//	env := []string{"dev", "staging", "prod"}[idx]
 func (c *Context) Select(title string, options ...string) (int, error) {
 	if !c.Interactive() {
 		return -1, Error("interactive terminal required for selection prompts")
@@ -39,7 +47,11 @@ func (c *Context) Select(title string, options ...string) (int, error) {
 	return selected, nil
 }
 
-// SelectString displays a selection prompt and returns the selected option string.
+// SelectString displays a selection prompt and returns the selected option.
+//
+// This is a convenience wrapper around Select that returns the string directly:
+//
+//	env, err := ctx.SelectString("Choose environment:", "dev", "staging", "prod")
 func (c *Context) SelectString(title string, options ...string) (string, error) {
 	idx, err := c.Select(title, options...)
 	if err != nil {
@@ -52,6 +64,11 @@ func (c *Context) SelectString(title string, options ...string) (string, error) 
 }
 
 // Input displays a text input prompt and returns the entered text.
+//
+//	name, err := ctx.Input("Enter your name: ")
+//	if err != nil {
+//	    return err
+//	}
 func (c *Context) Input(prompt string) (string, error) {
 	if !c.Interactive() {
 		return "", Error("interactive terminal required for input prompts")
@@ -82,6 +99,12 @@ func (c *Context) Input(prompt string) (string, error) {
 }
 
 // Confirm displays a yes/no confirmation prompt.
+//
+// Returns true if the user selected "Yes", false otherwise:
+//
+//	if confirmed, err := ctx.Confirm("Delete all files?"); err == nil && confirmed {
+//	    // Proceed with deletion
+//	}
 func (c *Context) Confirm(message string) (bool, error) {
 	idx, err := c.Select(message, "Yes", "No")
 	if err != nil {

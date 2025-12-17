@@ -9,7 +9,24 @@ import (
 	"github.com/deepnoodle-ai/wonton/color"
 )
 
-// Context provides access to command execution context.
+// Context provides access to the command execution environment.
+//
+// Context is passed to every command handler and provides:
+//   - Parsed flags and arguments
+//   - Standard I/O streams
+//   - Application and command metadata
+//   - Helper methods for output and prompts
+//
+// Example usage in a handler:
+//
+//	func handler(ctx *cli.Context) error {
+//	    name := ctx.Arg(0)
+//	    verbose := ctx.Bool("verbose")
+//	    if verbose {
+//	        ctx.Info("Processing %s...", name)
+//	    }
+//	    return nil
+//	}
 type Context struct {
 	context     context.Context
 	app         *App
@@ -82,6 +99,9 @@ func (c *Context) Arg(i int) string {
 // Flag accessors
 
 // String returns a flag value as a string.
+//
+// If the flag is not set, returns an empty string. To check if a flag
+// was explicitly set, use IsSet.
 func (c *Context) String(name string) string {
 	if v, ok := c.flags[name]; ok {
 		switch val := v.(type) {
@@ -164,7 +184,14 @@ func (c *Context) Bool(name string) bool {
 	return false
 }
 
-// IsSet returns true if a flag was explicitly set.
+// IsSet returns true if a flag was explicitly set by the user or environment.
+//
+// This distinguishes between a flag using its default value versus being
+// explicitly set to that value:
+//
+//	if ctx.IsSet("force") {
+//	    // User explicitly passed --force
+//	}
 func (c *Context) IsSet(name string) bool {
 	if c.setFlags == nil {
 		return false
@@ -206,7 +233,9 @@ func (c *Context) Errorln(a ...any) {
 
 // Semantic output helpers with colors
 
-// Success prints a green success message to stdout.
+// Success prints a success message to stdout in green (if color enabled).
+//
+//	ctx.Success("Deployment completed successfully!")
 func (c *Context) Success(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	if c.app != nil && c.app.colorEnabled {
@@ -215,7 +244,9 @@ func (c *Context) Success(format string, a ...any) {
 	fmt.Fprintln(c.stdout, msg)
 }
 
-// Fail prints a red error message to stderr.
+// Fail prints an error message to stderr in red (if color enabled).
+//
+//	ctx.Fail("Deployment failed: %v", err)
 func (c *Context) Fail(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	if c.app != nil && c.app.colorEnabled {
@@ -224,7 +255,9 @@ func (c *Context) Fail(format string, a ...any) {
 	fmt.Fprintln(c.stderr, msg)
 }
 
-// Warn prints a yellow warning message to stderr.
+// Warn prints a warning message to stderr in yellow (if color enabled).
+//
+//	ctx.Warn("Configuration file not found, using defaults")
 func (c *Context) Warn(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	if c.app != nil && c.app.colorEnabled {
@@ -233,7 +266,9 @@ func (c *Context) Warn(format string, a ...any) {
 	fmt.Fprintln(c.stderr, msg)
 }
 
-// Info prints a cyan informational message to stdout.
+// Info prints an informational message to stdout in cyan (if color enabled).
+//
+//	ctx.Info("Processing %d files...", count)
 func (c *Context) Info(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	if c.app != nil && c.app.colorEnabled {

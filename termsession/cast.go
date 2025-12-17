@@ -9,8 +9,23 @@ import (
 	"os"
 )
 
-// LoadCastFile loads a .cast file (asciinema v2 format) and returns
-// the header and all events.
+// LoadCastFile loads a .cast file from disk and returns its contents.
+//
+// The file is automatically decompressed if it's gzip-compressed.
+// This is a convenience wrapper around LoadCast that opens the file for you.
+//
+// Returns:
+//   - RecordingHeader: The file metadata (dimensions, title, etc.)
+//   - []RecordingEvent: All events in chronological order
+//   - error: Any error encountered while loading
+//
+// Example:
+//
+//	header, events, err := termsession.LoadCastFile("recording.cast")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Recording is %.2f seconds long\n", events[len(events)-1].Time)
 func LoadCastFile(filename string) (*RecordingHeader, []RecordingEvent, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -22,7 +37,15 @@ func LoadCastFile(filename string) (*RecordingHeader, []RecordingEvent, error) {
 }
 
 // LoadCast loads a .cast recording from an io.Reader.
-// It automatically detects and handles gzip compression.
+//
+// This function automatically detects and handles gzip compression by checking
+// the magic bytes. It parses the asciinema v2 format: first line is a JSON header,
+// subsequent lines are JSON arrays representing events.
+//
+// Malformed events are silently skipped to handle recordings with corruption.
+//
+// Use this when you have a recording in memory or from a network stream.
+// For loading from a file path, use LoadCastFile instead.
 func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 	// We need to peek at the first bytes to detect gzip
 	// Use a seeker if available, otherwise buffer
@@ -121,7 +144,10 @@ func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 	return &header, events, nil
 }
 
-// Duration returns the total duration of events in seconds.
+// Duration returns the total duration of a recording in seconds.
+//
+// The duration is determined by the timestamp of the last event.
+// Returns 0 if there are no events.
 func Duration(events []RecordingEvent) float64 {
 	if len(events) == 0 {
 		return 0
@@ -129,7 +155,13 @@ func Duration(events []RecordingEvent) float64 {
 	return events[len(events)-1].Time
 }
 
-// OutputEvents returns only output events (type "o"), filtering out input events.
+// OutputEvents filters and returns only output events (type "o").
+//
+// Input events (type "i") are filtered out. This is useful because most
+// playback scenarios only need to render output, and input events are
+// primarily kept for analysis purposes.
+//
+// The returned slice contains references to the original events (not copies).
 func OutputEvents(events []RecordingEvent) []RecordingEvent {
 	var output []RecordingEvent
 	for _, e := range events {

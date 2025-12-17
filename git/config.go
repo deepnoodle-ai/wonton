@@ -5,19 +5,36 @@ import (
 	"strings"
 )
 
-// ConfigScope specifies the scope for config operations.
+// ConfigScope specifies the scope for git config operations.
+//
+// Git configuration is hierarchical with three levels: system (all users),
+// global (current user), and local (current repository). More specific
+// scopes override broader ones.
 type ConfigScope string
 
 const (
-	// ConfigScopeLocal is repository-specific config.
+	// ConfigScopeLocal is repository-specific config (.git/config).
 	ConfigScopeLocal ConfigScope = "local"
-	// ConfigScopeGlobal is user-wide config.
+	// ConfigScopeGlobal is user-wide config (~/.gitconfig).
 	ConfigScopeGlobal ConfigScope = "global"
-	// ConfigScopeSystem is system-wide config.
+	// ConfigScopeSystem is system-wide config (/etc/gitconfig).
 	ConfigScopeSystem ConfigScope = "system"
 )
 
-// Config reads a git config value.
+// Config reads a git config value from any scope (local, global, or system).
+//
+// Returns an empty string if the key is not found. The search follows git's
+// normal precedence: local overrides global, global overrides system.
+//
+// Example:
+//
+//	branch, err := repo.Config(ctx, "branch.main.remote")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	if branch != "" {
+//	    fmt.Printf("Remote for main branch: %s\n", branch)
+//	}
 func (r *Repository) Config(ctx context.Context, key string) (string, error) {
 	out, err := r.run(ctx, "config", "--get", key)
 	if err != nil {
@@ -31,6 +48,9 @@ func (r *Repository) Config(ctx context.Context, key string) (string, error) {
 }
 
 // ConfigWithScope reads a git config value from a specific scope.
+//
+// Use this to query config at a specific level without considering other scopes.
+// Returns an empty string if the key is not found in the specified scope.
 func (r *Repository) ConfigWithScope(ctx context.Context, key string, scope ConfigScope) (string, error) {
 	out, err := r.run(ctx, "config", "--"+string(scope), "--get", key)
 	if err != nil {
@@ -42,7 +62,10 @@ func (r *Repository) ConfigWithScope(ctx context.Context, key string, scope Conf
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ConfigList returns all config values as a map.
+// ConfigList returns all config values as a map of key-value pairs.
+//
+// This includes configuration from all scopes (system, global, and local)
+// with the effective values after applying git's precedence rules.
 func (r *Repository) ConfigList(ctx context.Context) (map[string]string, error) {
 	out, err := r.run(ctx, "config", "--list")
 	if err != nil {
@@ -61,17 +84,20 @@ func (r *Repository) ConfigList(ctx context.Context) (map[string]string, error) 
 	return config, nil
 }
 
-// UserName returns the configured user.name.
+// UserName returns the configured user.name for commits.
+// Returns an empty string if not configured.
 func (r *Repository) UserName(ctx context.Context) (string, error) {
 	return r.Config(ctx, "user.name")
 }
 
-// UserEmail returns the configured user.email.
+// UserEmail returns the configured user.email for commits.
+// Returns an empty string if not configured.
 func (r *Repository) UserEmail(ctx context.Context) (string, error) {
 	return r.Config(ctx, "user.email")
 }
 
-// User returns the configured user name and email.
+// User returns the configured user name and email as a Person.
+// Returns nil if neither user.name nor user.email is configured.
 func (r *Repository) User(ctx context.Context) (*Person, error) {
 	name, err := r.UserName(ctx)
 	if err != nil {

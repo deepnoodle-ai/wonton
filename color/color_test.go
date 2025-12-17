@@ -1,6 +1,7 @@
 package color_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -287,4 +288,185 @@ func TestColorize_RespectsEnabled(t *testing.T) {
 
 	// Restore original state
 	color.Enabled = originalEnabled
+}
+
+// Example_basicColors demonstrates using standard ANSI colors.
+func Example_basicColors() {
+	fmt.Println(color.Red.Apply("Error: something went wrong"))
+	fmt.Println(color.Green.Apply("Success: operation completed"))
+	fmt.Println(color.Yellow.Apply("Warning: proceed with caution"))
+	fmt.Println(color.Blue.Apply("Info: processing data"))
+}
+
+// Example_rgbColors demonstrates using true color RGB values.
+func Example_rgbColors() {
+	orange := color.NewRGB(255, 128, 0)
+	purple := color.NewRGB(128, 0, 255)
+
+	fmt.Println(orange.Apply("Orange text", false))
+	fmt.Println(purple.Apply("Purple background", true))
+}
+
+// Example_gradient demonstrates creating a color gradient.
+func Example_gradient() {
+	// Create a gradient from red to blue
+	gradient := color.Gradient(
+		color.NewRGB(255, 0, 0),
+		color.NewRGB(0, 0, 255),
+		10,
+	)
+
+	for _, c := range gradient {
+		fmt.Print(c.Apply("█", false))
+	}
+	fmt.Println()
+}
+
+// Example_rainbowGradient demonstrates creating a rainbow gradient.
+func Example_rainbowGradient() {
+	rainbow := color.RainbowGradient(20)
+
+	for _, c := range rainbow {
+		fmt.Print(c.Apply("█", false))
+	}
+	fmt.Println()
+}
+
+// Example_hslColors demonstrates using HSL color space.
+func Example_hslColors() {
+	// Create colors by varying hue while keeping saturation and lightness constant
+	for i := 0; i < 12; i++ {
+		hue := float64(i) * 30.0 // Every 30 degrees
+		c := color.HSLToRGB(hue, 1.0, 0.5)
+		fmt.Print(c.Apply("█", false))
+	}
+	fmt.Println()
+
+	// Create shades of red by varying lightness
+	for i := 0; i < 5; i++ {
+		lightness := 0.2 + float64(i)*0.15
+		c := color.HSLToRGB(0, 1.0, lightness)
+		fmt.Print(c.Apply("█", false))
+	}
+	fmt.Println()
+}
+
+// Example_conditionalColor demonstrates respecting terminal capabilities.
+func Example_conditionalColor() {
+	// Check if we should colorize output
+	if color.ShouldColorize(os.Stdout) {
+		fmt.Println(color.Green.Apply("Terminal supports colors"))
+	} else {
+		fmt.Println("Plain text output")
+	}
+
+	// Use the global Enabled variable
+	originalEnabled := color.Enabled
+	color.Enabled = true
+	fmt.Println(color.Colorize(color.Blue, "This will be blue"))
+
+	color.Enabled = false
+	fmt.Println(color.Colorize(color.Blue, "This will be plain"))
+
+	color.Enabled = originalEnabled
+}
+
+// ExampleColor_Apply demonstrates applying foreground colors.
+func ExampleColor_Apply() {
+	fmt.Println(color.Red.Apply("Error message"))
+	fmt.Println(color.Green.Apply("Success message"))
+	fmt.Println(color.BrightYellow.Apply("Bright warning"))
+}
+
+// ExampleColor_ApplyBg demonstrates applying background colors.
+func ExampleColor_ApplyBg() {
+	fmt.Println(color.Red.ApplyBg(" ERROR "))
+	fmt.Println(color.Green.ApplyBg(" OK "))
+}
+
+// ExampleColor_ApplyDim demonstrates using dim colors for de-emphasis.
+func ExampleColor_ApplyDim() {
+	fmt.Println(color.White.Apply("Normal text"))
+	fmt.Println(color.White.ApplyDim("Dimmed text (less important)"))
+}
+
+// ExampleColor_Sprintf demonstrates formatted color output.
+func ExampleColor_Sprintf() {
+	count := 5
+	fmt.Println(color.Red.Sprintf("Found %d errors", count))
+	fmt.Println(color.Green.Sprintf("Processed %d items successfully", count))
+}
+
+// ExampleNewRGB demonstrates creating custom RGB colors.
+func ExampleNewRGB() {
+	orange := color.NewRGB(255, 128, 0)
+	teal := color.NewRGB(0, 128, 128)
+
+	fmt.Println(orange.Apply("Orange text", false))
+	fmt.Println(teal.Apply("Teal background", true))
+}
+
+// ExampleGradient demonstrates creating a linear gradient.
+func ExampleGradient() {
+	// Create a red-to-blue gradient
+	gradient := color.Gradient(
+		color.NewRGB(255, 0, 0),
+		color.NewRGB(0, 0, 255),
+		5,
+	)
+
+	for i, c := range gradient {
+		fmt.Printf("Step %d: %s\n", i, c.Apply("█████", false))
+	}
+}
+
+// ExampleMultiGradient demonstrates creating gradients with multiple stops.
+func ExampleMultiGradient() {
+	// Create a sunset gradient
+	sunset := color.MultiGradient([]color.RGB{
+		color.NewRGB(255, 0, 0),     // Red
+		color.NewRGB(255, 128, 0),   // Orange
+		color.NewRGB(128, 0, 128),   // Purple
+	}, 10)
+
+	for _, c := range sunset {
+		fmt.Print(c.Apply("█", false))
+	}
+	fmt.Println()
+}
+
+// ExampleHSLToRGB demonstrates HSL to RGB conversion.
+func ExampleHSLToRGB() {
+	// Pure red
+	red := color.HSLToRGB(0, 1.0, 0.5)
+	fmt.Println(red.Apply("Red", false))
+
+	// Dark red (low lightness)
+	darkRed := color.HSLToRGB(0, 1.0, 0.3)
+	fmt.Println(darkRed.Apply("Dark Red", false))
+
+	// Desaturated red (brownish)
+	brown := color.HSLToRGB(0, 0.5, 0.3)
+	fmt.Println(brown.Apply("Brown", false))
+}
+
+// ExampleShouldColorize demonstrates checking for color support.
+func ExampleShouldColorize() {
+	if color.ShouldColorize(os.Stdout) {
+		fmt.Println(color.Green.Apply("Colors are enabled"))
+	} else {
+		fmt.Println("Colors are disabled")
+	}
+}
+
+// ExampleApplyBold demonstrates bold text formatting.
+func ExampleApplyBold() {
+	fmt.Println(color.ApplyBold("Important:"), "This is a message")
+	fmt.Println("Normal text without bold")
+}
+
+// ExampleApplyDim demonstrates dim text formatting.
+func ExampleApplyDim() {
+	fmt.Println("Normal text")
+	fmt.Println(color.ApplyDim("(This is less important)"))
 }

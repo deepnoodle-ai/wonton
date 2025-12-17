@@ -7,11 +7,26 @@ import (
 	"unicode/utf8"
 )
 
-// NormalizeText applies transformations to the given text that are commonly
-// helpful for cleaning up text read from a webpage.
-// - Trim whitespace
-// - Unescape HTML entities
-// - Remove non-printable characters
+// NormalizeText applies transformations to clean up text extracted from web pages.
+//
+// The following transformations are applied in order:
+//   - Trim leading and trailing whitespace
+//   - Unescape HTML entities (e.g., "&amp;" becomes "&", "&lt;" becomes "<")
+//   - Replace non-printable characters with spaces
+//
+// Non-printable characters are any Unicode characters that are not printable
+// according to unicode.IsPrint() and are not whitespace. These are replaced
+// with spaces rather than removed to preserve word boundaries.
+//
+// Returns the original text unchanged if it's empty after trimming.
+//
+// Example:
+//
+//	text := web.NormalizeText("  Hello &amp; goodbye  ")
+//	fmt.Println(text) // "Hello & goodbye"
+//
+//	text = web.NormalizeText("&lt;div&gt;content&lt;/div&gt;")
+//	fmt.Println(text) // "<div>content</div>"
 func NormalizeText(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -45,7 +60,19 @@ var punctuation = map[rune]bool{
 	'\'': true,
 }
 
-// EndsWithPunctuation checks if a string ends with a punctuation mark.
+// EndsWithPunctuation checks if a string ends with a common punctuation mark.
+//
+// The following punctuation characters are recognized: . , : ; ? ! " '
+//
+// This function correctly handles Unicode strings by checking the last rune
+// rather than the last byte. Returns false for empty strings.
+//
+// Example:
+//
+//	web.EndsWithPunctuation("Hello.")  // true
+//	web.EndsWithPunctuation("Hello?")  // true
+//	web.EndsWithPunctuation("Hello")   // false
+//	web.EndsWithPunctuation("")        // false
 func EndsWithPunctuation(s string) bool {
 	if len(s) == 0 {
 		return false

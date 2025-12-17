@@ -2,6 +2,7 @@ package gif
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"image/gif"
 	"testing"
@@ -389,4 +390,148 @@ func TestChainedAPI(t *testing.T) {
 	if g.FrameCount() != 2 {
 		t.Errorf("expected 2 frames, got %d", g.FrameCount())
 	}
+}
+
+// Example demonstrates creating a simple animated GIF.
+func Example() {
+	// Create a 100x100 pixel GIF
+	g := New(100, 100)
+
+	// Add 10 frames showing a moving circle
+	for i := 0; i < 10; i++ {
+		g.AddFrame(func(f *Frame) {
+			f.Fill(White)
+			f.FillCircle(20+i*8, 50, 10, Red)
+		})
+	}
+
+	// Save to file
+	if err := g.Save("animation.gif"); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+}
+
+// ExampleNew demonstrates creating a basic GIF with the default palette.
+func ExampleNew() {
+	g := New(200, 100)
+
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+		f.FillRect(50, 25, 100, 50, Blue)
+		f.DrawRect(49, 24, 102, 52, Black)
+	})
+
+	g.Save("simple.gif")
+}
+
+// ExampleNewWithPalette demonstrates creating a GIF with a custom palette.
+func ExampleNewWithPalette() {
+	// Create a custom palette with grayscale colors
+	palette := Grayscale(16)
+
+	g := NewWithPalette(100, 100, palette)
+
+	// Create frames with different shades
+	for i := 0; i < 16; i++ {
+		g.AddFrame(func(f *Frame) {
+			f.Fill(palette[i])
+		})
+	}
+
+	g.Save("grayscale.gif")
+}
+
+// ExampleGIF_AddFrame demonstrates adding frames with drawing operations.
+func ExampleGIF_AddFrame() {
+	g := New(150, 150)
+
+	// Add frames showing geometric shapes
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+		f.FillCircle(75, 75, 50, Red)
+	})
+
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+		f.FillRect(25, 25, 100, 100, Blue)
+	})
+
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+		f.DrawLine(0, 0, 150, 150, Green)
+		f.DrawLine(150, 0, 0, 150, Green)
+	})
+
+	g.Save("shapes.gif")
+}
+
+// ExampleGIF_SetLoopCount demonstrates controlling animation looping.
+func ExampleGIF_SetLoopCount() {
+	g := New(100, 50)
+
+	// Set to loop 3 times (not infinite)
+	g.SetLoopCount(3)
+
+	for i := 0; i < 5; i++ {
+		g.AddFrameWithDelay(func(f *Frame) {
+			f.Fill(White)
+			f.FillCircle(10+i*20, 25, 10, Red)
+		}, 20) // 200ms delay
+	}
+
+	g.Save("limited-loop.gif")
+}
+
+// ExampleFrame_DrawLine demonstrates drawing lines on a frame.
+func ExampleFrame_DrawLine() {
+	g := New(200, 200)
+
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+
+		// Draw a grid
+		for i := 0; i <= 200; i += 20 {
+			f.DrawLine(i, 0, i, 200, RGB(200, 200, 200))
+			f.DrawLine(0, i, 200, i, RGB(200, 200, 200))
+		}
+
+		// Draw diagonal lines
+		f.DrawLine(0, 0, 200, 200, Red)
+		f.DrawLine(200, 0, 0, 200, Blue)
+	})
+
+	g.Save("lines.gif")
+}
+
+// ExampleFrame_DrawCircle demonstrates drawing circles.
+func ExampleFrame_DrawCircle() {
+	g := New(200, 200)
+
+	g.AddFrame(func(f *Frame) {
+		f.Fill(White)
+
+		// Draw concentric circles
+		for r := 20; r <= 100; r += 20 {
+			f.DrawCircle(100, 100, r, Black)
+		}
+	})
+
+	g.Save("circles.gif")
+}
+
+// ExampleGrayscale demonstrates creating a grayscale palette.
+func ExampleGrayscale() {
+	// Create a 32-shade grayscale palette
+	palette := Grayscale(32)
+
+	g := NewWithPalette(320, 100, palette)
+
+	g.AddFrame(func(f *Frame) {
+		// Draw a gradient bar showing all shades
+		for i := 0; i < 32; i++ {
+			f.FillRect(i*10, 0, 10, 100, palette[i])
+		}
+	})
+
+	g.Save("gradient.gif")
 }

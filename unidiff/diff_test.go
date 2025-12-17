@@ -1,6 +1,7 @@
 package unidiff
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -301,4 +302,163 @@ func TestParse_HunkWithoutCounts(t *testing.T) {
 	hunk := diff.Files[0].Hunks[0]
 	assert.Equal(t, 5, hunk.OldStart)
 	assert.Equal(t, 5, hunk.NewStart)
+}
+
+// Example demonstrates basic parsing of a unified diff.
+func Example() {
+	diffText := `diff --git a/hello.go b/hello.go
+--- a/hello.go
++++ b/hello.go
+@@ -1,3 +1,4 @@
+ package main
+
++import "fmt"
+ func main() {`
+
+	diff, err := Parse(diffText)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, file := range diff.Files {
+		fmt.Printf("File: %s\n", file.NewPath)
+		for _, hunk := range file.Hunks {
+			fmt.Printf("  Changed at line %d\n", hunk.NewStart)
+			for _, line := range hunk.Lines {
+				if line.Type == LineAdded {
+					fmt.Printf("  Added: %s\n", line.Content)
+				}
+			}
+		}
+	}
+	// Output:
+	// File: hello.go
+	//   Changed at line 1
+	//   Added: import "fmt"
+}
+
+// Example_stats demonstrates calculating diff statistics.
+func Example_stats() {
+	diffText := `diff --git a/file.go b/file.go
+--- a/file.go
++++ b/file.go
+@@ -1,5 +1,6 @@
+ package main
+
++import "fmt"
++
+ func main() {
+-    println("old")
++    fmt.Println("new")`
+
+	diff, err := Parse(diffText)
+	if err != nil {
+		panic(err)
+	}
+
+	stats := diff.Stats()
+	fmt.Printf("Files changed: %d\n", stats.FilesChanged)
+	fmt.Printf("Additions: %d\n", stats.Additions)
+	fmt.Printf("Deletions: %d\n", stats.Deletions)
+	// Output:
+	// Files changed: 1
+	// Additions: 3
+	// Deletions: 1
+}
+
+// Example_lineNumbers demonstrates tracking line numbers.
+func Example_lineNumbers() {
+	diffText := `diff --git a/code.go b/code.go
+--- a/code.go
++++ b/code.go
+@@ -10,3 +10,3 @@
+ func process() {
+-oldCode()
++newCode()
+ }`
+
+	diff, err := Parse(diffText)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, file := range diff.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				switch line.Type {
+				case LineAdded:
+					fmt.Printf("Added at line %d: %s\n", line.NewLineNum, line.Content)
+				case LineRemoved:
+					fmt.Printf("Removed from line %d: %s\n", line.OldLineNum, line.Content)
+				}
+			}
+		}
+	}
+	// Output:
+	// Removed from line 11: oldCode()
+	// Added at line 11: newCode()
+}
+
+// Example_multipleFiles demonstrates parsing diffs with multiple files.
+func Example_multipleFiles() {
+	diffText := `diff --git a/file1.go b/file1.go
+--- a/file1.go
++++ b/file1.go
+@@ -1 +1 @@
+-old content
++new content
+diff --git a/file2.go b/file2.go
+--- a/file2.go
++++ b/file2.go
+@@ -1 +1,2 @@
++added line
+ existing line`
+
+	diff, err := Parse(diffText)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Total files changed: %d\n", len(diff.Files))
+	for _, file := range diff.Files {
+		fmt.Printf("- %s\n", file.NewPath)
+	}
+	// Output:
+	// Total files changed: 2
+	// - file1.go
+	// - file2.go
+}
+
+// Example_lineTypes demonstrates filtering by line type.
+func Example_lineTypes() {
+	diffText := `diff --git a/test.go b/test.go
+--- a/test.go
++++ b/test.go
+@@ -1,4 +1,4 @@
+ package main
+
+-func old() {}
++func new() {}`
+
+	diff, err := Parse(diffText)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, file := range diff.Files {
+		for _, hunk := range file.Hunks {
+			for _, line := range hunk.Lines {
+				if line.Content == "" {
+					fmt.Printf("%s: (empty)\n", line.Type)
+				} else {
+					fmt.Printf("%s: %s\n", line.Type, line.Content)
+				}
+			}
+		}
+	}
+	// Output:
+	// context: package main
+	// context: (empty)
+	// removed: func old() {}
+	// added: func new() {}
 }

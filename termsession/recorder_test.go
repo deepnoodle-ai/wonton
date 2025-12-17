@@ -188,3 +188,48 @@ func TestDefaultRecordingOptions(t *testing.T) {
 	assert.Equal(t, float64(0), opts.IdleTimeLimit)
 	assert.NotNil(t, opts.Env)
 }
+
+// ExampleNewRecorder demonstrates basic recording usage.
+func ExampleNewRecorder() {
+	// Create a temporary file for the recording
+	tmpfile := filepath.Join(os.TempDir(), "example.cast")
+	defer os.Remove(tmpfile)
+
+	// Create a recorder
+	recorder, err := NewRecorder(tmpfile, 80, 24, RecordingOptions{
+		Compress: false,
+		Title:    "Example Recording",
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer recorder.Close()
+
+	// Record some output
+	recorder.RecordOutput("Hello, ")
+	recorder.RecordOutput("World!\n")
+
+	// Output:
+}
+
+// ExampleRecorder_Pause demonstrates pausing and resuming recording.
+func ExampleRecorder_Pause() {
+	tmpfile := filepath.Join(os.TempDir(), "pause-example.cast")
+	defer os.Remove(tmpfile)
+
+	recorder, err := NewRecorder(tmpfile, 80, 24, RecordingOptions{
+		Compress: false,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer recorder.Close()
+
+	recorder.RecordOutput("Before pause\n")
+	recorder.Pause()
+	recorder.RecordOutput("During pause (not recorded)\n")
+	recorder.Resume()
+	recorder.RecordOutput("After resume\n")
+
+	// Output:
+}

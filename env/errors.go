@@ -6,7 +6,9 @@ import (
 	"strings"
 )
 
-// AggregateError collects multiple parsing errors.
+// AggregateError collects multiple parsing errors that occur during configuration parsing.
+// It implements the error interface and provides unwrapping support for errors.Is and errors.As.
+// When multiple fields fail to parse, all errors are collected and reported together.
 type AggregateError struct {
 	Errors []error
 }
@@ -42,7 +44,8 @@ func (e *AggregateError) Is(target error) bool {
 	return false
 }
 
-// ParseError represents a general parsing error.
+// ParseError represents a general parsing error that occurs during
+// configuration loading. It wraps underlying errors for additional context.
 type ParseError struct {
 	Err error
 }
@@ -58,12 +61,13 @@ func (e *ParseError) Unwrap() error {
 	return e.Err
 }
 
-// FieldError represents an error parsing a specific field.
+// FieldError represents an error parsing a specific field in the configuration struct.
+// It includes the field name, environment variable name, attempted value, and underlying error.
 type FieldError struct {
-	Field  string
-	EnvVar string
-	Value  string
-	Err    error
+	Field  string // Name of the struct field
+	EnvVar string // Environment variable name
+	Value  string // Value that failed to parse
+	Err    error  // Underlying error
 }
 
 func (e *FieldError) Error() string {
@@ -81,19 +85,22 @@ func (e *FieldError) Unwrap() error {
 }
 
 // VarNotSetError indicates a required environment variable is not set.
+// This occurs when a field is marked with the "required" tag option or
+// when WithRequiredIfNoDefault is used and no default value is provided.
 type VarNotSetError struct {
-	Field  string
-	EnvVar string
+	Field  string // Name of the struct field
+	EnvVar string // Environment variable that was not set
 }
 
 func (e *VarNotSetError) Error() string {
 	return fmt.Sprintf("required variable %s not set (field: %s)", e.EnvVar, e.Field)
 }
 
-// EmptyVarError indicates an environment variable is set but empty.
+// EmptyVarError indicates an environment variable is set but empty when a non-empty
+// value is required. This occurs when a field is marked with the "notEmpty" tag option.
 type EmptyVarError struct {
-	Field  string
-	EnvVar string
+	Field  string // Name of the struct field
+	EnvVar string // Environment variable that was empty
 }
 
 func (e *EmptyVarError) Error() string {
@@ -101,11 +108,13 @@ func (e *EmptyVarError) Error() string {
 }
 
 // FileLoadError indicates an error loading content from a file.
+// This occurs when a field is marked with the "file" tag option and the
+// file path cannot be read.
 type FileLoadError struct {
-	Field    string
-	EnvVar   string
-	Filename string
-	Err      error
+	Field    string // Name of the struct field
+	EnvVar   string // Environment variable containing the file path
+	Filename string // Path to the file that failed to load
+	Err      error  // Underlying error from file read operation
 }
 
 func (e *FileLoadError) Error() string {
@@ -116,13 +125,30 @@ func (e *FileLoadError) Unwrap() error {
 	return e.Err
 }
 
-// HasError checks if an error contains a specific error type.
+// HasError checks if an error contains a specific error type using errors.As.
+// It's useful for checking if a particular error type exists in an error chain
+// or within an AggregateError.
+//
+// Example:
+//
+//	if env.HasError[*env.VarNotSetError](err) {
+//	    fmt.Println("Missing required variables")
+//	}
 func HasError[T error](err error) bool {
 	var target T
 	return errors.As(err, &target)
 }
 
 // GetErrors extracts all errors of a specific type from an AggregateError.
+// Returns an empty slice if the error is not an AggregateError or if no
+// matching errors are found.
+//
+// Example:
+//
+//	varErrors := env.GetErrors[*env.VarNotSetError](err)
+//	for _, e := range varErrors {
+//	    fmt.Printf("Missing: %s\n", e.EnvVar)
+//	}
 func GetErrors[T error](err error) []T {
 	var result []T
 	var agg *AggregateError

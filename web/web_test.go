@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/url"
 	"testing"
 
@@ -536,4 +537,155 @@ func TestIsMediaURL(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// Example demonstrates basic URL normalization.
+func ExampleNormalizeURL() {
+	// Normalize a URL with query parameters and fragment
+	url, _ := NormalizeURL("example.com/path?query=1#fragment")
+	fmt.Println(url.String())
+
+	// Convert http to https
+	url, _ = NormalizeURL("http://example.com")
+	fmt.Println(url.String())
+
+	// Add https prefix when missing
+	url, _ = NormalizeURL("example.com")
+	fmt.Println(url.String())
+
+	// Output:
+	// https://example.com/path
+	// https://example.com
+	// https://example.com
+}
+
+// Example demonstrates resolving relative URLs against a base domain.
+func ExampleResolveLink() {
+	baseDomain := "example.com"
+
+	// Resolve absolute path
+	resolved, ok := ResolveLink(baseDomain, "/about")
+	fmt.Printf("%s: %v\n", resolved, ok)
+
+	// Resolve relative path
+	resolved, ok = ResolveLink(baseDomain, "contact")
+	fmt.Printf("%s: %v\n", resolved, ok)
+
+	// Reject non-HTTP schemes
+	resolved, ok = ResolveLink(baseDomain, "mailto:test@example.com")
+	fmt.Printf("valid: %v\n", ok)
+
+	// Output:
+	// https://example.com/about: true
+	// https://example.com/contact: true
+	// valid: false
+}
+
+// Example demonstrates comparing URL hosts.
+func ExampleAreSameHost() {
+	url1, _ := url.Parse("https://example.com/page1")
+	url2, _ := url.Parse("https://example.com/page2")
+	url3, _ := url.Parse("https://sub.example.com/page")
+
+	fmt.Println(AreSameHost(url1, url2))
+	fmt.Println(AreSameHost(url1, url3))
+
+	// Output:
+	// true
+	// false
+}
+
+// Example demonstrates checking if URLs share a common domain.
+func ExampleAreRelatedHosts() {
+	url1, _ := url.Parse("https://www.example.com")
+	url2, _ := url.Parse("https://api.example.com")
+	url3, _ := url.Parse("https://other.com")
+
+	fmt.Println(AreRelatedHosts(url1, url2))
+	fmt.Println(AreRelatedHosts(url1, url3))
+
+	// Output:
+	// true
+	// false
+}
+
+// Example demonstrates sorting URLs alphabetically.
+func ExampleSortURLs() {
+	urls := []*url.URL{
+		mustParse("https://z.com/page"),
+		mustParse("https://a.com/page"),
+		mustParse("https://m.com/page"),
+	}
+
+	SortURLs(urls)
+
+	for _, u := range urls {
+		fmt.Println(u.String())
+	}
+
+	// Output:
+	// https://a.com/page
+	// https://m.com/page
+	// https://z.com/page
+}
+
+// Example demonstrates text normalization for web content.
+func ExampleNormalizeText() {
+	// Trim whitespace
+	fmt.Println(NormalizeText("  Hello  "))
+
+	// Unescape HTML entities
+	fmt.Println(NormalizeText("Hello &amp; goodbye"))
+
+	// Convert HTML tags (entities)
+	fmt.Println(NormalizeText("&lt;div&gt;"))
+
+	// Remove non-printable characters
+	fmt.Println(NormalizeText("Hello\x00World"))
+
+	// Output:
+	// Hello
+	// Hello & goodbye
+	// <div>
+	// Hello World
+}
+
+// Example demonstrates checking for punctuation at the end of strings.
+func ExampleEndsWithPunctuation() {
+	fmt.Println(EndsWithPunctuation("Hello."))
+	fmt.Println(EndsWithPunctuation("Hello?"))
+	fmt.Println(EndsWithPunctuation("Hello"))
+	fmt.Println(EndsWithPunctuation(""))
+
+	// Output:
+	// true
+	// true
+	// false
+	// false
+}
+
+// Example demonstrates detecting media files from URLs.
+func ExampleIsMediaURL() {
+	imageURL, _ := url.Parse("https://example.com/photo.jpg")
+	fmt.Println(IsMediaURL(imageURL))
+
+	videoURL, _ := url.Parse("https://example.com/video.mp4")
+	fmt.Println(IsMediaURL(videoURL))
+
+	pageURL, _ := url.Parse("https://example.com/page.html")
+	fmt.Println(IsMediaURL(pageURL))
+
+	// Output:
+	// true
+	// true
+	// false
+}
+
+// mustParse is a helper function for examples.
+func mustParse(s string) *url.URL {
+	u, err := url.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return u
 }

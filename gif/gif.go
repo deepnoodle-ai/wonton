@@ -1,22 +1,66 @@
-// Package gif provides utilities for creating animated GIF images using only
-// the Go standard library. It offers a builder-style API for constructing GIFs
-// frame by frame.
+// Package gif provides utilities for creating animated GIF images with a
+// clean, builder-style API. It includes comprehensive support for:
+//   - Frame-by-frame GIF creation with drawing primitives
+//   - Terminal emulation and ANSI escape sequence processing
+//   - Converting terminal recordings (.cast files) to animated GIFs
+//   - TTF and bitmap fonts for text rendering
 //
-// Basic usage:
+// The package is designed to work seamlessly with the termsession package for
+// converting terminal recordings into animated GIFs, making it ideal for
+// creating documentation and tutorials.
+//
+// # Basic GIF Creation
+//
+// Create an animated GIF by building frames with drawing operations:
 //
 //	g := gif.New(100, 100)
 //	for i := 0; i < 10; i++ {
 //	    g.AddFrame(func(f *gif.Frame) {
 //	        f.Fill(gif.White)
-//	        f.SetPixel(50, 50+i*5, gif.Black)
+//	        f.FillCircle(50, 50+i*3, 10, gif.Red)
 //	    })
 //	}
 //	g.Save("animation.gif")
 //
-// Custom palette:
+// # Custom Palettes
+//
+// GIFs support up to 256 colors per frame. Create custom palettes:
 //
 //	palette := gif.Palette{gif.White, gif.Black, gif.RGB(255, 0, 0)}
 //	g := gif.NewWithPalette(100, 100, palette)
+//
+// # Terminal Recording to GIF
+//
+// Convert asciinema recordings to animated GIFs:
+//
+//	opts := gif.DefaultCastOptions()
+//	opts.FontSize = 14
+//	opts.FPS = 10
+//	g, err := gif.RenderCast("recording.cast", opts)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	g.Save("demo.gif")
+//
+// # Terminal Emulation
+//
+// Process raw terminal output with ANSI escape sequences:
+//
+//	emulator := gif.NewEmulator(80, 24)
+//	emulator.ProcessOutput("\x1b[31mHello\x1b[0m World")
+//
+//	renderer := gif.NewTerminalRenderer(emulator.Screen(), 8)
+//	renderer.RenderFrame(10)
+//	renderer.Save("terminal.gif")
+//
+// # Drawing Primitives
+//
+// The Frame type provides various drawing operations:
+//   - Fill, FillRect, FillCircle: Fill areas with color
+//   - DrawLine, DrawRect, DrawCircle: Draw outlines
+//   - SetPixel, SetPixelIndex: Set individual pixels
+//
+// All drawing operations handle bounds checking automatically.
 package gif
 
 import (

@@ -5,21 +5,40 @@ import (
 	"strings"
 )
 
-// BranchOptions configures the Branches command.
+// BranchOptions configures the Branches command with filtering and selection options.
 type BranchOptions struct {
-	// Remote includes remote branches.
+	// Remote includes only remote-tracking branches.
 	Remote bool
-	// All includes both local and remote branches.
+	// All includes both local and remote-tracking branches.
 	All bool
-	// Contains filters branches containing this commit.
+	// Contains filters to branches that contain the specified commit.
+	// Can be a commit hash, tag, or branch name.
 	Contains string
-	// Merged filters branches merged into HEAD (or specified ref).
+	// Merged filters to branches that have been merged into the specified ref.
+	// Defaults to HEAD if value is "HEAD".
 	Merged string
-	// NoMerged filters branches not merged into HEAD (or specified ref).
+	// NoMerged filters to branches that have not been merged into the specified ref.
+	// Defaults to HEAD if value is "HEAD".
 	NoMerged string
 }
 
-// Branches returns the list of branches.
+// Branches returns the list of branches matching the specified options.
+//
+// By default, returns only local branches. Use BranchOptions.Remote or
+// BranchOptions.All to include remote branches.
+//
+// Example:
+//
+//	// Get all local branches
+//	branches, err := repo.Branches(ctx, git.BranchOptions{})
+//
+//	// Get all branches including remotes
+//	branches, err := repo.Branches(ctx, git.BranchOptions{All: true})
+//
+//	// Get branches containing a specific commit
+//	branches, err := repo.Branches(ctx, git.BranchOptions{
+//	    Contains: "abc1234",
+//	})
 func (r *Repository) Branches(ctx context.Context, opts BranchOptions) ([]Branch, error) {
 	// Format: refname, objectname, upstream, HEAD indicator
 	format := "%(refname:short)%00%(objectname:short)%00%(upstream:short)%00%(HEAD)"
@@ -78,17 +97,23 @@ func (r *Repository) Branches(ctx context.Context, opts BranchOptions) ([]Branch
 	return branches, nil
 }
 
-// LocalBranches returns only local branches.
+// LocalBranches returns only local branches (excluding remote-tracking branches).
+// This is a convenience method equivalent to Branches(ctx, BranchOptions{}).
 func (r *Repository) LocalBranches(ctx context.Context) ([]Branch, error) {
 	return r.Branches(ctx, BranchOptions{})
 }
 
-// RemoteBranches returns only remote branches.
+// RemoteBranches returns only remote-tracking branches.
+// This is a convenience method equivalent to Branches(ctx, BranchOptions{Remote: true}).
 func (r *Repository) RemoteBranches(ctx context.Context) ([]Branch, error) {
 	return r.Branches(ctx, BranchOptions{Remote: true})
 }
 
-// DefaultBranch returns the default branch name (main or master).
+// DefaultBranch returns the default branch name (typically "main" or "master").
+//
+// This attempts to determine the default branch by first checking the
+// remote's HEAD, then checking for common default branch names, and
+// finally falling back to the current branch.
 func (r *Repository) DefaultBranch(ctx context.Context) (string, error) {
 	// Try to get from remote
 	out, err := r.run(ctx, "symbolic-ref", "refs/remotes/origin/HEAD")
@@ -109,7 +134,10 @@ func (r *Repository) DefaultBranch(ctx context.Context) (string, error) {
 	return r.CurrentBranch(ctx)
 }
 
-// BranchExists checks if a branch exists.
+// BranchExists checks if a branch with the given name exists.
+//
+// The name can be a local branch (e.g., "main") or a remote branch
+// (e.g., "origin/main").
 func (r *Repository) BranchExists(ctx context.Context, name string) (bool, error) {
 	_, err := r.run(ctx, "rev-parse", "--verify", name)
 	if err != nil {

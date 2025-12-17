@@ -5,7 +5,8 @@ import (
 	"strings"
 )
 
-// Remotes returns the list of remotes.
+// Remotes returns the list of configured remotes.
+// Each remote includes its fetch and push URLs.
 func (r *Repository) Remotes(ctx context.Context) ([]Remote, error) {
 	out, err := r.run(ctx, "remote", "-v")
 	if err != nil {
@@ -50,6 +51,7 @@ func (r *Repository) Remotes(ctx context.Context) ([]Remote, error) {
 }
 
 // Remote returns a specific remote by name.
+// Returns nil if the remote does not exist.
 func (r *Repository) Remote(ctx context.Context, name string) (*Remote, error) {
 	remotes, err := r.Remotes(ctx)
 	if err != nil {
@@ -65,7 +67,7 @@ func (r *Repository) Remote(ctx context.Context, name string) (*Remote, error) {
 	return nil, nil
 }
 
-// RemoteURL returns the URL for a remote.
+// RemoteURL returns the fetch URL for a named remote.
 func (r *Repository) RemoteURL(ctx context.Context, name string) (string, error) {
 	out, err := r.run(ctx, "remote", "get-url", name)
 	if err != nil {
@@ -74,7 +76,8 @@ func (r *Repository) RemoteURL(ctx context.Context, name string) (string, error)
 	return strings.TrimSpace(string(out)), nil
 }
 
-// OriginURL returns the URL for the origin remote.
+// OriginURL returns the fetch URL for the "origin" remote.
+// This is a convenience method equivalent to RemoteURL(ctx, "origin").
 func (r *Repository) OriginURL(ctx context.Context) (string, error) {
 	return r.RemoteURL(ctx, "origin")
 }

@@ -1,3 +1,92 @@
+// Package terminal provides low-level terminal control, input decoding, styling, and rendering.
+//
+// This package enables building rich terminal user interfaces with features like:
+//   - Double-buffered rendering with dirty region tracking for flicker-free updates
+//   - Frame-based rendering API (BeginFrame/EndFrame) for atomic updates
+//   - Keyboard input decoding supporting multi-byte UTF-8, ANSI escape sequences, and modifiers
+//   - Mouse event handling with click, drag, hover, and scroll support
+//   - Rich text styling with RGB colors, bold, italic, underline, and more
+//   - Hyperlinks using OSC 8 protocol for clickable terminal links
+//   - Raw mode and alternate screen buffer management
+//   - Terminal resize detection and callbacks
+//   - Performance metrics for monitoring rendering efficiency
+//
+// # Basic Rendering
+//
+// The recommended way to render content is using the frame-based API:
+//
+//	term, err := terminal.NewTerminal()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer term.Close()
+//
+//	// Enable alternate screen and raw mode for full-screen apps
+//	term.EnableAlternateScreen()
+//	term.EnableRawMode()
+//
+//	// Render a frame
+//	frame, _ := term.BeginFrame()
+//	style := terminal.NewStyle().WithForeground(terminal.ColorBlue).WithBold()
+//	frame.PrintStyled(0, 0, "Hello, World!", style)
+//	term.EndFrame(frame)
+//
+// # Input Handling
+//
+// The KeyDecoder decodes terminal input into structured events:
+//
+//	decoder := terminal.NewKeyDecoder(os.Stdin)
+//	for {
+//	    event, err := decoder.ReadEvent()
+//	    if err != nil {
+//	        break
+//	    }
+//	    switch e := event.(type) {
+//	    case terminal.KeyEvent:
+//	        if e.Key == terminal.KeyCtrlC {
+//	            return
+//	        }
+//	        fmt.Printf("Key: %c\n", e.Rune)
+//	    case terminal.MouseEvent:
+//	        fmt.Printf("Mouse: %d,%d\n", e.X, e.Y)
+//	    }
+//	}
+//
+// # Styling
+//
+// Text can be styled using the Style type which supports colors, attributes, and hyperlinks:
+//
+//	// Basic colors
+//	style := terminal.NewStyle().
+//	    WithForeground(terminal.ColorRed).
+//	    WithBackground(terminal.ColorWhite)
+//
+//	// RGB colors
+//	rgb := terminal.NewRGB(100, 150, 200)
+//	style = style.WithFgRGB(rgb)
+//
+//	// Text attributes
+//	style = style.WithBold().WithItalic().WithUnderline()
+//
+//	// Apply to text
+//	styledText := style.Apply("Hello")
+//
+// # Thread Safety
+//
+// Terminal methods are thread-safe and can be called from multiple goroutines.
+// However, for rendering, use the BeginFrame/EndFrame pattern which locks the
+// terminal for exclusive access during frame composition.
+//
+// # Performance
+//
+// The terminal uses double-buffering and dirty region tracking to minimize
+// the amount of data written to the terminal. Only changed cells are updated
+// on each frame. Enable metrics to monitor rendering performance:
+//
+//	term.EnableMetrics()
+//	// ... render frames ...
+//	snapshot := term.GetMetrics()
+//	fmt.Println(snapshot.String())
 package terminal
 
 import (
@@ -389,7 +478,31 @@ type Position struct {
 	Y int
 }
 
-// NewTerminal creates a new terminal instance
+// NewTerminal creates a new Terminal instance connected to the current terminal.
+//
+// The terminal is created with:
+//   - Double-buffering enabled for flicker-free rendering
+//   - Size detected from the current terminal dimensions
+//   - Output directed to os.Stdout
+//   - Default style (no colors or attributes)
+//
+// Call EnableRawMode() and EnableAlternateScreen() for full-screen applications.
+// Always call Close() when done to restore terminal state.
+//
+// Example:
+//
+//	term, err := terminal.NewTerminal()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer term.Close()
+//
+//	term.EnableRawMode()
+//	term.EnableAlternateScreen()
+//	// ... use terminal ...
+//
+// Returns an error if the terminal size cannot be detected (e.g., when not
+// running in a terminal). In such cases, defaults to 80x24.
 func NewTerminal() (*Terminal, error) {
 	fd := int(os.Stdout.Fd())
 	width, height, err := term.GetSize(fd)
@@ -416,7 +529,28 @@ func NewTerminal() (*Terminal, error) {
 	return t, nil
 }
 
-// NewTestTerminal creates a terminal for testing with fixed size and custom output
+// NewTestTerminal creates a Terminal for testing with fixed dimensions and custom output.
+//
+// Unlike NewTerminal(), this does not connect to a real terminal and does not
+// query terminal size. It's useful for:
+//   - Unit testing rendering code
+//   - Capturing terminal output for inspection
+//   - Testing without requiring a TTY
+//
+// Example:
+//
+//	var output strings.Builder
+//	term := terminal.NewTestTerminal(80, 24, &output)
+//
+//	frame, _ := term.BeginFrame()
+//	frame.PrintStyled(0, 0, "Test", terminal.NewStyle())
+//	term.EndFrame(frame)
+//
+//	// Inspect output
+//	result := output.String()
+//
+// Note: Some terminal operations that require a file descriptor (like raw mode
+// or resize detection) will be no-ops in test mode.
 func NewTestTerminal(width, height int, out io.Writer) *Terminal {
 	t := &Terminal{
 		width:    width,
@@ -972,7 +1106,31 @@ func (t *Terminal) DisableAlternateScreen() {
 	}
 }
 
-// EnableRawMode enables raw terminal mode
+// EnableRawMode enables raw terminal mode for character-by-character input.
+//
+// In raw mode:
+//   - Input is not line-buffered (characters available immediately)
+//   - No echo (typed characters don't appear automatically)
+//   - No signal generation (Ctrl+C doesn't send SIGINT)
+//   - Special characters (Ctrl+C, Ctrl+Z) are passed as input
+//
+// This is essential for interactive applications that need immediate key responses.
+// Always call DisableRawMode() or Close() to restore normal terminal behavior.
+//
+// Example:
+//
+//	term, _ := terminal.NewTerminal()
+//	defer term.Close() // Automatically disables raw mode
+//
+//	if err := term.EnableRawMode(); err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	// Now you can read character-by-character input
+//	decoder := terminal.NewKeyDecoder(os.Stdin)
+//	event, _ := decoder.ReadEvent()
+//
+// Returns an error if raw mode cannot be enabled (e.g., not running in a terminal).
 func (t *Terminal) EnableRawMode() error {
 	if t.rawMode {
 		return nil

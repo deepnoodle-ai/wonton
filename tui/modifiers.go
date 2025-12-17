@@ -9,6 +9,11 @@ type paddingView struct {
 }
 
 // Padding wraps a view with equal padding on all sides.
+// Padding adds empty space around content, measured in character cells.
+//
+// Example:
+//
+//	Padding(2, Text("Content"))  // 2 cells of padding on all sides
 func Padding(n int, inner View) View {
 	return &paddingView{
 		inner:  inner,
@@ -20,6 +25,11 @@ func Padding(n int, inner View) View {
 }
 
 // PaddingHV wraps a view with horizontal and vertical padding.
+// The first parameter is horizontal (left and right), the second is vertical (top and bottom).
+//
+// Example:
+//
+//	PaddingHV(4, 1, Text("Content"))  // 4 cells horizontal, 1 cell vertical
 func PaddingHV(h, v int, inner View) View {
 	return &paddingView{
 		inner:  inner,
@@ -31,6 +41,11 @@ func PaddingHV(h, v int, inner View) View {
 }
 
 // PaddingLTRB wraps a view with specific padding on each side.
+// Parameters are in CSS order: left, top, right, bottom.
+//
+// Example:
+//
+//	PaddingLTRB(1, 2, 3, 4, Text("Content"))  // Different padding on each side
 func PaddingLTRB(left, top, right, bottom int, inner View) View {
 	return &paddingView{
 		inner:  inner,
@@ -131,27 +146,52 @@ type sizeView struct {
 	maxHeight int // 0 = no max constraint
 }
 
-// Width wraps a view with a fixed width.
+// Width wraps a view with a fixed width in character cells.
+// The view will be exactly this width, clipping or padding as needed.
+//
+// Example:
+//
+//	Width(40, Text("This text will be exactly 40 cells wide"))
 func Width(w int, inner View) View {
 	return &sizeView{inner: inner, width: w}
 }
 
-// Height wraps a view with a fixed height.
+// Height wraps a view with a fixed height in rows.
+// The view will be exactly this height, clipping or padding as needed.
+//
+// Example:
+//
+//	Height(10, content)  // Exactly 10 rows tall
 func Height(h int, inner View) View {
 	return &sizeView{inner: inner, height: h}
 }
 
 // Size wraps a view with fixed width and height.
+// Combines Width and Height into a single modifier.
+//
+// Example:
+//
+//	Size(80, 24, content)  // Exactly 80x24 cells
 func Size(w, h int, inner View) View {
 	return &sizeView{inner: inner, width: w, height: h}
 }
 
 // MaxWidth wraps a view with a maximum width constraint.
+// The view can be smaller but will not exceed this width.
+//
+// Example:
+//
+//	MaxWidth(80, Text("Long text..."))  // Won't exceed 80 cells
 func MaxWidth(w int, inner View) View {
 	return &sizeView{inner: inner, maxWidth: w}
 }
 
 // MaxHeight wraps a view with a maximum height constraint.
+// The view can be smaller but will not exceed this height.
+//
+// Example:
+//
+//	MaxHeight(20, content)  // Won't exceed 20 rows
 func MaxHeight(h int, inner View) View {
 	return &sizeView{inner: inner, maxHeight: h}
 }
@@ -231,7 +271,21 @@ type borderedView struct {
 	focusTitleStyle *Style // Title style when focused
 }
 
-// Bordered wraps a view with a border (optional title).
+// Bordered wraps a view with a border and optional title.
+// The border consumes 2 cells of width and height (1 on each side).
+//
+// Use the builder pattern to customize the border:
+//
+//	Bordered(content).
+//	    Border(&RoundedBorder).
+//	    Title("Box Title").
+//	    BorderFg(ColorCyan)
+//
+// Focus-aware borders change color when a watched element is focused:
+//
+//	Bordered(InputField(&app.input)).
+//	    FocusID("my-input").
+//	    FocusBorderFg(ColorGreen)
 func Bordered(inner View) *borderedView {
 	return &borderedView{
 		inner:       inner,

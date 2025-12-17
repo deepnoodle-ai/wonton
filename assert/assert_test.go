@@ -11,6 +11,213 @@ import (
 	gocmp "github.com/google/go-cmp/cmp"
 )
 
+// Example demonstrates basic assertion usage.
+func Example() {
+	// In a real test, you would use t *testing.T
+	// This example uses a mock for demonstration
+
+	// Equal compares values deeply
+	type User struct {
+		Name string
+		Age  int
+	}
+	user := User{Name: "Alice", Age: 30}
+	_ = user // In real test: assert.Equal(t, user.Name, "Alice")
+
+	// NoError checks for nil errors
+	var err error = nil
+	_ = err // In real test: assert.NoError(t, err)
+
+	// True/False check boolean conditions
+	active := true
+	_ = active // In real test: assert.True(t, active)
+}
+
+// ExampleEqual demonstrates deep equality assertions.
+func ExampleEqual() {
+	// Mock for demonstration - use *testing.T in real tests
+	t := &mockT{}
+
+	// Compare simple values
+	Equal(t, 42, 42)
+
+	// Compare structs
+	type Point struct {
+		X, Y int
+	}
+	Equal(t, Point{X: 1, Y: 2}, Point{X: 1, Y: 2})
+
+	// With optional message
+	Equal(t, "hello", "hello", "greeting should match")
+
+	// Output:
+}
+
+// ExampleNoError demonstrates error assertions.
+func ExampleNoError() {
+	t := &mockT{}
+
+	// Assert that operation succeeded
+	err := performOperation()
+	NoError(t, err)
+
+	// With custom message
+	NoError(t, err, "operation should succeed")
+
+	// Output:
+}
+
+func performOperation() error {
+	return nil // Simulated success
+}
+
+// ExampleErrorIs demonstrates error chain checking.
+func ExampleErrorIs() {
+	t := &mockT{}
+
+	// Define a sentinel error
+	var ErrNotFound = errors.New("not found")
+
+	// Create a wrapped error
+	err := fmt.Errorf("user database: %w", ErrNotFound)
+
+	// Check if ErrNotFound is in the error chain
+	ErrorIs(t, err, ErrNotFound)
+
+	// Output:
+}
+
+// ExampleErrorAs demonstrates error type checking.
+func ExampleErrorAs() {
+	t := &mockT{}
+
+	// Create a PathError
+	err := &os.PathError{
+		Op:   "open",
+		Path: "/tmp/missing",
+		Err:  errors.New("no such file"),
+	}
+
+	// Check if error is of a specific type
+	var pathErr *os.PathError
+	ErrorAs(t, err, &pathErr)
+
+	// Now pathErr is populated and can be used
+	_ = pathErr.Path // "/tmp/missing"
+
+	// Output:
+}
+
+// ExampleContains demonstrates containment checks.
+func ExampleContains() {
+	t := &mockT{}
+
+	// String contains substring
+	Contains(t, "hello world", "world")
+
+	// Slice contains element
+	Contains(t, []int{1, 2, 3}, 2)
+
+	// Map contains key
+	Contains(t, map[string]int{"foo": 1}, "foo")
+
+	// Output:
+}
+
+// ExampleLen demonstrates length assertions.
+func ExampleLen() {
+	t := &mockT{}
+
+	// Check slice length
+	Len(t, []int{1, 2, 3}, 3)
+
+	// Check string length
+	Len(t, "hello", 5)
+
+	// Check map length
+	Len(t, map[string]int{"a": 1, "b": 2}, 2)
+
+	// Output:
+}
+
+// ExampleEmpty demonstrates empty value checking.
+func ExampleEmpty() {
+	t := &mockT{}
+
+	// Empty slice
+	Empty(t, []int{})
+
+	// Empty string
+	Empty(t, "")
+
+	// Nil value
+	Empty(t, nil)
+
+	// Output:
+}
+
+// ExampleGreater demonstrates comparison assertions.
+func ExampleGreater() {
+	t := &mockT{}
+
+	// Compare integers
+	Greater(t, 10, 5)
+
+	// Compare floats
+	Greater(t, 3.14, 2.71)
+
+	// Compare strings (lexicographic)
+	Greater(t, "banana", "apple")
+
+	// Output:
+}
+
+// ExampleInDelta demonstrates floating-point comparison.
+func ExampleInDelta() {
+	t := &mockT{}
+
+	// Compare floats with tolerance
+	result := 3.14159
+	InDelta(t, result, 3.14, 0.01)
+
+	// Useful for calculations that might have rounding errors
+	calculated := 1.0 / 3.0 * 3.0
+	InDelta(t, calculated, 1.0, 0.000001)
+
+	// Output:
+}
+
+// ExampleRegexp demonstrates pattern matching.
+func ExampleRegexp() {
+	t := &mockT{}
+
+	// Match with string pattern
+	Regexp(t, `^\d{3}-\d{4}$`, "555-1234")
+
+	// Match with compiled pattern
+	pattern := regexp.MustCompile(`[A-Z][a-z]+`)
+	Regexp(t, pattern, "Hello")
+
+	// Output:
+}
+
+// ExamplePanics demonstrates panic assertions.
+func ExamplePanics() {
+	t := &mockT{}
+
+	// Assert that function panics
+	Panics(t, func() {
+		panic("oops!")
+	})
+
+	// Assert that function doesn't panic
+	NotPanics(t, func() {
+		// Normal execution
+	})
+
+	// Output:
+}
+
 // mockT captures fatal calls for testing assertions.
 type mockT struct {
 	testing.TB

@@ -3,6 +3,7 @@ package retry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -470,4 +471,248 @@ func TestWithDelayFunc(t *testing.T) {
 	assert.Len(t, mock.delays, 2)
 	assert.Equal(t, 42*time.Millisecond, mock.delays[0])
 	assert.Equal(t, 42*time.Millisecond, mock.delays[1])
+}
+
+// Example demonstrates basic retry functionality with a function that returns a value.
+func Example() {
+	ctx := context.Background()
+
+	// Simulate a function that fails twice then succeeds
+	attempts := 0
+	result, err := Do(ctx, func() (string, error) {
+		attempts++
+		if attempts < 3 {
+			return "", errors.New("temporary error")
+		}
+		return "success", nil
+	},
+		WithMaxAttempts(5),
+		WithBackoff(10*time.Millisecond, time.Second),
+	)
+
+	if err != nil {
+		fmt.Printf("Failed: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Result: %s after %d attempts\n", result, attempts)
+	// Output: Result: success after 3 attempts
+}
+
+// ExampleDoSimple demonstrates retrying a function that only returns an error.
+func ExampleDoSimple() {
+	ctx := context.Background()
+
+	// Simulate a function that succeeds on the second attempt
+	attempts := 0
+	err := DoSimple(ctx, func() error {
+		attempts++
+		if attempts < 2 {
+			return errors.New("not ready")
+		}
+		return nil
+	},
+		WithMaxAttempts(3),
+		WithBackoff(10*time.Millisecond, time.Second),
+	)
+
+	if err != nil {
+		fmt.Printf("Failed: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Succeeded after %d attempts\n", attempts)
+	// Output: Succeeded after 2 attempts
+}
+
+// ExampleWithRetryIf demonstrates conditional retry logic.
+func ExampleWithRetryIf() {
+	ctx := context.Background()
+
+	// Define specific error types
+	var temporaryErr = errors.New("temporary error")
+	var permanentErr = errors.New("permanent error")
+
+	// Only retry temporary errors
+	attempts := 0
+	_, err := Do(ctx, func() (int, error) {
+		attempts++
+		if attempts == 1 {
+			return 0, temporaryErr
+		}
+		return 0, permanentErr
+	},
+		WithMaxAttempts(5),
+		WithBackoff(10*time.Millisecond, time.Second),
+		WithRetryIf(func(err error) bool {
+			return errors.Is(err, temporaryErr)
+		}),
+	)
+
+	fmt.Printf("Attempts: %d, Error: %v\n", attempts, err != nil)
+	// Output: Attempts: 2, Error: true
+}
+
+// ExampleMarkPermanent demonstrates marking errors as non-retryable.
+func ExampleMarkPermanent() {
+	ctx := context.Background()
+
+	validate := func(id string) error {
+		if id == "" {
+			// Validation errors should not be retried
+			return MarkPermanent(errors.New("empty ID"))
+		}
+		return nil
+	}
+
+	attempts := 0
+	err := DoSimple(ctx, func() error {
+		attempts++
+		return validate("")
+	},
+		WithMaxAttempts(5),
+		WithBackoff(10*time.Millisecond, time.Second),
+		WithRetryIf(SkipPermanent()),
+	)
+
+	fmt.Printf("Attempts: %d, Permanent: %v\n", attempts, IsPermanent(extractLastError(err)))
+	// Output: Attempts: 1, Permanent: true
+}
+
+// ExampleWithOnRetry demonstrates using a callback to log retry attempts.
+func ExampleWithOnRetry() {
+	ctx := context.Background()
+
+	attempts := 0
+	_, err := Do(ctx, func() (int, error) {
+		attempts++
+		if attempts < 3 {
+			return 0, errors.New("temporary error")
+		}
+		return 42, nil
+	},
+		WithMaxAttempts(5),
+		WithBackoff(10*time.Millisecond, time.Second),
+		WithOnRetry(func(attempt int, err error, delay time.Duration) {
+			fmt.Printf("Retry %d after error: %v\n", attempt, err)
+		}),
+	)
+
+	if err == nil {
+		fmt.Printf("Succeeded after %d attempts\n", attempts)
+	}
+	// Output:
+	// Retry 1 after error: temporary error
+	// Retry 2 after error: temporary error
+	// Succeeded after 3 attempts
+}
+
+// ExampleWithLinearBackoff demonstrates linear backoff strategy.
+func ExampleWithLinearBackoff() {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	_, _ = Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(4),
+		WithLinearBackoff(100*time.Millisecond, 50*time.Millisecond, time.Second),
+		WithJitter(0), // Disable jitter for consistent output
+		WithTimer(mock),
+	)
+
+	// Linear backoff: 100ms, 150ms, 200ms
+	for i, delay := range mock.delays {
+		fmt.Printf("Delay %d: %v\n", i+1, delay)
+	}
+	// Output:
+	// Delay 1: 100ms
+	// Delay 2: 150ms
+	// Delay 3: 200ms
+}
+
+// ExampleWithConstantBackoff demonstrates constant backoff strategy.
+func ExampleWithConstantBackoff() {
+	ctx := context.Background()
+	mock := &mockTimer{}
+
+	_, _ = Do(ctx, func() (int, error) {
+		return 0, errors.New("fail")
+	},
+		WithMaxAttempts(3),
+		WithConstantBackoff(500*time.Millisecond),
+		WithJitter(0), // Disable jitter for consistent output
+		WithTimer(mock),
+	)
+
+	// All delays are the same
+	for i, delay := range mock.delays {
+		fmt.Printf("Delay %d: %v\n", i+1, delay)
+	}
+	// Output:
+	// Delay 1: 500ms
+	// Delay 2: 500ms
+}
+
+// ExampleNewRetrier demonstrates creating a reusable retrier.
+func ExampleNewRetrier() {
+	ctx := context.Background()
+
+	// Create a retrier with specific configuration
+	retrier := NewRetrier(
+		WithMaxAttempts(3),
+		WithBackoff(10*time.Millisecond, time.Second),
+	)
+
+	// Use the same retrier for multiple operations
+	items := []string{"item1", "item2", "item3"}
+	for _, item := range items {
+		err := retrier.Do(ctx, func() error {
+			// Process item with automatic retry
+			return processItem(item)
+		})
+		if err != nil {
+			fmt.Printf("Failed to process %s: %v\n", item, err)
+		}
+	}
+}
+
+// ExampleError demonstrates inspecting retry errors.
+func ExampleError() {
+	ctx := context.Background()
+
+	_, err := Do(ctx, func() (int, error) {
+		return 0, errors.New("operation failed")
+	},
+		WithMaxAttempts(3),
+		WithBackoff(10*time.Millisecond, time.Second),
+	)
+
+	if err != nil {
+		var retryErr *Error
+		if errors.As(err, &retryErr) {
+			fmt.Printf("Failed after %d attempts\n", retryErr.Attempts)
+			fmt.Printf("Last error: %v\n", retryErr.LastError())
+			fmt.Printf("Total errors: %d\n", len(retryErr.Errors))
+		}
+	}
+	// Output:
+	// Failed after 3 attempts
+	// Last error: operation failed
+	// Total errors: 3
+}
+
+// Helper function for examples
+func extractLastError(err error) error {
+	var retryErr *Error
+	if errors.As(err, &retryErr) {
+		return retryErr.LastError()
+	}
+	return err
+}
+
+// Helper function for examples
+func processItem(item string) error {
+	// Simulate processing that might fail
+	return nil
 }

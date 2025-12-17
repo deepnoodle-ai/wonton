@@ -13,7 +13,21 @@ import (
 	"golang.org/x/term"
 )
 
-// Session represents an interactive PTY session that can be recorded
+// Session represents an interactive PTY (pseudo-terminal) session.
+//
+// Session manages a command running in a PTY, handles terminal I/O,
+// and optionally records the session to an asciinema v2 format file.
+// It's designed for creating interactive terminal sessions that feel
+// like a real terminal (with proper handling of colors, cursor movement, etc.).
+//
+// The session handles:
+//   - PTY creation and management
+//   - Terminal size synchronization (including SIGWINCH)
+//   - Raw mode terminal setup
+//   - Optional recording with the Recorder
+//
+// Use Start() to begin an interactive session, or Record() to start
+// and record simultaneously.
 type Session struct {
 	cmd      *exec.Cmd
 	pty      *os.File
@@ -32,15 +46,29 @@ type Session struct {
 	dir     string
 }
 
-// SessionOptions configures a new session
+// SessionOptions configures a new PTY session.
 type SessionOptions struct {
 	Command []string // Command to run (default: user's shell from $SHELL)
 	Dir     string   // Working directory (default: current directory)
-	Env     []string // Additional environment variables
+	Env     []string // Additional environment variables (added to inherited environment)
 }
 
 // NewSession creates a new PTY session with the given options.
+//
 // The session is not started until Start() or Record() is called.
+// If no command is specified, the user's shell ($SHELL or /bin/sh) is used.
+//
+// Example:
+//
+//	session, err := NewSession(SessionOptions{
+//	    Command: []string{"bash", "-i"},
+//	    Dir: "/tmp",
+//	    Env: []string{"TERM=xterm-256color"},
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer session.Close()
 func NewSession(opts SessionOptions) (*Session, error) {
 	s := &Session{
 		command: opts.Command,
@@ -52,8 +80,29 @@ func NewSession(opts SessionOptions) (*Session, error) {
 	return s, nil
 }
 
-// Record starts the session and records it to the specified file.
-// This is a convenience method that combines Start() with recording setup.
+// Record starts the PTY session and records it to the specified file.
+//
+// This is a convenience method that creates a Recorder, attaches it to the
+// session, and calls Start(). The terminal size is detected automatically
+// (or defaults to 80x24 if detection fails).
+//
+// The recording file is created immediately with the header written.
+// Call Wait() to block until the session ends, then Close() to finalize.
+//
+// Example:
+//
+//	session, _ := NewSession(SessionOptions{
+//	    Command: []string{"bash", "-c", "echo 'Hello, World!'"},
+//	})
+//	err := session.Record("demo.cast", RecordingOptions{
+//	    Compress: true,
+//	    Title: "Hello Demo",
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	session.Wait()
+//	session.Close()
 func (s *Session) Record(filename string, opts RecordingOptions) error {
 	s.mu.Lock()
 	if s.started {
@@ -82,7 +131,27 @@ func (s *Session) Record(filename string, opts RecordingOptions) error {
 	return s.Start()
 }
 
-// Start begins the PTY session without recording
+// Start begins the PTY session without recording.
+//
+// This method:
+//   - Creates a PTY and starts the command
+//   - Sets the terminal to raw mode (if stdin is a terminal)
+//   - Starts goroutines to handle I/O between stdin/stdout and the PTY
+//   - Sets up terminal resize handling (SIGWINCH)
+//
+// The session runs in the background. Use Wait() to block until it completes.
+//
+// Example:
+//
+//	session, _ := NewSession(SessionOptions{
+//	    Command: []string{"bash"},
+//	})
+//	err := session.Start()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	// Session is now interactive
+//	session.Wait()
 func (s *Session) Start() error {
 	s.mu.Lock()
 	if s.started {
@@ -138,7 +207,10 @@ func (s *Session) Start() error {
 	return nil
 }
 
-// Wait blocks until the session ends and returns any error
+// Wait blocks until the session ends and returns any error.
+//
+// This waits for the command to exit. The exit code can be retrieved
+// with ExitCode() after Wait returns.
 func (s *Session) Wait() error {
 	<-s.done
 
@@ -149,14 +221,23 @@ func (s *Session) Wait() error {
 	return err
 }
 
-// ExitCode returns the exit code of the command (only valid after Wait returns)
+// ExitCode returns the exit code of the command.
+//
+// This is only valid after Wait() returns. Returns 0 before the session completes.
 func (s *Session) ExitCode() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.exitCode
 }
 
-// Close terminates the session and cleans up resources
+// Close terminates the session and cleans up resources.
+//
+// This method:
+//   - Restores the terminal to its original state
+//   - Closes and finalizes any recording
+//   - Closes the PTY
+//
+// It's safe to call Close multiple times or before the session completes.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -182,7 +263,11 @@ func (s *Session) Close() error {
 	return nil
 }
 
-// Resize manually sets the terminal size (useful for non-TTY scenarios)
+// Resize manually sets the terminal size.
+//
+// This is useful for programmatically resizing the terminal or when
+// automatic resize detection isn't available (non-TTY scenarios).
+// The recorder is also updated if recording is active.
 func (s *Session) Resize(width, height int) error {
 	s.mu.Lock()
 	ptmx := s.pty
@@ -207,7 +292,10 @@ func (s *Session) Resize(width, height int) error {
 	return nil
 }
 
-// PauseRecording temporarily pauses recording
+// PauseRecording temporarily pauses recording.
+//
+// Terminal I/O continues normally, but events are not recorded while paused.
+// Has no effect if the session is not being recorded.
 func (s *Session) PauseRecording() {
 	s.mu.Lock()
 	recorder := s.recorder
@@ -218,7 +306,10 @@ func (s *Session) PauseRecording() {
 	}
 }
 
-// ResumeRecording resumes a paused recording
+// ResumeRecording resumes a paused recording.
+//
+// Recording continues from where it was paused. Has no effect if
+// the session is not being recorded or is not paused.
 func (s *Session) ResumeRecording() {
 	s.mu.Lock()
 	recorder := s.recorder
@@ -229,7 +320,7 @@ func (s *Session) ResumeRecording() {
 	}
 }
 
-// IsRecording returns true if the session is being recorded
+// IsRecording returns true if the session is being recorded.
 func (s *Session) IsRecording() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

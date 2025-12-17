@@ -6,9 +6,13 @@ import (
 	"strings"
 )
 
-// Common middleware implementations
+// This file provides common middleware implementations for CLI commands.
 
-// Recover returns middleware that recovers from panics.
+// Recover returns middleware that recovers from panics in handlers.
+//
+// The panic is converted to an error and returned normally:
+//
+//	app.Use(cli.Recover())
 func Recover() Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) (err error) {
@@ -23,6 +27,10 @@ func Recover() Middleware {
 }
 
 // RequireFlags returns middleware that requires certain flags to be set.
+//
+// This validates that specified flags were explicitly provided:
+//
+//	cmd.Use(cli.RequireFlags("config", "api-key"))
 func RequireFlags(names ...string) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {
@@ -36,7 +44,11 @@ func RequireFlags(names ...string) Middleware {
 	}
 }
 
-// Confirm returns middleware that prompts for confirmation.
+// Confirm returns middleware that prompts for user confirmation before proceeding.
+//
+// Only works in interactive mode. In non-interactive mode, returns an error:
+//
+//	cmd.Use(cli.Confirm("Are you sure you want to delete everything?"))
 func Confirm(message string) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {
@@ -61,7 +73,13 @@ func Confirm(message string) Middleware {
 	}
 }
 
-// Before returns middleware that runs before the command.
+// Before returns middleware that runs a function before the command handler.
+//
+// If the function returns an error, the handler is not executed:
+//
+//	cmd.Use(cli.Before(func(ctx *cli.Context) error {
+//	    return validateConfig(ctx.String("config"))
+//	}))
 func Before(fn func(*Context) error) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {
@@ -73,7 +91,13 @@ func Before(fn func(*Context) error) Middleware {
 	}
 }
 
-// After returns middleware that runs after the command.
+// After returns middleware that runs a function after the command handler.
+//
+// The after function runs regardless of whether the handler succeeded:
+//
+//	cmd.Use(cli.After(func(ctx *cli.Context) error {
+//	    return cleanup()
+//	}))
 func After(fn func(*Context) error) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {

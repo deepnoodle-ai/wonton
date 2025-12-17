@@ -1,17 +1,69 @@
-// Package termsession provides terminal session recording and playback.
+// Package termsession provides terminal session recording and playback in asciinema v2 format.
 //
-// Recording captures PTY I/O to asciinema v2 format (.cast files):
+// This package enables you to record interactive terminal sessions (PTY), save them as
+// .cast files (asciinema v2 format), and play them back with accurate timing. It's ideal
+// for creating terminal demos, testing terminal applications, and building CLI tutorials.
+//
+// # Recording Sessions
+//
+// Record an interactive PTY session:
 //
 //	session, _ := termsession.NewSession(termsession.SessionOptions{
 //	    Command: []string{"bash"},
 //	})
-//	session.Record("session.cast", RecordingOptions{})
+//	session.Record("session.cast", RecordingOptions{
+//	    Compress: true,
+//	    Title: "My Demo",
+//	})
 //	session.Wait()
 //
-// Playback replays recordings with timing preservation:
+// Record directly without a PTY:
 //
-//	player, _ := termsession.NewPlayer("session.cast", PlayerOptions{})
+//	recorder, _ := termsession.NewRecorder("output.cast", 80, 24, RecordingOptions{})
+//	recorder.RecordOutput("Hello, World!\n")
+//	recorder.Close()
+//
+// # Playing Back Sessions
+//
+// Play back a recorded session with timing preserved:
+//
+//	player, _ := termsession.NewPlayer("session.cast", PlayerOptions{
+//	    Speed: 2.0,    // 2x speed
+//	    MaxIdle: 1.0,  // Cap idle time at 1 second
+//	})
 //	player.Play() // Blocks until complete
+//
+// Control playback dynamically:
+//
+//	go player.Play()
+//	time.Sleep(time.Second)
+//	player.Pause()
+//	time.Sleep(time.Second)
+//	player.Resume()
+//	player.SetSpeed(3.0)
+//
+// # Loading and Analyzing Recordings
+//
+// Load a .cast file to inspect or process events:
+//
+//	header, events, _ := termsession.LoadCastFile("session.cast")
+//	fmt.Printf("Duration: %.2fs\n", termsession.Duration(events))
+//	fmt.Printf("Terminal size: %dx%d\n", header.Width, header.Height)
+//
+// Filter and process events:
+//
+//	outputOnly := termsession.OutputEvents(events)
+//	for _, event := range outputOnly {
+//	    fmt.Printf("[%.2fs] %s", event.Time, event.Data)
+//	}
+//
+// # Format Details
+//
+// The package uses asciinema v2 format (.cast files), which is a simple JSON-based format:
+//   - First line: JSON header with metadata (version, dimensions, title, etc.)
+//   - Subsequent lines: JSON arrays [time, type, data] representing events
+//   - Supports gzip compression automatically
+//   - Compatible with asciinema.org and other asciinema tools
 package termsession
 
 import (
@@ -26,21 +78,28 @@ import (
 	"github.com/deepnoodle-ai/wonton/terminal"
 )
 
-// RecordingHeader represents asciinema v2 header (first line of .cast file)
+// RecordingHeader represents the asciinema v2 header line.
+//
+// This is the first line of every .cast file, containing metadata about
+// the recording session. All recordings must start with a valid header.
 type RecordingHeader struct {
-	Version   int               `json:"version"`
-	Width     int               `json:"width"`
-	Height    int               `json:"height"`
-	Timestamp int64             `json:"timestamp"`
+	Version   int               `json:"version"`   // Always 2 for asciinema v2 format
+	Width     int               `json:"width"`     // Terminal width in columns
+	Height    int               `json:"height"`    // Terminal height in rows
+	Timestamp int64             `json:"timestamp"` // Unix timestamp of recording start
 	Env       map[string]string `json:"env,omitempty"`
-	Title     string            `json:"title,omitempty"`
+	Title     string            `json:"title,omitempty"` // Optional recording title
 }
 
-// RecordingEvent represents a single event [time, type, data]
+// RecordingEvent represents a single terminal I/O event in asciinema v2 format.
+//
+// Events are encoded as JSON arrays: [time, type, data]
+// where time is seconds elapsed, type is "o" (output) or "i" (input),
+// and data is the actual terminal content.
 type RecordingEvent struct {
 	Time float64 // Seconds since recording start
-	Type string  // "o" (output) or "i" (input)
-	Data string  // The actual content
+	Type string  // "o" for terminal output, "i" for user input
+	Data string  // The actual terminal content (may contain ANSI codes)
 }
 
 // MarshalJSON implements custom JSON encoding for asciinema array format
@@ -48,16 +107,20 @@ func (e RecordingEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal([]interface{}{e.Time, e.Type, e.Data})
 }
 
-// RecordingOptions configures recording behavior
+// RecordingOptions configures recording behavior.
+//
+// These options control how terminal output is captured and stored.
 type RecordingOptions struct {
-	Compress      bool              // Enable gzip compression
-	RedactSecrets bool              // Redact passwords, tokens, etc.
-	Title         string            // Recording title (metadata)
-	Env           map[string]string // Environment variables (metadata)
-	IdleTimeLimit float64           // Max idle time between events (0 = no limit)
+	Compress      bool              // Enable gzip compression to reduce file size
+	RedactSecrets bool              // Automatically redact passwords, API keys, and tokens
+	Title         string            // Recording title for metadata (shown in players)
+	Env           map[string]string // Environment variables to include in metadata
+	IdleTimeLimit float64           // Max idle time between events in seconds (0 = no limit)
 }
 
-// DefaultRecordingOptions returns sensible defaults
+// DefaultRecordingOptions returns sensible defaults for recording.
+//
+// By default, recordings are compressed and secrets are redacted.
 func DefaultRecordingOptions() RecordingOptions {
 	return RecordingOptions{
 		Compress:      true,
@@ -67,7 +130,12 @@ func DefaultRecordingOptions() RecordingOptions {
 	}
 }
 
-// Recorder handles standalone session recording to asciinema v2 format
+// Recorder captures terminal output to an asciinema v2 format file.
+//
+// Use this when you want to record terminal output directly without a PTY.
+// For recording interactive PTY sessions, see Session.Record instead.
+//
+// Recorder is safe for concurrent use (all methods are thread-safe).
 type Recorder struct {
 	file          *os.File
 	writer        *bufio.Writer
@@ -83,7 +151,27 @@ type Recorder struct {
 	height        int
 }
 
-// NewRecorder creates a new standalone recorder
+// NewRecorder creates a new recorder that writes to the specified file.
+//
+// The file is created immediately and the asciinema v2 header is written.
+// The recorder must be closed with Close() when done to ensure all data is flushed.
+//
+// Parameters:
+//   - filename: Path to the .cast file to create
+//   - width: Terminal width in columns
+//   - height: Terminal height in rows
+//   - opts: Recording options (compression, redaction, metadata)
+//
+// Example:
+//
+//	recorder, err := NewRecorder("demo.cast", 80, 24, RecordingOptions{
+//	    Compress: true,
+//	    Title: "My Demo",
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer recorder.Close()
 func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Recorder, error) {
 	r := &Recorder{
 		startTime:     time.Now(),
@@ -141,7 +229,13 @@ func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Re
 	return r, nil
 }
 
-// RecordOutput captures terminal output
+// RecordOutput records terminal output data.
+//
+// The data is timestamped relative to when the recorder was created.
+// If RedactSecrets is enabled, passwords and API keys will be automatically redacted.
+// Recording is skipped if the recorder is paused or if data is empty.
+//
+// This method is safe to call from multiple goroutines.
 func (r *Recorder) RecordOutput(data string) {
 	if r == nil {
 		return
@@ -185,7 +279,13 @@ func (r *Recorder) RecordOutput(data string) {
 	r.writeEvent(event)
 }
 
-// RecordInput captures user input
+// RecordInput records user input data.
+//
+// Input events are recorded but typically not displayed during playback
+// (most players only render output events). They're useful for analysis
+// and understanding user interactions with the terminal.
+//
+// This method is safe to call from multiple goroutines.
 func (r *Recorder) RecordInput(data string) {
 	if r == nil {
 		return
@@ -224,7 +324,11 @@ func (r *Recorder) RecordInput(data string) {
 	r.writeEvent(event)
 }
 
-// Pause temporarily suspends recording
+// Pause temporarily suspends recording.
+//
+// While paused, calls to RecordOutput and RecordInput are ignored.
+// Use Resume to continue recording. This is useful for temporarily
+// stopping recording during sensitive operations.
 func (r *Recorder) Pause() {
 	if r == nil {
 		return
@@ -235,7 +339,10 @@ func (r *Recorder) Pause() {
 	r.mu.Unlock()
 }
 
-// Resume continues a paused recording
+// Resume continues a paused recording.
+//
+// Recording resumes from the point where Pause was called, preventing
+// a large time gap from appearing in the recording.
 func (r *Recorder) Resume() {
 	if r == nil {
 		return
@@ -247,7 +354,7 @@ func (r *Recorder) Resume() {
 	r.mu.Unlock()
 }
 
-// IsPaused returns true if recording is paused
+// IsPaused returns true if recording is currently paused.
 func (r *Recorder) IsPaused() bool {
 	if r == nil {
 		return false
@@ -258,7 +365,11 @@ func (r *Recorder) IsPaused() bool {
 	return r.paused
 }
 
-// UpdateSize updates the recorded terminal dimensions (for resize events)
+// UpdateSize updates the recorded terminal dimensions.
+//
+// This should be called when the terminal is resized to keep the
+// metadata accurate. Note: asciinema v2 doesn't have explicit resize
+// events, so this only updates internal tracking.
 func (r *Recorder) UpdateSize(width, height int) {
 	if r == nil {
 		return
@@ -283,7 +394,10 @@ func (r *Recorder) writeEvent(event RecordingEvent) {
 	// We flush periodically rather than every event for performance
 }
 
-// Flush writes any buffered data to the file
+// Flush writes any buffered data to the underlying file.
+//
+// Events are buffered for performance. Call Flush to ensure all
+// recorded events are written to disk immediately.
 func (r *Recorder) Flush() error {
 	if r == nil {
 		return nil
@@ -298,7 +412,11 @@ func (r *Recorder) Flush() error {
 	return nil
 }
 
-// Close finalizes the recording and closes the file
+// Close finalizes the recording and closes the file.
+//
+// This flushes all buffered data and closes any compression streams.
+// Always call Close when finished recording to ensure data is not lost.
+// It's safe to call Close multiple times.
 func (r *Recorder) Close() error {
 	if r == nil {
 		return nil

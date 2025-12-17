@@ -1,3 +1,5 @@
+// Package env provides .env file parsing and manipulation.
+// This file contains functions for reading, parsing, and writing .env format files.
 package env
 
 import (
@@ -10,6 +12,16 @@ import (
 // LoadEnvFile loads environment variables from .env files into os.Environ().
 // Variables that already exist in the environment are NOT overwritten.
 // Use OverloadEnvFile to override existing values.
+//
+// If no filenames are provided, it defaults to loading ".env" from the current directory.
+// Missing files return an error.
+//
+// Example:
+//
+//	err := env.LoadEnvFile(".env", ".env.local")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 func LoadEnvFile(filenames ...string) error {
 	if len(filenames) == 0 {
 		filenames = []string{".env"}
@@ -32,7 +44,17 @@ func LoadEnvFile(filenames ...string) error {
 }
 
 // OverloadEnvFile loads environment variables from .env files,
-// overwriting any existing values.
+// overwriting any existing values in os.Environ().
+//
+// If no filenames are provided, it defaults to loading ".env" from the current directory.
+// Missing files return an error.
+//
+// Example:
+//
+//	err := env.OverloadEnvFile(".env.production")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 func OverloadEnvFile(filenames ...string) error {
 	if len(filenames) == 0 {
 		filenames = []string{".env"}
@@ -53,7 +75,15 @@ func OverloadEnvFile(filenames ...string) error {
 }
 
 // ReadEnvFile reads a .env file and returns a map of key-value pairs.
-// Does not modify the environment.
+// Does not modify the environment. Returns an error if the file cannot be opened.
+//
+// Example:
+//
+//	envVars, err := env.ReadEnvFile(".env")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(envVars["DATABASE_URL"])
 func ReadEnvFile(filename string) (map[string]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -64,7 +94,15 @@ func ReadEnvFile(filename string) (map[string]string, error) {
 	return ParseEnvReader(f)
 }
 
-// ParseEnvReader parses .env format from a reader.
+// ParseEnvReader parses .env format from a reader and returns a map of key-value pairs.
+// Supports standard .env syntax including comments, quoted values, export statements,
+// and both = and : separators.
+//
+// Example:
+//
+//	file, _ := os.Open("config.env")
+//	defer file.Close()
+//	envVars, err := env.ParseEnvReader(file)
 func ParseEnvReader(r io.Reader) (map[string]string, error) {
 	result := make(map[string]string)
 	scanner := bufio.NewScanner(r)
@@ -92,7 +130,16 @@ func ParseEnvReader(r io.Reader) (map[string]string, error) {
 	return result, scanner.Err()
 }
 
-// ParseEnvString parses a .env format string.
+// ParseEnvString parses a .env format string and returns a map of key-value pairs.
+// Useful for parsing inline .env configuration.
+//
+// Example:
+//
+//	envVars, err := env.ParseEnvString(`
+//	    HOST=localhost
+//	    PORT=8080
+//	    DEBUG=true
+//	`)
 func ParseEnvString(s string) (map[string]string, error) {
 	return ParseEnvReader(strings.NewReader(s))
 }
@@ -192,6 +239,17 @@ func processEscapes(s string) string {
 }
 
 // WriteEnvFile writes a map of environment variables to a .env file.
+// Values are automatically quoted when necessary (spaces, special characters, etc.).
+// Escape sequences are applied to quoted values.
+//
+// Example:
+//
+//	envVars := map[string]string{
+//	    "HOST": "localhost",
+//	    "PORT": "8080",
+//	    "MESSAGE": "Hello, World!",
+//	}
+//	err := env.WriteEnvFile(envVars, ".env.output")
 func WriteEnvFile(envMap map[string]string, filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {

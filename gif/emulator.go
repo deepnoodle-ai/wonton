@@ -8,15 +8,36 @@ import (
 )
 
 // Emulator interprets ANSI escape sequences and maintains terminal screen state.
-// It processes raw terminal output (as captured in .cast files) and updates
-// a TerminalScreen buffer that can be rendered to GIF frames.
+// It processes raw terminal output (including control characters and escape
+// sequences) and updates a TerminalScreen buffer that can be rendered to GIF
+// frames.
+//
+// The emulator supports:
+//   - Standard ANSI color codes (30-37, 40-47, 90-97, 100-107)
+//   - 256-color mode (ESC[38;5;Nm and ESC[48;5;Nm)
+//   - True color / 24-bit RGB (ESC[38;2;R;G;Bm and ESC[48;2;R;G;Bm)
+//   - Cursor movement (CSI sequences: H, A, B, C, D, E, F, G, d)
+//   - Screen clearing (CSI J and K sequences)
+//   - Common control characters (newline, carriage return, backspace, tab)
+//
+// Example:
+//
+//	emulator := gif.NewEmulator(80, 24)
+//	emulator.ProcessOutput("Hello \x1b[31mRed\x1b[0m World\n")
+//	emulator.ProcessOutput("Line 2")
+//
+//	renderer := gif.NewTerminalRenderer(emulator.Screen(), 8)
+//	renderer.RenderFrame(10)
+//	renderer.Save("output.gif")
 type Emulator struct {
 	screen *TerminalScreen
 	fg     color.Color
 	bg     color.Color
 }
 
-// NewEmulator creates a new terminal emulator with the given dimensions.
+// NewEmulator creates a new terminal emulator with the specified dimensions.
+// The cols and rows parameters define the terminal size in character cells.
+// Standard terminal sizes include 80x24 (classic), 80x25 (DOS), and 132x24.
 func NewEmulator(cols, rows int) *Emulator {
 	screen := NewTerminalScreen(cols, rows)
 	return &Emulator{
@@ -26,19 +47,25 @@ func NewEmulator(cols, rows int) *Emulator {
 	}
 }
 
-// Screen returns the current terminal screen state.
+// Screen returns the current terminal screen state, which contains the
+// character cells, colors, and cursor position. The returned screen can
+// be rendered to GIF frames using a TerminalRenderer.
 func (e *Emulator) Screen() *TerminalScreen {
 	return e.screen
 }
 
-// Reset clears the screen and resets all state.
+// Reset clears the screen and resets all state to initial values.
+// This includes clearing all text, resetting colors to defaults (white on
+// black), and moving the cursor to the home position (0, 0).
 func (e *Emulator) Reset() {
 	e.screen.Clear()
 	e.fg = White
 	e.bg = Black
 }
 
-// Resize changes the terminal dimensions.
+// Resize changes the terminal dimensions, preserving as much existing content
+// as possible. If the new size is smaller, content outside the bounds is lost.
+// If larger, new areas are filled with spaces using default colors.
 func (e *Emulator) Resize(cols, rows int) {
 	// Create new screen with new dimensions
 	newScreen := NewTerminalScreen(cols, rows)
@@ -72,14 +99,25 @@ func (e *Emulator) Resize(cols, rows int) {
 	e.screen = newScreen
 }
 
-// Write implements io.Writer. It processes terminal output data
-// and updates the screen state accordingly.
+// Write implements io.Writer, allowing the emulator to be used as a writer
+// for terminal output. It processes the data through ProcessOutput and always
+// returns the full length written with no error.
+//
+// This makes Emulator compatible with any code that writes to an io.Writer,
+// such as terminal applications or command execution output.
 func (e *Emulator) Write(p []byte) (n int, err error) {
 	e.ProcessOutput(string(p))
 	return len(p), nil
 }
 
-// ProcessOutput processes raw terminal output with ANSI escape sequences.
+// ProcessOutput processes raw terminal output containing printable characters,
+// control characters, and ANSI escape sequences. It updates the screen state,
+// cursor position, and text attributes accordingly.
+//
+// Supported sequences include:
+//   - CSI sequences (ESC[...): cursor movement, colors, clearing
+//   - OSC sequences (ESC]...): ignored (window title, etc.)
+//   - Control characters: \n, \r, \b, \t, and printable ASCII
 func (e *Emulator) ProcessOutput(data string) {
 	i := 0
 	for i < len(data) {

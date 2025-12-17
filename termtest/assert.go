@@ -5,7 +5,13 @@ import (
 	"testing"
 )
 
-// AssertContains asserts that the screen contains the given text.
+// AssertContains asserts that the screen contains the given text anywhere in its content.
+// The search is case-sensitive and can match across line boundaries.
+//
+// Example:
+//
+//	screen.Write([]byte("Hello, World!"))
+//	termtest.AssertContains(t, screen, "World")  // passes
 func AssertContains(t *testing.T, screen *Screen, text string) {
 	t.Helper()
 	if !screen.Contains(text) {
@@ -21,7 +27,14 @@ func AssertNotContains(t *testing.T, screen *Screen, text string) {
 	}
 }
 
-// AssertRow asserts that a specific row contains the expected text.
+// AssertRow asserts that a specific row exactly matches the expected text.
+// Row indices are 0-based. Trailing spaces in the row are trimmed before comparison.
+//
+// Example:
+//
+//	screen.Write([]byte("Line1\nLine2"))
+//	termtest.AssertRow(t, screen, 0, "Line1")  // passes
+//	termtest.AssertRow(t, screen, 1, "Line2")  // passes
 func AssertRow(t *testing.T, screen *Screen, row int, expected string) {
 	t.Helper()
 	actual := screen.Row(row)
@@ -30,7 +43,8 @@ func AssertRow(t *testing.T, screen *Screen, row int, expected string) {
 	}
 }
 
-// AssertRowContains asserts that a specific row contains the given text.
+// AssertRowContains asserts that a specific row contains the given text substring.
+// Unlike AssertRow, this does a substring match instead of exact equality.
 func AssertRowContains(t *testing.T, screen *Screen, row int, text string) {
 	t.Helper()
 	actual := screen.Row(row)
@@ -39,7 +53,8 @@ func AssertRowContains(t *testing.T, screen *Screen, row int, text string) {
 	}
 }
 
-// AssertRowPrefix asserts that a specific row starts with the given text.
+// AssertRowPrefix asserts that a specific row starts with the given prefix.
+// Useful for checking prompts or indentation in terminal output.
 func AssertRowPrefix(t *testing.T, screen *Screen, row int, prefix string) {
 	t.Helper()
 	actual := screen.Row(row)
@@ -48,7 +63,13 @@ func AssertRowPrefix(t *testing.T, screen *Screen, row int, prefix string) {
 	}
 }
 
-// AssertCursor asserts that the cursor is at the expected position.
+// AssertCursor asserts that the cursor is at the expected (x, y) position.
+// Coordinates are 0-based, with (0, 0) at the top-left corner.
+//
+// Example:
+//
+//	screen.Write([]byte("Hello"))
+//	termtest.AssertCursor(t, screen, 5, 0)  // After "Hello"
 func AssertCursor(t *testing.T, screen *Screen, x, y int) {
 	t.Helper()
 	actualX, actualY := screen.Cursor()
@@ -57,7 +78,9 @@ func AssertCursor(t *testing.T, screen *Screen, x, y int) {
 	}
 }
 
-// AssertText asserts that the screen text matches exactly.
+// AssertTextEqual asserts that the screen text matches exactly.
+// The comparison includes newlines and considers all rows.
+// If there's a mismatch, a unified diff is displayed.
 func AssertTextEqual(t *testing.T, screen *Screen, expected string) {
 	t.Helper()
 	actual := screen.Text()
@@ -67,7 +90,8 @@ func AssertTextEqual(t *testing.T, screen *Screen, expected string) {
 	}
 }
 
-// AssertCell asserts that a specific cell has the expected character.
+// AssertCell asserts that the cell at (x, y) contains the expected character.
+// Coordinates are 0-based.
 func AssertCell(t *testing.T, screen *Screen, x, y int, expected rune) {
 	t.Helper()
 	cell := screen.Cell(x, y)
@@ -76,7 +100,8 @@ func AssertCell(t *testing.T, screen *Screen, x, y int, expected rune) {
 	}
 }
 
-// AssertCellStyle asserts that a specific cell has the expected style properties.
+// AssertCellStyle asserts that the cell at (x, y) has exactly the expected style.
+// All style fields must match (foreground, background, bold, italic, etc.).
 func AssertCellStyle(t *testing.T, screen *Screen, x, y int, style Style) {
 	t.Helper()
 	cell := screen.Cell(x, y)
@@ -85,7 +110,8 @@ func AssertCellStyle(t *testing.T, screen *Screen, x, y int, style Style) {
 	}
 }
 
-// AssertCellBold asserts that a specific cell is bold (or not).
+// AssertCellBold asserts that the cell at (x, y) has the expected bold state.
+// This is a convenience function for checking just the bold attribute.
 func AssertCellBold(t *testing.T, screen *Screen, x, y int, bold bool) {
 	t.Helper()
 	cell := screen.Cell(x, y)
@@ -94,7 +120,8 @@ func AssertCellBold(t *testing.T, screen *Screen, x, y int, bold bool) {
 	}
 }
 
-// AssertEmpty asserts that the screen is empty (all spaces).
+// AssertEmpty asserts that the screen contains only whitespace.
+// This checks that all cells are spaces or the screen is blank.
 func AssertEmpty(t *testing.T, screen *Screen) {
 	t.Helper()
 	text := screen.Text()
@@ -104,7 +131,8 @@ func AssertEmpty(t *testing.T, screen *Screen) {
 	}
 }
 
-// AssertEqual asserts that two screens have the same text content.
+// AssertEqual asserts that two screens have identical text content.
+// Styles are not compared, only the visible text. For style comparison, use EqualStyled.
 func AssertEqual(t *testing.T, expected, actual *Screen) {
 	t.Helper()
 	if !Equal(expected, actual) {
@@ -113,7 +141,8 @@ func AssertEqual(t *testing.T, expected, actual *Screen) {
 	}
 }
 
-// RequireContains is like AssertContains but fails immediately.
+// RequireContains is like AssertContains but calls t.Fatal instead of t.Error.
+// Use this when the test cannot continue if the assertion fails.
 func RequireContains(t *testing.T, screen *Screen, text string) {
 	t.Helper()
 	if !screen.Contains(text) {
@@ -121,7 +150,8 @@ func RequireContains(t *testing.T, screen *Screen, text string) {
 	}
 }
 
-// RequireRow is like AssertRow but fails immediately.
+// RequireRow is like AssertRow but calls t.Fatal instead of t.Error.
+// Use this when the test cannot continue if the assertion fails.
 func RequireRow(t *testing.T, screen *Screen, row int, expected string) {
 	t.Helper()
 	actual := screen.Row(row)

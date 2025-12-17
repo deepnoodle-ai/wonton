@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -420,4 +421,24 @@ func TestSession_Integration_MultipleCommands(t *testing.T) {
 	err = s.Wait()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, s.ExitCode())
+}
+
+// ExampleNewSession demonstrates creating a PTY session.
+func ExampleNewSession() {
+	// Create a session that will run a command
+	session, err := NewSession(SessionOptions{
+		Command: []string{"bash", "-c", "exit 0"},
+		Dir:     "/tmp",
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Session created with command: %v\n", session.command)
+	fmt.Printf("Working directory: %s\n", session.dir)
+
+	// Output:
+	// Session created with command: [bash -c exit 0]
+	// Working directory: /tmp
 }

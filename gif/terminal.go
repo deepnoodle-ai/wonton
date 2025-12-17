@@ -4,25 +4,33 @@ import (
 	"image/color"
 )
 
-// TerminalCell represents a single cell in the terminal screen.
+// TerminalCell represents a single character cell in a terminal screen,
+// including the character itself and its foreground and background colors.
 type TerminalCell struct {
-	Char rune
-	FG   color.Color
-	BG   color.Color
+	Char rune        // The Unicode character displayed in this cell
+	FG   color.Color // Foreground (text) color
+	BG   color.Color // Background color
 }
 
-// TerminalScreen represents a virtual terminal screen buffer.
+// TerminalScreen represents a virtual terminal screen buffer with character
+// cells arranged in rows and columns. It maintains the complete state needed
+// to render terminal output, including all characters, their colors, and the
+// cursor position.
+//
+// The screen uses (0,0) as the top-left position, with X increasing to the
+// right and Y increasing downward.
 type TerminalScreen struct {
-	Width  int
-	Height int
-	Cells  [][]TerminalCell
-	CursorX int
-	CursorY int
-	DefaultFG color.Color
-	DefaultBG color.Color
+	Width     int              // Screen width in columns (character cells)
+	Height    int              // Screen height in rows (character cells)
+	Cells     [][]TerminalCell // 2D array of cells [row][column]
+	CursorX   int              // Current cursor column (0-indexed)
+	CursorY   int              // Current cursor row (0-indexed)
+	DefaultFG color.Color      // Default foreground color (typically white)
+	DefaultBG color.Color      // Default background color (typically black)
 }
 
-// NewTerminalScreen creates a new terminal screen with the given dimensions.
+// NewTerminalScreen creates a new terminal screen buffer with the specified
+// dimensions. All cells are initialized with space characters and default colors.
 func NewTerminalScreen(cols, rows int) *TerminalScreen {
 	ts := &TerminalScreen{
 		Width:     cols,
@@ -44,7 +52,8 @@ func NewTerminalScreen(cols, rows int) *TerminalScreen {
 	return ts
 }
 
-// Clear clears the screen with the default background color.
+// Clear clears the entire screen, filling all cells with spaces using the
+// default foreground and background colors. The cursor is reset to position (0,0).
 func (ts *TerminalScreen) Clear() {
 	for y := 0; y < ts.Height; y++ {
 		for x := 0; x < ts.Width; x++ {
@@ -59,7 +68,9 @@ func (ts *TerminalScreen) Clear() {
 	ts.CursorY = 0
 }
 
-// SetCell sets a cell at the given position.
+// SetCell sets the character and colors for a cell at the specified position.
+// If the position is out of bounds, the call is silently ignored. Nil colors
+// are replaced with the default foreground or background colors.
 func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 	if x < 0 || x >= ts.Width || y < 0 || y >= ts.Height {
 		return
@@ -73,7 +84,11 @@ func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 	ts.Cells[y][x] = TerminalCell{Char: char, FG: fg, BG: bg}
 }
 
-// WriteString writes a string to the screen at the current cursor position.
+// WriteString writes a string to the screen starting at the current cursor
+// position. The cursor advances as characters are written. Newlines (\n) move
+// the cursor to the start of the next line. Carriage returns (\r) move to the
+// start of the current line. The screen scrolls up if text extends beyond the
+// bottom row.
 func (ts *TerminalScreen) WriteString(s string, fg, bg color.Color) {
 	if fg == nil {
 		fg = ts.DefaultFG
@@ -125,7 +140,9 @@ func (ts *TerminalScreen) scrollUp() {
 	}
 }
 
-// MoveCursor moves the cursor to the given position.
+// MoveCursor moves the cursor to the specified position, clamping coordinates
+// to valid screen bounds. Negative values are clamped to 0, and values beyond
+// the screen dimensions are clamped to the maximum valid position.
 func (ts *TerminalScreen) MoveCursor(x, y int) {
 	if x < 0 {
 		x = 0
@@ -143,7 +160,22 @@ func (ts *TerminalScreen) MoveCursor(x, y int) {
 	ts.CursorY = y
 }
 
-// TerminalRenderer renders a TerminalScreen to GIF frames.
+// TerminalRenderer converts a TerminalScreen buffer into animated GIF frames.
+// It handles text rendering using either TTF fonts (for high quality) or bitmap
+// fonts (for speed and simplicity), and manages the GIF creation process.
+//
+// The renderer calculates pixel dimensions based on the terminal size and
+// selected font, then renders each frame by drawing character cells with their
+// foreground and background colors.
+//
+// Example:
+//
+//	screen := gif.NewTerminalScreen(80, 24)
+//	screen.WriteString("Hello World", gif.White, gif.Black)
+//
+//	renderer := gif.NewTerminalRenderer(screen, 8)
+//	renderer.RenderFrame(10) // Add frame with 100ms delay
+//	renderer.Save("output.gif")
 type TerminalRenderer struct {
 	screen     *TerminalScreen
 	gif        *GIF
@@ -154,13 +186,21 @@ type TerminalRenderer struct {
 	bitmapFont BitmapFont   // Bitmap font to use if font is nil
 }
 
-// RendererOptions configures terminal rendering.
+// RendererOptions configures how a TerminalRenderer converts terminal screens
+// to GIF frames. It provides control over font selection, sizing, and layout.
+//
+// Use DefaultRendererOptions() to get sensible defaults, then customize:
+//
+//	opts := gif.DefaultRendererOptions()
+//	opts.FontSize = 16
+//	opts.Padding = 10
+//	renderer := gif.NewTerminalRendererWithOptions(screen, opts)
 type RendererOptions struct {
-	Font       *FontFace  // TTF font (nil = use default TTF or bitmap fallback)
-	FontSize   float64    // Font size for default TTF (default: 14)
-	UseBitmap  bool       // Force bitmap font instead of TTF
-	BitmapFont BitmapFont // Which bitmap font to use (default: 8x16)
-	Padding    int        // Padding around terminal in pixels
+	Font       *FontFace  // Custom TTF/OTF font (nil = use default Inconsolata or bitmap)
+	FontSize   float64    // Font size in points for default TTF (default: 14)
+	UseBitmap  bool       // Force bitmap font instead of TTF (faster, lower quality)
+	BitmapFont BitmapFont // Which bitmap font to use when UseBitmap=true (default: 8x16)
+	Padding    int        // Padding in pixels around terminal content (default: 8)
 }
 
 // DefaultRendererOptions returns sensible defaults for terminal rendering.
@@ -173,16 +213,25 @@ func DefaultRendererOptions() RendererOptions {
 	}
 }
 
-// NewTerminalRenderer creates a renderer for the given terminal screen.
-// The padding parameter adds extra pixels around the terminal content.
-// This constructor uses the default TTF font for best quality.
+// NewTerminalRenderer creates a renderer for the given terminal screen using
+// the default TTF font (Inconsolata) for best rendering quality. The padding
+// parameter specifies extra pixels around the terminal content.
+//
+// This is a convenience constructor that uses DefaultRendererOptions with the
+// specified padding. For more control over font selection and rendering options,
+// use NewTerminalRendererWithOptions.
 func NewTerminalRenderer(screen *TerminalScreen, padding int) *TerminalRenderer {
 	opts := DefaultRendererOptions()
 	opts.Padding = padding
 	return NewTerminalRendererWithOptions(screen, opts)
 }
 
-// NewTerminalRendererWithOptions creates a renderer with custom options.
+// NewTerminalRendererWithOptions creates a renderer with full control over
+// rendering options. This allows customizing font selection (TTF vs bitmap),
+// font size, and padding.
+//
+// The renderer automatically calculates pixel dimensions based on the terminal
+// size and selected font metrics.
 func NewTerminalRendererWithOptions(screen *TerminalScreen, opts RendererOptions) *TerminalRenderer {
 	tr := &TerminalRenderer{
 		screen:     screen,
@@ -265,14 +314,20 @@ func terminalPalette() Palette {
 	}
 }
 
-// SetLoopCount sets the GIF loop count.
+// SetLoopCount sets how many times the GIF animation should loop.
+// Use 0 for infinite looping (default), -1 to play once, or a positive
+// number for a specific repeat count. Returns the renderer for method chaining.
 func (tr *TerminalRenderer) SetLoopCount(count int) *TerminalRenderer {
 	tr.gif.SetLoopCount(count)
 	return tr
 }
 
-// RenderFrame renders the current terminal screen state as a GIF frame.
-// Delay is in 100ths of a second (e.g., 10 = 100ms).
+// RenderFrame captures the current terminal screen state and adds it as a frame
+// to the GIF animation. The delay parameter specifies how long to display this
+// frame, measured in hundredths of a second (e.g., 10 = 100ms, 50 = 500ms).
+//
+// Call this method multiple times as the terminal screen changes to create an
+// animation showing the terminal session progression.
 func (tr *TerminalRenderer) RenderFrame(delay int) {
 	tr.gif.AddFrameWithDelay(func(f *Frame) {
 		// Fill background
@@ -308,17 +363,21 @@ func (tr *TerminalRenderer) drawChar(f *Frame, px, py int, char rune, fg color.C
 	}
 }
 
-// GIF returns the underlying GIF being constructed.
+// GIF returns the underlying GIF object being constructed. This allows access
+// to the GIF for additional manipulation or encoding options.
 func (tr *TerminalRenderer) GIF() *GIF {
 	return tr.gif
 }
 
-// Save writes the GIF to a file.
+// Save writes the rendered GIF animation to a file. This is a convenience
+// method that calls Save on the underlying GIF object.
 func (tr *TerminalRenderer) Save(filename string) error {
 	return tr.gif.Save(filename)
 }
 
-// Bytes returns the GIF as a byte slice.
+// Bytes returns the GIF animation as a byte slice, suitable for writing to
+// HTTP responses or other byte-oriented outputs. This is a convenience method
+// that calls Bytes on the underlying GIF object.
 func (tr *TerminalRenderer) Bytes() ([]byte, error) {
 	return tr.gif.Bytes()
 }

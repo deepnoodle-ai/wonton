@@ -6,17 +6,26 @@ import (
 	"github.com/deepnoodle-ai/wonton/termsession"
 )
 
-// CastOptions configures cast-to-GIF conversion.
+// CastOptions configures the conversion of terminal recordings (.cast files)
+// to animated GIFs. It provides control over dimensions, timing, rendering
+// quality, and font selection.
+//
+// Use DefaultCastOptions to get sensible defaults, then customize as needed:
+//
+//	opts := gif.DefaultCastOptions()
+//	opts.FontSize = 16
+//	opts.FPS = 15
+//	opts.Speed = 2.0  // Double speed playback
 type CastOptions struct {
-	Cols      int            // Override columns (0 = from file)
-	Rows      int            // Override rows (0 = from file)
-	Speed     float64        // Playback speed multiplier (default: 1.0)
-	MaxIdle   float64        // Max idle time between events in seconds (default: 2.0)
-	FPS       int            // Target frames per second (default: 10)
-	Padding   int            // Padding around terminal in pixels (default: 8)
-	Font      *FontFace      // Custom font (nil = default TTF)
-	FontSize  float64        // Font size if using default TTF (default: 14)
-	UseBitmap bool           // Force bitmap font instead of TTF
+	Cols      int            // Override terminal columns (0 = use recording dimensions)
+	Rows      int            // Override terminal rows (0 = use recording dimensions)
+	Speed     float64        // Playback speed multiplier (1.0 = normal, 2.0 = double speed)
+	MaxIdle   float64        // Maximum idle time between events in seconds (default: 2.0, prevents long pauses)
+	FPS       int            // Target frames per second for output GIF (default: 10)
+	Padding   int            // Padding around terminal content in pixels (default: 8)
+	Font      *FontFace      // Custom TTF/OTF font (nil = use default Inconsolata)
+	FontSize  float64        // Font size in points when using default font (default: 14)
+	UseBitmap bool           // Force bitmap font instead of TTF (faster but lower quality)
 }
 
 // DefaultCastOptions returns sensible defaults for cast conversion.
@@ -30,8 +39,28 @@ func DefaultCastOptions() CastOptions {
 	}
 }
 
-// RenderCast converts a .cast file to an animated GIF.
-// The returned GIF can be saved with gif.Save() or encoded with gif.Encode().
+// RenderCast converts an asciinema .cast file (terminal recording) to an
+// animated GIF. It processes the terminal output events, applies ANSI escape
+// sequences, and renders each frame with proper timing.
+//
+// The function handles:
+//   - ANSI color codes (16-color, 256-color, and true color)
+//   - Cursor movement and text positioning
+//   - Screen clearing and line editing
+//   - Playback speed adjustment and idle time limiting
+//
+// Example:
+//
+//	opts := gif.DefaultCastOptions()
+//	opts.FontSize = 16
+//	opts.Speed = 1.5  // Play at 1.5x speed
+//	g, err := gif.RenderCast("demo.cast", opts)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	g.Save("demo.gif")
+//
+// The returned GIF can be saved with Save() or encoded with Encode().
 func RenderCast(castFile string, opts CastOptions) (*GIF, error) {
 	header, events, err := termsession.LoadCastFile(castFile)
 	if err != nil {
@@ -41,8 +70,11 @@ func RenderCast(castFile string, opts CastOptions) (*GIF, error) {
 	return RenderCastEvents(header, events, opts)
 }
 
-// RenderCastEvents converts cast events to an animated GIF.
-// This is useful when you already have the header and events loaded.
+// RenderCastEvents converts pre-loaded terminal recording events to an animated
+// GIF. This function is useful when you already have the header and events in
+// memory, or when you want to filter or modify events before rendering.
+//
+// See RenderCast for higher-level usage that loads from a file directly.
 func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.RecordingEvent, opts CastOptions) (*GIF, error) {
 	// Apply defaults
 	if opts.Speed <= 0 {
@@ -119,17 +151,29 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	return renderer.GIF(), nil
 }
 
-// CastInfo returns information about a .cast file without rendering it.
+// CastInfo contains metadata about a terminal recording without rendering it.
+// This is useful for inspecting recording properties before conversion.
 type CastInfo struct {
-	Width       int
-	Height      int
-	Duration    float64
-	EventCount  int
-	Title       string
-	Timestamp   int64
+	Width       int     // Terminal width in columns
+	Height      int     // Terminal height in rows
+	Duration    float64 // Total recording duration in seconds
+	EventCount  int     // Number of events in the recording
+	Title       string  // Recording title from metadata
+	Timestamp   int64   // Unix timestamp when recorded
 }
 
-// GetCastInfo returns information about a .cast file.
+// GetCastInfo extracts metadata from a .cast file without rendering it to a
+// GIF. This is useful for displaying recording information or making decisions
+// about rendering options.
+//
+// Example:
+//
+//	info, err := gif.GetCastInfo("demo.cast")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Printf("Recording: %dx%d, %.1fs duration, %d events\n",
+//	    info.Width, info.Height, info.Duration, info.EventCount)
 func GetCastInfo(castFile string) (*CastInfo, error) {
 	header, events, err := termsession.LoadCastFile(castFile)
 	if err != nil {

@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// read implements clipboard reading for Linux.
+// It automatically detects and uses the appropriate clipboard tool:
+//   - Wayland: wl-paste
+//   - X11: xclip (preferred) or xsel (fallback)
 func read(ctx context.Context) (string, error) {
 	// Check for Wayland
 	if os.Getenv("WAYLAND_DISPLAY") != "" {
@@ -42,6 +46,10 @@ func read(ctx context.Context) (string, error) {
 	return "", ErrUnavailable
 }
 
+// write implements clipboard writing for Linux.
+// It automatically detects and uses the appropriate clipboard tool:
+//   - Wayland: wl-copy
+//   - X11: xclip (preferred) or xsel (fallback)
 func write(ctx context.Context, text string) error {
 	// Check for Wayland
 	if os.Getenv("WAYLAND_DISPLAY") != "" {

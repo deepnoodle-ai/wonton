@@ -16,6 +16,18 @@ type stack struct {
 }
 
 // Stack creates a vertical stack that arranges children top-to-bottom.
+// This is one of the primary layout containers in TUI applications.
+//
+// Children are laid out vertically with optional spacing and alignment.
+// Flexible children (like Spacer) will expand to fill available space.
+//
+// Example:
+//
+//	Stack(
+//	    Text("Header").Bold(),
+//	    Spacer(),
+//	    Text("Footer"),
+//	).Gap(1).Align(AlignCenter)
 func Stack(children ...View) *stack {
 	return &stack{
 		children:  children,
@@ -24,13 +36,15 @@ func Stack(children ...View) *stack {
 	}
 }
 
-// Gap sets the spacing between children.
+// Gap sets the spacing between children in number of rows.
+// Only visible children (non-zero size) contribute to spacing.
 func (s *stack) Gap(n int) *stack {
 	s.gap = n
 	return s
 }
 
-// Align sets the horizontal alignment of children.
+// Align sets the horizontal alignment of children within the stack.
+// Options: AlignLeft (default), AlignCenter, AlignRight.
 func (s *stack) Align(a Alignment) *stack {
 	s.alignment = a
 	return s

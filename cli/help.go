@@ -9,8 +9,14 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// HelpTheme defines colors used in help output.
-// Users can customize this via App.HelpTheme().
+// HelpTheme defines the color scheme for styled help output.
+//
+// Customize the theme by creating a theme and passing it to App.HelpTheme:
+//
+//	theme := cli.DefaultHelpTheme()
+//	theme.TitleStart = color.NewRGB(255, 100, 100)
+//	theme.TitleEnd = color.NewRGB(100, 100, 255)
+//	app.HelpTheme(theme)
 type HelpTheme struct {
 	// TitleGradient defines the start and end colors for the app name gradient.
 	// Set both to the same value for a solid color.
@@ -33,8 +39,13 @@ type HelpTheme struct {
 	Deprecated tui.Style
 }
 
-// DefaultHelpTheme returns the default help theme.
-// Users can call this, modify fields, and pass to App.HelpTheme().
+// DefaultHelpTheme returns the default help theme with blue titles.
+//
+// Get the default theme, customize it, then apply:
+//
+//	theme := cli.DefaultHelpTheme()
+//	theme.Command = tui.NewStyle().WithForeground(tui.ColorYellow).WithBold()
+//	app.HelpTheme(theme)
 func DefaultHelpTheme() HelpTheme {
 	return HelpTheme{
 		TitleStart:    color.NewRGB(80, 140, 255),

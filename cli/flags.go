@@ -9,8 +9,10 @@ import (
 	"time"
 )
 
-// ParseFlags parses a struct with flag tags and populates a command's flags.
-// Supports tags: flag, default, help, env, enum, required
+// ParseFlags parses a struct with flag tags and adds flags to a command.
+//
+// This provides a declarative way to define flags using struct tags.
+// Supports tags: flag, default, help, env, enum, required, hidden
 //
 // Example:
 //
@@ -20,6 +22,11 @@ import (
 //	    Debug bool    `flag:"debug,d" help:"Enable debug mode"`
 //	    Format string `flag:"format,f" enum:"text,json,markdown" default:"text"`
 //	}
+//
+//	cmd := app.Command("chat")
+//	ParseFlags[Flags](cmd)
+//
+// Use BindFlags in the handler to populate the struct with parsed values.
 func ParseFlags[T any](c *Command) *T {
 	var result T
 	parseStructFlags(c, reflect.TypeOf(result))
@@ -27,6 +34,22 @@ func ParseFlags[T any](c *Command) *T {
 }
 
 // BindFlags binds parsed flag values to a struct.
+//
+// This populates a struct with values from the context based on flag tags:
+//
+//	type Flags struct {
+//	    Name string `flag:"name,n"`
+//	    Port int    `flag:"port,p" default:"8080"`
+//	}
+//
+//	func handler(ctx *cli.Context) error {
+//	    flags, err := cli.BindFlags[Flags](ctx)
+//	    if err != nil {
+//	        return err
+//	    }
+//	    // Use flags.Name, flags.Port
+//	    return nil
+//	}
 func BindFlags[T any](ctx *Context) (*T, error) {
 	var result T
 	rv := reflect.ValueOf(&result).Elem()
@@ -233,17 +256,34 @@ func lookupEnv(key string) (string, bool) {
 // -----------------------------------------------------------------------------
 // Flag Builders
 //
-// Fluent API for defining flags. Example:
+// The flag builder functions provide a fluent API for defining typed flags.
 //
-//	app.Command("greet").
+// Example:
+//
+//	app.Command("deploy").
 //	    Flags(
-//	        cli.String("name", "n").Default("World").Help("Name to greet"),
-//	        cli.Bool("loud", "l").Help("Greet loudly"),
-//	        cli.Int("times", "t").Default(1).Help("Number of times"),
+//	        cli.String("env", "e").Default("staging").Help("Environment"),
+//	        cli.Bool("force", "f").Help("Force deployment"),
+//	        cli.Int("replicas", "r").Default(3).Help("Number of replicas"),
 //	    )
+//
+// All flag builders support these methods:
+//   - Default(v): Set the default value
+//   - Help(s): Set the help text
+//   - Env(s): Bind to an environment variable
+//   - Required(): Mark as required
+//   - Hidden(): Hide from help output
+//
+// String flags also support:
+//   - Enum(values...): Restrict to a set of valid values
+//   - ValidateWith(fn): Add custom validation
 // -----------------------------------------------------------------------------
 
 // String creates a new string flag builder.
+//
+// The first parameter is the long flag name, the second is the optional short name:
+//
+//	cli.String("output", "o").Default("output.txt").Help("Output file")
 func String(name, short string) *stringBuilder {
 	return &stringBuilder{name: name, short: short}
 }
@@ -283,6 +323,8 @@ func (b *stringBuilder) Validate(value string) error {
 }
 
 // Bool creates a new boolean flag builder.
+//
+//	cli.Bool("verbose", "v").Help("Enable verbose output")
 func Bool(name, short string) *boolBuilder {
 	return &boolBuilder{name: name, short: short}
 }
@@ -310,6 +352,8 @@ func (b *boolBuilder) GetEnum() []string   { return nil }
 func (b *boolBuilder) Validate(string) error { return nil }
 
 // Int creates a new integer flag builder.
+//
+//	cli.Int("port", "p").Default(8080).Help("Server port")
 func Int(name, short string) *intBuilder {
 	return &intBuilder{name: name, short: short}
 }
@@ -342,6 +386,8 @@ func (b *intBuilder) GetEnum() []string     { return nil }
 func (b *intBuilder) Validate(string) error { return nil }
 
 // Float creates a new float64 flag builder.
+//
+//	cli.Float("ratio", "r").Default(0.5).Help("Compression ratio")
 func Float(name, short string) *floatBuilder {
 	return &floatBuilder{name: name, short: short}
 }
@@ -374,6 +420,8 @@ func (b *floatBuilder) GetEnum() []string     { return nil }
 func (b *floatBuilder) Validate(string) error { return nil }
 
 // Duration creates a new duration flag builder.
+//
+//	cli.Duration("timeout", "t").Default(30*time.Second).Help("Request timeout")
 func Duration(name, short string) *durationBuilder {
 	return &durationBuilder{name: name, short: short}
 }
@@ -401,6 +449,11 @@ func (b *durationBuilder) GetEnum() []string   { return nil }
 func (b *durationBuilder) Validate(string) error { return nil }
 
 // Strings creates a new string slice flag builder.
+//
+// Can be specified multiple times on the command line:
+//
+//	cli.Strings("include", "i").Help("Paths to include")
+//	// Usage: --include /foo --include /bar
 func Strings(name, short string) *stringsBuilder {
 	return &stringsBuilder{name: name, short: short}
 }
@@ -428,6 +481,11 @@ func (b *stringsBuilder) GetEnum() []string   { return nil }
 func (b *stringsBuilder) Validate(string) error { return nil }
 
 // Ints creates a new int slice flag builder.
+//
+// Can be specified multiple times on the command line:
+//
+//	cli.Ints("port", "p").Help("Ports to listen on")
+//	// Usage: --port 8080 --port 8081
 func Ints(name, short string) *intsBuilder {
 	return &intsBuilder{name: name, short: short}
 }

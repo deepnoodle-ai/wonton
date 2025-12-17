@@ -1,6 +1,7 @@
 package humanize
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -251,4 +252,169 @@ func TestPlural(t *testing.T) {
 	assert.Equal(t, "item", Plural(1, "item", "items"))
 	assert.Equal(t, "items", Plural(2, "item", "items"))
 	assert.Equal(t, "items", Plural(0, "item", "items"))
+}
+
+// Example functions for godoc
+
+func ExampleBytes() {
+	fmt.Println(Bytes(0))
+	fmt.Println(Bytes(1024))
+	fmt.Println(Bytes(1536))
+	fmt.Println(Bytes(1048576))
+	// Output:
+	// 0 B
+	// 1.0 KiB
+	// 1.5 KiB
+	// 1.0 MiB
+}
+
+func ExampleBytesSI() {
+	fmt.Println(BytesSI(0))
+	fmt.Println(BytesSI(1000))
+	fmt.Println(BytesSI(1500))
+	fmt.Println(BytesSI(1000000))
+	// Output:
+	// 0 B
+	// 1.0 KB
+	// 1.5 KB
+	// 1.0 MB
+}
+
+func ExampleDuration() {
+	fmt.Println(Duration(30 * time.Second))
+	fmt.Println(Duration(90 * time.Second))
+	fmt.Println(Duration(3665 * time.Second))
+	fmt.Println(Duration(25 * time.Hour))
+	fmt.Println(Duration(500 * time.Millisecond))
+	// Output:
+	// 30s
+	// 1m 30s
+	// 1h 1m
+	// 1d 1h
+	// 500ms
+}
+
+func ExampleDurationShort() {
+	fmt.Println(DurationShort(45 * time.Second))
+	fmt.Println(DurationShort(90 * time.Second))
+	fmt.Println(DurationShort(3 * time.Hour))
+	fmt.Println(DurationShort(48 * time.Hour))
+	// Output:
+	// 45s
+	// 1m
+	// 3h
+	// 2d
+}
+
+func ExampleRelativeTime() {
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+	fmt.Println(RelativeTime(now, now))
+	fmt.Println(RelativeTime(now.Add(-30*time.Second), now))
+	fmt.Println(RelativeTime(now.Add(-5*time.Minute), now))
+	fmt.Println(RelativeTime(now.Add(-2*time.Hour), now))
+	fmt.Println(RelativeTime(now.Add(10*time.Minute), now))
+	// Output:
+	// just now
+	// 30 seconds ago
+	// 5 minutes ago
+	// 2 hours ago
+	// in 10 minutes
+}
+
+func ExampleNumber() {
+	fmt.Println(Number(123))
+	fmt.Println(Number(1234))
+	fmt.Println(Number(1234567))
+	fmt.Println(Number(-1000000))
+	// Output:
+	// 123
+	// 1,234
+	// 1,234,567
+	// -1,000,000
+}
+
+func ExampleNumberWithSeparator() {
+	fmt.Println(NumberWithSeparator(1234567, ","))
+	fmt.Println(NumberWithSeparator(1234567, "."))
+	fmt.Println(NumberWithSeparator(1234567, " "))
+	// Output:
+	// 1,234,567
+	// 1.234.567
+	// 1 234 567
+}
+
+func ExampleFloat() {
+	fmt.Println(Float(3.14159, 2))
+	fmt.Println(Float(3.14159, 4))
+	fmt.Println(Float(2.0, 1))
+	// Output:
+	// 3.14
+	// 3.1416
+	// 2.0
+}
+
+func ExamplePercentage() {
+	fmt.Println(Percentage(50, 100))
+	fmt.Println(Percentage(75, 100))
+	fmt.Println(Percentage(1, 3))
+	fmt.Println(Percentage(0, 0))
+	// Output:
+	// 50%
+	// 75%
+	// 33.3%
+	// 0%
+}
+
+func ExampleOrdinal() {
+	fmt.Println(Ordinal(1))
+	fmt.Println(Ordinal(2))
+	fmt.Println(Ordinal(3))
+	fmt.Println(Ordinal(11))
+	fmt.Println(Ordinal(21))
+	// Output:
+	// 1st
+	// 2nd
+	// 3rd
+	// 11th
+	// 21st
+}
+
+func ExamplePlural() {
+	fmt.Println(Plural(1, "item", "items"))
+	fmt.Println(Plural(5, "item", "items"))
+	fmt.Println(Plural(0, "item", "items"))
+	// Output:
+	// item
+	// items
+	// items
+}
+
+func ExamplePluralWord() {
+	fmt.Println(PluralWord(1, "file", "files"))
+	fmt.Println(PluralWord(5, "file", "files"))
+	fmt.Println(PluralWord(0, "item", "items"))
+	// Output:
+	// 1 file
+	// 5 files
+	// 0 items
+}
+
+func ExampleTruncate() {
+	fmt.Println(Truncate("hello", 10))
+	fmt.Println(Truncate("hello world", 8))
+	fmt.Println(Truncate("hi", 5))
+	// Output:
+	// hello
+	// hello...
+	// hi
+}
+
+func ExampleTruncateWithSuffix() {
+	fmt.Println(TruncateWithSuffix("hello world", 10, "..."))
+	fmt.Println(TruncateWithSuffix("hello world", 8, "~"))
+	fmt.Println(TruncateWithSuffix("hello", 10, "..."))
+	// Output:
+	// hello w...
+	// hello w~
+	// hello
 }

@@ -1,12 +1,59 @@
 package env
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
+
+// ExampleParseEnvString demonstrates parsing .env format from a string.
+func ExampleParseEnvString() {
+	envData := `
+# Database configuration
+HOST=localhost
+PORT=5432
+DB_NAME=myapp
+
+# API Keys
+API_KEY="secret-key-here"
+`
+
+	envVars, err := ParseEnvString(envData)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Println("HOST:", envVars["HOST"])
+	fmt.Println("PORT:", envVars["PORT"])
+	fmt.Println("DB_NAME:", envVars["DB_NAME"])
+	fmt.Println("API_KEY:", envVars["API_KEY"])
+	// Output:
+	// HOST: localhost
+	// PORT: 5432
+	// DB_NAME: myapp
+	// API_KEY: secret-key-here
+}
+
+// ExampleWriteEnvFile demonstrates writing environment variables to a .env file.
+func ExampleWriteEnvFile() {
+	envVars := map[string]string{
+		"HOST":    "localhost",
+		"PORT":    "8080",
+		"DEBUG":   "true",
+		"MESSAGE": "Hello, World!",
+	}
+
+	// In a real application, you would write to an actual file
+	// For this example, we'll just demonstrate the function signature
+	_ = WriteEnvFile(envVars, "/tmp/example.env")
+
+	fmt.Println("Environment variables written to file")
+	// Output: Environment variables written to file
+}
 
 func TestReadEnvFile(t *testing.T) {
 	tmpDir := t.TempDir()

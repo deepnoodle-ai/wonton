@@ -8,24 +8,75 @@ import (
 	"unicode/utf8"
 )
 
-// KeyDecoder handles low-level key event decoding from a byte stream.
-// It supports:
-//   - Multi-byte UTF-8 characters
-//   - ANSI escape sequences (arrows, function keys, etc.)
-//   - Alt/Meta modifiers
-//   - Ctrl combinations
-//   - Mouse events (when mouse tracking is enabled)
-//   - Proper error handling and EOF detection
+// KeyDecoder handles low-level decoding of terminal input into structured events.
 //
-// The decoder uses internal buffering to ensure we only consume bytes
-// for one key event at a time, making it suitable for sequential reads.
+// The decoder reads raw bytes from an input stream (typically os.Stdin) and
+// decodes them into KeyEvent and MouseEvent structs. It handles the complexity
+// of multi-byte sequences, escape codes, and various terminal protocols.
+//
+// # Supported Input
+//
+// The decoder supports:
+//   - Single-byte printable ASCII characters
+//   - Multi-byte UTF-8 characters (Unicode)
+//   - ANSI escape sequences (arrows, function keys, Home/End, etc.)
+//   - Ctrl combinations (Ctrl+A through Ctrl+Z)
+//   - Alt/Meta modifiers (Alt+key)
+//   - Shift modifiers (when supported by the terminal)
+//   - Mouse events in SGR extended format
+//   - Bracketed paste mode (large clipboard pastes)
+//   - Kitty keyboard protocol for enhanced key detection
+//
+// # Usage
+//
+// Create a decoder and call ReadEvent in a loop:
+//
+//	decoder := terminal.NewKeyDecoder(os.Stdin)
+//	for {
+//	    event, err := decoder.ReadEvent()
+//	    if err != nil {
+//	        if err == io.EOF {
+//	            break
+//	        }
+//	        log.Printf("Read error: %v", err)
+//	        continue
+//	    }
+//
+//	    switch e := event.(type) {
+//	    case terminal.KeyEvent:
+//	        // Handle keyboard input
+//	    case terminal.MouseEvent:
+//	        // Handle mouse input
+//	    }
+//	}
+//
+// # Buffering
+//
+// The decoder uses internal buffering to avoid consuming more bytes than necessary.
+// This ensures that each ReadEvent call reads exactly one complete event, making it
+// safe to interleave with other input operations if needed.
+//
+// # Thread Safety
+//
+// KeyDecoder is NOT thread-safe. Only one goroutine should call ReadEvent at a time.
 type KeyDecoder struct {
 	reader        *bufio.Reader
 	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
 }
 
-// NewKeyDecoder creates a new key decoder that reads from the given reader.
-// For production use, pass os.Stdin. For testing, pass a bytes.Buffer or other io.Reader.
+// NewKeyDecoder creates a new KeyDecoder that reads from the given input stream.
+//
+// For production use, pass os.Stdin:
+//
+//	decoder := terminal.NewKeyDecoder(os.Stdin)
+//
+// For testing, pass a bytes.Buffer or strings.Reader:
+//
+//	input := strings.NewReader("\x1b[A") // Up arrow
+//	decoder := terminal.NewKeyDecoder(input)
+//
+// The decoder must be paired with a terminal in raw mode to receive
+// input character-by-character rather than line-by-line.
 func NewKeyDecoder(reader io.Reader) *KeyDecoder {
 	return &KeyDecoder{
 		reader:        bufio.NewReader(reader),

@@ -47,12 +47,36 @@ type spacerView struct {
 
 // Spacer returns a flexible view that expands to fill available space.
 // In a Stack, it fills vertical space. In an HStack, it fills horizontal space.
+//
+// Spacers are useful for pushing content to edges or distributing space:
+//
+//	Stack(
+//	    Text("Top"),
+//	    Spacer(),        // Pushes footer to bottom
+//	    Text("Bottom"),
+//	)
+//
+//	HStack(
+//	    Text("Left"),
+//	    Spacer(),        // Pushes right content to edge
+//	    Text("Right"),
+//	)
 func Spacer() *spacerView {
 	return &spacerView{flexFactor: 1}
 }
 
-// Flex sets the flex factor for this spacer.
-// A spacer with flex(2) will get twice as much space as one with flex(1).
+// Flex sets the flex factor for this spacer, controlling space distribution.
+// A spacer with Flex(2) will get twice as much space as one with Flex(1).
+//
+// Example:
+//
+//	Stack(
+//	    Text("Header"),
+//	    Spacer().Flex(1),  // Gets 1/3 of remaining space
+//	    Text("Middle"),
+//	    Spacer().Flex(2),  // Gets 2/3 of remaining space
+//	    Text("Footer"),
+//	)
 func (s *spacerView) Flex(factor int) *spacerView {
 	s.flexFactor = factor
 	return s

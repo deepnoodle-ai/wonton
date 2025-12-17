@@ -9,17 +9,49 @@ import (
 	"time"
 )
 
-// BlameOptions configures the Blame command.
+// BlameOptions configures the Blame command, allowing you to specify
+// a revision and line range to blame.
 type BlameOptions struct {
-	// Ref is the revision to blame (defaults to HEAD).
+	// Ref is the revision to blame (defaults to HEAD if empty).
+	// Can be a commit hash, branch name, tag, or any valid git ref.
 	Ref string
 	// StartLine is the first line to blame (1-indexed, inclusive).
+	// If 0, starts from the beginning of the file.
 	StartLine int
 	// EndLine is the last line to blame (1-indexed, inclusive).
+	// If 0 (and StartLine is also 0), blames the entire file.
 	EndLine int
 }
 
-// Blame returns line-by-line attribution for a file.
+// Blame returns line-by-line attribution for a file, showing which commit
+// last modified each line.
+//
+// This is useful for understanding the history of a file and identifying
+// who changed specific lines. Each line in the result includes the commit
+// hash, author, timestamp, line number, and content.
+//
+// Example:
+//
+//	blame, err := repo.Blame(ctx, "main.go", git.BlameOptions{})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	for _, line := range blame {
+//	    fmt.Printf("%s %s: %s\n", line.Hash[:7], line.Author, line.Content)
+//	}
+//
+// To blame specific lines:
+//
+//	blame, err := repo.Blame(ctx, "main.go", git.BlameOptions{
+//	    StartLine: 10,
+//	    EndLine:   20,
+//	})
+//
+// To blame at a specific revision:
+//
+//	blame, err := repo.Blame(ctx, "main.go", git.BlameOptions{
+//	    Ref: "v1.0.0",
+//	})
 func (r *Repository) Blame(ctx context.Context, path string, opts BlameOptions) ([]BlameLine, error) {
 	args := []string{"blame", "--porcelain"}
 

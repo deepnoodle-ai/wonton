@@ -2,6 +2,8 @@ package git_test
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1745,5 +1747,228 @@ func TestDiffDeletedFile(t *testing.T) {
 
 	if diff.Files[0].Status != "deleted" {
 		t.Errorf("expected 'deleted' status, got %q", diff.Files[0].Status)
+	}
+}
+
+// Example demonstrates opening a repository and getting basic information.
+func Example() {
+	// Open the current directory as a git repository
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get current branch
+	branch, err := repo.CurrentBranch(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Current branch: %s\n", branch)
+
+	// Check if working directory is clean
+	clean, err := repo.IsClean(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Working directory clean: %v\n", clean)
+}
+
+// ExampleRepository_Status demonstrates getting repository status.
+func ExampleRepository_Status() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	status, err := repo.Status(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Branch: %s\n", status.Branch)
+	fmt.Printf("Clean: %v\n", status.IsClean)
+	fmt.Printf("Staged files: %d\n", len(status.Staged))
+	fmt.Printf("Unstaged files: %d\n", len(status.Unstaged))
+	fmt.Printf("Untracked files: %d\n", len(status.Untracked))
+}
+
+// ExampleRepository_Log demonstrates getting commit history.
+func ExampleRepository_Log() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get last 5 commits
+	commits, err := repo.Log(ctx, git.LogOptions{
+		Limit: 5,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, commit := range commits {
+		fmt.Printf("%s - %s\n", commit.ShortHash, commit.Subject)
+	}
+}
+
+// ExampleRepository_Diff demonstrates getting unstaged changes.
+func ExampleRepository_Diff() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get unstaged changes
+	diff, err := repo.Diff(ctx, git.DiffOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Total files changed: %d\n", len(diff.Files))
+	fmt.Printf("Lines added: %d\n", diff.TotalAdded)
+	fmt.Printf("Lines removed: %d\n", diff.TotalRemoved)
+
+	for _, file := range diff.Files {
+		fmt.Printf("%s: +%d -%d\n", file.Path, file.Additions, file.Deletions)
+	}
+}
+
+// ExampleRepository_Diff_staged demonstrates getting staged changes.
+func ExampleRepository_Diff_staged() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get staged changes
+	diff, err := repo.Diff(ctx, git.DiffOptions{
+		Staged: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Staged files: %d\n", len(diff.Files))
+}
+
+// ExampleRepository_Branches demonstrates listing branches.
+func ExampleRepository_Branches() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get all local branches
+	branches, err := repo.Branches(ctx, git.BranchOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, branch := range branches {
+		if branch.IsCurrent {
+			fmt.Printf("* %s\n", branch.Name)
+		} else {
+			fmt.Printf("  %s\n", branch.Name)
+		}
+	}
+}
+
+// ExampleRepository_Tags demonstrates listing tags.
+func ExampleRepository_Tags() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get version tags sorted by date
+	tags, err := repo.Tags(ctx, git.TagOptions{
+		Pattern: "v*",
+		Sort:    "-creatordate",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, tag := range tags {
+		fmt.Printf("%s -> %s\n", tag.Name, tag.Commit)
+	}
+}
+
+// ExampleRepository_Blame demonstrates getting line-by-line attribution.
+func ExampleRepository_Blame() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Blame a specific file
+	blame, err := repo.Blame(ctx, "README.md", git.BlameOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, line := range blame {
+		fmt.Printf("%s %s: %s\n", line.Hash[:7], line.Author, line.Content)
+	}
+}
+
+// ExampleRepository_Show demonstrates getting commit details.
+func ExampleRepository_Show() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get details for HEAD commit
+	commit, err := repo.Show(ctx, "HEAD")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Commit: %s\n", commit.Hash)
+	fmt.Printf("Author: %s <%s>\n", commit.Author.Name, commit.Author.Email)
+	fmt.Printf("Date: %s\n", commit.Timestamp.Format(time.RFC3339))
+	fmt.Printf("\n%s\n", commit.Subject)
+	if commit.Body != "" {
+		fmt.Printf("\n%s\n", commit.Body)
+	}
+}
+
+// ExampleRepository_CommitsBetween demonstrates comparing two refs.
+func ExampleRepository_CommitsBetween() {
+	repo, err := git.Open(".")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Get commits between HEAD~5 and HEAD
+	commits, err := repo.CommitsBetween(ctx, "HEAD~5", "HEAD")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Commits: %d\n", len(commits))
+	for _, commit := range commits {
+		fmt.Printf("%s - %s\n", commit.ShortHash, commit.Subject)
 	}
 }

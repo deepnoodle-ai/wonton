@@ -2,6 +2,7 @@ package sse
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -308,4 +309,174 @@ func TestContentTypeValidation(t *testing.T) {
 	var httpErr *HTTPError
 	assert.ErrorAs(t, err, &httpErr)
 	assert.Contains(t, httpErr.Status, "unexpected content-type")
+}
+
+// Example demonstrates basic SSE stream parsing with Reader.
+func Example() {
+	data := `event: message
+data: Hello, World!
+
+event: update
+data: {"status": "complete"}
+
+`
+	reader := NewReader(strings.NewReader(data))
+
+	for {
+		event, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("Event: %s, Data: %s\n", event.Event, event.Data)
+	}
+
+	// Output:
+	// Event: message, Data: Hello, World!
+	// Event: update, Data: {"status": "complete"}
+}
+
+// ExampleStream demonstrates using the Stream function for simpler iteration.
+func ExampleStream() {
+	data := `data: first message
+
+data: second message
+
+data: third message
+
+`
+	err := Stream(strings.NewReader(data), func(event Event) error {
+		fmt.Println(event.Data)
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Output:
+	// first message
+	// second message
+	// third message
+}
+
+// ExampleEvent_JSON demonstrates parsing JSON event data.
+func ExampleEvent_JSON() {
+	event := Event{
+		Data: `{"name": "Alice", "age": 30}`,
+	}
+
+	var person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+
+	if err := event.JSON(&person); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("%s is %d years old\n", person.Name, person.Age)
+
+	// Output:
+	// Alice is 30 years old
+}
+
+// ExampleParseString demonstrates parsing SSE data from a string.
+func ExampleParseString() {
+	data := `event: ping
+data: {}
+
+event: message
+data: Hello from SSE!
+
+`
+	events, err := ParseString(data)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, event := range events {
+		fmt.Printf("%s: %s\n", event.Event, event.Data)
+	}
+
+	// Output:
+	// ping: {}
+	// message: Hello from SSE!
+}
+
+// ExampleReader demonstrates multiline data events.
+func ExampleReader() {
+	data := `data: This is line 1
+data: This is line 2
+data: This is line 3
+
+`
+	reader := NewReader(strings.NewReader(data))
+
+	event, err := reader.Read()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(event.Data)
+
+	// Output:
+	// This is line 1
+	// This is line 2
+	// This is line 3
+}
+
+// ExampleClient demonstrates using the Client to connect to an SSE endpoint.
+func ExampleClient() {
+	// This example shows the pattern for using Client.
+	// In a real application, replace with an actual SSE endpoint.
+
+	// Create a test server that sends SSE events
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher := w.(http.Flusher)
+		w.Write([]byte("data: event 1\n\n"))
+		flusher.Flush()
+		w.Write([]byte("data: event 2\n\n"))
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	// Create client and connect
+	client := NewClient(server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+
+	// Process events
+	for event := range events {
+		fmt.Println(event.Data)
+	}
+
+	// Check for errors
+	if err := <-errs; err != nil && err != context.DeadlineExceeded {
+		panic(err)
+	}
+
+	// Output:
+	// event 1
+	// event 2
+}
+
+// ExampleNewClient demonstrates creating a client with custom headers.
+func ExampleNewClient() {
+	client := NewClient("https://api.example.com/stream")
+	client.Headers.Set("Authorization", "Bearer secret-token")
+	client.Headers.Set("X-Custom-Header", "value")
+
+	fmt.Printf("URL: %s\n", client.URL)
+	fmt.Printf("Auth header set: %v\n", client.Headers.Get("Authorization") != "")
+
+	// Output:
+	// URL: https://api.example.com/stream
+	// Auth header set: true
 }

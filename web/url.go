@@ -1,5 +1,25 @@
 // Package web provides URL manipulation, text normalization, and media detection
 // utilities for web crawling and content processing.
+//
+// The package offers three main categories of functionality:
+//
+// URL Operations:
+//   - NormalizeURL: Parse and standardize URLs (add https://, remove query params)
+//   - ResolveLink: Resolve relative URLs against a base domain
+//   - AreSameHost: Compare if two URLs have identical hosts
+//   - AreRelatedHosts: Check if URLs share a common parent domain
+//   - SortURLs: Sort URLs alphabetically by their string representation
+//
+// Text Processing:
+//   - NormalizeText: Clean web text (trim, unescape HTML, remove non-printable chars)
+//   - EndsWithPunctuation: Check if text ends with common punctuation marks
+//
+// Media Detection:
+//   - IsMediaURL: Identify URLs pointing to media files
+//   - MediaExtensions: Predefined set of common media file extensions
+//
+// This package is particularly useful when building web crawlers, content extractors,
+// or any application that needs to process URLs and text from web pages.
 package web
 
 import (
@@ -10,12 +30,39 @@ import (
 )
 
 // AreSameHost checks if two URLs have the same host value.
+// Returns false if either URL is nil.
+//
+// This function performs an exact host comparison, meaning subdomains are considered
+// different hosts. For example, "www.example.com" and "api.example.com" are not
+// the same host. Use AreRelatedHosts if you need to check for shared parent domains.
+//
+// Example:
+//
+//	url1, _ := url.Parse("https://example.com/page1")
+//	url2, _ := url.Parse("https://example.com/page2")
+//	web.AreSameHost(url1, url2) // true
+//
+//	url3, _ := url.Parse("https://sub.example.com/page")
+//	web.AreSameHost(url1, url3) // false
 func AreSameHost(url1, url2 *url.URL) bool {
 	return url1 != nil && url2 != nil && url1.Host == url2.Host
 }
 
-// AreRelatedHosts checks if two URLs are the same or are related by a common
-// parent domain.
+// AreRelatedHosts checks if two URLs share the same base domain (the last two
+// parts of the hostname). Returns false if either URL is nil or has fewer than
+// two domain parts.
+//
+// This function is useful for determining if URLs belong to the same website
+// family, even if they use different subdomains.
+//
+// Example:
+//
+//	url1, _ := url.Parse("https://www.example.com")
+//	url2, _ := url.Parse("https://api.example.com")
+//	web.AreRelatedHosts(url1, url2) // true (both share "example.com")
+//
+//	url3, _ := url.Parse("https://example.org")
+//	web.AreRelatedHosts(url1, url3) // false (different base domains)
 func AreRelatedHosts(url1, url2 *url.URL) bool {
 	if url1 == nil || url2 == nil {
 		return false
@@ -32,12 +79,25 @@ func AreRelatedHosts(url1, url2 *url.URL) bool {
 	return base1 == base2
 }
 
-// NormalizeURL parses a URL string and returns a normalized URL. The following
-// transformations are applied:
-// - Trim whitespace
-// - Convert http:// to https://
-// - Add https:// prefix if missing
-// - Remove any query parameters and URL fragments
+// NormalizeURL parses a URL string and returns a normalized URL.
+//
+// The following transformations are applied:
+//   - Trim whitespace from the input
+//   - Add https:// prefix if the URL has no scheme
+//   - Convert http:// to https://
+//   - Remove query parameters and URL fragments
+//   - Remove trailing "/" if the path is only "/"
+//
+// This function returns an error if the input is empty, has an invalid scheme
+// (anything other than http/https), or cannot be parsed as a valid URL.
+//
+// Example:
+//
+//	url, _ := web.NormalizeURL("example.com/path?q=1#frag")
+//	fmt.Println(url.String()) // "https://example.com/path"
+//
+//	url, _ = web.NormalizeURL("http://example.com")
+//	fmt.Println(url.String()) // "https://example.com"
 func NormalizeURL(value string) (*url.URL, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -65,16 +125,50 @@ func NormalizeURL(value string) (*url.URL, error) {
 	return u, nil
 }
 
-// SortURLs sorts a slice of URLs by their string representation.
+// SortURLs sorts a slice of URLs alphabetically by their string representation.
+// The slice is sorted in place.
+//
+// Example:
+//
+//	urls := []*url.URL{
+//	    mustParse("https://z.com"),
+//	    mustParse("https://a.com"),
+//	    mustParse("https://m.com"),
+//	}
+//	web.SortURLs(urls)
+//	// urls is now ordered: a.com, m.com, z.com
 func SortURLs(urls []*url.URL) {
 	sort.Slice(urls, func(i, j int) bool {
 		return urls[i].String() < urls[j].String()
 	})
 }
 
-// ResolveLink resolves a relative or absolute URL against a domain and returns
-// the normalized result. Returns the resolved URL and true if successful, or
-// an empty string and false if the URL is invalid.
+// ResolveLink resolves a relative or absolute URL against a base domain and returns
+// the normalized result.
+//
+// For absolute URLs, this function validates the scheme (only http/https are accepted)
+// and normalizes the URL. For relative URLs, it resolves them against the provided
+// domain. URL fragments are always removed.
+//
+// Returns the resolved URL string and true if successful, or an empty string and
+// false if the URL is invalid (e.g., unsupported scheme, parse error).
+//
+// The domain parameter can be specified with or without a scheme. If no scheme is
+// provided, https:// is assumed.
+//
+// Example:
+//
+//	// Resolve relative URL
+//	resolved, ok := web.ResolveLink("example.com", "/about")
+//	// resolved: "https://example.com/about", ok: true
+//
+//	// Validate absolute URL
+//	resolved, ok = web.ResolveLink("example.com", "https://other.com/page")
+//	// resolved: "https://other.com/page", ok: true
+//
+//	// Reject non-http schemes
+//	resolved, ok = web.ResolveLink("example.com", "ftp://files.com")
+//	// resolved: "", ok: false
 func ResolveLink(domain, value string) (string, bool) {
 	// Parse the input URL
 	parsedURL, err := url.Parse(value)

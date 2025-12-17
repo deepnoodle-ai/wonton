@@ -8,26 +8,55 @@ import (
 	"strings"
 )
 
-// DiffOptions configures the Diff command.
+// DiffOptions configures the Diff command with various filtering and formatting options.
 type DiffOptions struct {
-	// Staged shows changes staged for commit (git diff --cached).
+	// Staged shows changes staged for commit (equivalent to git diff --cached).
 	Staged bool
 	// Ref compares working directory against this ref.
+	// Cannot be used with From/To.
 	Ref string
-	// From and To compare two refs (From..To).
+	// From and To compare two refs (From..To range syntax).
+	// Cannot be used with Ref or Staged.
 	From string
 	To   string
-	// Path filters diff to this path.
+	// Path filters diff to this file or directory path.
 	Path string
-	// ContextLines is the number of context lines (default 3).
+	// ContextLines is the number of context lines to show (default is 3).
+	// Set to 0 to show only changed lines.
 	ContextLines int
-	// IncludePatch includes the actual diff content.
+	// IncludePatch includes the actual unified diff content in the Patch field.
 	IncludePatch bool
-	// NameOnly returns only file names, not stats.
+	// NameOnly returns only file names without stats (not currently used).
 	NameOnly bool
 }
 
 // Diff returns the diff for the working directory or between refs.
+//
+// By default, shows unstaged changes in the working directory. Use DiffOptions
+// to compare different revisions or show staged changes.
+//
+// Examples:
+//
+//	// Unstaged changes
+//	diff, err := repo.Diff(ctx, git.DiffOptions{})
+//
+//	// Staged changes
+//	diff, err := repo.Diff(ctx, git.DiffOptions{Staged: true})
+//
+//	// Compare working directory to a commit
+//	diff, err := repo.Diff(ctx, git.DiffOptions{Ref: "HEAD~1"})
+//
+//	// Compare two commits
+//	diff, err := repo.Diff(ctx, git.DiffOptions{
+//	    From: "v1.0.0",
+//	    To:   "v2.0.0",
+//	})
+//
+//	// Get diff with patch content
+//	diff, err := repo.Diff(ctx, git.DiffOptions{
+//	    Staged:       true,
+//	    IncludePatch: true,
+//	})
 func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) {
 	// Build base args without path filter (path must come after options)
 	args := []string{"diff"}
@@ -179,7 +208,10 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 	return diff, nil
 }
 
-// DiffFile returns the diff for a specific file.
+// DiffFile returns the diff for a specific file, including patch content.
+//
+// This is a convenience method that automatically sets IncludePatch to true
+// and filters to the specified path. Returns nil if the file has no changes.
 func (r *Repository) DiffFile(ctx context.Context, path string, opts DiffOptions) (*DiffFile, error) {
 	opts.Path = path
 	opts.IncludePatch = true
