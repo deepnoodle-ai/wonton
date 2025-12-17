@@ -327,7 +327,8 @@ func (g *GIF) AddFrameWithDelay(draw func(*Frame), delay int) *GIF {
 }
 
 // AddImage adds an existing paletted image as a frame.
-// The image will be converted to the GIF's palette if necessary.
+// The image is added directly without palette conversion; ensure the image
+// uses a compatible palette or colors may not display correctly.
 func (g *GIF) AddImage(img *image.Paletted, delay int) *GIF {
 	g.images = append(g.images, img)
 	g.delays = append(g.delays, delay)

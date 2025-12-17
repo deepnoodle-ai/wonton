@@ -1,6 +1,6 @@
 # gif
 
-The gif package provides utilities for creating animated GIF images using only the Go standard library. It offers a builder-style API for constructing GIFs frame by frame with drawing primitives for shapes, lines, and fills.
+The gif package provides utilities for creating animated GIF images. It offers a builder-style API for constructing GIFs frame by frame with drawing primitives for shapes, lines, and fills. The package includes terminal emulation for converting terminal recordings to animated GIFs.
 
 ## Usage Examples
 
@@ -379,9 +379,9 @@ GIF format supports up to 256 colors per frame. Colors not in the palette are au
 
 ## Implementation Notes
 
-- Uses only Go standard library (image/gif package)
+- Core GIF encoding uses the standard library image/gif package
+- Text rendering uses golang.org/x/image for TTF fonts, with bitmap fallback
 - All coordinates are in pixels, origin at top-left (0, 0)
 - Drawing operations clip to frame boundaries automatically
 - GIF disposal method is set to DisposalBackground (clear to background)
-- No built-in text rendering (can use image.Draw for text)
-- Thread-safe for building (but not for concurrent frame modification)
+- Not thread-safe: do not modify frames concurrently

@@ -104,10 +104,11 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	emulator := NewEmulator(cols, rows)
 
 	rendererOpts := RendererOptions{
-		Font:      opts.Font,
-		FontSize:  opts.FontSize,
-		UseBitmap: opts.UseBitmap,
-		Padding:   opts.Padding,
+		Font:       opts.Font,
+		FontSize:   opts.FontSize,
+		UseBitmap:  opts.UseBitmap,
+		BitmapFont: BitmapFont8x16, // Default bitmap font when UseBitmap=true
+		Padding:    opts.Padding,
 	}
 	renderer := NewTerminalRendererWithOptions(emulator.Screen(), rendererOpts)
 	renderer.SetLoopCount(0) // Loop forever
@@ -143,8 +144,8 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 		}
 	}
 
-	// Render final frame
-	if lastFrameTime < adjustedTime {
+	// Render final frame if time has advanced, or ensure at least one frame exists
+	if lastFrameTime < adjustedTime || renderer.GIF().FrameCount() == 0 {
 		renderer.RenderFrame(10) // 100ms final frame
 	}
 

@@ -198,7 +198,9 @@ func (e *Emulator) ProcessOutput(data string) {
 
 // ANSI escape sequence patterns
 var (
-	ansiCSI    = regexp.MustCompile(`\x1b\[([0-9;]*)([A-Za-z])`)
+	// ansiCSI matches CSI sequences: ESC [ <params> <final>
+	// Params can include digits, semicolons, and private markers (?, >, <, =, !)
+	ansiCSI    = regexp.MustCompile(`\x1b\[([0-9;?><!=]*)([A-Za-z])`)
 	ansiOSC    = regexp.MustCompile(`\x1b\]([^\x07\x1b]*)(?:\x07|\x1b\\)`)
 	ansiSimple = regexp.MustCompile(`\x1b[()][AB012]`)
 )
