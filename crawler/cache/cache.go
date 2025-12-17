@@ -36,4 +36,10 @@ type Cache interface {
 	// Delete removes the value for the given key. No error is returned
 	// if the key does not exist.
 	Delete(ctx context.Context, key string) error
+
+	// Close releases any resources held by the cache. This should be called
+	// when the cache is no longer needed, especially for persistent caches
+	// that need to flush data or close connections.
+	// Returns nil if the cache has no resources to release.
+	Close() error
 }
