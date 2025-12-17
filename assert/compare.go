@@ -10,81 +10,61 @@ import (
 // Greater asserts that e1 > e2.
 func Greater[T cmp.Ordered](t TestingT, e1, e2 T, msgAndArgs ...any) {
 	helper(t)
-	if !checkGreater(t, e1, e2, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkGreater(t, e1, e2, msgAndArgs...))
 }
 
 // GreaterOrEqual asserts that e1 >= e2.
 func GreaterOrEqual[T cmp.Ordered](t TestingT, e1, e2 T, msgAndArgs ...any) {
 	helper(t)
-	if !checkGreaterOrEqual(t, e1, e2, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkGreaterOrEqual(t, e1, e2, msgAndArgs...))
 }
 
 // Less asserts that e1 < e2.
 func Less[T cmp.Ordered](t TestingT, e1, e2 T, msgAndArgs ...any) {
 	helper(t)
-	if !checkLess(t, e1, e2, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkLess(t, e1, e2, msgAndArgs...))
 }
 
 // LessOrEqual asserts that e1 <= e2.
 func LessOrEqual[T cmp.Ordered](t TestingT, e1, e2 T, msgAndArgs ...any) {
 	helper(t)
-	if !checkLessOrEqual(t, e1, e2, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkLessOrEqual(t, e1, e2, msgAndArgs...))
 }
 
 // Positive asserts that the specified value is positive (> 0).
 func Positive[T cmp.Ordered](t TestingT, e T, msgAndArgs ...any) {
 	helper(t)
-	if !checkPositive(t, e, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkPositive(t, e, msgAndArgs...))
 }
 
 // Negative asserts that the specified value is negative (< 0).
 func Negative[T cmp.Ordered](t TestingT, e T, msgAndArgs ...any) {
 	helper(t)
-	if !checkNegative(t, e, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNegative(t, e, msgAndArgs...))
 }
 
 // InDelta asserts that the two numerals are within delta of each other.
 func InDelta(t TestingT, expected, actual, delta float64, msgAndArgs ...any) {
 	helper(t)
-	if !checkInDelta(t, expected, actual, delta, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkInDelta(t, expected, actual, delta, msgAndArgs...))
 }
 
 // InEpsilon asserts that expected and actual have a relative error less than epsilon.
 func InEpsilon(t TestingT, expected, actual, epsilon float64, msgAndArgs ...any) {
 	helper(t)
-	if !checkInEpsilon(t, expected, actual, epsilon, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkInEpsilon(t, expected, actual, epsilon, msgAndArgs...))
 }
 
 // WithinDuration asserts that the two times are within duration delta of each other.
 func WithinDuration(t TestingT, expected, actual time.Time, delta time.Duration, msgAndArgs ...any) {
 	helper(t)
-	if !checkWithinDuration(t, expected, actual, delta, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkWithinDuration(t, expected, actual, delta, msgAndArgs...))
 }
 
 // WithinRange asserts that a time is within a time range (inclusive).
 func WithinRange(t TestingT, actual, start, end time.Time, msgAndArgs ...any) {
 	helper(t)
-	if !checkWithinRange(t, actual, start, end, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkWithinRange(t, actual, start, end, msgAndArgs...))
 }
 
 // --- Internal check functions ---

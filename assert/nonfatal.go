@@ -1,8 +1,6 @@
 package assert
 
 import (
-	"cmp"
-	"fmt"
 	"time"
 )
 
@@ -230,39 +228,40 @@ func (a *NonFatalAssertions) NotErrorAs(err error, target any, msgAndArgs ...any
 // --- Comparison assertions ---
 
 // Greater asserts that e1 > e2.
-func Greater_[T cmp.Ordered](a *NonFatalAssertions, e1, e2 T, msgAndArgs ...any) bool {
+// Note: This uses reflection. For type safety with generics, use assert.Greater() directly.
+func (a *NonFatalAssertions) Greater(e1, e2 any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkGreater(a.t, e1, e2, msgAndArgs...)
+	return checkOrderedComparison(a.t, e1, e2, ">", msgAndArgs...)
 }
 
 // GreaterOrEqual asserts that e1 >= e2.
-func GreaterOrEqual_[T cmp.Ordered](a *NonFatalAssertions, e1, e2 T, msgAndArgs ...any) bool {
+func (a *NonFatalAssertions) GreaterOrEqual(e1, e2 any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkGreaterOrEqual(a.t, e1, e2, msgAndArgs...)
+	return checkOrderedComparison(a.t, e1, e2, ">=", msgAndArgs...)
 }
 
 // Less asserts that e1 < e2.
-func Less_[T cmp.Ordered](a *NonFatalAssertions, e1, e2 T, msgAndArgs ...any) bool {
+func (a *NonFatalAssertions) Less(e1, e2 any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkLess(a.t, e1, e2, msgAndArgs...)
+	return checkOrderedComparison(a.t, e1, e2, "<", msgAndArgs...)
 }
 
 // LessOrEqual asserts that e1 <= e2.
-func LessOrEqual_[T cmp.Ordered](a *NonFatalAssertions, e1, e2 T, msgAndArgs ...any) bool {
+func (a *NonFatalAssertions) LessOrEqual(e1, e2 any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkLessOrEqual(a.t, e1, e2, msgAndArgs...)
+	return checkOrderedComparison(a.t, e1, e2, "<=", msgAndArgs...)
 }
 
 // Positive asserts that the specified value is positive (> 0).
-func Positive_[T cmp.Ordered](a *NonFatalAssertions, e T, msgAndArgs ...any) bool {
+func (a *NonFatalAssertions) Positive(e any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkPositive(a.t, e, msgAndArgs...)
+	return checkOrderedToZero(a.t, e, ">", msgAndArgs...)
 }
 
 // Negative asserts that the specified value is negative (< 0).
-func Negative_[T cmp.Ordered](a *NonFatalAssertions, e T, msgAndArgs ...any) bool {
+func (a *NonFatalAssertions) Negative(e any, msgAndArgs ...any) bool {
 	helper(a.t)
-	return checkNegative(a.t, e, msgAndArgs...)
+	return checkOrderedToZero(a.t, e, "<", msgAndArgs...)
 }
 
 // InDelta asserts that the two numerals are within delta of each other.
@@ -287,147 +286,4 @@ func (a *NonFatalAssertions) WithinDuration(expected, actual time.Time, delta ti
 func (a *NonFatalAssertions) WithinRange(actual, start, end time.Time, msgAndArgs ...any) bool {
 	helper(a.t)
 	return checkWithinRange(a.t, actual, start, end, msgAndArgs...)
-}
-
-// --- Comparison methods using reflection (non-generic) ---
-
-// Greater asserts that e1 > e2. For type safety, use Greater_[T]() instead.
-func (a *NonFatalAssertions) Greater(e1, e2 any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrdered(a.t, e1, e2, ">", msgAndArgs...)
-}
-
-// GreaterOrEqual asserts that e1 >= e2. For type safety, use GreaterOrEqual_[T]() instead.
-func (a *NonFatalAssertions) GreaterOrEqual(e1, e2 any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrdered(a.t, e1, e2, ">=", msgAndArgs...)
-}
-
-// Less asserts that e1 < e2. For type safety, use Less_[T]() instead.
-func (a *NonFatalAssertions) Less(e1, e2 any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrdered(a.t, e1, e2, "<", msgAndArgs...)
-}
-
-// LessOrEqual asserts that e1 <= e2. For type safety, use LessOrEqual_[T]() instead.
-func (a *NonFatalAssertions) LessOrEqual(e1, e2 any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrdered(a.t, e1, e2, "<=", msgAndArgs...)
-}
-
-// Positive asserts that the specified value is positive (> 0). For type safety, use Positive_[T]() instead.
-func (a *NonFatalAssertions) Positive(e any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrderedToZero(a.t, e, ">", msgAndArgs...)
-}
-
-// Negative asserts that the specified value is negative (< 0). For type safety, use Negative_[T]() instead.
-func (a *NonFatalAssertions) Negative(e any, msgAndArgs ...any) bool {
-	helper(a.t)
-	return compareOrderedToZero(a.t, e, "<", msgAndArgs...)
-}
-
-// compareOrdered compares two values using reflection.
-func compareOrdered(t TestingT, e1, e2 any, op string, msgAndArgs ...any) bool {
-	helper(t)
-	// Try common types
-	switch v1 := e1.(type) {
-	case int:
-		v2, ok := e2.(int)
-		if !ok {
-			return fail(t, fmt.Sprintf("type mismatch: %T vs %T", e1, e2), msgAndArgs...)
-		}
-		return compareInt(t, v1, v2, op, msgAndArgs...)
-	case int64:
-		v2, ok := e2.(int64)
-		if !ok {
-			return fail(t, fmt.Sprintf("type mismatch: %T vs %T", e1, e2), msgAndArgs...)
-		}
-		return compareInt64(t, v1, v2, op, msgAndArgs...)
-	case float64:
-		v2, ok := e2.(float64)
-		if !ok {
-			return fail(t, fmt.Sprintf("type mismatch: %T vs %T", e1, e2), msgAndArgs...)
-		}
-		return compareFloat64(t, v1, v2, op, msgAndArgs...)
-	case string:
-		v2, ok := e2.(string)
-		if !ok {
-			return fail(t, fmt.Sprintf("type mismatch: %T vs %T", e1, e2), msgAndArgs...)
-		}
-		return compareString(t, v1, v2, op, msgAndArgs...)
-	default:
-		return fail(t, fmt.Sprintf("unsupported type for comparison: %T", e1), msgAndArgs...)
-	}
-}
-
-// compareOrderedToZero compares a value to zero using reflection.
-func compareOrderedToZero(t TestingT, e any, op string, msgAndArgs ...any) bool {
-	helper(t)
-	switch v := e.(type) {
-	case int:
-		return compareInt(t, v, 0, op, msgAndArgs...)
-	case int64:
-		return compareInt64(t, v, 0, op, msgAndArgs...)
-	case float64:
-		return compareFloat64(t, v, 0, op, msgAndArgs...)
-	default:
-		return fail(t, fmt.Sprintf("unsupported type for comparison: %T", e), msgAndArgs...)
-	}
-}
-
-func compareInt(t TestingT, v1, v2 int, op string, msgAndArgs ...any) bool {
-	switch op {
-	case ">":
-		return checkGreater(t, v1, v2, msgAndArgs...)
-	case ">=":
-		return checkGreaterOrEqual(t, v1, v2, msgAndArgs...)
-	case "<":
-		return checkLess(t, v1, v2, msgAndArgs...)
-	case "<=":
-		return checkLessOrEqual(t, v1, v2, msgAndArgs...)
-	}
-	return false
-}
-
-func compareInt64(t TestingT, v1, v2 int64, op string, msgAndArgs ...any) bool {
-	switch op {
-	case ">":
-		return checkGreater(t, v1, v2, msgAndArgs...)
-	case ">=":
-		return checkGreaterOrEqual(t, v1, v2, msgAndArgs...)
-	case "<":
-		return checkLess(t, v1, v2, msgAndArgs...)
-	case "<=":
-		return checkLessOrEqual(t, v1, v2, msgAndArgs...)
-	}
-	return false
-}
-
-func compareFloat64(t TestingT, v1, v2 float64, op string, msgAndArgs ...any) bool {
-	switch op {
-	case ">":
-		return checkGreater(t, v1, v2, msgAndArgs...)
-	case ">=":
-		return checkGreaterOrEqual(t, v1, v2, msgAndArgs...)
-	case "<":
-		return checkLess(t, v1, v2, msgAndArgs...)
-	case "<=":
-		return checkLessOrEqual(t, v1, v2, msgAndArgs...)
-	}
-	return false
-}
-
-func compareString(t TestingT, v1, v2 string, op string, msgAndArgs ...any) bool {
-	switch op {
-	case ">":
-		return checkGreater(t, v1, v2, msgAndArgs...)
-	case ">=":
-		return checkGreaterOrEqual(t, v1, v2, msgAndArgs...)
-	case "<":
-		return checkLess(t, v1, v2, msgAndArgs...)
-	case "<=":
-		return checkLessOrEqual(t, v1, v2, msgAndArgs...)
-	}
-	return false
 }

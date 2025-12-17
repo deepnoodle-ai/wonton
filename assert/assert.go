@@ -55,6 +55,13 @@ func fail(t TestingT, failureMessage string, msgAndArgs ...any) bool {
 	return false
 }
 
+// require calls FailNow if ok is false.
+func require(t TestingT, ok bool) {
+	if !ok {
+		t.FailNow()
+	}
+}
+
 // Fail reports a test failure and stops execution.
 func Fail(t TestingT, failureMessage string, msgAndArgs ...any) {
 	helper(t)
@@ -65,202 +72,152 @@ func Fail(t TestingT, failureMessage string, msgAndArgs ...any) {
 // Equal asserts that expected and actual are deeply equal.
 func Equal(t TestingT, expected, actual any, msgAndArgs ...any) {
 	helper(t)
-	if !checkEqual(t, expected, actual, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkEqual(t, expected, actual, msgAndArgs...))
 }
 
 // NotEqual asserts that expected and actual are not deeply equal.
 func NotEqual(t TestingT, expected, actual any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotEqual(t, expected, actual, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotEqual(t, expected, actual, msgAndArgs...))
 }
 
 // Same asserts that two pointers reference the same object.
 func Same(t TestingT, expected, actual any, msgAndArgs ...any) {
 	helper(t)
-	if !checkSame(t, expected, actual, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkSame(t, expected, actual, msgAndArgs...))
 }
 
 // NotSame asserts that two pointers do not reference the same object.
 func NotSame(t TestingT, expected, actual any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotSame(t, expected, actual, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotSame(t, expected, actual, msgAndArgs...))
 }
 
 // Nil asserts that the specified object is nil.
 func Nil(t TestingT, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNil(t, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNil(t, object, msgAndArgs...))
 }
 
 // NotNil asserts that the specified object is not nil.
 func NotNil(t TestingT, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotNil(t, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotNil(t, object, msgAndArgs...))
 }
 
 // True asserts that the specified value is true.
 func True(t TestingT, value bool, msgAndArgs ...any) {
 	helper(t)
-	if !checkTrue(t, value, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkTrue(t, value, msgAndArgs...))
 }
 
 // False asserts that the specified value is false.
 func False(t TestingT, value bool, msgAndArgs ...any) {
 	helper(t)
-	if !checkFalse(t, value, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkFalse(t, value, msgAndArgs...))
 }
 
 // Empty asserts that the specified object is empty (zero value, nil, or has zero length).
 func Empty(t TestingT, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkEmpty(t, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkEmpty(t, object, msgAndArgs...))
 }
 
 // NotEmpty asserts that the specified object is not empty.
 func NotEmpty(t TestingT, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotEmpty(t, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotEmpty(t, object, msgAndArgs...))
 }
 
 // Len asserts that the specified object has the expected length.
 func Len(t TestingT, object any, length int, msgAndArgs ...any) {
 	helper(t)
-	if !checkLen(t, object, length, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkLen(t, object, length, msgAndArgs...))
 }
 
 // Contains asserts that the specified container contains the specified element.
 // Works with strings, arrays, slices, and maps.
 func Contains(t TestingT, container, element any, msgAndArgs ...any) {
 	helper(t)
-	if !checkContains(t, container, element, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkContains(t, container, element, msgAndArgs...))
 }
 
 // NotContains asserts that the specified container does not contain the specified element.
 func NotContains(t TestingT, container, element any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotContains(t, container, element, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotContains(t, container, element, msgAndArgs...))
 }
 
 // Zero asserts that the specified value is the zero value for its type.
 func Zero(t TestingT, value any, msgAndArgs ...any) {
 	helper(t)
-	if !checkZero(t, value, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkZero(t, value, msgAndArgs...))
 }
 
 // NotZero asserts that the specified value is not the zero value for its type.
 func NotZero(t TestingT, value any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotZero(t, value, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotZero(t, value, msgAndArgs...))
 }
 
 // Panics asserts that the specified function panics.
 func Panics(t TestingT, f func(), msgAndArgs ...any) {
 	helper(t)
-	if !checkPanics(t, f, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkPanics(t, f, msgAndArgs...))
 }
 
 // PanicsWithValue asserts that the function panics with the expected value.
 func PanicsWithValue(t TestingT, expected any, f func(), msgAndArgs ...any) {
 	helper(t)
-	if !checkPanicsWithValue(t, expected, f, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkPanicsWithValue(t, expected, f, msgAndArgs...))
 }
 
 // PanicsWithError asserts that the function panics with an error matching the expected string.
 func PanicsWithError(t TestingT, errString string, f func(), msgAndArgs ...any) {
 	helper(t)
-	if !checkPanicsWithError(t, errString, f, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkPanicsWithError(t, errString, f, msgAndArgs...))
 }
 
 // NotPanics asserts that the specified function does not panic.
 func NotPanics(t TestingT, f func(), msgAndArgs ...any) {
 	helper(t)
-	if !checkNotPanics(t, f, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotPanics(t, f, msgAndArgs...))
 }
 
 // Regexp asserts that the specified string matches the regexp.
 func Regexp(t TestingT, rx any, str any, msgAndArgs ...any) {
 	helper(t)
-	if !checkRegexp(t, rx, str, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkRegexp(t, rx, str, msgAndArgs...))
 }
 
 // NotRegexp asserts that the specified string does not match the regexp.
 func NotRegexp(t TestingT, rx any, str any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotRegexp(t, rx, str, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotRegexp(t, rx, str, msgAndArgs...))
 }
 
 // IsType asserts that the specified objects are of the same type.
 func IsType(t TestingT, expectedType, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkIsType(t, expectedType, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkIsType(t, expectedType, object, msgAndArgs...))
 }
 
 // Implements asserts that an object implements the specified interface.
 func Implements(t TestingT, interfaceObject, object any, msgAndArgs ...any) {
 	helper(t)
-	if !checkImplements(t, interfaceObject, object, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkImplements(t, interfaceObject, object, msgAndArgs...))
 }
 
 // ElementsMatch asserts that two slices contain the same elements, ignoring order.
 func ElementsMatch(t TestingT, listA, listB any, msgAndArgs ...any) {
 	helper(t)
-	if !checkElementsMatch(t, listA, listB, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkElementsMatch(t, listA, listB, msgAndArgs...))
 }
 
 // Subset asserts that subset is a subset of list.
 func Subset(t TestingT, list, subset any, msgAndArgs ...any) {
 	helper(t)
-	if !checkSubset(t, list, subset, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkSubset(t, list, subset, msgAndArgs...))
 }
 
 // --- Internal check functions (return bool, don't call FailNow) ---
@@ -415,7 +372,7 @@ func checkNotZero(t TestingT, value any, msgAndArgs ...any) bool {
 
 func checkPanics(t TestingT, f func(), msgAndArgs ...any) bool {
 	helper(t)
-	didPanic, panicValue := doPanicCheck(f)
+	didPanic, panicValue := recoverPanic(f)
 	if !didPanic {
 		return fail(t, fmt.Sprintf("Function should panic\n\tPanic value: %#v", panicValue), msgAndArgs...)
 	}
@@ -424,7 +381,7 @@ func checkPanics(t TestingT, f func(), msgAndArgs ...any) bool {
 
 func checkPanicsWithValue(t TestingT, expected any, f func(), msgAndArgs ...any) bool {
 	helper(t)
-	didPanic, panicValue := doPanicCheck(f)
+	didPanic, panicValue := recoverPanic(f)
 	if !didPanic {
 		return fail(t, fmt.Sprintf("Function should panic\n\tPanic value: %#v", panicValue), msgAndArgs...)
 	}
@@ -436,7 +393,7 @@ func checkPanicsWithValue(t TestingT, expected any, f func(), msgAndArgs ...any)
 
 func checkPanicsWithError(t TestingT, errString string, f func(), msgAndArgs ...any) bool {
 	helper(t)
-	didPanic, panicValue := doPanicCheck(f)
+	didPanic, panicValue := recoverPanic(f)
 	if !didPanic {
 		return fail(t, fmt.Sprintf("Function should panic\n\tPanic value: %#v", panicValue), msgAndArgs...)
 	}
@@ -449,7 +406,7 @@ func checkPanicsWithError(t TestingT, errString string, f func(), msgAndArgs ...
 
 func checkNotPanics(t TestingT, f func(), msgAndArgs ...any) bool {
 	helper(t)
-	didPanic, panicValue := doPanicCheck(f)
+	didPanic, panicValue := recoverPanic(f)
 	if didPanic {
 		return fail(t, fmt.Sprintf("Function should not panic\n\tPanic value: %v", panicValue), msgAndArgs...)
 	}

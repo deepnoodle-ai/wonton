@@ -10,65 +10,49 @@ import (
 // NoError asserts that a function returned a nil error.
 func NoError(t TestingT, err error, msgAndArgs ...any) {
 	helper(t)
-	if !checkNoError(t, err, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNoError(t, err, msgAndArgs...))
 }
 
 // Error asserts that a function returned a non-nil error.
 func Error(t TestingT, err error, msgAndArgs ...any) {
 	helper(t)
-	if !checkError(t, err, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkError(t, err, msgAndArgs...))
 }
 
 // EqualError asserts that an error's message equals the expected string.
 func EqualError(t TestingT, theError error, errString string, msgAndArgs ...any) {
 	helper(t)
-	if !checkEqualError(t, theError, errString, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkEqualError(t, theError, errString, msgAndArgs...))
 }
 
 // ErrorContains asserts that an error's message contains the expected substring.
 func ErrorContains(t TestingT, theError error, contains string, msgAndArgs ...any) {
 	helper(t)
-	if !checkErrorContains(t, theError, contains, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkErrorContains(t, theError, contains, msgAndArgs...))
 }
 
 // ErrorIs asserts that at least one of the errors in err's chain matches target.
 func ErrorIs(t TestingT, err, target error, msgAndArgs ...any) {
 	helper(t)
-	if !checkErrorIs(t, err, target, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkErrorIs(t, err, target, msgAndArgs...))
 }
 
 // NotErrorIs asserts that none of the errors in err's chain matches target.
 func NotErrorIs(t TestingT, err, target error, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotErrorIs(t, err, target, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotErrorIs(t, err, target, msgAndArgs...))
 }
 
 // ErrorAs asserts that at least one of the errors in err's chain matches target.
 func ErrorAs(t TestingT, err error, target any, msgAndArgs ...any) {
 	helper(t)
-	if !checkErrorAs(t, err, target, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkErrorAs(t, err, target, msgAndArgs...))
 }
 
 // NotErrorAs asserts that none of the errors in err's chain matches target.
 func NotErrorAs(t TestingT, err error, target any, msgAndArgs ...any) {
 	helper(t)
-	if !checkNotErrorAs(t, err, target, msgAndArgs...) {
-		t.FailNow()
-	}
+	require(t, checkNotErrorAs(t, err, target, msgAndArgs...))
 }
 
 // --- Internal check functions ---

@@ -458,3 +458,296 @@ func TestLogWithTime(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveRef(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	hash, err := repo.ResolveRef(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hash) != 40 {
+		t.Errorf("expected 40-char hash, got %d chars", len(hash))
+	}
+}
+
+func TestRefExists(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	exists, err := repo.RefExists(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Error("expected HEAD to exist")
+	}
+
+	exists, err = repo.RefExists(ctx, "nonexistent-branch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Error("expected nonexistent-branch to not exist")
+	}
+}
+
+func TestCommitCount(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file1.txt", "content1")
+	commit(t, repo, "First commit")
+
+	addFile(t, repo, "file2.txt", "content2")
+	commit(t, repo, "Second commit")
+
+	count, err := repo.CommitCount(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if count != 2 {
+		t.Errorf("expected 2 commits, got %d", count)
+	}
+}
+
+func TestAbbrevRef(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	abbrev, err := repo.AbbrevRef(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be master, main, or whatever default branch name
+	if abbrev == "" {
+		t.Error("expected non-empty abbrev ref")
+	}
+}
+
+func TestRemotes(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Add a remote
+	cmd := exec.Command("git", "remote", "add", "origin", "https://github.com/test/repo.git")
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	remotes, err := repo.Remotes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(remotes) != 1 {
+		t.Errorf("expected 1 remote, got %d", len(remotes))
+	}
+
+	if remotes[0].Name != "origin" {
+		t.Errorf("expected origin remote, got %q", remotes[0].Name)
+	}
+}
+
+func TestRemote(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	cmd := exec.Command("git", "remote", "add", "origin", "https://github.com/test/repo.git")
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	remote, err := repo.Remote(ctx, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if remote == nil {
+		t.Fatal("expected remote, got nil")
+	}
+
+	if remote.Name != "origin" {
+		t.Errorf("expected origin, got %q", remote.Name)
+	}
+
+	// Test nonexistent remote
+	remote, err = repo.Remote(ctx, "nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remote != nil {
+		t.Error("expected nil for nonexistent remote")
+	}
+}
+
+func TestRemoteURL(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	expectedURL := "https://github.com/test/repo.git"
+	cmd := exec.Command("git", "remote", "add", "origin", expectedURL)
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	url, err := repo.RemoteURL(ctx, "origin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// URL might be normalized by git, so just check it's not empty
+	if url == "" {
+		t.Error("expected non-empty URL")
+	}
+}
+
+func TestUntrackedFiles(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create untracked file
+	if err := os.WriteFile(filepath.Join(repo.Path, "untracked.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := repo.UntrackedFiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 1 {
+		t.Errorf("expected 1 untracked file, got %d", len(files))
+	}
+}
+
+func TestModifiedFiles(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	// Modify the file
+	if err := os.WriteFile(filepath.Join(repo.Path, "file.txt"), []byte("modified"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := repo.ModifiedFiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(files) != 1 {
+		t.Errorf("expected 1 modified file, got %d", len(files))
+	}
+}
+
+func TestBranchExists(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	// Create a branch
+	cmd := exec.Command("git", "branch", "feature")
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	exists, err := repo.BranchExists(ctx, "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Error("expected feature branch to exist")
+	}
+
+	exists, err = repo.BranchExists(ctx, "nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Error("expected nonexistent branch to not exist")
+	}
+}
+
+func TestMergeBase(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create initial commit
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "Initial commit")
+
+	// Create a branch and make changes
+	cmd := exec.Command("git", "branch", "feature")
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make another commit on main
+	addFile(t, repo, "file2.txt", "content2")
+	commit(t, repo, "Second commit")
+
+	// Switch to feature and make a commit
+	cmd = exec.Command("git", "checkout", "feature")
+	cmd.Dir = repo.Path
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	addFile(t, repo, "feature.txt", "feature content")
+	commit(t, repo, "Feature commit")
+
+	// Get merge base
+	base, err := repo.MergeBase(ctx, "feature", "HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(base) != 40 {
+		t.Errorf("expected 40-char hash, got %d chars", len(base))
+	}
+}
