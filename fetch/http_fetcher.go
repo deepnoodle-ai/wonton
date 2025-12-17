@@ -153,12 +153,14 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 		return nil, err
 	}
 
-	// Apply per-request timeout if specified
+	// Apply timeout: per-request timeout takes precedence, otherwise use fetcher default
+	var cancel context.CancelFunc
 	if req.Timeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(req.Timeout)*time.Millisecond)
-		defer cancel()
+	} else {
+		ctx, cancel = context.WithTimeout(ctx, f.timeout)
 	}
+	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)
 	if err != nil {
@@ -216,7 +218,8 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 	}
 
 	// Set other response fields
-	response.URL = req.URL
+	// Use the final URL after any redirects
+	response.URL = resp.Request.URL.String()
 	response.StatusCode = resp.StatusCode
 	response.Headers = headers
 	return response, nil

@@ -311,7 +311,7 @@ The HTTP fetcher validates requests and returns errors for unsupported options:
 ```go
 resp, err := fetcher.Fetch(ctx, req)
 if err != nil {
-    if errors.Is(err, fetch.ErrUnsupportedOption) {
+    if errors.Is(err, fetch.ErrUnsupported) {
         // Handle unsupported option error
     }
     // Handle other errors
@@ -356,6 +356,5 @@ func (f *MyFetcher) Fetch(ctx context.Context, req *fetch.Request) (*fetch.Respo
 - Response body size is limited to prevent memory exhaustion (default 10 MB)
 - When no formats are specified, returns HTML by default
 - When formats are specified, only requested formats are included
-- Environment variables override transformations during HTML processing
 - Element filters use case-insensitive matching for attributes
 - Standard exclude filters remove common non-content elements
