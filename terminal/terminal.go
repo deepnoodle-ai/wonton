@@ -464,7 +464,6 @@ func (t *Terminal) EndFrame(f RenderFrame) error {
 	// Ensure we are unlocking the same terminal we locked
 	tf, ok := f.(*terminalRenderFrame)
 	if !ok || tf.t != t {
-		t.mu.Unlock() // Unlock anyway to prevent deadlock if misuse
 		return ErrInvalidFrame
 	}
 
@@ -507,7 +506,9 @@ func NewTerminal() (*Terminal, error) {
 	fd := int(os.Stdout.Fd())
 	width, height, err := term.GetSize(fd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get terminal size: %w", err)
+		// Ignore error and use defaults
+		width = 0
+		height = 0
 	}
 
 	// Fallback for invalid terminal sizes (e.g. in CI/CD or piped output)
@@ -781,6 +782,7 @@ func (t *Terminal) ClearLine() {
 		for x := 0; x < t.width; x++ {
 			t.backBuffer[t.virtualY][x] = emptyCell
 		}
+		t.dirtyRegion.MarkRect(0, t.virtualY, t.width, 1)
 	}
 }
 
@@ -805,6 +807,7 @@ func (t *Terminal) ClearToEndOfLine() {
 		for x := start; x < t.width; x++ {
 			t.backBuffer[t.virtualY][x] = emptyCell
 		}
+		t.dirtyRegion.MarkRect(start, t.virtualY, t.width-start, 1)
 	}
 }
 
@@ -984,7 +987,7 @@ func (t *Terminal) DetectKittyProtocol() bool {
 	defer term.Restore(t.fd, oldState)
 
 	// Send query: progressive enhancement query + device attributes query
-	fmt.Print("\x1b[?u\x1b[c")
+	fmt.Fprint(t.out, "\x1b[?u\x1b[c")
 
 	// Read response with timeout
 	responseChan := make(chan string, 1)
@@ -1043,7 +1046,7 @@ func (t *Terminal) EnableEnhancedKeyboard() {
 	// Bit 3 (8): Report all keys as escape codes
 	// Bit 4 (16): Report associated text
 	// We use flag 1 for basic modifier detection (e.g., Shift+Enter)
-	fmt.Print("\033[>1u")
+	fmt.Fprint(t.out, "\033[>1u")
 	t.kittyEnabled = true
 }
 
@@ -1053,7 +1056,7 @@ func (t *Terminal) DisableEnhancedKeyboard() {
 	if !t.kittyEnabled {
 		return
 	}
-	fmt.Print("\033[<u")
+	fmt.Fprint(t.out, "\033[<u")
 	t.kittyEnabled = false
 }
 
@@ -1073,12 +1076,12 @@ func (t *Terminal) IsKittyProtocolEnabled() bool {
 // Use EnableMouseButtons() if you only need click events without motion tracking.
 func (t *Terminal) EnableMouseTracking() {
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
-	fmt.Print("\033[?1006h")
+	fmt.Fprint(t.out, "\033[?1006h")
 	// Enable mouse tracking - report button press and release
-	fmt.Print("\033[?1000h")
+	fmt.Fprint(t.out, "\033[?1000h")
 	// Enable all mouse motion tracking (including when no button is pressed)
 	// This is needed for proper hover state detection
-	fmt.Print("\033[?1003h")
+	fmt.Fprint(t.out, "\033[?1003h")
 }
 
 // EnableMouseButtons enables mouse button tracking without motion events.
@@ -1086,16 +1089,16 @@ func (t *Terminal) EnableMouseTracking() {
 // Use this for better performance when hover detection is not needed.
 func (t *Terminal) EnableMouseButtons() {
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
-	fmt.Print("\033[?1006h")
+	fmt.Fprint(t.out, "\033[?1006h")
 	// Enable mouse tracking - report button press and release only
-	fmt.Print("\033[?1000h")
+	fmt.Fprint(t.out, "\033[?1000h")
 }
 
 // DisableMouseTracking disables mouse event reporting
 func (t *Terminal) DisableMouseTracking() {
-	fmt.Print("\033[?1000l")
-	fmt.Print("\033[?1003l")
-	fmt.Print("\033[?1006l")
+	fmt.Fprint(t.out, "\033[?1000l")
+	fmt.Fprint(t.out, "\033[?1003l")
+	fmt.Fprint(t.out, "\033[?1006l")
 }
 
 // DisableAlternateScreen switches back to the main screen buffer
@@ -1209,26 +1212,26 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 		fmt.Fprint(t.out, outputStr)
 
 		// Record for non-buffered mode
-		// if t.recorder != nil {
-		// 	t.recorder.RecordOutput(outputStr)
-		// }
+		if t.recorder != nil {
+			t.recorder.RecordOutput(outputStr)
+		}
 		return nil
 	}
 
 	// For buffered mode, record the logical output immediately
 	// This captures timing of Print() calls, not EndFrame() calls
-	// if t.recorder != nil {
-	// 	var output strings.Builder
-	// 	output.WriteString(fmt.Sprintf("\033[%d;%dH", startY+1, startX+1))
-	// 	if !style.IsEmpty() {
-	// 		output.WriteString(style.String())
-	// 	}
-	// 	output.WriteString(text)
-	// 	if !style.IsEmpty() {
-	// 		output.WriteString("\033[0m")
-	// 	}
-	// 	t.recorder.RecordOutput(output.String())
-	// }
+	if t.recorder != nil {
+		var output strings.Builder
+		output.WriteString(fmt.Sprintf("\033[%d;%dH", startY+1, startX+1))
+		if !style.IsEmpty() {
+			output.WriteString(style.String())
+		}
+		output.WriteString(text)
+		if !style.IsEmpty() {
+			output.WriteString("\033[0m")
+		}
+		t.recorder.RecordOutput(output.String())
+	}
 
 	currentX := startX
 	currentY := startY
@@ -1322,6 +1325,9 @@ func (t *Terminal) scrollUp() {
 	// Shift lines up
 	copy(t.backBuffer, t.backBuffer[1:])
 	t.backBuffer[t.height-1] = newLine
+	
+	// Mark entire screen as dirty
+	t.dirtyRegion.MarkRect(0, 0, t.width, t.height)
 }
 
 // PrintAt prints text at a specific position
@@ -1416,19 +1422,39 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 		return nil
 	}
 
+	if x < 0 || y < 0 || x+width > t.width || y+height > t.height {
+		return ErrOutOfBounds
+	}
+
 	// Get character width once
 	charWidth := runewidth.RuneWidth(char)
+	step := charWidth
+	if step < 1 {
+		step = 1
+	}
 
 	for j := 0; j < height; j++ {
-		for i := 0; i < width; i++ {
-			// Validation
-			if x+i >= 0 && x+i < t.width && y+j >= 0 && y+j < t.height {
-				// Only set if not part of a wide character (or if it's a space)
-				t.backBuffer[y+j][x+i] = Cell{
-					Char:         char,
+		for i := 0; i < width; i += step {
+			// Validation (should be covered by top-level check but good for safety)
+			if x+i >= t.width {
+				break
+			}
+
+			// Set the main character cell
+			t.backBuffer[y+j][x+i] = Cell{
+				Char:         char,
+				Style:        style,
+				Width:        charWidth,
+				Continuation: false,
+			}
+
+			// Handle wide characters
+			if charWidth > 1 && i+1 < width && x+i+1 < t.width {
+				t.backBuffer[y+j][x+i+1] = Cell{
+					Char:         0,
 					Style:        style,
-					Width:        charWidth,
-					Continuation: false,
+					Width:        0,
+					Continuation: true,
 				}
 			}
 		}

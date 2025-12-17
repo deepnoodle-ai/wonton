@@ -217,8 +217,8 @@ func (m *RenderMetrics) FPS() float64 {
 	return float64(m.TotalFrames) / seconds
 }
 
-// Efficiency returns the percentage of frames that resulted in actual rendering
-// (vs skipped due to no changes). Higher is better when content is static.
+// Efficiency returns the percentage of frames that were skipped due to no changes
+// (vs resulted in actual rendering). Higher is better when content is static.
 func (m *RenderMetrics) Efficiency() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
