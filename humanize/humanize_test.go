@@ -59,6 +59,8 @@ func TestDuration(t *testing.T) {
 		{90 * time.Minute, "1h 30m"},
 		{25 * time.Hour, "1d 1h"},
 		{500 * time.Millisecond, "500ms"},
+		{1500 * time.Millisecond, "1s 500ms"},
+		{61500 * time.Millisecond, "1m 1s"},
 		{-30 * time.Second, "-30s"},
 	}
 
@@ -166,6 +168,11 @@ func TestOrdinal(t *testing.T) {
 		{23, "23rd"},
 		{101, "101st"},
 		{111, "111th"},
+		{-1, "-1st"},
+		{-2, "-2nd"},
+		{-3, "-3rd"},
+		{-11, "-11th"},
+		{-21, "-21st"},
 	}
 
 	for _, tt := range tests {

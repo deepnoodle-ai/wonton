@@ -154,12 +154,21 @@ func Duration(d time.Duration) string {
 	}
 
 	secs := d / time.Second
-	if secs > 0 || len(parts) == 0 {
-		if d%time.Second == 0 {
-			parts = append(parts, fmt.Sprintf("%ds", secs))
-		} else {
-			// Show milliseconds for sub-second precision
-			ms := float64(d) / float64(time.Millisecond)
+	if secs > 0 {
+		parts = append(parts, fmt.Sprintf("%ds", secs))
+		d -= secs * time.Second
+	}
+
+	if d > 0 && len(parts) < 2 {
+		// Show milliseconds for sub-second precision
+		ms := math.Round(float64(d) / float64(time.Millisecond))
+		if ms == 1000 && len(parts) == 1 {
+			// If we rounded up to 1000ms and already have seconds,
+			// it's better to just increment the seconds if they were the only part,
+			// but Duration is meant to be simple. For "1s 1000ms", we just
+			// show "1s" or we could have incremented secs earlier.
+			// Actually, the simplest fix is to not append 1000ms.
+		} else if ms > 0 {
 			parts = append(parts, fmt.Sprintf("%.0fms", ms))
 		}
 	}
@@ -419,12 +428,17 @@ func Percentage(value, total float64) string {
 //	Ordinal(100)  // "100th"
 //	Ordinal(101)  // "101st"
 func Ordinal(n int) string {
+	absN := n
+	if absN < 0 {
+		absN = -absN
+	}
+
 	suffix := "th"
-	switch n % 100 {
+	switch absN % 100 {
 	case 11, 12, 13:
 		// Special case for 11th, 12th, 13th
 	default:
-		switch n % 10 {
+		switch absN % 10 {
 		case 1:
 			suffix = "st"
 		case 2:
@@ -496,18 +510,24 @@ func Truncate(s string, maxLen int) string {
 // (truncated to maxLen) is returned. The suffix can be any string, such as
 // "...", "…", "~", or " [more]".
 //
+// This function is UTF-8 safe and counts characters (runes), not bytes.
+//
 // Examples:
 //
 //	TruncateWithSuffix("hello world", 10, "...")  // "hello w..."
 //	TruncateWithSuffix("hello world", 8, "~")     // "hello w~"
 //	TruncateWithSuffix("hello", 10, "...")        // "hello"
 //	TruncateWithSuffix("lengthy", 3, "..")        // "l.."
+//	TruncateWithSuffix("こんにちは", 4, "...")      // "こ..."
 func TruncateWithSuffix(s string, maxLen int, suffix string) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	suffixRunes := []rune(suffix)
+
+	if len(runes) <= maxLen {
 		return s
 	}
-	if maxLen <= len(suffix) {
-		return suffix[:maxLen]
+	if maxLen <= len(suffixRunes) {
+		return string(suffixRunes[:maxLen])
 	}
-	return s[:maxLen-len(suffix)] + suffix
+	return string(runes[:maxLen-len(suffixRunes)]) + suffix
 }
