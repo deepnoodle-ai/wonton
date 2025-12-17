@@ -389,6 +389,7 @@ func main() {
 | `AreRelatedHosts` | Checks if URLs share domain | `url1, url2 *url.URL` | `bool` |
 | `SortURLs` | Sorts URLs alphabetically | `urls []*url.URL` | none (in-place) |
 | `IsMediaURL` | Checks if URL points to media file | `u *url.URL` | `bool` |
+| `IsMediaExtension` | Checks if extension is a media type | `ext string` | `bool` |
 
 ### Text Functions
 
@@ -396,12 +397,6 @@ func main() {
 |----------|-------------|--------|---------|
 | `NormalizeText` | Cleans and normalizes text | `text string` | `string` |
 | `EndsWithPunctuation` | Checks if string ends with punctuation | `s string` | `bool` |
-
-### Variables
-
-| Variable | Description |
-|----------|-------------|
-| `MediaExtensions` | Map of media file extensions (`.jpg`, `.pdf`, `.mp4`, etc.) |
 
 ## URL Normalization Behavior
 
@@ -436,7 +431,7 @@ Examples:
 
 ## Supported Media Extensions
 
-The `MediaExtensions` map includes common file types:
+`IsMediaURL` and `IsMediaExtension` recognize these common file types:
 
 - **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`, `.tiff`
 - **Documents**: `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`

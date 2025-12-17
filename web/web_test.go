@@ -65,6 +65,52 @@ func TestNormalizeURL(t *testing.T) {
 			input:       "ht tp://example.com",
 			expectError: true,
 		},
+		// Edge cases from feedback
+		{
+			name:     "httpbin.org - starts with http but no scheme",
+			input:    "httpbin.org",
+			expected: "https://httpbin.org",
+		},
+		{
+			name:     "httpbin.org with path",
+			input:    "httpbin.org/get",
+			expected: "https://httpbin.org/get",
+		},
+		{
+			name:        "mailto URL should be rejected",
+			input:       "mailto:test@example.com",
+			expectError: true,
+		},
+		{
+			name:        "javascript URL should be rejected",
+			input:       "javascript:void(0)",
+			expectError: true,
+		},
+		{
+			name:        "tel URL should be rejected",
+			input:       "tel:+1234567890",
+			expectError: true,
+		},
+		{
+			name:        "data URL should be rejected",
+			input:       "data:text/html,<h1>Hello</h1>",
+			expectError: true,
+		},
+		{
+			name:     "protocol-relative URL",
+			input:    "//example.com/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "URL with port",
+			input:    "https://example.com:8080/path",
+			expected: "https://example.com:8080/path",
+		},
+		{
+			name:     "http URL with port converted to https",
+			input:    "http://example.com:8080/path",
+			expected: "https://example.com:8080/path",
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,6 +156,31 @@ func TestAreSameHost(t *testing.T) {
 			url1:     "",
 			url2:     "",
 			expected: false,
+		},
+		// Edge cases: port handling and case sensitivity
+		{
+			name:     "same host with and without port",
+			url1:     "https://example.com:443/path",
+			url2:     "https://example.com/path",
+			expected: true,
+		},
+		{
+			name:     "same host different ports",
+			url1:     "https://example.com:8080/path",
+			url2:     "https://example.com:9090/path",
+			expected: true,
+		},
+		{
+			name:     "case insensitive host comparison",
+			url1:     "https://EXAMPLE.COM/path",
+			url2:     "https://example.com/path",
+			expected: true,
+		},
+		{
+			name:     "mixed case comparison",
+			url1:     "https://Example.Com/path",
+			url2:     "https://EXAMPLE.COM/path",
+			expected: true,
 		},
 	}
 
@@ -170,6 +241,43 @@ func TestAreRelatedHosts(t *testing.T) {
 			url1:     "https://localhost",
 			url2:     "https://localhost",
 			expected: false,
+		},
+		// Edge cases: public suffixes
+		{
+			name:     "co.uk - same registrable domain",
+			url1:     "https://www.example.co.uk",
+			url2:     "https://api.example.co.uk",
+			expected: true,
+		},
+		{
+			name:     "co.uk - different registrable domains",
+			url1:     "https://example.co.uk",
+			url2:     "https://other.co.uk",
+			expected: false,
+		},
+		{
+			name:     "com.au - same registrable domain",
+			url1:     "https://www.example.com.au",
+			url2:     "https://shop.example.com.au",
+			expected: true,
+		},
+		{
+			name:     "com.au - different registrable domains",
+			url1:     "https://example.com.au",
+			url2:     "https://other.com.au",
+			expected: false,
+		},
+		{
+			name:     "hosts with ports - same domain",
+			url1:     "https://www.example.com:8080",
+			url2:     "https://api.example.com:9090",
+			expected: true,
+		},
+		{
+			name:     "case insensitive domain comparison",
+			url1:     "https://WWW.EXAMPLE.COM",
+			url2:     "https://api.example.com",
+			expected: true,
 		},
 	}
 
@@ -236,6 +344,26 @@ func TestSortURLs(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestSortURLsWithNilEntries(t *testing.T) {
+	// Test that nil entries are sorted to the end
+	urls := []*url.URL{
+		mustParse("https://z.com"),
+		nil,
+		mustParse("https://a.com"),
+		nil,
+		mustParse("https://m.com"),
+	}
+
+	SortURLs(urls)
+
+	// Non-nil entries should be sorted, nils at end
+	assert.Equal(t, "https://a.com", urls[0].String())
+	assert.Equal(t, "https://m.com", urls[1].String())
+	assert.Equal(t, "https://z.com", urls[2].String())
+	assert.Nil(t, urls[3])
+	assert.Nil(t, urls[4])
 }
 
 func TestResolveLink(t *testing.T) {
@@ -534,6 +662,67 @@ func TestIsMediaURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u, _ := url.Parse(tt.url)
 			result := IsMediaURL(u)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsMediaURLNil(t *testing.T) {
+	// Test that nil URL returns false without panicking
+	assert.False(t, IsMediaURL(nil))
+}
+
+func TestIsMediaExtension(t *testing.T) {
+	tests := []struct {
+		name     string
+		ext      string
+		expected bool
+	}{
+		{
+			name:     "lowercase jpg",
+			ext:      ".jpg",
+			expected: true,
+		},
+		{
+			name:     "uppercase JPG",
+			ext:      ".JPG",
+			expected: true,
+		},
+		{
+			name:     "mixed case Mp4",
+			ext:      ".Mp4",
+			expected: true,
+		},
+		{
+			name:     "html not media",
+			ext:      ".html",
+			expected: false,
+		},
+		{
+			name:     "without leading dot",
+			ext:      "jpg",
+			expected: false,
+		},
+		{
+			name:     "empty string",
+			ext:      "",
+			expected: false,
+		},
+		{
+			name:     "pdf",
+			ext:      ".pdf",
+			expected: true,
+		},
+		{
+			name:     "zip",
+			ext:      ".zip",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsMediaExtension(tt.ext)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

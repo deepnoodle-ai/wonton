@@ -16,7 +16,7 @@
 //
 // Media Detection:
 //   - IsMediaURL: Identify URLs pointing to media files
-//   - MediaExtensions: Predefined set of common media file extensions
+//   - IsMediaExtension: Check if a file extension is a media type
 //
 // This package is particularly useful when building web crawlers, content extractors,
 // or any application that needs to process URLs and text from web pages.
@@ -27,6 +27,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // AreSameHost checks if two URLs have the same host value.
@@ -45,12 +47,20 @@ import (
 //	url3, _ := url.Parse("https://sub.example.com/page")
 //	web.AreSameHost(url1, url3) // false
 func AreSameHost(url1, url2 *url.URL) bool {
-	return url1 != nil && url2 != nil && url1.Host == url2.Host
+	if url1 == nil || url2 == nil {
+		return false
+	}
+	// Use Hostname() to ignore port differences and EqualFold for case-insensitive comparison
+	return strings.EqualFold(url1.Hostname(), url2.Hostname())
 }
 
-// AreRelatedHosts checks if two URLs share the same base domain (the last two
-// parts of the hostname). Returns false if either URL is nil or has fewer than
-// two domain parts.
+// AreRelatedHosts checks if two URLs share the same registrable domain
+// (effective TLD + 1). Returns false if either URL is nil or cannot have its
+// registrable domain determined.
+//
+// This function uses the Public Suffix List to correctly handle multi-part TLDs
+// like "co.uk", "com.au", etc. For example, "example.co.uk" and "other.co.uk"
+// are NOT related because they have different registrable domains.
 //
 // This function is useful for determining if URLs belong to the same website
 // family, even if they use different subdomains.
@@ -63,20 +73,31 @@ func AreSameHost(url1, url2 *url.URL) bool {
 //
 //	url3, _ := url.Parse("https://example.org")
 //	web.AreRelatedHosts(url1, url3) // false (different base domains)
+//
+//	url4, _ := url.Parse("https://foo.example.co.uk")
+//	url5, _ := url.Parse("https://bar.example.co.uk")
+//	web.AreRelatedHosts(url4, url5) // true (both share "example.co.uk")
+//
+//	url6, _ := url.Parse("https://foo.other.co.uk")
+//	web.AreRelatedHosts(url4, url6) // false (different registrable domains)
 func AreRelatedHosts(url1, url2 *url.URL) bool {
 	if url1 == nil || url2 == nil {
 		return false
 	}
-	parts1 := strings.Split(url1.Host, ".")
-	parts2 := strings.Split(url2.Host, ".")
 
-	// Get the base domain (last two parts)
-	if len(parts1) < 2 || len(parts2) < 2 {
+	host1 := url1.Hostname()
+	host2 := url2.Hostname()
+
+	// Get the registrable domain (eTLD+1) for each host
+	domain1, err1 := publicsuffix.EffectiveTLDPlusOne(host1)
+	domain2, err2 := publicsuffix.EffectiveTLDPlusOne(host2)
+
+	// If either fails (e.g., localhost, IP addresses, invalid domains), return false
+	if err1 != nil || err2 != nil {
 		return false
 	}
-	base1 := strings.Join(parts1[len(parts1)-2:], ".")
-	base2 := strings.Join(parts2[len(parts2)-2:], ".")
-	return base1 == base2
+
+	return strings.EqualFold(domain1, domain2)
 }
 
 // NormalizeURL parses a URL string and returns a normalized URL.
@@ -103,19 +124,43 @@ func NormalizeURL(value string) (*url.URL, error) {
 	if value == "" {
 		return nil, fmt.Errorf("invalid empty url")
 	}
-	if !strings.HasPrefix(value, "http") {
-		if strings.Contains(value, "://") {
-			return nil, fmt.Errorf("invalid url: %s", value)
-		}
-		value = "https://" + value
-	}
-	if strings.HasPrefix(value, "http://") {
-		value = "https://" + value[7:]
-	}
+
+	// Parse the URL first to properly detect the scheme
 	u, err := url.Parse(value)
 	if err != nil {
 		return nil, fmt.Errorf("invalid url %q: %w", value, err)
 	}
+
+	// Handle scheme
+	switch u.Scheme {
+	case "":
+		// No scheme - check if it's a protocol-relative URL (//example.com/path)
+		if u.Host != "" {
+			// Protocol-relative URL: just set the scheme
+			u.Scheme = "https"
+		} else {
+			// Plain hostname like "example.com" or "httpbin.org"
+			// Add https:// and re-parse
+			u, err = url.Parse("https://" + value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid url %q: %w", value, err)
+			}
+		}
+	case "http":
+		// Upgrade http to https
+		u.Scheme = "https"
+	case "https":
+		// Already https, nothing to do
+	default:
+		// Reject non-http/https schemes (mailto:, ftp:, javascript:, etc.)
+		return nil, fmt.Errorf("invalid url scheme %q: %s", u.Scheme, value)
+	}
+
+	// Require a non-empty hostname
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid url missing hostname: %s", value)
+	}
+
 	u.ForceQuery = false
 	u.RawQuery = ""
 	u.Fragment = ""
@@ -126,7 +171,7 @@ func NormalizeURL(value string) (*url.URL, error) {
 }
 
 // SortURLs sorts a slice of URLs alphabetically by their string representation.
-// The slice is sorted in place.
+// The slice is sorted in place. Nil entries are sorted to the end of the slice.
 //
 // Example:
 //
@@ -139,6 +184,13 @@ func NormalizeURL(value string) (*url.URL, error) {
 //	// urls is now ordered: a.com, m.com, z.com
 func SortURLs(urls []*url.URL) {
 	sort.Slice(urls, func(i, j int) bool {
+		// Nil entries sort to the end
+		if urls[i] == nil {
+			return false
+		}
+		if urls[j] == nil {
+			return true
+		}
 		return urls[i].String() < urls[j].String()
 	})
 }
