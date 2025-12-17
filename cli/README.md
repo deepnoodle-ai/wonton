@@ -8,12 +8,11 @@ user runs it in a real terminal.
 ## Key capabilities
 
 - Command registration with groups, aliases, middleware, and validation hooks.
-- Struct-based flag declarations (`cli.WithFlags` and `cli.GlobalFlags`) and
-  Env/JSON config loading via the `env` package.
+- Struct-based flag declarations with environment variable support.
 - Automatic `help`/`version` commands plus shell-completion generation.
 - Progressive handlers: `Command.Interactive` vs `Command.NonInteractive`.
-- Rich output helpers: streaming chunks (`ctx.Stream`), progress indicators,
-  tables/forms via the `tui` helpers, and JSON event mode when piping.
+- Semantic output helpers with automatic color support.
+- Interactive prompts (select, input, confirm) via the `tui` package.
 
 ## Quick example
 
@@ -21,69 +20,78 @@ user runs it in a real terminal.
 package main
 
 import (
-	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/deepnoodle-ai/wonton/cli"
 )
 
 func main() {
-	app := cli.New("lab", "Demo of the Wonton CLI framework")
+	app := cli.New("deploy").Description("Deployment tool")
 	app.Version("1.0.0")
-	app.AddCompletionCommand()
-	app.AddGlobalFlag(&cli.Flag{
-		Name:        "profile",
-		Short:       "p",
-		Description: "Active profile name",
-		Default:     "default",
-	})
 
-	app.Command("greet", "Say hi", cli.WithArgs("name?")).
-		AddFlag(&cli.Flag{
-			Name:        "loud",
-			Short:       "l",
-			Description: "Uppercase the greeting",
-		}).
+	app.Command("run").
+		Description("Deploy to environment").
+		Args("env?").
 		Run(func(ctx *cli.Context) error {
-			name := ctx.Arg(0)
-			if name == "" {
-				name = "friend"
+			env := ctx.Arg(0)
+
+			// Interactive prompt if no env provided
+			if env == "" {
+				var err error
+				env, err = ctx.SelectString("Choose environment:", "dev", "staging", "prod")
+				if err != nil {
+					return err
+				}
 			}
 
-			msg := fmt.Sprintf("Hello, %s (profile=%s)", name, ctx.String("profile"))
-			if ctx.Bool("loud") {
-				msg = strings.ToUpper(msg)
+			// Confirmation for production
+			if env == "prod" {
+				ok, err := ctx.Confirm("Deploy to production?")
+				if err != nil || !ok {
+					ctx.Warn("Deployment cancelled")
+					return nil
+				}
 			}
-			ctx.Println(msg)
+
+			ctx.Info("Deploying to %s...", env)
+			// ... deployment logic ...
+			ctx.Success("Deployed to %s", env)
 			return nil
 		})
 
-	app.Command("deploy", "Long-running task").
-		Interactive(func(ctx *cli.Context) error {
-			return ctx.WithProgress("Deploying to "+ctx.String("profile"), func(p *cli.Progress) error {
-				for step := 0; step <= 100; step += 10 {
-					p.Set(step, fmt.Sprintf("Step %d/10", step/10))
-					time.Sleep(200 * time.Millisecond)
-				}
-				return nil
-			})
-		}).
-		NonInteractive(func(ctx *cli.Context) error {
-			return ctx.Stream(func(yield func(string)) error {
-				yield("starting deploy...\n")
-				yield("done\n")
-				return nil
-			})
-		})
-
 	if err := app.Run(); err != nil {
-		// Convert CLI errors to proper exit codes.
 		os.Exit(cli.GetExitCode(err))
 	}
 }
 ```
 
-Use `go run ./examples/cli_basic` for a more comprehensive walkthrough that
-covers groups, nested commands, and config loading.
+## Output helpers
+
+The context provides semantic output methods with automatic color support:
+
+```go
+ctx.Success("Deployed to %s", env)   // Green, stdout
+ctx.Info("Processing %d items", n)   // Cyan, stdout
+ctx.Warn("Disk usage at %d%%", pct)  // Yellow, stderr
+ctx.Fail("Connection failed: %v", e) // Red, stderr
+```
+
+## Interactive prompts
+
+For interactive commands, use the built-in prompt helpers:
+
+```go
+// Selection prompt (returns index)
+idx, err := ctx.Select("Choose:", "Option A", "Option B", "Option C")
+
+// Selection prompt (returns string)
+choice, err := ctx.SelectString("Environment:", "dev", "staging", "prod")
+
+// Text input
+name, err := ctx.Input("Enter name:")
+
+// Yes/No confirmation
+ok, err := ctx.Confirm("Continue?")
+```
+
+Prompts require an interactive terminal and return an error if run non-interactively.

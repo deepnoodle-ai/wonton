@@ -33,7 +33,6 @@ type Command struct {
 	hidden      bool
 	deprecated  string
 	aliases     []string
-	isTool      bool // Marks as AI-callable tool
 	interactive Handler
 	nonInteract Handler
 
@@ -128,12 +127,6 @@ func (c *Command) Aliases(names ...string) *Command {
 // Use adds middleware to the command.
 func (c *Command) Use(mw ...Middleware) *Command {
 	c.middleware = append(c.middleware, mw...)
-	return c
-}
-
-// Tool marks the command as an AI-callable tool.
-func (c *Command) Tool() *Command {
-	c.isTool = true
 	return c
 }
 

@@ -73,3 +73,47 @@ func TestContextArgs(t *testing.T) {
 	assert.Equal(t, "second", ctx.Arg(1))
 	assert.Equal(t, "", ctx.Arg(2))
 }
+
+func TestSemanticOutputHelpers(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	// Create app with colors disabled for predictable output
+	app := New("test")
+	app.colorEnabled = false
+
+	ctx := &Context{
+		app:    app,
+		stdout: &stdout,
+		stderr: &stderr,
+	}
+
+	ctx.Success("deployed to %s", "prod")
+	ctx.Info("processing %d items", 10)
+	ctx.Warn("disk usage at %d%%", 85)
+	ctx.Fail("connection %s", "failed")
+
+	assert.Contains(t, stdout.String(), "deployed to prod")
+	assert.Contains(t, stdout.String(), "processing 10 items")
+	assert.Contains(t, stderr.String(), "disk usage at 85%")
+	assert.Contains(t, stderr.String(), "connection failed")
+}
+
+func TestPromptsRequireInteractive(t *testing.T) {
+	ctx := &Context{
+		interactive: false,
+		stdout:      &bytes.Buffer{},
+		stderr:      &bytes.Buffer{},
+	}
+
+	_, err := ctx.Select("Choose:", "a", "b")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive")
+
+	_, err = ctx.Input("Name:")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive")
+
+	_, err = ctx.Confirm("Continue?")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "interactive")
+}

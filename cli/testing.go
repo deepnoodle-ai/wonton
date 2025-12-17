@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -14,7 +13,6 @@ type TestResult struct {
 	ExitCode int
 	Stdout   string
 	Stderr   string
-	Events   []map[string]any // Structured events if JSON output was used
 	Err      error
 }
 
@@ -22,10 +20,9 @@ type TestResult struct {
 type TestOption func(*testConfig)
 
 type testConfig struct {
-	args   []string
-	stdin  io.Reader
-	env    map[string]string
-	json   bool
+	args  []string
+	stdin io.Reader
+	env   map[string]string
 }
 
 // TestArgs sets the command-line arguments for the test.
@@ -49,13 +46,6 @@ func TestEnv(key, value string) TestOption {
 			c.env = make(map[string]string)
 		}
 		c.env[key] = value
-	}
-}
-
-// TestJSON enables JSON output mode for the test.
-func TestJSON() TestOption {
-	return func(c *testConfig) {
-		c.json = true
 	}
 }
 
@@ -84,49 +74,20 @@ func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
 		t.Setenv(key, value)
 	}
 
-	// Add --json flag if requested
-	args := cfg.args
-	if cfg.json {
-		args = append(args, "--json")
-	}
-
 	// Run the command
-	err := a.RunArgs(args)
+	err := a.RunArgs(cfg.args)
 
 	// Restore I/O
 	a.stdout = origStdout
 	a.stderr = origStderr
 	a.stdin = origStdin
 
-	result := &TestResult{
+	return &TestResult{
 		ExitCode: GetExitCode(err),
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 		Err:      err,
 	}
-
-	// Parse JSON events if JSON mode was used
-	if cfg.json && stdout.Len() > 0 {
-		result.Events = parseJSONEvents(stdout.String())
-	}
-
-	return result
-}
-
-// parseJSONEvents parses newline-delimited JSON into events.
-func parseJSONEvents(s string) []map[string]any {
-	var events []map[string]any
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var event map[string]any
-		if err := json.Unmarshal([]byte(line), &event); err == nil {
-			events = append(events, event)
-		}
-	}
-	return events
 }
 
 // Contains checks if the stdout contains the given substring.
@@ -147,19 +108,6 @@ func (r *TestResult) Success() bool {
 // Failed returns true if the command failed (exit code != 0).
 func (r *TestResult) Failed() bool {
 	return r.ExitCode != 0
-}
-
-// EventCount returns the number of JSON events captured.
-func (r *TestResult) EventCount() int {
-	return len(r.Events)
-}
-
-// GetEvent returns the event at the given index, or nil if out of bounds.
-func (r *TestResult) GetEvent(i int) map[string]any {
-	if i >= 0 && i < len(r.Events) {
-		return r.Events[i]
-	}
-	return nil
 }
 
 // TestApp creates a new app configured for testing.
