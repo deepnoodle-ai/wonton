@@ -553,7 +553,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
-				} else if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				} else if i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
 						return err
@@ -578,7 +578,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
-				} else if j == len(shorts)-1 && i+1 < len(args) {
+				} else if j == len(shorts)-1 && i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
 						return err
@@ -662,6 +662,30 @@ func (c *Command) findFlagByShort(short string) Flag {
 	return nil
 }
 
+// looksLikeFlag returns true if the string looks like a flag rather than a value.
+// This allows values like "-1" (negative numbers) while still treating "-v" as a flag.
+func (c *Command) looksLikeFlag(s string) bool {
+	if !strings.HasPrefix(s, "-") {
+		return false
+	}
+	if len(s) == 1 {
+		return false // just "-"
+	}
+	// Check if it could be a negative number
+	if len(s) >= 2 {
+		// -N or -.N where N is a digit
+		second := s[1]
+		if second >= '0' && second <= '9' {
+			return false // looks like negative number
+		}
+		if second == '.' && len(s) > 2 {
+			return false // looks like negative decimal
+		}
+	}
+	// Otherwise it's probably a flag
+	return true
+}
+
 func (c *Command) setFlag(ctx *Context, name, value string) error {
 	flag := c.findFlag(name)
 	if flag == nil {
@@ -688,15 +712,48 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		return fmt.Errorf("invalid value for --%s: %w", name, err)
 	}
 
-	ctx.flags[name] = value
+	// Handle slice flags by accumulating values
+	// On first user-provided value, clear defaults and start fresh
+	switch flag.GetDefault().(type) {
+	case []string:
+		var existing []string
+		if ctx.setFlags[name] {
+			// Already set by user, accumulate
+			existing, _ = ctx.flags[name].([]string)
+		}
+		// Otherwise start with empty slice (replacing defaults)
+		ctx.flags[name] = append(existing, value)
+	case []int:
+		var existing []int
+		if ctx.setFlags[name] {
+			// Already set by user, accumulate
+			existing, _ = ctx.flags[name].([]int)
+		}
+		// Otherwise start with empty slice (replacing defaults)
+		intVal, err := parseInt(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for --%s: %s", name, value)
+		}
+		ctx.flags[name] = append(existing, intVal)
+	default:
+		ctx.flags[name] = value
+	}
 	return nil
+}
+
+func parseInt(s string) (int, error) {
+	var i int
+	_, err := fmt.Sscanf(s, "%d", &i)
+	return i, err
 }
 
 func (c *Command) showHelp() error {
 	if c.app.colorEnabled {
 		// Use the styled tui-based help
 		view := c.renderCommandHelp()
-		tui.Fprint(c.app.stdout, view)
+		if err := tui.Fprint(c.app.stdout, view); err != nil {
+			return err
+		}
 		return &HelpRequested{}
 	}
 

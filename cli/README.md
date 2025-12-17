@@ -351,10 +351,10 @@ func main() {
 
     app.Command("process").
         Description("Process files").
-        Args("files...").
+        ArgsRange(1, -1). // Require at least one argument
         // Interactive mode (with TUI)
         Interactive(func(ctx *cli.Context) error {
-            files := ctx.Args()
+            files := ctx.Args() // All positional args are available
             // Show interactive TUI with progress, selection, etc.
             return runInteractiveProcessor(files)
         }).
@@ -609,8 +609,8 @@ String flags additionally support:
 
 | Function | Description | Parameters | Returns |
 |----------|-------------|------------|---------|
-| `Error(msg)` | Create error | `string` | `*CLIError` |
-| `Errorf(format, args...)` | Create formatted error | `string`, `...any` | `*CLIError` |
+| `Error(msg)` | Create error | `string` | `*CommandError` |
+| `Errorf(format, args...)` | Create formatted error | `string`, `...any` | `*CommandError` |
 | `IsHelpRequested(err)` | Check if help was requested | `error` | `bool` |
 | `GetExitCode(err)` | Get exit code from error | `error` | `int` |
 

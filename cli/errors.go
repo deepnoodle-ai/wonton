@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -37,7 +38,7 @@ func (e *ExitError) Error() string {
 
 // Exit returns an error that causes the CLI to exit with the given code.
 func Exit(code int) error {
-	return &ExitError{Code: code}
+	return &ExitError{Code: code, Message: fmt.Sprintf("exit status %d", code)}
 }
 
 // CommandError is a rich error with hints, details, and error codes.
@@ -109,12 +110,14 @@ func (e *CommandError) ErrorCode() string {
 }
 
 // IsHelpRequested checks if the error is a help request.
+// This function supports wrapped errors via errors.As.
 func IsHelpRequested(err error) bool {
-	_, ok := err.(*HelpRequested)
-	return ok
+	var helpErr *HelpRequested
+	return errors.As(err, &helpErr)
 }
 
 // GetExitCode returns the appropriate exit code for an error.
+// This function supports wrapped errors via errors.As.
 //
 // Returns:
 //   - 0 if err is nil or HelpRequested
@@ -124,8 +127,9 @@ func GetExitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	if e, ok := err.(*ExitError); ok {
-		return e.Code
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.Code
 	}
 	if IsHelpRequested(err) {
 		return 0

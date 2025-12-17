@@ -442,30 +442,85 @@ func (a *App) RunContext(ctx context.Context, args []string) error {
 		return fmt.Errorf("no handler defined for command: %s", cmd.name)
 	}
 
-	// Build middleware chain
-	for i := len(a.middleware) - 1; i >= 0; i-- {
-		handler = a.middleware[i](handler)
-	}
+	// Build middleware chain: app middleware runs before (wraps) command middleware
 	for i := len(cmd.middleware) - 1; i >= 0; i-- {
 		handler = cmd.middleware[i](handler)
+	}
+	for i := len(a.middleware) - 1; i >= 0; i-- {
+		handler = a.middleware[i](handler)
 	}
 
 	// Execute
 	return handler(execCtx)
 }
 
-// parseArgs separates the command name from its arguments.
+// parseArgs separates the command name from its arguments, extracting any
+// global flags that appear before the command.
 func (a *App) parseArgs(args []string) (string, []string, error) {
 	if len(args) == 0 {
 		return "", nil, nil
 	}
 
-	// Check if first arg is a flag (global flag)
-	if strings.HasPrefix(args[0], "-") {
+	// Find the first non-flag argument (the command name).
+	// This allows global flags to appear before the command:
+	//   myapp -v run
+	//   myapp --verbose run arg1
+	var cmdIndex int
+	for cmdIndex = 0; cmdIndex < len(args); cmdIndex++ {
+		arg := args[cmdIndex]
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
+		// Skip the value for non-bool global flags
+		if strings.HasPrefix(arg, "--") && !strings.Contains(arg, "=") {
+			name := strings.TrimPrefix(arg, "--")
+			if f := a.findGlobalFlag(name); f != nil {
+				if _, isBool := f.GetDefault().(bool); !isBool {
+					cmdIndex++ // skip the value
+				}
+			}
+		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
+			// Short flag - check if last char needs a value
+			shorts := arg[1:]
+			lastShort := string(shorts[len(shorts)-1])
+			if f := a.findGlobalFlagByShort(lastShort); f != nil {
+				if _, isBool := f.GetDefault().(bool); !isBool {
+					cmdIndex++ // skip the value
+				}
+			}
+		}
+	}
+
+	if cmdIndex >= len(args) {
+		// All args are flags, no command
 		return "", args, nil
 	}
 
-	return args[0], args[1:], nil
+	// Return command name and all remaining args (including leading flags for the command to parse).
+	// Read cmdName first since append may modify the underlying array.
+	cmdName := args[cmdIndex]
+	remaining := append(args[:cmdIndex:cmdIndex], args[cmdIndex+1:]...)
+	return cmdName, remaining, nil
+}
+
+// findGlobalFlag looks up a global flag by name.
+func (a *App) findGlobalFlag(name string) Flag {
+	for _, f := range a.globalFlags {
+		if f.GetName() == name {
+			return f
+		}
+	}
+	return nil
+}
+
+// findGlobalFlagByShort looks up a global flag by short name.
+func (a *App) findGlobalFlagByShort(short string) Flag {
+	for _, f := range a.globalFlags {
+		if f.GetShort() == short {
+			return f
+		}
+	}
+	return nil
 }
 
 // findCommand looks up a command by name, including group commands and aliases.
@@ -507,6 +562,10 @@ func (a *App) findCommand(name string, args []string) (*Command, []string, error
 	if group, ok := a.groups[name]; ok {
 		if len(args) > 0 {
 			subName := args[0]
+			// Handle help flags for the group
+			if subName == "--help" || subName == "-h" {
+				return nil, nil, group.showHelp()
+			}
 			// Check direct subcommand
 			if cmd, ok := group.commands[subName]; ok {
 				return cmd, args[1:], nil
@@ -544,7 +603,10 @@ func (a *App) showHelp() error {
 	if a.colorEnabled {
 		// Use the styled tui-based help
 		view := a.renderAppHelp()
-		return tui.Fprint(a.stdout, view)
+		if err := tui.Fprint(a.stdout, view); err != nil {
+			return err
+		}
+		return &HelpRequested{}
 	}
 
 	// Fallback to plain text for non-color terminals
@@ -609,7 +671,7 @@ func (a *App) showHelp() error {
 	sb.WriteString(" <command> --help' for more information on a command.\n")
 
 	fmt.Fprint(a.stdout, sb.String())
-	return nil
+	return &HelpRequested{}
 }
 
 // Group organizes related commands under a common namespace.
@@ -716,6 +778,58 @@ func (g *Group) commandList() string {
 		}
 	}
 	return sb.String()
+}
+
+// showHelp displays help for the group.
+func (g *Group) showHelp() error {
+	var sb strings.Builder
+
+	// Group name and description
+	sb.WriteString(g.name)
+	if g.description != "" {
+		sb.WriteString(" - ")
+		sb.WriteString(g.description)
+	}
+	sb.WriteString("\n\n")
+
+	// Usage
+	sb.WriteString("Usage:\n  ")
+	sb.WriteString(g.app.name)
+	sb.WriteString(" ")
+	sb.WriteString(g.name)
+	sb.WriteString(" <command> [flags] [args]\n\n")
+
+	// Commands
+	sb.WriteString("Commands:\n")
+	for name, cmd := range g.commands {
+		if cmd.hidden {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
+	}
+	sb.WriteString("\n")
+
+	// Group flags
+	if len(g.flags) > 0 {
+		sb.WriteString("Flags:\n")
+		for _, f := range g.flags {
+			if f.IsHidden() {
+				continue
+			}
+			writeFlagHelp(&sb, f)
+		}
+		sb.WriteString("\n")
+	}
+
+	// Help hint
+	sb.WriteString("Run '")
+	sb.WriteString(g.app.name)
+	sb.WriteString(" ")
+	sb.WriteString(g.name)
+	sb.WriteString(" <command> --help' for more information on a command.\n")
+
+	fmt.Fprint(g.app.stdout, sb.String())
+	return &HelpRequested{}
 }
 
 // SetColorEnabled enables or disables colored output.

@@ -204,15 +204,15 @@ func TestMiddleware(t *testing.T) {
 
 	err := app.RunArgs([]string{"run"})
 	assert.NoError(t, err)
-	// Middleware is applied in reverse order: cmd middleware wraps first, then global
-	// So execution is: cmd-before -> global-before -> handler -> global-after -> cmd-after
-	assert.Equal(t, []string{
-		"cmd-before",
+	// App middleware runs first (wraps command middleware), then command middleware, then handler
+	// So execution is: global-before -> cmd-before -> handler -> cmd-after -> global-after
+	assert.Equal(t, order, []string{
 		"global-before",
+		"cmd-before",
 		"handler",
-		"global-after",
 		"cmd-after",
-	}, order)
+		"global-after",
+	})
 }
 
 func TestHelp(t *testing.T) {
@@ -1822,9 +1822,9 @@ func TestParseArgsEmpty(t *testing.T) {
 	app := New("test").Description("Test")
 	app.stdout = &bytes.Buffer{}
 
-	// Empty args should show help
+	// Empty args should show help and return HelpRequested
 	err := app.RunArgs([]string{})
-	assert.NoError(t, err)
+	assert.True(t, IsHelpRequested(err))
 }
 
 func TestContextStringWithNonStringType(t *testing.T) {
@@ -2099,11 +2099,11 @@ func TestExitErrorMessage(t *testing.T) {
 	err := Exit(42)
 	exitErr, ok := err.(*ExitError)
 	assert.True(t, ok)
-	assert.Equal(t, 42, exitErr.Code)
-	assert.Equal(t, "", exitErr.Error())
+	assert.Equal(t, exitErr.Code, 42)
+	assert.Equal(t, exitErr.Error(), "exit status 42")
 
 	// GetExitCode should return the code
-	assert.Equal(t, 42, GetExitCode(err))
+	assert.Equal(t, GetExitCode(err), 42)
 }
 
 func TestCommandErrorWithDetails(t *testing.T) {
@@ -2522,6 +2522,61 @@ func TestIntsBuilder(t *testing.T) {
 	assert.True(t, b.IsRequired())
 	assert.True(t, b.IsHidden())
 	assert.NoError(t, b.Validate("1,2,3"))
+}
+
+func TestSliceFlagAccumulation(t *testing.T) {
+	var tags []string
+	var ports []int
+
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(
+			Strings("tag", "t").Help("Tags"),
+			Ints("port", "p").Help("Ports"),
+		).
+		Run(func(ctx *Context) error {
+			tags = ctx.Strings("tag")
+			ports = ctx.Ints("port")
+			return nil
+		})
+
+	// Test accumulating multiple string values
+	err := app.RunArgs([]string{"run", "--tag", "foo", "--tag", "bar", "-t", "baz"})
+	assert.NoError(t, err)
+	assert.Equal(t, tags, []string{"foo", "bar", "baz"})
+
+	// Reset and test accumulating multiple int values
+	tags = nil
+	ports = nil
+	err = app.RunArgs([]string{"run", "--port", "8080", "-p", "8081", "--port", "9000"})
+	assert.NoError(t, err)
+	assert.Equal(t, ports, []int{8080, 8081, 9000})
+}
+
+func TestSliceFlagWithDefaults(t *testing.T) {
+	var tags []string
+
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(
+			Strings("tag", "t").Default("default1", "default2").Help("Tags"),
+		).
+		Run(func(ctx *Context) error {
+			tags = ctx.Strings("tag")
+			return nil
+		})
+
+	// Test that defaults are used when no flags provided
+	err := app.RunArgs([]string{"run"})
+	assert.NoError(t, err)
+	assert.Equal(t, tags, []string{"default1", "default2"})
+
+	// Test that new values replace defaults (accumulation starts fresh)
+	err = app.RunArgs([]string{"run", "--tag", "new1", "--tag", "new2"})
+	assert.NoError(t, err)
+	assert.Equal(t, tags, []string{"new1", "new2"})
 }
 
 // Tests for flag builders used in commands
@@ -2993,9 +3048,9 @@ func TestParseArgsFirstArgIsFlag(t *testing.T) {
 	app.GlobalFlags(&BoolFlag{Name: "verbose", Short: "v"})
 	app.stdout = &bytes.Buffer{}
 
-	// When first arg is a flag, it should show help
+	// When first arg is a flag with no command, it should show help and return HelpRequested
 	err := app.RunArgs([]string{"-v"})
-	assert.NoError(t, err)
+	assert.True(t, IsHelpRequested(err))
 }
 
 // Test group command list with colors disabled
@@ -3163,9 +3218,9 @@ func TestAppActionShowsHelpWhenNoAction(t *testing.T) {
 	app.stdout = &buf
 	app.SetColorEnabled(false)
 
-	// No action defined, should show help
+	// No action defined, should show help and return HelpRequested
 	err := app.RunArgs([]string{})
-	assert.NoError(t, err)
+	assert.True(t, IsHelpRequested(err))
 	assert.Contains(t, buf.String(), "test")
 }
 

@@ -184,6 +184,37 @@ func (c *Context) Bool(name string) bool {
 	return false
 }
 
+// Strings returns a flag value as a string slice.
+// For flags that can be specified multiple times (e.g., --tag foo --tag bar).
+func (c *Context) Strings(name string) []string {
+	if v, ok := c.flags[name]; ok {
+		switch val := v.(type) {
+		case []string:
+			return val
+		case string:
+			if val == "" {
+				return nil
+			}
+			return []string{val}
+		}
+	}
+	return nil
+}
+
+// Ints returns a flag value as an int slice.
+// For flags that can be specified multiple times (e.g., --port 8080 --port 8081).
+func (c *Context) Ints(name string) []int {
+	if v, ok := c.flags[name]; ok {
+		switch val := v.(type) {
+		case []int:
+			return val
+		case int:
+			return []int{val}
+		}
+	}
+	return nil
+}
+
 // IsSet returns true if a flag was explicitly set by the user or environment.
 //
 // This distinguishes between a flag using its default value versus being
