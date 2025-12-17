@@ -211,7 +211,8 @@ type Config struct {
 | `ReadEnvFile(filename)` | Reads .env file into map | `(map[string]string, error)` |
 | `ParseEnvReader(r)` | Parses .env format from reader | `(map[string]string, error)` |
 | `ParseEnvString(s)` | Parses .env format string | `(map[string]string, error)` |
-| `WriteEnvFile(map, filename)` | Writes map to .env file | `error` |
+| `WriteEnvFile(map, filename)` | Writes map to .env file (default perms) | `error` |
+| `WriteEnvFileWithPerm(map, filename, perm)` | Writes map to .env file with permissions | `error` |
 
 ### Supported Types
 
@@ -253,10 +254,8 @@ export API_KEY=secret123
 # Empty values
 OPTIONAL_FIELD=
 
-# Multiline values (quoted)
-PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA...
------END RSA PRIVATE KEY-----"
+# Newlines via escape sequences (double-quoted only)
+PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----"
 ```
 
 ## Related Packages
@@ -266,9 +265,25 @@ MIIEpAIBAAKCAQEA...
 
 ## Implementation Notes
 
-- Environment variables always override JSON values
-- .env files are loaded before JSON files
-- Later files in file lists override earlier ones
+### Configuration Precedence (lowest to highest)
+
+1. **envDefault tags** - Default values specified in struct tags
+2. **JSON files** - Unmarshaled directly into struct (later files override earlier ones)
+3. **.env files** - Merged together (later files override earlier ones)
+4. **Environment variables** - Process env vars (or custom map via `WithEnvironment`)
+
+This means environment variables always win, followed by .env files, then JSON, then defaults.
+
+### JSON and Zero Values
+
+When using JSON files with `envDefault`, explicit zero values in JSON (0, false, "") cannot be reliably distinguished from "not set". The parser treats zero values as "not set" and applies the default. To work around this:
+
+- Use pointer types (`*int`, `*bool`) where nil means "not set" and zero is explicit
+- Avoid `envDefault` for fields where zero is a meaningful value from JSON
+- Use environment variables to override JSON when you need explicit zeros
+
+### Other Notes
+
 - Missing config files are silently skipped unless `WithRequireConfigFile()` is used
 - Nested structs can use `envPrefix` tag or auto-generate PREFIX_FIELDNAME_ format
 - Aggregate errors provide detailed information about all parsing failures

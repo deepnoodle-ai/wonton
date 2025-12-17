@@ -332,10 +332,9 @@ func TestParse_Expand(t *testing.T) {
 		Path string `env:"PATH_TEMPLATE,expand"`
 	}
 
-	os.Setenv("HOME", "/home/user")
-	defer os.Unsetenv("HOME")
-
+	// When using WithEnvironment, expansion uses the custom environment map
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"HOME":          "/home/user",
 		"PATH_TEMPLATE": "$HOME/app/data",
 	}))
 	assert.NoError(t, err)
@@ -432,12 +431,13 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.env")
 	second := filepath.Join(tmpDir, "second.env")
 
-	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\nFIRST_ONLY=yes\n"), 0644))
 	assert.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
 
 	type Config struct {
-		Value string `env:"VALUE"`
-		Extra string `env:"EXTRA"`
+		Value     string `env:"VALUE"`
+		Extra     string `env:"EXTRA"`
+		FirstOnly string `env:"FIRST_ONLY"`
 	}
 
 	cfg, err := Parse[Config](
@@ -445,8 +445,9 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 		WithEnvFile(first, second),
 	)
 	assert.NoError(t, err)
-	assert.Equal(t, "one", cfg.Value, "first env file should win when key already set")
+	assert.Equal(t, "two", cfg.Value, "later env file should override earlier ones")
 	assert.Equal(t, "from_second", cfg.Extra)
+	assert.Equal(t, "yes", cfg.FirstOnly, "keys only in first file should be preserved")
 }
 
 func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
@@ -1254,8 +1255,11 @@ func TestFieldError_AllFields(t *testing.T) {
 	msg := err.Error()
 	assert.Contains(t, msg, "Port")
 	assert.Contains(t, msg, "APP_PORT")
-	assert.Contains(t, msg, "invalid")
 	assert.Contains(t, msg, "not a number")
+	// Note: Value is intentionally excluded from Error() string to prevent
+	// leaking secrets into logs. Access err.Value directly if needed.
+	assert.NotContains(t, msg, "invalid", "values should not appear in error messages")
+	assert.Equal(t, "invalid", err.Value, "value should still be accessible directly")
 }
 
 func TestFieldError_NoValue(t *testing.T) {
@@ -1501,4 +1505,55 @@ func TestParse_OnSetWithDefaultNoEnvTag(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Contains(t, setCalls, "Host")
+}
+
+func TestParse_UnsetWithStage(t *testing.T) {
+	// Regression test: when using stage + unset, the staged variable (e.g., PROD_SECRET)
+	// should be unset, not just the base variable (SECRET)
+	type Config struct {
+		Secret string `env:"SECRET,unset"`
+	}
+
+	// Use custom environment map to verify unset behavior
+	env := map[string]string{
+		"PROD_SECRET": "staged-secret-value",
+		"SECRET":      "base-secret-value",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "staged-secret-value", cfg.Secret)
+
+	// The staged variable should be unset from the environ map
+	_, hasProdSecret := env["PROD_SECRET"]
+	assert.False(t, hasProdSecret, "PROD_SECRET should be unset")
+
+	// The base variable should still exist (we only unset the one that was used)
+	_, hasSecret := env["SECRET"]
+	assert.True(t, hasSecret, "SECRET should still exist (wasn't used)")
+}
+
+func TestParse_UnsetWithStage_FallbackToBase(t *testing.T) {
+	// When stage var doesn't exist, base var should be used and unset
+	type Config struct {
+		Secret string `env:"SECRET,unset"`
+	}
+
+	env := map[string]string{
+		"SECRET": "base-secret-value",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "base-secret-value", cfg.Secret)
+
+	// The base variable should be unset (it was the one used)
+	_, hasSecret := env["SECRET"]
+	assert.False(t, hasSecret, "SECRET should be unset")
 }

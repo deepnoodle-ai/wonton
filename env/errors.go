@@ -71,9 +71,8 @@ type FieldError struct {
 }
 
 func (e *FieldError) Error() string {
-	if e.EnvVar != "" && e.Value != "" {
-		return fmt.Sprintf("field %s (%s): cannot parse %q: %v", e.Field, e.EnvVar, e.Value, e.Err)
-	}
+	// Note: Value is intentionally excluded from error messages to prevent
+	// leaking secrets into logs. Access e.Value directly if needed for debugging.
 	if e.EnvVar != "" {
 		return fmt.Sprintf("field %s (%s): %v", e.Field, e.EnvVar, e.Err)
 	}

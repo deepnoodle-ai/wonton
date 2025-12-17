@@ -250,9 +250,10 @@ func WithRequireConfigFile() Option {
 // This is the primary entry point for configuration loading.
 //
 // The function loads configuration in the following order (later sources override earlier):
-//  1. .env files (if specified with WithEnvFile)
+//  1. envDefault struct tags (lowest priority)
 //  2. JSON files (if specified with WithJSONFile)
-//  3. Environment variables (always take precedence)
+//  3. .env files (if specified with WithEnvFile)
+//  4. Environment variables (highest priority, always take precedence)
 //
 // Example:
 //
@@ -316,19 +317,9 @@ func ParseInto(v any, opts ...Option) error {
 		opt(options)
 	}
 
-	// Load environment
-	environ := options.Environment
-	if environ == nil {
-		environ = make(map[string]string)
-		for _, e := range os.Environ() {
-			if k, v, ok := strings.Cut(e, "="); ok {
-				environ[k] = v
-			}
-		}
-	}
-
-	// Load .env files
+	// Load .env files first (later files override earlier ones)
 	configFileLoaded := false
+	envFileVars := make(map[string]string)
 	for _, file := range options.EnvFiles {
 		envVars, err := ReadEnvFile(file)
 		if err != nil {
@@ -336,7 +327,26 @@ func ParseInto(v any, opts ...Option) error {
 		}
 		configFileLoaded = true
 		for k, v := range envVars {
-			if _, exists := environ[k]; !exists {
+			envFileVars[k] = v // Later files override earlier ones
+		}
+	}
+
+	// Build environ map: start with .env files, then overlay with process/custom env
+	// This ensures process env vars take highest precedence
+	environ := make(map[string]string)
+	for k, v := range envFileVars {
+		environ[k] = v
+	}
+
+	if options.Environment != nil {
+		// Custom environment overrides .env files
+		for k, v := range options.Environment {
+			environ[k] = v
+		}
+	} else {
+		// Process environment overrides .env files
+		for _, e := range os.Environ() {
+			if k, v, ok := strings.Cut(e, "="); ok {
 				environ[k] = v
 			}
 		}
@@ -485,22 +495,24 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		}
 	}
 
-	// Build full env var name with prefix
-	fullEnvVar := prefix + p.options.Prefix
+	// Build full env var name with prefix (global prefix first, then nested prefix)
+	fullEnvVar := p.options.Prefix
 	if fullEnvVar != "" && !strings.HasSuffix(fullEnvVar, "_") {
 		fullEnvVar += "_"
 	}
-	fullEnvVar += envVar
+	fullEnvVar += prefix + envVar
 
 	// Try stage-prefixed var first
 	var value string
 	var found bool
+	var usedEnvVar string // Track which env var was actually used (for unset)
 
 	if p.options.Stage != "" {
 		stageVar := p.options.Stage + "_" + fullEnvVar
 		if v, ok := p.environ[stageVar]; ok {
 			value = v
 			found = true
+			usedEnvVar = stageVar
 		}
 	}
 
@@ -509,6 +521,7 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		if v, ok := p.environ[fullEnvVar]; ok {
 			value = v
 			found = true
+			usedEnvVar = fullEnvVar
 		}
 	}
 
@@ -557,9 +570,9 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		value = string(content)
 	}
 
-	// Handle variable expansion
+	// Handle variable expansion using the environ map (not os.ExpandEnv)
 	if expand {
-		value = os.ExpandEnv(value)
+		value = p.expandEnv(value)
 	}
 
 	// Set the field value
@@ -579,8 +592,16 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	}
 
 	// Unset the env var after reading (useful for secrets)
-	if unset {
-		os.Unsetenv(fullEnvVar)
+	// Uses usedEnvVar to ensure staged variables (e.g., PROD_FOO) are also unset
+	if unset && usedEnvVar != "" {
+		delete(p.environ, usedEnvVar)
+		if p.options.Environment != nil {
+			// Also delete from the original environment map
+			delete(p.options.Environment, usedEnvVar)
+		} else {
+			// Unset from process environment
+			os.Unsetenv(usedEnvVar)
+		}
 	}
 }
 
@@ -592,6 +613,13 @@ func (p *structParser) hasEnvVar(name string) bool {
 	}
 	_, ok := p.environ[name]
 	return ok
+}
+
+// expandEnv expands $VAR and ${VAR} references using the environ map.
+func (p *structParser) expandEnv(s string) string {
+	return os.Expand(s, func(key string) string {
+		return p.environ[key]
+	})
 }
 
 func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.StructField) error {

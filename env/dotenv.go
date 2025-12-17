@@ -106,6 +106,9 @@ func ReadEnvFile(filename string) (map[string]string, error) {
 func ParseEnvReader(r io.Reader) (map[string]string, error) {
 	result := make(map[string]string)
 	scanner := bufio.NewScanner(r)
+	// Increase buffer size to handle large values (e.g., base64-encoded certificates)
+	// Default is 64KB; we allow up to 1MB per line
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNum := 0
 
 	for scanner.Scan() {
@@ -168,17 +171,43 @@ func parseLine(line string) (string, string, error) {
 		return "", "", &ParseError{Err: errEmptyKey}
 	}
 
-	// Handle quoted values
-	value = unquote(value)
-
-	// Remove inline comments (only for unquoted values)
-	if !strings.HasPrefix(value, "'") && !strings.HasPrefix(value, "\"") {
+	// Handle quoted values: if value starts with a quote, extract the quoted portion
+	// and ignore everything after the closing quote (including trailing comments)
+	if len(value) > 0 && (value[0] == '"' || value[0] == '\'') {
+		quote := value[0]
+		// Find the closing quote, accounting for escapes in double-quoted strings
+		endIdx := findClosingQuote(value, quote)
+		if endIdx != -1 {
+			// Extract just the quoted portion and unquote it
+			value = unquote(value[:endIdx+1])
+		}
+		// If no closing quote found, unquote will handle it (returns as-is)
+	} else {
+		// Unquoted value: strip inline comments
 		if idx := strings.Index(value, " #"); idx != -1 {
 			value = strings.TrimSpace(value[:idx])
 		}
 	}
 
 	return key, value, nil
+}
+
+// findClosingQuote finds the index of the closing quote in a quoted string.
+// For double quotes, it handles escape sequences. Returns -1 if not found.
+func findClosingQuote(s string, quote byte) int {
+	if len(s) < 2 {
+		return -1
+	}
+	for i := 1; i < len(s); i++ {
+		if s[i] == quote {
+			return i
+		}
+		// Skip escaped characters in double-quoted strings
+		if quote == '"' && s[i] == '\\' && i+1 < len(s) {
+			i++
+		}
+	}
+	return -1
 }
 
 // unquote removes surrounding quotes and processes escape sequences.
@@ -241,6 +270,8 @@ func processEscapes(s string) string {
 // WriteEnvFile writes a map of environment variables to a .env file.
 // Values are automatically quoted when necessary (spaces, special characters, etc.).
 // Escape sequences are applied to quoted values.
+// Uses default file permissions (0666 before umask). For sensitive data,
+// use WriteEnvFileWithPerm with restrictive permissions like 0600.
 //
 // Example:
 //
@@ -251,7 +282,22 @@ func processEscapes(s string) string {
 //	}
 //	err := env.WriteEnvFile(envVars, ".env.output")
 func WriteEnvFile(envMap map[string]string, filename string) error {
-	f, err := os.Create(filename)
+	return WriteEnvFileWithPerm(envMap, filename, 0666)
+}
+
+// WriteEnvFileWithPerm writes a map of environment variables to a .env file
+// with the specified file permissions. Use this for sensitive configuration
+// files that should have restrictive permissions.
+//
+// Example:
+//
+//	envVars := map[string]string{
+//	    "API_KEY": "secret123",
+//	}
+//	// Only owner can read/write
+//	err := env.WriteEnvFileWithPerm(envVars, ".env.secrets", 0600)
+func WriteEnvFileWithPerm(envMap map[string]string, filename string, perm os.FileMode) error {
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
