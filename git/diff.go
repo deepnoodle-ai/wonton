@@ -263,22 +263,65 @@ func parsePatchContent(patch string) map[string]string {
 		return result
 	}
 
-	// Split by "diff --git" markers
-	parts := strings.Split(patch, "diff --git ")
-	for _, part := range parts[1:] { // Skip first empty part
-		lines := strings.SplitN(part, "\n", 2)
-		if len(lines) < 2 {
-			continue
-		}
+	var currentPath string
+	var currentPatch strings.Builder
 
-		// Extract filename from "a/file b/file" header
-		header := lines[0]
-		fields := strings.Fields(header)
-		if len(fields) >= 2 {
-			// Remove "a/" or "b/" prefix
-			path := strings.TrimPrefix(fields[1], "b/")
-			result[path] = "diff --git " + part
+	scanner := bufio.NewScanner(strings.NewReader(patch))
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// specific check for start of new file diff
+		if strings.HasPrefix(line, "diff --git ") {
+			// Save previous patch
+			if currentPath != "" {
+				result[currentPath] = currentPatch.String()
+			}
+
+			// Start new patch
+			currentPatch.Reset()
+			currentPatch.WriteString(line)
+			currentPatch.WriteString("\n")
+
+			// Parse path from header
+			// Format: diff --git a/path/to/file b/path/to/file
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				// usually parts[2] is a/path and parts[3] is b/path
+				// taking b/path is safer for modified files
+				// but we need to handle spaces in filenames too...
+				// for simplicity matching existing logic:
+				currentPath = strings.TrimPrefix(parts[3], "b/")
+				// A more robust way would be to parse " b/" from the end
+				// but git output quoting makes this hard without full parser.
+				// The previous logic was: strings.TrimPrefix(fields[1], "b/")
+				// which assumes fields[1] is the path.
+				// "diff --git a/file b/file" -> fields: ["diff", "--git", "a/file", "b/file"]
+				// So previous logic used fields[1] which was "--git"? No, fields[2] is a/file.
+				// The previous logic was:
+				// parts := strings.Split(patch, "diff --git ")
+				// ...
+				// header := lines[0] // "a/file b/file"
+				// fields := strings.Fields(header)
+				// path := strings.TrimPrefix(fields[1], "b/")
+				// So it used the second field of "a/file b/file", which is "b/file".
+				// Here line is "diff --git a/file b/file".
+				// fields are ["diff", "--git", "a/file", "b/file"]
+				// So we want fields[3].
+				if len(parts) >= 4 {
+					currentPath = strings.TrimPrefix(parts[3], "b/")
+				}
+			}
+		} else {
+			if currentPath != "" { // Only append if we're inside a patch
+				currentPatch.WriteString(line)
+				currentPatch.WriteString("\n")
+			}
 		}
+	}
+
+	// Save last patch
+	if currentPath != "" {
+		result[currentPath] = currentPatch.String()
 	}
 
 	return result
