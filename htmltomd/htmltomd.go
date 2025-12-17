@@ -454,10 +454,12 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 	}
 
 	if c.opts.LinkStyle == LinkStyleReferenced {
-		refNum, exists := c.linkRefMap[href]
+		// Key on URL+title to avoid losing different titles for the same URL
+		refKey := href + "\x00" + title
+		refNum, exists := c.linkRefMap[refKey]
 		if !exists {
 			refNum = len(c.linkRefs) + 1
-			c.linkRefMap[href] = refNum
+			c.linkRefMap[refKey] = refNum
 			if title != "" {
 				c.linkRefs = append(c.linkRefs, fmt.Sprintf("[%d]: %s \"%s\"", refNum, href, title))
 			} else {
@@ -755,10 +757,9 @@ func (c *converter) handleHorizontalRule(n *html.Node, ctx *context) string {
 
 func (c *converter) handleTable(n *html.Node, ctx *context) string {
 	var rows [][]string
-	hasHeader := false
 
 	// Find tbody, thead, or direct tr children
-	c.extractTableRows(n, &rows, &hasHeader)
+	c.extractTableRows(n, &rows)
 
 	if len(rows) == 0 {
 		return ""
@@ -806,18 +807,15 @@ func (c *converter) handleTable(n *html.Node, ctx *context) string {
 	return "\n\n" + strings.Join(lines, "\n") + "\n\n"
 }
 
-func (c *converter) extractTableRows(n *html.Node, rows *[][]string, hasHeader *bool) {
+func (c *converter) extractTableRows(n *html.Node, rows *[][]string) {
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
 		if child.Type != html.ElementNode {
 			continue
 		}
 		tag := strings.ToLower(child.Data)
 		switch tag {
-		case "thead":
-			*hasHeader = true
-			c.extractTableRows(child, rows, hasHeader)
-		case "tbody":
-			c.extractTableRows(child, rows, hasHeader)
+		case "thead", "tbody":
+			c.extractTableRows(child, rows)
 		case "tr":
 			row := c.extractTableRow(child)
 			*rows = append(*rows, row)

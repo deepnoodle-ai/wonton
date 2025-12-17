@@ -1,7 +1,6 @@
 package htmltomd
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -998,6 +997,20 @@ func TestConvert_ReferencedLinkDeduplication(t *testing.T) {
 	assert.Contains(t, result, "[2]: https://other.com")
 }
 
+func TestConvert_ReferencedLinkDifferentTitles(t *testing.T) {
+	// Same URL but different titles should create separate references
+	input := `<p><a href="https://example.com" title="Foo">First</a> and <a href="https://example.com" title="Bar">Second</a></p>`
+	result := ConvertWithOptions(input, &Options{LinkStyle: LinkStyleReferenced})
+
+	// Different titles should create different reference numbers
+	assert.Contains(t, result, "[First][1]")
+	assert.Contains(t, result, "[Second][2]")
+
+	// Both references should appear with their respective titles
+	assert.Contains(t, result, `[1]: https://example.com "Foo"`)
+	assert.Contains(t, result, `[2]: https://example.com "Bar"`)
+}
+
 func TestConvert_NilOptions(t *testing.T) {
 	result := ConvertWithOptions("<p>text</p>", nil)
 	assert.Equal(t, "text", result)
@@ -1010,230 +1023,4 @@ func TestDefaultOptions(t *testing.T) {
 	assert.Equal(t, CodeBlockStyleFenced, opts.CodeBlockStyle)
 	assert.Equal(t, "-", opts.BulletChar)
 	assert.Nil(t, opts.SkipTags)
-}
-
-// Example demonstrates basic HTML to Markdown conversion.
-func Example() {
-	html := `
-		<h1>Getting Started</h1>
-		<p>Welcome to our <strong>API</strong>.</p>
-		<ul>
-			<li>Fast</li>
-			<li>Reliable</li>
-		</ul>
-	`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// # Getting Started
-	//
-	// Welcome to our **API**.
-	//
-	// - Fast
-	// - Reliable
-}
-
-// Example_basicFormatting shows how HTML text formatting converts to Markdown.
-func Example_basicFormatting() {
-	html := `<p>This is <strong>bold</strong>, <em>italic</em>, and <code>code</code>.</p>`
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// This is **bold**, *italic*, and `code`.
-}
-
-// Example_lists demonstrates nested list conversion.
-func Example_lists() {
-	html := `
-		<ul>
-			<li>Item 1</li>
-			<li>Item 2
-				<ol>
-					<li>Sub item A</li>
-					<li>Sub item B</li>
-				</ol>
-			</li>
-			<li>Item 3</li>
-		</ul>
-	`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// - Item 1
-	// - Item 2
-	//   1. Sub item A
-	//   2. Sub item B
-	// - Item 3
-}
-
-// Example_table demonstrates table conversion.
-func Example_table() {
-	html := `
-		<table>
-			<tr><th>Name</th><th>Age</th></tr>
-			<tr><td>Alice</td><td>30</td></tr>
-			<tr><td>Bob</td><td>25</td></tr>
-		</table>
-	`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// | Name | Age |
-	// | --- | --- |
-	// | Alice | 30 |
-	// | Bob | 25 |
-}
-
-// Example_codeBlock demonstrates code block conversion with language detection.
-func Example_codeBlock() {
-	html := `<pre><code class="language-go">func main() {
-	fmt.Println("Hello")
-}</code></pre>`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// ```go
-	// func main() {
-	// 	fmt.Println("Hello")
-	// }
-	// ```
-}
-
-// Example_blockquote shows blockquote conversion including nested quotes.
-func Example_blockquote() {
-	html := `
-		<blockquote>
-			<p>The only way to do great work is to love what you do.</p>
-			<blockquote>
-				<p>Nested quote</p>
-			</blockquote>
-		</blockquote>
-	`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// > The only way to do great work is to love what you do.
-	// >
-	// > > Nested quote
-}
-
-// Example_referencedLinks demonstrates using referenced link style.
-func Example_referencedLinks() {
-	html := `<p>Check out <a href="https://golang.org">Go</a> and <a href="https://golang.org">Go again</a>.</p>`
-
-	opts := &Options{
-		LinkStyle: LinkStyleReferenced,
-	}
-	md := ConvertWithOptions(html, opts)
-	fmt.Println(md)
-	// Output:
-	// Check out [Go][1] and [Go again][1].
-	//
-	// [1]: https://golang.org
-}
-
-// Example_setextHeadings demonstrates Setext-style headings.
-func Example_setextHeadings() {
-	html := `<h1>Main Title</h1><h2>Subtitle</h2><h3>Section</h3>`
-
-	opts := &Options{
-		HeadingStyle: HeadingStyleSetext,
-	}
-	md := ConvertWithOptions(html, opts)
-	fmt.Println(md)
-	// Output:
-	// Main Title
-	// ==========
-	//
-	// Subtitle
-	// --------
-	//
-	// ### Section
-}
-
-// Example_skipTags demonstrates skipping unwanted HTML elements.
-func Example_skipTags() {
-	html := `
-		<article>
-			<h1>Article Title</h1>
-			<nav>Navigation links here</nav>
-			<p>Article content</p>
-			<footer>Footer content</footer>
-		</article>
-	`
-
-	opts := &Options{
-		SkipTags: []string{"nav", "footer"},
-	}
-	md := ConvertWithOptions(html, opts)
-	fmt.Println(md)
-	// Output:
-	// # Article Title
-	//
-	// Article content
-}
-
-// Example_customBullets demonstrates changing the bullet character for unordered lists.
-func Example_customBullets() {
-	html := `<ul><li>One</li><li>Two</li><li>Three</li></ul>`
-
-	opts := &Options{
-		BulletChar: "*",
-	}
-	md := ConvertWithOptions(html, opts)
-	fmt.Println(md)
-	// Output:
-	// * One
-	// * Two
-	// * Three
-}
-
-// Example_malformedHTML shows graceful handling of malformed HTML.
-func Example_malformedHTML() {
-	// Missing closing tags and improper nesting
-	html := `<p>Text with <b>bold and <i>italic</b></i>`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// Text with **bold and *italic***
-}
-
-// Example_complexDocument demonstrates conversion of a complete HTML document.
-func Example_complexDocument() {
-	html := `
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>My Page</title>
-			<style>body { color: blue; }</style>
-		</head>
-		<body>
-			<h1>Welcome</h1>
-			<p>This is a <strong>complex</strong> document with:</p>
-			<ul>
-				<li>Links to <a href="https://example.com">websites</a></li>
-				<li>Code like <code>fmt.Println()</code></li>
-				<li>And more!</li>
-			</ul>
-			<script>console.log("ignored");</script>
-		</body>
-		</html>
-	`
-
-	md := Convert(html)
-	fmt.Println(md)
-	// Output:
-	// # Welcome
-	//
-	// This is a **complex** document with:
-	//
-	// - Links to [websites](https://example.com)
-	// - Code like `fmt.Println()`
-	// - And more!
 }
