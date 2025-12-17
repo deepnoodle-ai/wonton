@@ -75,7 +75,7 @@ func (s *stack) size(maxWidth, maxHeight int) (int, int) {
 	totalFlex := 0
 
 	for i, child := range s.children {
-		if flex, ok := child.(Flexible); ok {
+		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
 			flexChildren = append(flexChildren, i)
 			totalFlex += flex.flex()
 		} else {
