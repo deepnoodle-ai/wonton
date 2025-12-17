@@ -335,27 +335,19 @@ func TestInputCursorStyle_Values(t *testing.T) {
 	assert.Equal(t, InputCursorStyle(2), InputCursorBar)
 }
 
-// Render tests using termtest
-// Note: Screen height needs to be at least content height + 1 to account for trailing newlines
+// Render tests using termtest with SprintScreen helper
 
 func TestInputField_Render_WithValue(t *testing.T) {
 	value := "hello"
 	field := InputField(&value).Width(20)
-
-	output := Sprint(field, WithWidth(30))
-	screen := termtest.NewScreen(30, 2) // +1 for trailing newline
-	screen.Write([]byte(output))
-
+	screen := SprintScreen(field, WithWidth(30))
 	termtest.AssertRowContains(t, screen, 0, "hello")
 }
 
 func TestInputField_Render_WithLabel(t *testing.T) {
 	value := "test"
 	field := InputField(&value).Label("Name: ").Width(20)
-
-	output := Sprint(field, WithWidth(40))
-	screen := termtest.NewScreen(40, 2)
-	screen.Write([]byte(output))
+	screen := SprintScreen(field, WithWidth(40))
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "test")
@@ -364,10 +356,7 @@ func TestInputField_Render_WithLabel(t *testing.T) {
 func TestInputField_Render_WithBorder(t *testing.T) {
 	value := "content"
 	field := InputField(&value).Width(20).Bordered()
-
-	output := Sprint(field, WithWidth(30), WithHeight(3))
-	screen := termtest.NewScreen(30, 4) // 3 rows + 1 for trailing newline
-	screen.Write([]byte(output))
+	screen := SprintScreen(field, WithWidth(30))
 
 	// Check for border characters (rounded border uses ╭, ╮, ╰, ╯)
 	termtest.AssertRowContains(t, screen, 0, "╭")
@@ -378,10 +367,7 @@ func TestInputField_Render_WithBorder(t *testing.T) {
 func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 	value := "john"
 	field := InputField(&value).Label("Username:").Width(25).Bordered()
-
-	output := Sprint(field, WithWidth(30), WithHeight(3))
-	screen := termtest.NewScreen(30, 4)
-	screen.Write([]byte(output))
+	screen := SprintScreen(field, WithWidth(30))
 
 	// Label should be embedded in the top border
 	termtest.AssertRowContains(t, screen, 0, "Username")
@@ -391,10 +377,7 @@ func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 func TestInputField_Render_WithPrompt(t *testing.T) {
 	value := "command"
 	field := InputField(&value).Prompt(">").Width(20)
-
-	output := Sprint(field, WithWidth(30))
-	screen := termtest.NewScreen(30, 2)
-	screen.Write([]byte(output))
+	screen := SprintScreen(field, WithWidth(30))
 
 	termtest.AssertRowContains(t, screen, 0, ">")
 	termtest.AssertRowContains(t, screen, 0, "command")
@@ -403,11 +386,7 @@ func TestInputField_Render_WithPrompt(t *testing.T) {
 func TestInputField_Render_Placeholder(t *testing.T) {
 	value := ""
 	field := InputField(&value).Placeholder("Enter name...").Width(20)
-
-	output := Sprint(field, WithWidth(30))
-	screen := termtest.NewScreen(30, 2)
-	screen.Write([]byte(output))
-
+	screen := SprintScreen(field, WithWidth(30))
 	termtest.AssertRowContains(t, screen, 0, "Enter name...")
 }
 
@@ -419,10 +398,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 		InputField(&name).Label("Name: ").Width(20),
 		InputField(&email).Label("Email: ").Width(25),
 	)
-
-	output := Sprint(form, WithWidth(40))
-	screen := termtest.NewScreen(40, 3) // 2 rows + 1 for trailing newline
-	screen.Write([]byte(output))
+	screen := SprintScreen(form, WithWidth(40))
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "Alice")
@@ -433,10 +409,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 func TestInputField_Render_HorizontalBorder(t *testing.T) {
 	value := "text"
 	field := InputField(&value).Width(20).HorizontalBorderOnly()
-
-	output := Sprint(field, WithWidth(30), WithHeight(3))
-	screen := termtest.NewScreen(30, 4)
-	screen.Write([]byte(output))
+	screen := SprintScreen(field, WithWidth(30))
 
 	// Check for horizontal border character
 	termtest.AssertRowContains(t, screen, 0, "─")
