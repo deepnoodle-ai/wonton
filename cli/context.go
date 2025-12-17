@@ -24,9 +24,6 @@ type Context struct {
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
-
-	// Config values (from config files and env)
-	config map[string]any
 }
 
 // Context returns the Go context.

@@ -56,6 +56,7 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 	// Measure fixed children first (unconstrained width)
 	totalFixedWidth := 0
 	maxChildHeight := 0
+	visibleCount := 0
 
 	for _, i := range fixedChildren {
 		w, ht := g.children[i].size(0, maxHeight)
@@ -64,18 +65,20 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 		if ht > maxChildHeight {
 			maxChildHeight = ht
 		}
+		if w > 0 || ht > 0 {
+			visibleCount++
+		}
 	}
-
-	// Add spacing
-	totalSpacing := 0
-	if len(g.children) > 1 {
-		totalSpacing = g.gap * (len(g.children) - 1)
-	}
-	totalFixedWidth += totalSpacing
 
 	// Calculate remaining space for flexible children
 	if maxWidth > 0 && len(flexChildren) > 0 && totalFlex > 0 {
-		remainingWidth := maxWidth - totalFixedWidth
+		// Estimate spacing for now (will be recalculated after measuring flex children)
+		estimatedSpacing := 0
+		if visibleCount+len(flexChildren) > 1 {
+			estimatedSpacing = g.gap * (visibleCount + len(flexChildren) - 1)
+		}
+
+		remainingWidth := maxWidth - totalFixedWidth - estimatedSpacing
 		if remainingWidth < 0 {
 			remainingWidth = 0
 		}
@@ -97,6 +100,9 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 			if ht > maxChildHeight {
 				maxChildHeight = ht
 			}
+			if width > 0 || ht > 0 {
+				visibleCount++
+			}
 		}
 	} else {
 		// No space constraint or no flex children
@@ -106,15 +112,20 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 			if ht > maxChildHeight {
 				maxChildHeight = ht
 			}
+			if w > 0 || ht > 0 {
+				visibleCount++
+			}
 		}
 	}
 
-	// Calculate total width
+	// Calculate total width (only count gaps between visible children)
 	totalWidth := 0
 	for _, size := range g.childSizes {
 		totalWidth += size.X
 	}
-	totalWidth += totalSpacing
+	if visibleCount > 1 {
+		totalWidth += g.gap * (visibleCount - 1)
+	}
 
 	return totalWidth, maxChildHeight
 }
@@ -129,11 +140,18 @@ func (g *group) render(ctx *RenderContext) {
 	g.size(width, height)
 
 	currentX := 0
+	renderedVisible := false
 
 	for i, child := range g.children {
 		size := g.childSizes[i]
-		if size.X == 0 {
+		// Skip empty children (both dimensions zero)
+		if size.X == 0 && size.Y == 0 {
 			continue
+		}
+
+		// Add gap before this child if we've already rendered a visible child
+		if renderedVisible && g.gap > 0 {
+			currentX += g.gap
 		}
 
 		// Calculate Y position based on alignment
@@ -157,6 +175,7 @@ func (g *group) render(ctx *RenderContext) {
 		childCtx := ctx.SubContext(image.Rect(currentX, y, currentX+childWidth, y+size.Y))
 		child.render(childCtx)
 
-		currentX += size.X + g.gap
+		currentX += size.X
+		renderedVisible = true
 	}
 }

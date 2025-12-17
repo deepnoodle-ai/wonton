@@ -185,3 +185,192 @@ VALUE=test
 	assert.Equal(t, "8080", env["PORT"])
 	assert.Equal(t, "test", env["VALUE"])
 }
+
+func TestReadEnvFile_NotFound(t *testing.T) {
+	_, err := ReadEnvFile("/nonexistent/path/.env")
+	assert.Error(t, err)
+}
+
+func TestLoadEnvFile_DefaultFilename(t *testing.T) {
+	// Create .env in temp dir
+	tmpDir := t.TempDir()
+	originalWd, _ := os.Getwd()
+	defer os.Chdir(originalWd)
+	os.Chdir(tmpDir)
+
+	envFile := filepath.Join(tmpDir, ".env")
+	assert.NoError(t, os.WriteFile(envFile, []byte("TEST_DEFAULT_LOAD=value\n"), 0644))
+
+	// Clean up after test
+	defer os.Unsetenv("TEST_DEFAULT_LOAD")
+
+	err := LoadEnvFile() // No filename - uses default ".env"
+	assert.NoError(t, err)
+	assert.Equal(t, "value", os.Getenv("TEST_DEFAULT_LOAD"))
+}
+
+func TestOverloadEnvFile_DefaultFilename(t *testing.T) {
+	// Create .env in temp dir
+	tmpDir := t.TempDir()
+	originalWd, _ := os.Getwd()
+	defer os.Chdir(originalWd)
+	os.Chdir(tmpDir)
+
+	envFile := filepath.Join(tmpDir, ".env")
+	assert.NoError(t, os.WriteFile(envFile, []byte("TEST_DEFAULT_OVERLOAD=value\n"), 0644))
+
+	// Clean up after test
+	defer os.Unsetenv("TEST_DEFAULT_OVERLOAD")
+
+	err := OverloadEnvFile() // No filename - uses default ".env"
+	assert.NoError(t, err)
+	assert.Equal(t, "value", os.Getenv("TEST_DEFAULT_OVERLOAD"))
+}
+
+func TestLoadEnvFile_MissingFile(t *testing.T) {
+	err := LoadEnvFile("/nonexistent/.env")
+	assert.Error(t, err)
+}
+
+func TestOverloadEnvFile_MissingFile(t *testing.T) {
+	err := OverloadEnvFile("/nonexistent/.env")
+	assert.Error(t, err)
+}
+
+func TestParseEnv_SingleQuotesNoEscape(t *testing.T) {
+	// Single quotes should NOT process escape sequences
+	env, err := ParseEnvString(`VAR='hello\nworld'`)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello\\nworld", env["VAR"])
+}
+
+func TestParseEnv_EmptyQuotedValue(t *testing.T) {
+	env, err := ParseEnvString(`
+DOUBLE=""
+SINGLE=''
+`)
+	assert.NoError(t, err)
+	assert.Equal(t, "", env["DOUBLE"])
+	assert.Equal(t, "", env["SINGLE"])
+}
+
+func TestParseEnv_UnknownEscape(t *testing.T) {
+	// Unknown escape sequences should keep the backslash
+	env, err := ParseEnvString(`VAR="hello\xworld"`)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello\\xworld", env["VAR"])
+}
+
+func TestParseEnv_CarriageReturn(t *testing.T) {
+	env, err := ParseEnvString(`VAR="line1\rline2"`)
+	assert.NoError(t, err)
+	assert.Equal(t, "line1\rline2", env["VAR"])
+}
+
+func TestWriteEnvFile_EmptyValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "out.env")
+
+	input := map[string]string{
+		"EMPTY": "",
+	}
+
+	assert.NoError(t, WriteEnvFile(input, outFile))
+
+	// Read back
+	env, err := ReadEnvFile(outFile)
+	assert.NoError(t, err)
+	assert.Equal(t, "", env["EMPTY"])
+}
+
+func TestWriteEnvFile_SpecialChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "out.env")
+
+	input := map[string]string{
+		"HASH":        "value#with#hash",
+		"LEADING":     " leading space",
+		"TRAILING":    "trailing space ",
+		"TAB":         "has\ttab",
+		"QUOTE":       `has"quote`,
+		"BACKSLASH":   `has\backslash`,
+		"SINGLEQUOTE": "has'quote",
+	}
+
+	assert.NoError(t, WriteEnvFile(input, outFile))
+
+	// Read back
+	env, err := ReadEnvFile(outFile)
+	assert.NoError(t, err)
+	assert.Equal(t, "value#with#hash", env["HASH"])
+	assert.Equal(t, " leading space", env["LEADING"])
+	assert.Equal(t, "trailing space ", env["TRAILING"])
+	assert.Equal(t, "has\ttab", env["TAB"])
+	assert.Equal(t, `has"quote`, env["QUOTE"])
+	assert.Equal(t, `has\backslash`, env["BACKSLASH"])
+	assert.Equal(t, "has'quote", env["SINGLEQUOTE"])
+}
+
+func TestFormatEnvLine_Simple(t *testing.T) {
+	line := formatEnvLine("KEY", "value")
+	assert.Equal(t, "KEY=value", line)
+}
+
+func TestFormatEnvLine_NeedsQuotes(t *testing.T) {
+	line := formatEnvLine("KEY", "has space")
+	assert.Contains(t, line, `"`)
+}
+
+func TestUnquote_ShortString(t *testing.T) {
+	// Strings less than 2 chars should be returned as-is
+	result := unquote("x")
+	assert.Equal(t, "x", result)
+}
+
+func TestUnquote_MismatchedQuotes(t *testing.T) {
+	// Mismatched quotes should return the string as-is
+	result := unquote(`"value'`)
+	assert.Equal(t, `"value'`, result)
+}
+
+func TestLoadEnvFile_MultipleFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	file1 := filepath.Join(tmpDir, "first.env")
+	file2 := filepath.Join(tmpDir, "second.env")
+
+	assert.NoError(t, os.WriteFile(file1, []byte("MULTI_A=from_first\nMULTI_B=from_first\n"), 0644))
+	assert.NoError(t, os.WriteFile(file2, []byte("MULTI_B=from_second\nMULTI_C=from_second\n"), 0644))
+
+	defer os.Unsetenv("MULTI_A")
+	defer os.Unsetenv("MULTI_B")
+	defer os.Unsetenv("MULTI_C")
+
+	err := LoadEnvFile(file1, file2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "from_first", os.Getenv("MULTI_A"))
+	assert.Equal(t, "from_first", os.Getenv("MULTI_B")) // First file wins
+	assert.Equal(t, "from_second", os.Getenv("MULTI_C"))
+}
+
+func TestOverloadEnvFile_MultipleFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	file1 := filepath.Join(tmpDir, "first.env")
+	file2 := filepath.Join(tmpDir, "second.env")
+
+	assert.NoError(t, os.WriteFile(file1, []byte("OVERLOAD_A=from_first\nOVERLOAD_B=from_first\n"), 0644))
+	assert.NoError(t, os.WriteFile(file2, []byte("OVERLOAD_B=from_second\nOVERLOAD_C=from_second\n"), 0644))
+
+	defer os.Unsetenv("OVERLOAD_A")
+	defer os.Unsetenv("OVERLOAD_B")
+	defer os.Unsetenv("OVERLOAD_C")
+
+	err := OverloadEnvFile(file1, file2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "from_first", os.Getenv("OVERLOAD_A"))
+	assert.Equal(t, "from_second", os.Getenv("OVERLOAD_B")) // Second file overwrites
+	assert.Equal(t, "from_second", os.Getenv("OVERLOAD_C"))
+}

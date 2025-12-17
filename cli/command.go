@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // Handler is the function type for command handlers.
@@ -24,9 +26,8 @@ type Command struct {
 	handler Handler
 
 	// Flags and args
-	flags    []Flag
-	args     []*Arg
-	flagDefs any // Struct type for flag parsing
+	flags []Flag
+	args  []*Arg
 
 	// Options
 	middleware  []Middleware
@@ -225,14 +226,14 @@ type BoolFlag struct {
 	Required bool
 }
 
-func (f *BoolFlag) GetName() string     { return f.Name }
-func (f *BoolFlag) GetShort() string    { return f.Short }
-func (f *BoolFlag) GetHelp() string     { return f.Help }
-func (f *BoolFlag) GetEnvVar() string   { return f.EnvVar }
-func (f *BoolFlag) GetDefault() any     { return f.Value }
-func (f *BoolFlag) IsRequired() bool    { return f.Required }
-func (f *BoolFlag) IsHidden() bool      { return f.Hidden }
-func (f *BoolFlag) GetEnum() []string   { return nil }
+func (f *BoolFlag) GetName() string       { return f.Name }
+func (f *BoolFlag) GetShort() string      { return f.Short }
+func (f *BoolFlag) GetHelp() string       { return f.Help }
+func (f *BoolFlag) GetEnvVar() string     { return f.EnvVar }
+func (f *BoolFlag) GetDefault() any       { return f.Value }
+func (f *BoolFlag) IsRequired() bool      { return f.Required }
+func (f *BoolFlag) IsHidden() bool        { return f.Hidden }
+func (f *BoolFlag) GetEnum() []string     { return nil }
 func (f *BoolFlag) Validate(string) error { return nil }
 
 // StringFlag represents a string flag.
@@ -300,14 +301,14 @@ type Float64Flag struct {
 	Validator func(float64) error
 }
 
-func (f *Float64Flag) GetName() string   { return f.Name }
-func (f *Float64Flag) GetShort() string  { return f.Short }
-func (f *Float64Flag) GetHelp() string   { return f.Help }
-func (f *Float64Flag) GetEnvVar() string { return f.EnvVar }
-func (f *Float64Flag) GetDefault() any   { return f.Value }
-func (f *Float64Flag) IsRequired() bool  { return f.Required }
-func (f *Float64Flag) IsHidden() bool    { return f.Hidden }
-func (f *Float64Flag) GetEnum() []string { return nil }
+func (f *Float64Flag) GetName() string       { return f.Name }
+func (f *Float64Flag) GetShort() string      { return f.Short }
+func (f *Float64Flag) GetHelp() string       { return f.Help }
+func (f *Float64Flag) GetEnvVar() string     { return f.EnvVar }
+func (f *Float64Flag) GetDefault() any       { return f.Value }
+func (f *Float64Flag) IsRequired() bool      { return f.Required }
+func (f *Float64Flag) IsHidden() bool        { return f.Hidden }
+func (f *Float64Flag) GetEnum() []string     { return nil }
 func (f *Float64Flag) Validate(string) error { return nil }
 
 // DurationFlag represents a time.Duration flag.
@@ -321,14 +322,14 @@ type DurationFlag struct {
 	Hidden   bool
 }
 
-func (f *DurationFlag) GetName() string   { return f.Name }
-func (f *DurationFlag) GetShort() string  { return f.Short }
-func (f *DurationFlag) GetHelp() string   { return f.Help }
-func (f *DurationFlag) GetEnvVar() string { return f.EnvVar }
-func (f *DurationFlag) GetDefault() any   { return f.Value }
-func (f *DurationFlag) IsRequired() bool  { return f.Required }
-func (f *DurationFlag) IsHidden() bool    { return f.Hidden }
-func (f *DurationFlag) GetEnum() []string { return nil }
+func (f *DurationFlag) GetName() string       { return f.Name }
+func (f *DurationFlag) GetShort() string      { return f.Short }
+func (f *DurationFlag) GetHelp() string       { return f.Help }
+func (f *DurationFlag) GetEnvVar() string     { return f.EnvVar }
+func (f *DurationFlag) GetDefault() any       { return f.Value }
+func (f *DurationFlag) IsRequired() bool      { return f.Required }
+func (f *DurationFlag) IsHidden() bool        { return f.Hidden }
+func (f *DurationFlag) GetEnum() []string     { return nil }
 func (f *DurationFlag) Validate(string) error { return nil }
 
 // StringSliceFlag represents a string slice flag.
@@ -342,14 +343,14 @@ type StringSliceFlag struct {
 	Hidden   bool
 }
 
-func (f *StringSliceFlag) GetName() string   { return f.Name }
-func (f *StringSliceFlag) GetShort() string  { return f.Short }
-func (f *StringSliceFlag) GetHelp() string   { return f.Help }
-func (f *StringSliceFlag) GetEnvVar() string { return f.EnvVar }
-func (f *StringSliceFlag) GetDefault() any   { return f.Value }
-func (f *StringSliceFlag) IsRequired() bool  { return f.Required }
-func (f *StringSliceFlag) IsHidden() bool    { return f.Hidden }
-func (f *StringSliceFlag) GetEnum() []string { return nil }
+func (f *StringSliceFlag) GetName() string       { return f.Name }
+func (f *StringSliceFlag) GetShort() string      { return f.Short }
+func (f *StringSliceFlag) GetHelp() string       { return f.Help }
+func (f *StringSliceFlag) GetEnvVar() string     { return f.EnvVar }
+func (f *StringSliceFlag) GetDefault() any       { return f.Value }
+func (f *StringSliceFlag) IsRequired() bool      { return f.Required }
+func (f *StringSliceFlag) IsHidden() bool        { return f.Hidden }
+func (f *StringSliceFlag) GetEnum() []string     { return nil }
 func (f *StringSliceFlag) Validate(string) error { return nil }
 
 // IntSliceFlag represents an int slice flag.
@@ -363,14 +364,14 @@ type IntSliceFlag struct {
 	Hidden   bool
 }
 
-func (f *IntSliceFlag) GetName() string   { return f.Name }
-func (f *IntSliceFlag) GetShort() string  { return f.Short }
-func (f *IntSliceFlag) GetHelp() string   { return f.Help }
-func (f *IntSliceFlag) GetEnvVar() string { return f.EnvVar }
-func (f *IntSliceFlag) GetDefault() any   { return f.Value }
-func (f *IntSliceFlag) IsRequired() bool  { return f.Required }
-func (f *IntSliceFlag) IsHidden() bool    { return f.Hidden }
-func (f *IntSliceFlag) GetEnum() []string { return nil }
+func (f *IntSliceFlag) GetName() string       { return f.Name }
+func (f *IntSliceFlag) GetShort() string      { return f.Short }
+func (f *IntSliceFlag) GetHelp() string       { return f.Help }
+func (f *IntSliceFlag) GetEnvVar() string     { return f.EnvVar }
+func (f *IntSliceFlag) GetDefault() any       { return f.Value }
+func (f *IntSliceFlag) IsRequired() bool      { return f.Required }
+func (f *IntSliceFlag) IsHidden() bool        { return f.Hidden }
+func (f *IntSliceFlag) GetEnum() []string     { return nil }
 func (f *IntSliceFlag) Validate(string) error { return nil }
 
 // allFlags returns all flags including global flags from the app.
@@ -454,6 +455,10 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			// Short flag(s)
 			shorts := arg[1:]
 			for j, r := range shorts {
+				// -h is always help
+				if r == 'h' {
+					return c.showHelp()
+				}
 				flag := c.findFlagByShort(string(r))
 				if flag == nil {
 					return fmt.Errorf("unknown flag: -%c", r)
@@ -576,6 +581,14 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 }
 
 func (c *Command) showHelp() error {
+	if c.app.colorEnabled {
+		// Use the styled tui-based help
+		view := c.renderCommandHelp()
+		tui.Fprint(c.app.stdout, view)
+		return &HelpRequested{}
+	}
+
+	// Fallback to plain text for non-color terminals
 	var sb strings.Builder
 
 	// Command name and description

@@ -232,3 +232,82 @@ func TestStack_Chaining(t *testing.T) {
 	assert.Equal(t, 1, s.gap)
 	assert.Equal(t, AlignCenter, s.alignment)
 }
+
+func TestStack_GapWithEmptyView(t *testing.T) {
+	// Empty views should not contribute to gap spacing
+	s := Stack(
+		Text("A"),
+		Empty(),
+		Text("B"),
+	).Gap(2)
+
+	_, h := s.size(100, 100)
+	// Should be 2 lines + 1 gap (between A and B), not 2 gaps
+	assert.Equal(t, 2+2, h) // 2 lines + 1 gap of 2
+}
+
+func TestStack_GapWithIfFalse(t *testing.T) {
+	// If(false, ...) returns Empty, should not add extra gap
+	s := Stack(
+		Text("A"),
+		If(false, Text("Hidden")),
+		Text("B"),
+	).Gap(1)
+
+	_, h := s.size(100, 100)
+	// Should be 2 lines + 1 gap, not 2 gaps
+	assert.Equal(t, 2+1, h)
+}
+
+func TestStack_GapWithMultipleEmptyViews(t *testing.T) {
+	// Multiple empty views should all be skipped
+	s := Stack(
+		Empty(),
+		Text("A"),
+		Empty(),
+		Empty(),
+		Text("B"),
+		Empty(),
+	).Gap(3)
+
+	_, h := s.size(100, 100)
+	// Should be 2 lines + 1 gap of 3
+	assert.Equal(t, 2+3, h)
+}
+
+func TestStack_AllEmptyViews(t *testing.T) {
+	s := Stack(
+		Empty(),
+		Empty(),
+		Empty(),
+	).Gap(5)
+
+	w, h := s.size(100, 100)
+	assert.Equal(t, 0, w)
+	assert.Equal(t, 0, h)
+}
+
+func TestStack_SingleVisibleWithEmpty(t *testing.T) {
+	// Only one visible child means no gaps at all
+	s := Stack(
+		Empty(),
+		Text("Only"),
+		Empty(),
+	).Gap(10)
+
+	_, h := s.size(100, 100)
+	assert.Equal(t, 1, h) // Just the text, no gaps
+}
+
+func TestStack_GapWithIfElse(t *testing.T) {
+	// IfElse should work correctly too
+	s := Stack(
+		Text("A"),
+		IfElse(false, Text("Then"), Empty()),
+		Text("B"),
+	).Gap(1)
+
+	_, h := s.size(100, 100)
+	// Should be 2 lines + 1 gap
+	assert.Equal(t, 2+1, h)
+}

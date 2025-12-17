@@ -3,6 +3,8 @@ package assert
 import (
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -647,4 +649,419 @@ func TestIsEmpty(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRegexp(t *testing.T) {
+	t.Run("string pattern matches", func(t *testing.T) {
+		m := &mockT{}
+		Regexp(m, `\d+`, "abc123def")
+		if m.failed {
+			t.Error("Regexp should pass when pattern matches")
+		}
+	})
+
+	t.Run("string pattern does not match", func(t *testing.T) {
+		m := &mockT{}
+		Regexp(m, `\d+`, "abcdef")
+		if !m.failed {
+			t.Error("Regexp should fail when pattern does not match")
+		}
+		if !strings.Contains(m.fatalMsg, "match pattern") {
+			t.Errorf("expected match pattern message, got: %s", m.fatalMsg)
+		}
+	})
+
+	t.Run("compiled regexp matches", func(t *testing.T) {
+		m := &mockT{}
+		re := regexp.MustCompile(`[A-Z][a-z]+`)
+		Regexp(m, re, "Hello World")
+		if m.failed {
+			t.Error("Regexp should pass when compiled pattern matches")
+		}
+	})
+
+	t.Run("compiled regexp does not match", func(t *testing.T) {
+		m := &mockT{}
+		re := regexp.MustCompile(`^[0-9]+$`)
+		Regexp(m, re, "abc")
+		if !m.failed {
+			t.Error("Regexp should fail when compiled pattern does not match")
+		}
+	})
+
+	t.Run("with custom message", func(t *testing.T) {
+		m := &mockT{}
+		Regexp(m, `^test$`, "nottest", "checking %s", "value")
+		if !strings.Contains(m.fatalMsg, "checking value") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
+}
+
+func TestInDeltaEdgeCases(t *testing.T) {
+	t.Run("exact match", func(t *testing.T) {
+		m := &mockT{}
+		InDelta(m, 3.14, 3.14, 0.0)
+		if m.failed {
+			t.Error("InDelta should pass for exact match")
+		}
+	})
+
+	t.Run("negative delta", func(t *testing.T) {
+		m := &mockT{}
+		InDelta(m, 5.0, 4.0, 1.0)
+		if m.failed {
+			t.Error("InDelta should pass when diff is within delta")
+		}
+	})
+
+	t.Run("fails outside delta", func(t *testing.T) {
+		m := &mockT{}
+		InDelta(m, 5.0, 3.0, 1.0)
+		if !m.failed {
+			t.Error("InDelta should fail when diff exceeds delta")
+		}
+	})
+
+	t.Run("with custom message", func(t *testing.T) {
+		m := &mockT{}
+		InDelta(m, 10.0, 1.0, 0.1, "comparing %s", "values")
+		if !strings.Contains(m.fatalMsg, "comparing values") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
+}
+
+func TestFormatDiffWithColors(t *testing.T) {
+	// Test with colors enabled
+	SetColorEnabled(true)
+	defer SetColorEnabled(false)
+
+	diff := "-old line\n+new line\n context"
+	result := formatDiff(diff)
+
+	if !strings.Contains(result, "mismatch (-want +got):") {
+		t.Error("formatDiff should include header")
+	}
+	// With colors enabled, ANSI codes should be present
+	if !strings.Contains(result, "\033[") {
+		t.Error("formatDiff should include ANSI codes when colors are enabled")
+	}
+}
+
+func TestFormatMsgEdgeCases(t *testing.T) {
+	t.Run("empty args returns empty", func(t *testing.T) {
+		result := formatMsg()
+		if result != "" {
+			t.Errorf("formatMsg() should return empty string, got: %s", result)
+		}
+	})
+
+	t.Run("single non-string arg", func(t *testing.T) {
+		result := formatMsg(42)
+		if result != "42" {
+			t.Errorf("formatMsg(42) should return '42', got: %s", result)
+		}
+	})
+
+	t.Run("non-string first arg with more args returns empty", func(t *testing.T) {
+		result := formatMsg(42, "ignored")
+		if result != "" {
+			t.Errorf("formatMsg(42, 'ignored') should return empty, got: %s", result)
+		}
+	})
+}
+
+// customTestError is used for ErrorAs tests
+type customTestError struct {
+	Code int
+	Msg  string
+}
+
+func (e *customTestError) Error() string {
+	return e.Msg
+}
+
+func TestErrorAsWithCustomType(t *testing.T) {
+	baseErr := &customTestError{Code: 404, Msg: "not found"}
+	wrappedErr := fmt.Errorf("wrapped: %w", baseErr)
+
+	t.Run("matching type passes", func(t *testing.T) {
+		m := &mockT{}
+		var target *customTestError
+		ErrorAs(m, wrappedErr, &target)
+		if m.failed {
+			t.Error("ErrorAs should pass when target type is in chain")
+		}
+	})
+
+	t.Run("non-matching type fails", func(t *testing.T) {
+		m := &mockT{}
+		var target *os.PathError
+		ErrorAs(m, baseErr, &target)
+		if !m.failed {
+			t.Error("ErrorAs should fail when target type is not in chain")
+		}
+	})
+
+	t.Run("with custom message", func(t *testing.T) {
+		m := &mockT{}
+		var target *os.PathError
+		ErrorAs(m, baseErr, &target, "checking error type")
+		if !strings.Contains(m.fatalMsg, "checking error type") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
+}
+
+func TestContainsWithArray(t *testing.T) {
+	t.Run("array contains element", func(t *testing.T) {
+		m := &mockT{}
+		arr := [3]int{1, 2, 3}
+		Contains(m, arr, 2)
+		if m.failed {
+			t.Error("Contains should pass for element in array")
+		}
+	})
+
+	t.Run("array does not contain element", func(t *testing.T) {
+		m := &mockT{}
+		arr := [3]int{1, 2, 3}
+		Contains(m, arr, 4)
+		if !m.failed {
+			t.Error("Contains should fail for missing element in array")
+		}
+	})
+}
+
+func TestNotContainsWithSliceAndMap(t *testing.T) {
+	t.Run("slice not contains", func(t *testing.T) {
+		m := &mockT{}
+		NotContains(m, []int{1, 2, 3}, 4)
+		if m.failed {
+			t.Error("NotContains should pass for missing element")
+		}
+	})
+
+	t.Run("map key not contains", func(t *testing.T) {
+		m := &mockT{}
+		NotContains(m, map[string]int{"a": 1}, "b")
+		if m.failed {
+			t.Error("NotContains should pass for missing key")
+		}
+	})
+
+	t.Run("map key contains fails", func(t *testing.T) {
+		m := &mockT{}
+		NotContains(m, map[string]int{"a": 1}, "a")
+		if !m.failed {
+			t.Error("NotContains should fail for present key")
+		}
+	})
+}
+
+func TestIsEmptyWithPointer(t *testing.T) {
+	t.Run("nil pointer is empty", func(t *testing.T) {
+		var p *int
+		if !isEmpty(p) {
+			t.Error("nil pointer should be empty")
+		}
+	})
+
+	t.Run("pointer to zero value is empty", func(t *testing.T) {
+		zero := 0
+		if !isEmpty(&zero) {
+			t.Error("pointer to zero value should be empty")
+		}
+	})
+
+	t.Run("pointer to non-zero value is not empty", func(t *testing.T) {
+		val := 42
+		if isEmpty(&val) {
+			t.Error("pointer to non-zero value should not be empty")
+		}
+	})
+
+	t.Run("empty chan is empty", func(t *testing.T) {
+		ch := make(chan int)
+		if !isEmpty(ch) {
+			t.Error("empty channel should be empty")
+		}
+	})
+}
+
+func TestEqualWithMessage(t *testing.T) {
+	t.Run("single string message", func(t *testing.T) {
+		m := &mockT{}
+		SetColorEnabled(false)
+		defer SetColorEnabled(true)
+		Equal(m, 1, 2, "custom message")
+		if !strings.Contains(m.fatalMsg, "custom message") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
+
+	t.Run("formatted message", func(t *testing.T) {
+		m := &mockT{}
+		SetColorEnabled(false)
+		defer SetColorEnabled(true)
+		Equal(m, 1, 2, "value was %d", 42)
+		if !strings.Contains(m.fatalMsg, "value was 42") {
+			t.Errorf("expected formatted message, got: %s", m.fatalMsg)
+		}
+	})
+}
+
+func TestNotEqualWithMessage(t *testing.T) {
+	m := &mockT{}
+	NotEqual(m, 42, 42, "values should differ")
+	if !strings.Contains(m.fatalMsg, "values should differ") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestNilWithMessage(t *testing.T) {
+	m := &mockT{}
+	Nil(m, 42, "expected nil")
+	if !strings.Contains(m.fatalMsg, "expected nil") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestNotNilWithMessage(t *testing.T) {
+	m := &mockT{}
+	NotNil(m, nil, "expected non-nil")
+	if !strings.Contains(m.fatalMsg, "expected non-nil") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestFalseWithMessage(t *testing.T) {
+	m := &mockT{}
+	False(m, true, "should be false")
+	if !strings.Contains(m.fatalMsg, "should be false") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestEmptyWithMessage(t *testing.T) {
+	m := &mockT{}
+	Empty(m, []int{1}, "should be empty")
+	if !strings.Contains(m.fatalMsg, "should be empty") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestNotEmptyWithMessage(t *testing.T) {
+	m := &mockT{}
+	NotEmpty(m, []int{}, "should not be empty")
+	if !strings.Contains(m.fatalMsg, "should not be empty") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestContainsWithMessage(t *testing.T) {
+	m := &mockT{}
+	Contains(m, "hello", "xyz", "substring check")
+	if !strings.Contains(m.fatalMsg, "substring check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestNotContainsWithMessage(t *testing.T) {
+	m := &mockT{}
+	NotContains(m, "hello world", "world", "exclusion check")
+	if !strings.Contains(m.fatalMsg, "exclusion check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestLenWithMessage(t *testing.T) {
+	m := &mockT{}
+	Len(m, []int{1, 2}, 3, "length mismatch")
+	if !strings.Contains(m.fatalMsg, "length mismatch") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestPanicsWithMessage(t *testing.T) {
+	m := &mockT{}
+	Panics(m, func() {}, "should panic")
+	if !strings.Contains(m.fatalMsg, "should panic") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestNotPanicsWithMessage(t *testing.T) {
+	m := &mockT{}
+	NotPanics(m, func() { panic("oops") }, "should not panic")
+	if !strings.Contains(m.fatalMsg, "should not panic") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestGreaterWithMessage(t *testing.T) {
+	m := &mockT{}
+	Greater(m, 1, 2, "comparison check")
+	if !strings.Contains(m.fatalMsg, "comparison check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestGreaterOrEqualWithMessage(t *testing.T) {
+	m := &mockT{}
+	GreaterOrEqual(m, 1, 2, "comparison check")
+	if !strings.Contains(m.fatalMsg, "comparison check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestLessWithMessage(t *testing.T) {
+	m := &mockT{}
+	Less(m, 2, 1, "comparison check")
+	if !strings.Contains(m.fatalMsg, "comparison check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestLessOrEqualWithMessage(t *testing.T) {
+	m := &mockT{}
+	LessOrEqual(m, 2, 1, "comparison check")
+	if !strings.Contains(m.fatalMsg, "comparison check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestErrorWithMessage(t *testing.T) {
+	m := &mockT{}
+	Error(m, nil, "expected error")
+	if !strings.Contains(m.fatalMsg, "expected error") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestErrorIsWithMessage(t *testing.T) {
+	m := &mockT{}
+	ErrorIs(m, errors.New("other"), errors.New("target"), "error chain check")
+	if !strings.Contains(m.fatalMsg, "error chain check") {
+		t.Errorf("expected custom message, got: %s", m.fatalMsg)
+	}
+}
+
+func TestErrorContainsWithMessage(t *testing.T) {
+	t.Run("nil error with message", func(t *testing.T) {
+		m := &mockT{}
+		ErrorContains(m, nil, "anything", "nil error check")
+		if !strings.Contains(m.fatalMsg, "nil error check") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
+
+	t.Run("missing substring with message", func(t *testing.T) {
+		m := &mockT{}
+		ErrorContains(m, errors.New("actual error"), "expected", "substring check")
+		if !strings.Contains(m.fatalMsg, "substring check") {
+			t.Errorf("expected custom message, got: %s", m.fatalMsg)
+		}
+	})
 }

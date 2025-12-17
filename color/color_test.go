@@ -1,6 +1,7 @@
 package color_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -28,7 +29,7 @@ func TestColor_ForegroundCode_AllColors(t *testing.T) {
 		{color.BrightMagenta, "95"},
 		{color.BrightCyan, "96"},
 		{color.BrightWhite, "97"},
-		{color.Default, "39"},
+		{color.NoColor, "39"},
 	}
 
 	for _, tt := range tests {
@@ -59,13 +60,33 @@ func TestColor_BackgroundCode_AllColors(t *testing.T) {
 		{color.BrightMagenta, "105"},
 		{color.BrightCyan, "106"},
 		{color.BrightWhite, "107"},
-		{color.Default, "49"},
+		{color.NoColor, "49"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.c.BackgroundCode())
 		})
+	}
+}
+
+func TestColor_ExtendedPalette(t *testing.T) {
+	// Test 256-color palette
+	tests := []struct {
+		n           uint8
+		expectedFg  string
+		expectedBg  string
+	}{
+		{16, "38;5;16", "48;5;16"},
+		{196, "38;5;196", "48;5;196"},   // bright red in 256 palette
+		{232, "38;5;232", "48;5;232"},   // grayscale start
+		{255, "38;5;255", "48;5;255"},   // grayscale end
+	}
+
+	for _, tt := range tests {
+		c := color.Palette(tt.n)
+		assert.Equal(t, tt.expectedFg, c.ForegroundCode())
+		assert.Equal(t, tt.expectedBg, c.BackgroundCode())
 	}
 }
 
@@ -204,4 +225,66 @@ func TestHSLToRGB_Grayscale(t *testing.T) {
 	rgb := color.HSLToRGB(0, 0, 0.5)
 	assert.Equal(t, rgb.R, rgb.G)
 	assert.Equal(t, rgb.G, rgb.B)
+}
+
+func TestColor_ForegroundSeq(t *testing.T) {
+	assert.Equal(t, "\033[31m", color.Red.ForegroundSeq())
+	assert.Equal(t, "\033[92m", color.BrightGreen.ForegroundSeq())
+	assert.Equal(t, "", color.NoColor.ForegroundSeq())
+}
+
+func TestColor_BackgroundSeq(t *testing.T) {
+	assert.Equal(t, "\033[41m", color.Red.BackgroundSeq())
+	assert.Equal(t, "\033[102m", color.BrightGreen.BackgroundSeq())
+	assert.Equal(t, "", color.NoColor.BackgroundSeq())
+}
+
+func TestColor_ForegroundSeqDim(t *testing.T) {
+	assert.Equal(t, "\033[2;31m", color.Red.ForegroundSeqDim())
+	assert.Equal(t, "\033[2m", color.NoColor.ForegroundSeqDim())
+}
+
+func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
+	// Save original state
+	originalValue, hadValue := os.LookupEnv("NO_COLOR")
+
+	// Test with NO_COLOR set
+	os.Setenv("NO_COLOR", "1")
+	assert.False(t, color.ShouldColorize(os.Stdout))
+
+	// Test with NO_COLOR set to empty string (still counts as set)
+	os.Setenv("NO_COLOR", "")
+	assert.False(t, color.ShouldColorize(os.Stdout))
+
+	// Test with NO_COLOR unset (behavior depends on whether stdout is a TTY)
+	os.Unsetenv("NO_COLOR")
+	// Can't easily test the true case without a real TTY, but we can verify
+	// the function doesn't panic and returns a boolean
+	_ = color.ShouldColorize(os.Stdout)
+
+	// Restore original state
+	if hadValue {
+		os.Setenv("NO_COLOR", originalValue)
+	} else {
+		os.Unsetenv("NO_COLOR")
+	}
+}
+
+func TestColorize_RespectsEnabled(t *testing.T) {
+	// Save original state
+	originalEnabled := color.Enabled
+
+	// Test with Enabled = true
+	color.Enabled = true
+	result := color.Colorize(color.Red, "test")
+	assert.Contains(t, result, "\033[")
+	assert.Contains(t, result, "test")
+
+	// Test with Enabled = false
+	color.Enabled = false
+	result = color.Colorize(color.Red, "test")
+	assert.Equal(t, "test", result)
+
+	// Restore original state
+	color.Enabled = originalEnabled
 }

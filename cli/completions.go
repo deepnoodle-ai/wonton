@@ -43,64 +43,61 @@ complete -F _%[1]s_completions %[1]s
 
 // GenerateZshCompletion writes zsh completion script to w.
 func (a *App) GenerateZshCompletion(w io.Writer) error {
-	tmpl := `#compdef %[1]s
+	var sb strings.Builder
 
-__%[1]s_commands() {
-    local commands
-    commands=(
-%[2]s
-    )
-    _describe -t commands '%[1]s commands' commands
-}
+	sb.WriteString(fmt.Sprintf("#compdef %s\n\n", a.name))
 
-__%[1]s_group_%[3]s() {
-    local commands
-    commands=(
-%[4]s
-    )
-    _describe -t commands '%[1]s %[3]s commands' commands
-}
+	// Commands function
+	sb.WriteString(fmt.Sprintf("__%s_commands() {\n", a.name))
+	sb.WriteString("    local commands\n")
+	sb.WriteString("    commands=(\n")
+	sb.WriteString(a.generateZshCommandDesc())
+	sb.WriteString("\n    )\n")
+	sb.WriteString(fmt.Sprintf("    _describe -t commands '%s commands' commands\n", a.name))
+	sb.WriteString("}\n\n")
 
-_%[1]s() {
-    local curcontext="$curcontext" state line
-    typeset -A opt_args
-
-    _arguments -C \
-        '1: :__%[1]s_commands' \
-        '*::arg:->args'
-
-    case $state in
-        args)
-            case $line[1] in
-%[5]s
-            esac
-            ;;
-    esac
-}
-
-_%[1]s "$@"
-`
-
-	cmdDesc := a.generateZshCommandDesc()
-	groupName := ""
-	groupCmds := ""
-	groupCases := ""
-
-	// Generate group completions
+	// Group functions
 	for name, group := range a.groups {
-		groupName = name
-		var cmds []string
+		sb.WriteString(fmt.Sprintf("__%s_group_%s() {\n", a.name, name))
+		sb.WriteString("    local commands\n")
+		sb.WriteString("    commands=(\n")
 		for cmdName, cmd := range group.commands {
 			if !cmd.hidden {
-				cmds = append(cmds, fmt.Sprintf("        '%s:%s'", cmdName, escapeZsh(cmd.description)))
+				sb.WriteString(fmt.Sprintf("        '%s:%s'\n", cmdName, escapeZsh(cmd.description)))
 			}
 		}
-		groupCmds = strings.Join(cmds, "\n")
-		groupCases += fmt.Sprintf("                %s)\n                    __%s_group_%s\n                    ;;\n",
-			name, a.name, name)
+		sb.WriteString("    )\n")
+		sb.WriteString(fmt.Sprintf("    _describe -t commands '%s %s commands' commands\n", a.name, name))
+		sb.WriteString("}\n\n")
 	}
 
-	_, err := fmt.Fprintf(w, tmpl, a.name, cmdDesc, groupName, groupCmds, groupCases)
+	// Main completion function
+	sb.WriteString(fmt.Sprintf("_%s() {\n", a.name))
+	sb.WriteString("    local curcontext=\"$curcontext\" state line\n")
+	sb.WriteString("    typeset -A opt_args\n\n")
+	sb.WriteString("    _arguments -C \\\n")
+	sb.WriteString(fmt.Sprintf("        '1: :__%s_commands' \\\n", a.name))
+	sb.WriteString("        '*::arg:->args'\n\n")
+	sb.WriteString("    case $state in\n")
+	sb.WriteString("        args)\n")
+	sb.WriteString("            case $line[1] in\n")
+	for name := range a.groups {
+		sb.WriteString(fmt.Sprintf("                %s)\n", name))
+		sb.WriteString(fmt.Sprintf("                    __%s_group_%s\n", a.name, name))
+		sb.WriteString("                    ;;\n")
+	}
+	sb.WriteString("            esac\n")
+	sb.WriteString("            ;;\n")
+	sb.WriteString("    esac\n")
+	sb.WriteString("}\n\n")
+
+	// Register completion - works with both eval and file sourcing
+	// Check if compdef is available (requires compinit to be loaded)
+	sb.WriteString("if (( $+functions[compdef] )); then\n")
+	sb.WriteString(fmt.Sprintf("    compdef _%s %s\n", a.name, a.name))
+	sb.WriteString("fi\n")
+
+	_, err := io.WriteString(w, sb.String())
 	return err
 }
 

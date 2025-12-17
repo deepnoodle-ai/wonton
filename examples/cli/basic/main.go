@@ -27,30 +27,29 @@ func main() {
 	// Create a new CLI application
 	app := cli.New("myapp").
 		Description("A demonstration CLI application").
-		Version("1.0.0")
+		Version("0.1.17").
+		AddCompletionCommand()
 
-	// Add shell completion support
-	app.AddCompletionCommand()
-
-	// Simple command with an argument
+	// Simple command using the fluent builder API for flags
 	app.Command("greet").
 		Description("Greet someone").
 		Args("name?").
 		Flags(
-			&cli.BoolFlag{Name: "loud", Short: "l", Help: "Greet loudly"},
-			&cli.IntFlag{Name: "times", Short: "t", Help: "Number of times to greet", Value: 1},
+			cli.Bool("loud", "l").
+				Help("Greet loudly"),
+			cli.Int("times", "t").
+				Default(1).
+				Help("Number of times to greet"),
 		).
 		Run(func(ctx *cli.Context) error {
 			name := ctx.Arg(0)
 			if name == "" {
 				name = "World"
 			}
-
 			greeting := fmt.Sprintf("Hello, %s!", name)
 			if ctx.Bool("loud") {
 				greeting = strings.ToUpper(greeting)
 			}
-
 			times := ctx.Int("times")
 			for i := 0; i < times; i++ {
 				ctx.Println(greeting)
@@ -87,13 +86,10 @@ func main() {
 		Description("Create a new user").
 		Args("username").
 		Flags(
-			&cli.StringFlag{
-				Name:  "role",
-				Short: "r",
-				Help:  "User role",
-				Value: "user",
-				Enum:  []string{"admin", "user", "guest"},
-			},
+			cli.String("role", "r").
+				Default("user").
+				Enum("admin", "user", "guest").
+				Help("User role"),
 		).
 		Run(func(ctx *cli.Context) error {
 			username := ctx.Arg(0)

@@ -43,22 +43,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/color"
 )
 
-// ANSI escape codes - using color package constants where possible
 const (
-	ansiEsc        = '\u001b'
-	ansiReset      = "\u001b[0m"
-	ansiFaint      = "\u001b[2m"
-	ansiResetFaint = "\u001b[22m"
-)
-
-// Level colors using the color package
-var (
-	levelColorInfo  = color.BrightGreen
-	levelColorWarn  = color.BrightYellow
-	levelColorError = color.BrightRed
-)
-
-const (
+	ansiEsc           = '\u001b'
 	defaultTimeFormat = time.StampMilli
 )
 
@@ -122,14 +108,14 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	if !r.Time.IsZero() {
 		val := r.Time.Round(0) // strip monotonic to match Attr behavior
 		if rep == nil {
-			h.appendTime(buf, r.Time, -1)
+			h.appendTime(buf, r.Time, color.NoColor)
 			buf.WriteByte(' ')
 		} else if a := rep(nil, slog.Time(slog.TimeKey, val)); a.Key != "" {
-			val, color := h.resolve(a.Value)
+			val, c := h.resolve(a.Value)
 			if val.Kind() == slog.KindTime {
-				h.appendTime(buf, val.Time(), color)
+				h.appendTime(buf, val.Time(), c)
 			} else {
-				h.appendTintedValue(buf, val, false, color, true)
+				h.appendTintedValue(buf, val, false, c, true)
 			}
 			buf.WriteByte(' ')
 		}
@@ -137,18 +123,18 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 
 	// Write level
 	if rep == nil {
-		h.appendLevel(buf, r.Level, -1)
+		h.appendLevel(buf, r.Level, color.NoColor)
 		buf.WriteByte(' ')
 	} else if a := rep(nil, slog.Any(slog.LevelKey, r.Level)); a.Key != "" {
-		val, color := h.resolve(a.Value)
+		val, c := h.resolve(a.Value)
 		if val.Kind() == slog.KindAny {
 			if lvlVal, ok := val.Any().(slog.Level); ok {
-				h.appendLevel(buf, lvlVal, color)
+				h.appendLevel(buf, lvlVal, c)
 			} else {
-				h.appendTintedValue(buf, val, false, color, false)
+				h.appendTintedValue(buf, val, false, c, false)
 			}
 		} else {
-			h.appendTintedValue(buf, val, false, color, false)
+			h.appendTintedValue(buf, val, false, c, false)
 		}
 		buf.WriteByte(' ')
 	}
@@ -168,14 +154,14 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 				if h.opts.NoColor {
 					h.appendSource(buf, src)
 				} else {
-					buf.WriteString(ansiFaint)
+					buf.WriteString(color.Dim)
 					h.appendSource(buf, src)
-					buf.WriteString(ansiReset)
+					buf.WriteString(color.Reset)
 				}
 				buf.WriteByte(' ')
 			} else if a := rep(nil, slog.Any(slog.SourceKey, src)); a.Key != "" {
-				val, color := h.resolve(a.Value)
-				h.appendTintedValue(buf, val, false, color, true)
+				val, c := h.resolve(a.Value)
+				h.appendTintedValue(buf, val, false, c, true)
 				buf.WriteByte(' ')
 			}
 		}
@@ -186,8 +172,8 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 		buf.WriteString(r.Message)
 		buf.WriteByte(' ')
 	} else if a := rep(nil, slog.String(slog.MessageKey, r.Message)); a.Key != "" {
-		val, color := h.resolve(a.Value)
-		h.appendTintedValue(buf, val, false, color, false)
+		val, c := h.resolve(a.Value)
+		h.appendTintedValue(buf, val, false, c, false)
 		buf.WriteByte(' ')
 	}
 
@@ -243,21 +229,21 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 	return h2
 }
 
-func (h *Handler) appendTime(buf *buffer, t time.Time, color int16) {
+func (h *Handler) appendTime(buf *buffer, t time.Time, c color.Color) {
 	if h.opts.NoColor {
 		*buf = t.AppendFormat(*buf, h.opts.TimeFormat)
 	} else {
-		if color >= 0 {
-			appendAnsiColor(buf, uint8(color), true)
+		if c != color.NoColor {
+			buf.WriteString(c.ForegroundSeqDim())
 		} else {
-			buf.WriteString(ansiFaint)
+			buf.WriteString(color.Dim)
 		}
 		*buf = t.AppendFormat(*buf, h.opts.TimeFormat)
-		buf.WriteString(ansiReset)
+		buf.WriteString(color.Reset)
 	}
 }
 
-func (h *Handler) appendLevel(buf *buffer, level slog.Level, colorOverride int16) {
+func (h *Handler) appendLevel(buf *buffer, level slog.Level, colorOverride color.Color) {
 	formatLevel := func(base string, offset slog.Level) []byte {
 		if offset == 0 {
 			return []byte(base)
@@ -268,18 +254,18 @@ func (h *Handler) appendLevel(buf *buffer, level slog.Level, colorOverride int16
 	}
 
 	if !h.opts.NoColor {
-		if colorOverride >= 0 {
-			appendAnsiColor(buf, uint8(colorOverride), false)
+		if colorOverride != color.NoColor {
+			buf.WriteString(colorOverride.ForegroundSeq())
 		} else {
 			switch {
 			case level < slog.LevelInfo:
-				// Debug: no color (faint is applied to whole line in some styles)
+				// Debug: no color
 			case level < slog.LevelWarn:
-				buf.WriteString("\u001b[" + levelColorInfo.ForegroundCode() + "m")
+				buf.WriteString(color.BrightGreen.ForegroundSeq())
 			case level < slog.LevelError:
-				buf.WriteString("\u001b[" + levelColorWarn.ForegroundCode() + "m")
+				buf.WriteString(color.BrightYellow.ForegroundSeq())
 			default:
-				buf.WriteString("\u001b[" + levelColorError.ForegroundCode() + "m")
+				buf.WriteString(color.BrightRed.ForegroundSeq())
 			}
 		}
 	}
@@ -295,8 +281,8 @@ func (h *Handler) appendLevel(buf *buffer, level slog.Level, colorOverride int16
 		buf.Write(formatLevel("ERR", level-slog.LevelError))
 	}
 
-	if !h.opts.NoColor && level >= slog.LevelInfo {
-		buf.WriteString(ansiReset)
+	if !h.opts.NoColor && (colorOverride != color.NoColor || level >= slog.LevelInfo) {
+		buf.WriteString(color.Reset)
 	}
 }
 
@@ -307,25 +293,25 @@ func (h *Handler) appendSource(buf *buffer, src *slog.Source) {
 	*buf = strconv.AppendInt(*buf, int64(src.Line), 10)
 }
 
-func (h *Handler) resolve(val slog.Value) (slog.Value, int16) {
+func (h *Handler) resolve(val slog.Value) (slog.Value, color.Color) {
 	if !h.opts.NoColor && val.Kind() == slog.KindLogValuer {
 		if cv, ok := val.Any().(coloredValue); ok {
-			return cv.Value.Resolve(), int16(cv.Color)
+			return cv.Value.Resolve(), cv.Color
 		}
 	}
-	return val.Resolve(), -1
+	return val.Resolve(), color.NoColor
 }
 
 func (h *Handler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, groups []string) {
-	var color int16 = -1
-	attr.Value, color = h.resolve(attr.Value)
+	c := color.NoColor
+	attr.Value, c = h.resolve(attr.Value)
 
 	if rep := h.opts.ReplaceAttr; rep != nil && attr.Value.Kind() != slog.KindGroup {
 		attr = rep(groups, attr)
-		var colorRep int16
+		var colorRep color.Color
 		attr.Value, colorRep = h.resolve(attr.Value)
-		if colorRep >= 0 {
-			color = colorRep
+		if colorRep != color.NoColor {
+			c = colorRep
 		}
 	}
 
@@ -348,16 +334,16 @@ func (h *Handler) appendAttr(buf *buffer, attr slog.Attr, groupsPrefix string, g
 		h.appendKey(buf, attr.Key, groupsPrefix)
 		h.appendValue(buf, attr.Value, true)
 	} else {
-		if color >= 0 {
-			appendAnsiColor(buf, uint8(color), true)
+		if c != color.NoColor {
+			buf.WriteString(c.ForegroundSeqDim())
 			h.appendKey(buf, attr.Key, groupsPrefix)
-			buf.WriteString(ansiResetFaint)
+			buf.WriteString("\033[22m") // reset faint only
 			h.appendValue(buf, attr.Value, true)
-			buf.WriteString(ansiReset)
+			buf.WriteString(color.Reset)
 		} else {
-			buf.WriteString(ansiFaint)
+			buf.WriteString(color.Dim)
 			h.appendKey(buf, attr.Key, groupsPrefix)
-			buf.WriteString(ansiReset)
+			buf.WriteString(color.Reset)
 			h.appendValue(buf, attr.Value, true)
 		}
 	}
@@ -415,18 +401,22 @@ func (h *Handler) appendAnyValue(buf *buffer, v slog.Value, quote bool) {
 	}
 }
 
-func (h *Handler) appendTintedValue(buf *buffer, val slog.Value, quote bool, color int16, faint bool) {
+func (h *Handler) appendTintedValue(buf *buffer, val slog.Value, quote bool, c color.Color, faint bool) {
 	if h.opts.NoColor {
 		h.appendValue(buf, val, quote)
 	} else {
-		if color >= 0 {
-			appendAnsiColor(buf, uint8(color), faint)
+		if c != color.NoColor {
+			if faint {
+				buf.WriteString(c.ForegroundSeqDim())
+			} else {
+				buf.WriteString(c.ForegroundSeq())
+			}
 		} else if faint {
-			buf.WriteString(ansiFaint)
+			buf.WriteString(color.Dim)
 		}
 		h.appendValue(buf, val, quote)
-		if color >= 0 || faint {
-			buf.WriteString(ansiReset)
+		if c != color.NoColor || faint {
+			buf.WriteString(color.Reset)
 		}
 	}
 }
@@ -440,24 +430,8 @@ func appendRFC3339Millis(b []byte, t time.Time) []byte {
 	return b
 }
 
-func appendAnsiColor(buf *buffer, color uint8, faint bool) {
-	buf.WriteString("\u001b[")
-	if faint {
-		buf.WriteString("2;")
-	}
-	if color < 8 {
-		*buf = strconv.AppendUint(*buf, uint64(color)+30, 10)
-	} else if color < 16 {
-		*buf = strconv.AppendUint(*buf, uint64(color)+82, 10)
-	} else {
-		buf.WriteString("38;5;")
-		*buf = strconv.AppendUint(*buf, uint64(color), 10)
-	}
-	buf.WriteByte('m')
-}
-
-func appendString(buf *buffer, s string, quote, color bool) {
-	if quote && !color {
+func appendString(buf *buffer, s string, quote, preserveColor bool) {
+	if quote && !preserveColor {
 		// Trim ANSI escape sequences when not preserving color
 		var inEscape bool
 		s = cutRunes(s, func(r rune) bool {
@@ -473,11 +447,11 @@ func appendString(buf *buffer, s string, quote, color bool) {
 
 	quote = quote && needsQuoting(s)
 	switch {
-	case color && quote:
+	case preserveColor && quote:
 		s = strconv.Quote(s)
 		s = strings.ReplaceAll(s, `\x1b`, string(ansiEsc))
 		buf.WriteString(s)
-	case !color && quote:
+	case !preserveColor && quote:
 		*buf = strconv.AppendQuote(*buf, s)
 	default:
 		buf.WriteString(s)

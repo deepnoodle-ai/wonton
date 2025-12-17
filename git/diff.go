@@ -29,6 +29,7 @@ type DiffOptions struct {
 
 // Diff returns the diff for the working directory or between refs.
 func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) {
+	// Build base args without path filter (path must come after options)
 	args := []string{"diff"}
 
 	if opts.ContextLines > 0 {
@@ -45,14 +46,18 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 		args = append(args, opts.Ref)
 	}
 
-	if opts.Path != "" {
-		args = append(args, "--", opts.Path)
+	// Helper to append path filter after options
+	withPath := func(a []string) []string {
+		if opts.Path != "" {
+			return append(a, "--", opts.Path)
+		}
+		return a
 	}
 
 	// First get the stat summary
 	statArgs := append([]string{}, args...)
 	statArgs = append(statArgs, "--stat", "--stat-width=1000")
-	statOut, err := r.run(ctx, statArgs...)
+	statOut, err := r.run(ctx, withPath(statArgs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +65,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 	// Get numstat for precise counts
 	numstatArgs := append([]string{}, args...)
 	numstatArgs = append(numstatArgs, "--numstat")
-	numstatOut, err := r.run(ctx, numstatArgs...)
+	numstatOut, err := r.run(ctx, withPath(numstatArgs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +113,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 	// Determine file status from name-status
 	nameStatusArgs := append([]string{}, args...)
 	nameStatusArgs = append(nameStatusArgs, "--name-status")
-	nameStatusOut, err := r.run(ctx, nameStatusArgs...)
+	nameStatusOut, err := r.run(ctx, withPath(nameStatusArgs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +161,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 
 	// Get actual patch content if requested
 	if opts.IncludePatch {
-		patchOut, err := r.run(ctx, args...)
+		patchOut, err := r.run(ctx, withPath(args)...)
 		if err != nil {
 			return nil, err
 		}

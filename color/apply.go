@@ -7,36 +7,52 @@ import (
 
 // ANSI escape code constants
 const (
-	escape = "\033["
-	reset  = escape + "0m"
-	bold   = escape + "1m"
-	dim    = escape + "2m"
+	Escape = "\033["
+	Reset  = Escape + "0m"
+	Bold   = Escape + "1m"
+	Dim    = Escape + "2m"
 )
+
+func init() {
+	// Respect NO_COLOR environment variable (https://no-color.org/)
+	// If NO_COLOR is set (to any value), disable colors by default
+	if _, exists := os.LookupEnv("NO_COLOR"); exists {
+		Enabled = false
+	}
+}
 
 // Apply applies the ANSI color to text as a foreground color.
 func (c Color) Apply(text string) string {
-	if c == Default {
+	if c < 0 {
 		return text
 	}
-	return fmt.Sprintf("%s%sm%s%s", escape, c.ForegroundCode(), text, reset)
+	return c.ForegroundSeq() + text + Reset
+}
+
+// ApplyDim applies the ANSI color to text with dim attribute.
+func (c Color) ApplyDim(text string) string {
+	if c < 0 {
+		return Dim + text + Reset
+	}
+	return c.ForegroundSeqDim() + text + Reset
 }
 
 // ApplyBg applies the ANSI color to text as a background color.
 func (c Color) ApplyBg(text string) string {
-	if c == Default {
+	if c < 0 {
 		return text
 	}
-	return fmt.Sprintf("%s%sm%s%s", escape, c.BackgroundCode(), text, reset)
+	return c.BackgroundSeq() + text + Reset
 }
 
-// Bold applies bold formatting to text.
-func Bold(text string) string {
-	return bold + text + reset
+// ApplyBold applies bold formatting to text.
+func ApplyBold(text string) string {
+	return Bold + text + Reset
 }
 
-// Dim applies dim formatting to text.
-func Dim(text string) string {
-	return dim + text + reset
+// ApplyDim applies dim formatting to text.
+func ApplyDim(text string) string {
+	return Dim + text + Reset
 }
 
 // Sprintf formats a string with the color applied.
@@ -58,12 +74,25 @@ func IsTerminal(f *os.File) bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
-// NoColor can be set to true to disable all color output.
-var NoColor = false
+// ShouldColorize returns true if colors should be used for the given output.
+// It checks both that the output is a terminal AND that NO_COLOR is not set.
+// This is the recommended way to determine if colors should be enabled.
+func ShouldColorize(f *os.File) bool {
+	// Check NO_COLOR environment variable first
+	if _, exists := os.LookupEnv("NO_COLOR"); exists {
+		return false
+	}
+	return IsTerminal(f)
+}
+
+// Enabled controls whether Colorize and ColorizeRGB produce colored output.
+// This is automatically set to false if the NO_COLOR environment variable is set.
+// Can be manually set to override the default behavior.
+var Enabled = true
 
 // Colorize returns the colored text if colors are enabled, otherwise plain text.
 func Colorize(c Color, text string) string {
-	if NoColor {
+	if !Enabled {
 		return text
 	}
 	return c.Apply(text)
@@ -79,8 +108,8 @@ func ColorizeIf(enabled bool, c Color, text string) string {
 
 // ColorizeRGB applies RGB color to text.
 func ColorizeRGB(rgb RGB, text string) string {
-	if NoColor {
+	if !Enabled {
 		return text
 	}
-	return rgb.Foreground() + text + reset
+	return rgb.ForegroundSeq() + text + Reset
 }

@@ -325,11 +325,16 @@ func TestDefaultOptions(t *testing.T) {
 	assert.Equal(t, time.StampMilli, opts.TimeFormat)
 }
 
-func TestColorConstants(t *testing.T) {
-	assert.Equal(t, uint8(0), ColorBlack)
-	assert.Equal(t, uint8(1), ColorRed)
-	assert.Equal(t, uint8(2), ColorGreen)
-	assert.Equal(t, uint8(9), ColorBrightRed)
+func TestColoredHelpers(t *testing.T) {
+	// Test that color helper functions work correctly
+	attr := Red(slog.String("test", "value"))
+	assert.Equal(t, "test", attr.Key)
+
+	attr = Green(slog.String("status", "ok"))
+	assert.Equal(t, "status", attr.Key)
+
+	attr = Yellow(slog.String("warning", "caution"))
+	assert.Equal(t, "warning", attr.Key)
 }
 
 func BenchmarkHandler(b *testing.B) {

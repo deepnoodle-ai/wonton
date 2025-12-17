@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/color"
 )
 
 func TestAppBasic(t *testing.T) {
@@ -1019,6 +1020,32 @@ func TestGlobalFlagsInHelp(t *testing.T) {
 	assert.Contains(t, output, "output")
 	assert.Contains(t, output, "Global Flags:")
 	assert.Contains(t, output, "verbose")
+}
+
+func TestGlobalFlagsInAppHelp(t *testing.T) {
+	var buf bytes.Buffer
+
+	app := New("test").Description("Test app")
+	app.stdout = &buf
+	app.GlobalFlags(
+		&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"},
+		&StringFlag{Name: "config", Short: "c", Help: "Config file path"},
+	)
+
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error { return nil })
+
+	app.RunArgs([]string{"help"})
+
+	output := buf.String()
+	assert.Contains(t, output, "Global Flags:")
+	assert.Contains(t, output, "--verbose")
+	assert.Contains(t, output, "-v")
+	assert.Contains(t, output, "Verbose output")
+	assert.Contains(t, output, "--config")
+	assert.Contains(t, output, "-c")
+	assert.Contains(t, output, "Config file path")
 }
 
 // Test shell completions
@@ -2322,4 +2349,759 @@ func TestRequiredFlagShownInHelp(t *testing.T) {
 	_ = app.RunArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "(required)")
+}
+
+// Tests for flag builders
+
+func TestStringBuilder(t *testing.T) {
+	b := String("name", "n").
+		Default("default").
+		Help("Name to use").
+		Env("NAME").
+		Enum("a", "b", "c").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "name", b.GetName())
+	assert.Equal(t, "n", b.GetShort())
+	assert.Equal(t, "default", b.GetDefault())
+	assert.Equal(t, "Name to use", b.GetHelp())
+	assert.Equal(t, "NAME", b.GetEnvVar())
+	assert.Equal(t, []string{"a", "b", "c"}, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("test"))
+}
+
+func TestStringBuilderWithValidator(t *testing.T) {
+	b := String("url", "u").ValidateWith(func(s string) error {
+		if !strings.HasPrefix(s, "http") {
+			return Error("must start with http")
+		}
+		return nil
+	})
+
+	assert.NoError(t, b.Validate("http://example.com"))
+	assert.Error(t, b.Validate("ftp://example.com"))
+}
+
+func TestBoolBuilder(t *testing.T) {
+	b := Bool("verbose", "v").
+		Default(true).
+		Help("Verbose output").
+		Env("VERBOSE").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "verbose", b.GetName())
+	assert.Equal(t, "v", b.GetShort())
+	assert.Equal(t, true, b.GetDefault())
+	assert.Equal(t, "Verbose output", b.GetHelp())
+	assert.Equal(t, "VERBOSE", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("anything"))
+}
+
+func TestIntBuilder(t *testing.T) {
+	b := Int("count", "c").
+		Default(10).
+		Help("Item count").
+		Env("COUNT").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "count", b.GetName())
+	assert.Equal(t, "c", b.GetShort())
+	assert.Equal(t, 10, b.GetDefault())
+	assert.Equal(t, "Item count", b.GetHelp())
+	assert.Equal(t, "COUNT", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("5"))
+}
+
+func TestIntBuilderWithValidator(t *testing.T) {
+	b := Int("port", "p").ValidateWith(func(i int) error {
+		if i < 0 || i > 65535 {
+			return Error("invalid port")
+		}
+		return nil
+	})
+
+	// Note: The validator takes int but Validate takes string
+	// The actual validation happens after parsing
+	assert.NoError(t, b.Validate("8080"))
+}
+
+func TestFloatBuilder(t *testing.T) {
+	b := Float("rate", "r").
+		Default(0.5).
+		Help("Rate value").
+		Env("RATE").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "rate", b.GetName())
+	assert.Equal(t, "r", b.GetShort())
+	assert.InDelta(t, 0.5, b.GetDefault().(float64), 0.001)
+	assert.Equal(t, "Rate value", b.GetHelp())
+	assert.Equal(t, "RATE", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("1.5"))
+}
+
+func TestFloatBuilderWithValidator(t *testing.T) {
+	b := Float("rate", "r").ValidateWith(func(f float64) error {
+		if f < 0 || f > 1 {
+			return Error("rate must be between 0 and 1")
+		}
+		return nil
+	})
+
+	// Validation happens after parsing
+	assert.NoError(t, b.Validate("0.5"))
+}
+
+func TestDurationBuilder(t *testing.T) {
+	b := Duration("timeout", "t").
+		Default(30 * time.Second).
+		Help("Timeout duration").
+		Env("TIMEOUT").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "timeout", b.GetName())
+	assert.Equal(t, "t", b.GetShort())
+	assert.Equal(t, 30*time.Second, b.GetDefault())
+	assert.Equal(t, "Timeout duration", b.GetHelp())
+	assert.Equal(t, "TIMEOUT", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("5s"))
+}
+
+func TestStringsBuilder(t *testing.T) {
+	b := Strings("tags", "t").
+		Default("a", "b", "c").
+		Help("Tags list").
+		Env("TAGS").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "tags", b.GetName())
+	assert.Equal(t, "t", b.GetShort())
+	assert.Equal(t, []string{"a", "b", "c"}, b.GetDefault())
+	assert.Equal(t, "Tags list", b.GetHelp())
+	assert.Equal(t, "TAGS", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("x,y,z"))
+}
+
+func TestIntsBuilder(t *testing.T) {
+	b := Ints("ports", "p").
+		Default(80, 443).
+		Help("Port list").
+		Env("PORTS").
+		Required().
+		Hidden()
+
+	assert.Equal(t, "ports", b.GetName())
+	assert.Equal(t, "p", b.GetShort())
+	assert.Equal(t, []int{80, 443}, b.GetDefault())
+	assert.Equal(t, "Port list", b.GetHelp())
+	assert.Equal(t, "PORTS", b.GetEnvVar())
+	assert.Nil(t, b.GetEnum())
+	assert.True(t, b.IsRequired())
+	assert.True(t, b.IsHidden())
+	assert.NoError(t, b.Validate("1,2,3"))
+}
+
+// Tests for flag builders used in commands
+
+func TestFlagBuildersInCommand(t *testing.T) {
+	var name string
+	var count int
+	var rate float64
+	var verbose bool
+
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(
+			String("name", "n").Default("world").Help("Name"),
+			Int("count", "c").Default(1).Help("Count"),
+			Float("rate", "r").Default(0.5).Help("Rate"),
+			Bool("verbose", "v").Help("Verbose"),
+			Duration("timeout", "t").Default(30*time.Second).Help("Timeout"),
+		).
+		Run(func(ctx *Context) error {
+			name = ctx.String("name")
+			count = ctx.Int("count")
+			rate = ctx.Float64("rate")
+			verbose = ctx.Bool("verbose")
+			return nil
+		})
+
+	err := app.RunArgs([]string{"run", "-n", "test", "-c", "5", "-r", "0.8", "-v"})
+	assert.NoError(t, err)
+	assert.Equal(t, "test", name)
+	assert.Equal(t, 5, count)
+	assert.InDelta(t, 0.8, rate, 0.001)
+	assert.True(t, verbose)
+}
+
+// Tests for group with space-separated subcommand syntax
+
+func TestGroupSpaceSeparatedSubcommand(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	users := app.Group("users").Description("User management")
+	users.Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// Test space-separated syntax: "users list" instead of "users:list"
+	err := app.RunArgs([]string{"users", "list"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestGroupSpaceSeparatedSubcommandAlias(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	users := app.Group("users").Description("User management")
+	users.Command("list").
+		Alias("ls").
+		Description("List users").
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// Test space-separated syntax with alias
+	err := app.RunArgs([]string{"users", "ls"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestGroupSpaceSeparatedSubcommandWithArgs(t *testing.T) {
+	var args []string
+
+	app := New("test").Description("Test")
+	users := app.Group("users").Description("User management")
+	users.Command("delete").
+		Description("Delete user").
+		Args("id").
+		Run(func(ctx *Context) error {
+			args = ctx.Args()
+			return nil
+		})
+
+	// Test space-separated syntax with arguments
+	err := app.RunArgs([]string{"users", "delete", "123"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"123"}, args)
+}
+
+// Tests for Confirm middleware
+
+func TestConfirmMiddlewareRequiresInteractive(t *testing.T) {
+	app := New("test").Description("Test")
+	app.ForceInteractive(false)
+
+	app.Command("delete").
+		Description("Delete").
+		Use(Confirm("Are you sure?")).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.RunArgs([]string{"delete"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "non-interactively")
+}
+
+func TestConfirmMiddlewareWithConfirmation(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	app.ForceInteractive(true)
+	app.stdin = strings.NewReader("y\n")
+
+	app.Command("delete").
+		Description("Delete").
+		Use(Confirm("Are you sure?")).
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	err := app.RunArgs([]string{"delete"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestConfirmMiddlewareWithYes(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	app.ForceInteractive(true)
+	app.stdin = strings.NewReader("yes\n")
+
+	app.Command("delete").
+		Description("Delete").
+		Use(Confirm("Are you sure?")).
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	err := app.RunArgs([]string{"delete"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestConfirmMiddlewareWithDenial(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	app.ForceInteractive(true)
+	app.stdin = strings.NewReader("n\n")
+
+	app.Command("delete").
+		Description("Delete").
+		Use(Confirm("Are you sure?")).
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	err := app.RunArgs([]string{"delete"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cancelled")
+	assert.False(t, executed)
+}
+
+// Tests for AddArg method
+
+func TestAddArg(t *testing.T) {
+	var got string
+
+	app := New("test").Description("Test")
+	app.Command("greet").
+		Description("Greet").
+		AddArg(&Arg{
+			Name:        "name",
+			Description: "Name to greet",
+			Required:    true,
+		}).
+		Run(func(ctx *Context) error {
+			got = ctx.Arg(0)
+			return nil
+		})
+
+	err := app.RunArgs([]string{"greet", "World"})
+	assert.NoError(t, err)
+	assert.Equal(t, "World", got)
+}
+
+func TestAddArgWithDefault(t *testing.T) {
+	var got string
+
+	app := New("test").Description("Test")
+	app.Command("greet").
+		Description("Greet").
+		AddArg(&Arg{
+			Name:     "name",
+			Required: false,
+			Default:  "World",
+		}).
+		Run(func(ctx *Context) error {
+			got = ctx.Arg(0)
+			return nil
+		})
+
+	err := app.RunArgs([]string{"greet"})
+	assert.NoError(t, err)
+	assert.Equal(t, "World", got)
+}
+
+// Tests for returning existing command
+
+func TestCommandReturnsExisting(t *testing.T) {
+	app := New("test").Description("Test")
+	cmd1 := app.Command("run").Description("Run something")
+	cmd2 := app.Command("run") // Get same command
+
+	assert.Equal(t, cmd1, cmd2)
+	assert.Equal(t, "Run something", cmd2.GetDescription())
+}
+
+// Tests for ParseFlags edge cases
+
+type HiddenFlags struct {
+	Name   string `flag:"name,n" help:"Name" hidden:"true"`
+	Secret string `flag:"secret" required:"true"`
+}
+
+func TestParseFlagsWithHiddenAndRequired(t *testing.T) {
+	app := New("test").Description("Test")
+	cmd := app.Command("run").Description("Run")
+
+	ParseFlags[HiddenFlags](cmd)
+
+	// Check hidden flag
+	var hiddenFlag Flag
+	for _, f := range cmd.flags {
+		if f.GetName() == "name" {
+			hiddenFlag = f
+			break
+		}
+	}
+	assert.NotNil(t, hiddenFlag)
+	assert.True(t, hiddenFlag.IsHidden())
+
+	// Check required flag
+	var requiredFlag Flag
+	for _, f := range cmd.flags {
+		if f.GetName() == "secret" {
+			requiredFlag = f
+			break
+		}
+	}
+	assert.NotNil(t, requiredFlag)
+	assert.True(t, requiredFlag.IsRequired())
+}
+
+type BoolDefaultFlags struct {
+	Debug   bool `flag:"debug,d" default:"true" help:"Debug mode"`
+	Verbose bool `flag:"verbose,v" default:"1" help:"Verbose"`
+}
+
+func TestParseFlagsWithBoolDefaults(t *testing.T) {
+	app := New("test").Description("Test")
+	cmd := app.Command("run").Description("Run")
+
+	ParseFlags[BoolDefaultFlags](cmd)
+	cmd.Run(func(ctx *Context) error { return nil })
+
+	// Check debug flag default
+	var debugFlag Flag
+	for _, f := range cmd.flags {
+		if f.GetName() == "debug" {
+			debugFlag = f
+			break
+		}
+	}
+	assert.NotNil(t, debugFlag)
+	assert.Equal(t, true, debugFlag.GetDefault())
+}
+
+// Tests for setFieldFromAny edge cases
+
+func TestBindFlagsEdgeCases(t *testing.T) {
+	type Config struct {
+		Name    string  `flag:"name"`
+		Count   int     `flag:"count"`
+		Rate    float64 `flag:"rate"`
+		Enabled bool    `flag:"enabled"`
+	}
+
+	t.Run("string from int", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"name": 123,
+		})
+
+		cfg, err := BindFlags[Config](ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, "123", cfg.Name)
+	})
+
+	t.Run("bool from string yes", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"enabled": "yes",
+		})
+
+		cfg, err := BindFlags[Config](ctx)
+		assert.NoError(t, err)
+		assert.True(t, cfg.Enabled)
+	})
+
+	t.Run("int from float64", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"count": float64(42.5),
+		})
+
+		cfg, err := BindFlags[Config](ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, 42, cfg.Count)
+	})
+
+	t.Run("float64 from int64", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"rate": int64(10),
+		})
+
+		cfg, err := BindFlags[Config](ctx)
+		assert.NoError(t, err)
+		assert.InDelta(t, 10.0, cfg.Rate, 0.001)
+	})
+}
+
+// Tests for help with groups in plain text mode
+
+func TestShowHelpWithGroups(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test application")
+	app.stdout = &buf
+	app.SetColorEnabled(false)
+
+	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
+
+	users := app.Group("users").Description("User management")
+	users.Command("list").Description("List users").Run(func(ctx *Context) error { return nil })
+
+	app.RunArgs([]string{"help"})
+
+	output := buf.String()
+	assert.Contains(t, output, "test")
+	assert.Contains(t, output, "Test application")
+	assert.Contains(t, output, "run")
+	assert.Contains(t, output, "Command Groups:")
+	assert.Contains(t, output, "users")
+}
+
+// Test for version with no version set
+
+func TestVersionWithNoVersion(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test")
+	app.stdout = &buf
+
+	// No version set
+	err := app.RunArgs([]string{"version"})
+	assert.NoError(t, err)
+	assert.Empty(t, buf.String())
+}
+
+// Test for command without handler
+
+func TestCommandWithoutHandler(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Command("broken").Description("Broken command") // No Run() called
+
+	err := app.RunArgs([]string{"broken"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no handler defined")
+}
+
+// Test for context Duration method
+
+func TestContextDuration(t *testing.T) {
+	var dur time.Duration
+
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run").
+		Flags(&DurationFlag{Name: "timeout", Value: 30 * time.Second}).
+		Run(func(ctx *Context) error {
+			// Duration flags store their value directly
+			if v, ok := ctx.flags["timeout"].(time.Duration); ok {
+				dur = v
+			}
+			return nil
+		})
+
+	err := app.RunArgs([]string{"run"})
+	assert.NoError(t, err)
+	assert.Equal(t, 30*time.Second, dur)
+}
+
+// Test short help flag -h
+
+func TestShortHelpFlag(t *testing.T) {
+	var buf bytes.Buffer
+	app := New("test").Description("Test")
+	app.stdout = &buf
+
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.RunArgs([]string{"run", "-h"})
+	assert.True(t, IsHelpRequested(err))
+	assert.Contains(t, buf.String(), "Run something")
+}
+
+// Test context with nil app for semantic output
+
+func TestContextSemanticOutputWithNilApp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	ctx := &Context{
+		app:    nil, // No app - colors won't be applied
+		stdout: &stdout,
+		stderr: &stderr,
+	}
+
+	ctx.Success("success")
+	ctx.Info("info")
+	ctx.Warn("warn")
+	ctx.Fail("fail")
+
+	assert.Contains(t, stdout.String(), "success")
+	assert.Contains(t, stdout.String(), "info")
+	assert.Contains(t, stderr.String(), "warn")
+	assert.Contains(t, stderr.String(), "fail")
+}
+
+// Test context Bool with string "1"
+
+func TestContextBoolFromStringOne(t *testing.T) {
+	ctx := newTestContext(map[string]any{
+		"flag": "1",
+	})
+
+	assert.True(t, ctx.Bool("flag"))
+}
+
+// Test context Bool with string "true"
+
+func TestContextBoolFromStringTrue(t *testing.T) {
+	ctx := newTestContext(map[string]any{
+		"flag": "true",
+	})
+
+	assert.True(t, ctx.Bool("flag"))
+}
+
+// Test parsing args with first arg as flag
+
+func TestParseArgsFirstArgIsFlag(t *testing.T) {
+	app := New("test").Description("Test")
+	app.GlobalFlags(&BoolFlag{Name: "verbose", Short: "v"})
+	app.stdout = &bytes.Buffer{}
+
+	// When first arg is a flag, it should show help
+	err := app.RunArgs([]string{"-v"})
+	assert.NoError(t, err)
+}
+
+// Test group command list with colors disabled
+
+func TestGroupCommandListNoColors(t *testing.T) {
+	app := New("test").Description("Test")
+	app.SetColorEnabled(false)
+
+	users := app.Group("users").Description("User management")
+	users.Command("list").Description("List users").Run(func(ctx *Context) error { return nil })
+	users.Command("create").Description("Create user").Run(func(ctx *Context) error { return nil })
+
+	list := users.commandList()
+	assert.Contains(t, list, "users list")
+	assert.Contains(t, list, "users create")
+	assert.NotContains(t, list, "\033[") // No ANSI codes
+}
+
+// Test parsing with variadic args (...) notation
+
+func TestVariadicArgs(t *testing.T) {
+	var files []string
+
+	app := New("test").Description("Test")
+	app.Command("process").
+		Description("Process files").
+		Args("files...").
+		Run(func(ctx *Context) error {
+			files = ctx.Args()
+			return nil
+		})
+
+	err := app.RunArgs([]string{"process", "a.txt", "b.txt", "c.txt"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a.txt", "b.txt", "c.txt"}, files)
+}
+
+// Test recover middleware captures panic value
+
+func TestRecoverMiddlewarePanicValue(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Use(Recover())
+	app.Command("panic").
+		Description("Panic").
+		Run(func(ctx *Context) error {
+			panic("specific error message")
+		})
+
+	err := app.RunArgs([]string{"panic"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "specific error message")
+}
+
+// Test RequireFlags with multiple flags
+
+func TestRequireFlagsMultiple(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Command("deploy").
+		Description("Deploy").
+		Flags(
+			&StringFlag{Name: "env"},
+			&StringFlag{Name: "region"},
+		).
+		Use(RequireFlags("env", "region")).
+		Run(func(ctx *Context) error { return nil })
+
+	// Missing both
+	err := app.RunArgs([]string{"deploy"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "required flag not set")
+
+	// One provided
+	err = app.RunArgs([]string{"deploy", "--env", "prod"})
+	assert.Error(t, err)
+
+	// Both provided
+	err = app.RunArgs([]string{"deploy", "--env", "prod", "--region", "us-west"})
+	assert.NoError(t, err)
+}
+
+// Test deprecated flag message
+
+func TestDeprecatedFlag(t *testing.T) {
+	// Deprecated is on command, not flag - testing command deprecated
+	var buf bytes.Buffer
+	app := New("test").Description("Test")
+	app.stdout = &buf
+
+	app.Command("oldcmd").
+		Description("Old command").
+		Deprecated("Use 'newcmd' instead").
+		Run(func(ctx *Context) error { return nil })
+
+	// Running deprecated command still works
+	err := app.RunArgs([]string{"oldcmd"})
+	assert.NoError(t, err)
+}
+
+// Test HelpTheme
+
+func TestHelpTheme(t *testing.T) {
+	app := New("test").Description("Test")
+
+	theme := DefaultHelpTheme()
+	theme.TitleStart = color.NewRGB(255, 0, 0)
+	app.HelpTheme(theme)
+
+	assert.NotNil(t, app.helpTheme)
 }

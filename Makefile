@@ -1,5 +1,5 @@
 
-COVER_PKGS := $(shell go list ./... | grep -v /examples)
+COVER_PKGS := $(shell go list ./... | grep -v /examples | grep -v /cmd)
 
 .PHONY: cover-html
 cover-html:

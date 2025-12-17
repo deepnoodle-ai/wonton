@@ -297,6 +297,72 @@ func TestGroup_AllEmptyChildren(t *testing.T) {
 	assert.Equal(t, 0, h) // all empty children result in 0x0 group
 }
 
+func TestGroup_GapWithEmptyView(t *testing.T) {
+	// Empty views should not contribute to gap spacing
+	g := Group(
+		Text("A"),
+		Empty(),
+		Text("B"),
+	).Gap(3)
+
+	w, _ := g.size(100, 100)
+	// Should be 2 chars + 1 gap (between A and B), not 2 gaps
+	assert.Equal(t, 2+3, w) // 2 chars + 1 gap of 3
+}
+
+func TestGroup_GapWithIfFalse(t *testing.T) {
+	// If(false, ...) returns Empty, should not add extra gap
+	g := Group(
+		Text("A"),
+		If(false, Text("Hidden")),
+		Text("B"),
+	).Gap(2)
+
+	w, _ := g.size(100, 100)
+	// Should be 2 chars + 1 gap, not 2 gaps
+	assert.Equal(t, 2+2, w)
+}
+
+func TestGroup_GapWithMultipleEmptyViews(t *testing.T) {
+	// Multiple empty views should all be skipped
+	g := Group(
+		Empty(),
+		Text("A"),
+		Empty(),
+		Empty(),
+		Text("B"),
+		Empty(),
+	).Gap(5)
+
+	w, _ := g.size(100, 100)
+	// Should be 2 chars + 1 gap of 5
+	assert.Equal(t, 2+5, w)
+}
+
+func TestGroup_AllEmptyViewsWithGap(t *testing.T) {
+	g := Group(
+		Empty(),
+		Empty(),
+		Empty(),
+	).Gap(10)
+
+	w, h := g.size(100, 100)
+	assert.Equal(t, 0, w)
+	assert.Equal(t, 0, h)
+}
+
+func TestGroup_SingleVisibleWithEmpty(t *testing.T) {
+	// Only one visible child means no gaps at all
+	g := Group(
+		Empty(),
+		Text("Only"),
+		Empty(),
+	).Gap(10)
+
+	w, _ := g.size(100, 100)
+	assert.Equal(t, 4, w) // Just "Only", no gaps
+}
+
 // Chaining tests (additional to view_test.go)
 
 func TestGroup_ChainingMultiple(t *testing.T) {

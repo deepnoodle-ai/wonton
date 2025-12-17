@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // App is the main CLI application.
@@ -24,12 +25,7 @@ type App struct {
 	middleware []Middleware
 
 	// Global flags
-	globalFlags     []Flag
-	globalFlagsDefs any
-
-	// Config resolution
-	configPaths []string
-	configType  string
+	globalFlags []Flag
 
 	// I/O
 	stdin  io.Reader
@@ -40,6 +36,9 @@ type App struct {
 	isInteractive    bool
 	forceInteractive *bool // For testing - if set, overrides TTY detection
 	colorEnabled     bool  // Whether to use colored output
+
+	// Help styling
+	helpTheme *HelpTheme
 }
 
 // New creates a new CLI application.
@@ -52,7 +51,7 @@ func New(name string) *App {
 		stdin:        os.Stdin,
 		stdout:       os.Stdout,
 		stderr:       os.Stderr,
-		colorEnabled: color.IsTerminal(os.Stdout),
+		colorEnabled: color.ShouldColorize(os.Stdout),
 	}
 }
 
@@ -153,10 +152,12 @@ func (a *App) RunContext(ctx context.Context, args []string) error {
 	}
 
 	// Find the command
-	cmd, err := a.findCommand(cmdName)
+	cmd, subCmdArgs, err := a.findCommand(cmdName, cmdArgs)
 	if err != nil {
 		return err
 	}
+	// Update cmdArgs if we consumed a subcommand name
+	cmdArgs = subCmdArgs
 
 	// Create execution context
 	execCtx := &Context{
@@ -216,17 +217,18 @@ func (a *App) parseArgs(args []string) (string, []string, error) {
 }
 
 // findCommand looks up a command by name, including group commands and aliases.
-func (a *App) findCommand(name string) (*Command, error) {
+// It returns the command, the remaining args (after consuming subcommand name if applicable), and any error.
+func (a *App) findCommand(name string, args []string) (*Command, []string, error) {
 	// Check direct commands first
 	if cmd, ok := a.commands[name]; ok {
-		return cmd, nil
+		return cmd, args, nil
 	}
 
 	// Check aliases for direct commands
 	for _, cmd := range a.commands {
 		for _, alias := range cmd.aliases {
 			if alias == name {
-				return cmd, nil
+				return cmd, args, nil
 			}
 		}
 	}
@@ -236,42 +238,57 @@ func (a *App) findCommand(name string) (*Command, error) {
 	if len(parts) == 2 {
 		if g, ok := a.groups[parts[0]]; ok {
 			if cmd, ok := g.commands[parts[1]]; ok {
-				return cmd, nil
+				return cmd, args, nil
 			}
 			// Check aliases within the group
 			for _, cmd := range g.commands {
 				for _, alias := range cmd.aliases {
 					if alias == parts[1] {
-						return cmd, nil
+						return cmd, args, nil
 					}
 				}
 			}
 		}
 	}
 
-	// Check groups (e.g., "users list" becomes ["users", "list"])
-	// This is handled by looking for space-separated args
-	for groupName, group := range a.groups {
-		if name == groupName {
-			// Show group help
-			return nil, fmt.Errorf("group '%s' requires a subcommand\n\nAvailable commands:\n%s",
-				groupName, group.commandList())
+	// Check groups with space-separated subcommand (e.g., "users list" as args ["users", "list"])
+	if group, ok := a.groups[name]; ok {
+		if len(args) > 0 {
+			subName := args[0]
+			// Check direct subcommand
+			if cmd, ok := group.commands[subName]; ok {
+				return cmd, args[1:], nil
+			}
+			// Check aliases within the group
+			for _, cmd := range group.commands {
+				for _, alias := range cmd.aliases {
+					if alias == subName {
+						return cmd, args[1:], nil
+					}
+				}
+			}
 		}
+		// No valid subcommand provided - show group help
+		return nil, nil, fmt.Errorf("group '%s' requires a subcommand\n\nAvailable commands:\n%s",
+			name, group.commandList())
 	}
 
-	return nil, fmt.Errorf("unknown command: %s\n\nRun '%s help' for usage", name, a.name)
+	return nil, nil, fmt.Errorf("unknown command: %s\n\nRun '%s help' for usage", name, a.name)
 }
 
 // showHelp displays the application help.
 func (a *App) showHelp() error {
+	if a.colorEnabled {
+		// Use the styled tui-based help
+		view := a.renderAppHelp()
+		return tui.Fprint(a.stdout, view)
+	}
+
+	// Fallback to plain text for non-color terminals
 	var sb strings.Builder
 
 	// App name and description
-	if a.colorEnabled {
-		sb.WriteString(color.Bold(color.BrightCyan.Apply(a.name)))
-	} else {
-		sb.WriteString(a.name)
-	}
+	sb.WriteString(a.name)
 	if a.description != "" {
 		sb.WriteString(" - ")
 		sb.WriteString(a.description)
@@ -280,74 +297,53 @@ func (a *App) showHelp() error {
 
 	// Version
 	if a.version != "" {
-		if a.colorEnabled {
-			sb.WriteString(color.Yellow.Apply("Version:"))
-		} else {
-			sb.WriteString("Version:")
-		}
-		sb.WriteString(" ")
+		sb.WriteString("Version: ")
 		sb.WriteString(a.version)
 		sb.WriteString("\n\n")
 	}
 
 	// Usage section
-	if a.colorEnabled {
-		sb.WriteString(color.Yellow.Apply("Usage:"))
-	} else {
-		sb.WriteString("Usage:")
-	}
-	sb.WriteString("\n  ")
+	sb.WriteString("Usage:\n  ")
 	sb.WriteString(a.name)
 	sb.WriteString(" <command> [flags] [args]\n\n")
 
 	// Commands section
 	if len(a.commands) > 0 {
-		if a.colorEnabled {
-			sb.WriteString(color.Yellow.Apply("Commands:"))
-		} else {
-			sb.WriteString("Commands:")
-		}
-		sb.WriteString("\n")
+		sb.WriteString("Commands:\n")
 		for name, cmd := range a.commands {
 			if cmd.hidden {
 				continue
 			}
-			if a.colorEnabled {
-				sb.WriteString(fmt.Sprintf("  %-15s %s\n", color.Green.Apply(name), cmd.description))
-			} else {
-				sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
-			}
+			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
 		}
 		sb.WriteString("\n")
 	}
 
 	// Command groups section
 	if len(a.groups) > 0 {
-		if a.colorEnabled {
-			sb.WriteString(color.Yellow.Apply("Command Groups:"))
-		} else {
-			sb.WriteString("Command Groups:")
+		sb.WriteString("Command Groups:\n")
+		for name, group := range a.groups {
+			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
 		}
 		sb.WriteString("\n")
-		for name, group := range a.groups {
-			if a.colorEnabled {
-				sb.WriteString(fmt.Sprintf("  %-15s %s\n", color.Green.Apply(name), group.description))
-			} else {
-				sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+	}
+
+	// Global flags section
+	if len(a.globalFlags) > 0 {
+		sb.WriteString("Global Flags:\n")
+		for _, f := range a.globalFlags {
+			if f.IsHidden() {
+				continue
 			}
+			writeFlagHelp(&sb, f)
 		}
 		sb.WriteString("\n")
 	}
 
 	// Help hint
 	sb.WriteString("Run '")
-	if a.colorEnabled {
-		sb.WriteString(color.Cyan.Apply(a.name + " <command> --help"))
-	} else {
-		sb.WriteString(a.name)
-		sb.WriteString(" <command> --help")
-	}
-	sb.WriteString("' for more information on a command.\n")
+	sb.WriteString(a.name)
+	sb.WriteString(" <command> --help' for more information on a command.\n")
 
 	fmt.Fprint(a.stdout, sb.String())
 	return nil
@@ -391,5 +387,19 @@ func (g *Group) commandList() string {
 // SetColorEnabled enables or disables colored output.
 func (a *App) SetColorEnabled(enabled bool) *App {
 	a.colorEnabled = enabled
+	return a
+}
+
+// HelpTheme sets a custom theme for help output styling.
+// Use DefaultHelpTheme() to get the default theme and modify it.
+//
+// Example:
+//
+//	theme := cli.DefaultHelpTheme()
+//	theme.TitleStart = color.NewRGB(255, 100, 100)
+//	theme.TitleEnd = color.NewRGB(255, 100, 100)
+//	app.HelpTheme(theme)
+func (a *App) HelpTheme(theme HelpTheme) *App {
+	a.helpTheme = &theme
 	return a
 }
