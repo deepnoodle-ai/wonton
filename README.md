@@ -1,100 +1,95 @@
-# wonton
+# Wonton
 
-Wonton is a batteries-included toolkit for building terminal-first software in Go.
-It combines a composable TUI engine, an opinionated CLI framework, low-level
-terminal primitives, and a handful of utility packages that make building
-operator tools and AI copilots enjoyable.
-
-The repository is organized as a single Go module
-(`github.com/deepnoodle-ai/wonton`) so you can `go get` exactly the packages you
-need.
+Wonton is a curated collection of Go packages for rapid application development.
+It provides a solid foundation of utilities, terminal UI components, and CLI
+building blocks that work well together.
 
 ```bash
 go get github.com/deepnoodle-ai/wonton@latest
 ```
 
-## Quick start: Declarative TUI
+## Why Wonton?
 
-```go
-package main
+**Rapid development on a strong foundation.** Wonton integrates functionality
+common to modern CLI applications and AI agent development, so you can focus on
+your application logic instead of stitching together dependencies.
 
-import (
-	"log"
+**Optimized for AI-assisted development.** Wonton is designed to be easily
+consumed by AI coding agents like Claude Code. Extensive examples, thorough
+documentation, and consistent APIs across all packages make it easy for agents
+to write correct code on the first try.
 
-	"github.com/deepnoodle-ai/wonton/tui"
-)
+**Build agentic CLIs.** Wonton is ideal for building your own agentic command-line
+tools like Claude Code—combining rich terminal UIs with the utilities AI agents
+need: HTML-to-Markdown conversion, SSE streaming, retry logic, and more.
 
-type counter struct{ n int }
+**Minimal dependencies.** Where practical, functionality is implemented directly
+rather than pulling in external packages. Consolidating common functionality into
+a single, well-maintained module reduces supply chain complexity and audit surface.
 
-func (c *counter) View() tui.View {
-	return tui.Stack(
-		tui.Text("Count: %d", c.n),
-		tui.Clickable("[+]", func() { c.n++ }),
-		tui.Clickable("Reset", func() { c.n = 0 }),
-	).Gap(1)
-}
+## Packages
 
-func (c *counter) HandleEvent(ev tui.Event) []tui.Cmd {
-	if key, ok := ev.(tui.KeyEvent); ok && key.Rune == 'q' {
-		return []tui.Cmd{tui.Quit()}
-	}
-	return nil
-}
+### Terminal UI
 
-func main() {
-	if err := tui.Run(&counter{}); err != nil {
-		log.Fatal(err)
-	}
-}
-```
+| Package      | Description                                                       |
+| ------------ | ----------------------------------------------------------------- |
+| **tui**      | Declarative TUI library with layout engine, views, and components |
+| **terminal** | Low-level terminal control, input decoding, double buffering      |
+| **color**    | ANSI color types, RGB/HSL conversion, gradients                   |
 
-Run the program with `go run .`, then press `q` or activate the Quit button to
-exit.
+### CLI Framework
 
-## Packages at a glance
+| Package | Description                                                       |
+| ------- | ----------------------------------------------------------------- |
+| **cli** | Command framework with flags, config, middleware, and completions |
+| **env** | Config loading from environment variables, .env files, and JSON   |
 
-- `tui`: Declarative layout engine, runtime, and ready-made views (lists, tables,
-  markdown, spinners, forms).
-- `cli`: Command framework that automatically switches between one-shot and
-  progressive (TUI) modes, supports groups, global flags, completions, and
-  middleware.
-- `terminal`: Low-level control over ANSI terminals with double buffering,
-  hyperlink support, recording/replay, and resize/mouse helpers.
-- `env`: Parse strongly typed configuration structures from environment
-  variables, `.env` files, and JSON files with validation hooks.
-- `retry`: Context-aware retries with exponential or custom backoff, jitter, and
-  callbacks.
-- `slog`: Colorized `log/slog` handler that understands structured attributes.
-- `assert`: Lightweight testing helpers with detailed diffs.
-- `htmltomd`: HTML to Markdown conversion for LLMs/AI agents, gracefully
-  handles malformed HTML.
-- `humanize`: Helpers for formatting numbers, durations, relative times, and
-  byte sizes.
-- `sse`: Streaming parser and reconnecting HTTP client for Server-Sent Events.
-- `examples`: Over 30 runnable demos that showcase the CLI and TUI stacks.
+### Web & Networking
 
-Browse each package directory (for example `tui/README.md`) for focused
-documentation and usage notes.
+| Package       | Description                                                |
+| ------------- | ---------------------------------------------------------- |
+| **fetch**     | HTTP page fetching with configurable options               |
+| **crawler**   | Web crawler with pluggable fetchers, parsers, and caching  |
+| **htmlparse** | HTML parsing, metadata extraction, link discovery          |
+| **htmltomd**  | HTML to Markdown conversion, ideal for LLM consumption     |
+| **sse**       | Server-Sent Events parser and reconnecting HTTP client     |
+| **web**       | URL manipulation, text normalization, media type detection |
+
+### Utilities
+
+| Package       | Description                                             |
+| ------------- | ------------------------------------------------------- |
+| **assert**    | Test assertions with detailed diffs                     |
+| **clipboard** | Cross-platform system clipboard read/write              |
+| **git**       | Wrapper for common git read operations                  |
+| **humanize**  | Human-readable formatting for bytes, durations, numbers |
+| **retry**     | Retry with exponential backoff, jitter, and callbacks   |
+| **unidiff**   | Unified diff parsing for display and analysis           |
+
+### Testing & Recording
+
+| Package         | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| **termtest**    | Terminal output testing with ANSI parsing and snapshots   |
+| **termsession** | Terminal session recording/playback (asciinema v2 format) |
+| **gif**         | Animated GIF creation with drawing primitives             |
+
+Browse each package directory (e.g., `tui/README.md`) for detailed documentation.
 
 ## Examples
 
-Every folder under `examples/` is a standalone `main` package. Run any example
-with `go run`:
+Every folder under `examples/` is a standalone `main` package:
 
 ```bash
-go run ./examples/cli_basic
-go run ./examples/table_demo
+go run ./examples/cli/basic
 ```
 
-The [examples/README.md](examples/README.md) file lists the demos by category
-and highlights a few good starting points.
+See [examples/README.md](examples/README.md) for the full list organized by category.
 
 ## Contributing
 
-Pull requests are welcome—especially new examples that exercise tricky parts of
-the runtime. Run `go test ./...` before submitting changes, and feel free to add
-new example directories under `examples/` to showcase additional use cases.
+Pull requests are welcome. Run `go test ./...` before submitting changes.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[Apache License 2.0](LICENSE)
