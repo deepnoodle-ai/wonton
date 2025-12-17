@@ -3,7 +3,6 @@ package clipboard
 import (
 	"context"
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -78,8 +77,10 @@ func TestClear(t *testing.T) {
 	assert.Equal(t, "", result)
 }
 
-// Example demonstrates basic clipboard read and write operations.
-func Example() {
+// Example_usage demonstrates basic clipboard read and write operations.
+// This example is not runnable in tests because clipboard access may not
+// be available in CI/headless environments.
+func Example_usage() {
 	// Check if clipboard is available
 	if !Available() {
 		fmt.Println("clipboard not available")
@@ -89,39 +90,42 @@ func Example() {
 	// Write to clipboard
 	err := Write("Hello, Clipboard!")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("write error:", err)
+		return
 	}
 
 	// Read from clipboard
 	text, err := Read()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("read error:", err)
+		return
 	}
 
-	fmt.Println(text)
-	// Output: Hello, Clipboard!
+	fmt.Println("clipboard contains:", text)
 }
 
-// ExampleWrite demonstrates writing text to the clipboard.
-func ExampleWrite() {
+// Example_write demonstrates writing text to the clipboard.
+func Example_write() {
 	err := Write("Sample text")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Println("Text written to clipboard")
 }
 
-// ExampleRead demonstrates reading text from the clipboard.
-func ExampleRead() {
+// Example_read demonstrates reading text from the clipboard.
+func Example_read() {
 	text, err := Read()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Printf("Clipboard contains: %s\n", text)
 }
 
-// ExampleWriteWithTimeout demonstrates writing with a custom timeout.
-func ExampleWriteWithTimeout() {
+// Example_writeWithTimeout demonstrates writing with a custom timeout.
+func Example_writeWithTimeout() {
 	// Use a shorter timeout for the operation
 	err := WriteWithTimeout("urgent data", 2*time.Second)
 	if err == ErrTimeout {
@@ -129,13 +133,14 @@ func ExampleWriteWithTimeout() {
 		return
 	}
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Println("Data written successfully")
 }
 
-// ExampleReadWithTimeout demonstrates reading with a custom timeout.
-func ExampleReadWithTimeout() {
+// Example_readWithTimeout demonstrates reading with a custom timeout.
+func Example_readWithTimeout() {
 	// Use a custom timeout
 	text, err := ReadWithTimeout(3 * time.Second)
 	if err == ErrTimeout {
@@ -143,39 +148,42 @@ func ExampleReadWithTimeout() {
 		return
 	}
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Printf("Read: %s\n", text)
 }
 
-// ExampleWriteContext demonstrates using context for cancellation.
-func ExampleWriteContext() {
+// Example_writeContext demonstrates using context for cancellation.
+func Example_writeContext() {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	err := WriteContext(ctx, "important data")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Println("Data written with context")
 }
 
-// ExampleReadContext demonstrates using context for cancellation.
-func ExampleReadContext() {
+// Example_readContext demonstrates using context for cancellation.
+func Example_readContext() {
 	// Create a context that can be cancelled
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	text, err := ReadContext(ctx)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Printf("Read with context: %s\n", text)
 }
 
-// ExampleAvailable demonstrates checking clipboard availability.
-func ExampleAvailable() {
+// Example_available demonstrates checking clipboard availability.
+func Example_available() {
 	if Available() {
 		fmt.Println("Clipboard is available")
 	} else {
@@ -183,12 +191,13 @@ func ExampleAvailable() {
 	}
 }
 
-// ExampleClear demonstrates clearing the clipboard.
-func ExampleClear() {
+// Example_clear demonstrates clearing the clipboard.
+func Example_clear() {
 	// Clear the clipboard contents
 	err := Clear()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("error:", err)
+		return
 	}
 	fmt.Println("Clipboard cleared")
 }

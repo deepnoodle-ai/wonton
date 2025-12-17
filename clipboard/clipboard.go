@@ -212,12 +212,11 @@ func Clear() error {
 	return Write("")
 }
 
-// runCommand executes a command with context and returns combined output.
+// runCommand executes a command with context and returns stdout.
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout, stderr bytes.Buffer
+	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
