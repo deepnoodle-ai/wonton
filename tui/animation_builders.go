@@ -3,8 +3,6 @@ package tui
 // AnimationBuilder provides a fluent API for composing complex animations.
 type AnimationBuilder struct {
 	animations []*Animation
-	sequences  []*AnimationSequence
-	groups     []*AnimationGroup
 	mode       AnimationMode
 }
 

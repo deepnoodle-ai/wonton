@@ -9,9 +9,7 @@ import (
 // ExampleApplication demonstrates the basic Application interface
 // for building declarative TUI applications.
 func ExampleApplication() {
-	type CounterApp struct {
-		count int
-	}
+	type CounterApp struct{}
 
 	// View returns the UI tree based on current state
 	// func (app *CounterApp) View() tui.View {
@@ -176,34 +174,6 @@ func ExampleBordered() {
 	_ = tui.Bordered(content).
 		FocusID("my-element").
 		FocusBorderFg(tui.ColorGreen)
-
-	// Output:
-}
-
-// ExampleEventHandler demonstrates event handling.
-func ExampleEventHandler() {
-	type App struct {
-		text string
-	}
-
-	// HandleEvent processes events and returns commands
-	// func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
-	// 	switch e := event.(type) {
-	// 	case tui.KeyEvent:
-	// 		if e.Rune == 'q' {
-	// 			return []tui.Cmd{tui.Quit()}
-	// 		}
-	// 		app.text += string(e.Rune)
-	// 	case tui.ResizeEvent:
-	// 		// Handle terminal resize
-	// 	}
-	// 	return nil
-	// }
-
-	app := &App{}
-	_ = app
-
-	// Output:
 }
 
 // ExampleWidth demonstrates size constraints.
@@ -218,43 +188,6 @@ func ExampleWidth() {
 
 	// Fixed width and height
 	_ = tui.Size(40, 10, content)
-
-	// Output:
-}
-
-// Example demonstrates a complete minimal application.
-func Example() {
-	type App struct {
-		count int
-	}
-
-	// View renders the UI
-	// func (app *App) View() tui.View {
-	// 	return tui.Stack(
-	// 		tui.Text("Counter: %d", app.count).Bold(),
-	// 		tui.Button("Increment", func() { app.count++ }),
-	// 		tui.Text("Press 'q' to quit").Dim(),
-	// 	).Gap(1)
-	// }
-
-	// HandleEvent processes events
-	// func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
-	// 	if key, ok := event.(tui.KeyEvent); ok && key.Rune == 'q' {
-	// 		return []tui.Cmd{tui.Quit()}
-	// 	}
-	// 	return nil
-	// }
-
-	app := &App{count: 0}
-	_ = app
-
-	// Run the application
-	// err := tui.Run(app)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// Output:
 }
 
 // ExampleRun demonstrates running a TUI application with options.
@@ -268,10 +201,10 @@ func ExampleRun() {
 
 	// Run with custom options
 	_ = tui.Run(app,
-		tui.WithFPS(60),                  // 60 FPS for smooth animations
-		tui.WithMouseTracking(true),      // Enable mouse events
-		tui.WithAlternateScreen(true),    // Use alternate screen buffer
-		tui.WithBracketedPaste(true),     // Handle pasted text properly
+		tui.WithFPS(60),               // 60 FPS for smooth animations
+		tui.WithMouseTracking(true),   // Enable mouse events
+		tui.WithAlternateScreen(true), // Use alternate screen buffer
+		tui.WithBracketedPaste(true),  // Handle pasted text properly
 	)
 
 	// Output:
