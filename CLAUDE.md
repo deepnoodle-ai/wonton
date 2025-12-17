@@ -4,32 +4,60 @@ This file provides guidance to Claude Code when working with this codebase.
 
 ## Project Overview
 
-Wonton is a collection of Go packages for building command-line applications. It
-provides everything needed to create professional CLIs: from simple argument
-parsing to rich terminal UIs with animations.
+Wonton is a curated collection of Go packages designed for rapid application
+development. It provides a solid foundation of utilities, terminal UI components,
+and CLI building blocks that work well together.
 
-### Packages
+### Why Wonton?
 
-| Package         | Import Path                                   | Purpose                                                      |
-| --------------- | --------------------------------------------- | ------------------------------------------------------------ |
-| **assert**      | `github.com/deepnoodle-ai/wonton/assert`      | Test assertions (fail immediately; use NonFatal for soft)    |
-| **cli**         | `github.com/deepnoodle-ai/wonton/cli`         | CLI framework with commands, flags, config, and middleware   |
-| **clipboard**   | `github.com/deepnoodle-ai/wonton/clipboard`   | Cross-platform system clipboard access                       |
-| **color**       | `github.com/deepnoodle-ai/wonton/color`       | ANSI color types, RGB, HSL, and gradient utilities           |
-| **crawler**     | `github.com/deepnoodle-ai/wonton/crawler`     | Web crawler with configurable fetchers, parsers, and caching |
-| **env**         | `github.com/deepnoodle-ai/wonton/env`         | Config loading from env vars, .env files, and JSON           |
-| **fetch**       | `github.com/deepnoodle-ai/wonton/fetch`       | Web page fetching interfaces and HTTP implementation         |
-| **gif**         | `github.com/deepnoodle-ai/wonton/gif`         | Animated GIF creation with drawing primitives                |
-| **git**         | `github.com/deepnoodle-ai/wonton/git`         | Git command wrapper for common read operations               |
-| **htmlparse**   | `github.com/deepnoodle-ai/wonton/htmlparse`   | HTML parsing, metadata extraction, link extraction           |
-| **htmltomd**    | `github.com/deepnoodle-ai/wonton/htmltomd`    | HTML to Markdown conversion for LLMs/AI agents               |
-| **humanize**    | `github.com/deepnoodle-ai/wonton/humanize`    | Human-readable formatting for bytes, durations, numbers      |
-| **retry**       | `github.com/deepnoodle-ai/wonton/retry`       | Retry logic with exponential backoff and jitter              |
-| **slog**        | `github.com/deepnoodle-ai/wonton/slog`        | Colorized slog.Handler for terminal output                   |
-| **sse**         | `github.com/deepnoodle-ai/wonton/sse`         | Server-Sent Events (SSE) stream parser and client            |
-| **terminal**    | `github.com/deepnoodle-ai/wonton/terminal`    | Low-level terminal control, input decoding, styles           |
-| **termsession** | `github.com/deepnoodle-ai/wonton/termsession` | Terminal session recording and playback (asciinema v2)       |
-| **termtest**    | `github.com/deepnoodle-ai/wonton/termtest`    | Terminal output testing with ANSI parsing and snapshots      |
-| **tui**         | `github.com/deepnoodle-ai/wonton/tui`         | Full TUI library with declarative views and runtime          |
-| **unidiff**     | `github.com/deepnoodle-ai/wonton/unidiff`     | Unified diff parsing for display and analysis                |
-| **web**         | `github.com/deepnoodle-ai/wonton/web`         | URL manipulation, text normalization, media detection        |
+- **Rapid development**: Integrates functionality common to modern CLI applications
+  and AI agent development, so you can focus on application logic.
+- **Optimized for AI-assisted development**: Designed to be easily consumed by AI
+  coding agents like Claude Code. Extensive examples, thorough documentation, and
+  consistent APIs make it easy for agents to write correct code.
+- **Build agentic CLIs**: Ideal for building agentic command-line tools like
+  Claude Code—combining rich terminal UIs with utilities AI agents need.
+- **Minimal dependencies**: Where practical, functionality is implemented directly
+  rather than importing external packages. Consolidating common functionality into
+  a single, well-maintained module reduces supply chain complexity and audit surface.
+
+## Packages
+
+| Package         | Purpose                                                      |
+| --------------- | ------------------------------------------------------------ |
+| **assert**      | Test assertions with detailed diffs                          |
+| **cli**         | CLI framework with commands, flags, config, and middleware   |
+| **clipboard**   | Cross-platform system clipboard read/write                   |
+| **color**       | ANSI color types, RGB/HSL conversion, gradients              |
+| **crawler**     | Web crawler with pluggable fetchers, parsers, and caching    |
+| **env**         | Config from environment variables, .env files, and JSON      |
+| **fetch**       | HTTP page fetching with configurable options                 |
+| **gif**         | Animated GIF creation with drawing primitives                |
+| **git**         | Wrapper for common git read operations                       |
+| **htmlparse**   | HTML parsing, metadata extraction, link discovery            |
+| **htmltomd**    | HTML to Markdown conversion, ideal for LLM consumption       |
+| **humanize**    | Human-readable formatting (bytes, durations, numbers)        |
+| **retry**       | Retry with exponential backoff, jitter, and callbacks        |
+| **sse**         | Server-Sent Events parser and reconnecting client            |
+| **terminal**    | Low-level terminal control, input decoding, styling          |
+| **termsession** | Terminal session recording/playback (asciinema v2 format)    |
+| **termtest**    | Terminal output testing with ANSI parsing and snapshots      |
+| **tui**         | Declarative TUI library with layout engine and components    |
+| **unidiff**     | Unified diff parsing for display and analysis                |
+| **web**         | URL manipulation, text normalization, media type detection   |
+
+## Development Commands
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests for a specific package
+go test ./tui/...
+
+# Run example
+go run ./examples/cli/basic
+
+# Coverage
+make cover-text
+```
