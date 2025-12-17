@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 var errTestQuit = errors.New("test quit error")
@@ -15,17 +15,17 @@ var errTestQuit = errors.New("test quit error")
 func TestTickCommand(t *testing.T) {
 	duration := 10 * time.Millisecond
 	cmd := Tick(duration)
-	require.NotNil(t, cmd)
+	assert.NotNil(t, cmd)
 
 	start := time.Now()
 	event := cmd()
 	elapsed := time.Since(start)
-	require.NotNil(t, event)
+	assert.NotNil(t, event)
 
 	tickEvent, ok := event.(TickEvent)
-	require.True(t, ok, "expected TickEvent, got %T", event)
-	require.False(t, tickEvent.Time.IsZero())
-	require.GreaterOrEqual(t, elapsed, duration)
+	assert.True(t, ok, "expected TickEvent, got %T", event)
+	assert.False(t, tickEvent.Time.IsZero())
+	assert.GreaterOrEqual(t, elapsed, duration)
 }
 
 // TestAfterCommand tests the After command delays and returns a TickEvent
@@ -37,36 +37,36 @@ func TestAfterCommand(t *testing.T) {
 	}
 
 	cmd := After(duration, fn)
-	require.NotNil(t, cmd)
+	assert.NotNil(t, cmd)
 
 	start := time.Now()
 	event := cmd()
 	elapsed := time.Since(start)
 
-	require.NotNil(t, event)
-	require.True(t, called, "callback should have been called")
+	assert.NotNil(t, event)
+	assert.True(t, called, "callback should have been called")
 
 	// After returns a TickEvent
 	tickEvent, ok := event.(TickEvent)
-	require.True(t, ok, "expected TickEvent, got %T", event)
-	require.False(t, tickEvent.Time.IsZero())
+	assert.True(t, ok, "expected TickEvent, got %T", event)
+	assert.False(t, tickEvent.Time.IsZero())
 
 	// Verify it delayed approximately the right amount
-	require.GreaterOrEqual(t, elapsed, duration, "After should delay at least %v, was %v", duration, elapsed)
-	require.Less(t, elapsed, duration+100*time.Millisecond, "After delayed too long: %v", elapsed)
+	assert.GreaterOrEqual(t, elapsed, duration, "After should delay at least %v, was %v", duration, elapsed)
+	assert.Less(t, elapsed, duration+100*time.Millisecond, "After delayed too long: %v", elapsed)
 }
 
 // TestQuitCommand tests the Quit command returns QuitEvent
 func TestQuitCommand(t *testing.T) {
 	cmd := Quit()
-	require.NotNil(t, cmd)
+	assert.NotNil(t, cmd)
 
 	event := cmd()
-	require.NotNil(t, event)
+	assert.NotNil(t, event)
 
 	quitEvent, ok := event.(QuitEvent)
-	require.True(t, ok, "expected QuitEvent, got %T", event)
-	require.False(t, quitEvent.Time.IsZero())
+	assert.True(t, ok, "expected QuitEvent, got %T", event)
+	assert.False(t, quitEvent.Time.IsZero())
 }
 
 // TestBatchCommand tests that Batch returns a slice of commands
@@ -76,21 +76,21 @@ func TestBatchCommand(t *testing.T) {
 	cmd3 := After(10*time.Millisecond, nil)
 
 	batchCmd := Batch(cmd1, cmd2, cmd3)
-	require.NotNil(t, batchCmd)
-	require.Len(t, batchCmd, 3, "Batch should return 3 commands")
+	assert.NotNil(t, batchCmd)
+	assert.Len(t, batchCmd, 3, "Batch should return 3 commands")
 
 	// Verify each command works
 	event1 := batchCmd[0]()
 	_, ok := event1.(QuitEvent)
-	require.True(t, ok, "first command should return QuitEvent")
+	assert.True(t, ok, "first command should return QuitEvent")
 
 	event2 := batchCmd[1]()
 	_, ok = event2.(TickEvent)
-	require.True(t, ok, "second command should return TickEvent")
+	assert.True(t, ok, "second command should return TickEvent")
 
 	event3 := batchCmd[2]()
 	_, ok = event3.(TickEvent)
-	require.True(t, ok, "third command should return TickEvent")
+	assert.True(t, ok, "third command should return TickEvent")
 }
 
 // TestBatchCommandWithNil tests that Batch handles nil commands
@@ -100,10 +100,10 @@ func TestBatchCommandWithNil(t *testing.T) {
 
 	// Batch with nil commands - Wonton's Batch just returns the slice as-is
 	batchCmd := Batch(nil, cmd1, nil, cmd2, nil)
-	require.NotNil(t, batchCmd)
+	assert.NotNil(t, batchCmd)
 
 	// Batch doesn't filter nils, it just returns what you give it
-	require.Len(t, batchCmd, 5)
+	assert.Len(t, batchCmd, 5)
 }
 
 // TestBatchCommandEmpty tests that Batch with no commands returns nil
@@ -153,11 +153,11 @@ func TestSequentialCommands(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify all events were received in order
-	require.Equal(t, []int{1, 2, 3}, tr.events)
-	require.True(t, tr.quit)
+	assert.Equal(t, []int{1, 2, 3}, tr.events)
+	assert.True(t, tr.quit)
 }
 
 type sequenceEvent struct {
@@ -217,12 +217,12 @@ func TestCommandReturningCommand(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify all steps were executed
-	require.True(t, tracker.step1, "step 1 should execute")
-	require.True(t, tracker.step2, "step 2 should execute")
-	require.True(t, tracker.step3, "step 3 should execute")
+	assert.True(t, tracker.step1, "step 1 should execute")
+	assert.True(t, tracker.step2, "step 2 should execute")
+	assert.True(t, tracker.step3, "step 3 should execute")
 }
 
 type chainEvent struct {
@@ -237,21 +237,21 @@ func (e chainEvent) Timestamp() time.Time {
 func TestAfterWithZeroDuration(t *testing.T) {
 	called := false
 	cmd := After(0, func() { called = true })
-	require.NotNil(t, cmd)
+	assert.NotNil(t, cmd)
 
 	start := time.Now()
 	event := cmd()
 	elapsed := time.Since(start)
 
-	require.NotNil(t, event)
-	require.True(t, called)
+	assert.NotNil(t, event)
+	assert.True(t, called)
 
 	// After returns TickEvent
 	_, ok := event.(TickEvent)
-	require.True(t, ok)
+	assert.True(t, ok)
 
 	// Should execute almost immediately
-	require.Less(t, elapsed, 10*time.Millisecond)
+	assert.Less(t, elapsed, 10*time.Millisecond)
 }
 
 // TestAfterWithLongDuration tests After with a longer duration
@@ -259,21 +259,21 @@ func TestAfterWithLongDuration(t *testing.T) {
 	called := false
 	duration := 200 * time.Millisecond
 	cmd := After(duration, func() { called = true })
-	require.NotNil(t, cmd)
+	assert.NotNil(t, cmd)
 
 	start := time.Now()
 	event := cmd()
 	elapsed := time.Since(start)
 
-	require.NotNil(t, event)
-	require.True(t, called)
+	assert.NotNil(t, event)
+	assert.True(t, called)
 
 	// After returns TickEvent
 	_, ok := event.(TickEvent)
-	require.True(t, ok)
+	assert.True(t, ok)
 
-	require.GreaterOrEqual(t, elapsed, duration)
-	require.Less(t, elapsed, duration+100*time.Millisecond)
+	assert.GreaterOrEqual(t, elapsed, duration)
+	assert.Less(t, elapsed, duration+100*time.Millisecond)
 }
 
 // TestMultipleAfterCommands tests multiple After commands in sequence
@@ -294,16 +294,12 @@ func TestMultipleAfterCommands(t *testing.T) {
 
 	elapsed := time.Since(start)
 
-	require.Equal(t, 3, count)
-	require.GreaterOrEqual(t, elapsed, 30*time.Millisecond)
+	assert.Equal(t, 3, count)
+	assert.GreaterOrEqual(t, elapsed, 30*time.Millisecond)
 }
 
 // TestCommandErrorHandling tests how commands handle errors
 func TestCommandErrorHandling(t *testing.T) {
-	type errorEvent struct {
-		err error
-	}
-
 	// Command that returns an error event
 	cmd := func() Event {
 		return ErrorEvent{
@@ -313,12 +309,12 @@ func TestCommandErrorHandling(t *testing.T) {
 	}
 
 	event := cmd()
-	require.NotNil(t, event)
+	assert.NotNil(t, event)
 
 	errEvent, ok := event.(ErrorEvent)
-	require.True(t, ok)
-	require.Error(t, errEvent.Err)
-	require.Equal(t, errTestQuit, errEvent.Err)
+	assert.True(t, ok)
+	assert.Error(t, errEvent.Err)
+	assert.Equal(t, errTestQuit, errEvent.Err)
 }
 
 // TestConcurrentCommandExecution tests commands executing concurrently
@@ -362,8 +358,8 @@ func TestConcurrentCommandExecution(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
-	require.Equal(t, 5, tracker.count)
+	assert.NoError(t, err)
+	assert.Equal(t, 5, tracker.count)
 }
 
 type concurrentEvent struct{}
@@ -375,7 +371,7 @@ func (e concurrentEvent) Timestamp() time.Time {
 // TestNoneCommand tests that None returns nil
 func TestNoneCommand(t *testing.T) {
 	cmds := None()
-	require.Nil(t, cmds)
+	assert.Nil(t, cmds)
 }
 
 // TestSequenceCommand tests that Sequence executes commands in order
@@ -387,46 +383,46 @@ func TestSequenceCommand(t *testing.T) {
 
 	// Execute the sequence
 	seqCmd := Sequence(cmd1, cmd2, cmd3)
-	require.NotNil(t, seqCmd)
+	assert.NotNil(t, seqCmd)
 
 	result := seqCmd()
-	require.NotNil(t, result)
+	assert.NotNil(t, result)
 
 	// Result should be a BatchEvent containing all the events
 	batchEvent, ok := result.(BatchEvent)
-	require.True(t, ok, "Sequence should return BatchEvent")
-	require.Len(t, batchEvent.Events, 3, "BatchEvent should contain 3 events")
+	assert.True(t, ok, "Sequence should return BatchEvent")
+	assert.Len(t, batchEvent.Events, 3, "BatchEvent should contain 3 events")
 
 	// Verify each event is a TickEvent
 	for i, event := range batchEvent.Events {
 		tickEvent, ok := event.(TickEvent)
-		require.True(t, ok, "Event %d should be TickEvent", i)
-		require.Equal(t, uint64(i+1), tickEvent.Frame, "Frame should be %d", i+1)
+		assert.True(t, ok, "Event %d should be TickEvent", i)
+		assert.Equal(t, uint64(i+1), tickEvent.Frame, "Frame should be %d", i+1)
 	}
 }
 
 // TestSequenceCommandEmpty tests Sequence with no commands
 func TestSequenceCommandEmpty(t *testing.T) {
 	seqCmd := Sequence()
-	require.NotNil(t, seqCmd)
+	assert.NotNil(t, seqCmd)
 
 	result := seqCmd()
 	batchEvent, ok := result.(BatchEvent)
-	require.True(t, ok)
-	require.Len(t, batchEvent.Events, 0)
+	assert.True(t, ok)
+	assert.Len(t, batchEvent.Events, 0)
 }
 
 // TestSequenceCommandSingle tests Sequence with single command
 func TestSequenceCommandSingle(t *testing.T) {
 	cmd := Quit()
 	seqCmd := Sequence(cmd)
-	require.NotNil(t, seqCmd)
+	assert.NotNil(t, seqCmd)
 
 	result := seqCmd()
 	batchEvent, ok := result.(BatchEvent)
-	require.True(t, ok)
-	require.Len(t, batchEvent.Events, 1)
+	assert.True(t, ok)
+	assert.Len(t, batchEvent.Events, 1)
 
 	_, ok = batchEvent.Events[0].(QuitEvent)
-	require.True(t, ok, "Event should be QuitEvent")
+	assert.True(t, ok, "Event should be QuitEvent")
 }

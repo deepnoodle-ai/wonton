@@ -2,21 +2,23 @@ package tui
 
 import (
 	"fmt"
-	"image"
+	"math"
 )
 
 // progressView displays a progress bar (declarative view)
 type progressView struct {
-	current      int
-	total        int
-	width        int
-	filledChar   rune
-	emptyChar    rune
-	style        Style
-	bgStyle      Style
-	showPercent  bool
-	showFraction bool
-	label        string
+	current       int
+	total         int
+	width         int
+	filledChar    rune
+	emptyChar     rune
+	emptyPattern  string // if set, overrides emptyChar with a repeating pattern
+	style         Style
+	emptyStyle    Style
+	percentStyle  *Style // style for percentage text (if not set, uses style)
+	showPercent   bool
+	showFraction  bool
+	label         string
 }
 
 // Progress creates a declarative progress bar view.
@@ -33,7 +35,7 @@ func Progress(current, total int) *progressView {
 		filledChar:  '█',
 		emptyChar:   '░',
 		style:       NewStyle().WithForeground(ColorGreen),
-		bgStyle:     NewStyle().WithForeground(ColorBrightBlack),
+		emptyStyle:  NewStyle().WithForeground(ColorBrightBlack),
 		showPercent: true,
 	}
 }
@@ -53,6 +55,21 @@ func (p *progressView) FilledChar(c rune) *progressView {
 // EmptyChar sets the character used for the empty portion.
 func (p *progressView) EmptyChar(c rune) *progressView {
 	p.emptyChar = c
+	p.emptyPattern = "" // clear pattern if set
+	return p
+}
+
+// EmptyPattern sets a repeating pattern for the empty portion instead of a single character.
+// The pattern will repeat to fill the unfilled space.
+//
+// Example:
+//
+//	Progress(50, 100).EmptyPattern("·-")  // Repeats "·-·-·-..."
+//	Progress(30, 100).EmptyPattern("░▒")   // Repeats "░▒░▒░▒..."
+func (p *progressView) EmptyPattern(pattern string) *progressView {
+	if pattern != "" {
+		p.emptyPattern = pattern
+	}
 	return p
 }
 
@@ -62,9 +79,15 @@ func (p *progressView) Fg(c Color) *progressView {
 	return p
 }
 
-// BgFg sets the foreground color for the empty portion.
-func (p *progressView) BgFg(c Color) *progressView {
-	p.bgStyle = p.bgStyle.WithForeground(c)
+// EmptyFg sets the foreground color for the empty portion of the bar.
+func (p *progressView) EmptyFg(c Color) *progressView {
+	p.emptyStyle = p.emptyStyle.WithForeground(c)
+	return p
+}
+
+// EmptyStyle sets the complete style for the empty portion of the bar.
+func (p *progressView) EmptyStyle(s Style) *progressView {
+	p.emptyStyle = s
 	return p
 }
 
@@ -86,6 +109,23 @@ func (p *progressView) HidePercent() *progressView {
 	return p
 }
 
+// PercentStyle sets the style for the percentage text.
+// If not set, the filled portion style is used.
+func (p *progressView) PercentStyle(s Style) *progressView {
+	p.percentStyle = &s
+	return p
+}
+
+// PercentFg sets the foreground color for the percentage text.
+func (p *progressView) PercentFg(c Color) *progressView {
+	if p.percentStyle == nil {
+		s := NewStyle()
+		p.percentStyle = &s
+	}
+	*p.percentStyle = p.percentStyle.WithForeground(c)
+	return p
+}
+
 // ShowFraction shows current/total instead of percentage.
 func (p *progressView) ShowFraction() *progressView {
 	p.showFraction = true
@@ -99,43 +139,63 @@ func (p *progressView) Label(label string) *progressView {
 	return p
 }
 
-func (p *progressView) size(maxWidth, maxHeight int) (int, int) {
-	w := p.width
-	if p.label != "" {
-		labelW, _ := MeasureText(p.label)
-		w += labelW + 1 // +1 for space
+// Shimmer returns an animated progress bar with a shimmer highlight effect.
+// Speed controls how fast the shimmer moves (lower = faster).
+// HighlightColor is the color of the shimmer highlight.
+func (p *progressView) Shimmer(highlightColor RGB, speed int) *animatedProgressView {
+	return &animatedProgressView{
+		base:           p,
+		shimmer:        true,
+		shimmerSpeed:   speed,
+		highlightColor: highlightColor,
 	}
-	if p.showPercent {
-		w += 5 // " 100%"
-	}
-	if p.showFraction {
-		// Estimate fraction width
-		w += len(fmt.Sprintf(" %d/%d", p.total, p.total)) + 1
-	}
-	if maxWidth > 0 && w > maxWidth {
-		w = maxWidth
-	}
-	return w, 1
 }
 
-func (p *progressView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+// Pulse returns an animated progress bar with a pulsing brightness effect.
+// Color is the base color, speed controls the pulse rate (lower = faster).
+func (p *progressView) Pulse(color RGB, speed int) *animatedProgressView {
+	return &animatedProgressView{
+		base:       p,
+		pulse:      true,
+		pulseSpeed: speed,
+		pulseColor: color,
+	}
+}
+
+// animatedProgressView displays an animated progress bar
+type animatedProgressView struct {
+	base           *progressView
+	shimmer        bool
+	shimmerSpeed   int
+	highlightColor RGB
+	pulse          bool
+	pulseSpeed     int
+	pulseColor     RGB
+}
+
+func (a *animatedProgressView) size(maxWidth, maxHeight int) (int, int) {
+	return a.base.size(maxWidth, maxHeight)
+}
+
+func (a *animatedProgressView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
+	p := a.base
 	x := 0
 
 	// Draw label
 	if p.label != "" {
-		subFrame.PrintStyled(x, 0, p.label, p.style)
+		ctx.PrintStyled(x, 0, p.label, p.style)
 		labelW, _ := MeasureText(p.label)
 		x += labelW + 1
 	}
 
 	// Calculate available width for bar
 	barWidth := p.width
-	availableWidth := bounds.Dx() - x
+	availableWidth := width - x
 	if p.showPercent {
 		availableWidth -= 5
 	}
@@ -162,13 +222,57 @@ func (p *progressView) render(frame RenderFrame, bounds image.Rectangle) {
 	}
 
 	// Draw empty background
-	for i := 0; i < barWidth; i++ {
-		subFrame.SetCell(x+i, 0, p.emptyChar, p.bgStyle)
+	if p.emptyPattern != "" {
+		// Use repeating pattern for empty portion
+		patternRunes := []rune(p.emptyPattern)
+		for i := 0; i < barWidth; i++ {
+			char := patternRunes[i%len(patternRunes)]
+			ctx.SetCell(x+i, 0, char, p.emptyStyle)
+		}
+	} else {
+		// Use single character for empty portion
+		for i := 0; i < barWidth; i++ {
+			ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+		}
 	}
 
-	// Draw filled portion
+	frame := ctx.Frame()
+
+	// Draw filled portion with animation
 	for i := 0; i < fillWidth; i++ {
-		subFrame.SetCell(x+i, 0, p.filledChar, p.style)
+		style := p.style
+
+		if a.shimmer && fillWidth > 0 {
+			// Calculate shimmer position (moves across the bar)
+			shimmerPos := int(frame/uint64(a.shimmerSpeed)) % (fillWidth + 3)
+			distance := shimmerPos - i
+			if distance < 0 {
+				distance = -distance
+			}
+
+			// Apply shimmer highlight when close to shimmer position
+			if distance <= 2 {
+				intensity := 1.0 - float64(distance)/3.0
+				baseColor := p.style.FgRGB
+				r := uint8(float64(baseColor.R) + float64(a.highlightColor.R-baseColor.R)*intensity)
+				g := uint8(float64(baseColor.G) + float64(a.highlightColor.G-baseColor.G)*intensity)
+				b := uint8(float64(baseColor.B) + float64(a.highlightColor.B-baseColor.B)*intensity)
+				style = style.WithFgRGB(NewRGB(r, g, b))
+			}
+		}
+
+		if a.pulse {
+			// Calculate pulse brightness using sine wave (oscillates over time)
+			pulsePhase := float64(frame) / float64(a.pulseSpeed)
+			// Sine wave oscillates between -1 and 1, so scale to 0.3-1.0 range
+			brightness := 0.65 + 0.35*math.Sin(pulsePhase)
+			r := uint8(float64(a.pulseColor.R) * brightness)
+			g := uint8(float64(a.pulseColor.G) * brightness)
+			b := uint8(float64(a.pulseColor.B) * brightness)
+			style = style.WithFgRGB(NewRGB(r, g, b))
+		}
+
+		ctx.SetCell(x+i, 0, p.filledChar, style)
 	}
 	x += barWidth
 
@@ -176,10 +280,120 @@ func (p *progressView) render(frame RenderFrame, bounds image.Rectangle) {
 	if p.showPercent && p.total > 0 {
 		percent := (p.current * 100) / p.total
 		text := fmt.Sprintf(" %3d%%", percent)
-		subFrame.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	} else if p.showFraction {
 		text := fmt.Sprintf(" %d/%d", p.current, p.total)
-		subFrame.PrintStyled(x, 0, text, p.style)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
+	}
+}
+
+func (p *progressView) size(maxWidth, maxHeight int) (int, int) {
+	w := p.width
+	if p.label != "" {
+		labelW, _ := MeasureText(p.label)
+		w += labelW + 1 // +1 for space
+	}
+	if p.showPercent {
+		w += 5 // " 100%"
+	}
+	if p.showFraction {
+		// Estimate fraction width
+		w += len(fmt.Sprintf(" %d/%d", p.total, p.total)) + 1
+	}
+	if maxWidth > 0 && w > maxWidth {
+		w = maxWidth
+	}
+	return w, 1
+}
+
+func (p *progressView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
+		return
+	}
+
+	x := 0
+
+	// Draw label
+	if p.label != "" {
+		ctx.PrintStyled(x, 0, p.label, p.style)
+		labelW, _ := MeasureText(p.label)
+		x += labelW + 1
+	}
+
+	// Calculate available width for bar
+	barWidth := p.width
+	availableWidth := width - x
+	if p.showPercent {
+		availableWidth -= 5
+	}
+	if p.showFraction {
+		availableWidth -= len(fmt.Sprintf(" %d/%d", p.total, p.total)) + 1
+	}
+	if barWidth > availableWidth {
+		barWidth = availableWidth
+	}
+	if barWidth < 1 {
+		barWidth = 1
+	}
+
+	// Calculate filled width
+	fillWidth := 0
+	if p.total > 0 {
+		fillWidth = (p.current * barWidth) / p.total
+		if fillWidth > barWidth {
+			fillWidth = barWidth
+		}
+		if fillWidth < 0 {
+			fillWidth = 0
+		}
+	}
+
+	// Draw empty background
+	if p.emptyPattern != "" {
+		// Use repeating pattern for empty portion
+		patternRunes := []rune(p.emptyPattern)
+		for i := 0; i < barWidth; i++ {
+			char := patternRunes[i%len(patternRunes)]
+			ctx.SetCell(x+i, 0, char, p.emptyStyle)
+		}
+	} else {
+		// Use single character for empty portion
+		for i := 0; i < barWidth; i++ {
+			ctx.SetCell(x+i, 0, p.emptyChar, p.emptyStyle)
+		}
+	}
+
+	// Draw filled portion
+	for i := 0; i < fillWidth; i++ {
+		ctx.SetCell(x+i, 0, p.filledChar, p.style)
+	}
+	x += barWidth
+
+	// Draw percentage or fraction
+	if p.showPercent && p.total > 0 {
+		percent := (p.current * 100) / p.total
+		text := fmt.Sprintf(" %3d%%", percent)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
+	} else if p.showFraction {
+		text := fmt.Sprintf(" %d/%d", p.current, p.total)
+		percentStyle := p.style
+		if p.percentStyle != nil {
+			percentStyle = *p.percentStyle
+		}
+		ctx.PrintStyled(x, 0, text, percentStyle)
 	}
 }
 
@@ -254,23 +468,22 @@ func (s *loadingView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (s *loadingView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(s.charset) == 0 {
+func (s *loadingView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(s.charset) == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	// Calculate which character to show
 	idx := int(s.frame/uint64(s.speed)) % len(s.charset)
 	char := s.charset[idx]
 
 	// Draw spinner
-	subFrame.PrintStyled(0, 0, char, s.style)
+	ctx.PrintStyled(0, 0, char, s.style)
 
 	// Draw label
 	if s.label != "" {
 		charW, _ := MeasureText(char)
-		subFrame.PrintStyled(charW+1, 0, s.label, s.style)
+		ctx.PrintStyled(charW+1, 0, s.label, s.style)
 	}
 }

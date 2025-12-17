@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 // TestError_Types verifies all error types are properly defined
@@ -110,7 +109,7 @@ func TestSubFrame_EmptyIntersection(t *testing.T) {
 	assert.Equal(t, 0, h, "Empty subframe should have 0 height")
 
 	// Writing to empty subframe should not panic
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		subFrame.SetCell(0, 0, 'X', NewStyle())
 	})
 
@@ -189,7 +188,7 @@ func TestAnimation_EmptyText(t *testing.T) {
 	elem := NewAnimatedText(10, 10, "", &RainbowAnimation{})
 
 	frame, _ := term.BeginFrame()
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		elem.Draw(frame)
 	})
 	term.EndFrame(frame)
@@ -222,7 +221,7 @@ func TestAnimatedMultiLine_EmptyLines(t *testing.T) {
 	aml.AddLine("", &RainbowAnimation{})
 
 	frame, _ := term.BeginFrame()
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		aml.Draw(frame)
 	})
 	term.EndFrame(frame)
@@ -233,7 +232,7 @@ func TestAnimatedMultiLine_OutOfBoundsLineIndex(t *testing.T) {
 	aml := NewAnimatedMultiLine(0, 0, 80)
 
 	// Set line beyond current size - should expand safely
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		aml.SetLine(10, "Test", nil)
 	})
 

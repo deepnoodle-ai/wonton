@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 // Issue 2: Terminal Clear Style Logic
@@ -34,12 +33,12 @@ func TestTerminal_NegativeCursor_Panic(t *testing.T) {
 	term.MoveCursor(-5, -5)
 
 	// Try to perform an operation that iterates based on cursor
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.ClearToEndOfLine()
 	}, "ClearToEndOfLine should not panic with negative cursor")
 
 	// Try to print
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.Print("Hello")
 	}, "Print should not panic with negative cursor")
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 func TestNewFrame(t *testing.T) {
@@ -47,13 +46,13 @@ func TestFrame_Draw_TooSmall(t *testing.T) {
 
 	// Width < 2 should not draw
 	frame := NewFrame(0, 0, 1, 10)
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		frame.Draw(renderFrame)
 	})
 
 	// Height < 2 should not draw
 	frame = NewFrame(0, 0, 10, 1)
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		frame.Draw(renderFrame)
 	})
 
@@ -241,7 +240,7 @@ func TestFrame_Clear_TooSmall(t *testing.T) {
 	renderFrame, _ := term.BeginFrame()
 
 	frame := NewFrame(0, 0, 1, 5)
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		frame.Clear(renderFrame)
 	})
 
@@ -261,7 +260,7 @@ func TestBox_Draw_EmptyContent(t *testing.T) {
 	renderFrame, _ := term.BeginFrame()
 
 	box := NewBox([]string{})
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		box.Draw(renderFrame, 0, 0)
 	})
 

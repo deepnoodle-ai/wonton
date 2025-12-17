@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestMarkdownRenderer_BasicFormatting(t *testing.T) {
@@ -41,13 +41,13 @@ func TestMarkdownRenderer_BasicFormatting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := renderer.Render(tt.markdown)
-			require.NoError(t, err)
-			require.NotNil(t, result)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
 
 			// Check that all expected strings appear in the output
 			output := renderToPlainText(result)
 			for _, expected := range tt.contains {
-				require.Contains(t, output, expected)
+				assert.Contains(t, output, expected)
 			}
 		})
 	}
@@ -81,11 +81,11 @@ func TestMarkdownRenderer_Headings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := renderer.Render(tt.markdown)
-			require.NoError(t, err)
-			require.NotNil(t, result)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
 
 			output := renderToPlainText(result)
-			require.Contains(t, output, tt.expected)
+			assert.Contains(t, output, tt.expected)
 		})
 	}
 }
@@ -117,12 +117,12 @@ func TestMarkdownRenderer_Lists(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := renderer.Render(tt.markdown)
-			require.NoError(t, err)
-			require.NotNil(t, result)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
 
 			output := renderToPlainText(result)
 			for _, expected := range tt.contains {
-				require.Contains(t, output, expected)
+				assert.Contains(t, output, expected)
 			}
 		})
 	}
@@ -134,12 +134,12 @@ func TestMarkdownRenderer_CodeBlocks(t *testing.T) {
 	markdown := "```go\nfunc main() {\n    fmt.Println(\"Hello\")\n}\n```"
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	// Code blocks may contain ANSI codes from syntax highlighting
 	// Just check that we have some lines with code content
-	require.Greater(t, len(result.Lines), 0)
+	assert.Greater(t, len(result.Lines), 0)
 
 	// Check that code text appears somewhere in the segments
 	hasFunc := false
@@ -154,8 +154,8 @@ func TestMarkdownRenderer_CodeBlocks(t *testing.T) {
 			}
 		}
 	}
-	require.True(t, hasFunc, "Expected to find 'func' in code block")
-	require.True(t, hasPrintln, "Expected to find 'Println' in code block")
+	assert.True(t, hasFunc, "Expected to find 'func' in code block")
+	assert.True(t, hasPrintln, "Expected to find 'Println' in code block")
 }
 
 func TestMarkdownRenderer_Links(t *testing.T) {
@@ -164,21 +164,21 @@ func TestMarkdownRenderer_Links(t *testing.T) {
 	markdown := "Check out [this link](https://example.com)"
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	// Verify hyperlink was created
 	found := false
 	for _, line := range result.Lines {
 		for _, seg := range line.Segments {
 			if seg.Hyperlink != nil {
-				require.Equal(t, "https://example.com", seg.Hyperlink.URL)
-				require.Equal(t, "this link", seg.Hyperlink.Text)
+				assert.Equal(t, "https://example.com", seg.Hyperlink.URL)
+				assert.Equal(t, "this link", seg.Hyperlink.Text)
 				found = true
 			}
 		}
 	}
-	require.True(t, found, "Expected to find hyperlink in rendered output")
+	assert.True(t, found, "Expected to find hyperlink in rendered output")
 }
 
 func TestMarkdownRenderer_HorizontalRule(t *testing.T) {
@@ -187,14 +187,14 @@ func TestMarkdownRenderer_HorizontalRule(t *testing.T) {
 	markdown := "Before\n\n---\n\nAfter"
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	output := renderToPlainText(result)
-	require.Contains(t, output, "Before")
-	require.Contains(t, output, "After")
+	assert.Contains(t, output, "Before")
+	assert.Contains(t, output, "After")
 	// Should contain horizontal rule characters
-	require.Contains(t, output, renderer.Theme.HorizontalRuleChar)
+	assert.Contains(t, output, renderer.Theme.HorizontalRuleChar)
 }
 
 func TestMarkdownRenderer_Paragraph(t *testing.T) {
@@ -203,12 +203,12 @@ func TestMarkdownRenderer_Paragraph(t *testing.T) {
 	markdown := "This is a paragraph.\n\nThis is another paragraph."
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	output := renderToPlainText(result)
-	require.Contains(t, output, "This is a paragraph.")
-	require.Contains(t, output, "This is another paragraph.")
+	assert.Contains(t, output, "This is a paragraph.")
+	assert.Contains(t, output, "This is another paragraph.")
 }
 
 func TestMarkdownRenderer_ComplexDocument(t *testing.T) {
@@ -236,16 +236,16 @@ End of document.
 `
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.NotEmpty(t, result.Lines)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotEmpty(t, result.Lines)
 
 	output := renderToPlainText(result)
-	require.Contains(t, output, "My Document")
-	require.Contains(t, output, "bold")
-	require.Contains(t, output, "italic")
-	require.Contains(t, output, "Features")
-	require.Contains(t, output, "Feature 1")
+	assert.Contains(t, output, "My Document")
+	assert.Contains(t, output, "bold")
+	assert.Contains(t, output, "italic")
+	assert.Contains(t, output, "Features")
+	assert.Contains(t, output, "Feature 1")
 	// Check for code content in segments (may have ANSI codes)
 	hasHello := false
 	for _, line := range result.Lines {
@@ -255,9 +255,9 @@ End of document.
 			}
 		}
 	}
-	require.True(t, hasHello, "Expected to find 'hello' in code block")
-	require.Contains(t, output, "the docs")
-	require.Contains(t, output, "End of document")
+	assert.True(t, hasHello, "Expected to find 'hello' in code block")
+	assert.Contains(t, output, "the docs")
+	assert.Contains(t, output, "End of document")
 }
 
 func TestMarkdownRenderer_CustomTheme(t *testing.T) {
@@ -273,12 +273,12 @@ func TestMarkdownRenderer_CustomTheme(t *testing.T) {
 	markdown := "# Red Heading\n\n- Item"
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	// Verify custom bullet character is used
 	output := renderToPlainText(result)
-	require.Contains(t, output, "*") // Custom bullet char
+	assert.Contains(t, output, "*") // Custom bullet char
 }
 
 func TestMarkdownRenderer_MaxWidth(t *testing.T) {
@@ -289,29 +289,29 @@ func TestMarkdownRenderer_MaxWidth(t *testing.T) {
 	markdown := "This is a very long line of text that should wrap at the maximum width"
 
 	result, err := renderer.Render(markdown)
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
 
 	// Should have multiple lines due to wrapping
-	require.Greater(t, len(result.Lines), 2, "Expected text to wrap into multiple lines")
+	assert.Greater(t, len(result.Lines), 2, "Expected text to wrap into multiple lines")
 }
 
 func TestMarkdownView_BasicRendering(t *testing.T) {
 	scrollY := 0
 	view := Markdown("# Test\n\nParagraph", &scrollY)
-	require.NotNil(t, view)
+	assert.NotNil(t, view)
 
 	// Force rendering
 	view.renderContent(80)
 
 	// Check that content was rendered
-	require.NotNil(t, view.rendered)
-	require.Greater(t, len(view.rendered.Lines), 0)
+	assert.NotNil(t, view.rendered)
+	assert.Greater(t, len(view.rendered.Lines), 0)
 
 	// Check content is present
 	output := renderToPlainText(view.rendered)
-	require.Contains(t, output, "Test")
-	require.Contains(t, output, "Paragraph")
+	assert.Contains(t, output, "Test")
+	assert.Contains(t, output, "Paragraph")
 }
 
 func TestMarkdownView_Scrolling(t *testing.T) {
@@ -322,19 +322,19 @@ func TestMarkdownView_Scrolling(t *testing.T) {
 	// Force rendering
 	view.renderContent(80)
 
-	require.Equal(t, 0, scrollY)
+	assert.Equal(t, 0, scrollY)
 
 	// Scroll down
 	scrollY = 5
-	require.Equal(t, 5, scrollY)
+	assert.Equal(t, 5, scrollY)
 
 	// Scroll up
 	scrollY = 3
-	require.Equal(t, 3, scrollY)
+	assert.Equal(t, 3, scrollY)
 
 	// Scroll to position
 	scrollY = 10
-	require.Equal(t, 10, scrollY)
+	assert.Equal(t, 10, scrollY)
 }
 
 func TestMarkdownView_ContentRendering(t *testing.T) {
@@ -344,14 +344,14 @@ func TestMarkdownView_ContentRendering(t *testing.T) {
 	// Render
 	view.renderContent(80)
 	output := renderToPlainText(view.rendered)
-	require.Contains(t, output, "Initial content")
+	assert.Contains(t, output, "Initial content")
 
 	// Create new view with updated content
 	view2 := Markdown("Updated content", &scrollY)
 	view2.renderContent(80)
 	output2 := renderToPlainText(view2.rendered)
-	require.Contains(t, output2, "Updated content")
-	require.NotContains(t, output2, "Initial content")
+	assert.Contains(t, output2, "Updated content")
+	assert.NotContains(t, output2, "Initial content")
 }
 
 func TestMarkdownView_LineCount(t *testing.T) {
@@ -368,7 +368,7 @@ func TestMarkdownView_LineCount(t *testing.T) {
 
 	// Verify we have enough lines
 	lineCount := view.GetLineCount()
-	require.Greater(t, lineCount, 10, "Should have more lines than viewport height")
+	assert.Greater(t, lineCount, 10, "Should have more lines than viewport height")
 }
 
 // Helper function to convert rendered markdown to plain text for testing

@@ -1,9 +1,7 @@
 package tui
 
-import "image"
-
 // ForEach maps a slice of items to views using a mapper function.
-// The resulting views are arranged in a VStack by default.
+// The resulting views are arranged in a Stack by default.
 //
 // Example:
 //
@@ -23,7 +21,7 @@ type forEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
-	cached    *vStack // cached result for rendering
+	cached    *stack // cached result for rendering
 }
 
 // Separator sets a view to be rendered between each item.
@@ -32,7 +30,7 @@ func (f *forEachView[T]) Separator(sep View) *forEachView[T] {
 	return f
 }
 
-func (f *forEachView[T]) buildStack() *vStack {
+func (f *forEachView[T]) buildStack() *stack {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -45,7 +43,7 @@ func (f *forEachView[T]) buildStack() *vStack {
 		views = append(views, f.mapper(item, i))
 	}
 
-	f.cached = VStack(views...)
+	f.cached = Stack(views...)
 	return f.cached
 }
 
@@ -55,11 +53,11 @@ func (f *forEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *forEachView[T]) render(frame RenderFrame, bounds image.Rectangle) {
-	f.buildStack().render(frame, bounds)
+func (f *forEachView[T]) render(ctx *RenderContext) {
+	f.buildStack().render(ctx)
 }
 
-// Gap sets the spacing between items (like VStack.Gap).
+// Gap sets the spacing between items (like Stack.Gap).
 func (f *forEachView[T]) Gap(n int) *forEachView[T] {
 	f.buildStack().gap = n
 	return f
@@ -85,7 +83,7 @@ type hForEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
-	cached    *hStack
+	cached    *group
 }
 
 // Separator sets a view to be rendered between each item.
@@ -94,7 +92,7 @@ func (f *hForEachView[T]) Separator(sep View) *hForEachView[T] {
 	return f
 }
 
-func (f *hForEachView[T]) buildStack() *hStack {
+func (f *hForEachView[T]) buildStack() *group {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -107,7 +105,7 @@ func (f *hForEachView[T]) buildStack() *hStack {
 		views = append(views, f.mapper(item, i))
 	}
 
-	f.cached = HStack(views...)
+	f.cached = Group(views...)
 	return f.cached
 }
 
@@ -116,8 +114,8 @@ func (f *hForEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *hForEachView[T]) render(frame RenderFrame, bounds image.Rectangle) {
-	f.buildStack().render(frame, bounds)
+func (f *hForEachView[T]) render(ctx *RenderContext) {
+	f.buildStack().render(ctx)
 }
 
 // Gap sets the spacing between items (like HStack.Gap).

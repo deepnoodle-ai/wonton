@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestCodeHighlight(t *testing.T) {
@@ -13,7 +13,7 @@ func TestCodeHighlight(t *testing.T) {
 	view := Code(code, "go")
 	view.highlight()
 
-	require.True(t, len(view.highlighted) > 0, "should have highlighted lines")
+	assert.True(t, len(view.highlighted) > 0, "should have highlighted lines")
 }
 
 func TestCodeLineNumbers(t *testing.T) {
@@ -22,54 +22,54 @@ func TestCodeLineNumbers(t *testing.T) {
 	// With line numbers
 	view.LineNumbers(true)
 	w := view.lineNumberWidth()
-	require.True(t, w > 0, "should have line number width")
+	assert.True(t, w > 0, "should have line number width")
 
 	// Without line numbers
 	view.LineNumbers(false)
 	w = view.lineNumberWidth()
-	require.Equal(t, 0, w, "should have no line number width")
+	assert.Equal(t, 0, w, "should have no line number width")
 }
 
 func TestCodeStartLine(t *testing.T) {
 	view := Code("line1\nline2", "text")
 	view.StartLine(10)
-	require.Equal(t, 10, view.startLine)
+	assert.Equal(t, 10, view.startLine)
 }
 
 func TestCodeTheme(t *testing.T) {
 	view := Code("code", "go")
 	view.Theme("dracula")
-	require.Equal(t, "dracula", view.theme)
+	assert.Equal(t, "dracula", view.theme)
 }
 
 func TestCodeSize(t *testing.T) {
 	view := Code("hello\nworld", "text").LineNumbers(false)
 	w, h := view.size(100, 100)
-	require.Equal(t, 5, w, "width should be max line length")
-	require.Equal(t, 2, h, "height should be number of lines")
+	assert.Equal(t, 5, w, "width should be max line length")
+	assert.Equal(t, 2, h, "height should be number of lines")
 }
 
 func TestCodeSizeWithLineNumbers(t *testing.T) {
 	view := Code("hello\nworld", "text").LineNumbers(true)
 	w, h := view.size(100, 100)
-	require.True(t, w > 5, "width should include line numbers")
-	require.Equal(t, 2, h)
+	assert.True(t, w > 5, "width should include line numbers")
+	assert.Equal(t, 2, h)
 }
 
 func TestCodeFixedHeight(t *testing.T) {
 	view := Code("1\n2\n3\n4\n5", "text").Height(3)
 	_, h := view.size(100, 100)
-	require.Equal(t, 3, h)
+	assert.Equal(t, 3, h)
 }
 
 func TestCodeGetLineCount(t *testing.T) {
 	view := Code("a\nb\nc\nd", "text")
-	require.Equal(t, 4, view.GetLineCount())
+	assert.Equal(t, 4, view.GetLineCount())
 }
 
 func TestAvailableThemes(t *testing.T) {
 	themes := AvailableThemes()
-	require.True(t, len(themes) > 0, "should have themes available")
+	assert.True(t, len(themes) > 0, "should have themes available")
 
 	// Check for common themes
 	found := false
@@ -79,12 +79,12 @@ func TestAvailableThemes(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, found, "monokai theme should be available")
+	assert.True(t, found, "monokai theme should be available")
 }
 
 func TestAvailableLanguages(t *testing.T) {
 	langs := AvailableLanguages()
-	require.True(t, len(langs) > 0, "should have languages available")
+	assert.True(t, len(langs) > 0, "should have languages available")
 }
 
 func TestPadLeft(t *testing.T) {
@@ -102,7 +102,7 @@ func TestPadLeft(t *testing.T) {
 
 	for _, tt := range tests {
 		result := padLeft(tt.n, tt.width)
-		require.Equal(t, tt.expected, result, "padLeft(%d, %d)", tt.n, tt.width)
+		assert.Equal(t, tt.expected, result, "padLeft(%d, %d)", tt.n, tt.width)
 	}
 }
 
@@ -120,6 +120,6 @@ func TestTruncateToWidth(t *testing.T) {
 
 	for _, tt := range tests {
 		result := truncateToWidth(tt.input, tt.maxWidth)
-		require.Equal(t, tt.expected, result, "truncateToWidth(%q, %d)", tt.input, tt.maxWidth)
+		assert.Equal(t, tt.expected, result, "truncateToWidth(%q, %d)", tt.input, tt.maxWidth)
 	}
 }

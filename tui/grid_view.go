@@ -105,12 +105,11 @@ func (g *gridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *gridView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (g *gridView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	for row := 0; row < g.rows; row++ {
 		for col := 0; col < g.cols; col++ {
@@ -124,14 +123,15 @@ func (g *gridView) render(frame RenderFrame, bounds image.Rectangle) {
 			// Draw cell
 			for y := 0; y < g.cellHeight; y++ {
 				for x := 0; x < g.cellWidth; x++ {
-					if cellX+x < bounds.Dx() && cellY+y < bounds.Dy() {
-						subFrame.SetCell(cellX+x, cellY+y, cell.char, cell.style)
+					if cellX+x < width && cellY+y < height {
+						ctx.SetCell(cellX+x, cellY+y, cell.char, cell.style)
 					}
 				}
 			}
 
 			// Register click region if callback provided
 			if g.onClick != nil {
+				bounds := ctx.AbsoluteBounds()
 				clickBounds := image.Rect(
 					bounds.Min.X+cellX,
 					bounds.Min.Y+cellY,
@@ -212,12 +212,11 @@ func (g *colorGridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *colorGridView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (g *colorGridView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	for row := 0; row < g.rows; row++ {
 		for col := 0; col < g.cols; col++ {
@@ -238,13 +237,14 @@ func (g *colorGridView) render(frame RenderFrame, bounds image.Rectangle) {
 			// Draw cell
 			for y := 0; y < g.cellHeight; y++ {
 				for x := 0; x < g.cellWidth; x++ {
-					if cellX+x < bounds.Dx() && cellY+y < bounds.Dy() {
-						subFrame.SetCell(cellX+x, cellY+y, ' ', style)
+					if cellX+x < width && cellY+y < height {
+						ctx.SetCell(cellX+x, cellY+y, ' ', style)
 					}
 				}
 			}
 
 			// Register click to cycle color
+			bounds := ctx.AbsoluteBounds()
 			clickBounds := image.Rect(
 				bounds.Min.X+cellX,
 				bounds.Min.Y+cellY,
@@ -325,23 +325,22 @@ func (g *charGridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *charGridView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(g.data) == 0 {
+func (g *charGridView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(g.data) == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
-
 	for y, row := range g.data {
-		if y >= bounds.Dy() {
+		if y >= height {
 			break
 		}
 		for x, char := range row {
 			cellX := x * g.cellWidth
-			if cellX >= bounds.Dx() {
+			if cellX >= width {
 				break
 			}
-			subFrame.SetCell(cellX, y, char, g.style)
+			ctx.SetCell(cellX, y, char, g.style)
 		}
 	}
 }

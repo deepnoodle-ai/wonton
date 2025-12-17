@@ -65,53 +65,55 @@ func (p *paddingView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + paddingW, innerH + paddingH
 }
 
-func (p *paddingView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (p *paddingView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
 	// Calculate inner bounds
 	innerBounds := image.Rect(
-		bounds.Min.X+p.left,
-		bounds.Min.Y+p.top,
-		bounds.Max.X-p.right,
-		bounds.Max.Y-p.bottom,
+		p.left,
+		p.top,
+		width-p.right,
+		height-p.bottom,
 	)
 
-	if !innerBounds.Empty() {
-		p.inner.render(frame, innerBounds)
+	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+		innerCtx := ctx.SubContext(innerBounds)
+		p.inner.render(innerCtx)
 	}
 }
 
 // Padding modifier methods for stack types
 
-// Padding adds equal padding on all sides of a VStack.
-func (v *vStack) Padding(n int) View {
+// Padding adds equal padding on all sides of a Stack.
+func (v *stack) Padding(n int) View {
 	return Padding(n, v)
 }
 
-// PaddingHV adds horizontal and vertical padding to a VStack.
-func (v *vStack) PaddingHV(h, vpad int) View {
+// PaddingHV adds horizontal and vertical padding to a Stack.
+func (v *stack) PaddingHV(h, vpad int) View {
 	return PaddingHV(h, vpad, v)
 }
 
-// PaddingLTRB adds specific padding to each side of a VStack.
-func (v *vStack) PaddingLTRB(left, top, right, bottom int) View {
+// PaddingLTRB adds specific padding to each side of a Stack.
+func (v *stack) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, v)
 }
 
 // Padding adds equal padding on all sides of an HStack.
-func (h *hStack) Padding(n int) View {
+func (h *group) Padding(n int) View {
 	return Padding(n, h)
 }
 
 // PaddingHV adds horizontal and vertical padding to an HStack.
-func (h *hStack) PaddingHV(hpad, v int) View {
+func (h *group) PaddingHV(hpad, v int) View {
 	return PaddingHV(hpad, v, h)
 }
 
 // PaddingLTRB adds specific padding to each side of an HStack.
-func (h *hStack) PaddingLTRB(left, top, right, bottom int) View {
+func (h *group) PaddingLTRB(left, top, right, bottom int) View {
 	return PaddingLTRB(left, top, right, bottom, h)
 }
 
@@ -189,11 +191,12 @@ func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *sizeView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (s *sizeView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-	s.inner.render(frame, bounds)
+	s.inner.render(ctx)
 }
 
 // Width modifier methods for view types
@@ -220,6 +223,12 @@ type borderedView struct {
 	title       string
 	titleStyle  Style
 	borderStyle Style
+
+	// Focus-aware styling
+	focusID         string // Watch this focus ID for styling changes
+	focusBorderFg   Color  // Border color when focused
+	hasFocusBorder  bool   // true if focusBorderFg was set
+	focusTitleStyle *Style // Title style when focused
 }
 
 // Bordered wraps a view with a border (optional title).
@@ -255,6 +264,26 @@ func (f *borderedView) BorderFg(c Color) *borderedView {
 	return f
 }
 
+// FocusID sets the focus ID to watch for styling changes.
+// When the element with this ID is focused, focus styles will be applied.
+func (f *borderedView) FocusID(id string) *borderedView {
+	f.focusID = id
+	return f
+}
+
+// FocusBorderFg sets the border color when the watched element is focused.
+func (f *borderedView) FocusBorderFg(c Color) *borderedView {
+	f.focusBorderFg = c
+	f.hasFocusBorder = true
+	return f
+}
+
+// FocusTitleStyle sets the title style when the watched element is focused.
+func (f *borderedView) FocusTitleStyle(s Style) *borderedView {
+	f.focusTitleStyle = &s
+	return f
+}
+
 func (f *borderedView) size(maxWidth, maxHeight int) (int, int) {
 	borderSize := 0
 	if f.border != nil {
@@ -280,28 +309,41 @@ func (f *borderedView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + borderSize, innerH + borderSize
 }
 
-func (f *borderedView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (f *borderedView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
 	if f.border == nil {
 		// No border, just render inner
-		f.inner.render(frame, bounds)
+		f.inner.render(ctx)
 		return
 	}
 
-	// Draw border
-	w, h := bounds.Dx(), bounds.Dy()
-	subFrame := frame.SubFrame(bounds)
+	// Determine if the watched element is focused
+	isFocused := f.focusID != "" && focusManager.GetFocusedID() == f.focusID
 
+	// Choose border style based on focus
+	borderStyle := f.borderStyle
+	if isFocused && f.hasFocusBorder {
+		borderStyle = NewStyle().WithForeground(f.focusBorderFg)
+	}
+
+	// Choose title style based on focus
+	titleStyle := f.titleStyle
+	if isFocused && f.focusTitleStyle != nil {
+		titleStyle = *f.focusTitleStyle
+	}
+
+	// Draw border
 	// Top border
-	subFrame.PrintTruncated(0, 0, f.border.TopLeft, f.borderStyle)
+	ctx.PrintTruncated(0, 0, f.border.TopLeft, borderStyle)
 	for x := 1; x < w-1; x++ {
-		subFrame.PrintTruncated(x, 0, f.border.Horizontal, f.borderStyle)
+		ctx.PrintTruncated(x, 0, f.border.Horizontal, borderStyle)
 	}
 	if w > 1 {
-		subFrame.PrintTruncated(w-1, 0, f.border.TopRight, f.borderStyle)
+		ctx.PrintTruncated(w-1, 0, f.border.TopRight, borderStyle)
 	}
 
 	// Title in top border
@@ -312,49 +354,45 @@ func (f *borderedView) render(frame RenderFrame, bounds image.Rectangle) {
 			titleW = maxTitleW
 		}
 		titleX := 2
-		subFrame.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], f.titleStyle)
+		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], titleStyle)
 	}
 
 	// Side borders
 	for y := 1; y < h-1; y++ {
-		subFrame.PrintTruncated(0, y, f.border.Vertical, f.borderStyle)
+		ctx.PrintTruncated(0, y, f.border.Vertical, borderStyle)
 		if w > 1 {
-			subFrame.PrintTruncated(w-1, y, f.border.Vertical, f.borderStyle)
+			ctx.PrintTruncated(w-1, y, f.border.Vertical, borderStyle)
 		}
 	}
 
 	// Bottom border
 	if h > 1 {
-		subFrame.PrintTruncated(0, h-1, f.border.BottomLeft, f.borderStyle)
+		ctx.PrintTruncated(0, h-1, f.border.BottomLeft, borderStyle)
 		for x := 1; x < w-1; x++ {
-			subFrame.PrintTruncated(x, h-1, f.border.Horizontal, f.borderStyle)
+			ctx.PrintTruncated(x, h-1, f.border.Horizontal, borderStyle)
 		}
 		if w > 1 {
-			subFrame.PrintTruncated(w-1, h-1, f.border.BottomRight, f.borderStyle)
+			ctx.PrintTruncated(w-1, h-1, f.border.BottomRight, borderStyle)
 		}
 	}
 
 	// Inner content (1 cell padding for border)
-	innerBounds := image.Rect(
-		bounds.Min.X+1,
-		bounds.Min.Y+1,
-		bounds.Max.X-1,
-		bounds.Max.Y-1,
-	)
-	if !innerBounds.Empty() {
-		f.inner.render(frame, innerBounds)
+	innerBounds := image.Rect(1, 1, w-1, h-1)
+	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+		innerCtx := ctx.SubContext(innerBounds)
+		f.inner.render(innerCtx)
 	}
 }
 
 // Bordered modifier methods for stack types
 
-// Bordered wraps a VStack with a border.
-func (v *vStack) Bordered() *borderedView {
+// Bordered wraps a Stack with a border.
+func (v *stack) Bordered() *borderedView {
 	return Bordered(v)
 }
 
 // Bordered wraps an HStack with a border.
-func (h *hStack) Bordered() *borderedView {
+func (h *group) Bordered() *borderedView {
 	return Bordered(h)
 }
 
@@ -374,12 +412,12 @@ func Background(char rune, style Style, inner View) View {
 	}
 }
 
-// Bg adds a background color to a VStack.
-func (v *vStack) Bg(c Color) View {
+// Bg adds a background color to a Stack.
+func (v *stack) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), v)
 }
 
 // Bg adds a background color to an HStack.
-func (h *hStack) Bg(c Color) View {
+func (h *group) Bg(c Color) View {
 	return Background(' ', NewStyle().WithBackground(c), h)
 }

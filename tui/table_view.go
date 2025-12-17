@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"strings"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -14,18 +15,22 @@ type TableColumn struct {
 
 // tableView displays a scrollable data table as a declarative view.
 type tableView struct {
-	columns       []TableColumn
-	rows          [][]string
-	selected      *int
-	onSelect      func(row int)
-	scrollY       int // internal scroll position
-	style         Style
-	headerStyle   Style
-	selectedStyle Style
-	showHeader    bool
-	width         int
-	height        int
-	columnWidths  []int // calculated column widths
+	columns              []TableColumn
+	rows                 [][]string
+	selected             *int
+	onSelect             func(row int)
+	scrollY              int // internal scroll position
+	style                Style
+	headerStyle          Style
+	selectedStyle        Style
+	showHeader           bool
+	width                int
+	height               int
+	columnWidths         []int // calculated column widths
+	uppercaseHeaders     bool
+	maxColumnWidth       int  // 0 = no limit
+	invertSelectedColors bool // invert fg/bg on selected row
+	headerBottomBorder   bool
 }
 
 // Table creates a new table view with the given columns.
@@ -124,6 +129,40 @@ func (t *tableView) Height(h int) *tableView {
 	return t
 }
 
+// Size sets both width and height at once.
+func (t *tableView) Size(w, h int) *tableView {
+	t.width = w
+	t.height = h
+	return t
+}
+
+// UppercaseHeaders enables or disables automatic uppercasing of header text.
+func (t *tableView) UppercaseHeaders(uppercase bool) *tableView {
+	t.uppercaseHeaders = uppercase
+	return t
+}
+
+// MaxColumnWidth sets the maximum width for any column.
+// If a column's calculated width exceeds this value, it will be truncated.
+// Set to 0 for no limit (default).
+func (t *tableView) MaxColumnWidth(maxWidth int) *tableView {
+	t.maxColumnWidth = maxWidth
+	return t
+}
+
+// InvertSelectedColors enables or disables color inversion on the selected row.
+// When enabled, foreground and background colors are swapped for better visibility.
+func (t *tableView) InvertSelectedColors(invert bool) *tableView {
+	t.invertSelectedColors = invert
+	return t
+}
+
+// HeaderBottomBorder enables or disables a bottom border line under the header row.
+func (t *tableView) HeaderBottomBorder(show bool) *tableView {
+	t.headerBottomBorder = show
+	return t
+}
+
 // calculateColumnWidths computes the actual width for each column.
 func (t *tableView) calculateColumnWidths() {
 	if len(t.columns) == 0 {
@@ -147,6 +186,11 @@ func (t *tableView) calculateColumnWidths() {
 				}
 			}
 			t.columnWidths[i] = maxW + 2 // Add padding
+		}
+
+		// Apply maxColumnWidth limit if set
+		if t.maxColumnWidth > 0 && t.columnWidths[i] > t.maxColumnWidth {
+			t.columnWidths[i] = t.maxColumnWidth
 		}
 	}
 }
@@ -180,13 +224,13 @@ func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || len(t.columns) == 0 {
+func (t *tableView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || len(t.columns) == 0 {
 		return
 	}
 
 	t.calculateColumnWidths()
-	subFrame := frame.SubFrame(bounds)
 
 	currentY := 0
 
@@ -194,28 +238,44 @@ func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
 	if t.showHeader {
 		currentX := 0
 		for i, col := range t.columns {
-			width := t.columnWidths[i]
+			w := t.columnWidths[i]
 			title := col.Title
+
+			// Apply uppercase if enabled
+			if t.uppercaseHeaders {
+				title = strings.ToUpper(title)
+			}
+
 			// Truncate if needed
-			if runewidth.StringWidth(title) > width {
-				title = runewidth.Truncate(title, width, "…")
+			if runewidth.StringWidth(title) > w {
+				title = runewidth.Truncate(title, w, "…")
 			}
 			// Pad
-			padding := width - runewidth.StringWidth(title)
+			padding := w - runewidth.StringWidth(title)
 			if padding > 0 {
 				title += repeatStr(" ", padding)
 			}
 
-			subFrame.PrintStyled(currentX, currentY, title, t.headerStyle)
-			currentX += width
+			ctx.PrintStyled(currentX, currentY, title, t.headerStyle)
+			currentX += w
 		}
 		currentY++
+
+		// Draw header bottom border if enabled
+		if t.headerBottomBorder {
+			border := repeatStr("─", width)
+			ctx.PrintStyled(0, currentY, border, t.headerStyle)
+			currentY++
+		}
 	}
 
 	// Calculate available height for rows
-	availableHeight := bounds.Dy()
+	availableHeight := height
 	if t.showHeader {
 		availableHeight--
+		if t.headerBottomBorder {
+			availableHeight--
+		}
 	}
 	if availableHeight <= 0 {
 		return
@@ -258,6 +318,10 @@ func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
 		style := t.style
 		if rowIndex == selectedRow {
 			style = t.selectedStyle
+			// Apply color inversion if enabled
+			if t.invertSelectedColors {
+				style = invertColors(style)
+			}
 		}
 
 		currentX := 0
@@ -265,23 +329,24 @@ func (t *tableView) render(frame RenderFrame, bounds image.Rectangle) {
 			if colIdx >= len(t.columnWidths) {
 				break
 			}
-			width := t.columnWidths[colIdx]
+			w := t.columnWidths[colIdx]
 
 			// Truncate/Pad
-			if runewidth.StringWidth(cell) > width {
-				cell = runewidth.Truncate(cell, width, "…")
+			if runewidth.StringWidth(cell) > w {
+				cell = runewidth.Truncate(cell, w, "…")
 			}
-			padding := width - runewidth.StringWidth(cell)
+			padding := w - runewidth.StringWidth(cell)
 			paddedCell := cell
 			if padding > 0 {
 				paddedCell += repeatStr(" ", padding)
 			}
 
-			subFrame.PrintStyled(currentX, currentY+i, paddedCell, style)
-			currentX += width
+			ctx.PrintStyled(currentX, currentY+i, paddedCell, style)
+			currentX += w
 		}
 
 		// Register clickable region for this row
+		bounds := ctx.AbsoluteBounds()
 		rowBounds := image.Rect(
 			bounds.Min.X,
 			bounds.Min.Y+currentY+i,
@@ -310,4 +375,15 @@ func repeatStr(s string, count int) string {
 		result += s
 	}
 	return result
+}
+
+// invertColors swaps the foreground and background colors of a style.
+func invertColors(s Style) Style {
+	// Swap standard colors
+	s.Foreground, s.Background = s.Background, s.Foreground
+
+	// Swap RGB colors if present
+	s.FgRGB, s.BgRGB = s.BgRGB, s.FgRGB
+
+	return s
 }

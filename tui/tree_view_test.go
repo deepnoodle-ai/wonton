@@ -3,18 +3,18 @@ package tui
 import (
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestTreeNode(t *testing.T) {
 	root := NewTreeNode("root")
-	require.Equal(t, "root", root.Label)
-	require.True(t, root.IsLeaf())
+	assert.Equal(t, "root", root.Label)
+	assert.True(t, root.IsLeaf())
 
 	child := NewTreeNode("child")
 	root.AddChild(child)
-	require.False(t, root.IsLeaf())
-	require.Len(t, root.Children, 1)
+	assert.False(t, root.IsLeaf())
+	assert.Len(t, root.Children, 1)
 }
 
 func TestTreeNodeChaining(t *testing.T) {
@@ -26,9 +26,9 @@ func TestTreeNodeChaining(t *testing.T) {
 			NewTreeNode("child2"),
 		)
 
-	require.True(t, root.Expanded)
-	require.Equal(t, "test-data", root.Data)
-	require.Len(t, root.Children, 2)
+	assert.True(t, root.Expanded)
+	assert.Equal(t, "test-data", root.Data)
+	assert.Len(t, root.Children, 2)
 }
 
 func TestTreeNodeExpandCollapse(t *testing.T) {
@@ -39,12 +39,12 @@ func TestTreeNodeExpandCollapse(t *testing.T) {
 	)
 
 	root.ExpandAll()
-	require.True(t, root.Expanded)
-	require.True(t, root.Children[0].Expanded)
+	assert.True(t, root.Expanded)
+	assert.True(t, root.Children[0].Expanded)
 
 	root.CollapseAll()
-	require.False(t, root.Expanded)
-	require.False(t, root.Children[0].Expanded)
+	assert.False(t, root.Expanded)
+	assert.False(t, root.Children[0].Expanded)
 }
 
 func TestTreeViewFlatten(t *testing.T) {
@@ -58,13 +58,13 @@ func TestTreeViewFlatten(t *testing.T) {
 	view := Tree(root)
 	nodes := view.flatten()
 
-	require.Len(t, nodes, 4) // root + child1 + child2 + grandchild
+	assert.Len(t, nodes, 4) // root + child1 + child2 + grandchild
 
 	// Verify depths
-	require.Equal(t, 0, nodes[0].depth) // root
-	require.Equal(t, 1, nodes[1].depth) // child1
-	require.Equal(t, 1, nodes[2].depth) // child2
-	require.Equal(t, 2, nodes[3].depth) // grandchild
+	assert.Equal(t, 0, nodes[0].depth) // root
+	assert.Equal(t, 1, nodes[1].depth) // child1
+	assert.Equal(t, 1, nodes[2].depth) // child2
+	assert.Equal(t, 2, nodes[3].depth) // grandchild
 }
 
 func TestTreeViewCollapsedChildren(t *testing.T) {
@@ -77,7 +77,7 @@ func TestTreeViewCollapsedChildren(t *testing.T) {
 	view := Tree(root)
 	nodes := view.flatten()
 
-	require.Len(t, nodes, 2) // only root and child visible
+	assert.Len(t, nodes, 2) // only root and child visible
 }
 
 func TestTreeViewSize(t *testing.T) {
@@ -89,8 +89,8 @@ func TestTreeViewSize(t *testing.T) {
 	view := Tree(root)
 	w, h := view.size(100, 100)
 
-	require.True(t, w > 0)
-	require.Equal(t, 3, h) // 3 visible nodes
+	assert.True(t, w > 0)
+	assert.Equal(t, 3, h) // 3 visible nodes
 }
 
 func TestTreeViewFixedHeight(t *testing.T) {
@@ -104,7 +104,7 @@ func TestTreeViewFixedHeight(t *testing.T) {
 	view := Tree(root).Height(2)
 	_, h := view.size(100, 100)
 
-	require.Equal(t, 2, h)
+	assert.Equal(t, 2, h)
 }
 
 func TestTreeViewFindNode(t *testing.T) {
@@ -118,11 +118,11 @@ func TestTreeViewFindNode(t *testing.T) {
 	view := Tree(root)
 
 	found := view.FindNode("target")
-	require.NotNil(t, found)
-	require.Equal(t, "target", found.Label)
+	assert.NotNil(t, found)
+	assert.Equal(t, "target", found.Label)
 
 	notFound := view.FindNode("nonexistent")
-	require.Nil(t, notFound)
+	assert.Nil(t, notFound)
 }
 
 func TestTreeViewOnSelect(t *testing.T) {
@@ -135,7 +135,7 @@ func TestTreeViewOnSelect(t *testing.T) {
 
 	// The callback would be triggered through the interactive registry
 	// during actual rendering and clicking
-	require.Equal(t, "", selectedLabel)
+	assert.Equal(t, "", selectedLabel)
 }
 
 func TestTreeViewGetVisibleCount(t *testing.T) {
@@ -145,20 +145,20 @@ func TestTreeViewGetVisibleCount(t *testing.T) {
 	)
 
 	view := Tree(root)
-	require.Equal(t, 3, view.GetVisibleCount())
+	assert.Equal(t, 3, view.GetVisibleCount())
 
 	root.Expanded = false
-	require.Equal(t, 1, view.GetVisibleCount())
+	assert.Equal(t, 1, view.GetVisibleCount())
 }
 
 func TestTreeBranchChars(t *testing.T) {
 	chars := DefaultTreeBranchChars()
-	require.Equal(t, "│", chars.Vertical)
-	require.Equal(t, "└", chars.Corner)
-	require.Equal(t, "├", chars.Tee)
-	require.Equal(t, "─", chars.Horizontal)
+	assert.Equal(t, "│", chars.Vertical)
+	assert.Equal(t, "└", chars.Corner)
+	assert.Equal(t, "├", chars.Tee)
+	assert.Equal(t, "─", chars.Horizontal)
 
 	ascii := ASCIITreeBranchChars()
-	require.Equal(t, "|", ascii.Vertical)
-	require.Equal(t, "`", ascii.Corner)
+	assert.Equal(t, "|", ascii.Vertical)
+	assert.Equal(t, "`", ascii.Corner)
 }

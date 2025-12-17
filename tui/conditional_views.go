@@ -5,7 +5,7 @@ package tui
 //
 // Example:
 //
-//	VStack(
+//	Stack(
 //	    Text("Always shown"),
 //	    If(app.showWarning, Text("Warning!").Fg(ColorYellow)),
 //	)

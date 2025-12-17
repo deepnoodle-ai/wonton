@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 // Test modifiers parsing
@@ -30,8 +29,8 @@ func TestParseMouseEvent_Modifiers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			event, err := ParseMouseEvent(tt.seq)
-			require.NoError(t, err)
-			require.NotNil(t, event)
+			assert.NoError(t, err)
+			assert.NotNil(t, event)
 
 			assert.Equal(t, tt.wantShift, event.Modifiers&ModShift != 0, "Shift modifier")
 			assert.Equal(t, tt.wantAlt, event.Modifiers&ModAlt != 0, "Alt modifier")
@@ -46,8 +45,8 @@ func TestParseMouseEvent_HorizontalWheel(t *testing.T) {
 	seq := []byte("<66;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseButtonWheelLeft, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 	assert.Equal(t, -1, event.DeltaX)
@@ -57,8 +56,8 @@ func TestParseMouseEvent_HorizontalWheel(t *testing.T) {
 	seq = []byte("<67;10;5M")
 	event, err = ParseMouseEvent(seq)
 
-	require.NoError(t, err)
-	require.NotNil(t, event)
+	assert.NoError(t, err)
+	assert.NotNil(t, event)
 	assert.Equal(t, MouseButtonWheelRight, event.Button)
 	assert.Equal(t, MouseScroll, event.Type)
 	assert.Equal(t, 1, event.DeltaX)
@@ -71,7 +70,7 @@ func TestParseMouseEvent_VerticalWheel(t *testing.T) {
 	seq := []byte("<64;10;5M")
 	event, err := ParseMouseEvent(seq)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, MouseButtonWheelUp, event.Button)
 	assert.Equal(t, -1, event.DeltaY)
 	assert.Equal(t, 0, event.DeltaX)
@@ -80,7 +79,7 @@ func TestParseMouseEvent_VerticalWheel(t *testing.T) {
 	seq = []byte("<65;10;5M")
 	event, err = ParseMouseEvent(seq)
 
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, MouseButtonWheelDown, event.Button)
 	assert.Equal(t, 1, event.DeltaY)
 	assert.Equal(t, 0, event.DeltaX)
@@ -269,7 +268,7 @@ func TestMouseHandler_DragLifecycle(t *testing.T) {
 	handler.HandleEvent(releaseEvent)
 
 	// Verify event sequence
-	require.Len(t, events, 4, "Should have 4 events")
+	assert.Len(t, events, 4, "Should have 4 events")
 	assert.Equal(t, MousePress, events[0])
 	assert.Equal(t, MouseDragStart, events[1])
 	assert.Equal(t, MouseDrag, events[2])

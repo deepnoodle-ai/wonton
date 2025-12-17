@@ -6,25 +6,8 @@ import "image"
 type animatedTextView struct {
 	text      string
 	animation TextAnimation
-	frame     uint64
 	style     Style // fallback style if no animation
 	width     int
-}
-
-// AnimatedTextView creates a declarative animated text view.
-// The frame parameter should come from TickEvent.Frame for animation.
-//
-// Example:
-//
-//	AnimatedTextView("Hello World", CreateRainbowText("", 3), app.frame)
-//	AnimatedTextView("Pulsing", CreatePulseText(NewRGB(0, 255, 255), 12), app.frame)
-func AnimatedTextView(text string, animation TextAnimation, frame uint64) *animatedTextView {
-	return &animatedTextView{
-		text:      text,
-		animation: animation,
-		frame:     frame,
-		style:     NewStyle(),
-	}
 }
 
 // Width sets a fixed width for the animated text.
@@ -50,27 +33,27 @@ func (a *animatedTextView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (a *animatedTextView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (a *animatedTextView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	runes := []rune(a.text)
 	totalChars := len(runes)
-	maxWidth := bounds.Dx()
+	frameCount := ctx.Frame()
 
 	for i, r := range runes {
-		if i >= maxWidth {
+		if i >= w {
 			break
 		}
 		var style Style
 		if a.animation != nil {
-			style = a.animation.GetStyle(a.frame, i, totalChars)
+			style = a.animation.GetStyle(frameCount, i, totalChars)
 		} else {
 			style = a.style
 		}
-		subFrame.SetCell(i, 0, r, style)
+		ctx.SetCell(i, 0, r, style)
 	}
 }
 
@@ -120,6 +103,13 @@ func (b *panelView) Width(w int) *panelView {
 
 // Height sets the box height.
 func (b *panelView) Height(h int) *panelView {
+	b.height = h
+	return b
+}
+
+// Size sets both width and height at once.
+func (b *panelView) Size(w, h int) *panelView {
+	b.width = w
 	b.height = h
 	return b
 }
@@ -220,19 +210,16 @@ func (b *panelView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (b *panelView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (b *panelView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Fill background
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			subFrame.SetCell(x, y, b.fillChar, b.bgStyle)
+			ctx.SetCell(x, y, b.fillChar, b.bgStyle)
 		}
 	}
 
@@ -246,21 +233,21 @@ func (b *panelView) render(frame RenderFrame, bounds image.Rectangle) {
 
 		// Top and bottom
 		for x := 1; x < width-1; x++ {
-			subFrame.SetCell(x, 0, h, borderStyle)
-			subFrame.SetCell(x, height-1, h, borderStyle)
+			ctx.SetCell(x, 0, h, borderStyle)
+			ctx.SetCell(x, height-1, h, borderStyle)
 		}
 
 		// Left and right
 		for y := 1; y < height-1; y++ {
-			subFrame.SetCell(0, y, v, borderStyle)
-			subFrame.SetCell(width-1, y, v, borderStyle)
+			ctx.SetCell(0, y, v, borderStyle)
+			ctx.SetCell(width-1, y, v, borderStyle)
 		}
 
 		// Corners
-		subFrame.SetCell(0, 0, tl, borderStyle)
-		subFrame.SetCell(width-1, 0, tr, borderStyle)
-		subFrame.SetCell(0, height-1, bl, borderStyle)
-		subFrame.SetCell(width-1, height-1, br, borderStyle)
+		ctx.SetCell(0, 0, tl, borderStyle)
+		ctx.SetCell(width-1, 0, tr, borderStyle)
+		ctx.SetCell(0, height-1, bl, borderStyle)
+		ctx.SetCell(width-1, height-1, br, borderStyle)
 
 		// Title
 		if b.title != "" && width > 4 {
@@ -270,26 +257,17 @@ func (b *panelView) render(frame RenderFrame, bounds image.Rectangle) {
 				titleW = width - 2
 			}
 			startX := (width - titleW) / 2
-			subFrame.PrintTruncated(startX, 0, titleText, borderStyle)
+			ctx.PrintTruncated(startX, 0, titleText, borderStyle)
 		}
 	}
 
 	// Render content if provided
 	if b.content != nil {
-		contentBounds := bounds
+		contentCtx := ctx
 		if b.borderStyle != BorderNone {
-			contentBounds = image.Rect(
-				bounds.Min.X+1,
-				bounds.Min.Y+1,
-				bounds.Max.X-1,
-				bounds.Max.Y-1,
-			)
+			contentCtx = ctx.SubContext(image.Rect(1, 1, width-1, height-1))
 		}
-		if renderer, ok := b.content.(interface {
-			render(RenderFrame, image.Rectangle)
-		}); ok {
-			renderer.render(frame, contentBounds)
-		}
+		b.content.render(contentCtx)
 	}
 }
 
@@ -375,26 +353,26 @@ func (k *keyValueView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (k *keyValueView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (k *keyValueView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	x := 0
 
 	// Draw label
-	subFrame.PrintStyled(x, 0, k.label, k.labelStyle)
+	ctx.PrintStyled(x, 0, k.label, k.labelStyle)
 	labelW, _ := MeasureText(k.label)
 	x += labelW
 
 	// Draw separator
-	subFrame.PrintStyled(x, 0, k.separator, k.labelStyle)
+	ctx.PrintStyled(x, 0, k.separator, k.labelStyle)
 	sepW, _ := MeasureText(k.separator)
 	x += sepW
 
 	// Draw value
-	subFrame.PrintTruncated(x, 0, k.value, k.valueStyle)
+	ctx.PrintTruncated(x, 0, k.value, k.valueStyle)
 }
 
 // toggleView displays an on/off toggle switch
@@ -479,12 +457,12 @@ func (t *toggleView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (t *toggleView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (t *toggleView) render(ctx *RenderContext) {
+	w, h := ctx.Size()
+	if w == 0 || h == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
 	isOn := t.value != nil && *t.value
 
 	var switchChar string
@@ -506,11 +484,11 @@ func (t *toggleView) render(frame RenderFrame, bounds image.Rectangle) {
 	if t.showLabels {
 		text += " " + label
 	}
-	subFrame.PrintStyled(0, 0, text, style)
+	ctx.PrintStyled(0, 0, text, style)
 
 	// Register click region
 	if t.value != nil {
-		interactiveRegistry.RegisterButton(bounds, func() {
+		interactiveRegistry.RegisterButton(ctx.AbsoluteBounds(), func() {
 			*t.value = !*t.value
 			if t.onChange != nil {
 				t.onChange(*t.value)
@@ -558,6 +536,13 @@ func (s *styledButtonView) Width(w int) *styledButtonView {
 
 // Height sets the button height.
 func (s *styledButtonView) Height(h int) *styledButtonView {
+	s.height = h
+	return s
+}
+
+// Size sets both width and height at once.
+func (s *styledButtonView) Size(w, h int) *styledButtonView {
+	s.width = w
 	s.height = h
 	return s
 }
@@ -624,19 +609,16 @@ func (s *styledButtonView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *styledButtonView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (s *styledButtonView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Fill background
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
-			subFrame.SetCell(x, y, ' ', s.style)
+			ctx.SetCell(x, y, ' ', s.style)
 		}
 	}
 
@@ -652,10 +634,10 @@ func (s *styledButtonView) render(frame RenderFrame, bounds image.Rectangle) {
 	}
 
 	// Draw label
-	subFrame.PrintTruncated(textX, textY, s.label, s.style)
+	ctx.PrintTruncated(textX, textY, s.label, s.style)
 
 	// Register click region
 	if s.callback != nil {
-		interactiveRegistry.RegisterButton(bounds, s.callback)
+		interactiveRegistry.RegisterButton(ctx.AbsoluteBounds(), s.callback)
 	}
 }

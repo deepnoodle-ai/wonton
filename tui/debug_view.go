@@ -158,14 +158,13 @@ func (d *debugView) buildLines() []string {
 	return lines
 }
 
-func (d *debugView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() || d.info == nil {
+func (d *debugView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 || d.info == nil {
 		return
 	}
 
 	lines := d.buildLines()
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Calculate overlay size
 	overlayWidth := 0
@@ -178,52 +177,53 @@ func (d *debugView) render(frame RenderFrame, bounds image.Rectangle) {
 	overlayHeight := len(lines)
 
 	// Calculate position based on DebugPosition
+	// These are relative to the current context
 	var overlayX, overlayY int
 	switch d.position {
 	case DebugTopLeft:
-		overlayX = bounds.Min.X
-		overlayY = bounds.Min.Y
+		overlayX = 0
+		overlayY = 0
 	case DebugTopRight:
-		overlayX = bounds.Max.X - overlayWidth
-		if overlayX < bounds.Min.X {
-			overlayX = bounds.Min.X
+		overlayX = width - overlayWidth
+		if overlayX < 0 {
+			overlayX = 0
 		}
-		overlayY = bounds.Min.Y
+		overlayY = 0
 	case DebugBottomLeft:
-		overlayX = bounds.Min.X
-		overlayY = bounds.Max.Y - overlayHeight
-		if overlayY < bounds.Min.Y {
-			overlayY = bounds.Min.Y
+		overlayX = 0
+		overlayY = height - overlayHeight
+		if overlayY < 0 {
+			overlayY = 0
 		}
 	case DebugBottomRight:
-		overlayX = bounds.Max.X - overlayWidth
-		if overlayX < bounds.Min.X {
-			overlayX = bounds.Min.X
+		overlayX = width - overlayWidth
+		if overlayX < 0 {
+			overlayX = 0
 		}
-		overlayY = bounds.Max.Y - overlayHeight
-		if overlayY < bounds.Min.Y {
-			overlayY = bounds.Min.Y
+		overlayY = height - overlayHeight
+		if overlayY < 0 {
+			overlayY = 0
 		}
 	}
 
 	// Draw background
 	bgChar := ' '
-	for y := 0; y < overlayHeight && y < height; y++ {
-		for x := 0; x < overlayWidth && x < width; x++ {
-			frame.SetCell(overlayX+x, overlayY+y, bgChar, d.bgStyle)
+	for y := 0; y < overlayHeight && overlayY+y < height; y++ {
+		for x := 0; x < overlayWidth && overlayX+x < width; x++ {
+			ctx.SetCell(overlayX+x, overlayY+y, bgChar, d.bgStyle)
 		}
 	}
 
 	// Draw text
 	for y, line := range lines {
-		if y >= height {
+		if overlayY+y >= height {
 			break
 		}
 		text := " " + line // Left padding
 		if len(text) > overlayWidth {
 			text = text[:overlayWidth]
 		}
-		frame.PrintStyled(overlayX, overlayY+y, text, d.style)
+		ctx.PrintStyled(overlayX, overlayY+y, text, d.style)
 	}
 }
 

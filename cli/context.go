@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/deepnoodle-ai/wonton/color"
 )
 
 // Context provides access to command execution context.
@@ -15,15 +17,13 @@ type Context struct {
 	args        []string
 	positional  []string
 	flags       map[string]any
+	setFlags    map[string]bool // Flags explicitly set by user (or env var)
 	interactive bool
 
 	// I/O
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
-
-	// Config values (from config files and env)
-	config map[string]any
 }
 
 // Context returns the Go context.
@@ -166,8 +166,10 @@ func (c *Context) Bool(name string) bool {
 
 // IsSet returns true if a flag was explicitly set.
 func (c *Context) IsSet(name string) bool {
-	_, ok := c.flags[name]
-	return ok
+	if c.setFlags == nil {
+		return false
+	}
+	return c.setFlags[name]
 }
 
 // Output helpers
@@ -200,4 +202,42 @@ func (c *Context) Errorf(format string, a ...any) {
 // Errorln writes to stderr with a newline.
 func (c *Context) Errorln(a ...any) {
 	fmt.Fprintln(c.stderr, a...)
+}
+
+// Semantic output helpers with colors
+
+// Success prints a green success message to stdout.
+func (c *Context) Success(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	if c.app != nil && c.app.colorEnabled {
+		msg = color.Green.Apply(msg)
+	}
+	fmt.Fprintln(c.stdout, msg)
+}
+
+// Fail prints a red error message to stderr.
+func (c *Context) Fail(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	if c.app != nil && c.app.colorEnabled {
+		msg = color.Red.Apply(msg)
+	}
+	fmt.Fprintln(c.stderr, msg)
+}
+
+// Warn prints a yellow warning message to stderr.
+func (c *Context) Warn(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	if c.app != nil && c.app.colorEnabled {
+		msg = color.Yellow.Apply(msg)
+	}
+	fmt.Fprintln(c.stderr, msg)
+}
+
+// Info prints a cyan informational message to stdout.
+func (c *Context) Info(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	if c.app != nil && c.app.colorEnabled {
+		msg = color.Cyan.Apply(msg)
+	}
+	fmt.Fprintln(c.stdout, msg)
 }

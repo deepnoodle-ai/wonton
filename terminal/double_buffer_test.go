@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // Helper to create a test terminal
@@ -19,25 +19,25 @@ func TestResizeBuffer(t *testing.T) {
 	term.PrintAt(0, 0, "Hello")
 	term.Flush()
 
-	require.Equal(t, 'H', term.backBuffer[0][0].Char)
+	assert.Equal(t, 'H', term.backBuffer[0][0].Char)
 
 	// Resize smaller
 	term.resizeBuffers(5, 5)
 	term.width = 5
 	term.height = 5
 
-	require.Equal(t, 5, len(term.backBuffer))
-	require.Equal(t, 5, len(term.backBuffer[0]))
-	require.Equal(t, 'H', term.backBuffer[0][0].Char)
+	assert.Equal(t, 5, len(term.backBuffer))
+	assert.Equal(t, 5, len(term.backBuffer[0]))
+	assert.Equal(t, 'H', term.backBuffer[0][0].Char)
 
 	// Resize larger
 	term.resizeBuffers(10, 10)
 	term.width = 10
 	term.height = 10
 
-	require.Equal(t, 10, len(term.backBuffer))
-	require.Equal(t, 'H', term.backBuffer[0][0].Char) // Should persist
-	require.Equal(t, ' ', term.backBuffer[9][9].Char) // New space
+	assert.Equal(t, 10, len(term.backBuffer))
+	assert.Equal(t, 'H', term.backBuffer[0][0].Char) // Should persist
+	assert.Equal(t, ' ', term.backBuffer[9][9].Char) // New space
 
 	// Check virtual cursor
 	term.MoveCursor(8, 8)
@@ -57,15 +57,15 @@ func TestMultiWidthChar(t *testing.T) {
 	term.Print("Ａ")
 
 	// Check buffer - wide char should be at [0][0] with width 2
-	require.Equal(t, 'Ａ', term.backBuffer[0][0].Char)
-	require.Equal(t, 2, term.backBuffer[0][0].Width, "Wide character should have width 2")
+	assert.Equal(t, 'Ａ', term.backBuffer[0][0].Char)
+	assert.Equal(t, 2, term.backBuffer[0][0].Width, "Wide character should have width 2")
 
 	// The second cell should be a continuation cell
-	require.Equal(t, true, term.backBuffer[0][1].Continuation, "Second cell should be continuation")
+	assert.Equal(t, true, term.backBuffer[0][1].Continuation, "Second cell should be continuation")
 
 	// Next character 'B' should be at position [0][2] since wide char takes 2 cells
 	term.Print("B")
-	require.Equal(t, 'B', term.backBuffer[0][2].Char, "Next char should be after wide char (at position 2)")
+	assert.Equal(t, 'B', term.backBuffer[0][2].Char, "Next char should be after wide char (at position 2)")
 }
 
 func TestScrollUp(t *testing.T) {
@@ -82,16 +82,16 @@ func TestScrollUp(t *testing.T) {
 
 	// Check line 0
 	// "Line 2 " (padded)
-	require.Equal(t, 'L', term.backBuffer[0][0].Char)
-	require.Equal(t, 'i', term.backBuffer[0][1].Char)
-	require.Equal(t, '2', term.backBuffer[0][5].Char)
+	assert.Equal(t, 'L', term.backBuffer[0][0].Char)
+	assert.Equal(t, 'i', term.backBuffer[0][1].Char)
+	assert.Equal(t, '2', term.backBuffer[0][5].Char)
 
 	// Check line 1
 	// "Line 3 "
-	require.Equal(t, '3', term.backBuffer[1][5].Char)
+	assert.Equal(t, '3', term.backBuffer[1][5].Char)
 
 	// Check line 2 (cursor is here now)
-	require.Equal(t, ' ', term.backBuffer[2][0].Char)
+	assert.Equal(t, ' ', term.backBuffer[2][0].Char)
 }
 
 func TestColorsAndStyles(t *testing.T) {
@@ -106,11 +106,11 @@ func TestColorsAndStyles(t *testing.T) {
 	term.Flush()
 
 	output := out.String()
-	require.Contains(t, output, "31m") // Red code
-	require.Contains(t, output, "Red")
-	require.Contains(t, output, "Default")
+	assert.Contains(t, output, "31m") // Red code
+	assert.Contains(t, output, "Red")
+	assert.Contains(t, output, "Default")
 	// Should contain reset code \033[0m
-	require.Contains(t, output, "\033[0m")
+	assert.Contains(t, output, "\033[0m")
 }
 
 func TestClearLine_Background(t *testing.T) {
@@ -127,7 +127,7 @@ func TestClearLine_Background(t *testing.T) {
 	// Check first cell style.
 	// ClearLine now uses current style (Blue BG), so it should be Blue BG.
 	cell := term.backBuffer[0][0]
-	require.Equal(t, ColorBlue, cell.Style.Background)
+	assert.Equal(t, ColorBlue, cell.Style.Background)
 
 	// Verify current style is still Blue BG?
 	// ClearLine doesn't change current style.
@@ -140,17 +140,17 @@ func TestClearLine_Background(t *testing.T) {
 
 	// ClearToEndOfLine uses current style if BG is set
 	cell2 := term.backBuffer[1][0]
-	require.Equal(t, ColorBlue, cell2.Style.Background)
+	assert.Equal(t, ColorBlue, cell2.Style.Background)
 }
 
 func TestOutOfBounds(t *testing.T) {
 	term, _ := createTestTerminal(10, 10)
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		term.PrintAt(-1, -1, "OutOfBounds")
 		term.PrintAt(100, 100, "WayOut")
 	})
 
 	// Verify nothing written to (0,0)
-	require.Equal(t, ' ', term.backBuffer[0][0].Char)
+	assert.Equal(t, ' ', term.backBuffer[0][0].Char)
 }

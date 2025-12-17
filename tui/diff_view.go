@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"image"
-
 	"github.com/mattn/go-runewidth"
 )
 
@@ -114,13 +112,11 @@ func (d *diffView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (d *diffView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Render diff content
 	d.renderContent()
@@ -128,8 +124,6 @@ func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
 	if len(d.rendered) == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
 
 	// Get scroll position
 	scrollY := 0
@@ -170,7 +164,7 @@ func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
 			bgStyle := NewStyle().WithBgRGB(*line.BgColor)
 			// Fill the entire line width with background
 			for col := 0; col < width; col++ {
-				subFrame.SetCell(col, y, ' ', bgStyle)
+				ctx.SetCell(col, y, ' ', bgStyle)
 			}
 		}
 
@@ -182,19 +176,19 @@ func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
 			}
 
 			// Old line number
-			subFrame.PrintStyled(x, y, line.LineNumOld, lineNumStyle)
+			ctx.PrintStyled(x, y, line.LineNumOld, lineNumStyle)
 			x += runewidth.StringWidth(line.LineNumOld)
 
 			// Separator
-			subFrame.PrintStyled(x, y, " ", lineNumStyle)
+			ctx.PrintStyled(x, y, " ", lineNumStyle)
 			x++
 
 			// New line number
-			subFrame.PrintStyled(x, y, line.LineNumNew, lineNumStyle)
+			ctx.PrintStyled(x, y, line.LineNumNew, lineNumStyle)
 			x += runewidth.StringWidth(line.LineNumNew)
 
 			// Separator
-			subFrame.PrintStyled(x, y, " │ ", lineNumStyle)
+			ctx.PrintStyled(x, y, " │ ", lineNumStyle)
 			x += 3
 		}
 
@@ -210,7 +204,7 @@ func (d *diffView) render(frame RenderFrame, bounds image.Rectangle) {
 				style = style.WithBgRGB(*line.BgColor)
 			}
 
-			subFrame.PrintStyled(x, y, seg.Text, style)
+			ctx.PrintStyled(x, y, seg.Text, style)
 			x += runewidth.StringWidth(seg.Text)
 		}
 

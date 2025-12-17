@@ -135,13 +135,11 @@ func (f *filePickerView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (f *filePickerView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (f *filePickerView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	width := bounds.Dx()
-	height := bounds.Dy()
 
 	// Layout: input (1 line) + divider (1 line) + list (remaining)
 	inputHeight := 1
@@ -157,13 +155,13 @@ func (f *filePickerView) render(frame RenderFrame, bounds image.Rectangle) {
 		Width(width)
 
 	// Render input
-	inputBounds := image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Min.Y+inputHeight)
-	inputView.render(frame, inputBounds)
+	inputCtx := ctx.SubContext(image.Rect(0, 0, width, inputHeight))
+	inputView.render(inputCtx)
 
 	// Render divider with path
-	dividerY := bounds.Min.Y + inputHeight
+	dividerY := inputHeight
 	dividerStyle := NewStyle().WithForeground(ColorBrightBlack)
-	frame.PrintStyled(bounds.Min.X, dividerY, strings.Repeat("─", width), dividerStyle)
+	ctx.PrintStyled(0, dividerY, strings.Repeat("─", width), dividerStyle)
 
 	// Overlay path on divider
 	if f.currentPath != "" {
@@ -171,7 +169,7 @@ func (f *filePickerView) render(frame RenderFrame, bounds image.Rectangle) {
 		if len(pathLabel) > width-4 {
 			pathLabel = " ..." + pathLabel[len(pathLabel)-width+7:] + " "
 		}
-		frame.PrintStyled(bounds.Min.X+2, dividerY, pathLabel, f.pathStyle)
+		ctx.PrintStyled(2, dividerY, pathLabel, f.pathStyle)
 	}
 
 	// Get filtered items
@@ -197,6 +195,6 @@ func (f *filePickerView) render(frame RenderFrame, bounds image.Rectangle) {
 		})
 
 	// Render list
-	listBounds := image.Rect(bounds.Min.X, dividerY+dividerHeight, bounds.Max.X, bounds.Max.Y)
-	listView.render(frame, listBounds)
+	listCtx := ctx.SubContext(image.Rect(0, dividerY+dividerHeight, width, height))
+	listView.render(listCtx)
 }

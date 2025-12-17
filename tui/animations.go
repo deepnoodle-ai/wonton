@@ -47,7 +47,7 @@ func (r *RainbowAnimation) GetStyle(frame uint64, charIndex int, totalChars int)
 	return NewStyle().WithFgRGB(rgb)
 }
 
-// WaveAnimation creates a wave-like color effect
+// WaveAnimation creates a wave-like color effect that flows across text
 type WaveAnimation struct {
 	Speed     int
 	Amplitude float64
@@ -57,7 +57,7 @@ type WaveAnimation struct {
 // GetStyle returns the style for a character at a given frame
 func (w *WaveAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
 	if w.Speed <= 0 {
-		w.Speed = 30
+		w.Speed = 12 // Default to gentle speed
 	}
 	if w.Amplitude <= 0 {
 		w.Amplitude = 1.0
@@ -70,18 +70,226 @@ func (w *WaveAnimation) GetStyle(frame uint64, charIndex int, totalChars int) St
 		}
 	}
 
-	// Calculate wave position
-	waveTime := float64(frame) / float64(w.Speed)
-	_ = float64(charIndex) / float64(totalChars) * 6.28 // 2*PI (position for potential use)
-	wave := (1.0 + w.Amplitude*(0.5+0.5*waveTime)) * 0.5
-
-	// Select color based on wave
-	colorIndex := int(wave * float64(len(w.Colors)))
-	if colorIndex >= len(w.Colors) {
-		colorIndex = len(w.Colors) - 1
+	// Create a wave that flows across the text
+	// Each character is offset in the wave based on its position
+	numColors := len(w.Colors)
+	waveOffset := int(frame) / w.Speed
+	colorIndex := (charIndex + waveOffset) % numColors
+	if colorIndex < 0 {
+		colorIndex += numColors
 	}
 
-	return NewStyle().WithFgRGB(w.Colors[colorIndex])
+	// Blend between adjacent colors for smoother transitions
+	nextColorIndex := (colorIndex + 1) % numColors
+	// Calculate blend factor based on sub-frame position
+	blendPhase := float64(int(frame)%w.Speed) / float64(w.Speed)
+
+	c1 := w.Colors[colorIndex]
+	c2 := w.Colors[nextColorIndex]
+
+	// Linear interpolation between colors
+	r := uint8(float64(c1.R) + (float64(c2.R)-float64(c1.R))*blendPhase)
+	g := uint8(float64(c1.G) + (float64(c2.G)-float64(c1.G))*blendPhase)
+	b := uint8(float64(c1.B) + (float64(c2.B)-float64(c1.B))*blendPhase)
+
+	return NewStyle().WithFgRGB(NewRGB(r, g, b))
+}
+
+// SlideAnimation creates a highlight that slides across the text
+type SlideAnimation struct {
+	Speed          int
+	BaseColor      RGB
+	HighlightColor RGB
+	Width          int  // Width of the highlight in characters
+	Reverse        bool // True = right to left, false = left to right
+}
+
+// GetStyle returns the style for a character at a given frame
+func (s *SlideAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
+	if s.Speed <= 0 {
+		s.Speed = 2
+	}
+	if s.Width <= 0 {
+		s.Width = 3
+	}
+
+	// Calculate highlight position (slides across text)
+	cycleLength := totalChars + s.Width*2 // Extra space for highlight to fully enter/exit
+	highlightPos := int(frame/uint64(s.Speed)) % cycleLength
+
+	if s.Reverse {
+		highlightPos = cycleLength - 1 - highlightPos
+	}
+
+	// Adjust position to account for highlight entering from off-screen
+	highlightPos = highlightPos - s.Width
+
+	// Calculate distance from highlight center
+	distance := charIndex - highlightPos
+	if distance < 0 {
+		distance = -distance
+	}
+
+	// Apply highlight if within range
+	if distance <= s.Width {
+		// Smooth falloff from center
+		intensity := 1.0 - float64(distance)/float64(s.Width+1)
+		r := uint8(float64(s.BaseColor.R) + float64(s.HighlightColor.R-s.BaseColor.R)*intensity)
+		g := uint8(float64(s.BaseColor.G) + float64(s.HighlightColor.G-s.BaseColor.G)*intensity)
+		b := uint8(float64(s.BaseColor.B) + float64(s.HighlightColor.B-s.BaseColor.B)*intensity)
+		return NewStyle().WithFgRGB(NewRGB(r, g, b))
+	}
+
+	return NewStyle().WithFgRGB(s.BaseColor)
+}
+
+// SparkleAnimation creates a twinkling star-like effect where random characters briefly brighten
+type SparkleAnimation struct {
+	Speed       int // How often sparkles update
+	BaseColor   RGB
+	SparkColor  RGB
+	Density     int // Higher = more sparkles (1-10 recommended)
+}
+
+// GetStyle returns the style for a character at a given frame
+func (s *SparkleAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
+	if s.Speed <= 0 {
+		s.Speed = 3
+	}
+	if s.Density <= 0 {
+		s.Density = 3
+	}
+
+	// Use a pseudo-random approach based on frame and character position
+	// This creates deterministic but seemingly random sparkles
+	seed := uint64(charIndex*7919 + 104729) // Prime numbers for good distribution
+	sparklePhase := (frame / uint64(s.Speed)) + seed
+
+	// Create sparkle pattern using modular arithmetic
+	// Each character has its own sparkle cycle
+	cycleLength := uint64(20 + (charIndex % 15)) // Vary cycle per character
+	posInCycle := sparklePhase % cycleLength
+
+	// Sparkle occurs at specific points in the cycle
+	isSparkle := posInCycle < uint64(s.Density)
+
+	if isSparkle {
+		// Calculate sparkle intensity (builds up then fades)
+		intensity := 1.0 - float64(posInCycle)/float64(s.Density)
+		r := uint8(float64(s.BaseColor.R) + float64(s.SparkColor.R-s.BaseColor.R)*intensity)
+		g := uint8(float64(s.BaseColor.G) + float64(s.SparkColor.G-s.BaseColor.G)*intensity)
+		b := uint8(float64(s.BaseColor.B) + float64(s.SparkColor.B-s.BaseColor.B)*intensity)
+		return NewStyle().WithFgRGB(NewRGB(r, g, b))
+	}
+
+	return NewStyle().WithFgRGB(s.BaseColor)
+}
+
+// TypewriterAnimation reveals text character by character with a blinking cursor
+type TypewriterAnimation struct {
+	Speed       int // Frames per character reveal
+	TextColor   RGB
+	CursorColor RGB
+	Loop        bool // Whether to restart after fully revealed
+	HoldFrames  int  // Frames to hold before looping (if Loop is true)
+}
+
+// GetStyle returns the style for a character at a given frame
+func (t *TypewriterAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
+	if t.Speed <= 0 {
+		t.Speed = 4
+	}
+	if t.HoldFrames <= 0 {
+		t.HoldFrames = 60
+	}
+
+	// Calculate how many characters should be visible
+	var revealedChars int
+	if t.Loop {
+		cycleLength := totalChars*t.Speed + t.HoldFrames
+		posInCycle := int(frame) % cycleLength
+		revealedChars = posInCycle / t.Speed
+		if revealedChars > totalChars {
+			revealedChars = totalChars
+		}
+	} else {
+		revealedChars = int(frame) / t.Speed
+		if revealedChars > totalChars {
+			revealedChars = totalChars
+		}
+	}
+
+	// Character not yet revealed - render as invisible/dim
+	if charIndex >= revealedChars {
+		// Cursor position - blink it
+		if charIndex == revealedChars {
+			// Blink cursor every 15 frames
+			if (frame/15)%2 == 0 {
+				return NewStyle().WithFgRGB(t.CursorColor)
+			}
+		}
+		// Not revealed yet - very dim
+		dimColor := NewRGB(t.TextColor.R/8, t.TextColor.G/8, t.TextColor.B/8)
+		return NewStyle().WithFgRGB(dimColor)
+	}
+
+	// Character is revealed
+	return NewStyle().WithFgRGB(t.TextColor)
+}
+
+// GlitchAnimation creates a cyberpunk-style digital glitch effect
+type GlitchAnimation struct {
+	Speed       int // Base speed for glitch timing
+	BaseColor   RGB
+	GlitchColor RGB // Color during glitch
+	Intensity   int // How often glitches occur (1-10, higher = more glitches)
+}
+
+// GetStyle returns the style for a character at a given frame
+func (g *GlitchAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
+	if g.Speed <= 0 {
+		g.Speed = 2
+	}
+	if g.Intensity <= 0 {
+		g.Intensity = 3
+	}
+
+	// Create pseudo-random glitch pattern
+	seed := uint64(charIndex*6547 + 32771)
+	glitchPhase := (frame / uint64(g.Speed)) + seed
+
+	// Multiple layers of glitch patterns for more organic feel
+	pattern1 := (glitchPhase * 7) % 100
+	pattern2 := (glitchPhase * 13) % 67
+	pattern3 := ((frame + uint64(charIndex*3)) / 3) % 23
+
+	// Combine patterns to determine if glitching
+	isGlitch := pattern1 < uint64(g.Intensity*2) ||
+		(pattern2 < uint64(g.Intensity) && pattern3 < 5)
+
+	if isGlitch {
+		// Vary the glitch color slightly for more visual interest
+		variation := int(glitchPhase % 3)
+		var r, gVal, b uint8
+		switch variation {
+		case 0:
+			// Primary glitch color
+			r, gVal, b = g.GlitchColor.R, g.GlitchColor.G, g.GlitchColor.B
+		case 1:
+			// Shifted toward cyan
+			r = g.GlitchColor.R / 2
+			gVal = g.GlitchColor.G
+			b = g.GlitchColor.B
+		case 2:
+			// Brighter flash
+			r = min(255, g.GlitchColor.R+50)
+			gVal = min(255, g.GlitchColor.G+50)
+			b = min(255, g.GlitchColor.B+50)
+		}
+		return NewStyle().WithFgRGB(NewRGB(r, gVal, b))
+	}
+
+	return NewStyle().WithFgRGB(g.BaseColor)
 }
 
 // PulseAnimation creates a pulsing brightness effect
@@ -450,30 +658,3 @@ func (asb *AnimatedStatusBar) SetPosition(x, y int) {
 	asb.y = y
 }
 
-// CreateRainbowText creates a helper function for rainbow text animation
-func CreateRainbowText(text string, speed int) TextAnimation {
-	return &RainbowAnimation{
-		Speed:    speed,
-		Length:   len([]rune(text)),
-		Reversed: false,
-	}
-}
-
-// CreateReverseRainbowText creates a helper function for reverse rainbow text animation
-func CreateReverseRainbowText(text string, speed int) TextAnimation {
-	return &RainbowAnimation{
-		Speed:    speed,
-		Length:   len([]rune(text)),
-		Reversed: true,
-	}
-}
-
-// CreatePulseText creates a helper function for pulsing text animation
-func CreatePulseText(color RGB, speed int) TextAnimation {
-	return &PulseAnimation{
-		Speed:         speed,
-		Color:         color,
-		MinBrightness: 0.3,
-		MaxBrightness: 1.0,
-	}
-}

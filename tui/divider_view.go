@@ -1,7 +1,5 @@
 package tui
 
-import "image"
-
 // dividerView displays a horizontal line separator
 type dividerView struct {
 	char  rune
@@ -77,18 +75,16 @@ func (d *dividerView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (d *dividerView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (d *dividerView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-
-	subFrame := frame.SubFrame(bounds)
-	width := bounds.Dx()
 
 	if d.title == "" {
 		// Simple line
 		for x := 0; x < width; x++ {
-			subFrame.SetCell(x, 0, d.char, d.style)
+			ctx.SetCell(x, 0, d.char, d.style)
 		}
 		return
 	}
@@ -100,7 +96,7 @@ func (d *dividerView) render(frame RenderFrame, bounds image.Rectangle) {
 
 	if paddedTitleW >= width {
 		// Title too wide, just show what fits
-		subFrame.PrintTruncated(0, 0, d.title, d.style)
+		ctx.PrintTruncated(0, 0, d.title, d.style)
 		return
 	}
 
@@ -109,15 +105,15 @@ func (d *dividerView) render(frame RenderFrame, bounds image.Rectangle) {
 
 	// Draw left side of line
 	for x := 0; x < titleStart; x++ {
-		subFrame.SetCell(x, 0, d.char, d.style)
+		ctx.SetCell(x, 0, d.char, d.style)
 	}
 
 	// Draw title
-	subFrame.PrintStyled(titleStart, 0, paddedTitle, d.style)
+	ctx.PrintStyled(titleStart, 0, paddedTitle, d.style)
 
 	// Draw right side of line
 	for x := titleStart + paddedTitleW; x < width; x++ {
-		subFrame.SetCell(x, 0, d.char, d.style)
+		ctx.SetCell(x, 0, d.char, d.style)
 	}
 }
 
@@ -176,13 +172,12 @@ func (h *headerBarView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (h *headerBarView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (h *headerBarView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
-	subFrame := frame.SubFrame(bounds)
-	width := bounds.Dx()
 	textW, _ := MeasureText(h.text)
 
 	// Center the text
@@ -193,11 +188,11 @@ func (h *headerBarView) render(frame RenderFrame, bounds image.Rectangle) {
 
 	// Fill entire width with background
 	for x := 0; x < width; x++ {
-		subFrame.SetCell(x, 0, ' ', h.style)
+		ctx.SetCell(x, 0, ' ', h.style)
 	}
 
 	// Draw centered text
-	subFrame.PrintStyled(startX, 0, h.text, h.style)
+	ctx.PrintStyled(startX, 0, h.text, h.style)
 }
 
 // StatusBar creates a full-width status bar (same as HeaderBar but defaults to bottom style).

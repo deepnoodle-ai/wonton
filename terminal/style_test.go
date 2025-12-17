@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/deepnoodle-ai/wonton/require"
 )
 
 func TestNewStyle(t *testing.T) {
@@ -33,7 +32,7 @@ func TestStyle_WithBackground(t *testing.T) {
 func TestStyle_WithFgRGB(t *testing.T) {
 	rgb := NewRGB(255, 128, 0)
 	style := NewStyle().WithFgRGB(rgb)
-	require.NotNil(t, style.FgRGB)
+	assert.NotNil(t, style.FgRGB)
 	assert.Equal(t, uint8(255), style.FgRGB.R)
 	assert.Equal(t, uint8(128), style.FgRGB.G)
 	assert.Equal(t, uint8(0), style.FgRGB.B)
@@ -42,7 +41,7 @@ func TestStyle_WithFgRGB(t *testing.T) {
 func TestStyle_WithBgRGB(t *testing.T) {
 	rgb := NewRGB(0, 128, 255)
 	style := NewStyle().WithBgRGB(rgb)
-	require.NotNil(t, style.BgRGB)
+	assert.NotNil(t, style.BgRGB)
 	assert.Equal(t, uint8(0), style.BgRGB.R)
 	assert.Equal(t, uint8(128), style.BgRGB.G)
 	assert.Equal(t, uint8(255), style.BgRGB.B)
@@ -228,7 +227,7 @@ func TestGradient_SingleStep(t *testing.T) {
 	start := NewRGB(255, 0, 0)
 	end := NewRGB(0, 255, 0)
 	colors := Gradient(start, end, 1)
-	require.Len(t, colors, 1)
+	assert.Len(t, colors, 1)
 	assert.Equal(t, start, colors[0])
 }
 
@@ -236,7 +235,7 @@ func TestGradient_TwoSteps(t *testing.T) {
 	start := NewRGB(0, 0, 0)
 	end := NewRGB(255, 255, 255)
 	colors := Gradient(start, end, 2)
-	require.Len(t, colors, 2)
+	assert.Len(t, colors, 2)
 	assert.Equal(t, start, colors[0])
 	assert.Equal(t, end, colors[1])
 }
@@ -245,7 +244,7 @@ func TestGradient_MultipleSteps(t *testing.T) {
 	start := NewRGB(255, 0, 0)
 	end := NewRGB(0, 0, 255)
 	colors := Gradient(start, end, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	assert.Equal(t, start, colors[0])
 	assert.Equal(t, end, colors[4])
 	// Middle color should be a blend
@@ -255,13 +254,13 @@ func TestGradient_MultipleSteps(t *testing.T) {
 
 func TestRainbowGradient_SingleStep(t *testing.T) {
 	colors := RainbowGradient(1)
-	require.Len(t, colors, 1)
+	assert.Len(t, colors, 1)
 	assert.Equal(t, NewRGB(255, 0, 0), colors[0])
 }
 
 func TestRainbowGradient_MultipleSteps(t *testing.T) {
 	colors := RainbowGradient(10)
-	require.Len(t, colors, 10)
+	assert.Len(t, colors, 10)
 	// First should be red
 	assert.Equal(t, NewRGB(255, 0, 0), colors[0])
 	// Should have variation in colors
@@ -270,7 +269,7 @@ func TestRainbowGradient_MultipleSteps(t *testing.T) {
 
 func TestSmoothRainbow(t *testing.T) {
 	colors := SmoothRainbow(10)
-	require.Len(t, colors, 10)
+	assert.Len(t, colors, 10)
 	// Should have distinct colors
 	uniqueColors := make(map[RGB]bool)
 	for _, c := range colors {
@@ -287,7 +286,7 @@ func TestMultiGradient_EmptyStops(t *testing.T) {
 func TestMultiGradient_SingleStop(t *testing.T) {
 	stop := NewRGB(128, 128, 128)
 	colors := MultiGradient([]RGB{stop}, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	for _, c := range colors {
 		assert.Equal(t, stop, c)
 	}
@@ -300,7 +299,7 @@ func TestMultiGradient_MultipleStops(t *testing.T) {
 		NewRGB(0, 0, 255), // Blue
 	}
 	colors := MultiGradient(stops, 5)
-	require.Len(t, colors, 5)
+	assert.Len(t, colors, 5)
 	assert.Equal(t, stops[0], colors[0])
 	assert.Equal(t, stops[2], colors[4])
 }
@@ -340,4 +339,177 @@ func TestStyle_String_CombinedAttributes(t *testing.T) {
 	// Should be properly formatted
 	assert.True(t, strings.HasPrefix(output, "\033["))
 	assert.True(t, strings.HasSuffix(output, "m"))
+}
+
+func TestStyle_Merge_EmptyStyles(t *testing.T) {
+	s1 := NewStyle()
+	s2 := NewStyle()
+	result := s1.Merge(s2)
+	assert.True(t, result.IsEmpty())
+}
+
+func TestStyle_Merge_PreservesBaseWhenOtherEmpty(t *testing.T) {
+	base := NewStyle().WithForeground(ColorRed).WithBold()
+	other := NewStyle()
+	result := base.Merge(other)
+
+	assert.Equal(t, ColorRed, result.Foreground)
+	assert.True(t, result.Bold)
+}
+
+func TestStyle_Merge_AdoptsOtherWhenBaseEmpty(t *testing.T) {
+	base := NewStyle()
+	other := NewStyle().WithForeground(ColorGreen).WithItalic()
+	result := base.Merge(other)
+
+	assert.Equal(t, ColorGreen, result.Foreground)
+	assert.True(t, result.Italic)
+}
+
+func TestStyle_Merge_OtherOverridesBase(t *testing.T) {
+	base := NewStyle().WithForeground(ColorRed)
+	other := NewStyle().WithForeground(ColorBlue)
+	result := base.Merge(other)
+
+	assert.Equal(t, ColorBlue, result.Foreground)
+}
+
+func TestStyle_Merge_BackgroundColors(t *testing.T) {
+	base := NewStyle().WithBackground(ColorYellow)
+	other := NewStyle().WithBackground(ColorMagenta)
+	result := base.Merge(other)
+
+	assert.Equal(t, ColorMagenta, result.Background)
+}
+
+func TestStyle_Merge_FgRGB(t *testing.T) {
+	rgb := NewRGB(100, 150, 200)
+	base := NewStyle()
+	other := NewStyle().WithFgRGB(rgb)
+	result := base.Merge(other)
+
+	assert.NotNil(t, result.FgRGB)
+	assert.Equal(t, uint8(100), result.FgRGB.R)
+	assert.Equal(t, uint8(150), result.FgRGB.G)
+	assert.Equal(t, uint8(200), result.FgRGB.B)
+}
+
+func TestStyle_Merge_BgRGB(t *testing.T) {
+	rgb := NewRGB(50, 100, 150)
+	base := NewStyle()
+	other := NewStyle().WithBgRGB(rgb)
+	result := base.Merge(other)
+
+	assert.NotNil(t, result.BgRGB)
+	assert.Equal(t, uint8(50), result.BgRGB.R)
+	assert.Equal(t, uint8(100), result.BgRGB.G)
+	assert.Equal(t, uint8(150), result.BgRGB.B)
+}
+
+func TestStyle_Merge_RGBCopiedNotShared(t *testing.T) {
+	// Verify that RGB values are copied, not shared
+	rgb := NewRGB(100, 100, 100)
+	other := NewStyle().WithFgRGB(rgb)
+	result := NewStyle().Merge(other)
+
+	// Modify the original RGB pointer in other
+	other.FgRGB.R = 255
+
+	// Result should not be affected
+	assert.Equal(t, uint8(100), result.FgRGB.R)
+}
+
+func TestStyle_Merge_BooleanAttributes(t *testing.T) {
+	base := NewStyle().WithBold()
+	other := NewStyle().WithItalic().WithUnderline()
+	result := base.Merge(other)
+
+	assert.True(t, result.Bold, "Base bold should be preserved")
+	assert.True(t, result.Italic, "Other italic should be merged")
+	assert.True(t, result.Underline, "Other underline should be merged")
+}
+
+func TestStyle_Merge_AllBooleanAttributes(t *testing.T) {
+	other := NewStyle().
+		WithBold().
+		WithItalic().
+		WithUnderline().
+		WithStrikethrough().
+		WithBlink().
+		WithReverse().
+		WithDim()
+	other.Hidden = true
+
+	result := NewStyle().Merge(other)
+
+	assert.True(t, result.Bold)
+	assert.True(t, result.Italic)
+	assert.True(t, result.Underline)
+	assert.True(t, result.Strikethrough)
+	assert.True(t, result.Blink)
+	assert.True(t, result.Reverse)
+	assert.True(t, result.Hidden)
+	assert.True(t, result.Dim)
+}
+
+func TestStyle_Merge_URL(t *testing.T) {
+	base := NewStyle()
+	other := NewStyle().WithURL("https://example.com")
+	result := base.Merge(other)
+
+	assert.Equal(t, "https://example.com", result.URL)
+}
+
+func TestStyle_Merge_URLOverride(t *testing.T) {
+	base := NewStyle().WithURL("https://old.com")
+	other := NewStyle().WithURL("https://new.com")
+	result := base.Merge(other)
+
+	assert.Equal(t, "https://new.com", result.URL)
+}
+
+func TestStyle_Merge_URLPreservedWhenOtherEmpty(t *testing.T) {
+	base := NewStyle().WithURL("https://preserved.com")
+	other := NewStyle()
+	result := base.Merge(other)
+
+	assert.Equal(t, "https://preserved.com", result.URL)
+}
+
+func TestStyle_Merge_ComplexScenario(t *testing.T) {
+	fgRGB := NewRGB(255, 0, 0)
+	bgRGB := NewRGB(0, 0, 255)
+
+	base := NewStyle().
+		WithForeground(ColorGreen).
+		WithBackground(ColorYellow).
+		WithBold().
+		WithURL("https://base.com")
+
+	other := NewStyle().
+		WithFgRGB(fgRGB).
+		WithBgRGB(bgRGB).
+		WithItalic().
+		WithUnderline().
+		WithURL("https://other.com")
+
+	result := base.Merge(other)
+
+	// RGB overrides from other
+	assert.NotNil(t, result.FgRGB)
+	assert.Equal(t, uint8(255), result.FgRGB.R)
+	assert.NotNil(t, result.BgRGB)
+	assert.Equal(t, uint8(255), result.BgRGB.B)
+
+	// Base colors preserved (since other used RGB, not Color)
+	assert.Equal(t, ColorGreen, result.Foreground)
+	assert.Equal(t, ColorYellow, result.Background)
+
+	// Boolean attributes combined
+	assert.True(t, result.Bold)
+	assert.True(t, result.Italic)
+	assert.True(t, result.Underline)
+
+	// URL from other
+	assert.Equal(t, "https://other.com", result.URL)
 }

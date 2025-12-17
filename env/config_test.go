@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 func TestParse_BasicTypes(t *testing.T) {
@@ -31,25 +31,25 @@ func TestParse_BasicTypes(t *testing.T) {
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(env))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.True(t, cfg.Debug)
-	require.Equal(t, 30*time.Second, cfg.Timeout)
-	require.Equal(t, 0.5, cfg.Rate)
-	require.Equal(t, uint(100), cfg.MaxConns)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.True(t, cfg.Debug)
+	assert.Equal(t, 30*time.Second, cfg.Timeout)
+	assert.Equal(t, 0.5, cfg.Rate)
+	assert.Equal(t, uint(100), cfg.MaxConns)
 }
 
 func TestParse_Defaults(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
-		Port int    `env:"PORT" default:"3000"`
+		Host string `env:"HOST" envDefault:"localhost"`
+		Port int    `env:"PORT" envDefault:"3000"`
 	}
 
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 3000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 3000, cfg.Port)
 }
 
 func TestParse_Required(t *testing.T) {
@@ -58,8 +58,8 @@ func TestParse_Required(t *testing.T) {
 	}
 
 	_, err := Parse[Config](WithEnvironment(map[string]string{}))
-	require.Error(t, err)
-	require.True(t, HasError[*VarNotSetError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*VarNotSetError](err))
 }
 
 func TestParse_NotEmpty(t *testing.T) {
@@ -70,8 +70,8 @@ func TestParse_NotEmpty(t *testing.T) {
 	_, err := Parse[Config](WithEnvironment(map[string]string{
 		"API_KEY": "",
 	}))
-	require.Error(t, err)
-	require.True(t, HasError[*EmptyVarError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*EmptyVarError](err))
 }
 
 func TestParse_Prefix(t *testing.T) {
@@ -89,9 +89,9 @@ func TestParse_Prefix(t *testing.T) {
 		WithEnvironment(env),
 		WithPrefix("MYAPP"),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "example.com", cfg.Host)
-	require.Equal(t, 9000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "example.com", cfg.Host)
+	assert.Equal(t, 9000, cfg.Port)
 }
 
 func TestParse_Stage(t *testing.T) {
@@ -109,18 +109,18 @@ func TestParse_Stage(t *testing.T) {
 
 	// Without stage - use default vars
 	cfg, err := Parse[Config](WithEnvironment(env))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 3000, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 3000, cfg.Port)
 
 	// With stage - use stage-prefixed vars
 	cfg, err = Parse[Config](
 		WithEnvironment(env),
 		WithStage("PROD"),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "prod.example.com", cfg.Host)
-	require.Equal(t, 443, cfg.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "prod.example.com", cfg.Host)
+	assert.Equal(t, 443, cfg.Port)
 }
 
 func TestParse_Slices(t *testing.T) {
@@ -133,9 +133,9 @@ func TestParse_Slices(t *testing.T) {
 		"HOSTS": "a.com,b.com,c.com",
 		"PORTS": "80, 443, 8080",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, []string{"a.com", "b.com", "c.com"}, cfg.Hosts)
-	require.Equal(t, []int{80, 443, 8080}, cfg.Ports)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"a.com", "b.com", "c.com"}, cfg.Hosts)
+	assert.Equal(t, []int{80, 443, 8080}, cfg.Ports)
 }
 
 func TestParse_Maps(t *testing.T) {
@@ -146,8 +146,8 @@ func TestParse_Maps(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"HEADERS": "Content-Type:application/json, Accept:*/*",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, map[string]string{
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]string{
 		"Content-Type": "application/json",
 		"Accept":       "*/*",
 	}, cfg.Headers)
@@ -167,16 +167,16 @@ func TestParse_NestedStructs(t *testing.T) {
 		"DB_HOST": "dbhost",
 		"DB_PORT": "5432",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "dbhost", cfg.Database.Host)
-	require.Equal(t, 5432, cfg.Database.Port)
+	assert.NoError(t, err)
+	assert.Equal(t, "dbhost", cfg.Database.Host)
+	assert.Equal(t, 5432, cfg.Database.Port)
 }
 
 func TestParse_FileLoading(t *testing.T) {
 	// Create temp file with content
 	tmpDir := t.TempDir()
 	secretFile := filepath.Join(tmpDir, "secret.txt")
-	require.NoError(t, os.WriteFile(secretFile, []byte("super-secret"), 0600))
+	assert.NoError(t, os.WriteFile(secretFile, []byte("super-secret"), 0600))
 
 	type Config struct {
 		Secret string `env:"SECRET_FILE,file"`
@@ -185,8 +185,8 @@ func TestParse_FileLoading(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"SECRET_FILE": secretFile,
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "super-secret", cfg.Secret)
+	assert.NoError(t, err)
+	assert.Equal(t, "super-secret", cfg.Secret)
 }
 
 func TestParse_Expand(t *testing.T) {
@@ -200,13 +200,13 @@ func TestParse_Expand(t *testing.T) {
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
 		"PATH_TEMPLATE": "$HOME/app/data",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "/home/user/app/data", cfg.Path)
+	assert.NoError(t, err)
+	assert.Equal(t, "/home/user/app/data", cfg.Path)
 }
 
 func TestParse_WithOnSet(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 		Port int    `env:"PORT"`
 	}
 
@@ -230,18 +230,18 @@ func TestParse_WithOnSet(t *testing.T) {
 			}{envVar: envVar, value: value, isDefault: isDefault}
 		}),
 	)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	hostCall, ok := seen["Host"]
-	require.True(t, ok, "Host should trigger OnSet")
-	require.Equal(t, "localhost", hostCall.value)
-	require.True(t, hostCall.isDefault, "Host should be marked as default")
-	require.True(t, strings.HasSuffix(hostCall.envVar, "HOST"), "env var should end with HOST")
+	assert.True(t, ok, "Host should trigger OnSet")
+	assert.Equal(t, "localhost", hostCall.value)
+	assert.True(t, hostCall.isDefault, "Host should be marked as default")
+	assert.True(t, strings.HasSuffix(hostCall.envVar, "HOST"), "env var should end with HOST")
 
 	portCall, ok := seen["Port"]
-	require.True(t, ok, "Port should trigger OnSet")
-	require.Equal(t, 8080, portCall.value)
-	require.False(t, portCall.isDefault, "Port should come from env vars")
+	assert.True(t, ok, "Port should trigger OnSet")
+	assert.Equal(t, 8080, portCall.value)
+	assert.False(t, portCall.isDefault, "Port should come from env vars")
 }
 
 func TestParse_WithUseFieldName(t *testing.T) {
@@ -259,9 +259,9 @@ func TestParse_WithUseFieldName(t *testing.T) {
 		WithEnvironment(envVars),
 		WithUseFieldName(),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "secret", cfg.APIKey)
-	require.Equal(t, 45*time.Second, cfg.Timeout)
+	assert.NoError(t, err)
+	assert.Equal(t, "secret", cfg.APIKey)
+	assert.Equal(t, 45*time.Second, cfg.Timeout)
 }
 
 func TestParse_CustomParserOption(t *testing.T) {
@@ -284,8 +284,8 @@ func TestParse_CustomParserOption(t *testing.T) {
 			return Endpoint(value), nil
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, Endpoint("https://api.example.com"), cfg.Base)
+	assert.NoError(t, err)
+	assert.Equal(t, Endpoint("https://api.example.com"), cfg.Base)
 }
 
 func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
@@ -294,8 +294,8 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.env")
 	second := filepath.Join(tmpDir, "second.env")
 
-	require.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
-	require.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
+	assert.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
 
 	type Config struct {
 		Value string `env:"VALUE"`
@@ -306,9 +306,9 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 		WithEnvironment(map[string]string{}),
 		WithEnvFile(first, second),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "one", cfg.Value, "first env file should win when key already set")
-	require.Equal(t, "from_second", cfg.Extra)
+	assert.NoError(t, err)
+	assert.Equal(t, "one", cfg.Value, "first env file should win when key already set")
+	assert.Equal(t, "from_second", cfg.Extra)
 }
 
 func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
@@ -317,8 +317,8 @@ func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.json")
 	second := filepath.Join(tmpDir, "second.json")
 
-	require.NoError(t, os.WriteFile(first, []byte(`{"host":"first","port":8080}`), 0644))
-	require.NoError(t, os.WriteFile(second, []byte(`{"host":"second"}`), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte(`{"host":"first","port":8080}`), 0644))
+	assert.NoError(t, os.WriteFile(second, []byte(`{"host":"second"}`), 0644))
 
 	type Config struct {
 		Host string `env:"HOST"`
@@ -329,24 +329,24 @@ func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
 		WithEnvironment(map[string]string{}),
 		WithJSONFile(first, second),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "second", cfg.Host, "later JSON file should override")
-	require.Equal(t, 8080, cfg.Port, "unchanged field should come from the first file")
+	assert.NoError(t, err)
+	assert.Equal(t, "second", cfg.Host, "later JSON file should override")
+	assert.Equal(t, 8080, cfg.Port, "unchanged field should come from the first file")
 }
 
 func TestParseInto_UpdatesExistingStruct(t *testing.T) {
 	type Config struct {
 		Host string `env:"HOST"`
-		Port int    `env:"PORT" default:"80"`
+		Port int    `env:"PORT" envDefault:"80"`
 	}
 
 	cfg := Config{Host: "initial"}
 	err := ParseInto(&cfg, WithEnvironment(map[string]string{
 		"HOST": "parsed",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "parsed", cfg.Host)
-	require.Equal(t, 80, cfg.Port, "default should populate missing field")
+	assert.NoError(t, err)
+	assert.Equal(t, "parsed", cfg.Host)
+	assert.Equal(t, 80, cfg.Port, "default should populate missing field")
 }
 
 func TestParse_RequiredIfNoDefault(t *testing.T) {
@@ -361,8 +361,8 @@ func TestParse_RequiredIfNoDefault(t *testing.T) {
 		}),
 		WithRequiredIfNoDefault(),
 	)
-	require.Error(t, err)
-	require.True(t, HasError[*VarNotSetError](err))
+	assert.Error(t, err)
+	assert.True(t, HasError[*VarNotSetError](err))
 }
 
 func TestParse_UseFieldName(t *testing.T) {
@@ -378,9 +378,9 @@ func TestParse_UseFieldName(t *testing.T) {
 		}),
 		WithUseFieldName(),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "myhost", cfg.ServerHost)
-	require.Equal(t, 9999, cfg.ServerPort)
+	assert.NoError(t, err)
+	assert.Equal(t, "myhost", cfg.ServerHost)
+	assert.Equal(t, 9999, cfg.ServerPort)
 }
 
 func TestParse_CustomParser(t *testing.T) {
@@ -415,13 +415,13 @@ func TestParse_CustomParser(t *testing.T) {
 			}
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, LevelWarn, cfg.LogLevel)
+	assert.NoError(t, err)
+	assert.Equal(t, LevelWarn, cfg.LogLevel)
 }
 
 func TestParse_OnSet(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 		Port int    `env:"PORT"`
 	}
 
@@ -434,11 +434,11 @@ func TestParse_OnSet(t *testing.T) {
 			setCalls = append(setCalls, field)
 		}),
 	)
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.Contains(t, setCalls, "Host")
-	require.Contains(t, setCalls, "Port")
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.Contains(t, setCalls, "Host")
+	assert.Contains(t, setCalls, "Port")
 }
 
 func TestParse_IgnoredField(t *testing.T) {
@@ -451,9 +451,9 @@ func TestParse_IgnoredField(t *testing.T) {
 		"HOST":   "localhost",
 		"SECRET": "should-be-ignored",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Empty(t, cfg.Secret)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Empty(t, cfg.Secret)
 }
 
 func TestParse_BooleanVariants(t *testing.T) {
@@ -474,13 +474,13 @@ func TestParse_BooleanVariants(t *testing.T) {
 		"E": "0",
 		"F": "no",
 	}))
-	require.NoError(t, err)
-	require.True(t, cfg.A)
-	require.True(t, cfg.B)
-	require.True(t, cfg.C)
-	require.False(t, cfg.D)
-	require.False(t, cfg.E)
-	require.False(t, cfg.F)
+	assert.NoError(t, err)
+	assert.True(t, cfg.A)
+	assert.True(t, cfg.B)
+	assert.True(t, cfg.C)
+	assert.False(t, cfg.D)
+	assert.False(t, cfg.E)
+	assert.False(t, cfg.F)
 }
 
 func TestParse_Pointers(t *testing.T) {
@@ -493,11 +493,11 @@ func TestParse_Pointers(t *testing.T) {
 		"HOST": "example.com",
 		"PORT": "8080",
 	}))
-	require.NoError(t, err)
-	require.NotNil(t, cfg.Host)
-	require.NotNil(t, cfg.Port)
-	require.Equal(t, "example.com", *cfg.Host)
-	require.Equal(t, 8080, *cfg.Port)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Host)
+	assert.NotNil(t, cfg.Port)
+	assert.Equal(t, "example.com", *cfg.Host)
+	assert.Equal(t, 8080, *cfg.Port)
 }
 
 func TestParse_EmbeddedStruct(t *testing.T) {
@@ -516,10 +516,10 @@ func TestParse_EmbeddedStruct(t *testing.T) {
 		"PORT": "8080",
 		"NAME": "myapp",
 	}))
-	require.NoError(t, err)
-	require.Equal(t, "localhost", cfg.Host)
-	require.Equal(t, 8080, cfg.Port)
-	require.Equal(t, "myapp", cfg.Name)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.Equal(t, "myapp", cfg.Name)
 }
 
 func TestParse_AggregateErrors(t *testing.T) {
@@ -532,12 +532,12 @@ func TestParse_AggregateErrors(t *testing.T) {
 	_, err := Parse[Config](WithEnvironment(map[string]string{
 		"C": "not-a-number",
 	}))
-	require.Error(t, err)
+	assert.Error(t, err)
 
 	// Should have multiple errors
 	aggErr, ok := err.(*AggregateError)
-	require.True(t, ok)
-	require.GreaterOrEqual(t, len(aggErr.Errors), 2) // A missing, B missing, C parse error
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(aggErr.Errors), 2) // A missing, B missing, C parse error
 }
 
 func TestMust_Panics(t *testing.T) {
@@ -545,19 +545,19 @@ func TestMust_Panics(t *testing.T) {
 		Required string `env:"REQUIRED,required"`
 	}
 
-	require.Panics(t, func() {
+	assert.Panics(t, func() {
 		Must[Config](WithEnvironment(map[string]string{}))
 	})
 }
 
 func TestMust_Success(t *testing.T) {
 	type Config struct {
-		Host string `env:"HOST" default:"localhost"`
+		Host string `env:"HOST" envDefault:"localhost"`
 	}
 
-	require.NotPanics(t, func() {
+	assert.NotPanics(t, func() {
 		cfg := Must[Config](WithEnvironment(map[string]string{}))
-		require.Equal(t, "localhost", cfg.Host)
+		assert.Equal(t, "localhost", cfg.Host)
 	})
 }
 
@@ -576,7 +576,791 @@ func TestToUpperSnakeCase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			require.Equal(t, tt.expected, toUpperSnakeCase(tt.input))
+			assert.Equal(t, tt.expected, toUpperSnakeCase(tt.input))
 		})
 	}
+}
+
+func TestParseInto_NonPointer(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+	}
+
+	var cfg Config
+	err := ParseInto(cfg, WithEnvironment(map[string]string{"HOST": "localhost"}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "expected non-nil pointer to struct")
+}
+
+func TestParseInto_NilPointer(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+	}
+
+	var cfg *Config
+	err := ParseInto(cfg, WithEnvironment(map[string]string{"HOST": "localhost"}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "expected non-nil pointer to struct")
+}
+
+func TestParseInto_PointerToNonStruct(t *testing.T) {
+	var s string
+	err := ParseInto(&s, WithEnvironment(map[string]string{}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "expected pointer to struct")
+}
+
+func TestParse_NestedStructWithoutEnvPrefix(t *testing.T) {
+	type Database struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	type Config struct {
+		Database Database // No envPrefix tag - uses DATABASE_ prefix
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"DATABASE_HOST": "dbhost",
+		"DATABASE_PORT": "5432",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, "dbhost", cfg.Database.Host)
+	assert.Equal(t, 5432, cfg.Database.Port)
+}
+
+func TestParse_PointerToNestedStruct(t *testing.T) {
+	type Database struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	type Config struct {
+		Database *Database `envPrefix:"DB_"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"DB_HOST": "dbhost",
+		"DB_PORT": "5432",
+	}))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Database)
+	assert.Equal(t, "dbhost", cfg.Database.Host)
+	assert.Equal(t, 5432, cfg.Database.Port)
+}
+
+func TestParse_InvalidBool(t *testing.T) {
+	type Config struct {
+		Debug bool `env:"DEBUG"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"DEBUG": "not-a-bool",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid boolean value")
+}
+
+func TestParse_InvalidInt(t *testing.T) {
+	type Config struct {
+		Port int `env:"PORT"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"PORT": "not-a-number",
+	}))
+	assert.Error(t, err)
+}
+
+func TestParse_InvalidUint(t *testing.T) {
+	type Config struct {
+		Count uint `env:"COUNT"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"COUNT": "-1",
+	}))
+	assert.Error(t, err)
+}
+
+func TestParse_InvalidFloat(t *testing.T) {
+	type Config struct {
+		Rate float64 `env:"RATE"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"RATE": "not-a-float",
+	}))
+	assert.Error(t, err)
+}
+
+func TestParse_InvalidDuration(t *testing.T) {
+	type Config struct {
+		Timeout time.Duration `env:"TIMEOUT"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"TIMEOUT": "invalid",
+	}))
+	assert.Error(t, err)
+}
+
+func TestParse_InvalidMapFormat(t *testing.T) {
+	type Config struct {
+		Headers map[string]string `env:"HEADERS"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"HEADERS": "invalid-no-colon",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid map entry")
+}
+
+func TestParse_EmptySlice(t *testing.T) {
+	type Config struct {
+		Hosts []string `env:"HOSTS"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"HOSTS": "",
+	}))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Hosts)
+}
+
+func TestParse_EmptyMap(t *testing.T) {
+	type Config struct {
+		Headers map[string]string `env:"HEADERS"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"HEADERS": "",
+	}))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Headers)
+}
+
+func TestParse_InvalidSliceElement(t *testing.T) {
+	type Config struct {
+		Ports []int `env:"PORTS"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"PORTS": "80, not-a-number, 443",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "element 1")
+}
+
+func TestParse_FileLoadError(t *testing.T) {
+	type Config struct {
+		Secret string `env:"SECRET_FILE,file"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"SECRET_FILE": "/nonexistent/path/to/file",
+	}))
+	assert.Error(t, err)
+	assert.True(t, HasError[*FileLoadError](err))
+}
+
+func TestParse_WithTagName(t *testing.T) {
+	type Config struct {
+		Host string `config:"HOST" fallback:"localhost"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithTagName("config", "fallback"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+
+	cfg, err = Parse[Config](
+		WithEnvironment(map[string]string{"HOST": "myhost"}),
+		WithTagName("config", "fallback"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "myhost", cfg.Host)
+}
+
+func TestParse_DefaultWithoutEnvTag(t *testing.T) {
+	type Config struct {
+		Host string `envDefault:"localhost"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+}
+
+func TestParse_DefaultParseError(t *testing.T) {
+	type Config struct {
+		Port int `envDefault:"not-a-number"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{}))
+	assert.Error(t, err)
+}
+
+func TestParse_IntegerTypes(t *testing.T) {
+	type Config struct {
+		Int8Val  int8  `env:"INT8"`
+		Int16Val int16 `env:"INT16"`
+		Int32Val int32 `env:"INT32"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"INT8":  "127",
+		"INT16": "32767",
+		"INT32": "2147483647",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, int8(127), cfg.Int8Val)
+	assert.Equal(t, int16(32767), cfg.Int16Val)
+	assert.Equal(t, int32(2147483647), cfg.Int32Val)
+}
+
+func TestParse_UintTypes(t *testing.T) {
+	type Config struct {
+		Uint8Val  uint8  `env:"UINT8"`
+		Uint16Val uint16 `env:"UINT16"`
+		Uint32Val uint32 `env:"UINT32"`
+		Uint64Val uint64 `env:"UINT64"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"UINT8":  "255",
+		"UINT16": "65535",
+		"UINT32": "4294967295",
+		"UINT64": "18446744073709551615",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, uint8(255), cfg.Uint8Val)
+	assert.Equal(t, uint16(65535), cfg.Uint16Val)
+	assert.Equal(t, uint32(4294967295), cfg.Uint32Val)
+	assert.Equal(t, uint64(18446744073709551615), cfg.Uint64Val)
+}
+
+func TestParse_Float32(t *testing.T) {
+	type Config struct {
+		Rate float32 `env:"RATE"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"RATE": "3.14",
+	}))
+	assert.NoError(t, err)
+	assert.InDelta(t, 3.14, float64(cfg.Rate), 0.001)
+}
+
+func TestParse_HexInt(t *testing.T) {
+	type Config struct {
+		Value int `env:"VALUE"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"VALUE": "0xFF",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, 255, cfg.Value)
+}
+
+func TestParse_MoreBooleanVariants(t *testing.T) {
+	type Config struct {
+		A bool `env:"A"`
+		B bool `env:"B"`
+		C bool `env:"C"`
+		D bool `env:"D"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"A": "on",
+		"B": "off",
+		"C": "t",
+		"D": "f",
+	}))
+	assert.NoError(t, err)
+	assert.True(t, cfg.A)
+	assert.False(t, cfg.B)
+	assert.True(t, cfg.C)
+	assert.False(t, cfg.D)
+}
+
+func TestParse_EmptyBool(t *testing.T) {
+	type Config struct {
+		Debug bool `env:"DEBUG"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"DEBUG": "",
+	}))
+	assert.NoError(t, err)
+	assert.False(t, cfg.Debug)
+}
+
+func TestParse_YBooleanVariants(t *testing.T) {
+	type Config struct {
+		A bool `env:"A"`
+		B bool `env:"B"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"A": "y",
+		"B": "n",
+	}))
+	assert.NoError(t, err)
+	assert.True(t, cfg.A)
+	assert.False(t, cfg.B)
+}
+
+func TestParse_UnexportedField(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+		port int    `env:"PORT"` //nolint:unused // Testing unexported field handling
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"HOST": "localhost",
+		"PORT": "8080",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+	// port should remain zero since it's unexported
+}
+
+func TestParse_CustomParserError(t *testing.T) {
+	type Custom string
+
+	type Config struct {
+		Value Custom `env:"VALUE"`
+	}
+
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"VALUE": "invalid",
+		}),
+		WithParser(func(s string) (Custom, error) {
+			if s == "invalid" {
+				return "", fmt.Errorf("custom parser error")
+			}
+			return Custom(s), nil
+		}),
+	)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "custom parser error")
+}
+
+func TestParse_StageWithPrefix(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"PROD_MYAPP_HOST": "prod-host",
+			"MYAPP_HOST":      "default-host",
+		}),
+		WithPrefix("MYAPP"),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "prod-host", cfg.Host)
+}
+
+func TestParse_StagePartialOverride(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"PROD_HOST": "prod-host",
+			"HOST":      "default-host",
+			"PORT":      "8080",
+		}),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "prod-host", cfg.Host)
+	assert.Equal(t, 8080, cfg.Port)
+}
+
+func TestParse_UnsupportedType(t *testing.T) {
+	type Config struct {
+		Ch chan int `env:"CH"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"CH": "something",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported type")
+}
+
+func TestParse_MapWithIntKeys(t *testing.T) {
+	type Config struct {
+		Ports map[int]string `env:"PORTS"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"PORTS": "80:http, 443:https",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, map[int]string{
+		80:  "http",
+		443: "https",
+	}, cfg.Ports)
+}
+
+func TestParse_MapWithIntValues(t *testing.T) {
+	type Config struct {
+		Priorities map[string]int `env:"PRIORITIES"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"PRIORITIES": "high:1, low:10",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]int{
+		"high": 1,
+		"low":  10,
+	}, cfg.Priorities)
+}
+
+func TestParse_MapKeyError(t *testing.T) {
+	type Config struct {
+		Ports map[int]string `env:"PORTS"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"PORTS": "invalid:http",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "map key")
+}
+
+func TestParse_MapValueError(t *testing.T) {
+	type Config struct {
+		Priorities map[string]int `env:"PRIORITIES"`
+	}
+
+	_, err := Parse[Config](WithEnvironment(map[string]string{
+		"PRIORITIES": "high:invalid",
+	}))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "map value")
+}
+
+func TestAggregateError_Empty(t *testing.T) {
+	err := &AggregateError{}
+	assert.Equal(t, "no errors", err.Error())
+	assert.Empty(t, err.Unwrap())
+}
+
+func TestAggregateError_Single(t *testing.T) {
+	inner := fmt.Errorf("single error")
+	err := &AggregateError{Errors: []error{inner}}
+	assert.Equal(t, "single error", err.Error())
+	assert.Equal(t, []error{inner}, err.Unwrap())
+}
+
+func TestAggregateError_Multiple(t *testing.T) {
+	err := &AggregateError{
+		Errors: []error{
+			fmt.Errorf("error 1"),
+			fmt.Errorf("error 2"),
+		},
+	}
+	assert.Contains(t, err.Error(), "2 errors")
+	assert.Contains(t, err.Error(), "error 1")
+	assert.Contains(t, err.Error(), "error 2")
+}
+
+func TestAggregateError_Is(t *testing.T) {
+	target := fmt.Errorf("target error")
+	err := &AggregateError{
+		Errors: []error{
+			fmt.Errorf("other error"),
+			fmt.Errorf("wrapped: %w", target),
+		},
+	}
+	assert.True(t, err.Is(target))
+
+	unrelated := fmt.Errorf("unrelated")
+	assert.False(t, err.Is(unrelated))
+}
+
+func TestParseError_WithWrapped(t *testing.T) {
+	inner := fmt.Errorf("inner error")
+	err := &ParseError{Err: inner}
+	assert.Contains(t, err.Error(), "inner error")
+	assert.Equal(t, inner, err.Unwrap())
+}
+
+func TestParseError_NoWrapped(t *testing.T) {
+	err := &ParseError{}
+	assert.Equal(t, "parse error", err.Error())
+	assert.Nil(t, err.Unwrap())
+}
+
+func TestFieldError_AllFields(t *testing.T) {
+	err := &FieldError{
+		Field:  "Port",
+		EnvVar: "APP_PORT",
+		Value:  "invalid",
+		Err:    fmt.Errorf("not a number"),
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "Port")
+	assert.Contains(t, msg, "APP_PORT")
+	assert.Contains(t, msg, "invalid")
+	assert.Contains(t, msg, "not a number")
+}
+
+func TestFieldError_NoValue(t *testing.T) {
+	err := &FieldError{
+		Field:  "Port",
+		EnvVar: "APP_PORT",
+		Err:    fmt.Errorf("not found"),
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "Port")
+	assert.Contains(t, msg, "APP_PORT")
+	assert.NotContains(t, msg, "cannot parse")
+}
+
+func TestFieldError_NoEnvVar(t *testing.T) {
+	err := &FieldError{
+		Field: "Port",
+		Err:   fmt.Errorf("some error"),
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "Port")
+	assert.Contains(t, msg, "some error")
+}
+
+func TestVarNotSetError(t *testing.T) {
+	err := &VarNotSetError{
+		Field:  "APIKey",
+		EnvVar: "API_KEY",
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "API_KEY")
+	assert.Contains(t, msg, "APIKey")
+	assert.Contains(t, msg, "required")
+}
+
+func TestEmptyVarError(t *testing.T) {
+	err := &EmptyVarError{
+		Field:  "APIKey",
+		EnvVar: "API_KEY",
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "API_KEY")
+	assert.Contains(t, msg, "APIKey")
+	assert.Contains(t, msg, "empty")
+}
+
+func TestFileLoadError(t *testing.T) {
+	inner := fmt.Errorf("permission denied")
+	err := &FileLoadError{
+		Field:    "Secret",
+		EnvVar:   "SECRET_FILE",
+		Filename: "/path/to/secret",
+		Err:      inner,
+	}
+	msg := err.Error()
+	assert.Contains(t, msg, "Secret")
+	assert.Contains(t, msg, "SECRET_FILE")
+	assert.Contains(t, msg, "/path/to/secret")
+	assert.Contains(t, msg, "permission denied")
+	assert.Equal(t, inner, err.Unwrap())
+}
+
+func TestGetErrors(t *testing.T) {
+	err := &AggregateError{
+		Errors: []error{
+			&VarNotSetError{Field: "A", EnvVar: "A"},
+			&FieldError{Field: "B", Err: fmt.Errorf("b error")},
+			&VarNotSetError{Field: "C", EnvVar: "C"},
+		},
+	}
+
+	varNotSetErrs := GetErrors[*VarNotSetError](err)
+	assert.Len(t, varNotSetErrs, 2)
+	assert.Equal(t, "A", varNotSetErrs[0].Field)
+	assert.Equal(t, "C", varNotSetErrs[1].Field)
+
+	fieldErrs := GetErrors[*FieldError](err)
+	assert.Len(t, fieldErrs, 1)
+	assert.Equal(t, "B", fieldErrs[0].Field)
+}
+
+func TestGetErrors_NotAggregate(t *testing.T) {
+	err := fmt.Errorf("plain error")
+	varNotSetErrs := GetErrors[*VarNotSetError](err)
+	assert.Empty(t, varNotSetErrs)
+}
+
+func TestHasError_WithWrapping(t *testing.T) {
+	inner := &VarNotSetError{Field: "A", EnvVar: "A"}
+	wrapped := fmt.Errorf("wrapped: %w", inner)
+	assert.True(t, HasError[*VarNotSetError](wrapped))
+}
+
+func TestParse_TextUnmarshaler(t *testing.T) {
+	type Config struct {
+		Time time.Time `env:"TIME"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"TIME": "2023-06-15T10:30:00Z",
+	}))
+	assert.NoError(t, err)
+	expected, _ := time.Parse(time.RFC3339, "2023-06-15T10:30:00Z")
+	assert.Equal(t, expected, cfg.Time)
+}
+
+func TestParse_JSONWithNonStringValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	jsonFile := filepath.Join(tmpDir, "config.json")
+
+	content := `{
+		"port": 8080,
+		"debug": true,
+		"rate": 0.5
+	}`
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+
+	type Config struct {
+		Port  int     `env:"PORT"`
+		Debug bool    `env:"DEBUG"`
+		Rate  float64 `env:"RATE"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithJSONFile(jsonFile),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, 8080, cfg.Port)
+	assert.True(t, cfg.Debug)
+	assert.Equal(t, 0.5, cfg.Rate)
+}
+
+func TestParse_JSONTypeMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	jsonFile := filepath.Join(tmpDir, "config.json")
+
+	// Boolean can't be unmarshalled into string - standard JSON behavior
+	content := `{"host": true}`
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+
+	type Config struct {
+		Host string `json:"host" env:"HOST"`
+	}
+
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithJSONFile(jsonFile),
+	)
+	// Standard json.Unmarshal returns error on type mismatch
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot unmarshal")
+}
+
+func TestParse_OnSetWithStageVar(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+	}
+
+	var setCalls []struct {
+		field     string
+		isDefault bool
+	}
+
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"PROD_HOST": "prod-host",
+		}),
+		WithStage("PROD"),
+		WithOnSet(func(field, envVar string, value any, isDefault bool) {
+			setCalls = append(setCalls, struct {
+				field     string
+				isDefault bool
+			}{field, isDefault})
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Len(t, setCalls, 1)
+	assert.Equal(t, "Host", setCalls[0].field)
+	assert.False(t, setCalls[0].isDefault)
+}
+
+func TestParse_MissingEnvFileSkipped(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST" envDefault:"localhost"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithEnvFile("/nonexistent/.env"),
+	)
+	// Should succeed - missing .env files are silently skipped
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+}
+
+func TestParse_MissingJSONFileSkipped(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST" envDefault:"localhost"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithJSONFile("/nonexistent/config.json"),
+	)
+	// Should succeed - missing JSON files are silently skipped
+	assert.NoError(t, err)
+	assert.Equal(t, "localhost", cfg.Host)
+}
+
+func TestParse_ConvertibleTypes(t *testing.T) {
+	tmpDir := t.TempDir()
+	jsonFile := filepath.Join(tmpDir, "config.json")
+
+	// JSON numbers are float64, need to convert to int
+	content := `{"count": 42}`
+	assert.NoError(t, os.WriteFile(jsonFile, []byte(content), 0644))
+
+	type Config struct {
+		Count int `env:"COUNT"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithJSONFile(jsonFile),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, 42, cfg.Count)
+}
+
+func TestParse_OnSetWithDefaultNoEnvTag(t *testing.T) {
+	type Config struct {
+		Host string `envDefault:"localhost"`
+	}
+
+	var setCalls []string
+
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{}),
+		WithOnSet(func(field, envVar string, value any, isDefault bool) {
+			setCalls = append(setCalls, field)
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Contains(t, setCalls, "Host")
 }

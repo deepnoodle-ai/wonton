@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/require"
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 var errTestError = errors.New("test error")
@@ -20,23 +20,23 @@ func TestEventTypes(t *testing.T) {
 			Width:  80,
 			Height: 24,
 		}
-		require.Equal(t, 80, event.Width)
-		require.Equal(t, 24, event.Height)
-		require.False(t, event.Time.IsZero())
+		assert.Equal(t, 80, event.Width)
+		assert.Equal(t, 24, event.Height)
+		assert.False(t, event.Time.IsZero())
 	})
 
 	t.Run("TickEvent", func(t *testing.T) {
 		event := TickEvent{
 			Time: time.Now(),
 		}
-		require.False(t, event.Time.IsZero())
+		assert.False(t, event.Time.IsZero())
 	})
 
 	t.Run("QuitEvent", func(t *testing.T) {
 		event := QuitEvent{
 			Time: time.Now(),
 		}
-		require.False(t, event.Time.IsZero())
+		assert.False(t, event.Time.IsZero())
 	})
 
 	t.Run("ErrorEvent", func(t *testing.T) {
@@ -44,9 +44,9 @@ func TestEventTypes(t *testing.T) {
 			Time: time.Now(),
 			Err:  errTestError,
 		}
-		require.Error(t, event.Err)
-		require.Equal(t, errTestError, event.Err)
-		require.False(t, event.Time.IsZero())
+		assert.Error(t, event.Err)
+		assert.Equal(t, errTestError, event.Err)
+		assert.False(t, event.Time.IsZero())
 	})
 }
 
@@ -82,10 +82,10 @@ func TestEventBuffering(t *testing.T) {
 	}()
 
 	err := runtime.Run()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	// Verify all events were received
-	require.Equal(t, numEvents, receivedCount)
+	assert.Equal(t, numEvents, receivedCount)
 }
 
 type bufferEvent struct {

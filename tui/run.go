@@ -10,6 +10,7 @@ type runConfig struct {
 	alternateScreen bool
 	hideCursor      bool
 	mouseTracking   bool
+	bracketedPaste  bool
 	pasteTabWidth   int
 }
 
@@ -58,6 +59,15 @@ func WithMouseTracking(enabled bool) RunOption {
 	}
 }
 
+// WithBracketedPaste enables bracketed paste mode.
+// When enabled, the terminal can distinguish pasted text from typed text,
+// allowing proper handling of multi-line pastes.
+func WithBracketedPaste(enabled bool) RunOption {
+	return func(c *runConfig) {
+		c.bracketedPaste = enabled
+	}
+}
+
 // WithPasteTabWidth configures how tabs in pasted content are handled.
 // If width is 0 (default), tabs are preserved as-is.
 // If width > 0, each tab is converted to that many spaces.
@@ -79,7 +89,7 @@ func WithPasteTabWidth(width int) RunOption {
 //	}
 //
 //	func (app *MyApp) View() tui.View {
-//	    return tui.VStack(
+//	    return tui.Stack(
 //	        tui.Text("Count: %d", app.count),
 //	        tui.Clickable("[+]", func() { app.count++ }),
 //	    )
@@ -135,14 +145,20 @@ func Run(app any, opts ...RunOption) error {
 	if cfg.mouseTracking {
 		terminal.EnableMouseTracking()
 	}
+	if cfg.bracketedPaste {
+		terminal.EnableBracketedPaste()
+	}
 
 	// Create and configure runtime
 	runtime := NewRuntime(terminal, app, cfg.fps)
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 
-	// Ensure mouse tracking is disabled on cleanup (terminal.Close doesn't handle this)
+	// Ensure these modes are disabled on cleanup (terminal.Close doesn't handle this)
 	if cfg.mouseTracking {
 		defer terminal.DisableMouseTracking()
+	}
+	if cfg.bracketedPaste {
+		defer terminal.DisableBracketedPaste()
 	}
 
 	// Run the application

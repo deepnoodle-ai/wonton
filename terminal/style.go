@@ -13,7 +13,7 @@ type RGB = color.RGB
 
 // Re-export color constants for backward compatibility
 const (
-	ColorDefault       = color.Default
+	ColorDefault       = color.NoColor
 	ColorBlack         = color.Black
 	ColorRed           = color.Red
 	ColorGreen         = color.Green
@@ -201,4 +201,51 @@ func (s Style) Apply(text string) string {
 // IsEmpty checks if the style has no attributes set
 func (s Style) IsEmpty() bool {
 	return s == NewStyle()
+}
+
+// Merge combines two styles, with the other style's non-default values taking precedence
+func (s Style) Merge(other Style) Style {
+	result := s
+	if other.Foreground != ColorDefault {
+		result.Foreground = other.Foreground
+	}
+	if other.Background != ColorDefault {
+		result.Background = other.Background
+	}
+	if other.FgRGB != nil {
+		rgb := *other.FgRGB
+		result.FgRGB = &rgb
+	}
+	if other.BgRGB != nil {
+		rgb := *other.BgRGB
+		result.BgRGB = &rgb
+	}
+	if other.Bold {
+		result.Bold = true
+	}
+	if other.Italic {
+		result.Italic = true
+	}
+	if other.Underline {
+		result.Underline = true
+	}
+	if other.Strikethrough {
+		result.Strikethrough = true
+	}
+	if other.Blink {
+		result.Blink = true
+	}
+	if other.Reverse {
+		result.Reverse = true
+	}
+	if other.Hidden {
+		result.Hidden = true
+	}
+	if other.Dim {
+		result.Dim = true
+	}
+	if other.URL != "" {
+		result.URL = other.URL
+	}
+	return result
 }

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"image"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -20,7 +19,6 @@ type codeView struct {
 	scrollY     *int
 	height      int
 	highlighted [][]StyledSegment
-	lastHash    uint64
 }
 
 // Code creates a code view with syntax highlighting.
@@ -221,16 +219,13 @@ func (c *codeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *codeView) render(frame RenderFrame, bounds image.Rectangle) {
-	if bounds.Empty() {
+func (c *codeView) render(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
 
 	c.highlight()
-
-	width := bounds.Dx()
-	height := bounds.Dy()
-	subFrame := frame.SubFrame(bounds)
 
 	lnWidth := c.lineNumberWidth()
 	lnStyle := NewStyle().WithForeground(ColorBrightBlack)
@@ -270,9 +265,9 @@ func (c *codeView) render(frame RenderFrame, bounds image.Rectangle) {
 		if c.showNumbers {
 			lineNum := c.startLine + lineIdx
 			numStr := padLeft(lineNum, lnWidth-2)
-			subFrame.PrintStyled(x, y, numStr, lnStyle)
+			ctx.PrintStyled(x, y, numStr, lnStyle)
 			x += len(numStr)
-			subFrame.PrintStyled(x, y, " ", separatorStyle)
+			ctx.PrintStyled(x, y, " ", separatorStyle)
 			x++
 		}
 
@@ -287,7 +282,7 @@ func (c *codeView) render(frame RenderFrame, bounds image.Rectangle) {
 				// Truncate
 				text = truncateToWidth(text, width-x)
 			}
-			subFrame.PrintStyled(x, y, text, seg.Style)
+			ctx.PrintStyled(x, y, text, seg.Style)
 			x += runewidth.StringWidth(text)
 		}
 	}
