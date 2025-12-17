@@ -90,26 +90,23 @@ func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 		}
 	}
 
-	scanner := bufio.NewScanner(reader)
-	// Increase buffer size for long lines
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	decoder := json.NewDecoder(reader)
 
-	// Read header (first line)
-	if !scanner.Scan() {
-		return nil, nil, fmt.Errorf("empty file")
-	}
-
+	// Read header (first object)
 	var header RecordingHeader
-	if err := json.Unmarshal(scanner.Bytes(), &header); err != nil {
+	if err := decoder.Decode(&header); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse header: %w", err)
 	}
 
-	// Read events (remaining lines)
+	// Read events (remaining objects)
 	var events []RecordingEvent
-	for scanner.Scan() {
+	for {
 		var raw []interface{}
-		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
-			continue // Skip malformed lines
+		if err := decoder.Decode(&raw); err != nil {
+			if err == io.EOF {
+				break
+			}
+			continue // Skip malformed lines/objects
 		}
 
 		if len(raw) < 3 {
@@ -135,10 +132,6 @@ func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 			Type: typeVal,
 			Data: dataVal,
 		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("error reading recording: %w", err)
 	}
 
 	return &header, events, nil

@@ -184,11 +184,13 @@ func (p *Player) Play() error {
 		event := events[p.currentIndex]
 		speed := p.speed
 		currentIndex := p.currentIndex
+		startTime := p.startTime
+		totalPaused := p.totalPaused
 		p.mu.RUnlock()
 
 		// Calculate when this event should fire
 		targetTime := event.Time / speed
-		elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
+		elapsed := time.Since(startTime).Seconds() - totalPaused.Seconds()
 
 		if elapsed < targetTime {
 			sleepDuration := time.Duration((targetTime - elapsed) * float64(time.Second))
