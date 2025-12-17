@@ -368,6 +368,7 @@ type Diff struct {
 type File struct {
     OldPath string
     NewPath string
+    IsBinary bool
     Hunks   []Hunk
 }
 

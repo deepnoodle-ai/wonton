@@ -301,7 +301,54 @@ func TestParse_HunkWithoutCounts(t *testing.T) {
 
 	hunk := diff.Files[0].Hunks[0]
 	assert.Equal(t, 5, hunk.OldStart)
+	assert.Equal(t, 1, hunk.OldCount) // Default to 1
 	assert.Equal(t, 5, hunk.NewStart)
+	assert.Equal(t, 1, hunk.NewCount) // Default to 1
+}
+
+func TestParse_BinaryFile(t *testing.T) {
+	diffText := `diff --git a/image.png b/image.png
+index 8e59273..1910281 100644
+Binary files a/image.png and b/image.png differ
+`
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+	assert.True(t, diff.Files[0].IsBinary)
+	assert.Equal(t, "image.png", diff.Files[0].OldPath)
+	assert.Equal(t, "image.png", diff.Files[0].NewPath)
+}
+
+func TestParse_NoNewlineAtEndOfFile(t *testing.T) {
+	diffText := `diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ -1 +1 @@
+-old
+\ No newline at end of file
++new
+\ No newline at end of file
+`
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+	
+	lines := diff.Files[0].Hunks[0].Lines
+	assert.Len(t, lines, 2)
+	assert.Equal(t, "old", lines[0].Content)
+	assert.Equal(t, "new", lines[1].Content)
+}
+
+func TestParse_MalformedHunkHeader(t *testing.T) {
+	diffText := `diff --git a/file.txt b/file.txt
+--- a/file.txt
++++ b/file.txt
+@@ invalid header @@
++new
+`
+	_, err := Parse(diffText)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "malformed hunk header")
 }
 
 // Example demonstrates basic parsing of a unified diff.

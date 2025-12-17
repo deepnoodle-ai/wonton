@@ -50,6 +50,7 @@
 package unidiff
 
 import (
+	"bufio"
 	"fmt"
 	"strings"
 )
@@ -170,6 +171,9 @@ type File struct {
 	// NewPath is the file path after changes (may include b/ prefix from git).
 	NewPath string
 
+	// IsBinary indicates if the file is a binary file.
+	IsBinary bool
+
 	// Hunks contains all the change blocks for this file.
 	Hunks []Hunk
 }
@@ -192,6 +196,7 @@ type Diff struct {
 //   - Line number tracking for old and new files
 //   - Detection of added, removed, and context lines
 //   - File renames (when old and new paths differ)
+//   - Binary files (marked with IsBinary=true)
 //
 // The parser strips a/ and b/ prefixes from file paths (common in git diffs)
 // and preserves both the raw line (with markers) and cleaned content.
@@ -212,7 +217,10 @@ type Diff struct {
 //	}
 //	fmt.Printf("Files changed: %d\n", len(diff.Files))
 func Parse(diffText string) (*Diff, error) {
-	lines := strings.Split(diffText, "\n")
+	scanner := bufio.NewScanner(strings.NewReader(diffText))
+	// Increase buffer size to handle very long lines if necessary,
+	// but default is usually fine for diffs unless minified code.
+
 	diff := &Diff{}
 
 	var currentFile *File
@@ -220,94 +228,140 @@ func Parse(diffText string) (*Diff, error) {
 	oldLineNum := 0
 	newLineNum := 0
 
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
+	flushHunk := func() {
+		if currentFile != nil && currentHunk != nil {
+			currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+			currentHunk = nil
+		}
+	}
+
+	flushFile := func() {
+		flushHunk()
+		if currentFile != nil {
+			diff.Files = append(diff.Files, *currentFile)
+			currentFile = nil
+		}
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
 
 		if strings.HasPrefix(line, "diff --git") {
-			// Start of a new file
-			if currentFile != nil && currentHunk != nil {
-				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
-			}
-			if currentFile != nil {
-				diff.Files = append(diff.Files, *currentFile)
-			}
-
+			flushFile()
 			currentFile = &File{}
-			currentHunk = nil
-
+			// Try to parse paths from diff --git line as fallback
+			// Format: diff --git a/old b/new
+			// Note: This simple parsing fails for filenames with spaces,
+			// but serves as a reasonable default for binary files.
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				currentFile.OldPath = strings.TrimPrefix(parts[2], "a/")
+				currentFile.NewPath = strings.TrimPrefix(parts[3], "b/")
+			}
 		} else if strings.HasPrefix(line, "--- ") {
-			// Old file path
 			if currentFile != nil {
 				path := strings.TrimPrefix(line, "--- ")
-				// Remove a/ prefix if present
 				path = strings.TrimPrefix(path, "a/")
 				currentFile.OldPath = path
 			}
-
 		} else if strings.HasPrefix(line, "+++ ") {
-			// New file path
 			if currentFile != nil {
 				path := strings.TrimPrefix(line, "+++ ")
-				// Remove b/ prefix if present
 				path = strings.TrimPrefix(path, "b/")
 				currentFile.NewPath = path
 			}
-
-		} else if strings.HasPrefix(line, "@@") {
-			// Start of a new hunk
-			if currentFile != nil && currentHunk != nil {
-				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+		} else if strings.HasPrefix(line, "Binary files") {
+			if currentFile != nil {
+				currentFile.IsBinary = true
+				// Try to extract paths if possible, but they are usually already set
+				// or will be set by the diff --git line.
+				// Format: Binary files a/foo.png and b/foo.png differ
 			}
+		} else if strings.HasPrefix(line, "@@") {
+			flushHunk()
 
 			currentHunk = &Hunk{
 				Header: line,
 			}
 
 			// Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
+			// Or: @@ -oldStart +newStart @@ (implies count of 1)
 			parts := strings.Fields(line)
 			if len(parts) >= 3 {
 				// Parse old range
+				if !strings.HasPrefix(parts[1], "-") {
+					return nil, fmt.Errorf("malformed hunk header (missing -): %s", line)
+				}
 				oldRange := strings.TrimPrefix(parts[1], "-")
-				fmt.Sscanf(oldRange, "%d,%d", &currentHunk.OldStart, &currentHunk.OldCount)
+				var n int
+				var err error
+				if strings.Contains(oldRange, ",") {
+					n, err = fmt.Sscanf(oldRange, "%d,%d", &currentHunk.OldStart, &currentHunk.OldCount)
+					if n != 2 || err != nil {
+						return nil, fmt.Errorf("malformed hunk header (old range): %s", line)
+					}
+				} else {
+					n, err = fmt.Sscanf(oldRange, "%d", &currentHunk.OldStart)
+					if n != 1 || err != nil {
+						return nil, fmt.Errorf("malformed hunk header (old range): %s", line)
+					}
+					currentHunk.OldCount = 1
+				}
 
 				// Parse new range
+				if !strings.HasPrefix(parts[2], "+") {
+					return nil, fmt.Errorf("malformed hunk header (missing +): %s", line)
+				}
 				newRange := strings.TrimPrefix(parts[2], "+")
-				fmt.Sscanf(newRange, "%d,%d", &currentHunk.NewStart, &currentHunk.NewCount)
+				if strings.Contains(newRange, ",") {
+					n, err = fmt.Sscanf(newRange, "%d,%d", &currentHunk.NewStart, &currentHunk.NewCount)
+					if n != 2 || err != nil {
+						return nil, fmt.Errorf("malformed hunk header (new range): %s", line)
+					}
+				} else {
+					n, err = fmt.Sscanf(newRange, "%d", &currentHunk.NewStart)
+					if n != 1 || err != nil {
+						return nil, fmt.Errorf("malformed hunk header (new range): %s", line)
+					}
+					currentHunk.NewCount = 1
+				}
+			} else {
+				return nil, fmt.Errorf("malformed hunk header: %s", line)
 			}
 
 			oldLineNum = currentHunk.OldStart
 			newLineNum = currentHunk.NewStart
 
+		} else if strings.HasPrefix(line, "\\ No newline at end of file") {
+			// This indicates the previous line didn't end with a newline.
+			// Currently we preserve lines as strings without newline characters,
+			// so this metadata is primarily informational or for exact reconstruction.
+			// We can ignore it for now or store it if we needed perfect fidelity.
+			continue
 		} else if currentHunk != nil {
 			// Process diff line
 			var diffLine Line
 			diffLine.RawLine = line
 
 			if strings.HasPrefix(line, "+") {
-				// Added line
 				diffLine.Type = LineAdded
 				diffLine.Content = strings.TrimPrefix(line, "+")
 				diffLine.OldLineNum = 0
 				diffLine.NewLineNum = newLineNum
 				newLineNum++
-
 			} else if strings.HasPrefix(line, "-") {
-				// Removed line
 				diffLine.Type = LineRemoved
 				diffLine.Content = strings.TrimPrefix(line, "-")
 				diffLine.OldLineNum = oldLineNum
 				diffLine.NewLineNum = 0
 				oldLineNum++
-
 			} else if strings.HasPrefix(line, " ") || line == "" {
-				// Context line (unchanged)
 				diffLine.Type = LineContext
 				diffLine.Content = strings.TrimPrefix(line, " ")
 				diffLine.OldLineNum = oldLineNum
 				diffLine.NewLineNum = newLineNum
 				oldLineNum++
 				newLineNum++
-
 			} else {
 				// Other lines (might be metadata, skip)
 				continue
@@ -317,13 +371,11 @@ func Parse(diffText string) (*Diff, error) {
 		}
 	}
 
-	// Append last hunk and file
-	if currentFile != nil && currentHunk != nil {
-		currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
-	if currentFile != nil {
-		diff.Files = append(diff.Files, *currentFile)
-	}
+
+	flushFile()
 
 	return diff, nil
 }
