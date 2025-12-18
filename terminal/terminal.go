@@ -73,9 +73,13 @@
 //
 // # Thread Safety
 //
-// Terminal methods are thread-safe and can be called from multiple goroutines.
-// However, for rendering, use the BeginFrame/EndFrame pattern which locks the
-// terminal for exclusive access during frame composition.
+// Most Terminal methods are thread-safe, including Size, Clear, MoveCursor,
+// SetCell, and the BeginFrame/EndFrame rendering pattern. However, some methods
+// that emit raw escape sequences (HideCursor, ShowCursor, EnableAlternateScreen,
+// DisableAlternateScreen, EnableMouseTracking, DisableMouseTracking, etc.) do not
+// acquire locks to avoid overhead, as they're typically called during setup/teardown.
+// For rendering, use the BeginFrame/EndFrame pattern which locks the terminal
+// for exclusive access during frame composition.
 //
 // # Performance
 //
@@ -390,9 +394,11 @@ func (tf *terminalRenderFrame) SubFrame(rect image.Rectangle) RenderFrame {
 //   - ANSI escape sequence generation
 //   - Raw mode and alternate screen buffer support
 //
-// Thread Safety: All public methods are thread-safe and can be called from
-// multiple goroutines. However, for rendering, use the BeginFrame/EndFrame
-// pattern to ensure atomic updates.
+// Thread Safety: Most methods are thread-safe. Methods for buffer operations
+// (Size, Clear, MoveCursor, SetCell, Fill, BeginFrame/EndFrame) use locking.
+// Methods that emit raw escape sequences during setup/teardown (HideCursor,
+// ShowCursor, EnableAlternateScreen, EnableMouseTracking, etc.) do not lock,
+// as they're designed to be called before/after the main rendering loop.
 //
 // Lifecycle:
 //  1. Create with NewTerminal()
@@ -454,6 +460,10 @@ type Terminal struct {
 
 	// Cursor visibility state
 	cursorHidden bool
+
+	// Mode tracking for cleanup
+	mouseEnabled   bool // Mouse tracking is enabled
+	bracketedPaste bool // Bracketed paste is enabled
 }
 
 // EndFrame finishes the frame, flushes the buffer to the terminal, and unlocks.
@@ -502,6 +512,12 @@ type Position struct {
 //
 // Returns an error if the terminal size cannot be detected (e.g., when not
 // running in a terminal). In such cases, defaults to 80x24.
+//
+// Note: NewTerminal uses os.Stdout's file descriptor for terminal size detection
+// and raw mode. This works correctly when stdout is a TTY. If stdout is piped
+// while stdin is a TTY, raw mode may fail. For such cases, consider checking
+// term.IsTerminal(os.Stdin.Fd()) before enabling raw mode, as done in the tui
+// package's Runtime.Run().
 func NewTerminal() (*Terminal, error) {
 	fd := int(os.Stdout.Fd())
 	width, height, err := term.GetSize(fd)
@@ -955,13 +971,21 @@ func (t *Terminal) EnableAlternateScreen() {
 // This should be called after EnableRawMode() and before reading input.
 // Don't forget to call DisableBracketedPaste() to restore normal paste behavior.
 func (t *Terminal) EnableBracketedPaste() {
+	if t.bracketedPaste {
+		return
+	}
 	fmt.Fprint(t.out, "\033[?2004h")
+	t.bracketedPaste = true
 }
 
 // DisableBracketedPaste disables bracketed paste mode.
 // This restores normal paste behavior where pasted text is treated as typed input.
 func (t *Terminal) DisableBracketedPaste() {
+	if !t.bracketedPaste {
+		return
+	}
 	fmt.Fprint(t.out, "\033[?2004l")
+	t.bracketedPaste = false
 }
 
 // DetectKittyProtocol probes the terminal to detect Kitty keyboard protocol support.
@@ -969,11 +993,18 @@ func (t *Terminal) DisableBracketedPaste() {
 // Returns true if the terminal supports the protocol.
 //
 // The detection works by:
-// 1. Sending a query for progressive enhancement support (\x1b[?u)
-// 2. Sending a device attributes query (\x1b[c)
-// 3. Checking if both responses are received within a timeout
+// 1. Temporarily enabling raw mode
+// 2. Sending a query for progressive enhancement support (\x1b[?u)
+// 3. Sending a device attributes query (\x1b[c)
+// 4. Reading responses with a 200ms timeout
 //
-// This is the same approach used by Gemini CLI.
+// Caveats:
+//   - Detection relies on SetReadDeadline which may not work on all platforms
+//   - If the user types during detection, their input may be consumed
+//   - On terminals that don't support deadlines, detection may block briefly
+//   - Detection spawns a goroutine that will clean up on timeout
+//
+// This is the same approach used by Gemini CLI and other terminal applications.
 func (t *Terminal) DetectKittyProtocol() bool {
 	if t.fd == -1 {
 		return false // Test mode
@@ -1075,6 +1106,9 @@ func (t *Terminal) IsKittyProtocolEnabled() bool {
 // This includes button press/release AND all mouse motion events (hover).
 // Use EnableMouseButtons() if you only need click events without motion tracking.
 func (t *Terminal) EnableMouseTracking() {
+	if t.mouseEnabled {
+		return
+	}
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
 	fmt.Fprint(t.out, "\033[?1006h")
 	// Enable mouse tracking - report button press and release
@@ -1082,23 +1116,32 @@ func (t *Terminal) EnableMouseTracking() {
 	// Enable all mouse motion tracking (including when no button is pressed)
 	// This is needed for proper hover state detection
 	fmt.Fprint(t.out, "\033[?1003h")
+	t.mouseEnabled = true
 }
 
 // EnableMouseButtons enables mouse button tracking without motion events.
 // This reports button press/release events only, not mouse movement.
 // Use this for better performance when hover detection is not needed.
 func (t *Terminal) EnableMouseButtons() {
+	if t.mouseEnabled {
+		return
+	}
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
 	fmt.Fprint(t.out, "\033[?1006h")
 	// Enable mouse tracking - report button press and release only
 	fmt.Fprint(t.out, "\033[?1000h")
+	t.mouseEnabled = true
 }
 
 // DisableMouseTracking disables mouse event reporting
 func (t *Terminal) DisableMouseTracking() {
+	if !t.mouseEnabled {
+		return
+	}
 	fmt.Fprint(t.out, "\033[?1000l")
 	fmt.Fprint(t.out, "\033[?1003l")
 	fmt.Fprint(t.out, "\033[?1006l")
+	t.mouseEnabled = false
 }
 
 // DisableAlternateScreen switches back to the main screen buffer
@@ -1269,6 +1312,18 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 			currentX >= 0 && currentX < t.width &&
 			currentY >= 0 && currentY < t.height {
 
+			// Clear any wide-char artifacts before writing
+			oldCell := t.backBuffer[currentY][currentX]
+			if oldCell.Width == 2 && currentX+1 < t.width {
+				// Old cell was a wide char - clear its continuation
+				t.backBuffer[currentY][currentX+1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+				t.dirtyRegion.Mark(currentX+1, currentY)
+			} else if oldCell.Continuation && currentX > 0 {
+				// We're overwriting a continuation cell - clear the lead wide char
+				t.backBuffer[currentY][currentX-1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+				t.dirtyRegion.Mark(currentX-1, currentY)
+			}
+
 			// Set the main character cell
 			t.backBuffer[currentY][currentX] = Cell{
 				Char:         r,
@@ -1280,6 +1335,12 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 
 			// For wide characters (width 2), mark the next cell as continuation
 			if charWidth == 2 && currentX+1 < clipRect.Max.X && currentX+1 < t.width {
+				// Clear any wide-char lead at the continuation position
+				nextCell := t.backBuffer[currentY][currentX+1]
+				if nextCell.Width == 2 && currentX+2 < t.width {
+					t.backBuffer[currentY][currentX+2] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+					t.dirtyRegion.Mark(currentX+2, currentY)
+				}
 				t.backBuffer[currentY][currentX+1] = Cell{
 					Char:         0,
 					Style:        style,
@@ -1369,6 +1430,20 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 		return ErrOutOfBounds
 	}
 
+	// Clear any wide-char artifacts before writing:
+	// 1. If we're overwriting a wide char, clear its continuation cell
+	// 2. If we're overwriting a continuation cell, clear the lead wide char
+	oldCell := t.backBuffer[y][x]
+	if oldCell.Width == 2 && x+1 < t.width {
+		// Old cell was a wide char - clear its continuation
+		t.backBuffer[y][x+1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+		t.dirtyRegion.Mark(x+1, y)
+	} else if oldCell.Continuation && x > 0 {
+		// We're overwriting a continuation cell - clear the lead wide char
+		t.backBuffer[y][x-1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+		t.dirtyRegion.Mark(x-1, y)
+	}
+
 	// Set the main character cell
 	t.backBuffer[y][x] = Cell{
 		Char:         char,
@@ -1380,6 +1455,12 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 
 	// For wide characters (width 2), mark the next cell as continuation
 	if charWidth == 2 && x+1 < t.width {
+		// Also clear any wide-char lead at x+1 before making it a continuation
+		nextCell := t.backBuffer[y][x+1]
+		if nextCell.Width == 2 && x+2 < t.width {
+			t.backBuffer[y][x+2] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+			t.dirtyRegion.Mark(x+2, y)
+		}
 		t.backBuffer[y][x+1] = Cell{
 			Char:         0,
 			Style:        style,
@@ -1854,6 +1935,12 @@ func (t *Terminal) ResetMetrics() {
 
 // Close cleans up terminal state and marks the terminal as closed.
 // After Close() is called, the terminal should not be reused.
+//
+// Close restores terminal modes in the correct order:
+//  1. Stops any active recording
+//  2. Disables special input modes (mouse, keyboard, paste)
+//  3. Shows cursor and disables alternate screen
+//  4. Restores normal terminal mode
 func (t *Terminal) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -1869,19 +1956,28 @@ func (t *Terminal) Close() error {
 		t.mu.Lock()
 	}
 
+	// Stop any active recording
+	if t.recorder != nil {
+		t.recorder.close()
+		t.recorder = nil
+	}
+
 	t.closed = true
+
+	// Disable special input modes (order matters for some terminals)
+	t.DisableMouseTracking()
+	t.DisableBracketedPaste()
+	t.DisableEnhancedKeyboard()
+
+	// Restore cursor and screen
 	t.ShowCursor()
 	t.DisableAlternateScreen()
 	t.DisableRawMode()
 
-	// Reset style (inline to avoid mutex deadlock)
+	// Reset style
 	t.currentStyle = NewStyle()
-	if !t.buffered {
-		fmt.Fprint(t.out, "\033[0m")
-	}
+	fmt.Fprint(t.out, "\033[0m")
 
-	// Don't flush on close, might re-print garbage
-	fmt.Fprint(t.out, "\033[2J") // Clear screen on exit
 	return nil
 }
 
