@@ -400,8 +400,7 @@ func main() {
 		Version("1.0.0")
 
 	// Main command
-	app.Command("").
-		Description("Check a website for broken links").
+	app.Main().
 		Args("url").
 		Flags(
 			cli.Int("max-urls", "m").

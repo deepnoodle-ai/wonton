@@ -239,6 +239,21 @@ func (a *App) Command(name string) *Command {
 	return cmd
 }
 
+// Main returns a command builder for the main/root command.
+// This command runs when no subcommand is specified.
+//
+// Example:
+//
+//	app.Main().
+//	    Args("url").
+//	    Flags(cli.String("output", "o").Help("Output file")).
+//	    Run(handler)
+//
+// This is equivalent to app.Command("") but more explicit.
+func (a *App) Main() *Command {
+	return a.Command("")
+}
+
 // Group creates a new command group for organizing related commands.
 //
 // Groups help organize commands hierarchically. For example:
@@ -386,11 +401,15 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	// Find the command (or use root handler)
 	var cmd *Command
 	if cmdName == "" {
-		if a.handler == nil {
+		if a.handler == nil && a.commands[""] == nil {
 			return a.showHelp()
 		}
-		// Use root handler
-		cmd = a.rootCommand()
+		// Use root handler (prefer explicit Command("") over app handler)
+		if rootCmd := a.commands[""]; rootCmd != nil {
+			cmd = rootCmd
+		} else {
+			cmd = a.rootCommand()
+		}
 	} else {
 		var subCmdArgs []string
 		var err error
@@ -398,7 +417,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		if err != nil {
 			// If command not found but app has root handler,
 			// treat first arg as positional arg to root handler
-			if a.handler != nil {
+			if rootCmd := a.commands[""]; rootCmd != nil {
+				cmd = rootCmd
+				// Put cmdName back as first arg
+				cmdArgs = append([]string{cmdName}, cmdArgs...)
+			} else if a.handler != nil {
 				cmd = a.rootCommand()
 				// Put cmdName back as first arg
 				cmdArgs = append([]string{cmdName}, cmdArgs...)
