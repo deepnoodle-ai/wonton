@@ -1,10 +1,15 @@
 # assert
 
-Test assertions with excellent diff output for Go tests. Built on go-cmp with colored unified diffs on failure.
+Test assertions with excellent diff output for Go tests. Built on go-cmp with
+colored unified diffs on failure.
 
 ## Summary
 
-The assert package provides minimal, fatal test assertions optimized for readability. All assertions fail immediately (t.Fatal) and show clear, colored diffs when values don't match. Built on google/go-cmp for comparisons, it compares unexported fields by default and provides specialized assertions for errors, nil checks, collections, and numeric comparisons.
+The assert package provides minimal, fatal test assertions optimized for
+readability. All assertions fail immediately (t.Fatal) and show clear, colored
+diffs when values don't match. Built on google/go-cmp for comparisons, it
+compares unexported fields by default and provides specialized assertions for
+errors, nil checks, collections, and numeric comparisons.
 
 ## Usage Examples
 
@@ -174,74 +179,74 @@ func TestMain(m *testing.M) {
 
 ### Core Assertions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `Equal(t, got, want, msg...)` | Asserts deep equality using go-cmp | `t testing.TB`, values to compare, optional message |
-| `EqualOpts(t, got, want, opts...)` | Asserts equality with custom cmp.Options | `t testing.TB`, values, `cmp.Option` variadic |
-| `NotEqual(t, got, want, msg...)` | Asserts values are not equal | `t testing.TB`, values, optional message |
+| Function                           | Description                              | Parameters                                          |
+| ---------------------------------- | ---------------------------------------- | --------------------------------------------------- |
+| `Equal(t, got, want, msg...)`      | Asserts deep equality using go-cmp       | `t testing.TB`, values to compare, optional message |
+| `EqualOpts(t, got, want, opts...)` | Asserts equality with custom cmp.Options | `t testing.TB`, values, `cmp.Option` variadic       |
+| `NotEqual(t, got, want, msg...)`   | Asserts values are not equal             | `t testing.TB`, values, optional message            |
 
 ### Error Assertions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `NoError(t, err, msg...)` | Asserts error is nil | `t testing.TB`, `error`, optional message |
-| `Error(t, err, msg...)` | Asserts error is not nil | `t testing.TB`, `error`, optional message |
-| `ErrorIs(t, err, target, msg...)` | Asserts errors.Is(err, target) | `t testing.TB`, `error`, target `error`, optional message |
-| `ErrorAs(t, err, target, msg...)` | Asserts errors.As(err, target) | `t testing.TB`, `error`, target pointer, optional message |
-| `ErrorContains(t, err, substr, msg...)` | Asserts error message contains substring | `t testing.TB`, `error`, `string`, optional message |
+| Function                                | Description                              | Parameters                                                |
+| --------------------------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| `NoError(t, err, msg...)`               | Asserts error is nil                     | `t testing.TB`, `error`, optional message                 |
+| `Error(t, err, msg...)`                 | Asserts error is not nil                 | `t testing.TB`, `error`, optional message                 |
+| `ErrorIs(t, err, target, msg...)`       | Asserts errors.Is(err, target)           | `t testing.TB`, `error`, target `error`, optional message |
+| `ErrorAs(t, err, target, msg...)`       | Asserts errors.As(err, target)           | `t testing.TB`, `error`, target pointer, optional message |
+| `ErrorContains(t, err, substr, msg...)` | Asserts error message contains substring | `t testing.TB`, `error`, `string`, optional message       |
 
 ### Nil Checks
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `Nil(t, v, msg...)` | Asserts value is nil | `t testing.TB`, `any`, optional message |
+| Function               | Description              | Parameters                              |
+| ---------------------- | ------------------------ | --------------------------------------- |
+| `Nil(t, v, msg...)`    | Asserts value is nil     | `t testing.TB`, `any`, optional message |
 | `NotNil(t, v, msg...)` | Asserts value is not nil | `t testing.TB`, `any`, optional message |
 
 ### Boolean Assertions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `True(t, v, msg...)` | Asserts boolean is true | `t testing.TB`, `bool`, optional message |
+| Function              | Description              | Parameters                               |
+| --------------------- | ------------------------ | ---------------------------------------- |
+| `True(t, v, msg...)`  | Asserts boolean is true  | `t testing.TB`, `bool`, optional message |
 | `False(t, v, msg...)` | Asserts boolean is false | `t testing.TB`, `bool`, optional message |
 
 ### Collection Assertions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `Contains(t, haystack, needle, msg...)` | Asserts collection contains value | `t testing.TB`, collection, value, optional message |
-| `NotContains(t, haystack, needle, msg...)` | Asserts collection doesn't contain value | `t testing.TB`, collection, value, optional message |
-| `Len(t, v, want, msg...)` | Asserts length equals expected | `t testing.TB`, collection, `int` length, optional message |
-| `Empty(t, v, msg...)` | Asserts value is empty | `t testing.TB`, `any`, optional message |
-| `NotEmpty(t, v, msg...)` | Asserts value is not empty | `t testing.TB`, `any`, optional message |
+| Function                                   | Description                              | Parameters                                                 |
+| ------------------------------------------ | ---------------------------------------- | ---------------------------------------------------------- |
+| `Contains(t, haystack, needle, msg...)`    | Asserts collection contains value        | `t testing.TB`, collection, value, optional message        |
+| `NotContains(t, haystack, needle, msg...)` | Asserts collection doesn't contain value | `t testing.TB`, collection, value, optional message        |
+| `Len(t, v, want, msg...)`                  | Asserts length equals expected           | `t testing.TB`, collection, `int` length, optional message |
+| `Empty(t, v, msg...)`                      | Asserts value is empty                   | `t testing.TB`, `any`, optional message                    |
+| `NotEmpty(t, v, msg...)`                   | Asserts value is not empty               | `t testing.TB`, `any`, optional message                    |
 
 ### Panic Assertions
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `Panics(t, f, msg...)` | Asserts function panics | `t testing.TB`, `func()`, optional message |
+| Function                  | Description                    | Parameters                                 |
+| ------------------------- | ------------------------------ | ------------------------------------------ |
+| `Panics(t, f, msg...)`    | Asserts function panics        | `t testing.TB`, `func()`, optional message |
 | `NotPanics(t, f, msg...)` | Asserts function doesn't panic | `t testing.TB`, `func()`, optional message |
 
 ### Numeric Comparisons
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `Greater[T](t, a, b, msg...)` | Asserts a > b | `t testing.TB`, `T` (ordered), `T`, optional message |
-| `GreaterOrEqual[T](t, a, b, msg...)` | Asserts a >= b | `t testing.TB`, `T` (ordered), `T`, optional message |
-| `Less[T](t, a, b, msg...)` | Asserts a < b | `t testing.TB`, `T` (ordered), `T`, optional message |
-| `LessOrEqual[T](t, a, b, msg...)` | Asserts a <= b | `t testing.TB`, `T` (ordered), `T`, optional message |
-| `InDelta(t, expected, actual, delta, msg...)` | Asserts floats are within delta | `t testing.TB`, three `float64`, optional message |
+| Function                                      | Description                     | Parameters                                           |
+| --------------------------------------------- | ------------------------------- | ---------------------------------------------------- |
+| `Greater[T](t, a, b, msg...)`                 | Asserts a > b                   | `t testing.TB`, `T` (ordered), `T`, optional message |
+| `GreaterOrEqual[T](t, a, b, msg...)`          | Asserts a >= b                  | `t testing.TB`, `T` (ordered), `T`, optional message |
+| `Less[T](t, a, b, msg...)`                    | Asserts a < b                   | `t testing.TB`, `T` (ordered), `T`, optional message |
+| `LessOrEqual[T](t, a, b, msg...)`             | Asserts a <= b                  | `t testing.TB`, `T` (ordered), `T`, optional message |
+| `InDelta(t, expected, actual, delta, msg...)` | Asserts floats are within delta | `t testing.TB`, three `float64`, optional message    |
 
 ### Pattern Matching
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
+| Function                          | Description                  | Parameters                                                                         |
+| --------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------- |
 | `Regexp(t, pattern, str, msg...)` | Asserts string matches regex | `t testing.TB`, pattern (`string` or `*regexp.Regexp`), `string`, optional message |
 
 ### Configuration
 
-| Function | Description | Parameters |
-|----------|-------------|------------|
-| `SetColorEnabled(enabled)` | Enables or disables colored output | `bool` |
+| Function                   | Description                        | Parameters |
+| -------------------------- | ---------------------------------- | ---------- |
+| `SetColorEnabled(enabled)` | Enables or disables colored output | `bool`     |
 
 ## Related Packages
 
