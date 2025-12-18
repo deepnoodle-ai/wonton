@@ -24,34 +24,15 @@ examples throughout.
 Pick the packages you need. Wonton provides 20+ packages that you can adopt
 incrementally or all at once.
 
-## Minimal CLI Example
+## Who This Is For
 
-```go
-package main
+Wonton works well if you're:
 
-import (
-    "github.com/deepnoodle-ai/wonton/cli"
-    "github.com/deepnoodle-ai/wonton/color"
-)
-
-func main() {
-    app := cli.New("greet").Description("A friendly greeter")
-
-    app.Command("hello").
-        Description("Say hello").
-        Args("name?").
-        Run(func(ctx *cli.Context) error {
-            name := ctx.Arg(0)
-            if name == "" {
-                name = "World"
-            }
-            ctx.Println(color.Green("Hello, %s!", name))
-            return nil
-        })
-
-    app.Execute()
-}
-```
+- Building interactive Go CLIs where UX matters
+- Building agentic tools like Claude Code, Gemini CLI, or Codex
+- Working with HTML, markdown, source code, or diffs
+- Using AI coding agents and want them to generate correct code
+- Keeping dependencies minimal for supply chain security
 
 ## Why One Module?
 
@@ -66,16 +47,6 @@ and examples throughout help AI coding agents generate correct code.
 
 **Minimal dependencies.** Most functionality is implemented directly, keeping
 your dependency graph small. Fewer dependencies means less supply chain risk.
-
-## Who This Is For
-
-Wonton works well if you're:
-
-- Building interactive Go CLIs where UX matters
-- Building agentic tools like Claude Code, Gemini CLI, or Codex
-- Working with HTML, markdown, source code, or diffs
-- Using AI coding agents and want them to generate correct code
-- Keeping dependencies minimal for supply chain security
 
 ## Packages
 
@@ -150,6 +121,7 @@ a PR for one will be merged.
 A few things we value:
 
 - **Backwards compatibility.** Avoid breaking changes to existing APIs.
+- **Ergonomics.** The APIs and codebase should be intuitive for both humans and AI agents.
 - **Test coverage.** New code should include tests; improvements to existing
   coverage are appreciated.
 - **When in doubt, reach out.** Open an issue to discuss before investing time
