@@ -4,7 +4,13 @@ CLI framework with commands, flags, config, middleware, and progressive interact
 
 ## Summary
 
-The cli package provides a powerful CLI framework that integrates with Wonton's TUI capabilities. It supports command registration with hierarchical groups, struct-based flag definitions with environment variable fallbacks, automatic help/version commands, shell completion generation, and progressive interactivity where the same command can work as a quick one-liner or upgrade to a rich TUI when run in a terminal. The framework includes semantic output helpers, interactive prompts, middleware support, and comprehensive validation.
+The cli package provides a powerful CLI framework that integrates with Wonton's
+TUI capabilities. It supports command registration with hierarchical groups,
+struct-based flag definitions with environment variable fallbacks, automatic
+help/version commands, shell completion generation, and progressive
+interactivity where the same command can work as a quick one-liner or upgrade to
+a rich TUI when run in a terminal. The framework includes semantic output
+helpers, interactive prompts, middleware support, and comprehensive validation.
 
 ## Usage Examples
 
@@ -105,6 +111,8 @@ func main() {
     app.Run()
 }
 ```
+
+Groups support help flags: `myapp users --help` or `myapp users -h` displays help for the group, listing all available subcommands.
 
 ### Struct-Based Flags
 
@@ -337,6 +345,13 @@ func LoggingMiddleware() cli.Middleware {
 }
 ```
 
+**Middleware execution order:** App-level middleware runs before command-level middleware. If you have:
+
+- App middleware: `[A, B]`
+- Command middleware: `[C, D]`
+
+Execution order is: `A-before → B-before → C-before → D-before → handler → D-after → C-after → B-after → A-after`
+
 ### Progressive Interactivity
 
 ```go
@@ -485,99 +500,160 @@ func main() {
 }
 ```
 
+Global flags can be placed before or after the command name:
+
+```bash
+myapp -v build           # Global flag before command
+myapp build -v           # Global flag after command
+myapp --config=app.yaml build  # Both work
+```
+
+### Slice Flags
+
+Slice flags accumulate values when specified multiple times:
+
+```go
+package main
+
+import (
+    "github.com/deepnoodle-ai/wonton/cli"
+)
+
+func main() {
+    app := cli.New("docker")
+
+    app.Command("run").
+        Description("Run a container").
+        Args("image").
+        Flags(
+            cli.Strings("env", "e").Help("Environment variables"),
+            cli.Strings("volume", "v").Help("Volume mounts"),
+            cli.Ints("port", "p").Help("Port mappings"),
+        ).
+        Run(func(ctx *cli.Context) error {
+            image := ctx.Arg(0)
+            envVars := ctx.Strings("env")    // []string
+            volumes := ctx.Strings("volume") // []string
+            ports := ctx.Ints("port")        // []int
+
+            ctx.Printf("Running %s with %d env vars, %d volumes, %d ports\n",
+                image, len(envVars), len(volumes), len(ports))
+            return nil
+        })
+
+    app.Run()
+}
+```
+
+Usage:
+
+```bash
+# Multiple values accumulate into slices
+myapp run -e FOO=bar -e BAZ=qux --volume /host:/container nginx
+# envVars = ["FOO=bar", "BAZ=qux"]
+# volumes = ["/host:/container"]
+
+# Defaults are replaced when user provides values
+myapp run --port 8080 --port 443 nginx
+# ports = [8080, 443]
+```
+
 ## API Reference
 
 ### Application
 
-| Method | Description | Parameters | Returns |
-|--------|-------------|------------|---------|
-| `New(name)` | Create new CLI app | `string` | `*App` |
-| `Description(desc)` | Set app description | `string` | `*App` |
-| `Version(version)` | Set app version | `string` | `*App` |
-| `Command(name)` | Register/get command | `string` | `*Command` |
-| `Group(name)` | Create command group | `string` | `*Group` |
-| `Use(mw...)` | Add middleware | `...Middleware` | `*App` |
-| `GlobalFlags(flags...)` | Add global flags | `...Flag` | `*App` |
-| `Action(handler)` | Set root handler | `Handler` | `*App` |
-| `Args(names...)` | Set root args | `...string` | `*App` |
-| `Validate(fn)` | Add validation | `func(*Context) error` | `*App` |
-| `Run()` | Execute with os.Args | None | `error` |
-| `RunArgs(args)` | Execute with args | `[]string` | `error` |
-| `RunContext(ctx, args)` | Execute with context | `context.Context`, `[]string` | `error` |
-| `SetColorEnabled(enabled)` | Enable/disable colors | `bool` | `*App` |
-| `HelpTheme(theme)` | Set help theme | `HelpTheme` | `*App` |
-| `ForceInteractive(val)` | Force interactive mode (testing) | `bool` | `*App` |
+| Method                     | Description                      | Parameters                    | Returns    |
+| -------------------------- | -------------------------------- | ----------------------------- | ---------- |
+| `New(name)`                | Create new CLI app               | `string`                      | `*App`     |
+| `Description(desc)`        | Set app description              | `string`                      | `*App`     |
+| `Version(version)`         | Set app version                  | `string`                      | `*App`     |
+| `Command(name)`            | Register/get command             | `string`                      | `*Command` |
+| `Group(name)`              | Create command group             | `string`                      | `*Group`   |
+| `Use(mw...)`               | Add middleware                   | `...Middleware`               | `*App`     |
+| `GlobalFlags(flags...)`    | Add global flags                 | `...Flag`                     | `*App`     |
+| `Action(handler)`          | Set root handler                 | `Handler`                     | `*App`     |
+| `Args(names...)`           | Set root args                    | `...string`                   | `*App`     |
+| `Validate(fn)`             | Add validation                   | `func(*Context) error`        | `*App`     |
+| `Run()`                    | Execute with os.Args             | None                          | `error`    |
+| `RunArgs(args)`            | Execute with args                | `[]string`                    | `error`    |
+| `RunContext(ctx, args)`    | Execute with context             | `context.Context`, `[]string` | `error`    |
+| `SetColorEnabled(enabled)` | Enable/disable colors            | `bool`                        | `*App`     |
+| `HelpTheme(theme)`         | Set help theme                   | `HelpTheme`                   | `*App`     |
+| `ForceInteractive(val)`    | Force interactive mode (testing) | `bool`                        | `*App`     |
 
 ### Command
 
-| Method | Description | Parameters | Returns |
-|--------|-------------|------------|---------|
-| `Description(desc)` | Set description | `string` | `*Command` |
-| `Long(desc)` | Set long description | `string` | `*Command` |
-| `Args(names...)` | Set positional args (use "?" for optional) | `...string` | `*Command` |
-| `Flags(flags...)` | Add flags | `...Flag` | `*Command` |
-| `Run(handler)` | Set handler | `Handler` | `*Command` |
-| `Interactive(handler)` | Set interactive handler | `Handler` | `*Command` |
-| `NonInteractive(handler)` | Set non-interactive handler | `Handler` | `*Command` |
-| `Use(mw...)` | Add middleware | `...Middleware` | `*Command` |
-| `Validate(fn)` | Add validation | `func(*Context) error` | `*Command` |
-| `ArgsRange(min, max)` | Validate arg count range | `int`, `int` | `*Command` |
-| `ExactArgs(n)` | Require exact arg count | `int` | `*Command` |
-| `NoArgs()` | Require no args | None | `*Command` |
-| `Alias(names...)` | Add aliases | `...string` | `*Command` |
-| `Hidden()` | Hide from help | None | `*Command` |
-| `Deprecated(msg)` | Mark as deprecated | `string` | `*Command` |
+| Method                    | Description                                | Parameters             | Returns    |
+| ------------------------- | ------------------------------------------ | ---------------------- | ---------- |
+| `Description(desc)`       | Set description                            | `string`               | `*Command` |
+| `Long(desc)`              | Set long description                       | `string`               | `*Command` |
+| `Args(names...)`          | Set positional args (use "?" for optional) | `...string`            | `*Command` |
+| `Flags(flags...)`         | Add flags                                  | `...Flag`              | `*Command` |
+| `Run(handler)`            | Set handler                                | `Handler`              | `*Command` |
+| `Interactive(handler)`    | Set interactive handler                    | `Handler`              | `*Command` |
+| `NonInteractive(handler)` | Set non-interactive handler                | `Handler`              | `*Command` |
+| `Use(mw...)`              | Add middleware                             | `...Middleware`        | `*Command` |
+| `Validate(fn)`            | Add validation                             | `func(*Context) error` | `*Command` |
+| `ArgsRange(min, max)`     | Validate arg count range                   | `int`, `int`           | `*Command` |
+| `ExactArgs(n)`            | Require exact arg count                    | `int`                  | `*Command` |
+| `NoArgs()`                | Require no args                            | None                   | `*Command` |
+| `Alias(names...)`         | Add aliases                                | `...string`            | `*Command` |
+| `Hidden()`                | Hide from help                             | None                   | `*Command` |
+| `Deprecated(msg)`         | Mark as deprecated                         | `string`               | `*Command` |
 
 ### Context
 
-| Method | Description | Parameters | Returns |
-|--------|-------------|------------|---------|
-| `Context()` | Get Go context | None | `context.Context` |
-| `App()` | Get app | None | `*App` |
-| `Command()` | Get command | None | `*Command` |
-| `Interactive()` | Check if interactive | None | `bool` |
-| `Args()` | Get all args | None | `[]string` |
-| `Arg(i)` | Get arg at index | `int` | `string` |
-| `NArg()` | Get arg count | None | `int` |
-| `String(name)` | Get string flag | `string` | `string` |
-| `Int(name)` | Get int flag | `string` | `int` |
-| `Int64(name)` | Get int64 flag | `string` | `int64` |
-| `Float64(name)` | Get float64 flag | `string` | `float64` |
-| `Bool(name)` | Get bool flag | `string` | `bool` |
-| `IsSet(name)` | Check if flag was set | `string` | `bool` |
-| `Stdin()` | Get stdin reader | None | `io.Reader` |
-| `Stdout()` | Get stdout writer | None | `io.Writer` |
-| `Stderr()` | Get stderr writer | None | `io.Writer` |
-| `Print(args...)` | Print to stdout | `...any` | None |
-| `Printf(format, args...)` | Printf to stdout | `string`, `...any` | None |
-| `Println(args...)` | Println to stdout | `...any` | None |
-| `Error(args...)` | Print to stderr | `...any` | None |
-| `Errorf(format, args...)` | Printf to stderr | `string`, `...any` | None |
-| `Errorln(args...)` | Println to stderr | `...any` | None |
-| `Success(format, args...)` | Green message to stdout | `string`, `...any` | None |
-| `Fail(format, args...)` | Red message to stderr | `string`, `...any` | None |
-| `Warn(format, args...)` | Yellow message to stderr | `string`, `...any` | None |
-| `Info(format, args...)` | Cyan message to stdout | `string`, `...any` | None |
-| `Select(title, options...)` | Show selection prompt | `string`, `...string` | `int`, `error` |
+| Method                            | Description                   | Parameters            | Returns           |
+| --------------------------------- | ----------------------------- | --------------------- | ----------------- |
+| `Context()`                       | Get Go context                | None                  | `context.Context` |
+| `App()`                           | Get app                       | None                  | `*App`            |
+| `Command()`                       | Get command                   | None                  | `*Command`        |
+| `Interactive()`                   | Check if interactive          | None                  | `bool`            |
+| `Args()`                          | Get all args                  | None                  | `[]string`        |
+| `Arg(i)`                          | Get arg at index              | `int`                 | `string`          |
+| `NArg()`                          | Get arg count                 | None                  | `int`             |
+| `String(name)`                    | Get string flag               | `string`              | `string`          |
+| `Strings(name)`                   | Get string slice flag         | `string`              | `[]string`        |
+| `Int(name)`                       | Get int flag                  | `string`              | `int`             |
+| `Ints(name)`                      | Get int slice flag            | `string`              | `[]int`           |
+| `Int64(name)`                     | Get int64 flag                | `string`              | `int64`           |
+| `Float64(name)`                   | Get float64 flag              | `string`              | `float64`         |
+| `Bool(name)`                      | Get bool flag                 | `string`              | `bool`            |
+| `IsSet(name)`                     | Check if flag was set         | `string`              | `bool`            |
+| `Stdin()`                         | Get stdin reader              | None                  | `io.Reader`       |
+| `Stdout()`                        | Get stdout writer             | None                  | `io.Writer`       |
+| `Stderr()`                        | Get stderr writer             | None                  | `io.Writer`       |
+| `Print(args...)`                  | Print to stdout               | `...any`              | None              |
+| `Printf(format, args...)`         | Printf to stdout              | `string`, `...any`    | None              |
+| `Println(args...)`                | Println to stdout             | `...any`              | None              |
+| `Error(args...)`                  | Print to stderr               | `...any`              | None              |
+| `Errorf(format, args...)`         | Printf to stderr              | `string`, `...any`    | None              |
+| `Errorln(args...)`                | Println to stderr             | `...any`              | None              |
+| `Success(format, args...)`        | Green message to stdout       | `string`, `...any`    | None              |
+| `Fail(format, args...)`           | Red message to stderr         | `string`, `...any`    | None              |
+| `Warn(format, args...)`           | Yellow message to stderr      | `string`, `...any`    | None              |
+| `Info(format, args...)`           | Cyan message to stdout        | `string`, `...any`    | None              |
+| `Select(title, options...)`       | Show selection prompt         | `string`, `...string` | `int`, `error`    |
 | `SelectString(title, options...)` | Show selection, return string | `string`, `...string` | `string`, `error` |
-| `Input(prompt)` | Show text input prompt | `string` | `string`, `error` |
-| `Confirm(message)` | Show yes/no confirmation | `string` | `bool`, `error` |
+| `Input(prompt)`                   | Show text input prompt        | `string`              | `string`, `error` |
+| `Confirm(message)`                | Show yes/no confirmation      | `string`              | `bool`, `error`   |
 
 ### Flag Builders
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `String(name, short)` | Create string flag builder | `string`, `string` | `*stringBuilder` |
-| `Bool(name, short)` | Create bool flag builder | `string`, `string` | `*boolBuilder` |
-| `Int(name, short)` | Create int flag builder | `string`, `string` | `*intBuilder` |
-| `Float(name, short)` | Create float64 flag builder | `string`, `string` | `*floatBuilder` |
-| `Duration(name, short)` | Create duration flag builder | `string`, `string` | `*durationBuilder` |
-| `Strings(name, short)` | Create string slice flag builder | `string`, `string` | `*stringsBuilder` |
-| `Ints(name, short)` | Create int slice flag builder | `string`, `string` | `*intsBuilder` |
+| Function                | Description                      | Parameters         | Returns            |
+| ----------------------- | -------------------------------- | ------------------ | ------------------ |
+| `String(name, short)`   | Create string flag builder       | `string`, `string` | `*stringBuilder`   |
+| `Bool(name, short)`     | Create bool flag builder         | `string`, `string` | `*boolBuilder`     |
+| `Int(name, short)`      | Create int flag builder          | `string`, `string` | `*intBuilder`      |
+| `Float(name, short)`    | Create float64 flag builder      | `string`, `string` | `*floatBuilder`    |
+| `Duration(name, short)` | Create duration flag builder     | `string`, `string` | `*durationBuilder` |
+| `Strings(name, short)`  | Create string slice flag builder | `string`, `string` | `*stringsBuilder`  |
+| `Ints(name, short)`     | Create int slice flag builder    | `string`, `string` | `*intsBuilder`     |
 
 ### Flag Builder Methods
 
 All flag builders support:
+
 - `.Default(value)` - Set default value
 - `.Help(text)` - Set help text
 - `.Env(varName)` - Set environment variable name
@@ -585,34 +661,83 @@ All flag builders support:
 - `.Hidden()` - Hide from help
 
 String flags additionally support:
+
 - `.Enum(values...)` - Restrict to enum values
 - `.ValidateWith(fn)` - Custom validation
 
 ### Middleware Functions
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `Recover()` | Recover from panics | None | `Middleware` |
-| `RequireFlags(names...)` | Require flags to be set | `...string` | `Middleware` |
-| `Confirm(message)` | Prompt for confirmation | `string` | `Middleware` |
-| `Before(fn)` | Run before command | `func(*Context) error` | `Middleware` |
-| `After(fn)` | Run after command | `func(*Context) error` | `Middleware` |
+| Function                 | Description             | Parameters             | Returns      |
+| ------------------------ | ----------------------- | ---------------------- | ------------ |
+| `Recover()`              | Recover from panics     | None                   | `Middleware` |
+| `RequireFlags(names...)` | Require flags to be set | `...string`            | `Middleware` |
+| `Confirm(message)`       | Prompt for confirmation | `string`               | `Middleware` |
+| `Before(fn)`             | Run before command      | `func(*Context) error` | `Middleware` |
+| `After(fn)`              | Run after command       | `func(*Context) error` | `Middleware` |
 
 ### Struct Flag Functions
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `ParseFlags[T](cmd)` | Parse struct tags into flags | `*Command` | `*T` |
-| `BindFlags[T](ctx)` | Bind flag values to struct | `*Context` | `*T`, `error` |
+| Function             | Description                  | Parameters | Returns       |
+| -------------------- | ---------------------------- | ---------- | ------------- |
+| `ParseFlags[T](cmd)` | Parse struct tags into flags | `*Command` | `*T`          |
+| `BindFlags[T](ctx)`  | Bind flag values to struct   | `*Context` | `*T`, `error` |
 
 ### Error Functions
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `Error(msg)` | Create error | `string` | `*CommandError` |
-| `Errorf(format, args...)` | Create formatted error | `string`, `...any` | `*CommandError` |
-| `IsHelpRequested(err)` | Check if help was requested | `error` | `bool` |
-| `GetExitCode(err)` | Get exit code from error | `error` | `int` |
+| Function                  | Description                                           | Parameters         | Returns         |
+| ------------------------- | ----------------------------------------------------- | ------------------ | --------------- |
+| `Error(msg)`              | Create error                                          | `string`           | `*CommandError` |
+| `Errorf(format, args...)` | Create formatted error                                | `string`, `...any` | `*CommandError` |
+| `Exit(code)`              | Create exit error with code                           | `int`              | `error`         |
+| `IsHelpRequested(err)`    | Check if help was requested (supports wrapped errors) | `error`            | `bool`          |
+| `GetExitCode(err)`        | Get exit code from error (supports wrapped errors)    | `error`            | `int`           |
+
+Note: `IsHelpRequested` and `GetExitCode` use `errors.As` internally, so they work correctly with wrapped errors (e.g., `fmt.Errorf("failed: %w", cli.Exit(1))`).
+
+## Tips
+
+### Flag Values Starting with Dash
+
+Flag values that look like negative numbers are handled correctly:
+
+```bash
+myapp --count -5      # count = -5
+myapp --offset -10    # offset = -10
+myapp --rate -.5      # rate = -0.5
+```
+
+Use `--` to separate flags from positional arguments that start with `-`:
+
+```bash
+myapp -- -filename    # "-filename" is a positional arg, not a flag
+```
+
+### Help Everywhere
+
+Help is available at multiple levels:
+
+- `myapp help` or `myapp --help` - App help
+- `myapp command --help` - Command help
+- `myapp group --help` - Group help (lists subcommands)
+- `myapp group command --help` - Subcommand help
+
+### Testing Commands
+
+Use the built-in test infrastructure for clean command testing:
+
+```go
+func TestMyCommand(t *testing.T) {
+    app := setupApp()
+    result := app.Test(t, cli.TestArgs("mycommand", "--flag", "value"))
+
+    if !result.Success() {
+        t.Fatalf("command failed: %v", result.Err)
+    }
+    if !result.Contains("expected output") {
+        t.Errorf("unexpected output: %s", result.Stdout)
+    }
+}
+```
 
 ## Related Packages
 
