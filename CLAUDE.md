@@ -23,28 +23,28 @@ and CLI building blocks that work well together.
 
 ## Packages
 
-| Package         | Purpose                                                      |
-| --------------- | ------------------------------------------------------------ |
-| **assert**      | Test assertions with detailed diffs                          |
-| **cli**         | CLI framework with commands, flags, config, and middleware   |
-| **clipboard**   | Cross-platform system clipboard read/write                   |
-| **color**       | ANSI color types, RGB/HSL conversion, gradients              |
-| **crawler**     | Web crawler with pluggable fetchers, parsers, and caching    |
-| **env**         | Config from environment variables, .env files, and JSON      |
-| **fetch**       | HTTP page fetching with configurable options                 |
-| **gif**         | Animated GIF creation with drawing primitives                |
-| **git**         | Wrapper for common git read operations                       |
-| **htmlparse**   | HTML parsing, metadata extraction, link discovery            |
-| **htmltomd**    | HTML to Markdown conversion, ideal for LLM consumption       |
-| **humanize**    | Human-readable formatting (bytes, durations, numbers)        |
-| **retry**       | Retry with exponential backoff, jitter, and callbacks        |
-| **sse**         | Server-Sent Events parser and reconnecting client            |
-| **terminal**    | Low-level terminal control, input decoding, styling          |
-| **termsession** | Terminal session recording/playback (asciinema v2 format)    |
-| **termtest**    | Terminal output testing with ANSI parsing and snapshots      |
-| **tui**         | Declarative TUI library with layout engine and components    |
-| **unidiff**     | Unified diff parsing for display and analysis                |
-| **web**         | URL manipulation, text normalization, media type detection   |
+| Package         | Description                                    |
+| --------------- | ---------------------------------------------- |
+| **assert**      | Test assertions with diffs                     |
+| **cli**         | Commands, flags, config, middleware            |
+| **clipboard**   | System clipboard read/write                    |
+| **color**       | ANSI colors, RGB/HSL, gradients                |
+| **crawler**     | Web crawler with caching                       |
+| **env**         | Config from env vars, .env, JSON               |
+| **fetch**       | HTTP page fetching                             |
+| **gif**         | Animated GIF creation                          |
+| **git**         | Git read operations                            |
+| **htmlparse**   | HTML parsing, metadata, links                  |
+| **htmltomd**    | HTML to Markdown conversion                    |
+| **humanize**    | Human-readable formatting                      |
+| **retry**       | Retry with backoff and jitter                  |
+| **sse**         | Server-Sent Events client                      |
+| **terminal**    | Terminal control and input decoding            |
+| **termsession** | Session recording (asciinema format)           |
+| **termtest**    | Terminal output testing                        |
+| **tui**         | Declarative TUI with layout engine             |
+| **unidiff**     | Unified diff parsing                           |
+| **web**         | URL manipulation, media type detection         |
 
 ## Development Commands
 
