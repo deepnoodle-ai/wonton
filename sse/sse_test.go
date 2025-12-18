@@ -284,6 +284,144 @@ func TestReaderBuffer(t *testing.T) {
 	assert.Equal(t, longData, event.Data)
 }
 
+func TestReaderCRLF(t *testing.T) {
+	// Test CRLF line endings (common in HTTP responses)
+	data := "event: ping\r\ndata: hello\r\n\r\n"
+
+	reader := NewReader(strings.NewReader(data))
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "ping", event.Event)
+	assert.Equal(t, "hello", event.Data)
+
+	_, err = reader.Read()
+	assert.Equal(t, io.EOF, err)
+}
+
+func TestReaderCRLFMultipleEvents(t *testing.T) {
+	// Test multiple events with CRLF
+	data := "data: first\r\n\r\ndata: second\r\n\r\n"
+
+	reader := NewReader(strings.NewReader(data))
+
+	event1, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "first", event1.Data)
+
+	event2, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "second", event2.Data)
+}
+
+func TestReaderDefaultEventType(t *testing.T) {
+	// Per SSE spec, event type defaults to "message"
+	data := "data: hello\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "message", event.Event)
+	assert.Equal(t, "hello", event.Data)
+}
+
+func TestReaderExplicitEventType(t *testing.T) {
+	// Explicit event type should override default
+	data := "event: custom\ndata: hello\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "custom", event.Event)
+}
+
+func TestReaderNoDataNoEvent(t *testing.T) {
+	// Per SSE spec, events without data should not be dispatched
+	data := "event: ping\n\ndata: actual\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+
+	// First event should be skipped (no data)
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "actual", event.Data)
+	assert.Equal(t, "message", event.Event) // Default type
+
+	_, err = reader.Read()
+	assert.Equal(t, io.EOF, err)
+}
+
+func TestReaderIDOnlyNoEvent(t *testing.T) {
+	// ID-only event should not dispatch
+	data := "id: 123\n\ndata: actual\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "actual", event.Data)
+	assert.Equal(t, "123", event.ID) // ID persists to next event
+}
+
+func TestReaderLastEventIDPersistence(t *testing.T) {
+	// lastEventID should persist across events
+	data := "id: first\ndata: one\n\ndata: two\n\nid: third\ndata: three\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+
+	event1, _ := reader.Read()
+	assert.Equal(t, "first", event1.ID)
+	assert.Equal(t, "one", event1.Data)
+
+	event2, _ := reader.Read()
+	assert.Equal(t, "first", event2.ID) // ID persists
+	assert.Equal(t, "two", event2.Data)
+
+	event3, _ := reader.Read()
+	assert.Equal(t, "third", event3.ID) // New ID
+	assert.Equal(t, "three", event3.Data)
+}
+
+func TestReaderIDWithNull(t *testing.T) {
+	// Per SSE spec, id field with null character should be ignored
+	data := "id: bad\x00id\ndata: one\n\nid: good\ndata: two\n\n"
+
+	reader := NewReader(strings.NewReader(data))
+
+	event1, _ := reader.Read()
+	assert.Equal(t, "", event1.ID) // ID with null ignored
+
+	event2, _ := reader.Read()
+	assert.Equal(t, "good", event2.ID)
+}
+
+func TestClientBufferSize(t *testing.T) {
+	longData := strings.Repeat("x", 100000)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: " + longData + "\n\n"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.BufferSize = 200000
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+
+	var received string
+	for event := range events {
+		received = event.Data
+	}
+
+	err := <-errs
+	assert.NoError(t, err)
+	assert.Equal(t, longData, received)
+}
+
 func TestContentTypeValidation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")

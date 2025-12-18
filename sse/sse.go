@@ -135,10 +135,11 @@ func (e *Event) IsEmpty() bool {
 //
 // Reader provides low-level parsing of SSE streams. It reads events line-by-line
 // and assembles them according to the SSE specification. For HTTP-based SSE
-// connections with automatic reconnection, use Client instead.
+// connections, use Client instead.
 type Reader struct {
-	scanner *bufio.Scanner
-	event   Event
+	scanner     *bufio.Scanner
+	event       Event
+	lastEventID string // Persists across events per SSE spec
 }
 
 // NewReader creates a new SSE reader that parses events from r.
@@ -191,14 +192,25 @@ func (r *Reader) Read() (Event, error) {
 	for r.scanner.Scan() {
 		line := r.scanner.Text()
 
+		// Strip trailing \r to handle both \n and \r\n line endings
+		line = strings.TrimSuffix(line, "\r")
+
 		// Empty line marks end of event
 		if line == "" {
-			if len(dataLines) > 0 || r.event.Event != "" || r.event.ID != "" {
+			// Per SSE spec: only dispatch if data buffer is not empty
+			if len(dataLines) > 0 {
 				r.event.Data = strings.Join(dataLines, "\n")
+				r.event.ID = r.lastEventID
+				// Apply default event type per SSE spec
+				if r.event.Event == "" {
+					r.event.Event = "message"
+				}
 				event := r.event
-				r.event = Event{} // Reset for next event
+				r.event = Event{} // Reset event type buffer for next event
 				return event, nil
 			}
+			// No data: reset event type buffer but preserve lastEventID
+			r.event = Event{}
 			continue
 		}
 
@@ -218,7 +230,10 @@ func (r *Reader) Read() (Event, error) {
 		case "data":
 			dataLines = append(dataLines, value)
 		case "id":
-			r.event.ID = value
+			// Per SSE spec: id field must not contain null
+			if !strings.Contains(value, "\x00") {
+				r.lastEventID = value
+			}
 		case "retry":
 			// Parse retry as integer milliseconds
 			if retry, err := strconv.Atoi(value); err == nil && retry >= 0 {
@@ -231,9 +246,13 @@ func (r *Reader) Read() (Event, error) {
 		return Event{}, err
 	}
 
-	// Check if we have a partial event at EOF
-	if len(dataLines) > 0 || r.event.Event != "" || r.event.ID != "" {
+	// Check if we have a partial event at EOF (data present)
+	if len(dataLines) > 0 {
 		r.event.Data = strings.Join(dataLines, "\n")
+		r.event.ID = r.lastEventID
+		if r.event.Event == "" {
+			r.event.Event = "message"
+		}
 		event := r.event
 		r.event = Event{}
 		return event, nil
@@ -282,6 +301,10 @@ func Stream(r io.Reader, fn func(Event) error) error {
 // required headers (Accept, Cache-Control, Connection) and managing the Last-Event-ID
 // header for stream resumption. For lower-level parsing of SSE data from any source,
 // use Reader instead.
+//
+// Note: Client does not automatically reconnect on connection loss. To implement
+// reconnection, call Connect again in a loop - LastEventID is automatically tracked
+// and will be sent on subsequent connections.
 type Client struct {
 	// URL is the SSE endpoint to connect to.
 	URL string
@@ -298,6 +321,11 @@ type Client struct {
 	// It is sent as the Last-Event-ID header on subsequent connections,
 	// allowing the server to resume the stream from where it left off.
 	LastEventID string
+
+	// BufferSize sets the maximum line size for reading events.
+	// If zero, the default of 64KB is used. Set this for events with
+	// very long data lines (e.g., large JSON payloads or base64 data).
+	BufferSize int
 }
 
 // NewClient creates a new SSE client for the given URL.
@@ -398,6 +426,9 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 	}
 
 	reader := NewReader(resp.Body)
+	if c.BufferSize > 0 {
+		reader.Buffer(c.BufferSize)
+	}
 	for {
 		select {
 		case <-ctx.Done():

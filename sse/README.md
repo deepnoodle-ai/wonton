@@ -4,13 +4,12 @@ Server-Sent Events (SSE) parser and client for streaming data from HTTP endpoint
 
 ## Features
 
-- Standards-compliant SSE parsing
+- Standards-compliant SSE parsing (handles both LF and CRLF line endings)
 - Streaming and callback-based APIs
-- Automatic reconnection with Last-Event-ID
+- Last-Event-ID tracking for manual reconnection
 - Configurable buffer sizes for large events
 - JSON unmarshaling helpers
-- HTTP client with context support
-- Thread-safe event channels
+- HTTP client with context support and cancellation
 
 ## Usage Examples
 
@@ -100,7 +99,7 @@ for {
 }
 ```
 
-### SSE Client with Reconnection
+### SSE Client
 
 ```go
 import "context"
@@ -111,21 +110,39 @@ client.Headers.Set("Authorization", "Bearer token123")
 ctx := context.Background()
 events, errs := client.Connect(ctx)
 
+for event := range events {
+    fmt.Printf("Received: %s\n", event.Data)
+}
+
+if err := <-errs; err != nil {
+    log.Printf("Error: %v\n", err)
+}
+```
+
+### Reconnection with Last-Event-ID
+
+The client tracks the last event ID automatically. To reconnect after a
+disconnection, call Connect again - the Last-Event-ID header will be sent:
+
+```go
+client := sse.NewClient("https://example.com/events")
+
 for {
-    select {
-    case event, ok := <-events:
-        if !ok {
-            return // Connection closed
-        }
+    events, errs := client.Connect(ctx)
+
+    for event := range events {
         fmt.Printf("Received: %s\n", event.Data)
-
-    case err := <-errs:
-        log.Printf("Error: %v\n", err)
-        return
-
-    case <-ctx.Done():
-        return
     }
+
+    if err := <-errs; err != nil {
+        if ctx.Err() != nil {
+            return // Context cancelled, stop reconnecting
+        }
+        log.Printf("Disconnected: %v, reconnecting...\n", err)
+        time.Sleep(3 * time.Second) // Backoff before reconnecting
+        continue
+    }
+    break // Clean EOF
 }
 ```
 
@@ -143,7 +160,7 @@ events, errs := client.Connect(ctx)
 ### Large Event Support
 
 ```go
-// Increase buffer size for events with very long lines
+// Using Reader directly
 reader := sse.NewReader(resp.Body)
 reader.Buffer(1024 * 1024) // 1MB max line size
 
@@ -151,6 +168,11 @@ for {
     event, err := reader.Read()
     // ...
 }
+
+// Using Client
+client := sse.NewClient("https://example.com/events")
+client.BufferSize = 1024 * 1024 // 1MB max line size
+events, errs := client.Connect(ctx)
 ```
 
 ### Last-Event-ID Support
@@ -285,7 +307,7 @@ Methods:
 
 #### Client
 
-HTTP SSE client with automatic reconnection.
+HTTP SSE client with Last-Event-ID tracking.
 
 ```go
 type Client struct {
@@ -293,11 +315,15 @@ type Client struct {
     Headers     http.Header  // Additional headers to send
     HTTPClient  *http.Client // HTTP client (nil = http.DefaultClient)
     LastEventID string       // Sent as Last-Event-ID header
+    BufferSize  int          // Max line size (0 = 64KB default)
 }
 ```
 
 Methods:
 - `Connect(ctx context.Context) (<-chan Event, <-chan error)` - Establish connection and return event/error channels
+
+Note: Connect returns when the stream ends or an error occurs. For reconnection,
+call Connect again in a loop - LastEventID will be sent automatically.
 
 #### HTTPError
 
@@ -340,8 +366,10 @@ retry: 5000
 
 The package supports both pull-based (`Read()` in a loop) and push-based (`Stream()` with callback) APIs. The pull-based API gives more control, while the push-based API is more convenient for simple use cases.
 
-The Client type handles HTTP connection setup and sends appropriate SSE headers. It automatically tracks and sends the Last-Event-ID header for reconnection scenarios.
+The Client type handles HTTP connection setup and sends appropriate SSE headers. It automatically tracks and sends the Last-Event-ID header for reconnection scenarios. Client does not automatically reconnect - implement reconnection by calling Connect in a loop.
 
-The reader has a default maximum line size of 64KB. Use `Buffer()` to increase this if you expect very long event data lines. The buffer size must be set before the first call to `Read()`.
+The reader has a default maximum line size of 64KB. Use `Buffer()` to increase this if you expect very long event data lines, or set `Client.BufferSize` when using the client. The buffer size must be set before the first call to `Read()`.
 
-Context cancellation is respected in `Client.Connect()`, allowing graceful shutdown of long-lived connections.
+**Channel behavior**: `Client.Connect()` returns an unbuffered event channel. The sending goroutine will block if the consumer stops reading events. Always cancel the context when done to ensure the goroutine exits promptly. The send operation selects on both the channel and context, so proper context cancellation prevents goroutine leaks.
+
+**Spec compliance**: Events are only emitted when they contain data (per SSE spec). The event type defaults to "message" if not specified. Both LF and CRLF line endings are supported. The last event ID persists across events that have no data.
