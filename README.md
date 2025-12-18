@@ -4,8 +4,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/deepnoodle-ai/wonton)](https://goreportcard.com/report/github.com/deepnoodle-ai/wonton)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A savory toolkit for building CLI tools and terminal UIs in Go. Ideal for
-_building_ agentic CLI tools like Claude Code that need rich terminal interfaces.
+A tasty Go toolkit for CLI tools and terminal UIs. Especially suited for
+building agentic tools like Claude Code.
 
 ```bash
 go get github.com/deepnoodle-ai/wonton@latest
@@ -13,24 +13,18 @@ go get github.com/deepnoodle-ai/wonton@latest
 
 ## What's Inside
 
-Wonton provides 18+ packages in a single Go module. Many of them can be used
-independently, but they are also designed to work well together.
+The `cli` and `tui` packages form the core of Wonton, providing an ergonomic API
+for building polished command line tools quickly, whether you're writing the
+code yourself or working with AI coding agents.
 
-The `cli` and `tui` packages are the most important packages in Wonton. These
-packages provide an ergonomic API for humans (and your coding agents) to rapidly
-build command line tools that surprise and delight your users.
+Dependencies are minimal: mostly the standard library and `golang.org/x/...`.
+The packages follow Go idioms, ship with thorough documentation, and include
+examples throughout.
 
-You can pick and choose the packages you need, or adopt all of Wonton. Keep in
-mind that thanks to Go's compilation process, only the packages you import will
-be included in your binary.
+Pick the packages you need. Wonton provides 20+ packages that you can adopt
+incrementally or all at once.
 
-While Wonton provides a significant amount of functionality, it was designed to
-have a minimal set of external dependencies beyond the standard library and the
-extended standard library (`golang.org/x/...`).
-
-In order to make Wonton a productive library for you and your coding agents,
-there is an emphasis on providing packages that follow Go idioms and patterns
-and providing comprehensive documentation and examples.
+## Minimal CLI Example
 
 ```go
 package main
@@ -61,41 +55,52 @@ func main() {
 
 ## Why One Module?
 
-Each Wonton package is focused on a single responsibility. But collectively
-the lot of them are versioned and released together in one Go module.
+Each package has a single responsibility, but they're versioned and released
+together as one Go module.
 
-**Integration over isolation.** Every package is designed to work with the
-others and is meant to provide a good foundation to build on. No compatibility
-matrix, no dependency conflicts.
+**Integration over isolation.** Packages are designed to work together and
+provide a solid foundation. No compatibility matrix. No dependency conflicts.
 
 **Built for AI-assisted development.** Idiomatic APIs, thorough documentation,
-and extensive examples across all packages mean AI coding agents can generate
-correct code more reliably.
+and examples throughout help AI coding agents generate correct code.
 
 **Minimal dependencies.** Most functionality is implemented directly, keeping
-your dependency graph and audit surface delighfully small. This is one building
-block of minimizing supply chain complexity and risk.
+your dependency graph small. Fewer dependencies means less supply chain risk.
 
 ## Who This Is For
 
 Wonton works well if you're:
 
-- Building CLIs and terminal UIs in Go where fantastic user experience is a priority
-- Creating agentic CLIs that work with any of: HTML, markdown, source code, or diffs
-- Concerned about supply chain risk and want to be selective with dependencies
-- Looking to make your own AI-assisted development more productive
+- Building interactive Go CLIs where UX matters
+- Building agentic tools like Claude Code, Gemini CLI, or Codex
+- Working with HTML, markdown, source code, or diffs
+- Using AI coding agents and want them to generate correct code
+- Keeping dependencies minimal for supply chain security
 
 ## Packages
 
-|                                        |                                  |                                    |
-| -------------------------------------- | -------------------------------- | ---------------------------------- |
-| [assert](./assert/README.md)           | [cli](./cli/README.md)           | [clipboard](./clipboard/README.md) |
-| [color](./color/README.md)             | [crawler](./crawler/README.md)   | [env](./env/README.md)             |
-| [fetch](./fetch/README.md)             | [gif](./gif/README.md)           | [git](./git/README.md)             |
-| [htmlparse](./htmlparse/README.md)     | [htmltomd](./htmltomd/README.md) | [humanize](./humanize/README.md)   |
-| [retry](./retry/README.md)             | [sse](./sse/README.md)           | [terminal](./terminal/README.md)   |
-| [termsession](./termsession/README.md) | [termtest](./termtest/README.md) | [tui](./tui/README.md)             |
-| [unidiff](./unidiff/README.md)         | [web](./web/README.md)           |                                    |
+| Package                                | Description                            |
+| -------------------------------------- | -------------------------------------- |
+| [assert](./assert/README.md)           | Test assertions with diffs             |
+| [cli](./cli/README.md)                 | Commands, flags, config, middleware    |
+| [clipboard](./clipboard/README.md)     | System clipboard read/write            |
+| [color](./color/README.md)             | ANSI colors, RGB/HSL, gradients        |
+| [crawler](./crawler/README.md)         | Web crawler with caching               |
+| [env](./env/README.md)                 | Config from env vars, .env, JSON       |
+| [fetch](./fetch/README.md)             | HTTP fetching with HTML to markdown    |
+| [gif](./gif/README.md)                 | Animated GIF creation                  |
+| [git](./git/README.md)                 | Read-only Git operations               |
+| [htmlparse](./htmlparse/README.md)     | HTML parsing, metadata, links          |
+| [htmltomd](./htmltomd/README.md)       | HTML to Markdown conversion            |
+| [humanize](./humanize/README.md)       | Human-readable formatting              |
+| [retry](./retry/README.md)             | Retry with backoff and jitter          |
+| [sse](./sse/README.md)                 | Server-Sent Events client              |
+| [terminal](./terminal/README.md)       | Terminal control and input decoding    |
+| [termsession](./termsession/README.md) | Session recording (asciinema format)   |
+| [termtest](./termtest/README.md)       | Terminal output testing                |
+| [tui](./tui/README.md)                 | Declarative TUI with layout engine     |
+| [unidiff](./unidiff/README.md)         | Unified diff parsing                   |
+| [web](./web/README.md)                 | URL manipulation, media type detection |
 
 ## Serving Suggestions
 
@@ -122,32 +127,41 @@ Yes, and this is expected:
 import "github.com/deepnoodle-ai/wonton/htmltomd"
 ```
 
-Go downloads the module once but only compiles what you import. Your binary
-includes only the packages you use.
+Go downloads the module once but only compiles what you import.
 
 **What are the external dependencies?**
 
-Minimal. Check `go.mod` for the current list. Most functionality is pure Go.
+Minimal. Check `go.mod` since that is the source of truth.
 
 **Is this production-ready?**
 
-We use it in production. The APIs are may evolve in minor ways before v1.0. Pin
-your version.
+We use it in production. APIs may evolve in minor ways before v1.0. Pin your version.
 
 **Why "Wonton"?**
 
-Like its namesake: a delicious bundle of savory ingredients that you can drop 
-into a larger recipe.
+Like its namesake: a delicious bundle of savory ingredients that you can drop into a larger recipe.
 
 ## Contributing
 
-Pull requests welcome. Run tests before submitting:
+Pull requests for bug fixes, ergonomic improvements, documentation, and tests
+are welcome. We don't anticipate adding new packages, so please don't assume
+a PR for one will be merged.
+
+A few things we value:
+
+- **Backwards compatibility.** Avoid breaking changes to existing APIs.
+- **Test coverage.** New code should include tests; improvements to existing
+  coverage are appreciated.
+- **When in doubt, reach out.** Open an issue to discuss before investing time
+  in a large change.
+
+Run tests before submitting:
 
 ```bash
 go test ./...
 ```
 
-See individual package READMEs for package-specific testing notes.
+See individual package READMEs for package-specific notes.
 
 ## License
 
