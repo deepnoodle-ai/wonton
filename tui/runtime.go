@@ -12,9 +12,25 @@ import (
 // Application is the main interface for declarative UI applications.
 // Implementations provide a View that describes the current UI state.
 //
+// The View method is called after every event to render the UI. The framework
+// efficiently diffs the view tree and only updates changed terminal regions.
+//
 // Thread Safety: View and HandleEvent (if implemented) are NEVER called concurrently.
 // The Runtime ensures these methods run sequentially in a single goroutine,
 // eliminating the need for locks in application code.
+//
+// Example:
+//
+//	type CounterApp struct {
+//	    count int
+//	}
+//
+//	func (a *CounterApp) View() tui.View {
+//	    return tui.Stack(
+//	        tui.Text("Count: %d", a.count),
+//	        tui.Button("Increment", func() { a.count++ }),
+//	    )
+//	}
 type Application interface {
 	// View returns the declarative view tree representing the current UI.
 	// This is called automatically after each event is processed.
@@ -23,20 +39,34 @@ type Application interface {
 
 // EventHandler is an optional interface that applications can implement
 // to handle events and trigger async operations.
+//
+// Applications implementing both Application and EventHandler get full control:
+// HandleEvent processes the event (potentially mutating state and returning commands),
+// then View is called to render the updated UI.
+//
+// Example:
+//
+//	func (a *App) HandleEvent(event Event) []Cmd {
+//	    switch e := event.(type) {
+//	    case KeyEvent:
+//	        if e.Rune == 'q' {
+//	            return []Cmd{Quit()}
+//	        }
+//	        if e.Rune == 'r' {
+//	            a.loading = true
+//	            return []Cmd{a.fetchData()}
+//	        }
+//	    case DataEvent:
+//	        a.data = e.Data
+//	        a.loading = false
+//	    }
+//	    return nil
+//	}
 type EventHandler interface {
 	// HandleEvent processes an event and optionally returns commands for async execution.
 	// This is called in a single-threaded event loop, so state can be mutated freely
 	// without locks. Return commands for async operations (HTTP requests, timers, etc.).
 	HandleEvent(event Event) []Cmd
-}
-
-// LegacyApplication is the deprecated interface for imperative rendering.
-// New applications should implement Application with View() instead.
-//
-// Deprecated: Use Application with View() for declarative rendering.
-type LegacyApplication interface {
-	HandleEvent(event Event) []Cmd
-	Render(frame RenderFrame)
 }
 
 // Initializable is an optional interface that applications can implement
@@ -49,6 +79,12 @@ type Initializable interface {
 // to perform cleanup when the runtime stops.
 type Destroyable interface {
 	Destroy()
+}
+
+// InputSource abstracts the source of input events.
+type InputSource interface {
+	ReadEvent() (Event, error)
+	SetPasteTabWidth(int)
 }
 
 // Runtime manages the event-driven execution of an Application.
@@ -64,7 +100,7 @@ type Destroyable interface {
 // responsive UI through non-blocking async operations.
 type Runtime struct {
 	terminal *Terminal
-	app      any // Application or LegacyApplication
+	app      any // Application
 	events   chan Event
 	cmds     chan Cmd
 	done     chan struct{}
@@ -76,8 +112,9 @@ type Runtime struct {
 	running     bool
 	resizeUnsub func() // Unsubscribe function for resize callback
 
-	// Paste handling configuration
-	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
+	// Input configuration
+	inputSource   InputSource // Source of input events (defaults to stdin decoder)
+	pasteTabWidth int         // 0 = preserve tabs, >0 = convert to this many spaces
 
 	// Mouse click synthesis state
 	mousePressX      int         // X position of last mouse press
@@ -86,11 +123,12 @@ type Runtime struct {
 	mousePressed     bool        // Whether a mouse button is currently pressed
 }
 
+
 // NewRuntime creates a new Runtime for the given application.
 //
 // Parameters:
 //   - terminal: The Terminal instance to use for rendering and input
-//   - app: The Application (declarative) or LegacyApplication (imperative) to run
+//   - app: The Application to run
 //   - fps: Frames per second for TickEvents (30 recommended, 60 for smooth animations)
 //
 // The runtime does not start automatically. Call Run() to start the event loop.
@@ -336,12 +374,9 @@ func (r *Runtime) processEvent(event Event) {
 	}
 
 	// Call user's event handler
-	// Try EventHandler first (new interface), then LegacyApplication (deprecated)
 	var cmds []Cmd
 	if handler, ok := r.app.(EventHandler); ok {
 		cmds = handler.HandleEvent(event)
-	} else if legacy, ok := r.app.(LegacyApplication); ok {
-		cmds = legacy.HandleEvent(event)
 	}
 
 	// Queue commands for async execution
@@ -361,8 +396,7 @@ func (r *Runtime) processEvent(event Event) {
 // Deprecated: Use Application directly instead.
 type ViewProvider = Application
 
-// render calls the application's View() or Render() method using BeginFrame/EndFrame.
-// Application uses declarative View() rendering, LegacyApplication uses imperative Render().
+// render calls the application's View() method using BeginFrame/EndFrame.
 func (r *Runtime) render() {
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
@@ -370,10 +404,7 @@ func (r *Runtime) render() {
 		return
 	}
 
-	// Check for LegacyApplication first (imperative rendering)
-	if legacy, ok := r.app.(LegacyApplication); ok {
-		legacy.Render(frame)
-	} else if app, ok := r.app.(Application); ok {
+	if app, ok := r.app.(Application); ok {
 		// Application interface - use declarative View() rendering
 		// Clear registries before render (they get repopulated during render)
 		focusManager.Clear()
@@ -402,35 +433,46 @@ func (r *Runtime) render() {
 	r.terminal.EndFrame(frame)
 }
 
+// SetInputSource sets the input source for the runtime.
+func (r *Runtime) SetInputSource(source InputSource) {
+	r.inputSource = source
+}
+
+// defaultInputSource wraps KeyDecoder to satisfy InputSource
+type defaultInputSource struct {
+	decoder *KeyDecoder
+}
+
+func (d *defaultInputSource) ReadEvent() (Event, error) {
+	return d.decoder.ReadEvent()
+}
+
+func (d *defaultInputSource) SetPasteTabWidth(w int) {
+	d.decoder.SetPasteTabWidth(w)
+}
+
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
 // This goroutine blocks on stdin reads and forwards events to the main loop.
-// When mouse tracking is enabled (via terminal.EnableMouseTracking()),
-// this reader will automatically decode and forward mouse events as well.
-//
-// IMPORTANT: This uses a nested goroutine pattern to allow clean shutdown.
-// The problem: decoder.ReadEvent() is a blocking call on stdin. If we called it
-// directly in a select statement's default case, we'd be stuck waiting for input
-// even after r.done is closed, preventing the program from exiting cleanly.
-// This manifested as the terminal not clearing until another key was pressed.
-//
-// The solution: A nested goroutine continuously reads from stdin and sends events
-// to a channel. The main loop uses select to monitor both this channel and r.done,
-// allowing immediate exit when r.done is closed. The nested goroutine may remain
-// blocked on stdin, but that's okay - the parent goroutine exits, allowing
-// wg.Wait() in Run() to proceed and the program to clean up and exit immediately.
+// ...
 func (r *Runtime) inputReader() {
-	decoder := NewKeyDecoder(os.Stdin)
-	decoder.SetPasteTabWidth(r.pasteTabWidth)
+	var source InputSource
+	if r.inputSource != nil {
+		source = r.inputSource
+	} else {
+		// Default to stdin decoder
+		decoder := NewKeyDecoder(os.Stdin)
+		decoder.SetPasteTabWidth(r.pasteTabWidth)
+		source = &defaultInputSource{decoder: decoder}
+	}
 
 	// Channel to receive stdin reads from a separate goroutine
 	inputChan := make(chan Event, 1)
 	errChan := make(chan error, 1)
 
-	// Start a nested goroutine that continuously reads from stdin
-	// This goroutine may remain blocked on stdin after shutdown, which is acceptable
+	// Start a nested goroutine that continuously reads from source
 	go func() {
 		for {
-			event, err := decoder.ReadEvent()
+			event, err := source.ReadEvent()
 			if err != nil {
 				select {
 				case errChan <- err:

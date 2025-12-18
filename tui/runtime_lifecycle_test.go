@@ -40,12 +40,9 @@ func (m *testRuntimeModel) HandleEvent(event Event) []Cmd {
 	return nil
 }
 
-func (m *testRuntimeModel) Render(frame RenderFrame) {
+func (m *testRuntimeModel) View() View {
 	m.executed.Store(true)
-	width, height := frame.Size()
-	if width > 0 && height > 0 {
-		frame.PrintStyled(0, 0, "test", NewStyle())
-	}
+	return Text("test")
 }
 
 type incrementEvent struct{}
@@ -218,8 +215,9 @@ func TestRuntimeEventOrdering(t *testing.T) {
 		return nil
 	}
 
-	render := func(frame RenderFrame) {
+	render := func() View {
 		app.tracker.executed.Store(true)
+		return Text("test")
 	}
 
 	// Create a simple application using anonymous struct
@@ -257,15 +255,15 @@ func (e orderedEvent) Timestamp() time.Time {
 
 type simpleApp struct {
 	handleFunc func(Event) []Cmd
-	renderFunc func(RenderFrame)
+	renderFunc func() View
 }
 
 func (a *simpleApp) HandleEvent(event Event) []Cmd {
 	return a.handleFunc(event)
 }
 
-func (a *simpleApp) Render(frame RenderFrame) {
-	a.renderFunc(frame)
+func (a *simpleApp) View() View {
+	return a.renderFunc()
 }
 
 // TestRuntimeFPS tests that the runtime respects FPS setting
@@ -295,8 +293,9 @@ func TestRuntimeFPS(t *testing.T) {
 			}
 			return nil
 		},
-		renderFunc: func(frame RenderFrame) {
+		renderFunc: func() View {
 			tracker.executed.Store(true)
+			return Text("test")
 		},
 	}
 

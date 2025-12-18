@@ -112,8 +112,7 @@ func TestKeyEventType_IsAlias(t *testing.T) {
 
 func TestKeyType_IsAlias(t *testing.T) {
 	// Verify Key type is an alias
-	var k Key
-	k = KeyEnter
+	var k Key = KeyEnter
 	assert.Equal(t, KeyEnter, k)
 }
 

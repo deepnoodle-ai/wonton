@@ -221,7 +221,7 @@ func (app *CrawlApp) View() tui.View {
 		tui.Group(
 			tui.Text("Web Crawler").Bold().Fg(tui.ColorCyan),
 			tui.Spacer(),
-			tui.Text(statusText).Fg(statusColor),
+			tui.Text("%s", statusText).Fg(statusColor),
 		),
 		tui.Text(""),
 		tui.Group(

@@ -1,8 +1,52 @@
+// Package crawler provides a concurrent web crawler with pluggable fetchers,
+// parsers, and caching support. It is designed for extracting structured data
+// from websites while respecting domain-specific crawling rules.
+//
+// The crawler supports multiple follow behaviors (same domain, related subdomains,
+// or any domain), custom parsing logic per domain, and configurable rate limiting.
+// It uses a worker pool architecture for efficient concurrent crawling.
+//
+// Basic usage:
+//
+//	// Create a crawler with basic options
+//	crawler, err := crawler.New(crawler.Options{
+//		Workers:        5,
+//		MaxURLs:        1000,
+//		RequestDelay:   time.Second,
+//		DefaultFetcher: fetch.NewMockFetcher(),
+//		FollowBehavior: crawler.FollowSameDomain,
+//	})
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	// Crawl URLs and process results
+//	err = crawler.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *crawler.Result) {
+//		if result.Error != nil {
+//			log.Printf("Error crawling %s: %v", result.URL, result.Error)
+//			return
+//		}
+//		// Process the page content
+//		fmt.Printf("Crawled: %s\n", result.URL)
+//	})
+//
+// Advanced features include domain-specific parsers and fetchers using rules:
+//
+//	// Add a parser for a specific domain
+//	rule := crawler.NewParserRule("*.example.com", myParser,
+//		crawler.WithParserMatchType(crawler.MatchGlob),
+//		crawler.WithParserPriority(10))
+//	crawler.AddParserRules(rule)
+//
+// The crawler automatically discovers and follows links based on the configured
+// follow behavior, handles caching to avoid redundant fetches, and provides
+// real-time statistics about crawling progress.
 package crawler
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"sort"
@@ -11,52 +55,181 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deepnoodle-ai/wonton/web"
 	"github.com/deepnoodle-ai/wonton/crawler/cache"
 	"github.com/deepnoodle-ai/wonton/fetch"
+	"github.com/deepnoodle-ai/wonton/retry"
+	"github.com/deepnoodle-ai/wonton/web"
 )
 
-// FollowBehavior is used to determine how to follow links.
+// FollowBehavior determines which discovered links the crawler will follow.
+// This controls how the crawler expands beyond the initial seed URLs.
 type FollowBehavior string
 
 const (
-	FollowAny               FollowBehavior = "any"
-	FollowSameDomain        FollowBehavior = "same-domain"
+	// FollowAny follows all discovered links regardless of domain.
+	// Use with caution as this can lead to crawling the entire web.
+	FollowAny FollowBehavior = "any"
+
+	// FollowSameDomain only follows links that share the exact same hostname
+	// as the page they were discovered on. For example, links on example.com
+	// will only follow to other example.com pages, not to sub.example.com.
+	FollowSameDomain FollowBehavior = "same-domain"
+
+	// FollowRelatedSubdomains follows links that share the same base domain,
+	// including subdomains. For example, links on example.com will follow to
+	// both example.com and sub.example.com pages.
 	FollowRelatedSubdomains FollowBehavior = "related-subdomains"
-	FollowNone              FollowBehavior = "none"
+
+	// FollowNone does not follow any discovered links. Only the initial
+	// seed URLs provided to Crawl() will be processed.
+	FollowNone FollowBehavior = "none"
 )
 
-// Result represents the result of one page being crawled.
+// Result represents the outcome of crawling a single page. It contains
+// the fetched content, any parsed data, discovered links, and potential errors.
 type Result struct {
-	URL      *url.URL
-	Parsed   any
-	Links    []string
+	// URL is the parsed URL that was crawled
+	URL *url.URL
+
+	// Parsed contains the result of running a Parser on the page, if a parser
+	// was configured for this domain. The type depends on the Parser implementation.
+	Parsed any
+
+	// Links contains all URLs discovered on the page that passed the
+	// follow behavior filter. These may be enqueued for future crawling.
+	Links []string
+
+	// Response is the raw fetch response including HTML content and metadata
 	Response *fetch.Response
-	Error    error
+
+	// Error contains any error that occurred during fetching or parsing.
+	// If non-nil, other fields may be incomplete or empty.
+	Error error
 }
 
-// ProcessCallback is called with the fetch request and parsed result (if any)
+// Callback is invoked for each page processed by the crawler. It receives
+// the crawl result which includes the fetched page, parsed data (if a parser
+// was configured), discovered links, and any errors.
+//
+// The callback is called synchronously by worker goroutines, so it should
+// return quickly to avoid blocking crawling progress. For expensive processing,
+// consider dispatching to a separate goroutine or queue.
 type Callback func(ctx context.Context, result *Result)
 
-// Options used to configure a crawler.
+// Options configures a Crawler instance. Use this to specify worker count,
+// rate limiting, caching, parsers, fetchers, and link-following behavior.
 type Options struct {
-	MaxURLs              int
-	Workers              int
-	Cache                cache.Cache
-	RequestDelay         time.Duration
-	KnownURLs            []string
-	ParserRules          []*ParserRule
-	DefaultParser        Parser
-	FetcherRules         []*FetcherRule
-	DefaultFetcher       fetch.Fetcher
-	FollowBehavior       FollowBehavior
-	Logger               *slog.Logger
-	ShowProgress         bool
+	// MaxURLs limits the total number of URLs that will be processed.
+	// Set to 0 for unlimited (use with caution).
+	MaxURLs int
+
+	// Workers specifies the number of concurrent worker goroutines.
+	// More workers increase throughput but also increase load on target sites.
+	Workers int
+
+	// Cache stores fetched pages to avoid redundant requests. If nil, no caching is used.
+	Cache cache.Cache
+
+	// RequestDelay adds a delay between requests from each worker.
+	// Use this to be respectful of target servers and avoid overwhelming them.
+	RequestDelay time.Duration
+
+	// KnownURLs is a list of URLs that are already known and should not be processed again.
+	// This is useful for resuming interrupted crawls.
+	KnownURLs []string
+
+	// ParserRules defines domain-specific parsers. When a URL matches a rule's pattern,
+	// the associated parser is used to extract structured data from the page.
+	ParserRules []*ParserRule
+
+	// DefaultParser is used for domains that don't match any ParserRule.
+	// If nil and no rule matches, pages are fetched but not parsed.
+	DefaultParser Parser
+
+	// FetcherRules defines domain-specific fetchers. When a URL matches a rule's pattern,
+	// the associated fetcher is used to retrieve the page.
+	FetcherRules []*FetcherRule
+
+	// DefaultFetcher is used for domains that don't match any FetcherRule.
+	// This field is required - the crawler cannot function without a default fetcher.
+	DefaultFetcher fetch.Fetcher
+
+	// FollowBehavior determines which discovered links will be followed.
+	// Defaults to FollowSameDomain if not specified.
+	FollowBehavior FollowBehavior
+
+	// Logger is used for debug, info, and error messages. If nil, uses slog.Default().
+	Logger *slog.Logger
+
+	// ShowProgress enables periodic logging of crawl statistics.
+	ShowProgress bool
+
+	// ShowProgressInterval controls how often progress is logged.
+	// Defaults to 30 seconds if ShowProgress is true and this is not set.
 	ShowProgressInterval time.Duration
-	QueueSize            int
+
+	// QueueSize sets the buffer size for the URL queue.
+	// Larger queues can improve throughput but use more memory.
+	// Defaults to 10000 if not specified.
+	QueueSize int
+
+	// AllowHTTP permits crawling HTTP URLs without upgrading to HTTPS.
+	// By default, all URLs are normalized to HTTPS for security.
+	// Enable this for crawling HTTP-only sites or internal networks.
+	AllowHTTP bool
+
+	// PreserveQueryParams keeps URL query parameters during normalization.
+	// By default, query parameters are stripped to reduce URL duplication.
+	// Enable this for sites that use query parameters for pagination or content.
+	PreserveQueryParams bool
+
+	// RetryOptions configures retry behavior for failed fetch requests.
+	// If nil, no retries are performed.
+	RetryOptions *RetryOptions
+
+	// RespectRobotsTxt enables robots.txt compliance.
+	// When enabled, the crawler will fetch and respect robots.txt rules.
+	// Defaults to true. Set to false to disable robots.txt checking.
+	RespectRobotsTxt *bool
+
+	// RobotsTxtUserAgent is the user agent string used when checking robots.txt rules.
+	// Defaults to "*" if not specified.
+	RobotsTxtUserAgent string
 }
 
-// Crawler is used to crawl the web.
+// RetryOptions configures retry behavior for failed fetch requests.
+type RetryOptions struct {
+	// MaxAttempts is the maximum number of retry attempts (including the first).
+	// Defaults to 3 if not specified.
+	MaxAttempts int
+
+	// InitialBackoff is the delay before the first retry.
+	// Defaults to 1 second if not specified.
+	InitialBackoff time.Duration
+
+	// MaxBackoff is the maximum delay between retries.
+	// Defaults to 30 seconds if not specified.
+	MaxBackoff time.Duration
+}
+
+// BoolPtr returns a pointer to the given bool value.
+// This is a helper for setting optional bool fields in Options.
+//
+// Example:
+//
+//	crawler.New(crawler.Options{
+//		RespectRobotsTxt: crawler.BoolPtr(false), // disable robots.txt
+//	})
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+// Crawler orchestrates concurrent web crawling with configurable fetchers,
+// parsers, and caching. It manages a pool of workers that process URLs from
+// a queue, following links according to the configured follow behavior.
+//
+// Crawler is safe for concurrent use after creation, but should not be modified
+// while crawling is in progress. Use New() to create instances.
 type Crawler struct {
 	processedURLs        sync.Map
 	queue                chan string
@@ -77,9 +250,36 @@ type Crawler struct {
 	showProgress         bool
 	showProgressInterval time.Duration
 	cancel               context.CancelFunc
+
+	// URL normalization options
+	allowHTTP           bool
+	preserveQueryParams bool
+
+	// Retry configuration
+	retryOptions *RetryOptions
+
+	// robots.txt support
+	respectRobotsTxt   bool
+	robotsTxtUserAgent string
+	robotsCache        sync.Map // map[string]*robotsTxtData
 }
 
-// New creates a new crawler.
+// New creates a new Crawler with the specified options. It validates and sets
+// default values for optional fields, compiles rule patterns, and initializes
+// the worker queue.
+//
+// Returns an error if any parser or fetcher rules have invalid patterns, or if
+// required configuration is missing.
+//
+// Example:
+//
+//	crawler, err := crawler.New(crawler.Options{
+//		Workers:        5,
+//		MaxURLs:        1000,
+//		RequestDelay:   time.Second,
+//		DefaultFetcher: fetch.NewMockFetcher(),
+//		FollowBehavior: crawler.FollowSameDomain,
+//	})
 func New(opts Options) (*Crawler, error) {
 	logger := opts.Logger
 	if logger == nil {
@@ -93,6 +293,14 @@ func New(opts Options) (*Crawler, error) {
 	}
 	if opts.FollowBehavior == "" {
 		opts.FollowBehavior = FollowSameDomain
+	}
+	if opts.RobotsTxtUserAgent == "" {
+		opts.RobotsTxtUserAgent = "*"
+	}
+	// Default RespectRobotsTxt to true
+	respectRobotsTxt := true
+	if opts.RespectRobotsTxt != nil {
+		respectRobotsTxt = *opts.RespectRobotsTxt
 	}
 	c := &Crawler{
 		cache:                opts.Cache,
@@ -108,6 +316,11 @@ func New(opts Options) (*Crawler, error) {
 		showProgress:         opts.ShowProgress,
 		showProgressInterval: opts.ShowProgressInterval,
 		queue:                make(chan string, opts.QueueSize),
+		allowHTTP:            opts.AllowHTTP,
+		preserveQueryParams:  opts.PreserveQueryParams,
+		retryOptions:         opts.RetryOptions,
+		respectRobotsTxt:     respectRobotsTxt,
+		robotsTxtUserAgent:   opts.RobotsTxtUserAgent,
 	}
 	if err := c.AddParserRules(opts.ParserRules...); err != nil {
 		return nil, err
@@ -179,8 +392,30 @@ func (c *Crawler) getActiveWorkers() int64 {
 	return atomic.LoadInt64(&c.activeWorkers)
 }
 
-// Crawl the provided URLs and call the callback for each processed page.
-// Links may be followed depending on the configured follow behavior.
+// Crawl begins crawling from the provided seed URLs, invoking the callback
+// for each page processed. The crawler will follow discovered links according
+// to the configured FollowBehavior.
+//
+// Crawl blocks until all reachable URLs have been processed, the context is
+// canceled, MaxURLs is reached, or an unrecoverable error occurs. Workers will
+// process pages concurrently according to the Workers setting.
+//
+// The callback is invoked synchronously by worker goroutines for each page.
+// If the callback needs to perform expensive operations, it should dispatch
+// work to separate goroutines to avoid blocking the crawler.
+//
+// Returns an error if the crawler is already running or if the context is
+// canceled before crawling begins.
+//
+// Example:
+//
+//	err := crawler.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *crawler.Result) {
+//		if result.Error != nil {
+//			log.Printf("Error: %v", result.Error)
+//			return
+//		}
+//		fmt.Printf("Crawled %s: found %d links\n", result.URL, len(result.Links))
+//	})
 func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) error {
 	if c.running {
 		return errors.New("crawler is already running")
@@ -225,6 +460,11 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	return nil
 }
 
+// Stop gracefully stops the crawler by canceling its context. This signals
+// workers to finish their current tasks and stop processing new URLs.
+//
+// Stop is safe to call concurrently and can be called multiple times.
+// It does nothing if the crawler is not currently running.
 func (c *Crawler) Stop() {
 	if c.cancel != nil {
 		c.cancel()
@@ -245,24 +485,30 @@ func (c *Crawler) enqueue(ctx context.Context, urls []string) (int, error) {
 	// Normalize and enqueue the URLs
 	queued := 0
 	for _, rawURL := range urls {
-		url, err := web.NormalizeURL(rawURL)
+		normalizedURL, err := c.normalizeURL(rawURL)
 		if err != nil {
 			c.logger.Warn("invalid url",
 				slog.String("url", rawURL),
 				slog.String("error", err.Error()))
 			continue
 		}
-		value := strings.TrimSuffix(url.String(), "/")
-		// Only enqueue if not already processed
-		if _, exists := c.processedURLs.LoadOrStore(value, true); !exists {
-			select {
-			case c.queue <- value:
-				queued++
-			case <-ctx.Done():
-				return queued, ctx.Err()
-			default:
-				// Queue is full, skip this URL
-			}
+		value := strings.TrimSuffix(normalizedURL.String(), "/")
+		// Check if already seen (but don't mark as processed yet)
+		if _, exists := c.processedURLs.Load(value); exists {
+			continue
+		}
+		// Try to enqueue - only mark as processed if successful
+		select {
+		case c.queue <- value:
+			// Successfully queued, now mark as processed to prevent re-queueing
+			c.processedURLs.Store(value, true)
+			queued++
+		case <-ctx.Done():
+			return queued, ctx.Err()
+		default:
+			// Queue is full - DO NOT mark as processed so it can be retried later
+			c.logger.Debug("queue full, skipping url",
+				slog.String("url", value))
 		}
 	}
 	return queued, nil
@@ -324,6 +570,15 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		return
 	}
 
+	// Check robots.txt if enabled
+	if c.respectRobotsTxt && !c.isAllowedByRobots(ctx, parsedURL) {
+		c.logger.Debug("blocked by robots.txt",
+			slog.String("url", rawURL))
+		callback(ctx, &Result{URL: parsedURL, Error: errors.New("blocked by robots.txt")})
+		c.stats.IncrementFailed()
+		return
+	}
+
 	// Create fetch request
 	req := &fetch.Request{
 		URL:             rawURL,
@@ -336,7 +591,39 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 	// Fetch if there was not a cache hit
 	if response == nil {
 		c.logger.Debug("fetching", slog.String("url", rawURL))
-		response, err = fetcher.Fetch(ctx, req)
+
+		// Use retry logic if configured
+		if c.retryOptions != nil {
+			maxAttempts := c.retryOptions.MaxAttempts
+			if maxAttempts <= 0 {
+				maxAttempts = 3
+			}
+			initialBackoff := c.retryOptions.InitialBackoff
+			if initialBackoff <= 0 {
+				initialBackoff = time.Second
+			}
+			maxBackoff := c.retryOptions.MaxBackoff
+			if maxBackoff <= 0 {
+				maxBackoff = 30 * time.Second
+			}
+
+			response, err = retry.Do(ctx, func() (*fetch.Response, error) {
+				return fetcher.Fetch(ctx, req)
+			},
+				retry.WithMaxAttempts(maxAttempts),
+				retry.WithBackoff(initialBackoff, maxBackoff),
+				retry.WithOnRetry(func(attempt int, err error, delay time.Duration) {
+					c.logger.Warn("retrying fetch",
+						slog.String("url", rawURL),
+						slog.Int("attempt", attempt),
+						slog.String("error", err.Error()),
+						slog.Duration("delay", delay))
+				}),
+			)
+		} else {
+			response, err = fetcher.Fetch(ctx, req)
+		}
+
 		if err != nil {
 			callback(ctx, &Result{URL: parsedURL, Error: err})
 			c.stats.IncrementFailed()
@@ -370,7 +657,7 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 	// Extract URLs from the page
 	var discoveredLinks []string
 	if response.Links != nil {
-		discoveredLinks = c.extractURLs(response.Links, domain)
+		discoveredLinks = c.extractURLs(response.Links, parsedURL)
 	}
 	callback(ctx, &Result{
 		URL:      parsedURL,
@@ -424,7 +711,7 @@ func (c *Crawler) filterLinks(pageURL *url.URL, links []string) []string {
 	}
 	var filtered []string
 	for _, rawURL := range links {
-		u, err := web.NormalizeURL(rawURL)
+		u, err := c.normalizeURL(rawURL)
 		if err != nil {
 			continue
 		}
@@ -444,16 +731,16 @@ func (c *Crawler) filterLinks(pageURL *url.URL, links []string) []string {
 	return filtered
 }
 
-func (c *Crawler) extractURLs(links []fetch.Link, domain string) []string {
+func (c *Crawler) extractURLs(links []fetch.Link, baseURL *url.URL) []string {
 	urlMap := make(map[string]bool)
 	for _, link := range links {
-		if url, ok := web.ResolveLink(domain, link.URL); ok {
-			urlMap[url] = true
+		if resolved, ok := c.resolveLink(baseURL, link.URL); ok {
+			urlMap[resolved] = true
 		}
 	}
 	var results []string
-	for url := range urlMap {
-		results = append(results, url)
+	for u := range urlMap {
+		results = append(results, u)
 	}
 	sort.Strings(results)
 	return results
@@ -475,7 +762,12 @@ func (c *Crawler) progressReporter(ctx context.Context) {
 	}
 }
 
-// GetStats returns the current crawling statistics
+// GetStats returns the current crawling statistics, including counts of
+// processed, succeeded, and failed URLs. The returned statistics are safe
+// to read concurrently and reflect the latest state.
+//
+// The statistics continue to accumulate across multiple calls to Crawl()
+// on the same Crawler instance.
 func (c *Crawler) GetStats() *CrawlerStats {
 	return c.stats
 }
@@ -498,4 +790,83 @@ func (c *Crawler) idleMonitor(ctx context.Context, cancel context.CancelFunc) {
 			}
 		}
 	}
+}
+
+// normalizeURL parses and normalizes a URL according to the crawler's configuration.
+// This replaces the use of web.NormalizeURL to support configurable normalization.
+func (c *Crawler) normalizeURL(rawURL string) (*url.URL, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("invalid empty url")
+	}
+
+	// Add scheme if missing
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		if strings.Contains(rawURL, "://") {
+			return nil, fmt.Errorf("invalid url: %s", rawURL)
+		}
+		rawURL = "https://" + rawURL
+	}
+
+	// Optionally convert HTTP to HTTPS
+	if !c.allowHTTP && strings.HasPrefix(rawURL, "http://") {
+		rawURL = "https://" + rawURL[7:]
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url %q: %w", rawURL, err)
+	}
+
+	// Optionally strip query parameters
+	if !c.preserveQueryParams {
+		u.ForceQuery = false
+		u.RawQuery = ""
+	}
+
+	// Always strip fragments
+	u.Fragment = ""
+
+	// Remove trailing slash from root path
+	if u.Path == "/" {
+		u.Path = ""
+	}
+
+	return u, nil
+}
+
+// resolveLink resolves a relative or absolute URL against a base URL,
+// preserving the scheme of the base URL when resolving relative links.
+func (c *Crawler) resolveLink(baseURL *url.URL, link string) (string, bool) {
+	// Parse the link
+	parsedLink, err := url.Parse(link)
+	if err != nil {
+		return "", false
+	}
+
+	// Remove fragment
+	parsedLink.Fragment = ""
+
+	// If absolute, validate and normalize
+	if parsedLink.IsAbs() {
+		// Only accept HTTP/HTTPS schemes
+		if parsedLink.Scheme != "http" && parsedLink.Scheme != "https" {
+			return "", false
+		}
+		normalized, err := c.normalizeURL(parsedLink.String())
+		if err != nil {
+			return "", false
+		}
+		return normalized.String(), true
+	}
+
+	// Resolve relative URL against base
+	resolved := baseURL.ResolveReference(parsedLink)
+
+	// Normalize and return
+	normalized, err := c.normalizeURL(resolved.String())
+	if err != nil {
+		return "", false
+	}
+	return normalized.String(), true
 }

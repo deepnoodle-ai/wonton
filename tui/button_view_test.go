@@ -157,8 +157,8 @@ func TestButtonRegistry_Clear(t *testing.T) {
 	// Clear should not panic
 	registry.Clear()
 
-	// Buttons map should still have the entry (Clear doesn't remove buttons)
-	assert.Equal(t, 1, len(registry.buttons))
+	// Buttons map should be cleared to prevent memory leaks
+	assert.Equal(t, 0, len(registry.buttons))
 }
 
 func TestInteractiveRegistry_RegisterRegion(t *testing.T) {
@@ -418,25 +418,17 @@ func TestClickable_Chaining(t *testing.T) {
 	assert.Equal(t, 20, c.width)
 }
 
-// Render tests using termtest
-// Note: Screen height needs to be at least content height + 1 to account for trailing newlines
+// Render tests using termtest with SprintScreen helper
 
 func TestButton_Render(t *testing.T) {
 	btn := Button("Submit", func() {})
-
-	output := Sprint(btn, WithWidth(20))
-	screen := termtest.NewScreen(20, 2) // +1 for trailing newline
-	screen.Write([]byte(output))
-
+	screen := SprintScreen(btn, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 0, "Submit")
 }
 
 func TestButton_Render_WithStyle(t *testing.T) {
 	btn := Button("OK", func() {}).Fg(ColorGreen).Bold()
-
-	output := Sprint(btn, WithWidth(20))
-	screen := termtest.NewScreen(20, 2)
-	screen.Write([]byte(output))
+	screen := SprintScreen(btn, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "OK")
 
@@ -451,10 +443,7 @@ func TestButton_Render_InStack(t *testing.T) {
 		Button("Save", func() {}),
 		Button("Cancel", func() {}),
 	)
-
-	output := Sprint(stack, WithWidth(20))
-	screen := termtest.NewScreen(20, 4) // 3 rows + 1 for trailing newline
-	screen.Write([]byte(output))
+	screen := SprintScreen(stack, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Form:")
 	termtest.AssertRowContains(t, screen, 1, "Save")
@@ -463,20 +452,13 @@ func TestButton_Render_InStack(t *testing.T) {
 
 func TestClickable_Render(t *testing.T) {
 	c := Clickable("Click me", func() {})
-
-	output := Sprint(c, WithWidth(20))
-	screen := termtest.NewScreen(20, 2)
-	screen.Write([]byte(output))
-
+	screen := SprintScreen(c, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 0, "Click me")
 }
 
 func TestClickable_Render_WithStyle(t *testing.T) {
 	c := Clickable("Link", func() {}).Fg(ColorCyan).Bold()
-
-	output := Sprint(c, WithWidth(20))
-	screen := termtest.NewScreen(20, 2)
-	screen.Write([]byte(output))
+	screen := SprintScreen(c, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Link")
 
@@ -490,10 +472,7 @@ func TestButton_Render_InGroup(t *testing.T) {
 		Button("Yes", func() {}),
 		Button("No", func() {}),
 	).Gap(2)
-
-	output := Sprint(group, WithWidth(20))
-	screen := termtest.NewScreen(20, 2)
-	screen.Write([]byte(output))
+	screen := SprintScreen(group, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Yes")
 	termtest.AssertRowContains(t, screen, 0, "No")

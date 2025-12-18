@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 func TestWrapText(t *testing.T) {
@@ -83,4 +84,135 @@ func TestMeasureText(t *testing.T) {
 			assert.Equal(t, tt.expectedHeight, height)
 		})
 	}
+}
+
+// Render tests using termtest with SprintScreen helper
+
+func TestText_Render_Simple(t *testing.T) {
+	v := Text("Hello, World!")
+	screen := SprintScreen(v, WithWidth(30))
+	termtest.AssertRow(t, screen, 0, "Hello, World!")
+}
+
+func TestText_Render_Multiline(t *testing.T) {
+	v := Text("Line 1\nLine 2\nLine 3")
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRow(t, screen, 0, "Line 1")
+	termtest.AssertRow(t, screen, 1, "Line 2")
+	termtest.AssertRow(t, screen, 2, "Line 3")
+}
+
+func TestText_Render_Bold(t *testing.T) {
+	v := Text("Bold Text").Bold()
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Bold Text")
+
+	// Check that text has bold style
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Bold)
+}
+
+func TestText_Render_Italic(t *testing.T) {
+	v := Text("Italic Text").Italic()
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Italic Text")
+
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Italic)
+}
+
+func TestText_Render_Underline(t *testing.T) {
+	v := Text("Underlined").Underline()
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Underlined")
+
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Underline)
+}
+
+func TestText_Render_Dim(t *testing.T) {
+	v := Text("Dimmed").Dim()
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Dimmed")
+
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Dim)
+}
+
+func TestText_Render_ForegroundColor(t *testing.T) {
+	v := Text("Red").Fg(ColorRed)
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Red")
+
+	// Check foreground color is set
+	cell := screen.Cell(0, 0)
+	assert.Equal(t, termtest.ColorBasic, cell.Style.Foreground.Type)
+}
+
+func TestText_Render_BackgroundColor(t *testing.T) {
+	v := Text("Highlighted").Bg(ColorYellow)
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Highlighted")
+
+	// Check background color is set
+	cell := screen.Cell(0, 0)
+	assert.Equal(t, termtest.ColorBasic, cell.Style.Background.Type)
+}
+
+func TestText_Render_CombinedStyles(t *testing.T) {
+	v := Text("Styled").Bold().Italic().Underline().Fg(ColorCyan)
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Styled")
+
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Bold)
+	assert.True(t, cell.Style.Italic)
+	assert.True(t, cell.Style.Underline)
+}
+
+func TestText_Render_Printf(t *testing.T) {
+	v := Text("Count: %d, Name: %s", 42, "Test")
+	screen := SprintScreen(v, WithWidth(40))
+
+	termtest.AssertRowContains(t, screen, 0, "Count: 42")
+	termtest.AssertRowContains(t, screen, 0, "Name: Test")
+}
+
+func TestText_Render_WideCharacters(t *testing.T) {
+	v := Text("日本語")
+	screen := SprintScreen(v, WithWidth(20))
+
+	termtest.AssertRowContains(t, screen, 0, "日本語")
+}
+
+func TestText_Render_Emoji(t *testing.T) {
+	v := Text("Hello 🎉 World")
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRowContains(t, screen, 0, "Hello")
+	termtest.AssertRowContains(t, screen, 0, "World")
+}
+
+func TestText_Render_WrappingDisabled(t *testing.T) {
+	// Text without explicit wrapping should not wrap
+	v := Text("Short text that fits")
+	screen := SprintScreen(v, WithWidth(30))
+
+	termtest.AssertRow(t, screen, 0, "Short text that fits")
+}
+
+func TestText_Render_Empty(t *testing.T) {
+	v := Text("")
+	screen := SprintScreen(v, WithWidth(20))
+
+	// Empty text should render without error
+	termtest.AssertRow(t, screen, 0, "")
 }

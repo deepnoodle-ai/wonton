@@ -9,8 +9,20 @@ type zStack struct {
 	childSizes []image.Point
 }
 
-// ZStack creates a stack that layers children on top of each other.
-// The first child is at the bottom, the last child is on top.
+// ZStack creates a stack that layers children on top of each other (z-axis).
+// The first child is at the bottom layer, the last child is on top.
+//
+// This is useful for overlays, backgrounds, and layered effects.
+// The stack sizes to the largest child.
+//
+// Example:
+//
+//	ZStack(
+//	    // Background layer
+//	    Bordered(Empty()).Border(&SingleBorder),
+//	    // Foreground content
+//	    Padding(2, Text("Overlay")),
+//	).Align(AlignCenter)
 func ZStack(children ...View) *zStack {
 	return &zStack{
 		children:  children,
@@ -19,6 +31,8 @@ func ZStack(children ...View) *zStack {
 }
 
 // Align sets the alignment of children within the stack.
+// Options: AlignLeft, AlignCenter (default), AlignRight.
+// This affects how smaller children are positioned relative to larger ones.
 func (z *zStack) Align(a Alignment) *zStack {
 	z.alignment = a
 	return z

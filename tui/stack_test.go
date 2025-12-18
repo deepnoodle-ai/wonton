@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 func TestStack_Empty(t *testing.T) {
@@ -310,4 +311,119 @@ func TestStack_GapWithIfElse(t *testing.T) {
 	_, h := s.size(100, 100)
 	// Should be 2 lines + 1 gap
 	assert.Equal(t, 2+1, h)
+}
+
+// Render tests using termtest with SprintScreen helper
+
+func TestStack_Render_Basic(t *testing.T) {
+	s := Stack(
+		Text("First"),
+		Text("Second"),
+		Text("Third"),
+	)
+	screen := SprintScreen(s, WithWidth(20))
+
+	termtest.AssertRow(t, screen, 0, "First")
+	termtest.AssertRow(t, screen, 1, "Second")
+	termtest.AssertRow(t, screen, 2, "Third")
+}
+
+func TestStack_Render_WithGap(t *testing.T) {
+	s := Stack(
+		Text("A"),
+		Text("B"),
+	).Gap(2)
+	screen := SprintScreen(s, WithWidth(20))
+
+	termtest.AssertRow(t, screen, 0, "A")
+	termtest.AssertRow(t, screen, 1, "") // Gap line 1
+	termtest.AssertRow(t, screen, 2, "") // Gap line 2
+	termtest.AssertRow(t, screen, 3, "B")
+}
+
+func TestStack_Render_LeftAlign(t *testing.T) {
+	s := Stack(
+		Text("Short"),
+		Text("Longer text"),
+	).Align(AlignLeft)
+	screen := SprintScreen(s, WithWidth(20))
+
+	termtest.AssertRowPrefix(t, screen, 0, "Short")
+	termtest.AssertRowPrefix(t, screen, 1, "Longer text")
+}
+
+func TestStack_Render_CenterAlign(t *testing.T) {
+	s := Stack(
+		Text("Hi"),
+		Text("Hello"),
+	).Align(AlignCenter)
+	screen := SprintScreen(s, WithWidth(10))
+
+	// "Hi" (2 chars) centered in 10-char space = 4 spaces + "Hi"
+	// "Hello" (5 chars) centered in 10-char space = 2 spaces + "Hello"
+	termtest.AssertRowContains(t, screen, 0, "Hi")
+	termtest.AssertRowContains(t, screen, 1, "Hello")
+}
+
+func TestStack_Render_RightAlign(t *testing.T) {
+	s := Stack(
+		Text("Hi"),
+		Text("Hello"),
+	).Align(AlignRight)
+	screen := SprintScreen(s, WithWidth(10))
+
+	// Content should be right-aligned within their row
+	row0 := screen.Row(0)
+	row1 := screen.Row(1)
+	assert.True(t, strings.HasSuffix(strings.TrimRight(row0, " "), "Hi"))
+	assert.True(t, strings.HasSuffix(strings.TrimRight(row1, " "), "Hello"))
+}
+
+func TestStack_Render_WithPadding(t *testing.T) {
+	s := Stack(Text("Content")).Padding(1)
+	screen := SprintScreen(s, WithWidth(20))
+
+	// Row 0 should be empty (top padding)
+	termtest.AssertRow(t, screen, 0, "")
+	// Row 1 should have content with left padding
+	termtest.AssertRowContains(t, screen, 1, "Content")
+	// Row 2 should be empty (bottom padding)
+	termtest.AssertRow(t, screen, 2, "")
+}
+
+func TestStack_Render_Nested(t *testing.T) {
+	s := Stack(
+		Text("Header"),
+		Stack(
+			Text("- Item 1"),
+			Text("- Item 2"),
+		),
+		Text("Footer"),
+	)
+	screen := SprintScreen(s, WithWidth(20))
+
+	termtest.AssertRow(t, screen, 0, "Header")
+	termtest.AssertRow(t, screen, 1, "- Item 1")
+	termtest.AssertRow(t, screen, 2, "- Item 2")
+	termtest.AssertRow(t, screen, 3, "Footer")
+}
+
+func TestStack_Render_WithStyles(t *testing.T) {
+	s := Stack(
+		Text("Bold").Bold(),
+		Text("Normal"),
+	)
+	screen := SprintScreen(s, WithWidth(20))
+
+	// Check content
+	termtest.AssertRowContains(t, screen, 0, "Bold")
+	termtest.AssertRowContains(t, screen, 1, "Normal")
+
+	// Check that first row has bold style
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Bold)
+
+	// Check that second row is not bold
+	cell = screen.Cell(0, 1)
+	assert.False(t, cell.Style.Bold)
 }

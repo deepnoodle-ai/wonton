@@ -1,6 +1,7 @@
 package termsession
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,4 +108,65 @@ func TestOutputEvents(t *testing.T) {
 	assert.Len(t, output, 2)
 	assert.Equal(t, "output1", output[0].Data)
 	assert.Equal(t, "output2", output[1].Data)
+}
+
+// ExampleLoadCastFile demonstrates loading and inspecting a .cast file.
+func ExampleLoadCastFile() {
+	// Create a sample recording
+	tmpfile := filepath.Join(os.TempDir(), "load-example.cast")
+	defer os.Remove(tmpfile)
+
+	recorder, _ := NewRecorder(tmpfile, 80, 24, RecordingOptions{
+		Compress: false,
+		Title:    "Load Example",
+	})
+	recorder.RecordOutput("Hello, World!\n")
+	recorder.Close()
+
+	// Load it back
+	header, events, err := LoadCastFile(tmpfile)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Terminal size: %dx%d\n", header.Width, header.Height)
+	fmt.Printf("Title: %s\n", header.Title)
+	fmt.Printf("Events: %d\n", len(events))
+
+	// Output:
+	// Terminal size: 80x24
+	// Title: Load Example
+	// Events: 1
+}
+
+// ExampleDuration demonstrates calculating recording duration.
+func ExampleDuration() {
+	events := []RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "Start"},
+		{Time: 1.5, Type: "o", Data: "Middle"},
+		{Time: 3.0, Type: "o", Data: "End"},
+	}
+
+	duration := Duration(events)
+	fmt.Printf("Duration: %.1f seconds\n", duration)
+
+	// Output:
+	// Duration: 3.0 seconds
+}
+
+// ExampleOutputEvents demonstrates filtering output events.
+func ExampleOutputEvents() {
+	events := []RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "Output line 1"},
+		{Time: 0.5, Type: "i", Data: "User input"},
+		{Time: 1.0, Type: "o", Data: "Output line 2"},
+	}
+
+	outputOnly := OutputEvents(events)
+	fmt.Printf("Total events: %d\n", len(events))
+	fmt.Printf("Output events: %d\n", len(outputOnly))
+
+	// Output:
+	// Total events: 3
+	// Output events: 2
 }

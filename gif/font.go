@@ -2,9 +2,13 @@ package gif
 
 import "image/color"
 
-// font8x8 contains a basic 8x8 bitmap font for ASCII characters 32-126.
-// Each character is represented as 8 bytes, where each byte is a row of 8 bits.
-// A set bit (1) means the pixel should be drawn.
+// font8x8 contains a basic 8x8 bitmap font for ASCII characters 32-126
+// (printable ASCII). Each character is represented as 8 bytes, where each
+// byte represents one horizontal row of 8 pixels. A set bit (1) indicates
+// the pixel should be drawn in the foreground color.
+//
+// This font provides a simple, fast rendering option when TTF font support
+// is not needed or available.
 var font8x8 = map[rune][8]byte{
 	' ':  {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	'!':  {0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00},
@@ -103,24 +107,29 @@ var font8x8 = map[rune][8]byte{
 	'~':  {0x00, 0x00, 0x60, 0xF2, 0x9E, 0x0C, 0x00, 0x00},
 }
 
-// BitmapFont represents a bitmap font with fixed dimensions.
+// BitmapFont represents a fixed-width bitmap font with specific dimensions.
+// Bitmap fonts are faster to render than TTF fonts and require no external
+// dependencies, but offer lower visual quality.
 type BitmapFont struct {
-	Width  int
-	Height int
+	Width  int // Character cell width in pixels
+	Height int // Character cell height in pixels
 }
 
-// Bitmap font constants for backward compatibility.
+// Bitmap font dimension constants for backward compatibility.
 const (
-	FontWidth  = 8
-	FontHeight = 8
+	FontWidth  = 8 // Default font width
+	FontHeight = 8 // Default font height
 )
 
-// Predefined bitmap fonts.
+// Predefined bitmap fonts with different sizes.
 var (
-	// BitmapFont8x8 is the classic 8x8 bitmap font.
+	// BitmapFont8x8 is the classic 8x8 pixel bitmap font, suitable for
+	// compact displays and retro aesthetics.
 	BitmapFont8x8 = BitmapFont{Width: 8, Height: 8}
 
-	// BitmapFont8x16 is a taller 8x16 font for better terminal appearance.
+	// BitmapFont8x16 is a taller 8x16 pixel font that provides better
+	// readability for terminal rendering. This is the recommended default
+	// for bitmap font usage.
 	BitmapFont8x16 = BitmapFont{Width: 8, Height: 16}
 )
 
@@ -171,8 +180,29 @@ func getGlyph8x16(r rune) [16]byte {
 	return glyph16
 }
 
-// DrawBitmapChar draws a bitmap character at the given pixel position.
-// It supports both 8x8 and 8x16 fonts.
+// DrawBitmapChar draws a single character using a bitmap font at the specified
+// pixel position (px, py) on a GIF frame. The character is drawn in the
+// foreground color, with the frame's existing background showing through
+// empty pixels.
+//
+// Supported fonts:
+//   - BitmapFont8x8: Classic 8x8 pixel font
+//   - BitmapFont8x16: Taller 8x16 font with better readability
+//
+// Characters outside the ASCII printable range (32-126) are rendered as
+// block characters.
+//
+// Example:
+//
+//	g := gif.New(100, 20)
+//	g.AddFrame(func(f *gif.Frame) {
+//	    f.Fill(gif.Black)
+//	    x := 5
+//	    for _, ch := range "Hello" {
+//	        gif.DrawBitmapChar(f, x, 5, ch, gif.White, gif.BitmapFont8x8)
+//	        x += 8
+//	    }
+//	})
 func DrawBitmapChar(f *Frame, px, py int, char rune, fg color.Color, font BitmapFont) {
 	if font.Height == 16 {
 		glyph := getGlyph8x16(char)

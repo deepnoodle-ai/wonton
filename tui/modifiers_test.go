@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 func TestPadding_Equal(t *testing.T) {
@@ -392,4 +393,137 @@ func TestTextView_MaxWidth(t *testing.T) {
 
 	w, _ := sized.size(100, 100)
 	assert.True(t, w <= 10, "width should be at most 10")
+}
+
+// Render tests using termtest with SprintScreen helper
+
+func TestPadding_Render_Screen(t *testing.T) {
+	padded := Padding(1, Text("Content"))
+	screen := SprintScreen(padded, WithWidth(20))
+
+	// Row 0 should be empty (top padding)
+	termtest.AssertRow(t, screen, 0, "")
+	// Row 1 should have content with left padding
+	termtest.AssertRowContains(t, screen, 1, "Content")
+	// Row 2 should be empty (bottom padding)
+	termtest.AssertRow(t, screen, 2, "")
+}
+
+func TestPaddingLTRB_Render_Screen(t *testing.T) {
+	padded := PaddingLTRB(2, 1, 2, 1, Text("X"))
+	screen := SprintScreen(padded, WithWidth(20))
+
+	// Row 0 is top padding
+	termtest.AssertRow(t, screen, 0, "")
+	// Row 1 has content with 2-char left padding
+	row1 := screen.Row(1)
+	assert.True(t, strings.HasPrefix(row1, "  "), "should have left padding")
+	termtest.AssertRowContains(t, screen, 1, "X")
+	// Row 2 is bottom padding
+	termtest.AssertRow(t, screen, 2, "")
+}
+
+func TestBordered_Render_Screen(t *testing.T) {
+	bordered := Bordered(Text("Box")).Border(&SingleBorder)
+	screen := SprintScreen(bordered, WithWidth(20))
+
+	// Check for border characters
+	termtest.AssertRowContains(t, screen, 0, "─") // Top border
+	termtest.AssertRowContains(t, screen, 1, "Box")
+	termtest.AssertRowContains(t, screen, 2, "─") // Bottom border
+}
+
+func TestBordered_Render_WithTitle_Screen(t *testing.T) {
+	bordered := Bordered(Text("Content")).Border(&SingleBorder).Title("Title")
+	screen := SprintScreen(bordered, WithWidth(30))
+
+	// Title should appear in top border
+	termtest.AssertRowContains(t, screen, 0, "Title")
+	termtest.AssertRowContains(t, screen, 1, "Content")
+}
+
+func TestBordered_Render_DoubleBorder(t *testing.T) {
+	bordered := Bordered(Text("Double")).Border(&DoubleBorder)
+	screen := SprintScreen(bordered, WithWidth(20))
+
+	// Check for double border characters
+	termtest.AssertRowContains(t, screen, 0, "═") // Double top border
+	termtest.AssertRowContains(t, screen, 1, "Double")
+}
+
+func TestBordered_Render_RoundedBorder(t *testing.T) {
+	bordered := Bordered(Text("Rounded")).Border(&RoundedBorder)
+	screen := SprintScreen(bordered, WithWidth(20))
+
+	// Check for rounded corner characters
+	termtest.AssertRowContains(t, screen, 0, "╭") // Rounded top-left
+	termtest.AssertRowContains(t, screen, 1, "Rounded")
+	termtest.AssertRowContains(t, screen, 2, "╰") // Rounded bottom-left
+}
+
+func TestSize_Render_Screen(t *testing.T) {
+	sized := Size(15, 3, Text("Sized"))
+	screen := SprintScreen(sized, WithWidth(20))
+
+	termtest.AssertRowContains(t, screen, 0, "Sized")
+}
+
+func TestWidth_Render_Screen(t *testing.T) {
+	sized := Width(10, Text("Hi"))
+	screen := SprintScreen(sized, WithWidth(20))
+
+	termtest.AssertRowContains(t, screen, 0, "Hi")
+}
+
+func TestHeight_Render_Screen(t *testing.T) {
+	// Height modifier sets fixed height for the view
+	sized := Height(3, Text("Hi"))
+	screen := SprintScreen(sized, WithWidth(20))
+
+	// The text should render (even if screen includes extra trailing rows)
+	termtest.AssertContains(t, screen, "Hi")
+}
+
+func TestNested_Modifiers_Render(t *testing.T) {
+	// Combine padding and border
+	view := Bordered(Padding(1, Text("Nested"))).Border(&SingleBorder)
+	screen := SprintScreen(view, WithWidth(30))
+
+	// Border on outside
+	termtest.AssertRowContains(t, screen, 0, "─")
+	// Content is nested inside padding and border
+	termtest.AssertRowContains(t, screen, 2, "Nested")
+}
+
+func TestBackground_Render_Screen(t *testing.T) {
+	bg := Background('.', NewStyle(), Text("Content"))
+	screen := SprintScreen(bg, WithWidth(15))
+
+	termtest.AssertRowContains(t, screen, 0, "Content")
+}
+
+func TestStack_Bordered_Render(t *testing.T) {
+	s := Stack(
+		Text("Item 1"),
+		Text("Item 2"),
+	).Bordered().Border(&SingleBorder)
+	screen := SprintScreen(s, WithWidth(20))
+
+	termtest.AssertRowContains(t, screen, 0, "─") // Top border
+	termtest.AssertRowContains(t, screen, 1, "Item 1")
+	termtest.AssertRowContains(t, screen, 2, "Item 2")
+	termtest.AssertRowContains(t, screen, 3, "─") // Bottom border
+}
+
+func TestGroup_Bordered_Render(t *testing.T) {
+	g := Group(
+		Text("A"),
+		Text("B"),
+	).Bordered().Border(&SingleBorder)
+	screen := SprintScreen(g, WithWidth(20))
+
+	termtest.AssertRowContains(t, screen, 0, "─") // Top border
+	termtest.AssertRowContains(t, screen, 1, "A")
+	termtest.AssertRowContains(t, screen, 1, "B")
+	termtest.AssertRowContains(t, screen, 2, "─") // Bottom border
 }

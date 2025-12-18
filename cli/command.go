@@ -9,12 +9,52 @@ import (
 )
 
 // Handler is the function type for command handlers.
+//
+// Handlers receive a Context containing parsed flags, arguments, and
+// I/O streams. They should return nil on success or an error on failure:
+//
+//	func myHandler(ctx *cli.Context) error {
+//	    name := ctx.Arg(0)
+//	    verbose := ctx.Bool("verbose")
+//	    ctx.Printf("Processing %s (verbose=%v)\n", name, verbose)
+//	    return nil
+//	}
 type Handler func(*Context) error
 
 // Middleware wraps a handler to add behavior.
+//
+// Middleware can run code before and after the handler executes, modify
+// the context, or intercept errors:
+//
+//	func loggingMiddleware(next cli.Handler) cli.Handler {
+//	    return func(ctx *cli.Context) error {
+//	        start := time.Now()
+//	        err := next(ctx)
+//	        duration := time.Since(start)
+//	        log.Printf("Command %s took %v", ctx.Command().Name(), duration)
+//	        return err
+//	    }
+//	}
 type Middleware func(Handler) Handler
 
-// Command represents a CLI command.
+// Command represents a CLI command with its configuration and handler.
+//
+// Commands are created through App.Command() or Group.Command() and configured
+// using the fluent builder pattern:
+//
+//	app.Command("deploy").
+//	    Description("Deploy the application").
+//	    Args("environment").
+//	    Flags(
+//	        cli.Bool("force", "f").Help("Force deployment"),
+//	        cli.String("version", "v").Help("Version to deploy"),
+//	    ).
+//	    Run(func(ctx *cli.Context) error {
+//	        env := ctx.Arg(0)
+//	        force := ctx.Bool("force")
+//	        // Perform deployment
+//	        return nil
+//	    })
 type Command struct {
 	name        string
 	description string
@@ -57,8 +97,13 @@ func (c *Command) Description(desc string) *Command {
 	return c
 }
 
-// Args sets the positional argument names.
-// Append "?" to make an argument optional (e.g., "name?").
+// Args sets the positional argument names for the command.
+//
+// Arguments are processed in order. Append "?" to make an argument optional:
+//
+//	cmd.Args("source", "dest?")  // source required, dest optional
+//
+// Access arguments in the handler using ctx.Arg(index) or ctx.Args().
 func (c *Command) Args(names ...string) *Command {
 	for _, name := range names {
 		required := true
@@ -75,6 +120,14 @@ func (c *Command) Args(names ...string) *Command {
 }
 
 // Flags adds typed flags to the command.
+//
+// Use the flag builder functions to create type-safe flags:
+//
+//	cmd.Flags(
+//	    cli.String("name", "n").Required().Help("User name"),
+//	    cli.Int("port", "p").Default(8080).Help("Port number"),
+//	    cli.Bool("verbose", "v").Help("Verbose output"),
+//	)
 func (c *Command) Flags(flags ...Flag) *Command {
 	c.flags = append(c.flags, flags...)
 	return c
@@ -90,7 +143,15 @@ func (c *Command) GetDescription() string {
 	return c.description
 }
 
-// Run sets the command handler.
+// Run sets the command handler that executes when the command is invoked.
+//
+// The handler receives a Context with parsed flags and arguments:
+//
+//	cmd.Run(func(ctx *cli.Context) error {
+//	    name := ctx.String("name")
+//	    ctx.Printf("Hello, %s!\n", name)
+//	    return nil
+//	})
 func (c *Command) Run(h Handler) *Command {
 	c.handler = h
 	return c
@@ -131,25 +192,60 @@ func (c *Command) Use(mw ...Middleware) *Command {
 	return c
 }
 
-// Interactive sets the interactive mode handler.
+// Interactive sets a handler that runs when the command is executed in a TTY.
+//
+// Use this for rich interactive experiences with prompts and TUI components:
+//
+//	cmd.Interactive(func(ctx *cli.Context) error {
+//	    name, err := ctx.Input("Enter your name: ")
+//	    if err != nil {
+//	        return err
+//	    }
+//	    ctx.Success("Welcome, %s!", name)
+//	    return nil
+//	})
 func (c *Command) Interactive(h Handler) *Command {
 	c.interactive = h
 	return c
 }
 
-// NonInteractive sets the non-interactive mode handler.
+// NonInteractive sets a handler that runs when stdin/stdout are not TTYs.
+//
+// Use this for piped or automated execution where interactivity isn't available:
+//
+//	cmd.NonInteractive(func(ctx *cli.Context) error {
+//	    if !ctx.IsSet("name") {
+//	        return cli.Error("--name is required in non-interactive mode")
+//	    }
+//	    // Process with flags only
+//	    return nil
+//	})
 func (c *Command) NonInteractive(h Handler) *Command {
 	c.nonInteract = h
 	return c
 }
 
-// Validate adds a validation function.
+// Validate adds a validation function that runs before the handler.
+//
+// Validators can check arguments and flags, returning an error if invalid:
+//
+//	cmd.Validate(func(ctx *cli.Context) error {
+//	    if ctx.Int("port") < 1024 {
+//	        return cli.Error("port must be >= 1024")
+//	    }
+//	    return nil
+//	})
 func (c *Command) Validate(v func(*Context) error) *Command {
 	c.validators = append(c.validators, v)
 	return c
 }
 
-// ArgsRange validates argument count is between min and max.
+// ArgsRange validates that the number of arguments is between min and max.
+//
+// Pass -1 for max to allow unlimited arguments above min:
+//
+//	cmd.ArgsRange(1, 3)   // Require 1-3 arguments
+//	cmd.ArgsRange(2, -1)  // Require at least 2 arguments
 func (c *Command) ArgsRange(min, max int) *Command {
 	c.validators = append(c.validators, func(ctx *Context) error {
 		n := ctx.NArg()
@@ -164,7 +260,9 @@ func (c *Command) ArgsRange(min, max int) *Command {
 	return c
 }
 
-// ExactArgs validates exactly n arguments are provided.
+// ExactArgs validates that exactly n arguments are provided.
+//
+//	cmd.ExactArgs(2)  // Require exactly 2 arguments
 func (c *Command) ExactArgs(n int) *Command {
 	c.validators = append(c.validators, func(ctx *Context) error {
 		if ctx.NArg() != n {
@@ -175,7 +273,11 @@ func (c *Command) ExactArgs(n int) *Command {
 	return c
 }
 
-// NoArgs validates no arguments are provided.
+// NoArgs validates that no arguments are provided.
+//
+// Useful for commands that only accept flags:
+//
+//	cmd.NoArgs()  // Reject any positional arguments
 func (c *Command) NoArgs() *Command {
 	c.validators = append(c.validators, func(ctx *Context) error {
 		if ctx.NArg() > 0 {
@@ -186,7 +288,11 @@ func (c *Command) NoArgs() *Command {
 	return c
 }
 
-// Flag is the interface for typed flags.
+// Flag is the interface implemented by all typed flag types.
+//
+// The cli package provides concrete implementations like BoolFlag, StringFlag,
+// IntFlag, etc. Most users will use the flag builder functions (Bool, String, Int)
+// rather than implementing this interface directly.
 type Flag interface {
 	GetName() string
 	GetShort() string
@@ -199,7 +305,13 @@ type Flag interface {
 	Validate(value string) error
 }
 
-// Arg represents a positional argument.
+// Arg represents a positional argument configuration.
+//
+// Arguments are typically defined using the Args method:
+//
+//	cmd.Args("source", "destination")
+//
+// For more control, use AddArg with an explicit Arg struct.
 type Arg struct {
 	Name        string
 	Description string
@@ -441,7 +553,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
-				} else if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				} else if i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
 						return err
@@ -466,7 +578,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
-				} else if j == len(shorts)-1 && i+1 < len(args) {
+				} else if j == len(shorts)-1 && i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
 						return err
@@ -550,6 +662,30 @@ func (c *Command) findFlagByShort(short string) Flag {
 	return nil
 }
 
+// looksLikeFlag returns true if the string looks like a flag rather than a value.
+// This allows values like "-1" (negative numbers) while still treating "-v" as a flag.
+func (c *Command) looksLikeFlag(s string) bool {
+	if !strings.HasPrefix(s, "-") {
+		return false
+	}
+	if len(s) == 1 {
+		return false // just "-"
+	}
+	// Check if it could be a negative number
+	if len(s) >= 2 {
+		// -N or -.N where N is a digit
+		second := s[1]
+		if second >= '0' && second <= '9' {
+			return false // looks like negative number
+		}
+		if second == '.' && len(s) > 2 {
+			return false // looks like negative decimal
+		}
+	}
+	// Otherwise it's probably a flag
+	return true
+}
+
 func (c *Command) setFlag(ctx *Context, name, value string) error {
 	flag := c.findFlag(name)
 	if flag == nil {
@@ -576,15 +712,48 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		return fmt.Errorf("invalid value for --%s: %w", name, err)
 	}
 
-	ctx.flags[name] = value
+	// Handle slice flags by accumulating values
+	// On first user-provided value, clear defaults and start fresh
+	switch flag.GetDefault().(type) {
+	case []string:
+		var existing []string
+		if ctx.setFlags[name] {
+			// Already set by user, accumulate
+			existing, _ = ctx.flags[name].([]string)
+		}
+		// Otherwise start with empty slice (replacing defaults)
+		ctx.flags[name] = append(existing, value)
+	case []int:
+		var existing []int
+		if ctx.setFlags[name] {
+			// Already set by user, accumulate
+			existing, _ = ctx.flags[name].([]int)
+		}
+		// Otherwise start with empty slice (replacing defaults)
+		intVal, err := parseInt(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for --%s: %s", name, value)
+		}
+		ctx.flags[name] = append(existing, intVal)
+	default:
+		ctx.flags[name] = value
+	}
 	return nil
+}
+
+func parseInt(s string) (int, error) {
+	var i int
+	_, err := fmt.Sscanf(s, "%d", &i)
+	return i, err
 }
 
 func (c *Command) showHelp() error {
 	if c.app.colorEnabled {
 		// Use the styled tui-based help
 		view := c.renderCommandHelp()
-		tui.Fprint(c.app.stdout, view)
+		if err := tui.Fprint(c.app.stdout, view); err != nil {
+			return err
+		}
 		return &HelpRequested{}
 	}
 

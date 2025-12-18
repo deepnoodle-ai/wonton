@@ -6,7 +6,14 @@ import (
 	"strings"
 )
 
-// GenerateBashCompletion writes bash completion script to w.
+// GenerateBashCompletion writes a bash completion script to the writer.
+//
+// The script enables tab completion for commands, subcommands, and flags.
+// To install:
+//
+//	myapp completion bash > /usr/local/etc/bash_completion.d/myapp
+//	# or
+//	source <(myapp completion bash)
 func (a *App) GenerateBashCompletion(w io.Writer) error {
 	tmpl := `# bash completion for %[1]s
 
@@ -41,7 +48,14 @@ complete -F _%[1]s_completions %[1]s
 	return err
 }
 
-// GenerateZshCompletion writes zsh completion script to w.
+// GenerateZshCompletion writes a zsh completion script to the writer.
+//
+// The script enables tab completion for commands, subcommands, and flags.
+// To install:
+//
+//	myapp completion zsh > "${fpath[1]}/_myapp"
+//	# or add to ~/.zshrc:
+//	eval "$(myapp completion zsh)"
 func (a *App) GenerateZshCompletion(w io.Writer) error {
 	var sb strings.Builder
 
@@ -101,7 +115,12 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 	return err
 }
 
-// GenerateFishCompletion writes fish completion script to w.
+// GenerateFishCompletion writes a fish completion script to the writer.
+//
+// The script enables tab completion for commands, subcommands, and flags.
+// To install:
+//
+//	myapp completion fish > ~/.config/fish/completions/myapp.fish
 func (a *App) GenerateFishCompletion(w io.Writer) error {
 	var sb strings.Builder
 
@@ -153,6 +172,12 @@ func (a *App) GenerateFishCompletion(w io.Writer) error {
 }
 
 // CompletionCommand returns a command that generates shell completions.
+//
+// This command can be added to your app to provide built-in completion generation:
+//
+//	app.commands["completion"] = cli.CompletionCommand()
+//
+// Or use AddCompletionCommand for convenience.
 func CompletionCommand() *Command {
 	cmd := &Command{
 		name:        "completion",
@@ -181,7 +206,19 @@ func CompletionCommand() *Command {
 	return cmd
 }
 
-// AddCompletionCommand adds the completion command to the app.
+// AddCompletionCommand adds the built-in completion command to the app.
+//
+// Users can then generate completions with:
+//
+//	myapp completion bash
+//	myapp completion zsh
+//	myapp completion fish
+//
+// Example:
+//
+//	app := cli.New("myapp")
+//	app.AddCompletionCommand()
+//	// Users can now run: myapp completion bash
 func (a *App) AddCompletionCommand() *App {
 	cmd := CompletionCommand()
 	cmd.app = a

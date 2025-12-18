@@ -6,9 +6,42 @@ import (
 	"time"
 )
 
-// RenderMetrics tracks performance statistics for the rendering system.
-// It provides insights into rendering performance and can help identify
-// bottlenecks or inefficient rendering patterns.
+// RenderMetrics tracks performance statistics for the terminal rendering system.
+//
+// Metrics collection is disabled by default for maximum performance. Enable it
+// using Terminal.EnableMetrics() when you need to diagnose performance issues
+// or optimize rendering code.
+//
+// # Usage
+//
+//	term.EnableMetrics()
+//
+//	// Render some frames...
+//	for i := 0; i < 100; i++ {
+//	    frame, _ := term.BeginFrame()
+//	    // ... draw content ...
+//	    term.EndFrame(frame)
+//	}
+//
+//	// Get performance metrics
+//	snapshot := term.GetMetrics()
+//	fmt.Println(snapshot.String())
+//	// Output: Frames: 100, avg 45.2ms/frame, 1234 cells/frame, etc.
+//
+// # Metrics Tracked
+//
+// RenderMetrics tracks:
+//   - Frame count (total rendered, skipped when no changes)
+//   - Cell updates (total cells written, average per frame)
+//   - ANSI codes emitted (escape sequences sent to terminal)
+//   - Bytes written (total output to terminal)
+//   - Timing (min/max/average frame render times, FPS)
+//   - Dirty regions (areas that changed between frames)
+//
+// # Thread Safety
+//
+// RenderMetrics is thread-safe. Snapshot() returns a point-in-time copy
+// that can be safely used without locking.
 type RenderMetrics struct {
 	mu sync.RWMutex
 
@@ -184,8 +217,8 @@ func (m *RenderMetrics) FPS() float64 {
 	return float64(m.TotalFrames) / seconds
 }
 
-// Efficiency returns the percentage of frames that resulted in actual rendering
-// (vs skipped due to no changes). Higher is better when content is static.
+// Efficiency returns the percentage of frames that were skipped due to no changes
+// (vs resulted in actual rendering). Higher is better when content is static.
 func (m *RenderMetrics) Efficiency() float64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

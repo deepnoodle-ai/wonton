@@ -41,24 +41,68 @@ var (
 	MultiGradient   = color.MultiGradient
 )
 
-// Style represents text styling attributes
+// Style represents text styling attributes including colors, text attributes, and hyperlinks.
+//
+// Styles are immutable - all With* methods return a new Style with the requested changes.
+// This makes it safe to use a base style and derive variations without affecting the original.
+//
+// # Colors
+//
+// Colors can be specified as basic ANSI colors or full RGB:
+//
+//	// Basic ANSI colors (16 colors)
+//	style := terminal.NewStyle().WithForeground(terminal.ColorRed)
+//
+//	// RGB colors (24-bit true color)
+//	rgb := terminal.NewRGB(255, 100, 50)
+//	style = style.WithFgRGB(rgb)
+//
+// # Text Attributes
+//
+// Multiple attributes can be combined:
+//
+//	style := terminal.NewStyle().
+//	    WithBold().
+//	    WithItalic().
+//	    WithUnderline()
+//
+// # Hyperlinks
+//
+// Styles can include OSC 8 hyperlinks for terminals that support them:
+//
+//	style := terminal.NewStyle().
+//	    WithForeground(terminal.ColorBlue).
+//	    WithUnderline().
+//	    WithURL("https://example.com")
+//
+// # Applying Styles
+//
+// Styles can be applied to text or used with rendering methods:
+//
+//	// Apply to a string (wraps with ANSI codes)
+//	styledText := style.Apply("Hello")
+//	fmt.Print(styledText)
+//
+//	// Use with frame rendering
+//	frame.PrintStyled(x, y, "Hello", style)
 type Style struct {
-	Foreground    Color
-	Background    Color
-	FgRGB         *RGB // RGB override for foreground
-	BgRGB         *RGB // RGB override for background
-	Bold          bool
-	Italic        bool
-	Underline     bool
-	Strikethrough bool
-	Blink         bool
-	Reverse       bool
-	Hidden        bool
-	Dim           bool
-	URL           string // OSC 8 hyperlink URL (empty string = no hyperlink)
+	Foreground    Color  // Basic ANSI foreground color (or ColorDefault)
+	Background    Color  // Basic ANSI background color (or ColorDefault)
+	FgRGB         *RGB   // RGB override for foreground (nil = use Foreground)
+	BgRGB         *RGB   // RGB override for background (nil = use Background)
+	Bold          bool   // Bold or increased intensity
+	Italic        bool   // Italic text
+	Underline     bool   // Underlined text
+	Strikethrough bool   // Strikethrough text
+	Blink         bool   // Blinking text (rarely supported)
+	Reverse       bool   // Reverse video (swap foreground and background)
+	Hidden        bool   // Hidden text (rarely used, for passwords)
+	Dim           bool   // Dim or decreased intensity
+	URL           string // OSC 8 hyperlink URL (empty = no hyperlink)
 }
 
-// NewStyle creates a new style with default values
+// NewStyle creates a new Style with default values (no colors, no attributes).
+// This is the recommended starting point for building custom styles.
 func NewStyle() Style {
 	return Style{
 		Foreground: ColorDefault,
@@ -140,7 +184,12 @@ func (s Style) WithURL(url string) Style {
 	return s
 }
 
-// String returns the ANSI escape sequence for this style
+// String returns the ANSI escape sequence representation of this style.
+// The sequence includes a reset (ESC[0m) followed by all active attributes and colors.
+// This can be printed to the terminal to activate the style.
+//
+// Note: This does not include hyperlink (OSC 8) escape codes. For hyperlinks,
+// use the Hyperlink type or Style.WithURL with frame rendering.
 func (s Style) String() string {
 	var codes []string
 
@@ -190,7 +239,16 @@ func (s Style) String() string {
 	return fmt.Sprintf("\033[%sm", strings.Join(codes, ";"))
 }
 
-// Apply applies the style to the given text
+// Apply applies the style to the given text by wrapping it with ANSI escape codes.
+// The text is prefixed with the style's ANSI sequence and suffixed with a reset.
+//
+// Example:
+//
+//	style := terminal.NewStyle().WithBold().WithForeground(terminal.ColorRed)
+//	styled := style.Apply("Important")
+//	fmt.Println(styled) // Prints "Important" in bold red
+//
+// If the style is empty (no attributes set), the text is returned unchanged.
 func (s Style) Apply(text string) string {
 	if s.IsEmpty() {
 		return text
@@ -198,12 +256,23 @@ func (s Style) Apply(text string) string {
 	return s.String() + text + "\033[0m"
 }
 
-// IsEmpty checks if the style has no attributes set
+// IsEmpty returns true if the style has no attributes, colors, or URL set.
+// An empty style produces no visual changes when applied.
 func (s Style) IsEmpty() bool {
 	return s == NewStyle()
 }
 
-// Merge combines two styles, with the other style's non-default values taking precedence
+// Merge combines two styles, with the other style's non-default values taking precedence.
+// This is useful for applying a base style and then overriding specific attributes.
+//
+// Example:
+//
+//	base := terminal.NewStyle().WithBold().WithForeground(terminal.ColorBlue)
+//	highlight := terminal.NewStyle().WithBackground(terminal.ColorYellow)
+//	combined := base.Merge(highlight) // Bold blue text on yellow background
+//
+// Attributes from 'other' override attributes from 's', but only if they are non-default.
+// This means Merge never removes attributes, only adds or replaces them.
 func (s Style) Merge(other Style) Style {
 	result := s
 	if other.Foreground != ColorDefault {

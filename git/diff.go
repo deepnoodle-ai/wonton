@@ -8,26 +8,55 @@ import (
 	"strings"
 )
 
-// DiffOptions configures the Diff command.
+// DiffOptions configures the Diff command with various filtering and formatting options.
 type DiffOptions struct {
-	// Staged shows changes staged for commit (git diff --cached).
+	// Staged shows changes staged for commit (equivalent to git diff --cached).
 	Staged bool
 	// Ref compares working directory against this ref.
+	// Cannot be used with From/To.
 	Ref string
-	// From and To compare two refs (From..To).
+	// From and To compare two refs (From..To range syntax).
+	// Cannot be used with Ref or Staged.
 	From string
 	To   string
-	// Path filters diff to this path.
+	// Path filters diff to this file or directory path.
 	Path string
-	// ContextLines is the number of context lines (default 3).
+	// ContextLines is the number of context lines to show (default is 3).
+	// Set to 0 to show only changed lines.
 	ContextLines int
-	// IncludePatch includes the actual diff content.
+	// IncludePatch includes the actual unified diff content in the Patch field.
 	IncludePatch bool
-	// NameOnly returns only file names, not stats.
+	// NameOnly returns only file names without stats (not currently used).
 	NameOnly bool
 }
 
 // Diff returns the diff for the working directory or between refs.
+//
+// By default, shows unstaged changes in the working directory. Use DiffOptions
+// to compare different revisions or show staged changes.
+//
+// Examples:
+//
+//	// Unstaged changes
+//	diff, err := repo.Diff(ctx, git.DiffOptions{})
+//
+//	// Staged changes
+//	diff, err := repo.Diff(ctx, git.DiffOptions{Staged: true})
+//
+//	// Compare working directory to a commit
+//	diff, err := repo.Diff(ctx, git.DiffOptions{Ref: "HEAD~1"})
+//
+//	// Compare two commits
+//	diff, err := repo.Diff(ctx, git.DiffOptions{
+//	    From: "v1.0.0",
+//	    To:   "v2.0.0",
+//	})
+//
+//	// Get diff with patch content
+//	diff, err := repo.Diff(ctx, git.DiffOptions{
+//	    Staged:       true,
+//	    IncludePatch: true,
+//	})
 func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) {
 	// Build base args without path filter (path must come after options)
 	args := []string{"diff"}
@@ -179,7 +208,10 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 	return diff, nil
 }
 
-// DiffFile returns the diff for a specific file.
+// DiffFile returns the diff for a specific file, including patch content.
+//
+// This is a convenience method that automatically sets IncludePatch to true
+// and filters to the specified path. Returns nil if the file has no changes.
 func (r *Repository) DiffFile(ctx context.Context, path string, opts DiffOptions) (*DiffFile, error) {
 	opts.Path = path
 	opts.IncludePatch = true
@@ -231,22 +263,65 @@ func parsePatchContent(patch string) map[string]string {
 		return result
 	}
 
-	// Split by "diff --git" markers
-	parts := strings.Split(patch, "diff --git ")
-	for _, part := range parts[1:] { // Skip first empty part
-		lines := strings.SplitN(part, "\n", 2)
-		if len(lines) < 2 {
-			continue
-		}
+	var currentPath string
+	var currentPatch strings.Builder
 
-		// Extract filename from "a/file b/file" header
-		header := lines[0]
-		fields := strings.Fields(header)
-		if len(fields) >= 2 {
-			// Remove "a/" or "b/" prefix
-			path := strings.TrimPrefix(fields[1], "b/")
-			result[path] = "diff --git " + part
+	scanner := bufio.NewScanner(strings.NewReader(patch))
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// specific check for start of new file diff
+		if strings.HasPrefix(line, "diff --git ") {
+			// Save previous patch
+			if currentPath != "" {
+				result[currentPath] = currentPatch.String()
+			}
+
+			// Start new patch
+			currentPatch.Reset()
+			currentPatch.WriteString(line)
+			currentPatch.WriteString("\n")
+
+			// Parse path from header
+			// Format: diff --git a/path/to/file b/path/to/file
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				// usually parts[2] is a/path and parts[3] is b/path
+				// taking b/path is safer for modified files
+				// but we need to handle spaces in filenames too...
+				// for simplicity matching existing logic:
+				currentPath = strings.TrimPrefix(parts[3], "b/")
+				// A more robust way would be to parse " b/" from the end
+				// but git output quoting makes this hard without full parser.
+				// The previous logic was: strings.TrimPrefix(fields[1], "b/")
+				// which assumes fields[1] is the path.
+				// "diff --git a/file b/file" -> fields: ["diff", "--git", "a/file", "b/file"]
+				// So previous logic used fields[1] which was "--git"? No, fields[2] is a/file.
+				// The previous logic was:
+				// parts := strings.Split(patch, "diff --git ")
+				// ...
+				// header := lines[0] // "a/file b/file"
+				// fields := strings.Fields(header)
+				// path := strings.TrimPrefix(fields[1], "b/")
+				// So it used the second field of "a/file b/file", which is "b/file".
+				// Here line is "diff --git a/file b/file".
+				// fields are ["diff", "--git", "a/file", "b/file"]
+				// So we want fields[3].
+				if len(parts) >= 4 {
+					currentPath = strings.TrimPrefix(parts[3], "b/")
+				}
+			}
+		} else {
+			if currentPath != "" { // Only append if we're inside a patch
+				currentPatch.WriteString(line)
+				currentPatch.WriteString("\n")
+			}
 		}
+	}
+
+	// Save last patch
+	if currentPath != "" {
+		result[currentPath] = currentPatch.String()
 	}
 
 	return result

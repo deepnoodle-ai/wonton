@@ -267,9 +267,9 @@ func TestZStack_ComplexOverlay(t *testing.T) {
 	// Test a more realistic use case: background + content + overlay
 	var buf strings.Builder
 	z := ZStack(
-		Text("================="),     // Background
-		Text("Content here"),          // Middle layer
-		Text("!"),                      // Top overlay
+		Text("================="), // Background
+		Text("Content here"),      // Middle layer
+		Text("!"),                 // Top overlay
 	).Align(AlignCenter)
 
 	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
@@ -352,7 +352,7 @@ func TestZStack_NilChildSizesBeforeSizing(t *testing.T) {
 	z := ZStack(Text("Test"))
 
 	// childSizes should be nil before sizing
-	assert.True(t, z.childSizes == nil || len(z.childSizes) == 0)
+	assert.True(t, len(z.childSizes) == 0)
 
 	// After sizing, should be populated
 	z.size(100, 100)

@@ -5,12 +5,19 @@ import (
 	"sync"
 )
 
-// InMemoryCache implements the cache.Cache interface for testing
+// InMemoryCache implements the Cache interface using a simple in-memory map.
+// It is safe for concurrent use and suitable for testing or small-scale crawling
+// where persistence is not required.
+//
+// Data is lost when the process exits. For production use cases requiring
+// persistence, use a disk-based or distributed cache implementation.
 type InMemoryCache struct {
 	data  map[string][]byte
 	mutex sync.RWMutex
 }
 
+// NewInMemoryCache creates a new in-memory cache instance. The cache starts empty
+// and grows as items are added. There is no automatic eviction or size limit.
 func NewInMemoryCache() *InMemoryCache {
 	return &InMemoryCache{
 		data: make(map[string][]byte),
@@ -40,5 +47,16 @@ func (m *InMemoryCache) Delete(ctx context.Context, key string) error {
 	defer m.mutex.Unlock()
 
 	delete(m.data, key)
+	return nil
+}
+
+// Close releases resources held by the cache. For InMemoryCache, this clears
+// the map and returns nil since there are no external resources to release.
+func (m *InMemoryCache) Close() error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// Clear the map to free memory
+	m.data = make(map[string][]byte)
 	return nil
 }

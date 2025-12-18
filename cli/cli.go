@@ -1,6 +1,139 @@
-// Package cli provides a CLI framework that integrates with Wonton's TUI capabilities.
-// It supports command registration, flag parsing, hierarchical configuration,
-// and progressive interactivity (same command works as quick one-liner or rich TUI).
+// Package cli provides a flexible CLI framework for building command-line applications
+// with rich terminal UI capabilities.
+//
+// The cli package enables rapid development of CLI tools with:
+//
+//   - Fluent API for defining commands, subcommands, and command groups
+//   - Type-safe flag parsing with support for environment variables
+//   - Progressive interactivity: commands adapt between quick one-liners and rich TUIs
+//   - Middleware support for cross-cutting concerns (auth, logging, etc.)
+//   - Styled help output with customizable themes
+//   - Shell completion generation (bash, zsh, fish)
+//   - Testing utilities for CLI command verification
+//
+// # Basic Usage
+//
+// Create a simple CLI application:
+//
+//	app := cli.New("myapp").
+//	    Description("A sample CLI application").
+//	    Version("1.0.0")
+//
+//	app.Command("greet").
+//	    Description("Greet a user").
+//	    Args("name").
+//	    Run(func(ctx *cli.Context) error {
+//	        name := ctx.Arg(0)
+//	        ctx.Printf("Hello, %s!\n", name)
+//	        return nil
+//	    })
+//
+//	return app.Run()
+//
+// # Commands and Groups
+//
+// Commands can be organized into groups for better structure:
+//
+//	users := app.Group("users").
+//	    Description("Manage users")
+//
+//	users.Command("list").
+//	    Description("List all users").
+//	    Run(func(ctx *cli.Context) error {
+//	        // List users
+//	        return nil
+//	    })
+//
+//	users.Command("create").
+//	    Description("Create a new user").
+//	    Args("username", "email").
+//	    Run(func(ctx *cli.Context) error {
+//	        // Create user
+//	        return nil
+//	    })
+//
+// # Flags
+//
+// The package supports type-safe flags with validation and defaults:
+//
+//	app.Command("deploy").
+//	    Flags(
+//	        cli.String("env", "e").Default("staging").Help("Deployment environment"),
+//	        cli.Bool("force", "f").Help("Force deployment"),
+//	        cli.Int("replicas", "r").Default(3).Help("Number of replicas"),
+//	    ).
+//	    Run(func(ctx *cli.Context) error {
+//	        env := ctx.String("env")
+//	        force := ctx.Bool("force")
+//	        replicas := ctx.Int("replicas")
+//	        // Deploy with these settings
+//	        return nil
+//	    })
+//
+// Flags can also be bound from environment variables:
+//
+//	cli.String("token", "t").Env("API_TOKEN").Required()
+//
+// # Progressive Interactivity
+//
+// Commands can provide both interactive and non-interactive modes:
+//
+//	app.Command("delete").
+//	    Interactive(func(ctx *cli.Context) error {
+//	        // Show rich TUI with confirmation
+//	        confirmed, err := ctx.Confirm("Delete all data?")
+//	        if err != nil || !confirmed {
+//	            return err
+//	        }
+//	        return performDelete()
+//	    }).
+//	    NonInteractive(func(ctx *cli.Context) error {
+//	        // Require --force flag when piped
+//	        if !ctx.Bool("force") {
+//	            return cli.Error("--force required in non-interactive mode")
+//	        }
+//	        return performDelete()
+//	    })
+//
+// # Middleware
+//
+// Middleware wraps handlers to add reusable behavior:
+//
+//	// Global middleware applies to all commands
+//	app.Use(cli.Recover())
+//
+//	// Command-specific middleware
+//	app.Command("admin").
+//	    Use(requireAuth).
+//	    Run(func(ctx *cli.Context) error {
+//	        // Handle admin command
+//	        return nil
+//	    })
+//
+// # Error Handling
+//
+// The package provides rich error types with hints and details:
+//
+//	return cli.Errorf("deployment failed: %s", err).
+//	    Hint("Check your credentials and try again").
+//	    Detail("Server: %s", server).
+//	    Detail("Exit code: %d", exitCode)
+//
+// # Testing
+//
+// Commands are easy to test with the built-in testing utilities:
+//
+//	func TestGreetCommand(t *testing.T) {
+//	    app := setupApp()
+//	    result := app.Test(t, cli.TestArgs("greet", "Alice"))
+//
+//	    if !result.Success() {
+//	        t.Errorf("command failed: %v", result.Err)
+//	    }
+//	    if !result.Contains("Hello, Alice") {
+//	        t.Errorf("unexpected output: %s", result.Stdout)
+//	    }
+//	}
 package cli
 
 import (
@@ -14,7 +147,21 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// App is the main CLI application.
+// App represents a CLI application. It manages commands, groups, global flags,
+// and application-wide configuration.
+//
+// Use New to create an App, then configure it with the fluent builder methods:
+//
+//	app := cli.New("myapp").
+//	    Description("My awesome CLI").
+//	    Version("1.0.0")
+//
+// Register commands with Command or organize them with Group:
+//
+//	app.Command("serve").Description("Start server").Run(handler)
+//	app.Group("users").Command("list").Run(listUsersHandler)
+//
+// The App automatically provides built-in help and version commands.
 type App struct {
 	name        string
 	description string
@@ -46,8 +193,17 @@ type App struct {
 	helpTheme *HelpTheme
 }
 
-// New creates a new CLI application.
-// Use builder methods like Description() and Version() to configure the app.
+// New creates a new CLI application with the given name.
+//
+// The name is used in help output and error messages. Configure the app
+// using the fluent builder methods:
+//
+//	app := cli.New("myapp").
+//	    Description("A sample application").
+//	    Version("1.0.0")
+//
+// By default, the app uses os.Stdin, os.Stdout, and os.Stderr for I/O,
+// and detects interactivity automatically based on TTY presence.
 func New(name string) *App {
 	return &App{
 		name:         name,
@@ -83,8 +239,15 @@ func (a *App) Command(name string) *Command {
 	return cmd
 }
 
-// Group creates a command group for organizing subcommands.
-// Use builder methods like Description() to configure the group.
+// Group creates a new command group for organizing related commands.
+//
+// Groups help organize commands hierarchically. For example:
+//
+//	users := app.Group("users").Description("User management")
+//	users.Command("list").Run(listHandler)
+//	users.Command("create").Args("username").Run(createHandler)
+//
+// Users can invoke grouped commands as "myapp users list" or "myapp users:list".
 func (a *App) Group(name string) *Group {
 	g := &Group{
 		name:     name,
@@ -95,7 +258,16 @@ func (a *App) Group(name string) *Group {
 	return g
 }
 
-// Use adds middleware to the application.
+// Use adds middleware that will be applied to all commands in the application.
+//
+// Middleware wraps command handlers to add cross-cutting behavior like
+// logging, authentication, or error recovery:
+//
+//	app.Use(cli.Recover())  // Recover from panics
+//	app.Use(loggingMiddleware)
+//
+// Middleware is applied in the order registered, with app-level middleware
+// executing before command-level middleware.
 func (a *App) Use(mw ...Middleware) *App {
 	a.middleware = append(a.middleware, mw...)
 	return a
@@ -156,6 +328,19 @@ func (a *App) rootCommand() *Command {
 }
 
 // Run executes the CLI application with os.Args.
+//
+// This is the typical entry point for CLI applications:
+//
+//	func main() {
+//	    app := setupApp()
+//	    if err := app.Run(); err != nil {
+//	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+//	        os.Exit(1)
+//	    }
+//	}
+//
+// Run automatically strips the program name from os.Args and passes
+// the remaining arguments to RunArgs.
 func (a *App) Run() error {
 	return a.RunContext(context.Background(), os.Args[1:])
 }
@@ -257,30 +442,85 @@ func (a *App) RunContext(ctx context.Context, args []string) error {
 		return fmt.Errorf("no handler defined for command: %s", cmd.name)
 	}
 
-	// Build middleware chain
-	for i := len(a.middleware) - 1; i >= 0; i-- {
-		handler = a.middleware[i](handler)
-	}
+	// Build middleware chain: app middleware runs before (wraps) command middleware
 	for i := len(cmd.middleware) - 1; i >= 0; i-- {
 		handler = cmd.middleware[i](handler)
+	}
+	for i := len(a.middleware) - 1; i >= 0; i-- {
+		handler = a.middleware[i](handler)
 	}
 
 	// Execute
 	return handler(execCtx)
 }
 
-// parseArgs separates the command name from its arguments.
+// parseArgs separates the command name from its arguments, extracting any
+// global flags that appear before the command.
 func (a *App) parseArgs(args []string) (string, []string, error) {
 	if len(args) == 0 {
 		return "", nil, nil
 	}
 
-	// Check if first arg is a flag (global flag)
-	if strings.HasPrefix(args[0], "-") {
+	// Find the first non-flag argument (the command name).
+	// This allows global flags to appear before the command:
+	//   myapp -v run
+	//   myapp --verbose run arg1
+	var cmdIndex int
+	for cmdIndex = 0; cmdIndex < len(args); cmdIndex++ {
+		arg := args[cmdIndex]
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
+		// Skip the value for non-bool global flags
+		if strings.HasPrefix(arg, "--") && !strings.Contains(arg, "=") {
+			name := strings.TrimPrefix(arg, "--")
+			if f := a.findGlobalFlag(name); f != nil {
+				if _, isBool := f.GetDefault().(bool); !isBool {
+					cmdIndex++ // skip the value
+				}
+			}
+		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
+			// Short flag - check if last char needs a value
+			shorts := arg[1:]
+			lastShort := string(shorts[len(shorts)-1])
+			if f := a.findGlobalFlagByShort(lastShort); f != nil {
+				if _, isBool := f.GetDefault().(bool); !isBool {
+					cmdIndex++ // skip the value
+				}
+			}
+		}
+	}
+
+	if cmdIndex >= len(args) {
+		// All args are flags, no command
 		return "", args, nil
 	}
 
-	return args[0], args[1:], nil
+	// Return command name and all remaining args (including leading flags for the command to parse).
+	// Read cmdName first since append may modify the underlying array.
+	cmdName := args[cmdIndex]
+	remaining := append(args[:cmdIndex:cmdIndex], args[cmdIndex+1:]...)
+	return cmdName, remaining, nil
+}
+
+// findGlobalFlag looks up a global flag by name.
+func (a *App) findGlobalFlag(name string) Flag {
+	for _, f := range a.globalFlags {
+		if f.GetName() == name {
+			return f
+		}
+	}
+	return nil
+}
+
+// findGlobalFlagByShort looks up a global flag by short name.
+func (a *App) findGlobalFlagByShort(short string) Flag {
+	for _, f := range a.globalFlags {
+		if f.GetShort() == short {
+			return f
+		}
+	}
+	return nil
 }
 
 // findCommand looks up a command by name, including group commands and aliases.
@@ -322,6 +562,10 @@ func (a *App) findCommand(name string, args []string) (*Command, []string, error
 	if group, ok := a.groups[name]; ok {
 		if len(args) > 0 {
 			subName := args[0]
+			// Handle help flags for the group
+			if subName == "--help" || subName == "-h" {
+				return nil, nil, group.showHelp()
+			}
 			// Check direct subcommand
 			if cmd, ok := group.commands[subName]; ok {
 				return cmd, args[1:], nil
@@ -359,7 +603,10 @@ func (a *App) showHelp() error {
 	if a.colorEnabled {
 		// Use the styled tui-based help
 		view := a.renderAppHelp()
-		return tui.Fprint(a.stdout, view)
+		if err := tui.Fprint(a.stdout, view); err != nil {
+			return err
+		}
+		return &HelpRequested{}
 	}
 
 	// Fallback to plain text for non-color terminals
@@ -424,10 +671,19 @@ func (a *App) showHelp() error {
 	sb.WriteString(" <command> --help' for more information on a command.\n")
 
 	fmt.Fprint(a.stdout, sb.String())
-	return nil
+	return &HelpRequested{}
 }
 
-// Group organizes related commands.
+// Group organizes related commands under a common namespace.
+//
+// Groups provide hierarchical organization for complex CLIs:
+//
+//	users := app.Group("users").Description("User management commands")
+//	users.Command("list").Run(listHandler)
+//	users.Command("create").Args("username").Run(createHandler)
+//
+// Groups can have their own handler that runs when invoked without a subcommand,
+// their own flags, and middleware that applies to all subcommands.
 type Group struct {
 	name        string
 	description string
@@ -522,6 +778,58 @@ func (g *Group) commandList() string {
 		}
 	}
 	return sb.String()
+}
+
+// showHelp displays help for the group.
+func (g *Group) showHelp() error {
+	var sb strings.Builder
+
+	// Group name and description
+	sb.WriteString(g.name)
+	if g.description != "" {
+		sb.WriteString(" - ")
+		sb.WriteString(g.description)
+	}
+	sb.WriteString("\n\n")
+
+	// Usage
+	sb.WriteString("Usage:\n  ")
+	sb.WriteString(g.app.name)
+	sb.WriteString(" ")
+	sb.WriteString(g.name)
+	sb.WriteString(" <command> [flags] [args]\n\n")
+
+	// Commands
+	sb.WriteString("Commands:\n")
+	for name, cmd := range g.commands {
+		if cmd.hidden {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
+	}
+	sb.WriteString("\n")
+
+	// Group flags
+	if len(g.flags) > 0 {
+		sb.WriteString("Flags:\n")
+		for _, f := range g.flags {
+			if f.IsHidden() {
+				continue
+			}
+			writeFlagHelp(&sb, f)
+		}
+		sb.WriteString("\n")
+	}
+
+	// Help hint
+	sb.WriteString("Run '")
+	sb.WriteString(g.app.name)
+	sb.WriteString(" ")
+	sb.WriteString(g.name)
+	sb.WriteString(" <command> --help' for more information on a command.\n")
+
+	fmt.Fprint(g.app.stdout, sb.String())
+	return &HelpRequested{}
 }
 
 // SetColorEnabled enables or disables colored output.

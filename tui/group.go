@@ -7,25 +7,52 @@ type group struct {
 	children   []View
 	gap        int
 	alignment  Alignment
+	flexFactor int
 	childSizes []image.Point
 }
 
-// Group creates a group that arranges children left-to-right.
+// Group creates a group that arranges children left-to-right (horizontal layout).
+//
+// Children are laid out horizontally with optional spacing and alignment.
+// Flexible children (like Spacer) will expand to fill available space.
+//
+// Example:
+//
+//	Group(
+//	    Text("Left"),
+//	    Spacer(),
+//	    Text("Right"),
+//	).Gap(2).Align(AlignCenter)
 func Group(children ...View) *group {
 	return &group{
-		children:  children,
-		gap:       0,
-		alignment: AlignLeft,
+		children:   children,
+		gap:        0,
+		alignment:  AlignLeft,
+		flexFactor: 0,
 	}
 }
 
-// Gap sets the spacing between children.
+// Flex sets the flex factor for this group.
+// Used when this group is a child of another flex container.
+func (g *group) Flex(factor int) *group {
+	g.flexFactor = factor
+	return g
+}
+
+// flex implements the Flexible interface.
+func (g *group) flex() int {
+	return g.flexFactor
+}
+
+// Gap sets the spacing between children in number of columns.
+// Only visible children (non-zero size) contribute to spacing.
 func (g *group) Gap(n int) *group {
 	g.gap = n
 	return g
 }
 
-// Align sets the vertical alignment of children.
+// Align sets the vertical alignment of children within the group.
+// Options: AlignLeft (top), AlignCenter (middle), AlignRight (bottom).
 func (g *group) Align(a Alignment) *group {
 	g.alignment = a
 	return g
@@ -42,7 +69,7 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 	totalFlex := 0
 
 	for i, child := range g.children {
-		if flex, ok := child.(Flexible); ok {
+		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
 			flexChildren = append(flexChildren, i)
 			totalFlex += flex.flex()
 		} else {
@@ -179,3 +206,11 @@ func (g *group) render(ctx *RenderContext) {
 		renderedVisible = true
 	}
 }
+
+// Example:
+//
+//	Group(
+//	    Text("Left"),
+//	    Spacer(),
+//	    Text("Right"),
+//	)

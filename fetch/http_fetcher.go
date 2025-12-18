@@ -14,27 +14,50 @@ import (
 
 const (
 	// DefaultMaxBodySize is the maximum response body size (10 MB).
+	// Responses larger than this will be rejected to prevent memory issues.
 	DefaultMaxBodySize = 10 * 1024 * 1024
-	// DefaultTimeout is the default HTTP request timeout.
+
+	// DefaultTimeout is the default HTTP request timeout (30 seconds).
 	DefaultTimeout = 30 * time.Second
 )
 
 var (
-	// DefaultHTTPClient is the default HTTP client.
+	// DefaultHTTPClient is the default HTTP client used when none is specified.
 	DefaultHTTPClient = &http.Client{Timeout: DefaultTimeout}
-	// DefaultHeaders are the default HTTP headers.
+
+	// DefaultHeaders are the default HTTP headers sent with requests.
+	// Empty by default; populate to set global headers.
 	DefaultHeaders = map[string]string{}
 )
 
-// HTTPFetcherOptions defines the options for the HTTP fetcher.
+// HTTPFetcherOptions defines configuration options for HTTPFetcher.
+//
+// All fields are optional. When not specified, sensible defaults are used.
 type HTTPFetcherOptions struct {
-	Timeout     time.Duration
-	Headers     map[string]string
-	Client      *http.Client
+	// Timeout is the HTTP request timeout. Defaults to DefaultTimeout (30s).
+	Timeout time.Duration
+
+	// Headers are default HTTP headers sent with all requests.
+	// Request-specific headers override these. Defaults to DefaultHeaders.
+	Headers map[string]string
+
+	// Client is the HTTP client to use for requests.
+	// Defaults to DefaultHTTPClient.
+	Client *http.Client
+
+	// MaxBodySize is the maximum response body size in bytes.
+	// Responses larger than this are rejected. Defaults to DefaultMaxBodySize (10 MB).
 	MaxBodySize int64
 }
 
-// HTTPFetcher implements the Fetcher interface using standard HTTP client.
+// HTTPFetcher implements the Fetcher interface using Go's standard HTTP client.
+//
+// HTTPFetcher provides basic page fetching without browser automation features.
+// It supports HTML fetching, custom headers, timeouts, and content processing,
+// but does not support JavaScript execution, screenshots, or browser emulation.
+//
+// For advanced features like screenshots or mobile emulation, use a Fetcher
+// implementation that supports browser automation.
 type HTTPFetcher struct {
 	timeout     time.Duration
 	headers     map[string]string
@@ -71,7 +94,19 @@ func (f *HTTPFetcher) validateRequest(req *Request) error {
 	return nil
 }
 
-// NewHTTPFetcher creates a new HTTP fetcher.
+// NewHTTPFetcher creates a new HTTPFetcher with the given options.
+//
+// All options are optional and will use sensible defaults if not specified.
+// Returns a configured HTTPFetcher ready to use.
+//
+// Example:
+//
+//	fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{
+//		Timeout: 10 * time.Second,
+//		Headers: map[string]string{
+//			"User-Agent": "MyApp/1.0",
+//		},
+//	})
 func NewHTTPFetcher(options HTTPFetcherOptions) *HTTPFetcher {
 	if options.Timeout == 0 {
 		options.Timeout = DefaultTimeout
@@ -94,18 +129,38 @@ func NewHTTPFetcher(options HTTPFetcherOptions) *HTTPFetcher {
 }
 
 // Fetch implements the Fetcher interface for HTTP requests.
+//
+// Fetches the page at req.URL and processes it according to the request options.
+// Returns an error if the URL is invalid, the request fails, the content type
+// is not HTML, the response exceeds MaxBodySize, or any unsupported options are set.
+//
+// Supported request options:
+//   - URL (required)
+//   - Formats (html, raw_html, markdown, links, images, branding)
+//   - Headers
+//   - Timeout
+//   - OnlyMainContent
+//   - IncludeTags/ExcludeTags
+//   - ExcludeFilters
+//   - Prettify
+//
+// Unsupported options that will return ErrUnsupported:
+//   - MaxAge, WaitFor, Mobile, Actions, StorageState
+//   - Formats: screenshot, json, summary
 func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error) {
 	// Check for unsupported options
 	if err := f.validateRequest(req); err != nil {
 		return nil, err
 	}
 
-	// Apply per-request timeout if specified
+	// Apply timeout: per-request timeout takes precedence, otherwise use fetcher default
+	var cancel context.CancelFunc
 	if req.Timeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(req.Timeout)*time.Millisecond)
-		defer cancel()
+	} else {
+		ctx, cancel = context.WithTimeout(ctx, f.timeout)
 	}
+	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)
 	if err != nil {
@@ -163,14 +218,25 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 	}
 
 	// Set other response fields
-	response.URL = req.URL
+	// Use the final URL after any redirects
+	response.URL = resp.Request.URL.String()
 	response.StatusCode = resp.StatusCode
 	response.Headers = headers
 	return response, nil
 }
 
-// ProcessRequest applies request options to the given HTML content and builds
-// the corresponding response. Applies any requested transformations.
+// ProcessRequest applies request options to HTML content and builds a response.
+//
+// This function processes raw HTML according to the request options, applying
+// transformations (filtering, formatting) and generating requested output formats.
+// It can be used standalone to process HTML content without fetching.
+//
+// The function parses the HTML, applies any include/exclude filters, extracts
+// metadata, and generates the requested output formats (HTML, Markdown, links,
+// images, branding).
+//
+// Returns a Response with the processed content and metadata, or an error if
+// HTML parsing fails.
 func ProcessRequest(request *Request, htmlContent string) (*Response, error) {
 	htmlContent = strings.TrimSpace(htmlContent)
 	if htmlContent == "" {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -433,4 +434,183 @@ func TestProcessRequest_DefaultFormats(t *testing.T) {
 	assert.NotEmpty(t, resp.HTML)
 	assert.Empty(t, resp.Markdown)
 	assert.Empty(t, resp.RawHTML)
+}
+
+// Example demonstrates basic usage of HTTPFetcher to fetch a web page.
+func Example() {
+	// Create a new HTTP fetcher with default options
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{})
+
+	// Create a fetch request
+	req := &Request{
+		URL:     "https://example.com",
+		Formats: []string{"html", "markdown"},
+	}
+
+	// Fetch the page
+	ctx := context.Background()
+	resp, err := fetcher.Fetch(ctx, req)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Status: %d\n", resp.StatusCode)
+	fmt.Printf("Title: %s\n", resp.Metadata.Title)
+}
+
+// ExampleHTTPFetcher demonstrates fetching a page with custom options.
+func ExampleHTTPFetcher() {
+	// Create a fetcher with custom timeout and headers
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{
+		Timeout: 10 * time.Second,
+		Headers: map[string]string{
+			"User-Agent": "MyApp/1.0",
+		},
+	})
+
+	// Fetch a page requesting markdown format
+	ctx := context.Background()
+	resp, err := fetcher.Fetch(ctx, &Request{
+		URL:     "https://example.com",
+		Formats: []string{"markdown"},
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Markdown length: %d\n", len(resp.Markdown))
+}
+
+// ExampleMockFetcher demonstrates using MockFetcher for testing.
+func ExampleMockFetcher() {
+	// Create a mock fetcher
+	mock := NewMockFetcher()
+
+	// Configure mock responses
+	mock.AddResponse("https://example.com", &Response{
+		URL:        "https://example.com",
+		StatusCode: 200,
+		HTML:       "<html><body><h1>Hello</h1></body></html>",
+		Metadata: Metadata{
+			Title: "Example Page",
+		},
+	})
+
+	// Use the mock in your code
+	ctx := context.Background()
+	resp, err := mock.Fetch(ctx, &Request{URL: "https://example.com"})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Title: %s\n", resp.Metadata.Title)
+	// Output: Title: Example Page
+}
+
+// ExampleProcessRequest demonstrates processing HTML content without fetching.
+func ExampleProcessRequest() {
+	// You can process HTML content directly without fetching
+	html := "<html><head><title>Test</title></head><body><h1>Hello</h1><p>World</p></body></html>"
+
+	resp, err := ProcessRequest(&Request{
+		URL:             "https://example.com",
+		Formats:         []string{"html", "markdown"},
+		OnlyMainContent: true,
+	}, html)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Title: %s\n", resp.Metadata.Title)
+	fmt.Printf("Has HTML: %v\n", len(resp.HTML) > 0)
+	fmt.Printf("Has Markdown: %v\n", len(resp.Markdown) > 0)
+	// Output:
+	// Title: Test
+	// Has HTML: true
+	// Has Markdown: true
+}
+
+// ExampleNewWaitAction demonstrates creating a wait action.
+func ExampleNewWaitAction() {
+	// Wait for an element to appear
+	waitForElement := NewWaitAction(WaitActionOptions{
+		Selector: ".content",
+	})
+
+	// Wait for a fixed duration
+	waitForTime := NewWaitAction(WaitActionOptions{
+		Milliseconds: 1000,
+	})
+
+	fmt.Printf("Wait action type: %s\n", waitForElement.Action.GetType())
+	fmt.Printf("Time wait type: %s\n", waitForTime.Action.GetType())
+	// Output:
+	// Wait action type: wait
+	// Time wait type: wait
+}
+
+// ExampleNewScreenshotAction demonstrates creating a screenshot action.
+func ExampleNewScreenshotAction() {
+	// Create a full-page screenshot action
+	action := NewScreenshotAction(ScreenshotActionOptions{
+		FullPage: true,
+	})
+
+	fmt.Printf("Action type: %s\n", action.Action.GetType())
+	// Output: Action type: screenshot
+}
+
+// ExampleRequestError demonstrates creating and using RequestError.
+func ExampleRequestError() {
+	// Create an error with context
+	err := NewRequestErrorf("failed to fetch page").
+		WithStatusCode(404).
+		WithRawURL("https://example.com/missing")
+
+	fmt.Printf("Error: %s\n", err.Error())
+	fmt.Printf("Status Code: %d\n", err.StatusCode())
+	fmt.Printf("URL: %s\n", err.RawURL())
+	// Output:
+	// Error: failed to fetch page
+	// Status Code: 404
+	// URL: https://example.com/missing
+}
+
+// ExampleRequest_formats demonstrates requesting multiple output formats.
+func ExampleRequest_formats() {
+	// Request multiple formats in a single fetch
+	req := &Request{
+		URL: "https://example.com",
+		Formats: []string{
+			"html",     // Processed HTML
+			"markdown", // Markdown conversion
+			"links",    // All links
+			"images",   // All images
+			"branding", // Brand information
+		},
+	}
+
+	fmt.Printf("Requested %d formats\n", len(req.Formats))
+	// Output: Requested 5 formats
+}
+
+// ExampleRequest_contentFiltering demonstrates filtering page content.
+func ExampleRequest_contentFiltering() {
+	// Extract only main content, excluding navigation and ads
+	req := &Request{
+		URL:             "https://example.com",
+		OnlyMainContent: true,
+		ExcludeTags:     []string{"script", "style", "nav"},
+		Prettify:        true,
+	}
+
+	fmt.Printf("OnlyMainContent: %v\n", req.OnlyMainContent)
+	fmt.Printf("Excluded tags: %v\n", len(req.ExcludeTags))
+	// Output:
+	// OnlyMainContent: true
+	// Excluded tags: 3
 }

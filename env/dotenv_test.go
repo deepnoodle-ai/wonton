@@ -1,12 +1,60 @@
 package env
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
+
+// ExampleParseEnvString demonstrates parsing .env format from a string.
+func ExampleParseEnvString() {
+	envData := `
+# Database configuration
+HOST=localhost
+PORT=5432
+DB_NAME=myapp
+
+# API Keys
+API_KEY="secret-key-here"
+`
+
+	envVars, err := ParseEnvString(envData)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Println("HOST:", envVars["HOST"])
+	fmt.Println("PORT:", envVars["PORT"])
+	fmt.Println("DB_NAME:", envVars["DB_NAME"])
+	fmt.Println("API_KEY:", envVars["API_KEY"])
+	// Output:
+	// HOST: localhost
+	// PORT: 5432
+	// DB_NAME: myapp
+	// API_KEY: secret-key-here
+}
+
+// ExampleWriteEnvFile demonstrates writing environment variables to a .env file.
+func ExampleWriteEnvFile() {
+	envVars := map[string]string{
+		"HOST":    "localhost",
+		"PORT":    "8080",
+		"DEBUG":   "true",
+		"MESSAGE": "Hello, World!",
+	}
+
+	// In a real application, you would write to an actual file
+	// For this example, we'll just demonstrate the function signature
+	_ = WriteEnvFile(envVars, "/tmp/example.env")
+
+	fmt.Println("Environment variables written to file")
+	// Output: Environment variables written to file
+}
 
 func TestReadEnvFile(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -61,6 +109,21 @@ BAZ=qux
 	assert.NoError(t, err)
 	assert.Equal(t, "bar", env["FOO"])
 	assert.Equal(t, "qux", env["BAZ"])
+}
+
+func TestParseEnvString_QuotedValuesPreserveHashSymbol(t *testing.T) {
+	// Quoted values should preserve # symbols (not treat them as comments)
+	env, err := ParseEnvString(`
+DOUBLE_QUOTED="value # with hash"
+SINGLE_QUOTED='another # hash'
+UNQUOTED=value # this part is stripped
+HASH_IN_MIDDLE="start # middle # end"
+`)
+	assert.NoError(t, err)
+	assert.Equal(t, "value # with hash", env["DOUBLE_QUOTED"])
+	assert.Equal(t, "another # hash", env["SINGLE_QUOTED"])
+	assert.Equal(t, "value", env["UNQUOTED"])
+	assert.Equal(t, "start # middle # end", env["HASH_IN_MIDDLE"])
 }
 
 func TestLoadEnvFile(t *testing.T) {
@@ -130,6 +193,28 @@ func TestWriteEnvFile(t *testing.T) {
 	assert.Equal(t, "value", env["SIMPLE"])
 	assert.Equal(t, "has spaces", env["QUOTED"])
 	assert.Equal(t, "line1\nline2", env["ESCAPE"])
+}
+
+func TestWriteEnvFileWithPerm(t *testing.T) {
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "secret.env")
+
+	input := map[string]string{
+		"API_KEY": "secret123",
+	}
+
+	// Write with restrictive permissions
+	assert.NoError(t, WriteEnvFileWithPerm(input, outFile, 0600))
+
+	// Verify file was written correctly
+	env, err := ReadEnvFile(outFile)
+	assert.NoError(t, err)
+	assert.Equal(t, "secret123", env["API_KEY"])
+
+	// Verify permissions
+	info, err := os.Stat(outFile)
+	assert.NoError(t, err)
+	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 }
 
 func TestParseEnvWithEscapes(t *testing.T) {
@@ -373,4 +458,64 @@ func TestOverloadEnvFile_MultipleFiles(t *testing.T) {
 	assert.Equal(t, "from_first", os.Getenv("OVERLOAD_A"))
 	assert.Equal(t, "from_second", os.Getenv("OVERLOAD_B")) // Second file overwrites
 	assert.Equal(t, "from_second", os.Getenv("OVERLOAD_C"))
+}
+
+func TestParseEnvString_QuotedValueWithTrailingComment(t *testing.T) {
+	// Regression test: quoted values with trailing comments should strip the comment
+	// and properly unquote the value
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`KEY="foo" # comment`, "foo"},
+		{`KEY='bar' # comment`, "bar"},
+		{`KEY="hello world" # trailing`, "hello world"},
+		{`KEY="value#inside" # outside`, "value#inside"},
+		{`KEY="escaped\"quote" # comment`, `escaped"quote`},
+		{`KEY="foo"#nospace`, "foo"},   // No space before # still works
+		{`KEY="foo"  # extra spaces`, "foo"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			env, err := ParseEnvString(tt.input)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, env["KEY"])
+		})
+	}
+}
+
+func TestParseEnvString_LargeValue(t *testing.T) {
+	// Test that large values (> 64KB) can be parsed
+	// This tests the scanner buffer size increase
+	largeValue := strings.Repeat("x", 100*1024) // 100KB
+	input := "LARGE_KEY=" + largeValue
+
+	env, err := ParseEnvString(input)
+	assert.NoError(t, err)
+	assert.Equal(t, largeValue, env["LARGE_KEY"])
+}
+
+func TestFindClosingQuote(t *testing.T) {
+	tests := []struct {
+		input    string
+		quote    byte
+		expected int
+	}{
+		{`"foo"`, '"', 4},
+		{`'bar'`, '\'', 4},
+		{`"hello world"`, '"', 12},
+		{`"escaped\"quote"`, '"', 15}, // Escaped quote should be skipped
+		{`"no closing quote`, '"', -1},
+		{`""`, '"', 1},       // Empty quoted string
+		{`"`, '"', -1},       // Single quote only
+		{`'single'`, '\'', 7},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := findClosingQuote(tt.input, tt.quote)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

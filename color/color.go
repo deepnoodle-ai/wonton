@@ -1,4 +1,35 @@
-// Package color provides color types and utilities for terminal rendering.
+// Package color provides ANSI color types and utilities for terminal rendering.
+//
+// The package supports three color systems:
+//   - Standard and bright ANSI colors (0-15)
+//   - Extended 256-color palette (16-255)
+//   - True color RGB values
+//
+// It includes utilities for color conversion (HSL to RGB), gradient generation,
+// and applying colors to text with respect for terminal capabilities and the
+// NO_COLOR environment variable.
+//
+// Basic usage:
+//
+//	// Apply standard ANSI colors
+//	fmt.Println(color.Red.Apply("Error message"))
+//	fmt.Println(color.Green.Apply("Success message"))
+//
+//	// Use RGB colors
+//	rgb := color.NewRGB(255, 128, 0)
+//	fmt.Println(rgb.ForegroundSeq() + "Orange text" + color.Reset)
+//
+//	// Create gradients
+//	gradient := color.Gradient(
+//	    color.NewRGB(255, 0, 0),
+//	    color.NewRGB(0, 0, 255),
+//	    10,
+//	)
+//
+//	// Respect terminal capabilities
+//	if color.ShouldColorize(os.Stdout) {
+//	    fmt.Println(color.Blue.Apply("Colored output"))
+//	}
 package color
 
 import (
@@ -103,22 +134,34 @@ func (c Color) BackgroundSeq() string {
 	return "\033[" + c.BackgroundCode() + "m"
 }
 
-// RGB represents an RGB color.
+// RGB represents a true color RGB value with 8-bit channels (0-255).
+// RGB colors can be used to create ANSI escape sequences for terminals
+// that support 24-bit color.
 type RGB struct {
 	R, G, B uint8
 }
 
-// NewRGB creates a new RGB color.
+// NewRGB creates a new RGB color with the specified red, green, and blue values.
+// Each channel accepts values from 0-255.
+//
+// Example:
+//
+//	orange := color.NewRGB(255, 128, 0)
+//	purple := color.NewRGB(128, 0, 255)
 func NewRGB(r, g, b uint8) RGB {
 	return RGB{R: r, G: g, B: b}
 }
 
-// ForegroundSeq returns the ANSI escape sequence for RGB foreground.
+// ForegroundSeq returns the ANSI escape sequence for RGB foreground color.
+// The sequence sets the text color to the RGB value. Remember to append
+// a reset sequence (color.Reset) after your text to return to default colors.
 func (rgb RGB) ForegroundSeq() string {
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm", rgb.R, rgb.G, rgb.B)
 }
 
-// BackgroundSeq returns the ANSI escape sequence for RGB background.
+// BackgroundSeq returns the ANSI escape sequence for RGB background color.
+// The sequence sets the background color to the RGB value. Remember to append
+// a reset sequence (color.Reset) after your text to return to default colors.
 func (rgb RGB) BackgroundSeq() string {
 	return fmt.Sprintf("\033[48;2;%d;%d;%dm", rgb.R, rgb.G, rgb.B)
 }
@@ -135,7 +178,14 @@ func (rgb RGB) Background() string {
 	return rgb.BackgroundSeq()
 }
 
-// Apply applies RGB color to text.
+// Apply applies RGB color to text and automatically appends a reset sequence.
+// If background is true, the color is applied as background; otherwise as foreground.
+//
+// Example:
+//
+//	rgb := color.NewRGB(255, 128, 0)
+//	fmt.Println(rgb.Apply("Orange text", false))
+//	fmt.Println(rgb.Apply("Orange background", true))
 func (rgb RGB) Apply(text string, background bool) string {
 	if background {
 		return rgb.BackgroundSeq() + text + "\033[0m"

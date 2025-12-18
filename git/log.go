@@ -7,31 +7,61 @@ import (
 	"time"
 )
 
-// LogOptions configures the Log command.
+// LogOptions configures the Log command with filtering and formatting options.
 type LogOptions struct {
-	// Limit is the maximum number of commits to return.
+	// Limit is the maximum number of commits to return (0 for unlimited).
 	Limit int
-	// Since returns commits after this date.
+	// Since returns commits after this date (inclusive).
 	Since time.Time
-	// Until returns commits before this date.
+	// Until returns commits before this date (inclusive).
 	Until time.Time
-	// Author filters commits by author (substring match).
+	// Author filters commits by author name or email (substring match, case-sensitive).
 	Author string
-	// Grep filters commits by message (substring match).
+	// Grep filters commits by message content (substring match, case-sensitive).
 	Grep string
-	// Path filters commits affecting this path.
+	// Path filters commits that affected this file or directory.
 	Path string
-	// Ref is the starting point (branch, tag, or commit). Defaults to HEAD.
+	// Ref is the starting point (branch, tag, or commit hash). Defaults to HEAD.
+	// Can use range syntax like "main..feature" with CommitsBetween.
 	Ref string
 	// FirstParent follows only the first parent of merge commits.
+	// Useful for viewing the mainline history without merged branches.
 	FirstParent bool
-	// All includes all refs.
+	// All includes commits from all refs (branches and tags), not just one lineage.
 	All bool
-	// IncludeBody includes the full commit message body.
+	// IncludeBody includes the full commit message body in addition to the subject line.
 	IncludeBody bool
 }
 
-// Log returns the commit history.
+// Log returns the commit history starting from a ref (defaults to HEAD).
+//
+// Commits are returned in reverse chronological order (newest first).
+// Use LogOptions to filter by date, author, message, or path.
+//
+// Examples:
+//
+//	// Get last 10 commits
+//	commits, err := repo.Log(ctx, git.LogOptions{Limit: 10})
+//
+//	// Get commits from a specific branch
+//	commits, err := repo.Log(ctx, git.LogOptions{Ref: "feature-branch"})
+//
+//	// Get commits by a specific author
+//	commits, err := repo.Log(ctx, git.LogOptions{
+//	    Author: "john@example.com",
+//	    Limit:  20,
+//	})
+//
+//	// Get commits affecting a specific file
+//	commits, err := repo.Log(ctx, git.LogOptions{
+//	    Path: "main.go",
+//	})
+//
+//	// Get commits with full message bodies
+//	commits, err := repo.Log(ctx, git.LogOptions{
+//	    Limit:       10,
+//	    IncludeBody: true,
+//	})
 func (r *Repository) Log(ctx context.Context, opts LogOptions) ([]Commit, error) {
 	// Use a custom format for parsing with record separator (0x1e) at end
 	// Format: hash|short|author_name|author_email|committer_name|committer_email|subject|body|timestamp|parents<RS>
@@ -130,7 +160,10 @@ func (r *Repository) Log(ctx context.Context, opts LogOptions) ([]Commit, error)
 	return commits, nil
 }
 
-// Show returns details for a specific commit.
+// Show returns details for a specific commit, including its full message body.
+//
+// The ref can be a commit hash, branch name, tag, or any valid git reference
+// like "HEAD~1" or "main^".
 func (r *Repository) Show(ctx context.Context, ref string) (*Commit, error) {
 	commits, err := r.Log(ctx, LogOptions{
 		Ref:         ref,
@@ -147,6 +180,14 @@ func (r *Repository) Show(ctx context.Context, ref string) (*Commit, error) {
 }
 
 // CommitsBetween returns commits between two refs (exclusive of from, inclusive of to).
+//
+// This uses git's range syntax (from..to) to find commits reachable from "to"
+// but not from "from". Useful for seeing what changed between releases or branches.
+//
+// Example:
+//
+//	// See commits added in v2.0.0 since v1.0.0
+//	commits, err := repo.CommitsBetween(ctx, "v1.0.0", "v2.0.0")
 func (r *Repository) CommitsBetween(ctx context.Context, from, to string) ([]Commit, error) {
 	return r.Log(ctx, LogOptions{
 		Ref:         from + ".." + to,

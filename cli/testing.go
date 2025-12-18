@@ -8,7 +8,13 @@ import (
 	"testing"
 )
 
-// TestResult contains the results of a test run.
+// TestResult contains the results of running a CLI command in a test.
+//
+// Use the helper methods to assert on the results:
+//
+//	result := app.Test(t, cli.TestArgs("greet", "Alice"))
+//	assert.True(t, result.Success())
+//	assert.True(t, result.Contains("Hello, Alice"))
 type TestResult struct {
 	ExitCode int
 	Stdout   string
@@ -50,7 +56,22 @@ func TestEnv(key, value string) TestOption {
 }
 
 // Test runs the application with the given options and returns the result.
-// This is useful for testing CLI commands in unit tests.
+//
+// This is useful for testing CLI commands in unit tests:
+//
+//	func TestGreetCommand(t *testing.T) {
+//	    app := setupApp()
+//	    result := app.Test(t,
+//	        cli.TestArgs("greet", "Alice"),
+//	        cli.TestEnv("GREETING", "Hi"),
+//	    )
+//	    if !result.Success() {
+//	        t.Fatalf("command failed: %v", result.Err)
+//	    }
+//	    if !result.Contains("Hi, Alice") {
+//	        t.Errorf("unexpected output: %s", result.Stdout)
+//	    }
+//	}
 func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
 	t.Helper()
 
@@ -111,7 +132,12 @@ func (r *TestResult) Failed() bool {
 }
 
 // TestApp creates a new app configured for testing.
-// It disables interactive mode and captures all output.
+//
+// The returned app has interactive mode disabled and captures stdout/stderr:
+//
+//	app := cli.TestApp("myapp")
+//	app.Command("hello").Run(handler)
+//	// Use app.Test() to run and verify
 func TestApp(name string) *App {
 	app := New(name)
 	app.isInteractive = false
@@ -122,6 +148,11 @@ func TestApp(name string) *App {
 }
 
 // CaptureOutput is a helper that captures stdout/stderr during a function call.
+//
+//	stdout, stderr := cli.CaptureOutput(func() {
+//	    fmt.Println("Hello")
+//	    fmt.Fprintln(os.Stderr, "Warning")
+//	})
 func CaptureOutput(fn func()) (stdout, stderr string) {
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr

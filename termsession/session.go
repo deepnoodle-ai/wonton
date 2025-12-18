@@ -1,3 +1,5 @@
+//go:build unix
+
 package termsession
 
 import (
@@ -13,7 +15,21 @@ import (
 	"golang.org/x/term"
 )
 
-// Session represents an interactive PTY session that can be recorded
+// Session represents an interactive PTY (pseudo-terminal) session.
+//
+// Session manages a command running in a PTY, handles terminal I/O,
+// and optionally records the session to an asciinema v2 format file.
+// It's designed for creating interactive terminal sessions that feel
+// like a real terminal (with proper handling of colors, cursor movement, etc.).
+//
+// The session handles:
+//   - PTY creation and management
+//   - Terminal size synchronization (including SIGWINCH)
+//   - Raw mode terminal setup
+//   - Optional recording with the Recorder
+//
+// Use Start() to begin an interactive session, or Record() to start
+// and record simultaneously.
 type Session struct {
 	cmd      *exec.Cmd
 	pty      *os.File
@@ -30,40 +46,99 @@ type Session struct {
 	command []string
 	env     []string
 	dir     string
+	input   io.Reader
+	output  io.Writer
 }
 
-// SessionOptions configures a new session
+// SessionOptions configures a new PTY session.
 type SessionOptions struct {
-	Command []string // Command to run (default: user's shell from $SHELL)
-	Dir     string   // Working directory (default: current directory)
-	Env     []string // Additional environment variables
+	Command []string  // Command to run (default: user's shell from $SHELL)
+	Dir     string    // Working directory (default: current directory)
+	Env     []string  // Additional environment variables (added to inherited environment)
+	Input   io.Reader // Input source (default: os.Stdin)
+	Output  io.Writer // Output destination (default: os.Stdout)
 }
 
 // NewSession creates a new PTY session with the given options.
+//
 // The session is not started until Start() or Record() is called.
+// If no command is specified, the user's shell ($SHELL or /bin/sh) is used.
+//
+// Example:
+//
+//	session, err := NewSession(SessionOptions{
+//	    Command: []string{"bash", "-i"},
+//	    Dir: "/tmp",
+//	    Env: []string{"TERM=xterm-256color"},
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer session.Close()
 func NewSession(opts SessionOptions) (*Session, error) {
 	s := &Session{
 		command: opts.Command,
 		dir:     opts.Dir,
 		env:     opts.Env,
+		input:   opts.Input,
+		output:  opts.Output,
 		done:    make(chan struct{}),
 	}
 
 	return s, nil
 }
 
-// Record starts the session and records it to the specified file.
-// This is a convenience method that combines Start() with recording setup.
+// Record starts the PTY session and records it to the specified file.
+//
+// This is a convenience method that creates a Recorder, attaches it to the
+// session, and calls Start(). The terminal size is detected automatically
+// (or defaults to 80x24 if detection fails).
+//
+// The recording file is created immediately with the header written.
+// Call Wait() to block until the session ends, then Close() to finalize.
+//
+// Example:
+//
+//	session, _ := NewSession(SessionOptions{
+//	    Command: []string{"bash", "-c", "echo 'Hello, World!'"},
+//	})
+//	err := session.Record("demo.cast", RecordingOptions{
+//	    Compress: true,
+//	    Title: "Hello Demo",
+//	})
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	session.Wait()
+//	session.Close()
 func (s *Session) Record(filename string, opts RecordingOptions) error {
 	s.mu.Lock()
 	if s.started {
 		s.mu.Unlock()
 		return fmt.Errorf("session already started")
 	}
+	// Default input if not set
+	input := s.input
+	if input == nil {
+		input = os.Stdin
+	}
 	s.mu.Unlock()
 
 	// Get terminal size for recording
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	var width, height int
+	var err error
+	fd := -1
+
+	if f, ok := input.(*os.File); ok {
+		fd = int(f.Fd())
+	}
+
+	if fd != -1 {
+		width, height, err = term.GetSize(fd)
+	} else {
+		err = fmt.Errorf("not a terminal")
+	}
+
 	if err != nil {
 		// Default to 80x24 if we can't get size
 		width, height = 80, 24
@@ -79,18 +154,54 @@ func (s *Session) Record(filename string, opts RecordingOptions) error {
 	s.recorder = recorder
 	s.mu.Unlock()
 
-	return s.Start()
+	if err := s.Start(); err != nil {
+		// Clean up recorder on start failure
+		s.mu.Lock()
+		s.recorder = nil
+		s.mu.Unlock()
+		recorder.Close()
+		return err
+	}
+
+	return nil
 }
 
-// Start begins the PTY session without recording
+// Start begins the PTY session without recording.
+//
+// This method:
+//   - Creates a PTY and starts the command
+//   - Sets the terminal to raw mode (if stdin is a terminal)
+//   - Starts goroutines to handle I/O between stdin/stdout and the PTY
+//   - Sets up terminal resize handling (SIGWINCH)
+//
+// The session runs in the background. Use Wait() to block until it completes.
+//
+// Example:
+//
+//	session, _ := NewSession(SessionOptions{
+//	    Command: []string{"bash"},
+//	})
+//	err := session.Start()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	// Session is now interactive
+//	session.Wait()
 func (s *Session) Start() error {
 	s.mu.Lock()
 	if s.started {
 		s.mu.Unlock()
 		return fmt.Errorf("session already started")
 	}
-	s.started = true
 	s.mu.Unlock()
+
+	// Defaults
+	if s.input == nil {
+		s.input = os.Stdin
+	}
+	if s.output == nil {
+		s.output = os.Stdout
+	}
 
 	// Get user's shell if no command specified
 	command := s.command
@@ -115,15 +226,21 @@ func (s *Session) Start() error {
 	}
 	s.pty = ptmx
 
-	// Set raw mode on stdin (if it's a terminal)
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	// Set raw mode on input (if it's a terminal)
+	if f, ok := s.input.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		oldState, err := term.MakeRaw(int(f.Fd()))
 		if err != nil {
 			s.pty.Close()
+			s.pty = nil
 			return fmt.Errorf("failed to enable raw mode: %w", err)
 		}
 		s.oldState = oldState
 	}
+
+	// Mark as started only after all setup succeeds
+	s.mu.Lock()
+	s.started = true
+	s.mu.Unlock()
 
 	// Sync initial terminal size
 	s.syncSize()
@@ -138,7 +255,10 @@ func (s *Session) Start() error {
 	return nil
 }
 
-// Wait blocks until the session ends and returns any error
+// Wait blocks until the session ends and returns any error.
+//
+// This waits for the command to exit. The exit code can be retrieved
+// with ExitCode() after Wait returns.
 func (s *Session) Wait() error {
 	<-s.done
 
@@ -149,21 +269,32 @@ func (s *Session) Wait() error {
 	return err
 }
 
-// ExitCode returns the exit code of the command (only valid after Wait returns)
+// ExitCode returns the exit code of the command.
+//
+// This is only valid after Wait() returns. Returns 0 before the session completes.
 func (s *Session) ExitCode() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.exitCode
 }
 
-// Close terminates the session and cleans up resources
+// Close terminates the session and cleans up resources.
+//
+// This method:
+//   - Restores the terminal to its original state
+//   - Closes and finalizes any recording
+//   - Closes the PTY
+//
+// It's safe to call Close multiple times or before the session completes.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Restore terminal state
 	if s.oldState != nil {
-		term.Restore(int(os.Stdin.Fd()), s.oldState)
+		if f, ok := s.input.(*os.File); ok {
+			term.Restore(int(f.Fd()), s.oldState)
+		}
 		s.oldState = nil
 	}
 
@@ -182,7 +313,11 @@ func (s *Session) Close() error {
 	return nil
 }
 
-// Resize manually sets the terminal size (useful for non-TTY scenarios)
+// Resize manually sets the terminal size.
+//
+// This is useful for programmatically resizing the terminal or when
+// automatic resize detection isn't available (non-TTY scenarios).
+// The recorder is also updated if recording is active.
 func (s *Session) Resize(width, height int) error {
 	s.mu.Lock()
 	ptmx := s.pty
@@ -207,7 +342,10 @@ func (s *Session) Resize(width, height int) error {
 	return nil
 }
 
-// PauseRecording temporarily pauses recording
+// PauseRecording temporarily pauses recording.
+//
+// Terminal I/O continues normally, but events are not recorded while paused.
+// Has no effect if the session is not being recorded.
 func (s *Session) PauseRecording() {
 	s.mu.Lock()
 	recorder := s.recorder
@@ -218,7 +356,10 @@ func (s *Session) PauseRecording() {
 	}
 }
 
-// ResumeRecording resumes a paused recording
+// ResumeRecording resumes a paused recording.
+//
+// Recording continues from where it was paused. Has no effect if
+// the session is not being recorded or is not paused.
 func (s *Session) ResumeRecording() {
 	s.mu.Lock()
 	recorder := s.recorder
@@ -229,7 +370,7 @@ func (s *Session) ResumeRecording() {
 	}
 }
 
-// IsRecording returns true if the session is being recorded
+// IsRecording returns true if the session is being recorded.
 func (s *Session) IsRecording() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -254,11 +395,16 @@ func (s *Session) handleResize() {
 
 // syncSize synchronizes PTY size with the controlling terminal
 func (s *Session) syncSize() error {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	fd := -1
+	if f, ok := s.input.(*os.File); ok {
+		fd = int(f.Fd())
+	}
+
+	if fd == -1 || !term.IsTerminal(fd) {
 		return nil
 	}
 
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	width, height, err := term.GetSize(fd)
 	if err != nil {
 		return err
 	}
@@ -284,36 +430,52 @@ func (s *Session) syncSize() error {
 	return nil
 }
 
-// copyInput reads from stdin and writes to the PTY
+// copyInput reads from input and writes to the PTY
 func (s *Session) copyInput() {
 	buf := make([]byte, 4096)
 	for {
-		n, err := os.Stdin.Read(buf)
+		n, err := s.input.Read(buf)
+		if n > 0 {
+			s.mu.Lock()
+			ptmx := s.pty
+			recorder := s.recorder
+			s.mu.Unlock()
+
+			if recorder != nil {
+				recorder.RecordInput(string(buf[:n]))
+			}
+
+			if ptmx != nil {
+				if _, werr := ptmx.Write(buf[:n]); werr != nil {
+					break
+				}
+			}
+		}
+
 		if err != nil {
-			break
-		}
-
-		s.mu.Lock()
-		ptmx := s.pty
-		s.mu.Unlock()
-
-		if ptmx == nil {
-			break
-		}
-
-		if _, err := ptmx.Write(buf[:n]); err != nil {
+			if err == io.EOF {
+				s.mu.Lock()
+				ptmx := s.pty
+				s.mu.Unlock()
+				if ptmx != nil {
+					// Send EOT (Ctrl+D) to signal EOF to the PTY slave
+					ptmx.Write([]byte{4})
+				}
+			}
 			break
 		}
 	}
 }
 
-// copyOutput reads from PTY and writes to stdout, recording if enabled
+// copyOutput reads from PTY and writes to output, recording if enabled
 func (s *Session) copyOutput() {
 	defer func() {
 		// Clean up when output ends (command exited)
 		s.mu.Lock()
 		if s.oldState != nil {
-			term.Restore(int(os.Stdin.Fd()), s.oldState)
+			if f, ok := s.input.(*os.File); ok {
+				term.Restore(int(f.Fd()), s.oldState)
+			}
 			s.oldState = nil
 		}
 		recorder := s.recorder
@@ -363,8 +525,8 @@ func (s *Session) copyOutput() {
 
 		data := buf[:n]
 
-		// Write to stdout
-		os.Stdout.Write(data)
+		// Write to output
+		s.output.Write(data)
 
 		// Record if enabled
 		if recorder != nil {

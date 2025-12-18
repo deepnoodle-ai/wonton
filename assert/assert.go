@@ -1,15 +1,84 @@
 // Package assert provides minimal test assertions with excellent diff output.
 //
-// Built on go-cmp for comparisons, with colored unified diffs on failure.
-// All assertions fail immediately (fatal).
+// This package offers a focused set of assertion functions for Go tests, built on
+// google/go-cmp for deep comparisons. When assertions fail, you get colored unified
+// diffs that clearly show what changed, making test failures easy to debug.
 //
-// Example:
+// # Features
+//
+//   - Deep equality with go-cmp: Compares structs, slices, maps, and nested types
+//   - Colored diffs: Red for expected (-want), green for actual (+got)
+//   - Fatal assertions: All assertions fail immediately via t.Fatalf()
+//   - Unexported field support: Compares unexported fields by default
+//   - Optional messages: All assertions accept optional message formatting
+//
+// # Basic Usage
 //
 //	func TestUser(t *testing.T) {
-//	    got := fetchUser()
-//	    assert.Equal(t, got, want)
+//	    user := fetchUser()
+//	    assert.Equal(t, user.Name, "Alice")
 //	    assert.NoError(t, err)
+//	    assert.True(t, user.Active, "user should be active")
 //	}
+//
+// # Equality Assertions
+//
+// Equal and NotEqual use go-cmp for deep comparison:
+//
+//	assert.Equal(t, got, want)                    // Deep equality
+//	assert.EqualOpts(t, got, want, cmpOpts...)    // With custom cmp options
+//	assert.NotEqual(t, got, want)                 // Values should differ
+//
+// # Error Assertions
+//
+// Test error conditions with various matchers:
+//
+//	assert.NoError(t, err)                        // err must be nil
+//	assert.Error(t, err)                          // err must not be nil
+//	assert.ErrorIs(t, err, target)                // errors.Is match
+//	assert.ErrorAs(t, err, &target)               // errors.As match
+//	assert.ErrorContains(t, err, "not found")     // Substring match
+//
+// # Nil and Boolean Assertions
+//
+//	assert.Nil(t, ptr)                            // Value must be nil
+//	assert.NotNil(t, ptr)                         // Value must not be nil
+//	assert.True(t, condition)                     // Boolean must be true
+//	assert.False(t, condition)                    // Boolean must be false
+//
+// # Collection Assertions
+//
+//	assert.Contains(t, haystack, needle)          // String/slice/map contains
+//	assert.NotContains(t, haystack, needle)       // Does not contain
+//	assert.Len(t, collection, 5)                  // Length check
+//	assert.Empty(t, collection)                   // Nil, zero-length, or zero value
+//	assert.NotEmpty(t, collection)                // Has content
+//
+// # Comparison Assertions
+//
+// Generic comparison functions work with any ordered type:
+//
+//	assert.Greater(t, a, b)                       // a > b
+//	assert.GreaterOrEqual(t, a, b)                // a >= b
+//	assert.Less(t, a, b)                          // a < b
+//	assert.LessOrEqual(t, a, b)                   // a <= b
+//	assert.InDelta(t, 3.14, 3.15, 0.01)          // Float comparison with delta
+//
+// # Pattern and Panic Assertions
+//
+//	assert.Regexp(t, `\d+`, str)                  // String matches regex
+//	assert.Panics(t, func() { ... })              // Function must panic
+//	assert.NotPanics(t, func() { ... })           // Function must not panic
+//
+// # Optional Messages
+//
+// All assertions accept optional message arguments for context:
+//
+//	assert.Equal(t, got, want, "processing user ID %d", userID)
+//	assert.NoError(t, err, "failed to open file")
+//
+// The first msgAndArgs argument can be a format string with additional arguments,
+// or a single value that will be formatted with %v.
 package assert
 
 import (
@@ -29,7 +98,11 @@ import (
 
 var colorEnabled = color.IsTerminal(os.Stderr)
 
-// SetColorEnabled enables or disables colored output.
+// SetColorEnabled enables or disables colored output in diff messages.
+//
+// Color is automatically enabled if stderr is a terminal. Use this function
+// to explicitly control color output, for example to disable it in CI environments
+// or when capturing test output to files.
 func SetColorEnabled(enabled bool) { colorEnabled = enabled }
 
 // defaultOpts are applied to all Equal comparisons.
@@ -41,7 +114,20 @@ var defaultOpts = []gocmp.Option{
 }
 
 // Equal asserts that got and want are deeply equal using go-cmp.
-// Shows a colored unified diff on failure.
+//
+// This function performs deep comparison of any Go values including structs,
+// slices, maps, and nested types. Unexported fields are compared by default.
+// On failure, it displays a colored unified diff showing exactly what differs.
+//
+// Optional msgAndArgs provide additional context:
+//   - Single string: used as-is
+//   - Format string + args: passed to fmt.Sprintf
+//
+// Example:
+//
+//	user := User{Name: "Alice", Age: 30}
+//	assert.Equal(t, user.Name, "Alice")
+//	assert.Equal(t, user, want, "fetching user %d", userID)
 func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 	t.Helper()
 	if diff := gocmp.Diff(want, got, defaultOpts...); diff != "" {
@@ -55,6 +141,17 @@ func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 }
 
 // EqualOpts asserts equality with custom cmp.Options.
+//
+// Use this when you need to customize comparison behavior beyond the defaults.
+// Useful for ignoring fields, custom comparers, or transforming values.
+//
+// Example:
+//
+//	opts := cmp.Options{
+//	    cmpopts.IgnoreFields(User{}, "LastLogin"),
+//	    cmpopts.EquateApprox(0.01, 0),
+//	}
+//	assert.EqualOpts(t, got, want, opts...)
 func EqualOpts(t testing.TB, got, want any, opts ...gocmp.Option) {
 	t.Helper()
 	if diff := gocmp.Diff(want, got, opts...); diff != "" {
@@ -102,6 +199,15 @@ func Error(t testing.TB, err error, msgAndArgs ...any) {
 }
 
 // ErrorIs asserts that errors.Is(err, target) is true.
+//
+// This checks if target appears anywhere in err's error chain, following
+// the standard library's errors.Is semantics. Useful for wrapped errors.
+//
+// Example:
+//
+//	var ErrNotFound = errors.New("not found")
+//	err := fmt.Errorf("user: %w", ErrNotFound)
+//	assert.ErrorIs(t, err, ErrNotFound)
 func ErrorIs(t testing.TB, err, target error, msgAndArgs ...any) {
 	t.Helper()
 	if !errors.Is(err, target) {
@@ -115,6 +221,15 @@ func ErrorIs(t testing.TB, err, target error, msgAndArgs ...any) {
 }
 
 // ErrorAs asserts that errors.As(err, target) is true.
+//
+// This checks if any error in err's chain matches target's type, and if so,
+// assigns it to target. The target must be a pointer to an error type.
+//
+// Example:
+//
+//	var pathErr *os.PathError
+//	assert.ErrorAs(t, err, &pathErr)
+//	// Now pathErr is populated with the matched error
 func ErrorAs(t testing.TB, err error, target any, msgAndArgs ...any) {
 	t.Helper()
 	if !errors.As(err, target) {
@@ -127,7 +242,14 @@ func ErrorAs(t testing.TB, err error, target any, msgAndArgs ...any) {
 	}
 }
 
-// ErrorContains asserts that err contains the substring.
+// ErrorContains asserts that err's Error() string contains the substring.
+//
+// This performs a simple substring check on the error message. Fails if err is nil.
+//
+// Example:
+//
+//	err := processFile("/tmp/missing")
+//	assert.ErrorContains(t, err, "no such file")
 func ErrorContains(t testing.TB, err error, substr string, msgAndArgs ...any) {
 	t.Helper()
 	if err == nil {
@@ -202,7 +324,17 @@ func False(t testing.TB, v bool, msgAndArgs ...any) {
 }
 
 // Contains asserts that haystack contains needle.
-// Works with strings, slices, arrays, and maps (checks keys).
+//
+// Behavior depends on haystack type:
+//   - string: substring check
+//   - slice/array: checks if any element equals needle
+//   - map: checks if needle is a key in the map
+//
+// Example:
+//
+//	assert.Contains(t, "hello world", "world")
+//	assert.Contains(t, []int{1, 2, 3}, 2)
+//	assert.Contains(t, map[string]int{"a": 1}, "a")
 func Contains(t testing.TB, haystack, needle any, msgAndArgs ...any) {
 	t.Helper()
 	if !contains(haystack, needle) {
@@ -229,6 +361,14 @@ func NotContains(t testing.TB, haystack, needle any, msgAndArgs ...any) {
 }
 
 // Len asserts that v has the expected length.
+//
+// Works with any type that has a length: strings, slices, arrays, maps, channels.
+//
+// Example:
+//
+//	assert.Len(t, []int{1, 2, 3}, 3)
+//	assert.Len(t, "hello", 5)
+//	assert.Len(t, map[string]int{"a": 1, "b": 2}, 2)
 func Len(t testing.TB, v any, want int, msgAndArgs ...any) {
 	t.Helper()
 	got := reflect.ValueOf(v).Len()
@@ -243,6 +383,18 @@ func Len(t testing.TB, v any, want int, msgAndArgs ...any) {
 }
 
 // Empty asserts that v is empty (nil, zero length, or zero value).
+//
+// Checks for emptiness based on type:
+//   - nil values: always empty
+//   - strings, slices, maps, channels: empty if length is 0
+//   - pointers: empty if nil or pointing to empty value
+//   - other types: empty if zero value (via reflect.Value.IsZero)
+//
+// Example:
+//
+//	assert.Empty(t, "")
+//	assert.Empty(t, []int{})
+//	assert.Empty(t, nil)
 func Empty(t testing.TB, v any, msgAndArgs ...any) {
 	t.Helper()
 	if !isEmpty(v) {
@@ -353,6 +505,14 @@ func LessOrEqual[T cmp.Ordered](t testing.TB, a, b T, msgAndArgs ...any) {
 }
 
 // InDelta asserts that two numbers are within delta of each other.
+//
+// This is the preferred way to compare floating-point numbers, since direct
+// equality comparison is unreliable due to rounding errors.
+//
+// Example:
+//
+//	result := math.Pi * 2
+//	assert.InDelta(t, result, 6.283, 0.001)
 func InDelta(t testing.TB, expected, actual, delta float64, msgAndArgs ...any) {
 	t.Helper()
 	diff := expected - actual
@@ -370,7 +530,14 @@ func InDelta(t testing.TB, expected, actual, delta float64, msgAndArgs ...any) {
 }
 
 // Regexp asserts that str matches the regular expression pattern.
-// pattern can be a string or *regexp.Regexp.
+//
+// The pattern can be either a string (which will be compiled) or a
+// pre-compiled *regexp.Regexp. Uses regexp.MatchString for matching.
+//
+// Example:
+//
+//	assert.Regexp(t, `^\d{3}-\d{4}$`, phoneNumber)
+//	assert.Regexp(t, regexp.MustCompile(`[A-Z][a-z]+`), "Hello")
 func Regexp(t testing.TB, pattern any, str string, msgAndArgs ...any) {
 	t.Helper()
 	var re *regexp.Regexp
@@ -395,6 +562,9 @@ func Regexp(t testing.TB, pattern any, str string, msgAndArgs ...any) {
 
 // --- Helpers ---
 
+// formatDiff formats a go-cmp diff string with optional color coding.
+// Lines starting with - are colored red (removed/expected).
+// Lines starting with + are colored green (added/actual).
 func formatDiff(diff string) string {
 	if !colorEnabled {
 		return "mismatch (-want +got):\n" + diff
@@ -415,6 +585,13 @@ func formatDiff(diff string) string {
 	return b.String()
 }
 
+// formatMsg formats optional message arguments for assertion failures.
+// Supports:
+//   - No args: returns ""
+//   - Single string: returns as-is
+//   - Single non-string: formats with %v
+//   - String + args: treats first arg as format string for fmt.Sprintf
+//   - Non-string + args: returns "" (invalid format)
 func formatMsg(msgAndArgs ...any) string {
 	if len(msgAndArgs) == 0 {
 		return ""
@@ -431,6 +608,11 @@ func formatMsg(msgAndArgs ...any) string {
 	return ""
 }
 
+// isNil checks if a value is nil, handling both interface nil and typed nil.
+// Returns true for:
+//   - nil interface
+//   - nil pointer, chan, func, interface, map, or slice
+// Returns false for non-nillable types (int, bool, struct, etc.)
 func isNil(v any) bool {
 	if v == nil {
 		return true
@@ -443,6 +625,12 @@ func isNil(v any) bool {
 	return false
 }
 
+// isEmpty checks if a value is empty according to assertion semantics.
+// Returns true for:
+//   - nil values
+//   - zero-length strings, slices, maps, or channels
+//   - nil or zero-value pointers
+//   - zero values for other types (via reflect.IsZero)
 func isEmpty(v any) bool {
 	if v == nil {
 		return true
@@ -462,6 +650,10 @@ func isEmpty(v any) bool {
 	return rv.IsZero()
 }
 
+// contains checks if haystack contains needle based on the haystack type.
+// For strings: substring check
+// For slices/arrays: element equality check using go-cmp
+// For maps: key existence check
 func contains(haystack, needle any) bool {
 	hv := reflect.ValueOf(haystack)
 	switch hv.Kind() {

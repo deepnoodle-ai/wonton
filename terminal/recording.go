@@ -45,6 +45,7 @@ type Recorder struct {
 	redactSecrets bool
 	idleTimeLimit float64
 	paused        bool
+	writeErr      error // First error encountered during write (sticky)
 }
 
 // RecordingOptions configures recording behavior
@@ -83,7 +84,8 @@ func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error 
 		idleTimeLimit: opts.IdleTimeLimit,
 	}
 
-	file, err := os.Create(filename)
+	// Create file with restricted permissions (0600) to protect sensitive recordings
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create recording file: %w", err)
 	}
@@ -130,7 +132,8 @@ func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error 
 	return nil
 }
 
-// StopRecording finalizes and closes the recording
+// StopRecording finalizes and closes the recording.
+// Returns any error encountered during recording or while closing.
 func (t *Terminal) StopRecording() error {
 	t.mu.Lock()
 	recorder := t.recorder
@@ -141,7 +144,15 @@ func (t *Terminal) StopRecording() error {
 		return nil
 	}
 
-	return recorder.close()
+	// Check for write errors that occurred during recording
+	writeErr := recorder.WriteError()
+	closeErr := recorder.close()
+
+	// Prefer returning write error as it's the root cause
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
 }
 
 // PauseRecording temporarily suspends recording (useful for sensitive sections)
@@ -258,21 +269,49 @@ func (r *Recorder) RecordInput(data string) {
 		Data: data,
 	}
 
+	// Apply redaction to input as well (passwords, API keys typed by user)
+	if r.redactSecrets {
+		event.Data = redactSecretPatterns(event.Data)
+	}
+
 	r.writeEvent(event)
 }
 
 // writeEvent writes a single event to the recording file
 // Caller must hold r.mu
 func (r *Recorder) writeEvent(event RecordingEvent) {
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return // Silently ignore marshal errors
+	// Skip if we've already hit a write error
+	if r.writeErr != nil {
+		return
 	}
 
-	r.writer.Write(eventJSON)
-	r.writer.WriteByte('\n')
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		r.writeErr = fmt.Errorf("marshal event: %w", err)
+		return
+	}
+
+	if _, err := r.writer.Write(eventJSON); err != nil {
+		r.writeErr = fmt.Errorf("write event: %w", err)
+		return
+	}
+	if err := r.writer.WriteByte('\n'); err != nil {
+		r.writeErr = fmt.Errorf("write newline: %w", err)
+		return
+	}
 	// We flush periodically rather than every event for performance
 	// The close() method ensures final flush
+}
+
+// WriteError returns any error that occurred during recording.
+// Returns nil if no errors have occurred.
+func (r *Recorder) WriteError() error {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.writeErr
 }
 
 // close finalizes the recording and closes the file

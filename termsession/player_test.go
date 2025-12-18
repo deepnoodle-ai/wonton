@@ -2,6 +2,7 @@ package termsession
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -268,4 +269,57 @@ func TestDefaultPlayerOptions(t *testing.T) {
 	assert.False(t, opts.Loop)
 	assert.Equal(t, 0.0, opts.MaxIdle)
 	assert.Equal(t, os.Stdout, opts.Output)
+}
+
+// ExampleNewPlayer demonstrates basic playback.
+func ExampleNewPlayer() {
+	// Create a sample recording
+	tmpfile := filepath.Join(os.TempDir(), "player-example.cast")
+	defer os.Remove(tmpfile)
+
+	recorder, _ := NewRecorder(tmpfile, 80, 24, RecordingOptions{
+		Compress: false,
+	})
+	recorder.RecordOutput("Hello from recording!\n")
+	recorder.Close()
+
+	// Play it back
+	var buf bytes.Buffer
+	player, err := NewPlayer(tmpfile, PlayerOptions{
+		Output: &buf,
+		Speed:  1.0,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	player.Play()
+	fmt.Print(buf.String())
+
+	// Output:
+	// Hello from recording!
+}
+
+// ExamplePlayer_SetSpeed demonstrates changing playback speed.
+func ExamplePlayer_SetSpeed() {
+	tmpfile := filepath.Join(os.TempDir(), "speed-example.cast")
+	defer os.Remove(tmpfile)
+
+	recorder, _ := NewRecorder(tmpfile, 80, 24, RecordingOptions{
+		Compress: false,
+	})
+	recorder.RecordOutput("Speed test\n")
+	recorder.Close()
+
+	player, _ := NewPlayer(tmpfile, PlayerOptions{
+		Output: os.Stdout,
+	})
+
+	fmt.Printf("Initial speed: %.1fx\n", player.Speed())
+	player.SetSpeed(2.0)
+	fmt.Printf("New speed: %.1fx\n", player.Speed())
+
+	// Output:
+	// Initial speed: 1.0x
+	// New speed: 2.0x
 }

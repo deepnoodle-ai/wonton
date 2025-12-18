@@ -11,6 +11,144 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
+// Example demonstrates basic configuration parsing with default values.
+func Example() {
+	type Config struct {
+		Host string `env:"HOST" envDefault:"localhost"`
+		Port int    `env:"PORT" envDefault:"8080"`
+	}
+
+	// Parse with defaults (no environment variables set)
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Host: %s, Port: %d\n", cfg.Host, cfg.Port)
+	// Output: Host: localhost, Port: 8080
+}
+
+// Example_withPrefix demonstrates using a prefix for all environment variables.
+func Example_withPrefix() {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	env := map[string]string{
+		"MYAPP_HOST": "api.example.com",
+		"MYAPP_PORT": "443",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithPrefix("MYAPP"),
+	)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Host: %s, Port: %d\n", cfg.Host, cfg.Port)
+	// Output: Host: api.example.com, Port: 443
+}
+
+// Example_nestedStructs demonstrates configuration with nested structs.
+func Example_nestedStructs() {
+	type Database struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT"`
+	}
+
+	type Config struct {
+		Database Database `envPrefix:"DB_"`
+	}
+
+	env := map[string]string{
+		"DB_HOST": "postgres.example.com",
+		"DB_PORT": "5432",
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(env))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Database: %s:%d\n", cfg.Database.Host, cfg.Database.Port)
+	// Output: Database: postgres.example.com:5432
+}
+
+// Example_slicesAndMaps demonstrates parsing slices and maps from environment variables.
+func Example_slicesAndMaps() {
+	type Config struct {
+		Hosts  []string          `env:"HOSTS"`
+		Labels map[string]string `env:"LABELS"`
+	}
+
+	env := map[string]string{
+		"HOSTS":  "host1,host2,host3",
+		"LABELS": "env:prod,region:us-west",
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(env))
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Hosts: %v\n", cfg.Hosts)
+	fmt.Printf("Labels: %v\n", cfg.Labels)
+	// Output:
+	// Hosts: [host1 host2 host3]
+	// Labels: map[env:prod region:us-west]
+}
+
+// Example_customParser demonstrates using a custom parser for a user-defined type.
+func Example_customParser() {
+	type LogLevel int
+	const (
+		Debug LogLevel = iota
+		Info
+		Warn
+		Error
+	)
+
+	type Config struct {
+		Level LogLevel `env:"LOG_LEVEL"`
+	}
+
+	env := map[string]string{
+		"LOG_LEVEL": "warn",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithParser(func(s string) (LogLevel, error) {
+			switch strings.ToLower(s) {
+			case "debug":
+				return Debug, nil
+			case "info":
+				return Info, nil
+			case "warn":
+				return Warn, nil
+			case "error":
+				return Error, nil
+			default:
+				return 0, fmt.Errorf("invalid log level: %s", s)
+			}
+		}),
+	)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	fmt.Printf("Log Level: %d (Warn)\n", cfg.Level)
+	// Output: Log Level: 2 (Warn)
+}
+
 func TestParse_BasicTypes(t *testing.T) {
 	type Config struct {
 		Host     string        `env:"HOST"`
@@ -194,10 +332,9 @@ func TestParse_Expand(t *testing.T) {
 		Path string `env:"PATH_TEMPLATE,expand"`
 	}
 
-	os.Setenv("HOME", "/home/user")
-	defer os.Unsetenv("HOME")
-
+	// When using WithEnvironment, expansion uses the custom environment map
 	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"HOME":          "/home/user",
 		"PATH_TEMPLATE": "$HOME/app/data",
 	}))
 	assert.NoError(t, err)
@@ -294,12 +431,13 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 	first := filepath.Join(tmpDir, "first.env")
 	second := filepath.Join(tmpDir, "second.env")
 
-	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\n"), 0644))
+	assert.NoError(t, os.WriteFile(first, []byte("VALUE=one\nFIRST_ONLY=yes\n"), 0644))
 	assert.NoError(t, os.WriteFile(second, []byte("VALUE=two\nEXTRA=from_second\n"), 0644))
 
 	type Config struct {
-		Value string `env:"VALUE"`
-		Extra string `env:"EXTRA"`
+		Value     string `env:"VALUE"`
+		Extra     string `env:"EXTRA"`
+		FirstOnly string `env:"FIRST_ONLY"`
 	}
 
 	cfg, err := Parse[Config](
@@ -307,8 +445,9 @@ func TestParse_WithEnvFileOverridesOrder(t *testing.T) {
 		WithEnvFile(first, second),
 	)
 	assert.NoError(t, err)
-	assert.Equal(t, "one", cfg.Value, "first env file should win when key already set")
+	assert.Equal(t, "two", cfg.Value, "later env file should override earlier ones")
 	assert.Equal(t, "from_second", cfg.Extra)
+	assert.Equal(t, "yes", cfg.FirstOnly, "keys only in first file should be preserved")
 }
 
 func TestParse_WithJSONFileOverrideOrder(t *testing.T) {
@@ -1116,8 +1255,11 @@ func TestFieldError_AllFields(t *testing.T) {
 	msg := err.Error()
 	assert.Contains(t, msg, "Port")
 	assert.Contains(t, msg, "APP_PORT")
-	assert.Contains(t, msg, "invalid")
 	assert.Contains(t, msg, "not a number")
+	// Note: Value is intentionally excluded from Error() string to prevent
+	// leaking secrets into logs. Access err.Value directly if needed.
+	assert.NotContains(t, msg, "invalid", "values should not appear in error messages")
+	assert.Equal(t, "invalid", err.Value, "value should still be accessible directly")
 }
 
 func TestFieldError_NoValue(t *testing.T) {
@@ -1363,4 +1505,55 @@ func TestParse_OnSetWithDefaultNoEnvTag(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Contains(t, setCalls, "Host")
+}
+
+func TestParse_UnsetWithStage(t *testing.T) {
+	// Regression test: when using stage + unset, the staged variable (e.g., PROD_SECRET)
+	// should be unset, not just the base variable (SECRET)
+	type Config struct {
+		Secret string `env:"SECRET,unset"`
+	}
+
+	// Use custom environment map to verify unset behavior
+	env := map[string]string{
+		"PROD_SECRET": "staged-secret-value",
+		"SECRET":      "base-secret-value",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "staged-secret-value", cfg.Secret)
+
+	// The staged variable should be unset from the environ map
+	_, hasProdSecret := env["PROD_SECRET"]
+	assert.False(t, hasProdSecret, "PROD_SECRET should be unset")
+
+	// The base variable should still exist (we only unset the one that was used)
+	_, hasSecret := env["SECRET"]
+	assert.True(t, hasSecret, "SECRET should still exist (wasn't used)")
+}
+
+func TestParse_UnsetWithStage_FallbackToBase(t *testing.T) {
+	// When stage var doesn't exist, base var should be used and unset
+	type Config struct {
+		Secret string `env:"SECRET,unset"`
+	}
+
+	env := map[string]string{
+		"SECRET": "base-secret-value",
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(env),
+		WithStage("PROD"),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "base-secret-value", cfg.Secret)
+
+	// The base variable should be unset (it was the one used)
+	_, hasSecret := env["SECRET"]
+	assert.False(t, hasSecret, "SECRET should be unset")
 }

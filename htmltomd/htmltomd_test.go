@@ -997,6 +997,20 @@ func TestConvert_ReferencedLinkDeduplication(t *testing.T) {
 	assert.Contains(t, result, "[2]: https://other.com")
 }
 
+func TestConvert_ReferencedLinkDifferentTitles(t *testing.T) {
+	// Same URL but different titles should create separate references
+	input := `<p><a href="https://example.com" title="Foo">First</a> and <a href="https://example.com" title="Bar">Second</a></p>`
+	result := ConvertWithOptions(input, &Options{LinkStyle: LinkStyleReferenced})
+
+	// Different titles should create different reference numbers
+	assert.Contains(t, result, "[First][1]")
+	assert.Contains(t, result, "[Second][2]")
+
+	// Both references should appear with their respective titles
+	assert.Contains(t, result, `[1]: https://example.com "Foo"`)
+	assert.Contains(t, result, `[2]: https://example.com "Bar"`)
+}
+
 func TestConvert_NilOptions(t *testing.T) {
 	result := ConvertWithOptions("<p>text</p>", nil)
 	assert.Equal(t, "text", result)

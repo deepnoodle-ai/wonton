@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 // Gap spacing tests (additional to view_test.go)
@@ -488,4 +489,132 @@ func TestGroup_RenderZeroHeight(t *testing.T) {
 	// Zero height should not render
 	err := Print(g, WithWidth(10), WithHeight(0), WithOutput(&buf))
 	assert.NoError(t, err)
+}
+
+// Render tests using termtest with SprintScreen helper
+
+func TestGroup_Render_Basic(t *testing.T) {
+	g := Group(
+		Text("Left"),
+		Text("Middle"),
+		Text("Right"),
+	)
+	screen := SprintScreen(g, WithWidth(30))
+
+	// All text should appear on the same row
+	termtest.AssertRowContains(t, screen, 0, "Left")
+	termtest.AssertRowContains(t, screen, 0, "Middle")
+	termtest.AssertRowContains(t, screen, 0, "Right")
+}
+
+func TestGroup_Render_WithGap(t *testing.T) {
+	g := Group(
+		Text("A"),
+		Text("B"),
+	).Gap(3)
+	screen := SprintScreen(g, WithWidth(20))
+
+	row := screen.Row(0)
+	// "A" followed by 3 spaces, then "B"
+	termtest.AssertRowContains(t, screen, 0, "A")
+	termtest.AssertRowContains(t, screen, 0, "B")
+	// Verify gap exists (at least 3 chars between A and B)
+	assert.True(t, len(row) >= 5, "should have gap between items")
+}
+
+func TestGroup_Render_WithSpacer(t *testing.T) {
+	g := Group(
+		Text("Left"),
+		Spacer(),
+		Text("Right"),
+	)
+	screen := SprintScreen(g, WithWidth(30))
+
+	row := screen.Row(0)
+	// Left and Right should be at opposite ends
+	termtest.AssertRowContains(t, screen, 0, "Left")
+	termtest.AssertRowContains(t, screen, 0, "Right")
+	// Full width should be used
+	assert.True(t, len(strings.TrimRight(row, " ")) >= 9, "should span width")
+}
+
+func TestGroup_Render_VaryingHeights(t *testing.T) {
+	g := Group(
+		Text("Short"),
+		Stack(Text("Tall1"), Text("Tall2")),
+	)
+	screen := SprintScreen(g, WithWidth(30))
+
+	// Both columns should be visible
+	termtest.AssertRowContains(t, screen, 0, "Short")
+	termtest.AssertRowContains(t, screen, 0, "Tall1")
+	termtest.AssertRowContains(t, screen, 1, "Tall2")
+}
+
+func TestGroup_Render_LeftAlign(t *testing.T) {
+	// AlignLeft for Group means top-align children vertically
+	g := Group(
+		Text("A"),
+		Stack(Text("1"), Text("2"), Text("3")),
+	).Align(AlignLeft)
+	screen := SprintScreen(g, WithWidth(20))
+
+	// "A" should be at the top (row 0)
+	termtest.AssertRowContains(t, screen, 0, "A")
+	termtest.AssertRowContains(t, screen, 0, "1")
+}
+
+func TestGroup_Render_CenterAlign(t *testing.T) {
+	// AlignCenter for Group means center children vertically
+	g := Group(
+		Text("X"),
+		Stack(Text("A"), Text("B"), Text("C")),
+	).Align(AlignCenter)
+	screen := SprintScreen(g, WithWidth(20))
+
+	// "X" should be vertically centered (row 1 for 3-row tall content)
+	termtest.AssertRowContains(t, screen, 1, "X")
+}
+
+func TestGroup_Render_RightAlign(t *testing.T) {
+	// AlignRight for Group means bottom-align children vertically
+	g := Group(
+		Text("Z"),
+		Stack(Text("A"), Text("B"), Text("C")),
+	).Align(AlignRight)
+	screen := SprintScreen(g, WithWidth(20))
+
+	// "Z" should be at the bottom (row 2 for 3-row tall content)
+	termtest.AssertRowContains(t, screen, 2, "Z")
+}
+
+func TestGroup_Render_WithStyles(t *testing.T) {
+	g := Group(
+		Text("Bold").Bold(),
+		Text("Normal"),
+	)
+	screen := SprintScreen(g, WithWidth(20))
+
+	// Check content is present
+	termtest.AssertRowContains(t, screen, 0, "Bold")
+	termtest.AssertRowContains(t, screen, 0, "Normal")
+
+	// Check that "Bold" text has bold style
+	cell := screen.Cell(0, 0)
+	assert.True(t, cell.Style.Bold)
+}
+
+func TestGroup_Render_Nested(t *testing.T) {
+	g := Group(
+		Text("["),
+		Group(Text("A"), Text("B")),
+		Text("]"),
+	)
+	screen := SprintScreen(g, WithWidth(20))
+
+	row := screen.Row(0)
+	assert.True(t, strings.Contains(row, "["))
+	assert.True(t, strings.Contains(row, "A"))
+	assert.True(t, strings.Contains(row, "B"))
+	assert.True(t, strings.Contains(row, "]"))
 }

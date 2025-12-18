@@ -287,3 +287,20 @@ func TestEmulator_Backspace(t *testing.T) {
 		t.Errorf("expected 'X' at column 2, got '%c'", screen.Cells[0][2].Char)
 	}
 }
+
+func TestEmulator_PrivateCSI(t *testing.T) {
+	em := NewEmulator(80, 24)
+
+	// Private CSI sequences like ESC[?25l (hide cursor) should be consumed
+	// without leaving literal text on screen
+	em.ProcessOutput("\x1b[?25lHello\x1b[?25h")
+
+	screen := em.Screen()
+	// Should have "Hello" starting at position 0, not "[?25lHello"
+	if screen.Cells[0][0].Char != 'H' {
+		t.Errorf("expected 'H' at (0,0), got '%c' - private CSI not consumed", screen.Cells[0][0].Char)
+	}
+	if screen.CursorX != 5 {
+		t.Errorf("expected cursor X=5, got %d", screen.CursorX)
+	}
+}

@@ -1,23 +1,76 @@
-// Package htmlparse provides HTML parsing and transformation utilities.
+// Package htmlparse provides HTML parsing, metadata extraction, and transformation utilities.
 //
-// It offers a simple API for extracting metadata, links, and content from HTML
-// documents, with support for filtering and transformation.
+// This package is designed for extracting structured data from HTML documents
+// and transforming HTML content for various use cases like web scraping,
+// content extraction for LLMs, and metadata analysis.
 //
-// Basic usage:
+// # Core Features
+//
+//   - Parse HTML from strings or io.Reader
+//   - Extract metadata (title, description, Open Graph, Twitter Cards)
+//   - Extract links with filtering (internal/external)
+//   - Extract images and branding elements
+//   - Transform HTML with flexible filtering
+//   - Convert HTML to plain text
+//
+// # Basic Usage
 //
 //	doc, err := htmlparse.Parse("<html>...</html>")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
+//
+//	// Extract metadata
 //	meta := doc.Metadata()
+//	fmt.Println(meta.Title, meta.Description)
+//
+//	// Extract links
 //	links := doc.Links()
+//	for _, link := range links {
+//	    fmt.Println(link.URL, link.Text)
+//	}
 //
-// With transformation:
+// # Filtering Links
 //
-//	html := doc.Transform(&htmlparse.TransformOptions{
+// Extract only internal or external links by providing a base URL:
+//
+//	// Get only internal links
+//	internal := doc.FilteredLinks(htmlparse.LinkFilter{
+//	    BaseURL:  "https://example.com",
+//	    Internal: true,
+//	})
+//
+//	// Get only external links
+//	external := doc.FilteredLinks(htmlparse.LinkFilter{
+//	    BaseURL:  "https://example.com",
+//	    External: true,
+//	})
+//
+// # Transforming HTML
+//
+// Transform HTML to extract clean content, exclude unwanted elements,
+// or prepare content for LLM consumption:
+//
+//	// Extract only main content, exclude navigation and ads
+//	clean := doc.Transform(&htmlparse.TransformOptions{
 //	    OnlyMainContent: true,
 //	    Exclude:         []string{"nav", "footer"},
+//	    ExcludeFilters:  htmlparse.StandardExcludeFilters,
 //	    PrettyPrint:     true,
+//	})
+//
+// # Advanced Element Filtering
+//
+// Use ElementFilter for sophisticated element exclusion based on
+// attributes and values:
+//
+//	// Exclude cookie banners, modals, and ads
+//	clean := doc.Transform(&htmlparse.TransformOptions{
+//	    ExcludeFilters: []htmlparse.ElementFilter{
+//	        {Attr: "role", AttrEquals: "dialog"},
+//	        {Attr: "id", AttrContains: "cookie"},
+//	        {Attr: "class", AttrContains: "modal"},
+//	    },
 //	})
 package htmlparse
 
@@ -29,17 +82,42 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Document represents a parsed HTML document.
+// Document represents a parsed HTML document and provides methods
+// for extracting metadata, links, images, and transforming content.
+//
+// Create a Document using Parse or ParseReader, then call methods
+// to extract data or transform the HTML.
 type Document struct {
 	root *html.Node
 }
 
-// Parse parses HTML content into a Document.
+// Parse parses HTML content from a string into a Document.
+//
+// This is a convenience wrapper around ParseReader for string input.
+// The HTML is parsed using the golang.org/x/net/html parser, which is
+// lenient and handles malformed HTML gracefully.
+//
+// Example:
+//
+//	doc, err := htmlparse.Parse("<html><body><h1>Hello</h1></body></html>")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(doc.Text()) // Output: Hello
 func Parse(htmlContent string) (*Document, error) {
 	return ParseReader(strings.NewReader(htmlContent))
 }
 
 // ParseReader parses HTML from an io.Reader into a Document.
+//
+// This is useful for parsing HTML from HTTP responses, files, or other
+// streaming sources without loading the entire content into memory first.
+//
+// Example:
+//
+//	resp, _ := http.Get("https://example.com")
+//	defer resp.Body.Close()
+//	doc, err := htmlparse.ParseReader(resp.Body)
 func ParseReader(r io.Reader) (*Document, error) {
 	root, err := html.Parse(r)
 	if err != nil {
@@ -48,41 +126,66 @@ func ParseReader(r io.Reader) (*Document, error) {
 	return &Document{root: root}, nil
 }
 
-// Metadata contains extracted page metadata.
+// Metadata contains extracted page metadata from HTML <head> elements.
+//
+// This includes standard meta tags, Open Graph protocol data, and
+// Twitter Card data. Use Document.Metadata() to extract this information.
+//
+// Fields are omitted from JSON if empty (omitempty tags).
 type Metadata struct {
-	Title       string     `json:"title,omitempty"`
-	Description string     `json:"description,omitempty"`
-	Author      string     `json:"author,omitempty"`
-	Keywords    []string   `json:"keywords,omitempty"`
-	Canonical   string     `json:"canonical,omitempty"`
-	Charset     string     `json:"charset,omitempty"`
-	Viewport    string     `json:"viewport,omitempty"`
-	Robots      string     `json:"robots,omitempty"`
-	OpenGraph   *OpenGraph `json:"opengraph,omitempty"`
-	Twitter     *Twitter   `json:"twitter,omitempty"`
+	Title       string     `json:"title,omitempty"`       // Page title from <title> tag
+	Description string     `json:"description,omitempty"` // Meta description
+	Author      string     `json:"author,omitempty"`      // Meta author
+	Keywords    []string   `json:"keywords,omitempty"`    // Meta keywords (comma-separated)
+	Canonical   string     `json:"canonical,omitempty"`   // Canonical URL from <link rel="canonical">
+	Charset     string     `json:"charset,omitempty"`     // Character encoding
+	Viewport    string     `json:"viewport,omitempty"`    // Viewport configuration
+	Robots      string     `json:"robots,omitempty"`      // Robot indexing directives
+	OpenGraph   *OpenGraph `json:"opengraph,omitempty"`   // Open Graph protocol metadata
+	Twitter     *Twitter   `json:"twitter,omitempty"`     // Twitter Card metadata
 }
 
 // OpenGraph contains Open Graph protocol metadata.
+//
+// Open Graph is used by social media platforms (Facebook, LinkedIn, etc.)
+// to display rich previews when a URL is shared. These are extracted from
+// <meta property="og:*"> tags.
 type OpenGraph struct {
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Image       string `json:"image,omitempty"`
-	URL         string `json:"url,omitempty"`
-	Type        string `json:"type,omitempty"`
-	SiteName    string `json:"siteName,omitempty"`
+	Title       string `json:"title,omitempty"`       // og:title
+	Description string `json:"description,omitempty"` // og:description
+	Image       string `json:"image,omitempty"`       // og:image
+	URL         string `json:"url,omitempty"`         // og:url
+	Type        string `json:"type,omitempty"`        // og:type (e.g., "website", "article")
+	SiteName    string `json:"siteName,omitempty"`    // og:site_name
 }
 
 // Twitter contains Twitter Card metadata.
+//
+// Twitter Cards control how links are displayed when shared on Twitter/X.
+// These are extracted from <meta name="twitter:*"> tags.
 type Twitter struct {
-	Card        string `json:"card,omitempty"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	Image       string `json:"image,omitempty"`
-	Site        string `json:"site,omitempty"`
-	Creator     string `json:"creator,omitempty"`
+	Card        string `json:"card,omitempty"`        // twitter:card (e.g., "summary", "summary_large_image")
+	Title       string `json:"title,omitempty"`       // twitter:title
+	Description string `json:"description,omitempty"` // twitter:description
+	Image       string `json:"image,omitempty"`       // twitter:image
+	Site        string `json:"site,omitempty"`        // twitter:site (e.g., "@username")
+	Creator     string `json:"creator,omitempty"`     // twitter:creator (e.g., "@username")
 }
 
 // Metadata extracts page metadata from the document.
+//
+// This method extracts standard meta tags, Open Graph data, and Twitter Card
+// data from the HTML <head> section. It returns a Metadata struct containing
+// all discovered values.
+//
+// Example:
+//
+//	doc, _ := htmlparse.Parse(html)
+//	meta := doc.Metadata()
+//	fmt.Println(meta.Title)
+//	if meta.OpenGraph != nil {
+//	    fmt.Println(meta.OpenGraph.Image)
+//	}
 func (d *Document) Metadata() Metadata {
 	var m Metadata
 	var og OpenGraph
@@ -168,40 +271,66 @@ func (d *Document) Metadata() Metadata {
 	return m
 }
 
-// Link represents a hyperlink found in the document.
+// Link represents a hyperlink (<a> tag) found in the document.
 type Link struct {
-	URL   string `json:"url"`
-	Text  string `json:"text,omitempty"`
-	Title string `json:"title,omitempty"`
+	URL   string `json:"url"`           // The href attribute value
+	Text  string `json:"text,omitempty"`  // The link text content
+	Title string `json:"title,omitempty"` // The title attribute value
 }
 
-// Links extracts all links from the document.
+// Links extracts all links (<a> tags with href) from the document.
+//
+// This is equivalent to calling FilteredLinks with an empty filter.
+// Links without an href attribute are excluded.
+//
+// Example:
+//
+//	doc, _ := htmlparse.Parse(html)
+//	links := doc.Links()
+//	for _, link := range links {
+//	    fmt.Printf("%s -> %s\n", link.Text, link.URL)
+//	}
 func (d *Document) Links() []Link {
 	return d.FilteredLinks(LinkFilter{})
 }
 
-// LinkFilter configures which links to extract.
+// LinkFilter configures which links to extract and how to process them.
+//
+// Use BaseURL to resolve relative links to absolute URLs. Set Internal or
+// External (but not both) to filter links by whether they point to the same
+// host as BaseURL.
 type LinkFilter struct {
 	// BaseURL for resolving relative links. If empty, relative URLs are kept as-is.
+	// Example: "https://example.com" will resolve "/page" to "https://example.com/page"
 	BaseURL string
 
 	// Internal includes only links to the same host as BaseURL.
-	// Requires BaseURL to be set.
+	// Requires BaseURL to be set. Mutually exclusive with External.
 	Internal bool
 
 	// External includes only links to different hosts than BaseURL.
-	// Requires BaseURL to be set.
+	// Requires BaseURL to be set. Mutually exclusive with Internal.
 	External bool
 }
 
-// Image represents an image found in the document.
+// Image represents an image (<img> tag) found in the document.
 type Image struct {
-	URL   string `json:"url"`
-	Alt   string `json:"alt,omitempty"`
-	Title string `json:"title,omitempty"`
+	URL   string `json:"url"`             // The src attribute value
+	Alt   string `json:"alt,omitempty"`   // The alt text
+	Title string `json:"title,omitempty"` // The title attribute value
 }
 
-// Images extracts all images from the document.
+// Images extracts all images (<img> tags with src) from the document.
+//
+// Images without a src attribute are excluded.
+//
+// Example:
+//
+//	doc, _ := htmlparse.Parse(html)
+//	images := doc.Images()
+//	for _, img := range images {
+//	    fmt.Printf("%s: %s\n", img.Alt, img.URL)
+//	}
 func (d *Document) Images() []Image {
 	var images []Image
 	d.walkNodes(d.root, func(n *html.Node) bool {
@@ -222,6 +351,17 @@ func (d *Document) Images() []Image {
 }
 
 // FilteredLinks extracts links matching the filter criteria.
+//
+// This method allows you to filter links by internal/external status and
+// resolve relative URLs to absolute URLs using a base URL.
+//
+// Example:
+//
+//	// Get only external links
+//	external := doc.FilteredLinks(htmlparse.LinkFilter{
+//	    BaseURL:  "https://example.com",
+//	    External: true,
+//	})
 func (d *Document) FilteredLinks(f LinkFilter) []Link {
 	var baseURL *url.URL
 	if f.BaseURL != "" {
@@ -277,25 +417,53 @@ func (d *Document) FilteredLinks(f LinkFilter) []Link {
 	return links
 }
 
-// ElementFilter defines criteria for matching HTML elements.
+// ElementFilter defines criteria for matching HTML elements during transformation.
+//
 // All non-empty fields must match for the filter to match an element.
+// This enables sophisticated filtering based on tag names and attribute values.
+//
+// Example filters:
+//
+//	// Match all <script> tags
+//	{Tag: "script"}
+//
+//	// Match elements with role="dialog"
+//	{Attr: "role", AttrEquals: "dialog"}
+//
+//	// Match elements with "modal" in class attribute
+//	{Attr: "class", AttrContains: "modal"}
+//
+//	// Match <img> tags with data-cookieconsent attribute
+//	{Tag: "img", Attr: "data-cookieconsent"}
 type ElementFilter struct {
 	// Tag matches the element tag name (e.g., "script", "nav").
-	// Empty matches any tag.
+	// Empty matches any tag. Case-insensitive.
 	Tag string `json:"tag,omitempty"`
 
 	// Attr specifies the attribute name to check.
 	// If set alone, matches elements that have this attribute (any value).
+	// Case-insensitive attribute name matching.
 	Attr string `json:"attr,omitempty"`
 
 	// AttrEquals matches elements where Attr equals this value exactly.
+	// Case-sensitive value matching.
 	AttrEquals string `json:"attr_equals,omitempty"`
 
 	// AttrContains matches elements where Attr contains this substring.
+	// Case-insensitive substring matching.
 	AttrContains string `json:"attr_contains,omitempty"`
 }
 
 // Matches returns true if the filter matches the given element.
+//
+// This method is used internally during transformation and can be used
+// directly for testing filter logic.
+//
+// Parameters:
+//   - tag: The element tag name (e.g., "div", "script")
+//   - attrs: Map of attribute names to values
+//
+// Returns true only if all non-empty filter fields match.
 func (f ElementFilter) Matches(tag string, attrs map[string]string) bool {
 	// Check tag if specified
 	if f.Tag != "" && !strings.EqualFold(f.Tag, tag) {
@@ -335,6 +503,21 @@ func (f ElementFilter) Matches(tag string, attrs map[string]string) bool {
 }
 
 // StandardExcludeFilters contains commonly excluded elements for clean content extraction.
+//
+// This pre-configured filter list excludes:
+//   - Modal dialogs and popups (role="dialog", aria-modal="true", cookie banners)
+//   - Non-content elements (script, style, noscript, iframe, svg)
+//   - Form elements (select, input, button, form)
+//   - Navigation elements (nav, footer, hr)
+//
+// Use this with TransformOptions.ExcludeFilters to quickly clean HTML for
+// content extraction or LLM consumption.
+//
+// Example:
+//
+//	clean := doc.Transform(&htmlparse.TransformOptions{
+//	    ExcludeFilters: htmlparse.StandardExcludeFilters,
+//	})
 var StandardExcludeFilters = []ElementFilter{
 	// Modal/dialog elements
 	{Attr: "role", AttrEquals: "dialog"},
@@ -362,24 +545,33 @@ var StandardExcludeFilters = []ElementFilter{
 	{Tag: "hr"},
 }
 
-// TransformOptions configures HTML transformation.
+// TransformOptions configures HTML transformation and filtering.
+//
+// Use these options to extract clean content from HTML documents,
+// remove unwanted elements, or prepare HTML for specific use cases
+// like LLM consumption or content analysis.
 type TransformOptions struct {
 	// Include only elements with these tag names.
 	// If empty, all tags are included (except those excluded).
+	// Example: []string{"p", "h1", "h2"} to keep only paragraphs and headings.
 	Include []string
 
-	// Exclude elements with these tag names (simple exclusion).
+	// Exclude elements with these tag names (simple tag-based exclusion).
+	// Example: []string{"nav", "footer"} to remove navigation and footers.
 	Exclude []string
 
-	// ExcludeFilters provides advanced element filtering.
+	// ExcludeFilters provides advanced element filtering based on attributes.
 	// Elements matching any filter will be excluded.
+	// See StandardExcludeFilters for common exclusion patterns.
 	ExcludeFilters []ElementFilter
 
 	// OnlyMainContent extracts only the main content area.
-	// Uses <main> if present, otherwise excludes nav, header, footer, aside.
+	// Uses <main> if present, otherwise uses <body> and excludes
+	// nav, header, footer, aside elements.
 	OnlyMainContent bool
 
-	// PrettyPrint formats the output HTML with indentation.
+	// PrettyPrint formats the output HTML with indentation for readability.
+	// Useful for debugging or human review.
 	PrettyPrint bool
 }
 
@@ -422,6 +614,24 @@ func nodeAttrs(n *html.Node) map[string]string {
 }
 
 // Transform returns the document HTML with transformations applied.
+//
+// This method applies filtering and formatting options to produce
+// a transformed version of the HTML. Common use cases include:
+//   - Extracting main content for LLM processing
+//   - Removing ads, modals, and navigation
+//   - Cleaning HTML for content analysis
+//   - Preparing HTML for display or archival
+//
+// If opts is nil, returns the full document with only script/style removed.
+//
+// Example:
+//
+//	// Extract clean main content
+//	clean := doc.Transform(&htmlparse.TransformOptions{
+//	    OnlyMainContent: true,
+//	    ExcludeFilters:  htmlparse.StandardExcludeFilters,
+//	    PrettyPrint:     true,
+//	})
 func (d *Document) Transform(opts *TransformOptions) string {
 	if opts == nil {
 		opts = &TransformOptions{}
@@ -470,6 +680,10 @@ func (d *Document) Transform(opts *TransformOptions) string {
 }
 
 // HTML returns the full document HTML without transformation.
+//
+// This returns the complete HTML document as parsed, including
+// all elements, scripts, styles, and formatting. For a cleaned
+// version, use Transform instead.
 func (d *Document) HTML() string {
 	var buf strings.Builder
 	html.Render(&buf, d.root)
@@ -477,6 +691,19 @@ func (d *Document) HTML() string {
 }
 
 // Text returns the plain text content of the document.
+//
+// This extracts all visible text from the document, excluding:
+//   - Script and style tag contents
+//   - Head section contents
+//   - HTML tags and attributes
+//
+// Text from different elements is separated by spaces.
+//
+// Example:
+//
+//	doc, _ := htmlparse.Parse("<html><body><h1>Title</h1><p>Content</p></body></html>")
+//	text := doc.Text()
+//	fmt.Println(text) // Output: Title Content
 func (d *Document) Text() string {
 	var buf strings.Builder
 	skipTags := map[string]bool{"script": true, "style": true, "noscript": true, "head": true}
@@ -741,16 +968,29 @@ func isInlineTextOnly(n *html.Node) bool {
 }
 
 // Branding contains brand identity information extracted from a page.
+//
+// This includes visual branding elements like logos, icons, and theme colors
+// that can be used to identify or represent the website.
 type Branding struct {
-	ColorScheme string `json:"color_scheme,omitempty"`
-	ThemeColor  string `json:"theme_color,omitempty"`
-	Logo        string `json:"logo,omitempty"`
-	Favicon     string `json:"favicon,omitempty"`
-	AppleIcon   string `json:"apple_icon,omitempty"`
+	ColorScheme string `json:"color_scheme,omitempty"` // Color scheme preference (e.g., "light dark")
+	ThemeColor  string `json:"theme_color,omitempty"`  // Primary theme color (e.g., "#ff5500")
+	Logo        string `json:"logo,omitempty"`         // Logo image URL (detected heuristically)
+	Favicon     string `json:"favicon,omitempty"`      // Favicon URL from <link rel="icon">
+	AppleIcon   string `json:"apple_icon,omitempty"`   // Apple touch icon URL
 }
 
 // Branding extracts brand identity information from the document.
-// This includes logo, favicon, theme color, and color scheme when detectable.
+//
+// This method attempts to identify visual branding elements including:
+//   - Theme colors from meta tags
+//   - Favicon and Apple touch icons from link tags
+//   - Logo images (detected heuristically from img tags with "logo" in attributes)
+//
+// Example:
+//
+//	doc, _ := htmlparse.Parse(html)
+//	brand := doc.Branding()
+//	fmt.Println(brand.ThemeColor, brand.Logo)
 func (d *Document) Branding() Branding {
 	var b Branding
 

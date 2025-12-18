@@ -11,6 +11,18 @@ type textView struct {
 }
 
 // Text creates a text view with optional Printf-style formatting.
+// This is the fundamental component for displaying text in TUI applications.
+//
+// The text view supports:
+//   - Styling methods (Fg, Bg, Bold, Italic, etc.)
+//   - Semantic styling (Success, Error, Warning, Info, Muted, Hint)
+//   - Animation effects (Rainbow, Pulse, Typewriter, Glitch, etc.)
+//
+// Example:
+//
+//	Text("Hello, %s!", userName).Fg(ColorGreen).Bold()
+//	Text("Error: %s", err).Error()
+//	Text("Loading...").Pulse(tui.NewRGB(0, 255, 0), 10)
 func Text(format string, args ...any) *textView {
 	content := format
 	if len(args) > 0 {

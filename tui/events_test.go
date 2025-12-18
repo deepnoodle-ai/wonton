@@ -68,7 +68,7 @@ func TestEventBuffering(t *testing.T) {
 			}
 			return nil
 		},
-		renderFunc: func(frame RenderFrame) {},
+		renderFunc: func() View { return Text("test") },
 	}
 
 	runtime := NewRuntime(terminal, app, 30)

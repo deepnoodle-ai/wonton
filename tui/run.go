@@ -12,6 +12,7 @@ type runConfig struct {
 	mouseTracking   bool
 	bracketedPaste  bool
 	pasteTabWidth   int
+	inputSource     InputSource
 }
 
 func defaultRunConfig() runConfig {
@@ -21,6 +22,14 @@ func defaultRunConfig() runConfig {
 		hideCursor:      true,
 		mouseTracking:   false,
 		pasteTabWidth:   0,
+	}
+}
+
+// WithInput sets a custom input source for the runtime.
+// This is primarily used for testing.
+func WithInput(source InputSource) RunOption {
+	return func(c *runConfig) {
+		c.inputSource = source
 	}
 }
 
@@ -80,9 +89,9 @@ func WithPasteTabWidth(width int) RunOption {
 // Run is the simplest way to start a Wonton application.
 // It creates a terminal, configures it, runs the application, and cleans up.
 //
-// The app parameter must implement Application (declarative) or LegacyApplication (imperative).
+// The app parameter must implement Application.
 //
-// Example (declarative - recommended):
+// Example:
 //
 //	type MyApp struct {
 //	    count int
@@ -117,9 +126,8 @@ func WithPasteTabWidth(width int) RunOption {
 func Run(app any, opts ...RunOption) error {
 	// Validate app implements required interface
 	_, isApp := app.(Application)
-	_, isLegacy := app.(LegacyApplication)
-	if !isApp && !isLegacy {
-		return fmt.Errorf("app must implement Application (View()) or LegacyApplication (HandleEvent()+Render())")
+	if !isApp {
+		return fmt.Errorf("app must implement Application (View())")
 	}
 
 	// Apply options

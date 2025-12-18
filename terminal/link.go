@@ -1,4 +1,4 @@
-// Package termlink provides OSC 8 hyperlink support for terminals.
+// Package terminal provides OSC 8 hyperlink support for terminals.
 //
 // OSC 8 is a terminal escape sequence that enables clickable hyperlinks.
 // It is supported by many modern terminals including:
@@ -16,13 +16,13 @@
 // Example usage:
 //
 //	// Simple hyperlink
-//	fmt.Print(termlink.Format("https://example.com", "Click here"))
+//	fmt.Print(terminal.Format("https://example.com", "Click here"))
 //
 //	// Hyperlink with custom ID (for grouping)
-//	fmt.Print(termlink.FormatWithID("https://example.com", "Click here", "link1"))
+//	fmt.Print(terminal.FormatWithID("https://example.com", "Click here", "link1"))
 //
 //	// Check if URL is valid first
-//	if err := termlink.ValidateURL("https://example.com"); err != nil {
+//	if err := terminal.ValidateURL("https://example.com"); err != nil {
 //	    log.Printf("Invalid URL: %v", err)
 //	}
 package terminal

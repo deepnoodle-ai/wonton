@@ -4,7 +4,44 @@ import (
 	"fmt"
 	"image"
 	"strings"
+	"sync"
 )
+
+// textAreaRegistry manages transient state for TextAreas.
+var textAreaRegistry = &textAreaRegistryImpl{
+	states: make(map[string]*textAreaState),
+}
+
+type textAreaRegistryImpl struct {
+	mu     sync.Mutex
+	states map[string]*textAreaState
+}
+
+type textAreaState struct {
+	scrollY    int
+	cursorLine int
+}
+
+func (r *textAreaRegistryImpl) Clear() {
+	// We do NOT clear the map here because we want state to persist across frames.
+	// However, to prevent memory leaks from unused IDs, we might want a mechanism to prune.
+	// For now, we follow the pattern of persisting state.
+	// TODO: Implement garbage collection for stale IDs?
+}
+
+func (r *textAreaRegistryImpl) Get(id string) *textAreaState {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	
+	if state, exists := r.states[id]; exists {
+		return state
+	}
+	
+	// Create new default state
+	newState := &textAreaState{}
+	r.states[id] = newState
+	return newState
+}
 
 // textAreaView is a high-level component for displaying scrollable text content
 // with automatic focus-aware styling and keyboard scroll handling.
@@ -240,12 +277,17 @@ func (t *textAreaView) getScrollY() int {
 	if t.scrollY != nil {
 		return *t.scrollY
 	}
+	if t.id != "" {
+		return textAreaRegistry.Get(t.id).scrollY
+	}
 	return t.internal
 }
 
 func (t *textAreaView) setScrollY(y int) {
 	if t.scrollY != nil {
 		*t.scrollY = y
+	} else if t.id != "" {
+		textAreaRegistry.Get(t.id).scrollY = y
 	} else {
 		t.internal = y
 	}
@@ -255,12 +297,17 @@ func (t *textAreaView) getCursorLine() int {
 	if t.cursorLine != nil {
 		return *t.cursorLine
 	}
+	if t.id != "" {
+		return textAreaRegistry.Get(t.id).cursorLine
+	}
 	return t.internalCursorLine
 }
 
 func (t *textAreaView) setCursorLine(line int) {
 	if t.cursorLine != nil {
 		*t.cursorLine = line
+	} else if t.id != "" {
+		textAreaRegistry.Get(t.id).cursorLine = line
 	} else {
 		t.internalCursorLine = line
 	}

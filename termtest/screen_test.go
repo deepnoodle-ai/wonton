@@ -1,6 +1,7 @@
 package termtest
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -580,4 +581,53 @@ func TestScreenOverwriteContinuationCell(t *testing.T) {
 	// Should replace the continuation
 	cell1 := s.Cell(1, 0)
 	assert.Equal(t, 'X', cell1.Char)
+}
+// Example demonstrates basic screen usage.
+func ExampleScreen() {
+	screen := NewScreen(40, 5)
+	screen.Write([]byte("Hello, World!"))
+	fmt.Println(screen.Row(0))
+	// Output: Hello, World!
+}
+
+// Example of processing ANSI sequences for styled text.
+func ExampleScreen_Write() {
+	screen := NewScreen(40, 3)
+	screen.Write([]byte("\x1b[1mBold\x1b[0m and \x1b[32mGreen\x1b[0m"))
+	
+	// Check the text content (ANSI removed)
+	fmt.Println(screen.Row(0))
+	
+	// Check that first character is bold
+	cell := screen.Cell(0, 0)
+	fmt.Printf("Bold: %v\n", cell.Style.Bold)
+	
+	// Output:
+	// Bold and Green
+	// Bold: true
+}
+
+// Example of using Screen with cursor position.
+func ExampleScreen_Cursor() {
+	screen := NewScreen(20, 5)
+	screen.Write([]byte("Hello"))
+	
+	x, y := screen.Cursor()
+	fmt.Printf("Cursor at (%d, %d)\n", x, y)
+	
+	// Output:
+	// Cursor at (5, 0)
+}
+
+// Example of checking screen content.
+func ExampleScreen_Contains() {
+	screen := NewScreen(40, 5)
+	screen.Write([]byte("The quick brown fox"))
+	
+	fmt.Println(screen.Contains("quick"))
+	fmt.Println(screen.Contains("lazy"))
+	
+	// Output:
+	// true
+	// false
 }

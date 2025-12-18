@@ -7,19 +7,40 @@ import (
 	"time"
 )
 
-// TagOptions configures the Tags command.
+// TagOptions configures the Tags command with filtering and sorting options.
 type TagOptions struct {
-	// Pattern filters tags by glob pattern (e.g., "v*").
+	// Pattern filters tags by glob pattern (e.g., "v*" for version tags).
 	Pattern string
-	// Sort specifies the sort order. Use "-creatordate" for newest first.
+	// Sort specifies the sort order (e.g., "-creatordate" for newest first).
+	// Use a minus prefix for descending order.
 	Sort string
-	// Contains filters tags containing this commit.
+	// Contains filters to tags that contain the specified commit.
+	// Useful for finding which tags include a particular commit.
 	Contains string
-	// PointsAt filters tags pointing at this commit.
+	// PointsAt filters to tags that point directly at the specified commit.
+	// Unlike Contains, this only matches tags pointing at the exact commit.
 	PointsAt string
 }
 
-// Tags returns the list of tags.
+// Tags returns the list of tags matching the specified options.
+//
+// By default, returns all tags. Use TagOptions to filter by pattern or commit.
+//
+// Examples:
+//
+//	// Get all tags
+//	tags, err := repo.Tags(ctx, git.TagOptions{})
+//
+//	// Get version tags sorted by date
+//	tags, err := repo.Tags(ctx, git.TagOptions{
+//	    Pattern: "v*",
+//	    Sort:    "-creatordate",
+//	})
+//
+//	// Get tags containing a specific commit
+//	tags, err := repo.Tags(ctx, git.TagOptions{
+//	    Contains: "abc1234",
+//	})
 func (r *Repository) Tags(ctx context.Context, opts TagOptions) ([]Tag, error) {
 	// Format: refname, objectname, type, taggername, taggeremail, taggerdate, subject
 	format := "%(refname:short)%00%(objectname:short)%00%(*objectname:short)%00%(objecttype)%00%(taggername)%00%(taggeremail)%00%(creatordate:unix)%00%(subject)"
@@ -90,7 +111,8 @@ func (r *Repository) Tags(ctx context.Context, opts TagOptions) ([]Tag, error) {
 	return tags, nil
 }
 
-// LatestTag returns the most recent tag.
+// LatestTag returns the most recent tag by creation date.
+// Returns nil if the repository has no tags.
 func (r *Repository) LatestTag(ctx context.Context) (*Tag, error) {
 	tags, err := r.Tags(ctx, TagOptions{Sort: "-creatordate"})
 	if err != nil {
@@ -102,13 +124,17 @@ func (r *Repository) LatestTag(ctx context.Context) (*Tag, error) {
 	return &tags[0], nil
 }
 
-// TagsForCommit returns tags pointing at a specific commit.
+// TagsForCommit returns tags pointing directly at a specific commit.
+// The ref can be a commit hash, branch, or any valid git reference.
 func (r *Repository) TagsForCommit(ctx context.Context, ref string) ([]Tag, error) {
 	return r.Tags(ctx, TagOptions{PointsAt: ref})
 }
 
 // Describe returns a human-readable name for a commit based on tags.
-// Returns something like "v1.0.0-3-g1234567".
+//
+// The format is "tag-distance-ghash" where distance is the number of commits
+// since the tag. If the commit is tagged, returns just the tag name.
+// Returns something like "v1.0.0-3-g1234567" or "v1.0.0".
 func (r *Repository) Describe(ctx context.Context, ref string) (string, error) {
 	args := []string{"describe", "--tags", "--always"}
 	if ref != "" {
@@ -124,7 +150,10 @@ func (r *Repository) Describe(ctx context.Context, ref string) (string, error) {
 }
 
 // DescribeLong returns the long form description.
-// Returns something like "v1.0.0-0-g1234567" even for tagged commits.
+//
+// Unlike Describe, this always includes the distance and hash, even for
+// tagged commits. Returns something like "v1.0.0-0-g1234567" for tagged
+// commits and "v1.0.0-3-g1234567" for commits after a tag.
 func (r *Repository) DescribeLong(ctx context.Context, ref string) (string, error) {
 	args := []string{"describe", "--tags", "--long", "--always"}
 	if ref != "" {

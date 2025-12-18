@@ -2,6 +2,7 @@ package termtest
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -277,4 +278,36 @@ func TestRecorderResetMultipleTimes(t *testing.T) {
 
 	assert.Equal(t, 1, len(rec.Events()))
 	assert.Equal(t, "Third", string(rec.Events()[0].Data))
+}
+
+// Example of capturing terminal output.
+func ExampleCapture() {
+	capture := NewCapture(nil)
+	
+	// Simulate some terminal output
+	capture.Write([]byte("Processing...\n"))
+	capture.Write([]byte("\x1b[32mSuccess!\x1b[0m"))
+	
+	// Convert to screen
+	screen := capture.Screen(40, 5)
+	fmt.Println(screen.Row(0))
+	fmt.Println(screen.Row(1))
+	
+	// Output:
+	// Processing...
+	// Success!
+}
+
+// Example of using Recorder to capture events.
+func ExampleRecorder() {
+	recorder := NewRecorder(40, 5)
+	
+	recorder.Write([]byte("Event 1\n"))
+	recorder.Write([]byte("Event 2"))
+	
+	events := recorder.Events()
+	fmt.Printf("Recorded %d events\n", len(events))
+	
+	// Output:
+	// Recorded 2 events
 }

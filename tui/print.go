@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/deepnoodle-ai/wonton/termtest"
 	"golang.org/x/term"
 )
 
@@ -214,6 +215,44 @@ func Sprint(view View, opts ...PrintOption) string {
 	opts = append([]PrintOption{WithOutput(&buf)}, opts...)
 	Print(view, opts...)
 	return buf.String()
+}
+
+// SprintScreen renders a view and returns a termtest.Screen for assertions.
+// This is a convenience function for testing that combines Sprint with
+// termtest.Screen parsing, making it easy to write precise visual tests.
+//
+// Example:
+//
+//	func TestButton(t *testing.T) {
+//	    btn := Button("Submit", func() {})
+//	    screen := SprintScreen(btn, WithWidth(20))
+//	    termtest.AssertRowContains(t, screen, 0, "Submit")
+//	}
+func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
+	cfg := defaultPrintConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	// Get view dimensions
+	_, viewHeight := view.size(cfg.width, 0)
+	if viewHeight == 0 {
+		viewHeight = 1
+	}
+
+	// Use configured height or view's natural height + 1 for trailing newline
+	height := cfg.height
+	if height == 0 {
+		height = viewHeight + 1
+	}
+
+	// Render to string
+	output := Sprint(view, opts...)
+
+	// Create screen and write output
+	screen := termtest.NewScreen(cfg.width, height)
+	screen.Write([]byte(output))
+	return screen
 }
 
 // LivePrinter renders views to a fixed region of the terminal that updates in place.

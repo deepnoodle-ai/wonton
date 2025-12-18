@@ -536,3 +536,192 @@ func TestCrawler_MaxURLsLimit(t *testing.T) {
 	stats := crawler.GetStats()
 	assert.LessOrEqual(t, stats.GetProcessed(), int64(3))
 }
+
+// Example demonstrates basic crawler usage with a mock fetcher.
+func Example() {
+	// Create a mock fetcher for demonstration
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://example.com", &fetch.Response{
+		URL:  "https://example.com",
+		HTML: "<html><body><h1>Example</h1></body></html>",
+		Links: []fetch.Link{
+			{URL: "/about"},
+		},
+	})
+	mockFetcher.AddResponse("https://example.com/about", &fetch.Response{
+		URL:   "https://example.com/about",
+		HTML:  "<html><body><h1>About Us</h1></body></html>",
+		Links: []fetch.Link{},
+	})
+
+	// Create the crawler
+	c, err := New(Options{
+		Workers:        1,
+		MaxURLs:        10,
+		RequestDelay:   time.Millisecond * 10,
+		DefaultFetcher: mockFetcher,
+		FollowBehavior: FollowSameDomain,
+	})
+	if err != nil {
+		fmt.Printf("Error creating crawler: %v\n", err)
+		return
+	}
+
+	// Crawl and process results
+	ctx := context.Background()
+	err = c.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *Result) {
+		if result.Error != nil {
+			fmt.Printf("Error crawling %s: %v\n", result.URL, result.Error)
+			return
+		}
+		fmt.Printf("Crawled: %s\n", result.URL)
+	})
+
+	if err != nil {
+		fmt.Printf("Crawl error: %v\n", err)
+		return
+	}
+
+	// Print statistics
+	stats := c.GetStats()
+	fmt.Printf("Processed: %d, Succeeded: %d, Failed: %d\n",
+		stats.GetProcessed(), stats.GetSucceeded(), stats.GetFailed())
+	// Output:
+	// Crawled: https://example.com
+	// Crawled: https://example.com/about
+	// Processed: 2, Succeeded: 2, Failed: 0
+}
+
+// Example_withParser demonstrates using a custom parser to extract structured data.
+func Example_withParser() {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://blog.example.com/post", &fetch.Response{
+		URL:   "https://blog.example.com/post",
+		HTML:  "<html><head><title>My Blog Post</title></head><body><article>Content here</article></body></html>",
+		Links: []fetch.Link{},
+	})
+
+	// Create a simple parser
+	mockParser := NewMockParser()
+	mockParser.SetParseFunc(func(ctx context.Context, page *fetch.Response) (any, error) {
+		return map[string]string{
+			"url":   page.URL,
+			"title": "My Blog Post",
+		}, nil
+	})
+
+	c, err := New(Options{
+		Workers:        1,
+		MaxURLs:        5,
+		DefaultFetcher: mockFetcher,
+		DefaultParser:  mockParser,
+		FollowBehavior: FollowNone,
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	ctx := context.Background()
+	err = c.Crawl(ctx, []string{"https://blog.example.com/post"}, func(ctx context.Context, result *Result) {
+		if result.Error != nil {
+			fmt.Printf("Error: %v\n", result.Error)
+			return
+		}
+		if result.Parsed != nil {
+			data := result.Parsed.(map[string]string)
+			fmt.Printf("Parsed title: %s\n", data["title"])
+		}
+	})
+
+	if err != nil {
+		fmt.Printf("Crawl error: %v\n", err)
+	}
+	// Output:
+	// Parsed title: My Blog Post
+}
+
+// Example_withRules demonstrates using parser rules to match specific domains.
+func Example_withRules() {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://blog.example.com", &fetch.Response{
+		URL:   "https://blog.example.com",
+		HTML:  "<html><body>Blog content</body></html>",
+		Links: []fetch.Link{},
+	})
+
+	// Create a parser for blog domains
+	blogParser := NewMockParser()
+	blogParser.SetParseFunc(func(ctx context.Context, page *fetch.Response) (any, error) {
+		return map[string]string{"type": "blog"}, nil
+	})
+
+	// Create a rule to match blog subdomains using glob pattern
+	rule := NewParserRule("blog.example.com", blogParser,
+		WithParserMatchType(MatchExact),
+		WithParserPriority(10))
+
+	c, err := New(Options{
+		Workers:        1,
+		MaxURLs:        5,
+		DefaultFetcher: mockFetcher,
+		ParserRules:    []*ParserRule{rule},
+		FollowBehavior: FollowNone,
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	ctx := context.Background()
+	err = c.Crawl(ctx, []string{"https://blog.example.com"}, func(ctx context.Context, result *Result) {
+		if result.Parsed != nil {
+			data := result.Parsed.(map[string]string)
+			fmt.Printf("Type: %s\n", data["type"])
+		}
+	})
+
+	if err != nil {
+		fmt.Printf("Crawl error: %v\n", err)
+	}
+	// Output:
+	// Type: blog
+}
+
+// Example_withCache demonstrates using a cache to avoid redundant requests.
+func Example_withCache() {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://example.com", &fetch.Response{
+		URL:   "https://example.com",
+		HTML:  "<html><body>Cached content</body></html>",
+		Links: []fetch.Link{},
+	})
+
+	// Create an in-memory cache and pre-populate it
+	htmlCache := cache.NewInMemoryCache()
+	ctx := context.Background()
+	_ = htmlCache.Set(ctx, "https://example.com", []byte("<html><body>Cached content</body></html>"))
+
+	// Create crawler with cache
+	c, err := New(Options{
+		Workers:        1,
+		MaxURLs:        5,
+		DefaultFetcher: mockFetcher,
+		Cache:          htmlCache,
+		FollowBehavior: FollowNone,
+	})
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	// Crawl - will use cached content instead of fetching
+	_ = c.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *Result) {
+		if result.Response != nil {
+			fmt.Println("Loaded from cache")
+		}
+	})
+
+	// Output:
+	// Loaded from cache
+}

@@ -1,20 +1,32 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
-// Error types for CLI operations
+// This file defines error types for CLI operations.
 
-// HelpRequested indicates help was shown (not an error).
+// HelpRequested indicates help was shown to the user (not a true error).
+//
+// This is returned when the user passes --help or -h, or when help is
+// explicitly displayed. Check for it with IsHelpRequested:
+//
+//	if cli.IsHelpRequested(err) {
+//	    os.Exit(0)
+//	}
 type HelpRequested struct{}
 
 func (e *HelpRequested) Error() string {
 	return "help requested"
 }
 
-// ExitError indicates the command should exit with a specific code.
+// ExitError indicates the command should exit with a specific exit code.
+//
+// Use Exit to create an ExitError:
+//
+//	return cli.Exit(2)  // Exit with code 2
 type ExitError struct {
 	Code    int
 	Message string
@@ -26,10 +38,17 @@ func (e *ExitError) Error() string {
 
 // Exit returns an error that causes the CLI to exit with the given code.
 func Exit(code int) error {
-	return &ExitError{Code: code}
+	return &ExitError{Code: code, Message: fmt.Sprintf("exit status %d", code)}
 }
 
-// CommandError is a rich error with hints and codes.
+// CommandError is a rich error with hints, details, and error codes.
+//
+// Use Error or Errorf to create a CommandError, then add hints and details:
+//
+//	return cli.Errorf("failed to connect to %s", host).
+//	    Hint("Check your network connection and firewall settings").
+//	    Detail("Timeout: %s", timeout).
+//	    Code("ERR_CONNECTION")
 type CommandError struct {
 	message string
 	hint    string
@@ -37,7 +56,9 @@ type CommandError struct {
 	details []string
 }
 
-// Error creates a new command error.
+// Error creates a new command error with the given message.
+//
+//	return cli.Error("configuration file not found")
 func Error(message string) *CommandError {
 	return &CommandError{message: message}
 }
@@ -89,18 +110,26 @@ func (e *CommandError) ErrorCode() string {
 }
 
 // IsHelpRequested checks if the error is a help request.
+// This function supports wrapped errors via errors.As.
 func IsHelpRequested(err error) bool {
-	_, ok := err.(*HelpRequested)
-	return ok
+	var helpErr *HelpRequested
+	return errors.As(err, &helpErr)
 }
 
-// GetExitCode returns the exit code for an error.
+// GetExitCode returns the appropriate exit code for an error.
+// This function supports wrapped errors via errors.As.
+//
+// Returns:
+//   - 0 if err is nil or HelpRequested
+//   - The code from ExitError if err is an ExitError
+//   - 1 for all other errors
 func GetExitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	if e, ok := err.(*ExitError); ok {
-		return e.Code
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.Code
 	}
 	if IsHelpRequested(err) {
 		return 0
