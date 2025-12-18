@@ -697,23 +697,85 @@ String flags additionally support:
 
 Note: `IsHelpRequested` and `GetExitCode` use `errors.As` internally, so they work correctly with wrapped errors (e.g., `fmt.Errorf("failed: %w", cli.Exit(1))`).
 
-## Tips
+## Argument Parsing
 
-### Flag Values Starting with Dash
+The cli package uses a definition-driven parser that understands your command
+structure. This enables flexible flag placement while avoiding ambiguity.
 
-Flag values that look like negative numbers are handled correctly:
+### Flag Placement
+
+Flags can appear before or after the command name:
 
 ```bash
-myapp --count -5      # count = -5
+myapp --verbose build          # Global flag before command
+myapp build --verbose          # Flag after command
+myapp --config=app.yaml build  # Both work
+myapp -v build --output=bin    # Mixed placement
+```
+
+### The End-of-Flags Marker (`--`)
+
+The `--` marker is a POSIX convention that signals "stop parsing flags."
+Everything after `--` is treated as positional arguments, not flags.
+
+**Why it exists:**
+
+```bash
+# Problem: How do you pass a value that looks like a flag?
+rm -rf                    # Interpreted as flags -r and -f
+rm "-rf"                  # Still interpreted as flags
+rm -- -rf                 # Correct! Removes file literally named "-rf"
+
+# Real-world examples:
+grep -- --help file.txt   # Search for literal "--help" in file.txt
+git checkout -- file.txt  # Disambiguate branch name from file path
+ssh host -- ls -la        # Pass "ls -la" to remote shell
+```
+
+**In the cli package:**
+
+```bash
+myapp --verbose -- -weirdfile   # --verbose is a flag, -weirdfile is positional
+myapp -- --help                 # Runs "help" command (not help flag)
+myapp -- users list             # Group subcommand still resolves correctly
+myapp -- foo bar baz            # All three are positional args
+```
+
+Commands and group subcommands are still resolved after `--`:
+
+```bash
+myapp -- run                    # Runs the "run" command
+myapp -- users list             # Runs "users list" subcommand
+myapp -- unknown arg1 arg2      # "unknown" passed to root handler as positional
+```
+
+### Negative Numbers
+
+Values that look like negative numbers are handled correctly:
+
+```bash
+myapp --count -5      # count = -5 (not a flag)
 myapp --offset -10    # offset = -10
 myapp --rate -.5      # rate = -0.5
+myapp -c -5 run       # Short flag with negative value, then command
 ```
 
-Use `--` to separate flags from positional arguments that start with `-`:
+The parser recognizes `-N` and `-.N` patterns (where N is a digit) as values,
+not flags.
+
+### Command Names Take Precedence
+
+When a flag value matches a command name, the command takes precedence:
 
 ```bash
-myapp -- -filename    # "-filename" is a positional arg, not a flag
+myapp --config run    # "run" is treated as command, --config has no value → ERROR
+myapp --config=run    # "run" is the value for --config ✓
 ```
+
+This is by design - command resolution happens before flag-value association.
+Use `--flag=value` syntax when passing values that might match command names.
+
+## Tips
 
 ### Help Everywhere
 

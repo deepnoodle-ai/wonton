@@ -381,14 +381,28 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		a.isInteractive = isTerminal(os.Stdin) && isTerminal(os.Stdout)
 	}
 
-	// Parse command and flags
-	cmdName, cmdArgs, err := a.parseArgs(args)
+	// Parse command and arguments using definition-driven parser
+	p := newParser(a)
+	result, err := p.parse(args)
 	if err != nil {
 		return err
 	}
 
+	// Check for help/version in global flags
+	for _, gf := range result.GlobalFlags {
+		if gf == "--help" || gf == "-h" {
+			return a.showHelp()
+		}
+		if gf == "--version" {
+			if a.version != "" {
+				fmt.Fprintln(a.stdout, a.version)
+			}
+			return nil
+		}
+	}
+
 	// Handle built-in commands
-	switch cmdName {
+	switch result.Command {
 	case "help":
 		return a.showHelp()
 	case "version":
@@ -398,9 +412,14 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	// Build the full argument list for the command.
+	// This includes any global flags (which the command's parseFlags will process)
+	// followed by the command's own arguments.
+	cmdArgs := append(result.GlobalFlags, result.CommandArgs...)
+
 	// Find the command (or use root handler)
 	var cmd *Command
-	if cmdName == "" {
+	if result.Command == "" && result.Group == "" {
 		if a.handler == nil && a.commands[""] == nil {
 			return a.showHelp()
 		}
@@ -410,27 +429,79 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		} else {
 			cmd = a.rootCommand()
 		}
-	} else {
-		var subCmdArgs []string
-		var err error
-		cmd, subCmdArgs, err = a.findCommand(cmdName, cmdArgs)
-		if err != nil {
-			// If command not found but app has root handler,
-			// treat first arg as positional arg to root handler
-			if rootCmd := a.commands[""]; rootCmd != nil {
-				cmd = rootCmd
-				// Put cmdName back as first arg
-				cmdArgs = append([]string{cmdName}, cmdArgs...)
-			} else if a.handler != nil {
-				cmd = a.rootCommand()
-				// Put cmdName back as first arg
-				cmdArgs = append([]string{cmdName}, cmdArgs...)
-			} else {
-				return err
+	} else if result.Group != "" {
+		// Group command
+		group := a.groups[result.Group]
+		if group == nil {
+			return fmt.Errorf("unknown group: %s", result.Group)
+		}
+		if result.Command == "" {
+			// Check if there are remaining args that might be an unknown subcommand
+			if len(result.CommandArgs) > 0 {
+				firstArg := result.CommandArgs[0]
+				// Check if it's a help flag
+				if firstArg == "--help" || firstArg == "-h" {
+					return group.showHelp()
+				}
+				// Not a flag - could be an unknown subcommand
+				if !looksLikeFlag(firstArg) {
+					if group.handler == nil {
+						return fmt.Errorf("unknown subcommand '%s' for group '%s'", firstArg, result.Group)
+					}
+					// Group has a handler, treat as positional arg
+				} else if group.handler == nil {
+					// First arg is a flag but group has no handler - requires a subcommand
+					return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+				}
+			} else if group.handler == nil {
+				// No args and no handler - requires a subcommand
+				return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+			}
+			// Group with handler
+			cmd = &Command{
+				name:       result.Group,
+				app:        a,
+				handler:    group.handler,
+				flags:      group.flags,
+				args:       group.args,
+				middleware: group.middleware,
+				validators: group.validators,
 			}
 		} else {
-			// Update cmdArgs if we consumed a subcommand name
-			cmdArgs = subCmdArgs
+			// Group with subcommand
+			cmd = group.commands[result.Command]
+			if cmd == nil {
+				return fmt.Errorf("unknown command: %s %s", result.Group, result.Command)
+			}
+		}
+	} else {
+		// Direct command
+		cmd = a.commands[result.Command]
+		if cmd == nil {
+			// Check aliases
+			for _, c := range a.commands {
+				for _, alias := range c.aliases {
+					if alias == result.Command {
+						cmd = c
+						break
+					}
+				}
+				if cmd != nil {
+					break
+				}
+			}
+		}
+		if cmd == nil {
+			// Command not found - if app has root handler, treat as positional arg
+			if rootCmd := a.commands[""]; rootCmd != nil {
+				cmd = rootCmd
+				cmdArgs = append([]string{result.Command}, cmdArgs...)
+			} else if a.handler != nil {
+				cmd = a.rootCommand()
+				cmdArgs = append([]string{result.Command}, cmdArgs...)
+			} else {
+				return fmt.Errorf("unknown command: %s", result.Command)
+			}
 		}
 	}
 
@@ -477,54 +548,6 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	return handler(execCtx)
 }
 
-// parseArgs separates the command name from its arguments, extracting any
-// global flags that appear before the command.
-func (a *App) parseArgs(args []string) (string, []string, error) {
-	if len(args) == 0 {
-		return "", nil, nil
-	}
-
-	// Find the first non-flag argument (the command name).
-	// This allows global flags to appear before the command:
-	//   myapp -v run
-	//   myapp --verbose run arg1
-	var cmdIndex int
-	for cmdIndex = 0; cmdIndex < len(args); cmdIndex++ {
-		arg := args[cmdIndex]
-		if !strings.HasPrefix(arg, "-") {
-			break
-		}
-		// Skip the value for non-bool global flags
-		if strings.HasPrefix(arg, "--") && !strings.Contains(arg, "=") {
-			name := strings.TrimPrefix(arg, "--")
-			if f := a.findGlobalFlag(name); f != nil {
-				if _, isBool := f.GetDefault().(bool); !isBool {
-					cmdIndex++ // skip the value
-				}
-			}
-		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 && !strings.HasPrefix(arg, "--") {
-			// Short flag - check if last char needs a value
-			shorts := arg[1:]
-			lastShort := string(shorts[len(shorts)-1])
-			if f := a.findGlobalFlagByShort(lastShort); f != nil {
-				if _, isBool := f.GetDefault().(bool); !isBool {
-					cmdIndex++ // skip the value
-				}
-			}
-		}
-	}
-
-	if cmdIndex >= len(args) {
-		// All args are flags, no command
-		return "", args, nil
-	}
-
-	// Return command name and all remaining args (including leading flags for the command to parse).
-	// Read cmdName first since append may modify the underlying array.
-	cmdName := args[cmdIndex]
-	remaining := append(args[:cmdIndex:cmdIndex], args[cmdIndex+1:]...)
-	return cmdName, remaining, nil
-}
 
 // findGlobalFlag looks up a global flag by name.
 func (a *App) findGlobalFlag(name string) Flag {

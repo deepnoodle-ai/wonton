@@ -3524,3 +3524,389 @@ func TestGroupActionHelpFlag(t *testing.T) {
 	err := app.ExecuteArgs([]string{"users", "--help"})
 	assert.True(t, IsHelpRequested(err))
 }
+
+// Tests for robust argument parsing edge cases
+
+func TestEndOfFlagsMarkerSelectsCommand(t *testing.T) {
+	var executed bool
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// -- should end flag parsing and treat "run" as the command
+	err := app.ExecuteArgs([]string{"--", "run"})
+	assert.NoError(t, err)
+	assert.True(t, executed, "run command should have executed")
+}
+
+func TestEndOfFlagsWithFlagLikeCommand(t *testing.T) {
+	var executed bool
+	app := New("test").Description("Test")
+	// Edge case: command name that looks like a flag
+	app.Command("-x").
+		Description("Command with flag-like name").
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// Without --, "-x" would be treated as a flag
+	// With --, it should be treated as the command
+	err := app.ExecuteArgs([]string{"--", "-x"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+}
+
+func TestCommandLevelFlagBeforeCommand(t *testing.T) {
+	var executed bool
+	var configValue string
+
+	app := New("test").Description("Test")
+	app.Command("run").
+		Description("Run something").
+		Flags(&StringFlag{Name: "config", Short: "c"}).
+		Run(func(ctx *Context) error {
+			executed = true
+			configValue = ctx.String("config")
+			return nil
+		})
+
+	// --config is a command-level flag appearing before "run"
+	// Should resolve "run" as command and pass --config to it
+	err := app.ExecuteArgs([]string{"--config", "myconfig.yaml", "run"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, "myconfig.yaml", configValue)
+}
+
+func TestNegativeNumberNotTreatedAsFlag(t *testing.T) {
+	var executed bool
+	var countValue int
+
+	app := New("test").Description("Test")
+	app.GlobalFlags(&IntFlag{Name: "count", Short: "c"})
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			executed = true
+			countValue = ctx.Int("count")
+			return nil
+		})
+
+	// -1 should be parsed as the value for --count, not as a flag
+	// "run" should be the command
+	err := app.ExecuteArgs([]string{"--count", "-1", "run"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, -1, countValue)
+}
+
+func TestNegativeNumberWithShortFlag(t *testing.T) {
+	var executed bool
+	var countValue int
+
+	app := New("test").Description("Test")
+	app.GlobalFlags(&IntFlag{Name: "count", Short: "c"})
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			executed = true
+			countValue = ctx.Int("count")
+			return nil
+		})
+
+	// -c -5 should parse -5 as the value, not as flags
+	err := app.ExecuteArgs([]string{"-c", "-5", "run"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, -5, countValue)
+}
+
+func TestCommandAfterUnknownFlagWithValue(t *testing.T) {
+	var executed bool
+	var presetValue string
+
+	app := New("test").Description("Test")
+	app.Main().
+		Flags(&StringFlag{Name: "preset", Short: "p", Value: "default"}).
+		Run(func(ctx *Context) error {
+			executed = true
+			presetValue = ctx.String("preset")
+			return nil
+		})
+
+	// --preset is a Main-level flag, not a global flag
+	// The parser should handle this correctly
+	err := app.ExecuteArgs([]string{"--preset", "neon"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, "neon", presetValue)
+}
+
+func TestShortFlagWithValueBeforeCommand(t *testing.T) {
+	var executed bool
+	var presetValue string
+
+	app := New("test").Description("Test")
+	app.Main().
+		Flags(&StringFlag{Name: "preset", Short: "p", Value: "default"}).
+		Run(func(ctx *Context) error {
+			executed = true
+			presetValue = ctx.String("preset")
+			return nil
+		})
+
+	// -p is a Main-level flag
+	err := app.ExecuteArgs([]string{"-p", "warm"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, "warm", presetValue)
+}
+
+func TestEndOfFlagsPreservesUnknownToken(t *testing.T) {
+	var executed bool
+	var args []string
+
+	app := New("test").Description("Test").
+		Run(func(ctx *Context) error {
+			executed = true
+			args = ctx.Args()
+			return nil
+		})
+
+	// "foo" is not a command, should be passed as positional arg
+	err := app.ExecuteArgs([]string{"--", "foo"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, []string{"foo"}, args)
+}
+
+func TestEndOfFlagsWithMultiplePositionals(t *testing.T) {
+	var executed bool
+	var args []string
+
+	app := New("test").Description("Test").
+		Run(func(ctx *Context) error {
+			executed = true
+			args = ctx.Args()
+			return nil
+		})
+
+	// All tokens after -- should be preserved
+	err := app.ExecuteArgs([]string{"--", "foo", "bar", "baz"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, []string{"foo", "bar", "baz"}, args)
+}
+
+func TestEndOfFlagsWithGroupSubcommand(t *testing.T) {
+	var executed bool
+
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+	// -- should still allow group subcommand resolution
+	err := app.ExecuteArgs([]string{"--", "users", "list"})
+	assert.NoError(t, err)
+	assert.True(t, executed, "users list command should have executed")
+}
+
+func TestUnknownFlagBeforeGroupSubcommand(t *testing.T) {
+	var executed bool
+	var flagValue string
+
+	app := New("test").Description("Test")
+	group := app.Group("users").Description("User management")
+	group.Command("list").
+		Description("List users").
+		Flags(&StringFlag{Name: "format", Short: "f"}).
+		Run(func(ctx *Context) error {
+			executed = true
+			flagValue = ctx.String("format")
+			return nil
+		})
+
+	// --format is a command-level flag appearing before "users list"
+	err := app.ExecuteArgs([]string{"--format", "json", "users", "list"})
+	assert.NoError(t, err)
+	assert.True(t, executed)
+	assert.Equal(t, "json", flagValue)
+}
+
+func TestGroupWithFlagButNoHandler(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Group("users").
+		Description("User management").
+		Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error { return nil })
+
+	// "users --foo" with no group handler should error clearly
+	err := app.ExecuteArgs([]string{"users", "--foo"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a subcommand")
+}
+
+// Test: Pre-command unknown flag with value that matches a command name
+// Issue: `app --config run` where --config is a command-level flag intended to
+// take "run" as its value, but "run" is also a command name.
+//
+// Current behavior: "run" is parsed as the command, --config is passed to it
+// without a value, which causes a "requires a value" error.
+//
+// This is actually correct behavior - when a token matches a known command,
+// it takes precedence. Users should use --config=run to disambiguate.
+func TestPreCommandFlagWithCommandNameValue(t *testing.T) {
+	app := New("test").Description("Test")
+
+	// "run" is both a command name AND a potential flag value
+	app.Command("run").
+		Description("Run something").
+		Flags(&StringFlag{Name: "config", Short: "c"}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
+
+	// Ambiguous case: --config run
+	// Parser treats "run" as the command, --config has no value
+	// Command's flag parser then errors because --config requires a value
+	err := app.ExecuteArgs([]string{"--config", "run"})
+
+	// This errors because --config was passed without a value
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a value")
+}
+
+// Test: Same ambiguity but with optional flag (has default)
+// Even with a default, if you specify --config, you must provide a value.
+// This is standard CLI behavior - specifying a flag implies providing a value.
+func TestPreCommandFlagWithDefaultAndCommandNameValue(t *testing.T) {
+	app := New("test").Description("Test")
+
+	app.Command("run").
+		Description("Run something").
+		Flags(&StringFlag{Name: "config", Short: "c", Value: "default.yaml"}).
+		Run(func(ctx *Context) error {
+			return nil
+		})
+
+	// --config run: "run" is the command, --config still requires a value
+	// Even though --config has a default, specifying it means you want to set it
+	err := app.ExecuteArgs([]string{"--config", "run"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a value")
+}
+
+// Test: Command runs fine without the flag (uses default)
+func TestCommandWithDefaultFlagNotSpecified(t *testing.T) {
+	var configValue string
+
+	app := New("test").Description("Test")
+
+	app.Command("run").
+		Description("Run something").
+		Flags(&StringFlag{Name: "config", Short: "c", Value: "default.yaml"}).
+		Run(func(ctx *Context) error {
+			configValue = ctx.String("config")
+			return nil
+		})
+
+	// Just "run" without --config uses the default
+	err := app.ExecuteArgs([]string{"run"})
+	assert.NoError(t, err)
+	assert.Equal(t, "default.yaml", configValue)
+}
+
+// Test: User explicitly uses = syntax to disambiguate
+func TestPreCommandFlagWithEqualsAvoidAmbiguity(t *testing.T) {
+	var executed string
+	var configValue string
+
+	app := New("test").Description("Test")
+
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			executed = "run-cmd"
+			return nil
+		})
+
+	// Root handler with --config flag
+	app.Main().
+		Flags(&StringFlag{Name: "config", Short: "c"}).
+		Run(func(ctx *Context) error {
+			executed = "root"
+			configValue = ctx.String("config")
+			return nil
+		})
+
+	// Using --config=run should unambiguously set config to "run"
+	// and run the root handler (no command specified)
+	err := app.ExecuteArgs([]string{"--config=run"})
+	assert.NoError(t, err)
+	assert.Equal(t, "root", executed)
+	assert.Equal(t, "run", configValue)
+}
+
+// Test: Bare "-" handling
+// Issue: The code has a path for "bare - is positional" but it may not be reachable
+// because looksLikeFlag("-") returns false.
+func TestBareDashHandling(t *testing.T) {
+	var executed bool
+	var args []string
+
+	app := New("test").Description("Test")
+
+	// App with a command
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			return nil
+		})
+
+	// Root handler to catch "-"
+	app.Main().
+		Run(func(ctx *Context) error {
+			executed = true
+			args = ctx.Args()
+			return nil
+		})
+
+	// "-" is commonly used to mean stdin
+	// Should this be treated as a positional arg to root handler?
+	err := app.ExecuteArgs([]string{"-"})
+
+	// Document current behavior
+	assert.NoError(t, err)
+	assert.True(t, executed, "root handler should execute")
+	assert.Equal(t, []string{"-"}, args, "'-' should be passed as positional arg")
+}
+
+// Test: Bare "-" without root handler
+func TestBareDashWithoutRootHandler(t *testing.T) {
+	app := New("test").Description("Test")
+
+	app.Command("run").
+		Description("Run something").
+		Run(func(ctx *Context) error {
+			return nil
+		})
+
+	// No root handler - what happens with "-"?
+	err := app.ExecuteArgs([]string{"-"})
+
+	// Should error as unknown command
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command")
+}
