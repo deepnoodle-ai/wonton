@@ -18,6 +18,7 @@ type codeView struct {
 	startLine   int
 	scrollY     *int
 	height      int
+	tabWidth    int
 	highlighted [][]StyledSegment
 }
 
@@ -35,6 +36,7 @@ func Code(code string, language string) *codeView {
 		theme:       "monokai",
 		showNumbers: true,
 		startLine:   1,
+		tabWidth:    4,
 	}
 }
 
@@ -78,6 +80,15 @@ func (c *codeView) Height(h int) *codeView {
 	return c
 }
 
+// TabWidth sets the number of spaces to use for tab expansion (default: 4).
+func (c *codeView) TabWidth(w int) *codeView {
+	if w > 0 {
+		c.tabWidth = w
+		c.highlighted = nil // invalidate cache
+	}
+	return c
+}
+
 // highlight performs syntax highlighting and caches the result.
 func (c *codeView) highlight() {
 	if c.highlighted != nil {
@@ -111,6 +122,7 @@ func (c *codeView) highlight() {
 	// Convert tokens to styled segments
 	c.highlighted = make([][]StyledSegment, 0)
 	var currentLine []StyledSegment
+	col := 0 // track column for tab expansion
 
 	for _, token := range iterator.Tokens() {
 		tokenStyle := c.chromaToStyle(style.Get(token.Type))
@@ -121,12 +133,16 @@ func (c *codeView) highlight() {
 			if i > 0 {
 				c.highlighted = append(c.highlighted, currentLine)
 				currentLine = nil
+				col = 0
 			}
 			if part != "" {
+				// Expand tabs to spaces
+				expanded := c.expandTabs(part, col)
 				currentLine = append(currentLine, StyledSegment{
-					Text:  part,
+					Text:  expanded,
 					Style: tokenStyle,
 				})
+				col += runewidth.StringWidth(expanded)
 			}
 		}
 	}
@@ -142,7 +158,7 @@ func (c *codeView) plainLines() [][]StyledSegment {
 	lines := strings.Split(c.code, "\n")
 	result := make([][]StyledSegment, len(lines))
 	for i, line := range lines {
-		result[i] = []StyledSegment{{Text: line, Style: NewStyle()}}
+		result[i] = []StyledSegment{{Text: c.expandTabs(line, 0), Style: NewStyle()}}
 	}
 	return result
 }
@@ -170,6 +186,32 @@ func (c *codeView) chromaToStyle(entry chroma.StyleEntry) Style {
 	}
 
 	return style
+}
+
+// expandTabs expands tab characters to spaces based on the current column.
+func (c *codeView) expandTabs(s string, startCol int) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+
+	var result strings.Builder
+	col := startCol
+
+	for _, r := range s {
+		if r == '\t' {
+			// Calculate spaces to next tab stop
+			spaces := c.tabWidth - (col % c.tabWidth)
+			for i := 0; i < spaces; i++ {
+				result.WriteRune(' ')
+			}
+			col += spaces
+		} else {
+			result.WriteRune(r)
+			col += runewidth.RuneWidth(r)
+		}
+	}
+
+	return result.String()
 }
 
 // lineNumberWidth calculates the width needed for line numbers.
