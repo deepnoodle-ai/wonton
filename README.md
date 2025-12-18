@@ -80,63 +80,22 @@ block of minimizing supply chain complexity and risk.
 
 Wonton works well if you're:
 
-- Building CLI tools or terminal UIs in Go where user experience is important
+- Building CLIs and terminal UIs in Go where fantastic user experience is a priority
 - Creating agentic CLIs that work with any of: HTML, markdown, source code, or diffs
-- Concerned about supply chain complexity and want to be selective with dependencies
-- Looking to make your own AI-assisted development faster and more reliable
-
-## Who This Isn't For
-
-Consider alternatives if you would prefer to assemble your own stack or if you
-want to use the more established CLI libraries in the Go ecosystem. For what
-it's worth, though, you can adopt Wonton incrementally. It's not all or nothing.
+- Concerned about supply chain risk and want to be selective with dependencies
+- Looking to make your own AI-assisted development more productive
 
 ## Packages
 
-### Terminal UI
-
-| Package                          | Description                         |
-| -------------------------------- | ----------------------------------- |
-| [tui](./tui/README.md)           | Declarative TUI with layout engine  |
-| [terminal](./terminal/README.md) | Terminal control and input decoding |
-| [color](./color/README.md)       | ANSI colors, RGB/HSL, gradients     |
-
-### CLI Framework
-
-| Package                | Description                         |
-| ---------------------- | ----------------------------------- |
-| [cli](./cli/README.md) | Commands, flags, config, middleware |
-| [env](./env/README.md) | Config from env vars, .env, JSON    |
-
-### Web & Networking
-
-| Package                            | Description                   |
-| ---------------------------------- | ----------------------------- |
-| [fetch](./fetch/README.md)         | HTTP page fetching            |
-| [crawler](./crawler/README.md)     | Web crawler with caching      |
-| [htmlparse](./htmlparse/README.md) | HTML parsing, metadata, links |
-| [htmltomd](./htmltomd/README.md)   | HTML to Markdown conversion   |
-| [sse](./sse/README.md)             | Server-Sent Events client     |
-| [web](./web/README.md)             | URL manipulation, media types |
-
-### Utilities
-
-| Package                            | Description                   |
-| ---------------------------------- | ----------------------------- |
-| [assert](./assert/README.md)       | Test assertions with diffs    |
-| [clipboard](./clipboard/README.md) | System clipboard read/write   |
-| [git](./git/README.md)             | Git read operations           |
-| [humanize](./humanize/README.md)   | Human-readable formatting     |
-| [retry](./retry/README.md)         | Retry with backoff and jitter |
-| [unidiff](./unidiff/README.md)     | Unified diff parsing          |
-
-### Testing & Recording
-
-| Package                                | Description                          |
-| -------------------------------------- | ------------------------------------ |
-| [termtest](./termtest/README.md)       | Terminal output testing              |
-| [termsession](./termsession/README.md) | Session recording (asciinema format) |
-| [gif](./gif/README.md)                 | Animated GIF creation                |
+|                                        |                                  |                                    |
+| -------------------------------------- | -------------------------------- | ---------------------------------- |
+| [assert](./assert/README.md)           | [cli](./cli/README.md)           | [clipboard](./clipboard/README.md) |
+| [color](./color/README.md)             | [crawler](./crawler/README.md)   | [env](./env/README.md)             |
+| [fetch](./fetch/README.md)             | [gif](./gif/README.md)           | [git](./git/README.md)             |
+| [htmlparse](./htmlparse/README.md)     | [htmltomd](./htmltomd/README.md) | [humanize](./humanize/README.md)   |
+| [retry](./retry/README.md)             | [sse](./sse/README.md)           | [terminal](./terminal/README.md)   |
+| [termsession](./termsession/README.md) | [termtest](./termtest/README.md) | [tui](./tui/README.md)             |
+| [unidiff](./unidiff/README.md)         | [web](./web/README.md)           |                                    |
 
 ## Serving Suggestions
 
