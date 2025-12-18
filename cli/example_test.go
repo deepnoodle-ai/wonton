@@ -22,7 +22,7 @@ func ExampleNew() {
 		})
 
 	// In a real application, you would call:
-	// app.Run()
+	// app.Execute()
 
 	fmt.Println("Application created successfully")
 	// Output: Application created successfully

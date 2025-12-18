@@ -207,7 +207,7 @@ func main() {
 			return nil
 		})
 
-	if err := app.Run(); err != nil {
+	if err := app.Execute(); err != nil {
 		if cli.IsHelpRequested(err) {
 			os.Exit(0)
 		}

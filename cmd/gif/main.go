@@ -50,7 +50,7 @@ func main() {
 		).
 		Run(demoCmd)
 
-	if err := app.Run(); err != nil {
+	if err := app.Execute(); err != nil {
 		if !cli.IsHelpRequested(err) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

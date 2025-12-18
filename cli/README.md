@@ -56,7 +56,7 @@ func main() {
             return nil
         })
 
-    if err := app.Run(); err != nil {
+    if err := app.Execute(); err != nil {
         if cli.IsHelpRequested(err) {
             os.Exit(0)
         }
@@ -108,7 +108,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -154,7 +154,7 @@ func main() {
         return nil
     })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -200,7 +200,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -237,7 +237,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -297,7 +297,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -329,7 +329,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 
 func LoggingMiddleware() cli.Middleware {
@@ -388,11 +388,11 @@ func main() {
             return runBatchProcessor(files)
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
-### Root Actions
+### Root Handler
 
 ```go
 package main
@@ -403,11 +403,11 @@ import (
 )
 
 func main() {
-    // Root action that runs when no command is specified
+    // Root handler that runs when no command is specified
     app := cli.New("cat").
         Description("Concatenate files").
         Args("file?").
-        Action(func(ctx *cli.Context) error {
+        Run(func(ctx *cli.Context) error {
             if ctx.NArg() == 0 {
                 // Read from stdin
                 io.Copy(ctx.Stdout(), ctx.Stdin())
@@ -425,11 +425,11 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
-### Group Actions
+### Group Handler
 
 ```go
 package main
@@ -441,11 +441,11 @@ import (
 func main() {
     app := cli.New("myapp")
 
-    // Group with action and subcommands
+    // Group with handler and subcommands
     users := app.Group("users").
         Description("User management").
         Flags(cli.Bool("all", "a").Help("Show all users")).
-        Action(func(ctx *cli.Context) error {
+        Run(func(ctx *cli.Context) error {
             // Runs when: myapp users or myapp users -a
             if ctx.Bool("all") {
                 return listAllUsers()
@@ -461,7 +461,7 @@ func main() {
             return addUser(ctx.Arg(0))
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -496,7 +496,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -541,7 +541,7 @@ func main() {
             return nil
         })
 
-    app.Run()
+    app.Execute()
 }
 ```
 
@@ -571,15 +571,18 @@ myapp run --port 8080 --port 443 nginx
 | `Group(name)`              | Create command group             | `string`                      | `*Group`   |
 | `Use(mw...)`               | Add middleware                   | `...Middleware`               | `*App`     |
 | `GlobalFlags(flags...)`    | Add global flags                 | `...Flag`                     | `*App`     |
-| `Action(handler)`          | Set root handler                 | `Handler`                     | `*App`     |
+| `Run(handler)`             | Set root handler                 | `Handler`                     | `*App`     |
 | `Args(names...)`           | Set root args                    | `...string`                   | `*App`     |
 | `Validate(fn)`             | Add validation                   | `func(*Context) error`        | `*App`     |
-| `Run()`                    | Execute with os.Args             | None                          | `error`    |
-| `RunArgs(args)`            | Execute with args                | `[]string`                    | `error`    |
-| `RunContext(ctx, args)`    | Execute with context             | `context.Context`, `[]string` | `error`    |
+| `Execute()`                | Execute with os.Args             | None                          | `error`    |
+| `ExecuteArgs(args)`        | Execute with args                | `[]string`                    | `error`    |
+| `ExecuteContext(ctx, args)`| Execute with context             | `context.Context`, `[]string` | `error`    |
 | `SetColorEnabled(enabled)` | Enable/disable colors            | `bool`                        | `*App`     |
 | `HelpTheme(theme)`         | Set help theme                   | `HelpTheme`                   | `*App`     |
 | `ForceInteractive(val)`    | Force interactive mode (testing) | `bool`                        | `*App`     |
+| `SetStdin(reader)`         | Set input reader                 | `io.Reader`                   | `*App`     |
+| `SetStdout(writer)`        | Set output writer                | `io.Writer`                   | `*App`     |
+| `SetStderr(writer)`        | Set error output writer          | `io.Writer`                   | `*App`     |
 
 ### Command
 
@@ -737,6 +740,29 @@ func TestMyCommand(t *testing.T) {
         t.Errorf("unexpected output: %s", result.Stdout)
     }
 }
+```
+
+### Programmatic Invocation
+
+Use `ExecuteArgs` with custom I/O for programmatic CLI usage:
+
+```go
+var stdout, stderr bytes.Buffer
+
+app := cli.New("myapp")
+app.SetStdout(&stdout)
+app.SetStderr(&stderr)
+app.SetStdin(strings.NewReader("user input\n"))
+
+app.Command("greet").
+    Args("name").
+    Run(func(ctx *cli.Context) error {
+        ctx.Printf("Hello, %s!\n", ctx.Arg(0))
+        return nil
+    })
+
+err := app.ExecuteArgs([]string{"greet", "Alice"})
+output := stdout.String() // "Hello, Alice!\n"
 ```
 
 ## Related Packages

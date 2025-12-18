@@ -96,7 +96,7 @@ func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
 	}
 
 	// Run the command
-	err := a.RunArgs(cfg.args)
+	err := a.ExecuteArgs(cfg.args)
 
 	// Restore I/O
 	a.stdout = origStdout
@@ -141,9 +141,9 @@ func (r *TestResult) Failed() bool {
 func TestApp(name string) *App {
 	app := New(name)
 	app.isInteractive = false
-	app.stdin = strings.NewReader("")
-	app.stdout = &bytes.Buffer{}
-	app.stderr = &bytes.Buffer{}
+	app.SetStdin(strings.NewReader(""))
+	app.SetStdout(&bytes.Buffer{})
+	app.SetStderr(&bytes.Buffer{})
 	return app
 }
 

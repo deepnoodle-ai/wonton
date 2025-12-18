@@ -28,7 +28,7 @@
 //	        return nil
 //	    })
 //
-//	return app.Run()
+//	return app.Execute()
 //
 // # Commands and Groups
 //
@@ -285,8 +285,8 @@ func (a *App) GlobalFlags(flags ...Flag) *App {
 	return a
 }
 
-// Action sets the root handler that executes when no command is specified.
-func (a *App) Action(h Handler) *App {
+// Run sets the root handler that executes when no command is specified.
+func (a *App) Run(h Handler) *App {
 	a.handler = h
 	return a
 }
@@ -327,27 +327,27 @@ func (a *App) rootCommand() *Command {
 	}
 }
 
-// Run executes the CLI application with os.Args.
+// Execute runs the CLI application with os.Args.
 //
 // This is the typical entry point for CLI applications:
 //
 //	func main() {
 //	    app := setupApp()
-//	    if err := app.Run(); err != nil {
+//	    if err := app.Execute(); err != nil {
 //	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 //	        os.Exit(1)
 //	    }
 //	}
 //
-// Run automatically strips the program name from os.Args and passes
-// the remaining arguments to RunArgs.
-func (a *App) Run() error {
-	return a.RunContext(context.Background(), os.Args[1:])
+// Execute automatically strips the program name from os.Args and passes
+// the remaining arguments to ExecuteArgs.
+func (a *App) Execute() error {
+	return a.ExecuteContext(context.Background(), os.Args[1:])
 }
 
-// RunArgs executes the CLI application with the given arguments.
-func (a *App) RunArgs(args []string) error {
-	return a.RunContext(context.Background(), args)
+// ExecuteArgs runs the CLI application with the given arguments.
+func (a *App) ExecuteArgs(args []string) error {
+	return a.ExecuteContext(context.Background(), args)
 }
 
 // ForceInteractive sets the interactive mode for testing purposes.
@@ -357,8 +357,8 @@ func (a *App) ForceInteractive(interactive bool) *App {
 	return a
 }
 
-// RunContext executes the CLI application with context and arguments.
-func (a *App) RunContext(ctx context.Context, args []string) error {
+// ExecuteContext runs the CLI application with context and arguments.
+func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	// Detect interactivity (can be overridden for testing)
 	if a.forceInteractive != nil {
 		a.isInteractive = *a.forceInteractive
@@ -713,8 +713,8 @@ func (g *Group) Command(name string) *Command {
 	return cmd
 }
 
-// Action sets the handler that runs when the group is invoked without a subcommand.
-func (g *Group) Action(h Handler) *Group {
+// Run sets the handler that runs when the group is invoked without a subcommand.
+func (g *Group) Run(h Handler) *Group {
 	g.handler = h
 	return g
 }
@@ -849,5 +849,39 @@ func (a *App) SetColorEnabled(enabled bool) *App {
 //	app.HelpTheme(theme)
 func (a *App) HelpTheme(theme HelpTheme) *App {
 	a.helpTheme = &theme
+	return a
+}
+
+// SetStdin sets the input reader for the application.
+//
+// This is useful for programmatic invocation or testing:
+//
+//	app.SetStdin(strings.NewReader("user input"))
+func (a *App) SetStdin(r io.Reader) *App {
+	a.stdin = r
+	return a
+}
+
+// SetStdout sets the output writer for the application.
+//
+// This is useful for capturing output programmatically:
+//
+//	var buf bytes.Buffer
+//	app.SetStdout(&buf)
+//	app.ExecuteArgs([]string{"greet"})
+//	output := buf.String()
+func (a *App) SetStdout(w io.Writer) *App {
+	a.stdout = w
+	return a
+}
+
+// SetStderr sets the error output writer for the application.
+//
+// This is useful for capturing error output programmatically:
+//
+//	var buf bytes.Buffer
+//	app.SetStderr(&buf)
+func (a *App) SetStderr(w io.Writer) *App {
+	a.stderr = w
 	return a
 }

@@ -80,7 +80,7 @@ func main() {
 		).
 		Run(runMeta)
 
-	app.Run()
+	app.Execute()
 }
 
 // runCrawl handles the crawl command

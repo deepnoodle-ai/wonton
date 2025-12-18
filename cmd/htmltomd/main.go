@@ -64,7 +64,7 @@ func main() {
 		args = append([]string{"convert"}, args...)
 	}
 
-	if err := app.RunArgs(args); err != nil {
+	if err := app.ExecuteArgs(args); err != nil {
 		// Don't print help errors (already shown)
 		if _, ok := err.(*cli.HelpRequested); !ok {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -31,7 +31,7 @@ func TestCommand(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"greet", "World"})
+	err := app.ExecuteArgs([]string{"greet", "World"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 	assert.Equal(t, "World", receivedArg)
@@ -58,14 +58,14 @@ func TestFlags(t *testing.T) {
 		})
 
 	// Test defaults
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "default", model)
 	assert.InDelta(t, 0.7, temp, 0.001)
 	assert.False(t, verbose)
 
 	// Test with flags
-	err = app.RunArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v"})
+	err = app.ExecuteArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v"})
 	assert.NoError(t, err)
 	assert.Equal(t, "gpt-4", model)
 	assert.InDelta(t, 0.9, temp, 0.001)
@@ -84,7 +84,7 @@ func TestFlagsEqualsStyle(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "--config=myfile.yaml"})
+	err := app.ExecuteArgs([]string{"run", "--config=myfile.yaml"})
 	assert.NoError(t, err)
 	assert.Equal(t, "myfile.yaml", value)
 }
@@ -98,7 +98,7 @@ func TestRequiredFlag(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required flag")
 }
@@ -113,11 +113,11 @@ func TestEnumFlag(t *testing.T) {
 		})
 
 	// Valid value
-	err := app.RunArgs([]string{"run", "--format", "json"})
+	err := app.ExecuteArgs([]string{"run", "--format", "json"})
 	assert.NoError(t, err)
 
 	// Invalid value
-	err = app.RunArgs([]string{"run", "--format", "xml"})
+	err = app.ExecuteArgs([]string{"run", "--format", "xml"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value")
 }
@@ -131,7 +131,7 @@ func TestRequiredArg(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"greet"})
+	err := app.ExecuteArgs([]string{"greet"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required argument")
 }
@@ -148,11 +148,11 @@ func TestOptionalArg(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"greet"})
+	err := app.ExecuteArgs([]string{"greet"})
 	assert.NoError(t, err)
 	assert.Empty(t, name)
 
-	err = app.RunArgs([]string{"greet", "World"})
+	err = app.ExecuteArgs([]string{"greet", "World"})
 	assert.NoError(t, err)
 	assert.Equal(t, "World", name)
 }
@@ -169,7 +169,7 @@ func TestGroup(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"users:list"})
+	err := app.ExecuteArgs([]string{"users:list"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -202,7 +202,7 @@ func TestMiddleware(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	// App middleware runs first (wraps command middleware), then command middleware, then handler
 	// So execution is: global-before -> cmd-before -> handler -> cmd-after -> global-after
@@ -220,10 +220,10 @@ func TestHelp(t *testing.T) {
 
 	app := New("test").Description("Test application")
 	app.Version("1.0.0")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").Description("Run something")
 
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "test")
@@ -236,7 +236,7 @@ func TestCommandHelp(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").
 		Description("Run something").
 		Args("file").
@@ -245,7 +245,7 @@ func TestCommandHelp(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "--help"})
+	err := app.ExecuteArgs([]string{"run", "--help"})
 	assert.True(t, IsHelpRequested(err))
 
 	output := buf.String()
@@ -266,7 +266,7 @@ func TestContext(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunContext(context.Background(), []string{"run"})
+	err := app.ExecuteContext(context.Background(), []string{"run"})
 	assert.NoError(t, err)
 	assert.NotNil(t, gotCtx)
 	assert.NotNil(t, gotCtx.Context())
@@ -276,7 +276,7 @@ func TestContextOutput(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").
 		Description("Run").
 		Run(func(ctx *Context) error {
@@ -285,7 +285,7 @@ func TestContextOutput(t *testing.T) {
 			return nil
 		})
 
-	app.RunArgs([]string{"run"})
+	app.ExecuteArgs([]string{"run"})
 
 	assert.Equal(t, "Hello\nCount: 42\n", buf.String())
 }
@@ -319,7 +319,7 @@ func TestValidation(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "--count", "15"})
+	err := app.ExecuteArgs([]string{"run", "--count", "15"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "count must be <= 10")
 }
@@ -335,7 +335,7 @@ func TestDoubleDash(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "--", "-flag-like", "--another"})
+	err := app.ExecuteArgs([]string{"run", "--", "-flag-like", "--another"})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"-flag-like", "--another"}, args)
 }
@@ -356,7 +356,7 @@ func TestMultipleShortFlags(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "-vd"})
+	err := app.ExecuteArgs([]string{"run", "-vd"})
 	assert.NoError(t, err)
 	assert.True(t, verbose)
 	assert.True(t, debug)
@@ -371,7 +371,7 @@ func TestRecoverMiddleware(t *testing.T) {
 			panic("test panic")
 		})
 
-	err := app.RunArgs([]string{"panic"})
+	err := app.ExecuteArgs([]string{"panic"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "panic")
 }
@@ -397,7 +397,7 @@ func TestBeforeAfterMiddleware(t *testing.T) {
 			return nil
 		})
 
-	app.RunArgs([]string{"run"})
+	app.ExecuteArgs([]string{"run"})
 	assert.Equal(t, []string{"before", "run", "after"}, order)
 }
 
@@ -409,7 +409,7 @@ func TestUnknownCommand(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"unknown"})
+	err := app.ExecuteArgs([]string{"unknown"})
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "unknown command"))
 }
@@ -419,9 +419,9 @@ func TestVersion(t *testing.T) {
 
 	app := New("test").Description("Test")
 	app.Version("1.2.3")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
-	app.RunArgs([]string{"version"})
+	app.ExecuteArgs([]string{"version"})
 	assert.Equal(t, "1.2.3\n", buf.String())
 }
 
@@ -438,19 +438,19 @@ func TestCommandAlias(t *testing.T) {
 		})
 
 	// Test using alias
-	err := app.RunArgs([]string{"gen"})
+	err := app.ExecuteArgs([]string{"gen"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 
 	// Test using another alias
 	executed = false
-	err = app.RunArgs([]string{"g"})
+	err = app.ExecuteArgs([]string{"g"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 
 	// Test original name still works
 	executed = false
-	err = app.RunArgs([]string{"generate"})
+	err = app.ExecuteArgs([]string{"generate"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -469,13 +469,13 @@ func TestGroupCommandAlias(t *testing.T) {
 		})
 
 	// Test using alias
-	err := app.RunArgs([]string{"users:ls"})
+	err := app.ExecuteArgs([]string{"users:ls"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 
 	// Test short alias
 	executed = false
-	err = app.RunArgs([]string{"users:l"})
+	err = app.ExecuteArgs([]string{"users:l"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -541,7 +541,7 @@ func TestBindFlagsGeneric(t *testing.T) {
 	})
 
 	// Test with custom values
-	err := app.RunArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v", "--count", "10"})
+	err := app.ExecuteArgs([]string{"run", "--model", "gpt-4", "-t", "0.9", "-v", "--count", "10"})
 	assert.NoError(t, err)
 	assert.NotNil(t, boundFlags)
 	assert.Equal(t, "gpt-4", boundFlags.Model)
@@ -565,7 +565,7 @@ func TestBindFlagsDefaults(t *testing.T) {
 	})
 
 	// Run with no flags - should use defaults
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.NotNil(t, boundFlags)
 	assert.Equal(t, "claude-sonnet", boundFlags.Model)
@@ -586,12 +586,12 @@ func TestRequireFlagsMiddleware(t *testing.T) {
 		})
 
 	// Missing required flag
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "required flag not set")
 
 	// With required flag
-	err = app.RunArgs([]string{"run", "--config", "test.yaml"})
+	err = app.ExecuteArgs([]string{"run", "--config", "test.yaml"})
 	assert.NoError(t, err)
 }
 
@@ -606,7 +606,7 @@ func TestContextNArg(t *testing.T) {
 		return nil
 	})
 
-	app.RunArgs([]string{"run", "a", "b", "c"})
+	app.ExecuteArgs([]string{"run", "a", "b", "c"})
 	assert.Equal(t, 3, narg)
 	assert.Equal(t, []string{"a", "b", "c"}, args)
 }
@@ -640,7 +640,7 @@ func TestContextFlagTypes(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run", "--str", "hello", "--num", "42", "--float", "3.14", "--bool"})
+	err := app.ExecuteArgs([]string{"run", "--str", "hello", "--num", "42", "--float", "3.14", "--bool"})
 	assert.NoError(t, err)
 	assert.Equal(t, "hello", str)
 	assert.Equal(t, 42, num)
@@ -662,11 +662,11 @@ func TestHiddenCommand(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("visible").Description("Visible command").Run(func(ctx *Context) error { return nil })
 	app.Command("hidden").Description("Hidden command").Hidden().Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "visible")
@@ -678,18 +678,18 @@ func TestDeprecatedCommand(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("old").
 		Description("Old command").
 		Deprecated("Use 'new' instead").
 		Run(func(ctx *Context) error { return nil })
 
 	// Command should still work
-	err := app.RunArgs([]string{"old"})
+	err := app.ExecuteArgs([]string{"old"})
 	assert.NoError(t, err)
 
 	// Help should show deprecation
-	app.RunArgs([]string{"old", "--help"})
+	app.ExecuteArgs([]string{"old", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "DEPRECATED")
 	assert.Contains(t, output, "Use 'new' instead")
@@ -699,13 +699,13 @@ func TestLongDescription(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").
 		Description("Run something").
 		Long("This is a longer description that provides more detail about what the command does.").
 		Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"run", "--help"})
+	app.ExecuteArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "longer description")
 }
@@ -714,7 +714,7 @@ func TestHiddenFlag(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").
 		Description("Run").
 		Flags(
@@ -723,7 +723,7 @@ func TestHiddenFlag(t *testing.T) {
 		).
 		Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"run", "--help"})
+	app.ExecuteArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "visible")
 	assert.NotContains(t, output, "Hidden flag")
@@ -752,7 +752,7 @@ func TestEnvVarForFlag(t *testing.T) {
 		})
 
 	// Should use env var when flag not provided
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "secret-key", key)
 }
@@ -818,11 +818,11 @@ func TestHiddenCommandsNotInHelp(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("public").Description("Public command").Run(func(ctx *Context) error { return nil })
 	app.Command("secret").Description("Secret command").Hidden().Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "public")
@@ -847,7 +847,7 @@ func TestInteractiveDispatch(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "interactive", handlerCalled)
 }
@@ -869,7 +869,7 @@ func TestNonInteractiveDispatch(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "non-interactive", handlerCalled)
 }
@@ -888,7 +888,7 @@ func TestFallbackToDefaultHandler(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "default", handlerCalled)
 }
@@ -902,19 +902,19 @@ func TestArgsRange(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Too few args
-	err := app.RunArgs([]string{"add"})
+	err := app.ExecuteArgs([]string{"add"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at least 1 argument")
 
 	// Correct number
-	err = app.RunArgs([]string{"add", "a"})
+	err = app.ExecuteArgs([]string{"add", "a"})
 	assert.NoError(t, err)
 
-	err = app.RunArgs([]string{"add", "a", "b", "c"})
+	err = app.ExecuteArgs([]string{"add", "a", "b", "c"})
 	assert.NoError(t, err)
 
 	// Too many args
-	err = app.RunArgs([]string{"add", "a", "b", "c", "d"})
+	err = app.ExecuteArgs([]string{"add", "a", "b", "c", "d"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at most 3 argument")
 }
@@ -927,15 +927,15 @@ func TestExactArgs(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Too few
-	err := app.RunArgs([]string{"pair", "a"})
+	err := app.ExecuteArgs([]string{"pair", "a"})
 	assert.Error(t, err)
 
 	// Exact
-	err = app.RunArgs([]string{"pair", "a", "b"})
+	err = app.ExecuteArgs([]string{"pair", "a", "b"})
 	assert.NoError(t, err)
 
 	// Too many
-	err = app.RunArgs([]string{"pair", "a", "b", "c"})
+	err = app.ExecuteArgs([]string{"pair", "a", "b", "c"})
 	assert.Error(t, err)
 }
 
@@ -947,11 +947,11 @@ func TestNoArgs(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// No args - ok
-	err := app.RunArgs([]string{"status"})
+	err := app.ExecuteArgs([]string{"status"})
 	assert.NoError(t, err)
 
 	// With args - error
-	err = app.RunArgs([]string{"status", "extra"})
+	err = app.ExecuteArgs([]string{"status", "extra"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "accepts no arguments")
 }
@@ -969,10 +969,10 @@ func TestWithValidation(t *testing.T) {
 		}).
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"set", "valid"})
+	err := app.ExecuteArgs([]string{"set", "valid"})
 	assert.NoError(t, err)
 
-	err = app.RunArgs([]string{"set", "invalid"})
+	err = app.ExecuteArgs([]string{"set", "invalid"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value")
 }
@@ -995,7 +995,7 @@ func TestGlobalFlags(t *testing.T) {
 	})
 
 	// Use global flags
-	err := app.RunArgs([]string{"run", "-v", "-c", "myconfig.yaml"})
+	err := app.ExecuteArgs([]string{"run", "-v", "-c", "myconfig.yaml"})
 	assert.NoError(t, err)
 	assert.True(t, verbose)
 	assert.Equal(t, "myconfig.yaml", config)
@@ -1005,7 +1005,7 @@ func TestGlobalFlagsInHelp(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.GlobalFlags(&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"})
 
 	app.Command("run").
@@ -1013,7 +1013,7 @@ func TestGlobalFlagsInHelp(t *testing.T) {
 		Flags(&StringFlag{Name: "output", Short: "o", Help: "Output file"}).
 		Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"run", "--help"})
+	app.ExecuteArgs([]string{"run", "--help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "Flags:")
@@ -1026,7 +1026,7 @@ func TestGlobalFlagsInAppHelp(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test app")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.GlobalFlags(
 		&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose output"},
 		&StringFlag{Name: "config", Short: "c", Help: "Config file path"},
@@ -1036,7 +1036,7 @@ func TestGlobalFlagsInAppHelp(t *testing.T) {
 		Description("Run something").
 		Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "Global Flags:")
@@ -1105,9 +1105,9 @@ func TestAddCompletionCommand(t *testing.T) {
 	assert.Contains(t, app.commands, "completion")
 
 	var buf bytes.Buffer
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
-	err := app.RunArgs([]string{"completion", "bash"})
+	err := app.ExecuteArgs([]string{"completion", "bash"})
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "complete -F")
 }
@@ -1146,7 +1146,7 @@ func TestAddGlobalFlag(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run", "-c", "app.yaml"})
+	err := app.ExecuteArgs([]string{"run", "-c", "app.yaml"})
 	assert.NoError(t, err)
 	assert.Equal(t, "app.yaml", configValue)
 }
@@ -1175,7 +1175,7 @@ func TestCommandAliases(t *testing.T) {
 	// Test all aliases
 	for _, alias := range []string{"gen", "g", "create"} {
 		executed = false
-		err := app.RunArgs([]string{alias})
+		err := app.ExecuteArgs([]string{alias})
 		assert.NoError(t, err)
 		assert.True(t, executed, "alias %s should execute", alias)
 	}
@@ -1216,7 +1216,7 @@ func TestContextCommand(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.NotNil(t, gotCommand)
 	assert.Equal(t, "run", gotCommand.Name())
@@ -1232,7 +1232,7 @@ func TestContextStdinStderr(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.True(t, gotStdin)
 	assert.True(t, gotStderr)
@@ -1242,14 +1242,14 @@ func TestContextPrint(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		ctx.Print("hello")
 		ctx.Print(" world")
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "hello world", buf.String())
 }
@@ -1258,7 +1258,7 @@ func TestContextErrorMethods(t *testing.T) {
 	var stderr bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stderr = &stderr
+	app.SetStderr(&stderr)
 	app.Command("run").Description("Run").Run(func(ctx *Context) error {
 		ctx.Error("err1")
 		ctx.Errorf("err%d", 2)
@@ -1266,7 +1266,7 @@ func TestContextErrorMethods(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, "err1err2err3\n", stderr.String())
 }
@@ -1403,7 +1403,7 @@ func TestParseArgsUnknownFlag(t *testing.T) {
 		Flags(&StringFlag{Name: "known"}).
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"run", "--unknown", "value"})
+	err := app.ExecuteArgs([]string{"run", "--unknown", "value"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown flag")
 }
@@ -1413,9 +1413,9 @@ func TestCompletionCommandUnsupportedShell(t *testing.T) {
 	app.AddCompletionCommand()
 
 	var stderr bytes.Buffer
-	app.stderr = &stderr
+	app.SetStderr(&stderr)
 
-	err := app.RunArgs([]string{"completion", "powershell"})
+	err := app.ExecuteArgs([]string{"completion", "powershell"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported shell")
 }
@@ -1426,9 +1426,9 @@ func TestCompletionCommandZsh(t *testing.T) {
 	app.Command("run").Description("Run").Run(func(ctx *Context) error { return nil })
 
 	var stdout bytes.Buffer
-	app.stdout = &stdout
+	app.SetStdout(&stdout)
 
-	err := app.RunArgs([]string{"completion", "zsh"})
+	err := app.ExecuteArgs([]string{"completion", "zsh"})
 	assert.NoError(t, err)
 	assert.Contains(t, stdout.String(), "#compdef test")
 }
@@ -1439,9 +1439,9 @@ func TestCompletionCommandFish(t *testing.T) {
 	app.Command("run").Description("Run").Run(func(ctx *Context) error { return nil })
 
 	var stdout bytes.Buffer
-	app.stdout = &stdout
+	app.SetStdout(&stdout)
 
-	err := app.RunArgs([]string{"completion", "fish"})
+	err := app.ExecuteArgs([]string{"completion", "fish"})
 	assert.NoError(t, err)
 	assert.Contains(t, stdout.String(), "complete -c test")
 }
@@ -1503,7 +1503,7 @@ func TestBeforeMiddlewareError(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "before failed")
 	assert.False(t, handlerCalled)
@@ -1521,7 +1521,7 @@ func TestAfterMiddlewareError(t *testing.T) {
 		return nil
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "after failed")
 	assert.True(t, handlerCalled)
@@ -1536,7 +1536,7 @@ func TestAfterMiddlewareDoesNotOverrideHandlerError(t *testing.T) {
 		return Error("handler error")
 	})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	// Handler error should take precedence
 	assert.Contains(t, err.Error(), "handler error")
@@ -1616,7 +1616,7 @@ func TestFlagValidationInParsing(t *testing.T) {
 		Flags(&StringFlag{Name: "format", Enum: []string{"json", "yaml"}}).
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"run", "--format", "invalid"})
+	err := app.ExecuteArgs([]string{"run", "--format", "invalid"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value")
 }
@@ -1625,7 +1625,7 @@ func TestShowHelpWithGlobalFlagsInCommandHelp(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test application")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.GlobalFlags(
 		&BoolFlag{Name: "verbose", Short: "v", Help: "Verbose mode"},
 		&StringFlag{Name: "config", Short: "c", Help: "Config file"},
@@ -1633,7 +1633,7 @@ func TestShowHelpWithGlobalFlagsInCommandHelp(t *testing.T) {
 	app.Command("run").Description("Run command").Run(func(ctx *Context) error { return nil })
 
 	// Global flags are shown in command help, not app help
-	app.RunArgs([]string{"run", "--help"})
+	app.ExecuteArgs([]string{"run", "--help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "Global Flags:")
@@ -1652,7 +1652,7 @@ func TestFindCommandInGroup(t *testing.T) {
 	})
 
 	// Should find command via group:command syntax
-	err := app.RunArgs([]string{"db:migrate"})
+	err := app.ExecuteArgs([]string{"db:migrate"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -1700,7 +1700,7 @@ func TestHelpWithHiddenCommandInGroup(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	// Regular group
 	public := app.Group("public").Description("Public commands")
@@ -1710,7 +1710,7 @@ func TestHelpWithHiddenCommandInGroup(t *testing.T) {
 	public.Command("secret").Description("Secret").Hidden().Run(func(ctx *Context) error { return nil })
 
 	// App help shows groups
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 	output := buf.String()
 	assert.Contains(t, output, "public")
 
@@ -1756,7 +1756,7 @@ func TestFlagWithoutShortName(t *testing.T) {
 	var buf bytes.Buffer
 
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.Command("run").
 		Description("Run").
 		Flags(&StringFlag{Name: "longonly", Help: "Long flag only"}).
@@ -1813,17 +1813,17 @@ func TestGlobalFlagAfterCommand(t *testing.T) {
 		})
 
 	// Global flags work when specified after command
-	err := app.RunArgs([]string{"run", "-v"})
+	err := app.ExecuteArgs([]string{"run", "-v"})
 	assert.NoError(t, err)
 	assert.True(t, verbose)
 }
 
 func TestParseArgsEmpty(t *testing.T) {
 	app := New("test").Description("Test")
-	app.stdout = &bytes.Buffer{}
+	app.SetStdout(&bytes.Buffer{})
 
 	// Empty args should show help and return HelpRequested
-	err := app.RunArgs([]string{})
+	err := app.ExecuteArgs([]string{})
 	assert.True(t, IsHelpRequested(err))
 }
 
@@ -1868,7 +1868,7 @@ func TestDefaultFlagValues(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, 10, count)
 }
@@ -1882,20 +1882,20 @@ func TestFindCommandWithGroupAlias(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Test using group:alias pattern
-	err := app.RunArgs([]string{"users:ls"})
+	err := app.ExecuteArgs([]string{"users:ls"})
 	assert.NoError(t, err)
 }
 
 func TestGroupWithoutSubcommand(t *testing.T) {
 	app := New("test").Description("Test")
-	app.stdout = &bytes.Buffer{}
-	app.stderr = &bytes.Buffer{}
+	app.SetStdout(&bytes.Buffer{})
+	app.SetStderr(&bytes.Buffer{})
 
 	group := app.Group("users").Description("User management")
 	group.Command("list").Description("List users").Run(func(ctx *Context) error { return nil })
 
 	// Running just the group name should error
-	err := app.RunArgs([]string{"users"})
+	err := app.ExecuteArgs([]string{"users"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires a subcommand")
 }
@@ -1914,11 +1914,11 @@ func TestCommandLevelValidation(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Valid value
-	err := app.RunArgs([]string{"run", "--count=5"})
+	err := app.ExecuteArgs([]string{"run", "--count=5"})
 	assert.NoError(t, err)
 
 	// Invalid value - validation catches it
-	err = app.RunArgs([]string{"run", "--count=-1"})
+	err = app.ExecuteArgs([]string{"run", "--count=-1"})
 	assert.Error(t, err)
 }
 
@@ -1941,7 +1941,7 @@ func TestContextInt64(t *testing.T) {
 func TestHelpForSpecificCommand(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("deploy").
 		Description("Deploy the application").
@@ -1954,7 +1954,7 @@ func TestHelpForSpecificCommand(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Use command --help to get command-specific help
-	err := app.RunArgs([]string{"deploy", "--help"})
+	err := app.ExecuteArgs([]string{"deploy", "--help"})
 	// HelpRequested is returned as an error
 	var helpErr *HelpRequested
 	assert.ErrorAs(t, err, &helpErr)
@@ -1967,7 +1967,7 @@ func TestHelpForSpecificCommand(t *testing.T) {
 func TestDeprecatedCommandHelp(t *testing.T) {
 	var stdout bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &stdout
+	app.SetStdout(&stdout)
 
 	app.Command("old").
 		Description("Old command").
@@ -1975,14 +1975,14 @@ func TestDeprecatedCommandHelp(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Deprecation notice is shown in help output
-	_ = app.RunArgs([]string{"old", "--help"})
+	_ = app.ExecuteArgs([]string{"old", "--help"})
 	assert.Contains(t, stdout.String(), "DEPRECATED")
 	assert.Contains(t, stdout.String(), "Use 'new' instead")
 }
 
 func TestMiddlewareBeforeError(t *testing.T) {
 	app := New("test").Description("Test")
-	app.stderr = &bytes.Buffer{}
+	app.SetStderr(&bytes.Buffer{})
 
 	app.Command("run").
 		Description("Run").
@@ -1991,7 +1991,7 @@ func TestMiddlewareBeforeError(t *testing.T) {
 		})).
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "before error")
 }
@@ -1999,7 +1999,7 @@ func TestMiddlewareBeforeError(t *testing.T) {
 func TestMiddlewareAfterWithCommandError(t *testing.T) {
 	var afterRan bool
 	app := New("test").Description("Test")
-	app.stderr = &bytes.Buffer{}
+	app.SetStderr(&bytes.Buffer{})
 
 	app.Command("run").
 		Description("Run").
@@ -2011,7 +2011,7 @@ func TestMiddlewareAfterWithCommandError(t *testing.T) {
 			return Error("command error")
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.Error(t, err)
 	// After should still run even if command errors
 	assert.True(t, afterRan)
@@ -2028,7 +2028,7 @@ func TestCommandWithContext(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.NotNil(t, receivedCtx)
 }
@@ -2046,7 +2046,7 @@ func TestInvalidIntFlagFallsBackToZero(t *testing.T) {
 		})
 
 	// Invalid int values are stored as strings, and ctx.Int returns 0
-	err := app.RunArgs([]string{"run", "--count=notanumber"})
+	err := app.ExecuteArgs([]string{"run", "--count=notanumber"})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
@@ -2055,7 +2055,7 @@ func TestInvalidIntFlagFallsBackToZero(t *testing.T) {
 func TestCommandShowHelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").
 		Description("Run the task").
@@ -2063,7 +2063,7 @@ func TestCommandShowHelpFlag(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// --help returns HelpRequested error
-	err := app.RunArgs([]string{"run", "--help"})
+	err := app.ExecuteArgs([]string{"run", "--help"})
 	var helpErr *HelpRequested
 	assert.ErrorAs(t, err, &helpErr)
 	assert.Contains(t, buf.String(), "Run the task")
@@ -2088,7 +2088,7 @@ func TestShortFlagCombined(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "-abc"})
+	err := app.ExecuteArgs([]string{"run", "-abc"})
 	assert.NoError(t, err)
 	assert.True(t, a)
 	assert.True(t, b)
@@ -2148,9 +2148,9 @@ func TestAppVersionCommand(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
 	app.Version("1.2.3")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
-	err := app.RunArgs([]string{"version"})
+	err := app.ExecuteArgs([]string{"version"})
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "1.2.3")
 }
@@ -2166,11 +2166,11 @@ func TestFlagEnumValidation(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Valid enum value
-	err := app.RunArgs([]string{"run", "--env=dev"})
+	err := app.ExecuteArgs([]string{"run", "--env=dev"})
 	assert.NoError(t, err)
 
 	// Invalid enum value
-	err = app.RunArgs([]string{"run", "--env=invalid"})
+	err = app.ExecuteArgs([]string{"run", "--env=invalid"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid value")
 }
@@ -2178,13 +2178,13 @@ func TestFlagEnumValidation(t *testing.T) {
 func TestHiddenCommandNotInHelp(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("visible").Description("Visible command").Run(func(ctx *Context) error { return nil })
 	app.Command("hidden").Description("Hidden command").Hidden().Run(func(ctx *Context) error { return nil })
 
 	// Show help
-	_ = app.RunArgs([]string{})
+	_ = app.ExecuteArgs([]string{})
 
 	output := buf.String()
 	assert.Contains(t, output, "visible")
@@ -2202,7 +2202,7 @@ func TestDoubleDashStopsFlags(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "--", "--not-a-flag", "-also-not"})
+	err := app.ExecuteArgs([]string{"run", "--", "--not-a-flag", "-also-not"})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"--not-a-flag", "-also-not"}, args)
 }
@@ -2210,11 +2210,11 @@ func TestDoubleDashStopsFlags(t *testing.T) {
 func TestHelpHint(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test app")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
 
-	_ = app.RunArgs([]string{})
+	_ = app.ExecuteArgs([]string{})
 	assert.Contains(t, buf.String(), "test <command> --help")
 }
 
@@ -2244,7 +2244,7 @@ func TestBindFlagsWithVariousConversions(t *testing.T) {
 			return err
 		})
 
-	err := app.RunArgs([]string{"run", "--name=test", "--count=5", "--count64=100", "--rate=3.14", "--enabled"})
+	err := app.ExecuteArgs([]string{"run", "--name=test", "--count=5", "--count64=100", "--rate=3.14", "--enabled"})
 	assert.NoError(t, err)
 	assert.NotNil(t, boundCfg)
 	assert.Equal(t, "test", boundCfg.Name)
@@ -2260,7 +2260,7 @@ func TestUnknownShortFlag(t *testing.T) {
 		Description("Run").
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"run", "-x"})
+	err := app.ExecuteArgs([]string{"run", "-x"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown flag")
 }
@@ -2273,7 +2273,7 @@ func TestFlagRequiresValue(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Flag at end without value
-	err := app.RunArgs([]string{"run", "--config"})
+	err := app.ExecuteArgs([]string{"run", "--config"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires a value")
 }
@@ -2286,7 +2286,7 @@ func TestShortFlagRequiresValue(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Combined short flags where non-last needs value
-	err := app.RunArgs([]string{"run", "-c"})
+	err := app.ExecuteArgs([]string{"run", "-c"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires a value")
 }
@@ -2294,14 +2294,14 @@ func TestShortFlagRequiresValue(t *testing.T) {
 func TestCommandWithLongDescription(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("deploy").
 		Description("Deploy the application").
 		Long("This is a longer description that provides more detail about what the deploy command does, including examples and caveats.").
 		Run(func(ctx *Context) error { return nil })
 
-	_ = app.RunArgs([]string{"deploy", "--help"})
+	_ = app.ExecuteArgs([]string{"deploy", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "longer description")
 }
@@ -2309,14 +2309,14 @@ func TestCommandWithLongDescription(t *testing.T) {
 func TestFlagWithDefaultShownInHelp(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").
 		Description("Run").
 		Flags(&StringFlag{Name: "env", Value: "development", Help: "Environment"}).
 		Run(func(ctx *Context) error { return nil })
 
-	_ = app.RunArgs([]string{"run", "--help"})
+	_ = app.ExecuteArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "default: development")
 }
@@ -2324,14 +2324,14 @@ func TestFlagWithDefaultShownInHelp(t *testing.T) {
 func TestEnumShownInHelp(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").
 		Description("Run").
 		Flags(&StringFlag{Name: "env", Enum: []string{"dev", "prod"}, Help: "Environment"}).
 		Run(func(ctx *Context) error { return nil })
 
-	_ = app.RunArgs([]string{"run", "--help"})
+	_ = app.ExecuteArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "dev|prod")
 }
@@ -2339,14 +2339,14 @@ func TestEnumShownInHelp(t *testing.T) {
 func TestRequiredFlagShownInHelp(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").
 		Description("Run").
 		Flags(&StringFlag{Name: "config", Required: true, Help: "Config file"}).
 		Run(func(ctx *Context) error { return nil })
 
-	_ = app.RunArgs([]string{"run", "--help"})
+	_ = app.ExecuteArgs([]string{"run", "--help"})
 	output := buf.String()
 	assert.Contains(t, output, "(required)")
 }
@@ -2542,14 +2542,14 @@ func TestSliceFlagAccumulation(t *testing.T) {
 		})
 
 	// Test accumulating multiple string values
-	err := app.RunArgs([]string{"run", "--tag", "foo", "--tag", "bar", "-t", "baz"})
+	err := app.ExecuteArgs([]string{"run", "--tag", "foo", "--tag", "bar", "-t", "baz"})
 	assert.NoError(t, err)
 	assert.Equal(t, tags, []string{"foo", "bar", "baz"})
 
 	// Reset and test accumulating multiple int values
 	tags = nil
 	ports = nil
-	err = app.RunArgs([]string{"run", "--port", "8080", "-p", "8081", "--port", "9000"})
+	err = app.ExecuteArgs([]string{"run", "--port", "8080", "-p", "8081", "--port", "9000"})
 	assert.NoError(t, err)
 	assert.Equal(t, ports, []int{8080, 8081, 9000})
 }
@@ -2569,12 +2569,12 @@ func TestSliceFlagWithDefaults(t *testing.T) {
 		})
 
 	// Test that defaults are used when no flags provided
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, tags, []string{"default1", "default2"})
 
 	// Test that new values replace defaults (accumulation starts fresh)
-	err = app.RunArgs([]string{"run", "--tag", "new1", "--tag", "new2"})
+	err = app.ExecuteArgs([]string{"run", "--tag", "new1", "--tag", "new2"})
 	assert.NoError(t, err)
 	assert.Equal(t, tags, []string{"new1", "new2"})
 }
@@ -2605,7 +2605,7 @@ func TestFlagBuildersInCommand(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run", "-n", "test", "-c", "5", "-r", "0.8", "-v"})
+	err := app.ExecuteArgs([]string{"run", "-n", "test", "-c", "5", "-r", "0.8", "-v"})
 	assert.NoError(t, err)
 	assert.Equal(t, "test", name)
 	assert.Equal(t, 5, count)
@@ -2628,7 +2628,7 @@ func TestGroupSpaceSeparatedSubcommand(t *testing.T) {
 		})
 
 	// Test space-separated syntax: "users list" instead of "users:list"
-	err := app.RunArgs([]string{"users", "list"})
+	err := app.ExecuteArgs([]string{"users", "list"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -2647,7 +2647,7 @@ func TestGroupSpaceSeparatedSubcommandAlias(t *testing.T) {
 		})
 
 	// Test space-separated syntax with alias
-	err := app.RunArgs([]string{"users", "ls"})
+	err := app.ExecuteArgs([]string{"users", "ls"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -2666,7 +2666,7 @@ func TestGroupSpaceSeparatedSubcommandWithArgs(t *testing.T) {
 		})
 
 	// Test space-separated syntax with arguments
-	err := app.RunArgs([]string{"users", "delete", "123"})
+	err := app.ExecuteArgs([]string{"users", "delete", "123"})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"123"}, args)
 }
@@ -2682,7 +2682,7 @@ func TestConfirmMiddlewareRequiresInteractive(t *testing.T) {
 		Use(Confirm("Are you sure?")).
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"delete"})
+	err := app.ExecuteArgs([]string{"delete"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "non-interactively")
 }
@@ -2692,7 +2692,7 @@ func TestConfirmMiddlewareWithConfirmation(t *testing.T) {
 
 	app := New("test").Description("Test")
 	app.ForceInteractive(true)
-	app.stdin = strings.NewReader("y\n")
+	app.SetStdin(strings.NewReader("y\n"))
 
 	app.Command("delete").
 		Description("Delete").
@@ -2702,7 +2702,7 @@ func TestConfirmMiddlewareWithConfirmation(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"delete"})
+	err := app.ExecuteArgs([]string{"delete"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -2712,7 +2712,7 @@ func TestConfirmMiddlewareWithYes(t *testing.T) {
 
 	app := New("test").Description("Test")
 	app.ForceInteractive(true)
-	app.stdin = strings.NewReader("yes\n")
+	app.SetStdin(strings.NewReader("yes\n"))
 
 	app.Command("delete").
 		Description("Delete").
@@ -2722,7 +2722,7 @@ func TestConfirmMiddlewareWithYes(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"delete"})
+	err := app.ExecuteArgs([]string{"delete"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -2732,7 +2732,7 @@ func TestConfirmMiddlewareWithDenial(t *testing.T) {
 
 	app := New("test").Description("Test")
 	app.ForceInteractive(true)
-	app.stdin = strings.NewReader("n\n")
+	app.SetStdin(strings.NewReader("n\n"))
 
 	app.Command("delete").
 		Description("Delete").
@@ -2742,7 +2742,7 @@ func TestConfirmMiddlewareWithDenial(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"delete"})
+	err := app.ExecuteArgs([]string{"delete"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cancelled")
 	assert.False(t, executed)
@@ -2766,7 +2766,7 @@ func TestAddArg(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"greet", "World"})
+	err := app.ExecuteArgs([]string{"greet", "World"})
 	assert.NoError(t, err)
 	assert.Equal(t, "World", got)
 }
@@ -2787,7 +2787,7 @@ func TestAddArgWithDefault(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"greet"})
+	err := app.ExecuteArgs([]string{"greet"})
 	assert.NoError(t, err)
 	assert.Equal(t, "World", got)
 }
@@ -2919,7 +2919,7 @@ func TestBindFlagsEdgeCases(t *testing.T) {
 func TestShowHelpWithGroups(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test application")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.SetColorEnabled(false)
 
 	app.Command("run").Description("Run something").Run(func(ctx *Context) error { return nil })
@@ -2927,7 +2927,7 @@ func TestShowHelpWithGroups(t *testing.T) {
 	users := app.Group("users").Description("User management")
 	users.Command("list").Description("List users").Run(func(ctx *Context) error { return nil })
 
-	app.RunArgs([]string{"help"})
+	app.ExecuteArgs([]string{"help"})
 
 	output := buf.String()
 	assert.Contains(t, output, "test")
@@ -2942,10 +2942,10 @@ func TestShowHelpWithGroups(t *testing.T) {
 func TestVersionWithNoVersion(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	// No version set
-	err := app.RunArgs([]string{"version"})
+	err := app.ExecuteArgs([]string{"version"})
 	assert.NoError(t, err)
 	assert.Empty(t, buf.String())
 }
@@ -2956,7 +2956,7 @@ func TestCommandWithoutHandler(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("broken").Description("Broken command") // No Run() called
 
-	err := app.RunArgs([]string{"broken"})
+	err := app.ExecuteArgs([]string{"broken"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no handler defined")
 }
@@ -2978,7 +2978,7 @@ func TestContextDuration(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"run"})
+	err := app.ExecuteArgs([]string{"run"})
 	assert.NoError(t, err)
 	assert.Equal(t, 30*time.Second, dur)
 }
@@ -2988,13 +2988,13 @@ func TestContextDuration(t *testing.T) {
 func TestShortHelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("run").
 		Description("Run something").
 		Run(func(ctx *Context) error { return nil })
 
-	err := app.RunArgs([]string{"run", "-h"})
+	err := app.ExecuteArgs([]string{"run", "-h"})
 	assert.True(t, IsHelpRequested(err))
 	assert.Contains(t, buf.String(), "Run something")
 }
@@ -3046,10 +3046,10 @@ func TestContextBoolFromStringTrue(t *testing.T) {
 func TestParseArgsFirstArgIsFlag(t *testing.T) {
 	app := New("test").Description("Test")
 	app.GlobalFlags(&BoolFlag{Name: "verbose", Short: "v"})
-	app.stdout = &bytes.Buffer{}
+	app.SetStdout(&bytes.Buffer{})
 
 	// When first arg is a flag with no command, it should show help and return HelpRequested
-	err := app.RunArgs([]string{"-v"})
+	err := app.ExecuteArgs([]string{"-v"})
 	assert.True(t, IsHelpRequested(err))
 }
 
@@ -3083,7 +3083,7 @@ func TestVariadicArgs(t *testing.T) {
 			return nil
 		})
 
-	err := app.RunArgs([]string{"process", "a.txt", "b.txt", "c.txt"})
+	err := app.ExecuteArgs([]string{"process", "a.txt", "b.txt", "c.txt"})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"a.txt", "b.txt", "c.txt"}, files)
 }
@@ -3099,7 +3099,7 @@ func TestRecoverMiddlewarePanicValue(t *testing.T) {
 			panic("specific error message")
 		})
 
-	err := app.RunArgs([]string{"panic"})
+	err := app.ExecuteArgs([]string{"panic"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "specific error message")
 }
@@ -3118,16 +3118,16 @@ func TestRequireFlagsMultiple(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Missing both
-	err := app.RunArgs([]string{"deploy"})
+	err := app.ExecuteArgs([]string{"deploy"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "required flag not set")
 
 	// One provided
-	err = app.RunArgs([]string{"deploy", "--env", "prod"})
+	err = app.ExecuteArgs([]string{"deploy", "--env", "prod"})
 	assert.Error(t, err)
 
 	// Both provided
-	err = app.RunArgs([]string{"deploy", "--env", "prod", "--region", "us-west"})
+	err = app.ExecuteArgs([]string{"deploy", "--env", "prod", "--region", "us-west"})
 	assert.NoError(t, err)
 }
 
@@ -3137,7 +3137,7 @@ func TestDeprecatedFlag(t *testing.T) {
 	// Deprecated is on command, not flag - testing command deprecated
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 
 	app.Command("oldcmd").
 		Description("Old command").
@@ -3145,7 +3145,7 @@ func TestDeprecatedFlag(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Running deprecated command still works
-	err := app.RunArgs([]string{"oldcmd"})
+	err := app.ExecuteArgs([]string{"oldcmd"})
 	assert.NoError(t, err)
 }
 
@@ -3167,13 +3167,13 @@ func TestAppAction(t *testing.T) {
 	var executed bool
 
 	app := New("test").Description("Test").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			executed = true
 			return nil
 		})
 
 	// Running with no args should execute the root action
-	err := app.RunArgs([]string{})
+	err := app.ExecuteArgs([]string{})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -3183,7 +3183,7 @@ func TestAppActionWithArgs(t *testing.T) {
 
 	app := New("test").Description("Test").
 		Args("file?").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			if ctx.NArg() > 0 {
 				receivedArg = ctx.Arg(0)
 			}
@@ -3191,7 +3191,7 @@ func TestAppActionWithArgs(t *testing.T) {
 		})
 
 	// Running with positional arg
-	err := app.RunArgs([]string{"myfile.txt"})
+	err := app.ExecuteArgs([]string{"myfile.txt"})
 	assert.NoError(t, err)
 	assert.Equal(t, "myfile.txt", receivedArg)
 }
@@ -3201,13 +3201,13 @@ func TestAppActionWithGlobalFlags(t *testing.T) {
 
 	app := New("test").Description("Test").
 		GlobalFlags(&BoolFlag{Name: "verbose", Short: "v"}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			verbose = ctx.Bool("verbose")
 			return nil
 		})
 
 	// Running with global flag
-	err := app.RunArgs([]string{"-v"})
+	err := app.ExecuteArgs([]string{"-v"})
 	assert.NoError(t, err)
 	assert.True(t, verbose)
 }
@@ -3215,11 +3215,11 @@ func TestAppActionWithGlobalFlags(t *testing.T) {
 func TestAppActionShowsHelpWhenNoAction(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test app")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.SetColorEnabled(false)
 
 	// No action defined, should show help and return HelpRequested
-	err := app.RunArgs([]string{})
+	err := app.ExecuteArgs([]string{})
 	assert.True(t, IsHelpRequested(err))
 	assert.Contains(t, buf.String(), "test")
 }
@@ -3232,13 +3232,13 @@ func TestGroupAction(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Group("users").
 		Description("User management").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			executed = true
 			return nil
 		})
 
 	// Running group without subcommand should execute the group action
-	err := app.RunArgs([]string{"users"})
+	err := app.ExecuteArgs([]string{"users"})
 	assert.NoError(t, err)
 	assert.True(t, executed)
 }
@@ -3250,7 +3250,7 @@ func TestGroupActionWithSubcommands(t *testing.T) {
 	app := New("test").Description("Test")
 	users := app.Group("users").
 		Description("User management").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			groupExecuted = true
 			return nil
 		})
@@ -3263,7 +3263,7 @@ func TestGroupActionWithSubcommands(t *testing.T) {
 		})
 
 	// Running group without subcommand executes group action
-	err := app.RunArgs([]string{"users"})
+	err := app.ExecuteArgs([]string{"users"})
 	assert.NoError(t, err)
 	assert.True(t, groupExecuted)
 	assert.False(t, subExecuted)
@@ -3272,7 +3272,7 @@ func TestGroupActionWithSubcommands(t *testing.T) {
 	groupExecuted = false
 
 	// Running with subcommand executes subcommand, not group action
-	err = app.RunArgs([]string{"users", "list"})
+	err = app.ExecuteArgs([]string{"users", "list"})
 	assert.NoError(t, err)
 	assert.False(t, groupExecuted)
 	assert.True(t, subExecuted)
@@ -3285,7 +3285,7 @@ func TestGroupActionWithArgs(t *testing.T) {
 	app.Group("files").
 		Description("File operations").
 		Args("path?").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			if ctx.NArg() > 0 {
 				receivedArg = ctx.Arg(0)
 			}
@@ -3293,7 +3293,7 @@ func TestGroupActionWithArgs(t *testing.T) {
 		})
 
 	// Running group with positional arg (not a subcommand)
-	err := app.RunArgs([]string{"files", "/tmp/myfile"})
+	err := app.ExecuteArgs([]string{"files", "/tmp/myfile"})
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/myfile", receivedArg)
 }
@@ -3305,12 +3305,12 @@ func TestGroupActionWithFlags(t *testing.T) {
 	app.Group("users").
 		Description("User management").
 		Flags(&BoolFlag{Name: "all", Short: "a"}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			all = ctx.Bool("all")
 			return nil
 		})
 
-	err := app.RunArgs([]string{"users", "-a"})
+	err := app.ExecuteArgs([]string{"users", "-a"})
 	assert.NoError(t, err)
 	assert.True(t, all)
 }
@@ -3324,7 +3324,7 @@ func TestGroupWithoutActionRequiresSubcommand(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// Group without action should error when no subcommand provided
-	err := app.RunArgs([]string{"users"})
+	err := app.ExecuteArgs([]string{"users"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "requires a subcommand")
 }
@@ -3336,7 +3336,7 @@ func TestGroupUnknownSubcommandWithAction(t *testing.T) {
 	users := app.Group("users").
 		Description("User management").
 		Args("name?").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			if ctx.NArg() > 0 {
 				receivedArg = ctx.Arg(0)
 			}
@@ -3348,7 +3348,7 @@ func TestGroupUnknownSubcommandWithAction(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// "john" is not a subcommand, so it should be passed to the group action as an arg
-	err := app.RunArgs([]string{"users", "john"})
+	err := app.ExecuteArgs([]string{"users", "john"})
 	assert.NoError(t, err)
 	assert.Equal(t, "john", receivedArg)
 }
@@ -3362,7 +3362,7 @@ func TestGroupUnknownSubcommandWithoutAction(t *testing.T) {
 		Run(func(ctx *Context) error { return nil })
 
 	// "john" is not a subcommand and there's no action, should error
-	err := app.RunArgs([]string{"users", "john"})
+	err := app.ExecuteArgs([]string{"users", "john"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown subcommand 'john'")
 }
@@ -3372,7 +3372,7 @@ func TestAppActionWithCommands(t *testing.T) {
 	var cmdExecuted bool
 
 	app := New("test").Description("Test").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			rootExecuted = true
 			return nil
 		})
@@ -3385,7 +3385,7 @@ func TestAppActionWithCommands(t *testing.T) {
 		})
 
 	// Command should take precedence
-	err := app.RunArgs([]string{"status"})
+	err := app.ExecuteArgs([]string{"status"})
 	assert.NoError(t, err)
 	assert.False(t, rootExecuted)
 	assert.True(t, cmdExecuted)
@@ -3394,7 +3394,7 @@ func TestAppActionWithCommands(t *testing.T) {
 	cmdExecuted = false
 
 	// No args should run root action
-	err = app.RunArgs([]string{})
+	err = app.ExecuteArgs([]string{})
 	assert.NoError(t, err)
 	assert.True(t, rootExecuted)
 	assert.False(t, cmdExecuted)
@@ -3412,12 +3412,12 @@ func TestAppActionWithMiddleware(t *testing.T) {
 				return err
 			}
 		}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			order = append(order, "action")
 			return nil
 		})
 
-	err := app.RunArgs([]string{})
+	err := app.ExecuteArgs([]string{})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"before", "action", "after"}, order)
 }
@@ -3431,17 +3431,17 @@ func TestAppActionWithValidation(t *testing.T) {
 			}
 			return nil
 		}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			return nil
 		})
 
 	// Should fail custom validation
-	err := app.RunArgs([]string{})
+	err := app.ExecuteArgs([]string{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "file argument required")
 
 	// Should pass validation
-	err = app.RunArgs([]string{"myfile.txt"})
+	err = app.ExecuteArgs([]string{"myfile.txt"})
 	assert.NoError(t, err)
 }
 
@@ -3459,12 +3459,12 @@ func TestGroupActionWithMiddleware(t *testing.T) {
 				return err
 			}
 		}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			order = append(order, "action")
 			return nil
 		})
 
-	err := app.RunArgs([]string{"files"})
+	err := app.ExecuteArgs([]string{"files"})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"before", "action", "after"}, order)
 }
@@ -3479,31 +3479,31 @@ func TestGroupActionWithValidation(t *testing.T) {
 			}
 			return nil
 		}).
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			return nil
 		})
 
 	// Should fail validation
-	err := app.RunArgs([]string{"files"})
+	err := app.ExecuteArgs([]string{"files"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "path argument required")
 
 	// Should pass validation
-	err = app.RunArgs([]string{"files", "/tmp"})
+	err = app.ExecuteArgs([]string{"files", "/tmp"})
 	assert.NoError(t, err)
 }
 
 func TestAppActionHelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test app").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			return nil
 		})
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.SetColorEnabled(false)
 
 	// --help should show help, not run action
-	err := app.RunArgs([]string{"--help"})
+	err := app.ExecuteArgs([]string{"--help"})
 	assert.True(t, IsHelpRequested(err))
 	assert.Contains(t, buf.String(), "test")
 }
@@ -3511,16 +3511,16 @@ func TestAppActionHelpFlag(t *testing.T) {
 func TestGroupActionHelpFlag(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test app")
-	app.stdout = &buf
+	app.SetStdout(&buf)
 	app.SetColorEnabled(false)
 
 	app.Group("users").
 		Description("User management").
-		Action(func(ctx *Context) error {
+		Run(func(ctx *Context) error {
 			return nil
 		})
 
 	// users --help should show help for the group action
-	err := app.RunArgs([]string{"users", "--help"})
+	err := app.ExecuteArgs([]string{"users", "--help"})
 	assert.True(t, IsHelpRequested(err))
 }
