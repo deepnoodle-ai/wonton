@@ -201,9 +201,9 @@ func (t *treeView) BranchChars(chars TreeBranchChars) *treeView {
 
 // flattenedNode represents a node in the flattened view with its depth and visibility info.
 type flattenedNode struct {
-	node     *TreeNode
-	depth    int
-	isLast   bool   // is this the last sibling at its level
+	node      *TreeNode
+	depth     int
+	isLast    bool   // is this the last sibling at its level
 	ancestors []bool // for each ancestor level, whether we need to draw a vertical line
 }
 
@@ -220,9 +220,9 @@ func (t *treeView) flatten() []flattenedNode {
 
 func (t *treeView) flattenNode(node *TreeNode, depth int, isLast bool, ancestors []bool, result *[]flattenedNode) {
 	*result = append(*result, flattenedNode{
-		node:     node,
-		depth:    depth,
-		isLast:   isLast,
+		node:      node,
+		depth:     depth,
+		isLast:    isLast,
 		ancestors: append([]bool{}, ancestors...), // copy ancestors
 	})
 
