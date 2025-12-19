@@ -1276,7 +1276,6 @@ func TestHelpRequestedError(t *testing.T) {
 	assert.Equal(t, "help requested", err.Error())
 }
 
-
 func TestIntFlagMethods(t *testing.T) {
 	flag := &IntFlag{
 		Name:     "count",
@@ -1937,7 +1936,6 @@ func TestContextInt64(t *testing.T) {
 	assert.Equal(t, int64(0), ctx.Int64("missing"))
 }
 
-
 func TestHelpForSpecificCommand(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
@@ -2050,7 +2048,6 @@ func TestInvalidIntFlagFallsBackToZero(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
-
 
 func TestCommandShowHelpFlag(t *testing.T) {
 	var buf bytes.Buffer

@@ -548,7 +548,6 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	return handler(execCtx)
 }
 
-
 // findGlobalFlag looks up a global flag by name.
 func (a *App) findGlobalFlag(name string) Flag {
 	for _, f := range a.globalFlags {
@@ -676,13 +675,40 @@ func (a *App) showHelp() error {
 	// Usage section
 	sb.WriteString("Usage:\n  ")
 	sb.WriteString(a.name)
-	sb.WriteString(" <command> [flags] [args]\n\n")
+	hasSubcmds := a.hasSubcommands()
+	if hasSubcmds {
+		sb.WriteString(" <command> [flags] [args]\n\n")
+	} else {
+		// Root-only app
+		if len(a.globalFlags) > 0 {
+			sb.WriteString(" [flags]")
+		}
+		// Add root command args
+		if rootCmd := a.commands[""]; rootCmd != nil {
+			for _, arg := range rootCmd.args {
+				if arg.Required {
+					sb.WriteString(" <" + arg.Name + ">")
+				} else {
+					sb.WriteString(" [" + arg.Name + "]")
+				}
+			}
+		} else {
+			for _, arg := range a.args {
+				if arg.Required {
+					sb.WriteString(" <" + arg.Name + ">")
+				} else {
+					sb.WriteString(" [" + arg.Name + "]")
+				}
+			}
+		}
+		sb.WriteString("\n\n")
+	}
 
 	// Commands section
-	if len(a.commands) > 0 {
+	if len(a.commands) > 0 && hasSubcmds {
 		sb.WriteString("Commands:\n")
 		for name, cmd := range a.commands {
-			if cmd.hidden {
+			if cmd.hidden || name == "" {
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
@@ -711,10 +737,12 @@ func (a *App) showHelp() error {
 		sb.WriteString("\n")
 	}
 
-	// Help hint
-	sb.WriteString("Run '")
-	sb.WriteString(a.name)
-	sb.WriteString(" <command> --help' for more information on a command.\n")
+	// Help hint (only show if there are subcommands)
+	if hasSubcmds {
+		sb.WriteString("Run '")
+		sb.WriteString(a.name)
+		sb.WriteString(" <command> --help' for more information on a command.\n")
+	}
 
 	fmt.Fprint(a.stdout, sb.String())
 	return &HelpRequested{}

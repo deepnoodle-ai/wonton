@@ -341,14 +341,14 @@ func (b *boolBuilder) Env(v string) *boolBuilder   { b.envVar = v; return b }
 func (b *boolBuilder) Required() *boolBuilder      { b.required = true; return b }
 func (b *boolBuilder) Hidden() *boolBuilder        { b.hidden = true; return b }
 
-func (b *boolBuilder) GetName() string     { return b.name }
-func (b *boolBuilder) GetShort() string    { return b.short }
-func (b *boolBuilder) GetHelp() string     { return b.help }
-func (b *boolBuilder) GetEnvVar() string   { return b.envVar }
-func (b *boolBuilder) GetDefault() any     { return b.value }
-func (b *boolBuilder) IsRequired() bool    { return b.required }
-func (b *boolBuilder) IsHidden() bool      { return b.hidden }
-func (b *boolBuilder) GetEnum() []string   { return nil }
+func (b *boolBuilder) GetName() string       { return b.name }
+func (b *boolBuilder) GetShort() string      { return b.short }
+func (b *boolBuilder) GetHelp() string       { return b.help }
+func (b *boolBuilder) GetEnvVar() string     { return b.envVar }
+func (b *boolBuilder) GetDefault() any       { return b.value }
+func (b *boolBuilder) IsRequired() bool      { return b.required }
+func (b *boolBuilder) IsHidden() bool        { return b.hidden }
+func (b *boolBuilder) GetEnum() []string     { return nil }
 func (b *boolBuilder) Validate(string) error { return nil }
 
 // Int creates a new integer flag builder.
@@ -366,10 +366,10 @@ type intBuilder struct {
 }
 
 func (b *intBuilder) Default(v int) *intBuilder { b.value = v; return b }
-func (b *intBuilder) Help(v string) *intBuilder  { b.help = v; return b }
-func (b *intBuilder) Env(v string) *intBuilder   { b.envVar = v; return b }
-func (b *intBuilder) Required() *intBuilder      { b.required = true; return b }
-func (b *intBuilder) Hidden() *intBuilder        { b.hidden = true; return b }
+func (b *intBuilder) Help(v string) *intBuilder { b.help = v; return b }
+func (b *intBuilder) Env(v string) *intBuilder  { b.envVar = v; return b }
+func (b *intBuilder) Required() *intBuilder     { b.required = true; return b }
+func (b *intBuilder) Hidden() *intBuilder       { b.hidden = true; return b }
 func (b *intBuilder) ValidateWith(f func(int) error) *intBuilder {
 	b.validator = f
 	return b
@@ -438,14 +438,14 @@ func (b *durationBuilder) Env(v string) *durationBuilder            { b.envVar =
 func (b *durationBuilder) Required() *durationBuilder               { b.required = true; return b }
 func (b *durationBuilder) Hidden() *durationBuilder                 { b.hidden = true; return b }
 
-func (b *durationBuilder) GetName() string     { return b.name }
-func (b *durationBuilder) GetShort() string    { return b.short }
-func (b *durationBuilder) GetHelp() string     { return b.help }
-func (b *durationBuilder) GetEnvVar() string   { return b.envVar }
-func (b *durationBuilder) GetDefault() any     { return b.value }
-func (b *durationBuilder) IsRequired() bool    { return b.required }
-func (b *durationBuilder) IsHidden() bool      { return b.hidden }
-func (b *durationBuilder) GetEnum() []string   { return nil }
+func (b *durationBuilder) GetName() string       { return b.name }
+func (b *durationBuilder) GetShort() string      { return b.short }
+func (b *durationBuilder) GetHelp() string       { return b.help }
+func (b *durationBuilder) GetEnvVar() string     { return b.envVar }
+func (b *durationBuilder) GetDefault() any       { return b.value }
+func (b *durationBuilder) IsRequired() bool      { return b.required }
+func (b *durationBuilder) IsHidden() bool        { return b.hidden }
+func (b *durationBuilder) GetEnum() []string     { return nil }
 func (b *durationBuilder) Validate(string) error { return nil }
 
 // Strings creates a new string slice flag builder.
@@ -470,14 +470,14 @@ func (b *stringsBuilder) Env(v string) *stringsBuilder        { b.envVar = v; re
 func (b *stringsBuilder) Required() *stringsBuilder           { b.required = true; return b }
 func (b *stringsBuilder) Hidden() *stringsBuilder             { b.hidden = true; return b }
 
-func (b *stringsBuilder) GetName() string     { return b.name }
-func (b *stringsBuilder) GetShort() string    { return b.short }
-func (b *stringsBuilder) GetHelp() string     { return b.help }
-func (b *stringsBuilder) GetEnvVar() string   { return b.envVar }
-func (b *stringsBuilder) GetDefault() any     { return b.value }
-func (b *stringsBuilder) IsRequired() bool    { return b.required }
-func (b *stringsBuilder) IsHidden() bool      { return b.hidden }
-func (b *stringsBuilder) GetEnum() []string   { return nil }
+func (b *stringsBuilder) GetName() string       { return b.name }
+func (b *stringsBuilder) GetShort() string      { return b.short }
+func (b *stringsBuilder) GetHelp() string       { return b.help }
+func (b *stringsBuilder) GetEnvVar() string     { return b.envVar }
+func (b *stringsBuilder) GetDefault() any       { return b.value }
+func (b *stringsBuilder) IsRequired() bool      { return b.required }
+func (b *stringsBuilder) IsHidden() bool        { return b.hidden }
+func (b *stringsBuilder) GetEnum() []string     { return nil }
 func (b *stringsBuilder) Validate(string) error { return nil }
 
 // Ints creates a new int slice flag builder.
@@ -502,12 +502,12 @@ func (b *intsBuilder) Env(v string) *intsBuilder     { b.envVar = v; return b }
 func (b *intsBuilder) Required() *intsBuilder        { b.required = true; return b }
 func (b *intsBuilder) Hidden() *intsBuilder          { b.hidden = true; return b }
 
-func (b *intsBuilder) GetName() string     { return b.name }
-func (b *intsBuilder) GetShort() string    { return b.short }
-func (b *intsBuilder) GetHelp() string     { return b.help }
-func (b *intsBuilder) GetEnvVar() string   { return b.envVar }
-func (b *intsBuilder) GetDefault() any     { return b.value }
-func (b *intsBuilder) IsRequired() bool    { return b.required }
-func (b *intsBuilder) IsHidden() bool      { return b.hidden }
-func (b *intsBuilder) GetEnum() []string   { return nil }
+func (b *intsBuilder) GetName() string       { return b.name }
+func (b *intsBuilder) GetShort() string      { return b.short }
+func (b *intsBuilder) GetHelp() string       { return b.help }
+func (b *intsBuilder) GetEnvVar() string     { return b.envVar }
+func (b *intsBuilder) GetDefault() any       { return b.value }
+func (b *intsBuilder) IsRequired() bool      { return b.required }
+func (b *intsBuilder) IsHidden() bool        { return b.hidden }
+func (b *intsBuilder) GetEnum() []string     { return nil }
 func (b *intsBuilder) Validate(string) error { return nil }

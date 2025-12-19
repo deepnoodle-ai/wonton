@@ -66,17 +66,37 @@ func (a *App) getHelpTheme() HelpTheme {
 	return DefaultHelpTheme()
 }
 
+// hasSubcommands returns true if the app has any subcommands or groups.
+// It excludes the root command (name == "") from the count.
+func (a *App) hasSubcommands() bool {
+	for name := range a.commands {
+		if name != "" {
+			return true
+		}
+	}
+	return len(a.groups) > 0
+}
+
 // renderAppHelp renders the main application help
 func (a *App) renderAppHelp() tui.View {
 	theme := a.getHelpTheme()
+	hasSubcmds := a.hasSubcommands()
+
+	// Build usage string based on whether we have subcommands
+	var usageText string
+	if hasSubcmds {
+		usageText = fmt.Sprintf("  %s <command> [flags] [args]", a.name)
+	} else {
+		usageText = a.buildRootUsageString()
+	}
 
 	return tui.Stack(
 		renderHeader(a.name, a.description, a.version, theme),
 		tui.Stack(
 			renderSection("USAGE", theme),
-			tui.Text("  %s <command> [flags] [args]", a.name),
+			tui.Text("%s", usageText),
 		),
-		tui.If(len(a.commands) > 0, tui.Stack(
+		tui.If(len(a.commands) > 0 && hasSubcmds, tui.Stack(
 			renderSection("COMMANDS", theme),
 			renderCommands(a.commands, theme),
 		)),
@@ -88,8 +108,35 @@ func (a *App) renderAppHelp() tui.View {
 			renderSection("GLOBAL FLAGS", theme),
 			renderFlags(a.globalFlags, theme),
 		)),
-		renderFooter(a.name, theme),
+		tui.If(hasSubcmds, renderFooter(a.name, theme)),
 	).Gap(1)
+}
+
+// buildRootUsageString builds the usage string for the root command.
+func (a *App) buildRootUsageString() string {
+	usage := "  " + a.name
+	if len(a.globalFlags) > 0 {
+		usage += " [flags]"
+	}
+	// Check for root command args
+	if rootCmd := a.commands[""]; rootCmd != nil {
+		for _, arg := range rootCmd.args {
+			if arg.Required {
+				usage += " <" + arg.Name + ">"
+			} else {
+				usage += " [" + arg.Name + "]"
+			}
+		}
+	} else {
+		for _, arg := range a.args {
+			if arg.Required {
+				usage += " <" + arg.Name + ">"
+			} else {
+				usage += " [" + arg.Name + "]"
+			}
+		}
+	}
+	return usage
 }
 
 // renderCommandHelp renders help for a specific command
