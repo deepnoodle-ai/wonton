@@ -105,13 +105,13 @@ const (
 //	    fmt.Println("Pasted:", event.Paste)
 //	}
 type KeyEvent struct {
-	Key   Key          // Special key (KeyEnter, KeyArrowUp, etc.), or KeyUnknown for regular chars
-	Rune  rune         // The character for printable keys (only valid when Key is KeyUnknown)
-	Alt   bool         // True if Alt/Option modifier was held
-	Ctrl  bool         // True if Ctrl/Command modifier was held
-	Shift bool         // True if Shift modifier was held
-	Paste string       // If non-empty, this event represents a paste operation (bracketed paste mode)
-	Time  time.Time    // When the event occurred
+	Key   Key       // Special key (KeyEnter, KeyArrowUp, etc.), or KeyUnknown for regular chars
+	Rune  rune      // The character for printable keys (only valid when Key is KeyUnknown)
+	Alt   bool      // True if Alt/Option modifier was held
+	Ctrl  bool      // True if Ctrl/Command modifier was held
+	Shift bool      // True if Shift modifier was held
+	Paste string    // If non-empty, this event represents a paste operation (bracketed paste mode)
+	Time  time.Time // When the event occurred
 }
 
 // Timestamp implements the Event interface

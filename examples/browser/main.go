@@ -286,7 +286,6 @@ func (app *BrowserApp) extractLinks(resp *fetch.Response) {
 	}
 }
 
-
 func countWords(text string) int {
 	count := 0
 	inWord := false

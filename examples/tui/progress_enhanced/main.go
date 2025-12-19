@@ -45,7 +45,7 @@ func (app *ProgressEnhancedApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 		// Reset when all complete
 		if app.progress1 >= 100 && app.progress2 >= 100 &&
-		   app.progress3 >= 100 && app.progress4 >= 100 {
+			app.progress3 >= 100 && app.progress4 >= 100 {
 			app.progress1 = 0
 			app.progress2 = 0
 			app.progress3 = 0

@@ -182,8 +182,8 @@ type TerminalRenderer struct {
 	cellWidth  int
 	cellHeight int
 	padding    int
-	font       *FontFace    // TTF font (nil = use bitmap)
-	bitmapFont BitmapFont   // Bitmap font to use if font is nil
+	font       *FontFace  // TTF font (nil = use bitmap)
+	bitmapFont BitmapFont // Bitmap font to use if font is nil
 }
 
 // RendererOptions configures how a TerminalRenderer converts terminal screens

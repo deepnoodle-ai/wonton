@@ -251,7 +251,7 @@ func EaseMirror(easing Easing) Easing {
 		if t < 0.5 {
 			return easing(t * 2)
 		}
-		return easing((1-t) * 2)
+		return easing((1 - t) * 2)
 	}
 }
 

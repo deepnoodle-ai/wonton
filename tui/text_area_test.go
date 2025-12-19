@@ -307,13 +307,13 @@ func TestTextArea_CursorLineAccessors(t *testing.T) {
 
 func TestTextArea_size(t *testing.T) {
 	tests := []struct {
-		name       string
-		width      int
-		height     int
-		maxWidth   int
-		maxHeight  int
-		expectW    int
-		expectH    int
+		name      string
+		width     int
+		height    int
+		maxWidth  int
+		maxHeight int
+		expectW   int
+		expectH   int
 	}{
 		{"no constraints", 40, 10, 0, 0, 40, 10},
 		{"within constraints", 40, 10, 100, 100, 40, 10},
@@ -340,7 +340,7 @@ func TestTextArea_lineNumberWidth(t *testing.T) {
 		expected int
 	}{
 		{"disabled", "line1\nline2", false, 0},
-		{"single digit", "line1\nline2", true, 2},    // "1 "
+		{"single digit", "line1\nline2", true, 2},                  // "1 "
 		{"double digit", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10", true, 3}, // "10 "
 		{"triple digit", func() string {
 			s := ""

@@ -52,8 +52,8 @@ func TestANSICursorMovement(t *testing.T) {
 		s.Write([]byte("\x1b[5;10H")) // Row 5, column 10 (1-based)
 
 		x, y := s.Cursor()
-		assert.Equal(t, 9, x)  // 0-based
-		assert.Equal(t, 4, y)  // 0-based
+		assert.Equal(t, 9, x) // 0-based
+		assert.Equal(t, 4, y) // 0-based
 	})
 
 	t.Run("cursor position default", func(t *testing.T) {
@@ -533,7 +533,7 @@ func TestANSIOSCWithST(t *testing.T) {
 
 func TestANSITerminalReset(t *testing.T) {
 	s := NewScreen(20, 5)
-	s.Write([]byte("\x1b[1mBold\x1bc"))                 // Set bold, then reset terminal
+	s.Write([]byte("\x1b[1mBold\x1bc")) // Set bold, then reset terminal
 	s.Write([]byte("Normal"))
 
 	cell := s.Cell(0, 0)
@@ -860,10 +860,10 @@ func TestANSIDeviceAttributes(t *testing.T) {
 func TestANSISetResetMode(t *testing.T) {
 	s := NewScreen(20, 5)
 	// Various mode commands should be parsed without error
-	s.Write([]byte("\x1b[?1hHello"))  // Set mode
-	s.Write([]byte("\x1b[?1l"))       // Reset mode
-	s.Write([]byte("\x1b[?1049h"))    // Alternate screen
-	s.Write([]byte("\x1b[?1049l"))    // Back to main screen
+	s.Write([]byte("\x1b[?1hHello")) // Set mode
+	s.Write([]byte("\x1b[?1l"))      // Reset mode
+	s.Write([]byte("\x1b[?1049h"))   // Alternate screen
+	s.Write([]byte("\x1b[?1049l"))   // Back to main screen
 	assert.Contains(t, s.Row(0), "Hello")
 }
 

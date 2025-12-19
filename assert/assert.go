@@ -612,6 +612,7 @@ func formatMsg(msgAndArgs ...any) string {
 // Returns true for:
 //   - nil interface
 //   - nil pointer, chan, func, interface, map, or slice
+//
 // Returns false for non-nillable types (int, bool, struct, etc.)
 func isNil(v any) bool {
 	if v == nil {

@@ -225,8 +225,11 @@ type mockT struct {
 	fatalMsg string
 }
 
-func (m *mockT) Helper()                           {}
-func (m *mockT) Fatalf(format string, args ...any) { m.failed = true; m.fatalMsg = fmt.Sprintf(format, args...) }
+func (m *mockT) Helper() {}
+func (m *mockT) Fatalf(format string, args ...any) {
+	m.failed = true
+	m.fatalMsg = fmt.Sprintf(format, args...)
+}
 func (m *mockT) Errorf(format string, args ...any) { m.failed = true }
 func (m *mockT) FailNow()                          { m.failed = true }
 func (m *mockT) Failed() bool                      { return m.failed }

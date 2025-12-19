@@ -332,7 +332,7 @@ func TestParse_NoNewlineAtEndOfFile(t *testing.T) {
 	diff, err := Parse(diffText)
 	assert.NoError(t, err)
 	assert.Len(t, diff.Files, 1)
-	
+
 	lines := diff.Files[0].Hunks[0].Lines
 	assert.Len(t, lines, 2)
 	assert.Equal(t, "old", lines[0].Content)

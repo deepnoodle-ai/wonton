@@ -472,7 +472,7 @@ func TestParseEnvString_QuotedValueWithTrailingComment(t *testing.T) {
 		{`KEY="hello world" # trailing`, "hello world"},
 		{`KEY="value#inside" # outside`, "value#inside"},
 		{`KEY="escaped\"quote" # comment`, `escaped"quote`},
-		{`KEY="foo"#nospace`, "foo"},   // No space before # still works
+		{`KEY="foo"#nospace`, "foo"}, // No space before # still works
 		{`KEY="foo"  # extra spaces`, "foo"},
 	}
 
@@ -507,8 +507,8 @@ func TestFindClosingQuote(t *testing.T) {
 		{`"hello world"`, '"', 12},
 		{`"escaped\"quote"`, '"', 15}, // Escaped quote should be skipped
 		{`"no closing quote`, '"', -1},
-		{`""`, '"', 1},       // Empty quoted string
-		{`"`, '"', -1},       // Single quote only
+		{`""`, '"', 1}, // Empty quoted string
+		{`"`, '"', -1}, // Single quote only
 		{`'single'`, '\'', 7},
 	}
 

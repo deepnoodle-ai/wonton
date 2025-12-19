@@ -389,7 +389,7 @@ func TestParse_WithUseFieldName(t *testing.T) {
 
 	envVars := map[string]string{
 		"A_P_I_KEY": "secret",
-		"TIMEOUT": "45s",
+		"TIMEOUT":   "45s",
 	}
 
 	cfg, err := Parse[Config](

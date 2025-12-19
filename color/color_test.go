@@ -74,14 +74,14 @@ func TestColor_BackgroundCode_AllColors(t *testing.T) {
 func TestColor_ExtendedPalette(t *testing.T) {
 	// Test 256-color palette
 	tests := []struct {
-		n           uint8
-		expectedFg  string
-		expectedBg  string
+		n          uint8
+		expectedFg string
+		expectedBg string
 	}{
 		{16, "38;5;16", "48;5;16"},
-		{196, "38;5;196", "48;5;196"},   // bright red in 256 palette
-		{232, "38;5;232", "48;5;232"},   // grayscale start
-		{255, "38;5;255", "48;5;255"},   // grayscale end
+		{196, "38;5;196", "48;5;196"}, // bright red in 256 palette
+		{232, "38;5;232", "48;5;232"}, // grayscale start
+		{255, "38;5;255", "48;5;255"}, // grayscale end
 	}
 
 	for _, tt := range tests {
@@ -424,9 +424,9 @@ func ExampleGradient() {
 func ExampleMultiGradient() {
 	// Create a sunset gradient
 	sunset := color.MultiGradient([]color.RGB{
-		color.NewRGB(255, 0, 0),     // Red
-		color.NewRGB(255, 128, 0),   // Orange
-		color.NewRGB(128, 0, 128),   // Purple
+		color.NewRGB(255, 0, 0),   // Red
+		color.NewRGB(255, 128, 0), // Orange
+		color.NewRGB(128, 0, 128), // Purple
 	}, 10)
 
 	for _, c := range sunset {

@@ -32,11 +32,11 @@ func (r *textAreaRegistryImpl) Clear() {
 func (r *textAreaRegistryImpl) Get(id string) *textAreaState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if state, exists := r.states[id]; exists {
 		return state
 	}
-	
+
 	// Create new default state
 	newState := &textAreaState{}
 	r.states[id] = newState
@@ -74,10 +74,10 @@ type textAreaView struct {
 	emptyStyle       Style
 
 	// Line numbers
-	showLineNumbers  bool
-	lineNumberStyle  Style
-	lineNumberFg     Color
-	hasLineNumberFg  bool
+	showLineNumbers bool
+	lineNumberStyle Style
+	lineNumberFg    Color
+	hasLineNumberFg bool
 
 	// Current line highlighting
 	highlightCurrentLine bool

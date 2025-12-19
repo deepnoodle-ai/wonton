@@ -203,7 +203,7 @@ func fetchWithSpinner(ctx context.Context, url string, timeout time.Duration) ([
 	defer ticker.Stop()
 
 	// Hide cursor and prepare for spinner
-	fmt.Fprint(os.Stderr, "\033[?25l") // Hide cursor
+	fmt.Fprint(os.Stderr, "\033[?25l")       // Hide cursor
 	defer fmt.Fprint(os.Stderr, "\033[?25h") // Show cursor on exit
 
 	for {

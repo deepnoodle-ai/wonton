@@ -603,4 +603,3 @@ func TestTerminal_Recording_WithEnv(t *testing.T) {
 	assert.Contains(t, string(content), `"TERM":"xterm-256color"`)
 	assert.Contains(t, string(content), `"SHELL":"/bin/zsh"`)
 }
-

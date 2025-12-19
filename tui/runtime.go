@@ -123,7 +123,6 @@ type Runtime struct {
 	mousePressed     bool        // Whether a mouse button is currently pressed
 }
 
-
 // NewRuntime creates a new Runtime for the given application.
 //
 // Parameters:

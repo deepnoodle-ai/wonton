@@ -101,9 +101,9 @@ func TestForEach_Gap(t *testing.T) {
 	}).Gap(2)
 
 	w, h := view.size(100, 100)
-	assert.Equal(t, 1, w)     // single char width
+	assert.Equal(t, 1, w) // single char width
 	// TODO: This should be 3+4 (3 lines + 2 gaps of 2) when Gap is properly implemented
-	assert.Equal(t, 3, h)   // Currently just 3 lines (gap is not applied)
+	assert.Equal(t, 3, h) // Currently just 3 lines (gap is not applied)
 }
 
 // TestForEach_GapWithSeparator tests Gap and Separator together

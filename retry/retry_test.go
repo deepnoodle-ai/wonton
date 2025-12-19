@@ -310,12 +310,12 @@ func TestLinearBackoff(t *testing.T) {
 		attempt  int
 		expected time.Duration
 	}{
-		{1, 100 * time.Millisecond},  // 100 + 0*50
-		{2, 150 * time.Millisecond},  // 100 + 1*50
-		{3, 200 * time.Millisecond},  // 100 + 2*50
-		{4, 250 * time.Millisecond},  // 100 + 3*50
-		{5, 300 * time.Millisecond},  // 100 + 4*50 = 300 (at cap)
-		{6, 300 * time.Millisecond},  // capped
+		{1, 100 * time.Millisecond}, // 100 + 0*50
+		{2, 150 * time.Millisecond}, // 100 + 1*50
+		{3, 200 * time.Millisecond}, // 100 + 2*50
+		{4, 250 * time.Millisecond}, // 100 + 3*50
+		{5, 300 * time.Millisecond}, // 100 + 4*50 = 300 (at cap)
+		{6, 300 * time.Millisecond}, // capped
 	}
 
 	for _, tt := range tests {

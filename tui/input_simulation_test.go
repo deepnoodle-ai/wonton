@@ -49,7 +49,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	// However, Runtime requires a terminal. We can use NewTestTerminal.
 	terminal := NewTestTerminal(80, 24, nil)
 	runtime := NewRuntime(terminal, app, 30)
-	
+
 	inputSource := NewMockInputSource()
 	runtime.SetInputSource(inputSource)
 
@@ -104,7 +104,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 
 	terminal := NewTestTerminal(80, 24, nil)
 	runtime := NewRuntime(terminal, app, 30)
-	
+
 	inputSource := NewMockInputSource()
 	runtime.SetInputSource(inputSource)
 
@@ -128,7 +128,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 		Rune: 'a',
 		Time: time.Now(),
 	})
-	
+
 	inputSource.Send(QuitEvent{Time: time.Now()})
 	time.Sleep(50 * time.Millisecond)
 

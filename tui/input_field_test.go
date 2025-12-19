@@ -14,7 +14,7 @@ func TestInputField_Creation(t *testing.T) {
 	assert.NotNil(t, field)
 	assert.Equal(t, &value, field.binding)
 	assert.Equal(t, 20, field.width) // Default width
-	assert.NotEmpty(t, field.id)    // Auto-generated ID
+	assert.NotEmpty(t, field.id)     // Auto-generated ID
 }
 
 func TestInputField_NilBinding(t *testing.T) {

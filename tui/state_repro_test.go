@@ -18,11 +18,11 @@ func TestTextArea_StateLoss(t *testing.T) {
 	// Simulate rendering Frame 1 (which would register focus handlers etc)
 	// For this test, we just look at the struct behavior.
 	// Internally, TextArea uses 'internal' field for scroll if binding is nil.
-	
+
 	// Simulate user scrolling down
 	handler := &textAreaFocusHandler{area: ta1}
 	handler.HandleKeyEvent(KeyEvent{Key: KeyArrowDown})
-	
+
 	// Verify scroll increased in ta1
 	assert.Equal(t, 1, ta1.getScrollY())
 

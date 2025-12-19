@@ -199,4 +199,3 @@ func (cv *coordinatedView) render(ctx *RenderContext) {
 	transformedView := cv.transformFunc(cv.inner, effect.Value())
 	transformedView.render(ctx)
 }
-

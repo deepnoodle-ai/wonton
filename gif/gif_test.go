@@ -358,8 +358,8 @@ func TestMultipleFrameAnimation(t *testing.T) {
 
 func TestPredefinedColors(t *testing.T) {
 	colors := []struct {
-		name string
-		c    color.RGBA
+		name       string
+		c          color.RGBA
 		r, g, b, a uint8
 	}{
 		{"Black", Black, 0, 0, 0, 255},

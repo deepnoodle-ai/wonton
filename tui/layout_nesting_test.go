@@ -39,7 +39,7 @@ func TestNestedLayout_Collapsing(t *testing.T) {
 	// 7. Spacer returns (width, 8).
 	// 8. nestedStack returns (width, 8).
 	// 9. Parent total height = 2 + 8 = 10.
-	
+
 	assert.Equal(t, 10, h, "Nested stack should expand to fill height")
 	_ = w
 }

@@ -126,7 +126,7 @@ func TestEmulator_ClearLine(t *testing.T) {
 	em := NewEmulator(80, 24)
 
 	em.ProcessOutput("Hello World")
-	em.ProcessOutput("\x1b[5G")  // Move to column 5
+	em.ProcessOutput("\x1b[5G") // Move to column 5
 	em.ProcessOutput("\x1b[0K") // Clear to end of line
 
 	screen := em.Screen()

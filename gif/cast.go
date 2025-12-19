@@ -17,15 +17,15 @@ import (
 //	opts.FPS = 15
 //	opts.Speed = 2.0  // Double speed playback
 type CastOptions struct {
-	Cols      int            // Override terminal columns (0 = use recording dimensions)
-	Rows      int            // Override terminal rows (0 = use recording dimensions)
-	Speed     float64        // Playback speed multiplier (1.0 = normal, 2.0 = double speed)
-	MaxIdle   float64        // Maximum idle time between events in seconds (default: 2.0, prevents long pauses)
-	FPS       int            // Target frames per second for output GIF (default: 10)
-	Padding   int            // Padding around terminal content in pixels (default: 8)
-	Font      *FontFace      // Custom TTF/OTF font (nil = use default Inconsolata)
-	FontSize  float64        // Font size in points when using default font (default: 14)
-	UseBitmap bool           // Force bitmap font instead of TTF (faster but lower quality)
+	Cols      int       // Override terminal columns (0 = use recording dimensions)
+	Rows      int       // Override terminal rows (0 = use recording dimensions)
+	Speed     float64   // Playback speed multiplier (1.0 = normal, 2.0 = double speed)
+	MaxIdle   float64   // Maximum idle time between events in seconds (default: 2.0, prevents long pauses)
+	FPS       int       // Target frames per second for output GIF (default: 10)
+	Padding   int       // Padding around terminal content in pixels (default: 8)
+	Font      *FontFace // Custom TTF/OTF font (nil = use default Inconsolata)
+	FontSize  float64   // Font size in points when using default font (default: 14)
+	UseBitmap bool      // Force bitmap font instead of TTF (faster but lower quality)
 }
 
 // DefaultCastOptions returns sensible defaults for cast conversion.
@@ -155,12 +155,12 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 // CastInfo contains metadata about a terminal recording without rendering it.
 // This is useful for inspecting recording properties before conversion.
 type CastInfo struct {
-	Width       int     // Terminal width in columns
-	Height      int     // Terminal height in rows
-	Duration    float64 // Total recording duration in seconds
-	EventCount  int     // Number of events in the recording
-	Title       string  // Recording title from metadata
-	Timestamp   int64   // Unix timestamp when recorded
+	Width      int     // Terminal width in columns
+	Height     int     // Terminal height in rows
+	Duration   float64 // Total recording duration in seconds
+	EventCount int     // Number of events in the recording
+	Title      string  // Recording title from metadata
+	Timestamp  int64   // Unix timestamp when recorded
 }
 
 // GetCastInfo extracts metadata from a .cast file without rendering it to a

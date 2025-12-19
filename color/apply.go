@@ -9,10 +9,10 @@ import (
 
 // ANSI escape code constants for text styling and color reset.
 const (
-	Escape = "\033["        // ANSI escape sequence prefix
-	Reset  = Escape + "0m"  // Resets all attributes (color, bold, dim, etc.)
-	Bold   = Escape + "1m"  // Bold/increased intensity
-	Dim    = Escape + "2m"  // Dim/faint/decreased intensity
+	Escape = "\033["       // ANSI escape sequence prefix
+	Reset  = Escape + "0m" // Resets all attributes (color, bold, dim, etc.)
+	Bold   = Escape + "1m" // Bold/increased intensity
+	Dim    = Escape + "2m" // Dim/faint/decreased intensity
 )
 
 func init() {

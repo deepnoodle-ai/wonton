@@ -269,10 +269,10 @@ func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
 //	    time.Sleep(50 * time.Millisecond)
 //	}
 type LivePrinter struct {
-	config      printConfig
-	lastHeight  int
-	started     bool
-	frameCount  uint64
+	config       printConfig
+	lastHeight   int
+	started      bool
+	frameCount   uint64
 	hiddenCursor bool
 }
 

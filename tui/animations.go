@@ -145,10 +145,10 @@ func (s *SlideAnimation) GetStyle(frame uint64, charIndex int, totalChars int) S
 
 // SparkleAnimation creates a twinkling star-like effect where random characters briefly brighten
 type SparkleAnimation struct {
-	Speed       int // How often sparkles update
-	BaseColor   RGB
-	SparkColor  RGB
-	Density     int // Higher = more sparkles (1-10 recommended)
+	Speed      int // How often sparkles update
+	BaseColor  RGB
+	SparkColor RGB
+	Density    int // Higher = more sparkles (1-10 recommended)
 }
 
 // GetStyle returns the style for a character at a given frame
@@ -657,4 +657,3 @@ func (asb *AnimatedStatusBar) SetPosition(x, y int) {
 	asb.x = x
 	asb.y = y
 }
-

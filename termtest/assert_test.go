@@ -273,13 +273,13 @@ func ExampleAssertContains() {
 	// This would be in a real test function
 	screen := NewScreen(40, 5)
 	screen.Write([]byte("Error: file not found"))
-	
+
 	// In a test, you would use a real *testing.T
 	// AssertContains(t, screen, "Error:")
-	
+
 	// For demonstration:
 	fmt.Println(screen.Contains("Error:"))
-	
+
 	// Output:
 	// true
 }
@@ -288,14 +288,14 @@ func ExampleAssertContains() {
 func ExampleAssertRow() {
 	screen := NewScreen(40, 5)
 	screen.Write([]byte("Menu\n> Option 1\n> Option 2"))
-	
+
 	// In a test:
 	// AssertRow(t, screen, 0, "Menu")
 	// AssertRow(t, screen, 1, "> Option 1")
-	
+
 	fmt.Println(screen.Row(0))
 	fmt.Println(screen.Row(1))
-	
+
 	// Output:
 	// Menu
 	// > Option 1
@@ -305,13 +305,13 @@ func ExampleAssertRow() {
 func ExampleAssertCursor() {
 	screen := NewScreen(40, 5)
 	screen.Write([]byte("Hello"))
-	
+
 	// In a test:
 	// AssertCursor(t, screen, 5, 0)
-	
+
 	x, y := screen.Cursor()
 	fmt.Printf("Cursor: (%d, %d)\n", x, y)
-	
+
 	// Output:
 	// Cursor: (5, 0)
 }

@@ -40,10 +40,10 @@ type GitScanApp struct {
 	mu sync.Mutex
 
 	// Repository
-	repo       *git.Repository
-	repoPath   string
-	branch     string
-	status     *git.Status
+	repo     *git.Repository
+	repoPath string
+	branch   string
+	status   *git.Status
 
 	// Commits
 	commits        []git.Commit
@@ -51,16 +51,16 @@ type GitScanApp struct {
 	commitScroll   int
 
 	// Diff view
-	diff        *git.Diff
-	parsedDiff  *unidiff.Diff
-	diffLines   []diffLine
+	diff         *git.Diff
+	parsedDiff   *unidiff.Diff
+	diffLines    []diffLine
 	selectedLine int
 	diffScroll   int
 
 	// Files view
-	files         []git.DiffFile
-	selectedFile  int
-	fileScroll    int
+	files        []git.DiffFile
+	selectedFile int
+	fileScroll   int
 
 	// View state
 	mode      ViewMode
@@ -71,10 +71,10 @@ type GitScanApp struct {
 
 // diffLine represents a single line in the diff view
 type diffLine struct {
-	Text     string
-	Type     string // header, hunk, add, remove, context
-	File     string
-	LineNum  int
+	Text    string
+	Type    string // header, hunk, add, remove, context
+	File    string
+	LineNum int
 }
 
 func main() {

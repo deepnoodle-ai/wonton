@@ -47,7 +47,7 @@ or feeding to LLMs.`).
 				Default(time.Second).
 				Help("How often to check the clipboard"),
 			cli.Duration("timeout", "t").
-				Default(30 * time.Second).
+				Default(30*time.Second).
 				Help("HTTP request timeout"),
 			cli.Int("retries", "r").
 				Default(3).

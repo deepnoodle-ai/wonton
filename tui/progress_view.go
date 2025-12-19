@@ -7,18 +7,18 @@ import (
 
 // progressView displays a progress bar (declarative view)
 type progressView struct {
-	current       int
-	total         int
-	width         int
-	filledChar    rune
-	emptyChar     rune
-	emptyPattern  string // if set, overrides emptyChar with a repeating pattern
-	style         Style
-	emptyStyle    Style
-	percentStyle  *Style // style for percentage text (if not set, uses style)
-	showPercent   bool
-	showFraction  bool
-	label         string
+	current      int
+	total        int
+	width        int
+	filledChar   rune
+	emptyChar    rune
+	emptyPattern string // if set, overrides emptyChar with a repeating pattern
+	style        Style
+	emptyStyle   Style
+	percentStyle *Style // style for percentage text (if not set, uses style)
+	showPercent  bool
+	showFraction bool
+	label        string
 }
 
 // Progress creates a declarative progress bar view.

@@ -394,27 +394,27 @@ func TestRedactCredentials_NoFalsePositives(t *testing.T) {
 
 func TestRedactCredentials_PreservesContext(t *testing.T) {
 	tests := []struct {
-		name         string
-		input        string
-		shouldHave   []string
+		name          string
+		input         string
+		shouldHave    []string
 		shouldNotHave []string
 	}{
 		{
-			name:         "preserves key name with colon",
-			input:        "password: secret123",
-			shouldHave:   []string{"password", "[REDACTED]"},
+			name:          "preserves key name with colon",
+			input:         "password: secret123",
+			shouldHave:    []string{"password", "[REDACTED]"},
 			shouldNotHave: []string{"secret123"},
 		},
 		{
-			name:         "preserves key name with equals",
-			input:        "API_KEY=sk_live_abc123",
-			shouldHave:   []string{"API_KEY", "[REDACTED]"},
+			name:          "preserves key name with equals",
+			input:         "API_KEY=sk_live_abc123",
+			shouldHave:    []string{"API_KEY", "[REDACTED]"},
 			shouldNotHave: []string{"sk_live_abc123"},
 		},
 		{
-			name:         "preserves surrounding text",
-			input:        "Error: Failed to authenticate. password: wrongpass. Please retry.",
-			shouldHave:   []string{"Error:", "Failed to authenticate", "[REDACTED]", "Please retry"},
+			name:          "preserves surrounding text",
+			input:         "Error: Failed to authenticate. password: wrongpass. Please retry.",
+			shouldHave:    []string{"Error:", "Failed to authenticate", "[REDACTED]", "Please retry"},
 			shouldNotHave: []string{"wrongpass"},
 		},
 	}

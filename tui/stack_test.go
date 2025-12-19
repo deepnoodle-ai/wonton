@@ -41,8 +41,8 @@ func TestStack_Gap(t *testing.T) {
 	).Gap(2)
 
 	w, h := s.size(100, 100)
-	assert.Equal(t, 1, w)     // single char width
-	assert.Equal(t, 3+4, h)   // 3 lines + 2 gaps of 2
+	assert.Equal(t, 1, w)   // single char width
+	assert.Equal(t, 3+4, h) // 3 lines + 2 gaps of 2
 }
 
 func TestStack_GapWithTwoChildren(t *testing.T) {

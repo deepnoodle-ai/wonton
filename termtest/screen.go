@@ -95,8 +95,8 @@ type Style struct {
 // fields contain the color value.
 type Color struct {
 	Type    ColorType
-	Value   uint8         // For ColorBasic (0-15) and Color256 (0-255)
-	R, G, B uint8         // For ColorRGB (24-bit true color)
+	Value   uint8 // For ColorBasic (0-15) and Color256 (0-255)
+	R, G, B uint8 // For ColorRGB (24-bit true color)
 }
 
 // ColorType indicates the format of a Color value.
@@ -124,14 +124,14 @@ type Cell struct {
 // Screen implements io.Writer, so it can be used anywhere an io.Writer is expected.
 // Written bytes are interpreted as ANSI-formatted terminal output.
 type Screen struct {
-	width    int      // Screen width in columns
-	height   int      // Screen height in rows
-	cells    [][]Cell // 2D grid of character cells [y][x]
-	cursorX  int      // Current cursor column (0-based)
-	cursorY  int      // Current cursor row (0-based)
-	style    Style    // Current text style for new writes
-	savedX   int      // Saved cursor X position (ESC 7/8, CSI s/u)
-	savedY   int      // Saved cursor Y position (ESC 7/8, CSI s/u)
+	width   int      // Screen width in columns
+	height  int      // Screen height in rows
+	cells   [][]Cell // 2D grid of character cells [y][x]
+	cursorX int      // Current cursor column (0-based)
+	cursorY int      // Current cursor row (0-based)
+	style   Style    // Current text style for new writes
+	savedX  int      // Saved cursor X position (ESC 7/8, CSI s/u)
+	savedY  int      // Saved cursor Y position (ESC 7/8, CSI s/u)
 }
 
 // NewScreen creates a new virtual terminal screen with the specified dimensions.

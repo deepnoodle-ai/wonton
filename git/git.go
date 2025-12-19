@@ -138,14 +138,14 @@ func Open(path string) (*Repository, error) {
 // ParentHashes contains the full hashes of parent commits (empty for
 // initial commit, multiple for merge commits).
 type Commit struct {
-	Hash         string    `json:"hash"`          // Full 40-character SHA-1 hash
-	ShortHash    string    `json:"short_hash"`    // Abbreviated hash (typically 7 characters)
-	Author       Person    `json:"author"`        // Person who authored the commit
-	Committer    Person    `json:"committer"`     // Person who committed (may differ from author)
-	Subject      string    `json:"subject"`       // First line of commit message
-	Body         string    `json:"body,omitempty"` // Remaining lines of commit message
+	Hash         string    `json:"hash"`                    // Full 40-character SHA-1 hash
+	ShortHash    string    `json:"short_hash"`              // Abbreviated hash (typically 7 characters)
+	Author       Person    `json:"author"`                  // Person who authored the commit
+	Committer    Person    `json:"committer"`               // Person who committed (may differ from author)
+	Subject      string    `json:"subject"`                 // First line of commit message
+	Body         string    `json:"body,omitempty"`          // Remaining lines of commit message
 	ParentHashes []string  `json:"parent_hashes,omitempty"` // Parent commit hashes
-	Timestamp    time.Time `json:"timestamp"`     // Commit timestamp
+	Timestamp    time.Time `json:"timestamp"`               // Commit timestamp
 }
 
 // Person represents an author or committer in git.
@@ -231,10 +231,10 @@ type DiffFile struct {
 // TotalAdded and TotalRemoved sum the line changes across all files.
 // Stats contains a human-readable summary line (e.g., "3 files changed, 15 insertions(+), 2 deletions(-)").
 type Diff struct {
-	Files        []DiffFile `json:"files"`               // Changed files
-	TotalAdded   int        `json:"total_added"`         // Total lines added across all files
-	TotalRemoved int        `json:"total_removed"`       // Total lines deleted across all files
-	Stats        string     `json:"stats,omitempty"`     // Human-readable summary
+	Files        []DiffFile `json:"files"`           // Changed files
+	TotalAdded   int        `json:"total_added"`     // Total lines added across all files
+	TotalRemoved int        `json:"total_removed"`   // Total lines deleted across all files
+	Stats        string     `json:"stats,omitempty"` // Human-readable summary
 }
 
 // BlameLine represents a single line of git blame output, showing which

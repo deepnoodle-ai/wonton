@@ -25,7 +25,7 @@ func TestRainbowAnimation_Defaults(t *testing.T) {
 	// Should use defaults when Speed/Length are 0
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 3, anim.Speed)  // default
+	assert.Equal(t, 3, anim.Speed)   // default
 	assert.Equal(t, 10, anim.Length) // set to totalChars
 }
 
@@ -414,7 +414,7 @@ func TestAnimatedMultiLine_SetLine(t *testing.T) {
 	assert.Len(t, aml.lines, 4)
 	assert.Equal(t, "Line 0", aml.lines[0])
 	assert.Equal(t, "Line 1", aml.lines[1])
-	assert.Equal(t, "", aml.lines[2])       // filled with empty
+	assert.Equal(t, "", aml.lines[2]) // filled with empty
 	assert.Equal(t, "Line 3", aml.lines[3])
 }
 

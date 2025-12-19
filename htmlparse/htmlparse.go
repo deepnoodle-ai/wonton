@@ -273,7 +273,7 @@ func (d *Document) Metadata() Metadata {
 
 // Link represents a hyperlink (<a> tag) found in the document.
 type Link struct {
-	URL   string `json:"url"`           // The href attribute value
+	URL   string `json:"url"`             // The href attribute value
 	Text  string `json:"text,omitempty"`  // The link text content
 	Title string `json:"title,omitempty"` // The title attribute value
 }

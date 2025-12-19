@@ -1386,7 +1386,7 @@ func (t *Terminal) scrollUp() {
 	// Shift lines up
 	copy(t.backBuffer, t.backBuffer[1:])
 	t.backBuffer[t.height-1] = newLine
-	
+
 	// Mark entire screen as dirty
 	t.dirtyRegion.MarkRect(0, 0, t.width, t.height)
 }
