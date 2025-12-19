@@ -40,8 +40,21 @@ func (g *group) Flex(factor int) *group {
 }
 
 // flex implements the Flexible interface.
+// If no explicit flex factor is set, the group inherits flexibility from
+// its children. This allows flexible views (like Canvas) to expand even
+// when nested inside containers, matching CSS flexbox behavior.
 func (g *group) flex() int {
-	return g.flexFactor
+	if g.flexFactor != 0 {
+		return g.flexFactor
+	}
+	// Auto-derive: inherit max flex from children
+	// This makes Group(Canvas()) flexible because Canvas is flexible
+	for _, child := range g.children {
+		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
+			return flex.flex()
+		}
+	}
+	return 0
 }
 
 // Gap sets the spacing between children in number of columns.

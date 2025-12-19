@@ -63,6 +63,20 @@
 //	    Text("Footer"),
 //	).Gap(1)            // Space between children
 //
+// Flex Inheritance: Containers automatically inherit flexibility from their
+// children. If a Stack or Group contains flexible views (like Canvas or Spacer),
+// the container itself becomes flexible. This allows nested layouts to work
+// intuitively without explicitly setting .Flex() at every level:
+//
+//	Stack(
+//	    Text("Header"),
+//	    Group(Canvas()),  // Group inherits flex from Canvas
+//	    Text("Footer"),
+//	)
+//
+// The Canvas will expand to fill available space because Group automatically
+// becomes flexible when it contains flexible children.
+//
 // # View Components
 //
 // Text and Styling:

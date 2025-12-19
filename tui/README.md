@@ -401,6 +401,17 @@ func (a *app) View() tui.View {
 | `Spacer` | Flexible spacing        | none               | `*spacerView` |
 | `Empty`  | Empty view              | none               | `View`        |
 
+**Flex Inheritance**: Stack and Group containers automatically inherit flexibility from their children. If a container holds flexible views (like Canvas or Spacer), the container itself becomes flexible without needing an explicit `.Flex()` call. This enables intuitive nested layouts:
+
+```go
+// Canvas expands because Group inherits its flexibility
+Stack(
+    Text("Header"),
+    Group(Canvas()),  // Group auto-inherits flex from Canvas
+    Text("Footer"),
+)
+```
+
 ### Text Views
 
 | Function   | Description       | Inputs                               | Outputs         |

@@ -46,8 +46,21 @@ func (s *stack) Flex(factor int) *stack {
 }
 
 // flex implements the Flexible interface.
+// If no explicit flex factor is set, the stack inherits flexibility from
+// its children. This allows flexible views (like Canvas) to expand even
+// when nested inside containers, matching CSS flexbox behavior.
 func (s *stack) flex() int {
-	return s.flexFactor
+	if s.flexFactor != 0 {
+		return s.flexFactor
+	}
+	// Auto-derive: inherit max flex from children
+	// This makes Stack(Canvas()) flexible because Canvas is flexible
+	for _, child := range s.children {
+		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
+			return flex.flex()
+		}
+	}
+	return 0
 }
 
 // Gap sets the spacing between children in number of rows.
