@@ -1,22 +1,42 @@
-// Package web provides URL manipulation, text normalization, and media detection
-// utilities for web crawling and content processing.
+// Package web provides URL manipulation, text normalization, media detection,
+// binary file fetching, and web search abstractions for web crawling and content
+// processing.
 //
-// The package offers three main categories of functionality:
+// # URL Operations
 //
-// URL Operations:
-//   - NormalizeURL: Parse and standardize URLs (add https://, remove query params)
-//   - ResolveLink: Resolve relative URLs against a base domain
-//   - AreSameHost: Compare if two URLs have identical hosts
-//   - AreRelatedHosts: Check if URLs share a common parent domain
-//   - SortURLs: Sort URLs alphabetically by their string representation
+//   - [NormalizeURL]: Parse and standardize URLs (add https://, remove query params)
+//   - [ResolveLink]: Resolve relative URLs against a base domain
+//   - [AreSameHost]: Compare if two URLs have identical hosts
+//   - [AreRelatedHosts]: Check if URLs share a common parent domain
+//   - [SortURLs]: Sort URLs alphabetically by their string representation
 //
-// Text Processing:
-//   - NormalizeText: Clean web text (trim, unescape HTML, remove non-printable chars)
-//   - EndsWithPunctuation: Check if text ends with common punctuation marks
+// # Text Processing
 //
-// Media Detection:
-//   - IsMediaURL: Identify URLs pointing to media files
-//   - IsMediaExtension: Check if a file extension is a media type
+//   - [NormalizeText]: Clean web text (trim, unescape HTML, remove non-printable chars)
+//   - [EndsWithPunctuation]: Check if text ends with common punctuation marks
+//
+// # Media Detection
+//
+//   - [IsMediaURL]: Identify URLs pointing to media files
+//   - [IsMediaExtension]: Check if a file extension is a media type
+//
+// # Binary File Fetching
+//
+//   - [BinaryFetcher]: Interface for downloading binary files from URLs
+//   - [DefaultBinaryFetcher]: Standard implementation with size limits and MIME verification
+//   - [BinaryFetchInput]: Configuration for binary fetch requests
+//   - [BinaryFetchResult]: Result containing downloaded data or file path
+//
+// # Web Search
+//
+//   - [Searcher]: Interface for web search implementations
+//   - [SearchInput]: Search query parameters
+//   - [SearchOutput]: Search results container
+//   - [SearchItem]: Individual search result with URL, title, and metadata
+//
+// # Error Handling
+//
+//   - [FetchError]: Structured error type for HTTP fetch failures with status codes
 //
 // This package is particularly useful when building web crawlers, content extractors,
 // or any application that needs to process URLs and text from web pages.
