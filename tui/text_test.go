@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -215,4 +216,38 @@ func TestText_Render_Empty(t *testing.T) {
 
 	// Empty text should render without error
 	termtest.AssertRow(t, screen, 0, "")
+}
+
+func TestWrappedText_NoLeadingSpace(t *testing.T) {
+	// Test WrapText directly first
+	wrapped := WrapText("hello world foo", 10)
+	expected := "hello\nworld foo"
+	if wrapped != expected {
+		t.Errorf("WrapText mismatch:\ngot:  %q\nwant: %q", wrapped, expected)
+	}
+
+	// Check that wrapped lines don't start with spaces
+	lines := strings.Split(wrapped, "\n")
+	for i, line := range lines {
+		if len(line) > 0 && line[0] == ' ' {
+			t.Errorf("WrapText line %d starts with space: %q", i, line)
+		}
+	}
+}
+
+func TestWrappedText_MultipleWraps(t *testing.T) {
+	// Test WrapText with more wraps
+	wrapped := WrapText("one two three four five", 10)
+	lines := strings.Split(wrapped, "\n")
+
+	for i, line := range lines {
+		if len(line) > 0 && line[0] == ' ' {
+			t.Errorf("WrapText line %d starts with space: %q", i, line)
+		}
+	}
+
+	// Verify all words are present
+	if !strings.Contains(wrapped, "one") || !strings.Contains(wrapped, "five") {
+		t.Errorf("Missing content in wrapped text: %q", wrapped)
+	}
 }

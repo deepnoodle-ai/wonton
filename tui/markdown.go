@@ -550,7 +550,7 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 	for _, seg := range segments {
 		words := strings.Fields(seg.Text)
 
-		for i, word := range words {
+		for _, word := range words {
 			wordWidth := runewidth.StringWidth(word)
 			spaceWidth := 1
 
@@ -563,15 +563,7 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 			}
 
 			// Add space before word if not at start of line
-			if len(currentLine) > 0 && i == 0 {
-				// This is the first word of a segment, but not the first segment on the line
-				currentLine = append(currentLine, StyledSegment{
-					Text:  " ",
-					Style: seg.Style,
-				})
-				currentWidth += spaceWidth
-			} else if i > 0 {
-				// Add space between words within the same segment
+			if len(currentLine) > 0 {
 				currentLine = append(currentLine, StyledSegment{
 					Text:  " ",
 					Style: seg.Style,

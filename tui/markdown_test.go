@@ -371,6 +371,37 @@ func TestMarkdownView_LineCount(t *testing.T) {
 	assert.Greater(t, lineCount, 10, "Should have more lines than viewport height")
 }
 
+func TestMarkdownRenderer_WrapSegments_NoLeadingSpace(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(10)
+
+	// Create a paragraph that will wrap - "hello world foo" at width 10
+	// should become:
+	// "hello"
+	// "world foo"
+	markdown := "hello world foo"
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Check that wrapped lines don't start with a space
+	for i, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			firstSeg := line.Segments[0]
+			if len(firstSeg.Text) > 0 && firstSeg.Text[0] == ' ' {
+				t.Errorf("Line %d starts with a space: %q", i, firstSeg.Text)
+			}
+		}
+	}
+
+	// Verify the content is still correct
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "hello")
+	assert.Contains(t, output, "world")
+	assert.Contains(t, output, "foo")
+}
+
 // Helper function to convert rendered markdown to plain text for testing
 func renderToPlainText(rendered *RenderedMarkdown) string {
 	var result strings.Builder
