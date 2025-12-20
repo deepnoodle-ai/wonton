@@ -333,3 +333,132 @@ func TestBinaryFetcherCustomHeaders(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Bearer token123", receivedAuth)
 }
+
+func TestBinaryFetcherExplicitOutputPathNoResponseFilename(t *testing.T) {
+	// Server responds at root path with no Content-Disposition header
+	content := []byte("content without filename")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "explicit-name.bin")
+
+	fetcher := NewDefaultBinaryFetcher()
+	// URL is just "/" with no filename derivable from response
+	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
+		URL:        server.URL + "/",
+		OutputPath: outputPath,
+	})
+
+	// Should succeed because OutputPath is an explicit file path
+	assert.NoError(t, err)
+	assert.Equal(t, "explicit-name.bin", result.Filename)
+	assert.Equal(t, outputPath, result.DownloadPath)
+
+	savedContent, err := os.ReadFile(outputPath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, savedContent)
+}
+
+func TestBinaryFetcherDirectoryOutputNoFilename(t *testing.T) {
+	// Server responds at root path with no Content-Disposition header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("content"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+
+	fetcher := NewDefaultBinaryFetcher()
+	// URL is just "/" - no filename can be derived
+	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
+		URL:        server.URL + "/",
+		OutputPath: tmpDir, // directory, so filename must come from response
+	})
+
+	// Should fail because no filename can be determined
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "filename")
+}
+
+func TestBinaryFetcherInvalidExpectedType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("content"))
+	}))
+	defer server.Close()
+
+	fetcher := NewDefaultBinaryFetcher()
+	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
+		URL:            server.URL + "/file.pdf",
+		ExpectedType:   "not a valid mime type;;;",
+		VerifyMimeType: true,
+	})
+
+	// Should fail with clear error about invalid expected type
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid expected type")
+}
+
+func TestBinaryFetcherNonExistentDirectoryWithCreateDirs(t *testing.T) {
+	content := []byte("content for new directory")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="downloaded.bin"`)
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	// Path with trailing slash indicates it should be a directory
+	newDirPath := filepath.Join(tmpDir, "newdir", "subdir") + string(filepath.Separator)
+
+	fetcher := NewDefaultBinaryFetcher()
+	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
+		URL:        server.URL + "/download",
+		OutputPath: newDirPath,
+		CreateDirs: true,
+	})
+
+	// Should succeed - create the directory and use filename from response
+	assert.NoError(t, err)
+	assert.Equal(t, "downloaded.bin", result.Filename)
+	expectedPath := filepath.Join(tmpDir, "newdir", "subdir", "downloaded.bin")
+	assert.Equal(t, expectedPath, result.DownloadPath)
+
+	// Verify file was created in the right place
+	savedContent, err := os.ReadFile(expectedPath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, savedContent)
+}
+
+func TestBinaryFetcherNonExistentDirectoryNoTrailingSlash(t *testing.T) {
+	content := []byte("content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="downloaded.bin"`)
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	// Path without trailing slash - treated as file path, not directory
+	newFilePath := filepath.Join(tmpDir, "newdir", "myfile.dat")
+
+	fetcher := NewDefaultBinaryFetcher()
+	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
+		URL:        server.URL + "/download",
+		OutputPath: newFilePath,
+		CreateDirs: true,
+	})
+
+	// Should succeed - create parent dirs and use explicit filename
+	assert.NoError(t, err)
+	assert.Equal(t, "myfile.dat", result.Filename)
+	assert.Equal(t, newFilePath, result.DownloadPath)
+
+	// Verify file was created
+	savedContent, err := os.ReadFile(newFilePath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, savedContent)
+}

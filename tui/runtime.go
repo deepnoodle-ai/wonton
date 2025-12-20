@@ -410,6 +410,7 @@ func (r *Runtime) render() {
 		buttonRegistry.Clear()
 		interactiveRegistry.Clear()
 		inputRegistry.Clear()
+		textAreaRegistry.Clear()
 
 		// Clear the frame before rendering. This ensures that when views shrink,
 		// old content outside their new bounds is erased. The double-buffering
@@ -426,6 +427,9 @@ func (r *Runtime) render() {
 		view.size(width, height)
 		// Render phase
 		view.render(ctx)
+
+		// Prune TextArea state for IDs that weren't rendered this frame
+		textAreaRegistry.Prune()
 	}
 
 	// Flush to screen (diffs and sends only dirty regions)
@@ -452,7 +456,14 @@ func (d *defaultInputSource) SetPasteTabWidth(w int) {
 
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
 // This goroutine blocks on stdin reads and forwards events to the main loop.
-// ...
+//
+// Goroutine Lifecycle Note: The nested goroutine that calls ReadEvent() blocks
+// on stdin and cannot be interrupted when the runtime stops. This is an inherent
+// limitation of blocking I/O in Go. For typical TUI applications (single runtime
+// for process lifetime), this is not an issue since all goroutines are cleaned
+// up on process exit. However, if creating/destroying runtimes repeatedly (tests,
+// embedded use), be aware that stopped runtimes may leave a blocked goroutine
+// until the next stdin input or process exit.
 func (r *Runtime) inputReader() {
 	var source InputSource
 	if r.inputSource != nil {
@@ -632,6 +643,12 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 
 // commandExecutor runs async commands (Goroutine 3).
 // Each command runs in its own goroutine and sends its result back as an event.
+//
+// Design Note: Commands spawn unbounded goroutines without throttling. This is
+// appropriate for typical TUI applications with low command volume. For applications
+// that may generate many commands rapidly (e.g., batching operations), consider
+// implementing application-level throttling or batching commands into fewer Cmd
+// invocations.
 func (r *Runtime) commandExecutor() {
 	for {
 		select {

@@ -370,13 +370,14 @@ func checkRequired(field reflect.StructField, jsonRequired bool) bool {
 // like arrays, primitives, and maps when they are the root type.
 func propertyToSchema(prop *Property) *Schema {
 	return &Schema{
-		Type:                 prop.Type,
-		Description:          prop.Description,
-		Properties:           prop.Properties,
-		Required:             prop.Required,
-		AdditionalProperties: prop.AdditionalProperties,
-		Items:                prop.Items,
-		Format:               prop.Format,
-		Nullable:             prop.Nullable,
+		Type:                       prop.Type,
+		Description:                prop.Description,
+		Properties:                 prop.Properties,
+		Required:                   prop.Required,
+		AdditionalProperties:       prop.AdditionalProperties,
+		AdditionalPropertiesSchema: prop.AdditionalPropertiesSchema,
+		Items:                      prop.Items,
+		Format:                     prop.Format,
+		Nullable:                   prop.Nullable,
 	}
 }

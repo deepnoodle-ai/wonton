@@ -49,7 +49,10 @@
 //   - required: Override required status (true/false)
 package schema
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // SchemaType represents JSON Schema type values.
 type SchemaType string
@@ -78,7 +81,7 @@ type Schema struct {
 	Title string `json:"title,omitempty"`
 
 	// Properties maps property names to their definitions.
-	Properties map[string]*Property `json:"properties"`
+	Properties map[string]*Property `json:"properties,omitempty"`
 
 	// Required lists property names that must be present.
 	Required []string `json:"required,omitempty"`
@@ -86,6 +89,11 @@ type Schema struct {
 	// AdditionalProperties controls whether extra properties are allowed.
 	// Set to false (via pointer) to disallow additional properties.
 	AdditionalProperties *bool `json:"additionalProperties,omitempty"`
+
+	// AdditionalPropertiesSchema defines the schema for additional properties.
+	// Used to represent map[string]T types where T is the value schema.
+	// When set, this takes precedence over AdditionalProperties in JSON output.
+	AdditionalPropertiesSchema *Property `json:"-"`
 
 	// Items defines the schema for array elements (when Type is "array").
 	Items *Property `json:"items,omitempty"`
@@ -97,12 +105,34 @@ type Schema struct {
 	Nullable *bool `json:"nullable,omitempty"`
 }
 
-// MarshalJSON implements json.Marshaler to ensure Properties is always
-// marshaled as an empty object {} rather than null for object types.
-// LLM APIs require tools with no parameters to have "properties": {} not null.
+// MarshalJSON implements json.Marshaler to handle AdditionalPropertiesSchema
+// and ensure Properties is marshaled as an empty object {} for object types
+// with fixed properties. LLM APIs require tools with no parameters to have
+// "properties": {} not null.
 func (s *Schema) MarshalJSON() ([]byte, error) {
 	type schemaAlias Schema
-	// Only ensure empty properties object for object types
+
+	// Handle AdditionalPropertiesSchema (map schemas)
+	if s.AdditionalPropertiesSchema != nil {
+		data, err := json.Marshal((*schemaAlias)(s))
+		if err != nil {
+			return nil, err
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			return nil, err
+		}
+		// Replace additionalProperties with the schema
+		m["additionalProperties"] = s.AdditionalPropertiesSchema
+		// For pure map schemas (no fixed properties), don't include empty properties
+		if len(s.Properties) == 0 {
+			delete(m, "properties")
+		}
+		return json.Marshal(m)
+	}
+
+	// For object types, ensure properties is included (even if empty) and
+	// comes after other fields for consistent output
 	if s.Type == Object {
 		props := s.Properties
 		if props == nil {
@@ -116,7 +146,63 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 			Properties:  props,
 		})
 	}
+
 	return json.Marshal((*schemaAlias)(s))
+}
+
+// UnmarshalJSON implements json.Unmarshaler to handle additionalProperties
+// which can be either a boolean or a schema object.
+func (s *Schema) UnmarshalJSON(data []byte) error {
+	// First, unmarshal into a map to extract additionalProperties separately
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Handle additionalProperties specially - remove it before alias unmarshal
+	var apRaw json.RawMessage
+	var hasAP bool
+	if ap, ok := raw["additionalProperties"]; ok {
+		apRaw = ap
+		hasAP = true
+		delete(raw, "additionalProperties")
+	}
+
+	// Re-marshal without additionalProperties and unmarshal into alias
+	modified, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	type schemaAlias Schema
+	if err := json.Unmarshal(modified, (*schemaAlias)(s)); err != nil {
+		return err
+	}
+
+	// Now handle additionalProperties
+	if hasAP {
+		// Clear both fields first to avoid stale state on reused structs
+		s.AdditionalProperties = nil
+		s.AdditionalPropertiesSchema = nil
+
+		// Try to unmarshal as boolean first
+		var boolVal bool
+		if err := json.Unmarshal(apRaw, &boolVal); err == nil {
+			s.AdditionalProperties = &boolVal
+			return nil
+		}
+
+		// Try to unmarshal as schema object
+		var schemaProp Property
+		if err := json.Unmarshal(apRaw, &schemaProp); err == nil {
+			s.AdditionalPropertiesSchema = &schemaProp
+			return nil
+		}
+
+		// Neither bool nor object - invalid additionalProperties value
+		return fmt.Errorf("additionalProperties must be boolean or object, got: %s", string(apRaw))
+	}
+
+	return nil
 }
 
 // AsMap converts the schema to a map[string]any, useful for APIs that
@@ -224,6 +310,61 @@ func (p *Property) MarshalJSON() ([]byte, error) {
 		return json.Marshal(m)
 	}
 	return json.Marshal((*propertyAlias)(p))
+}
+
+// UnmarshalJSON implements json.Unmarshaler to handle additionalProperties
+// which can be either a boolean or a schema object.
+func (p *Property) UnmarshalJSON(data []byte) error {
+	// First, unmarshal into a map to extract additionalProperties separately
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Handle additionalProperties specially - remove it before alias unmarshal
+	var apRaw json.RawMessage
+	var hasAP bool
+	if ap, ok := raw["additionalProperties"]; ok {
+		apRaw = ap
+		hasAP = true
+		delete(raw, "additionalProperties")
+	}
+
+	// Re-marshal without additionalProperties and unmarshal into alias
+	modified, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	type propertyAlias Property
+	if err := json.Unmarshal(modified, (*propertyAlias)(p)); err != nil {
+		return err
+	}
+
+	// Now handle additionalProperties
+	if hasAP {
+		// Clear both fields first to avoid stale state on reused structs
+		p.AdditionalProperties = nil
+		p.AdditionalPropertiesSchema = nil
+
+		// Try to unmarshal as boolean first
+		var boolVal bool
+		if err := json.Unmarshal(apRaw, &boolVal); err == nil {
+			p.AdditionalProperties = &boolVal
+			return nil
+		}
+
+		// Try to unmarshal as schema object
+		var schemaProp Property
+		if err := json.Unmarshal(apRaw, &schemaProp); err == nil {
+			p.AdditionalPropertiesSchema = &schemaProp
+			return nil
+		}
+
+		// Neither bool nor object - invalid additionalProperties value
+		return fmt.Errorf("additionalProperties must be boolean or object, got: %s", string(apRaw))
+	}
+
+	return nil
 }
 
 // Ptr returns a pointer to the value, useful for setting optional fields.

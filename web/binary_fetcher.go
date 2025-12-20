@@ -129,11 +129,14 @@ func (f *DefaultBinaryFetcher) FetchBinary(ctx context.Context, input *BinaryFet
 
 	// Verify content type if requested (using mime.ParseMediaType to handle parameters)
 	if input.VerifyMimeType && input.ExpectedType != "" {
+		expectedType, _, err := mime.ParseMediaType(input.ExpectedType)
+		if err != nil {
+			return nil, fmt.Errorf("invalid expected type %q: %w", input.ExpectedType, err)
+		}
 		mediaType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
 			return nil, fmt.Errorf("invalid content type header: %w", err)
 		}
-		expectedType, _, _ := mime.ParseMediaType(input.ExpectedType)
 		if mediaType != expectedType {
 			return nil, fmt.Errorf("content type mismatch: expected %s, got %s", expectedType, mediaType)
 		}
@@ -147,10 +150,35 @@ func (f *DefaultBinaryFetcher) FetchBinary(ctx context.Context, input *BinaryFet
 		return nil, fmt.Errorf("file size exceeds maximum allowed size: %d > %d", contentLength, input.MaxSizeBytes)
 	}
 
-	// Determine filename from URL or Content-Disposition header
-	filename, err := safeFilenameFromResponse(resp)
-	if err != nil {
-		return nil, err
+	// Determine if we need a filename from response
+	// Only required when OutputPath is empty or is a directory
+	var filename string
+	var outputIsDir bool
+
+	if input.OutputPath != "" {
+		// Check if path ends with a separator (treat as directory even if doesn't exist)
+		endsWithSep := strings.HasSuffix(input.OutputPath, string(filepath.Separator)) ||
+			strings.HasSuffix(input.OutputPath, "/")
+
+		if endsWithSep {
+			outputIsDir = true
+		} else {
+			// Check if existing path is a directory
+			fileInfo, statErr := os.Stat(input.OutputPath)
+			outputIsDir = statErr == nil && fileInfo.IsDir()
+		}
+	}
+
+	needsResponseFilename := input.OutputPath == "" || outputIsDir
+	if needsResponseFilename {
+		var err error
+		filename, err = safeFilenameFromResponse(resp)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// OutputPath is an explicit file path; use its basename
+		filename = filepath.Base(input.OutputPath)
 	}
 
 	result := &BinaryFetchResult{
@@ -170,15 +198,14 @@ func (f *DefaultBinaryFetcher) FetchBinary(ctx context.Context, input *BinaryFet
 		outputPath := input.OutputPath
 
 		// If output path is a directory, append the sanitized filename
-		fileInfo, err := os.Stat(outputPath)
-		if err == nil && fileInfo.IsDir() {
+		if outputIsDir {
 			outputPath = filepath.Join(outputPath, filename)
 		}
 
 		// Verify the final path is safe (doesn't escape intended directory)
-		if input.CreateDirs || (err == nil && fileInfo.IsDir()) {
+		if input.CreateDirs || outputIsDir {
 			baseDir := input.OutputPath
-			if err == nil && !fileInfo.IsDir() {
+			if !outputIsDir {
 				baseDir = filepath.Dir(input.OutputPath)
 			}
 			absBase, _ := filepath.Abs(baseDir)

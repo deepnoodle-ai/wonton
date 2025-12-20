@@ -3,6 +3,7 @@ package gif
 import (
 	"bytes"
 	"fmt"
+	"image"
 	"image/color"
 	"image/gif"
 	"testing"
@@ -292,6 +293,103 @@ func TestGrayscaleBounds(t *testing.T) {
 	p = Grayscale(500)
 	if len(p) != 256 {
 		t.Errorf("expected maximum 256 colors, got %d", len(p))
+	}
+}
+
+func TestNewDimensionValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		width, height  int
+		expectW, expectH int
+	}{
+		{"normal", 100, 100, 100, 100},
+		{"zero width", 0, 100, 1, 100},
+		{"zero height", 100, 0, 100, 1},
+		{"negative width", -5, 100, 1, 100},
+		{"negative height", 100, -10, 100, 1},
+		{"both zero", 0, 0, 1, 1},
+		{"both negative", -1, -1, 1, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g := New(tc.width, tc.height)
+			if g.Width() != tc.expectW {
+				t.Errorf("width: got %d, want %d", g.Width(), tc.expectW)
+			}
+			if g.Height() != tc.expectH {
+				t.Errorf("height: got %d, want %d", g.Height(), tc.expectH)
+			}
+		})
+	}
+}
+
+func TestNewWithPaletteValidation(t *testing.T) {
+	// Empty palette should use default
+	g := NewWithPalette(10, 10, Palette{})
+	if len(g.palette) != len(DefaultPalette) {
+		t.Errorf("empty palette: got %d colors, want %d", len(g.palette), len(DefaultPalette))
+	}
+
+	// Oversized palette should be truncated
+	bigPalette := make(Palette, 300)
+	for i := range bigPalette {
+		bigPalette[i] = color.RGBA{uint8(i % 256), 0, 0, 255}
+	}
+	g = NewWithPalette(10, 10, bigPalette)
+	if len(g.palette) != 256 {
+		t.Errorf("big palette: got %d colors, want 256", len(g.palette))
+	}
+
+	// Valid palette should work as-is
+	smallPalette := Palette{White, Black, Red}
+	g = NewWithPalette(10, 10, smallPalette)
+	if len(g.palette) != 3 {
+		t.Errorf("small palette: got %d colors, want 3", len(g.palette))
+	}
+}
+
+func TestNegativeDelayValidation(t *testing.T) {
+	g := New(10, 10)
+	g.AddFrameWithDelay(nil, -100)
+
+	data, err := g.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes() error: %v", err)
+	}
+
+	decoded, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("DecodeAll() error: %v", err)
+	}
+	if decoded.Delay[0] != 0 {
+		t.Errorf("expected delay 0 (clamped from negative), got %d", decoded.Delay[0])
+	}
+}
+
+func TestAddImageNilValidation(t *testing.T) {
+	g := New(10, 10)
+	g.AddImage(nil, 10) // Should not panic or add a frame
+	if g.FrameCount() != 0 {
+		t.Errorf("nil image should not add frame, got %d frames", g.FrameCount())
+	}
+}
+
+func TestAddImageNegativeDelay(t *testing.T) {
+	g := New(10, 10)
+	img := image.NewPaletted(image.Rect(0, 0, 10, 10), g.palette)
+	g.AddImage(img, -50)
+
+	data, err := g.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes() error: %v", err)
+	}
+
+	decoded, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("DecodeAll() error: %v", err)
+	}
+	if decoded.Delay[0] != 0 {
+		t.Errorf("expected delay 0 (clamped from negative), got %d", decoded.Delay[0])
 	}
 }
 

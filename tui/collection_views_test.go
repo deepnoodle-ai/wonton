@@ -91,9 +91,6 @@ func TestForEach_SeparatorRendering(t *testing.T) {
 }
 
 // TestForEach_Gap tests the Gap method
-// Note: Gap() currently has a limitation where the gap is set on the cached stack
-// but lost when size() clears the cache and rebuilds. The gap needs to be stored
-// in forEachView itself and applied during buildStack() to work correctly.
 func TestForEach_Gap(t *testing.T) {
 	items := []string{"A", "B", "C"}
 	view := ForEach(items, func(item string, i int) View {
@@ -102,8 +99,8 @@ func TestForEach_Gap(t *testing.T) {
 
 	w, h := view.size(100, 100)
 	assert.Equal(t, 1, w) // single char width
-	// TODO: This should be 3+4 (3 lines + 2 gaps of 2) when Gap is properly implemented
-	assert.Equal(t, 3, h) // Currently just 3 lines (gap is not applied)
+	// 3 items + 2 gaps of 2 = 3 + 4 = 7
+	assert.Equal(t, 7, h)
 }
 
 // TestForEach_GapWithSeparator tests Gap and Separator together
@@ -115,8 +112,8 @@ func TestForEach_GapWithSeparator(t *testing.T) {
 
 	w, h := view.size(100, 100)
 	assert.Equal(t, 1, w)
-	// TODO: Should be 5 (2 items + 1 separator + 2 gaps) when Gap is properly implemented
-	assert.Equal(t, 3, h) // Currently 3 (2 items + 1 separator, gap not applied)
+	// 2 items + 1 separator + 2 gaps = 2 + 1 + 2 = 5
+	assert.Equal(t, 5, h)
 }
 
 // TestForEach_Render tests the render behavior
@@ -283,8 +280,8 @@ func TestHForEach_Gap(t *testing.T) {
 	}).Gap(3)
 
 	w, h := view.size(100, 100)
-	// TODO: Should be 9 (3 chars + 2 gaps of 3) when Gap is properly implemented
-	assert.Equal(t, 3, w) // Currently 3 (gap not applied)
+	// 3 chars + 2 gaps of 3 = 3 + 6 = 9
+	assert.Equal(t, 9, w)
 	assert.Equal(t, 1, h)
 }
 
@@ -296,8 +293,8 @@ func TestHForEach_GapWithSeparator(t *testing.T) {
 	}).Separator(Text("|")).Gap(1)
 
 	w, h := view.size(100, 100)
-	// TODO: Should be 5 (A + gap + | + gap + B) when Gap is properly implemented
-	assert.Equal(t, 3, w) // Currently 3 (A + | + B, gap not applied)
+	// A + gap + | + gap + B = 1 + 1 + 1 + 1 + 1 = 5
+	assert.Equal(t, 5, w)
 	assert.Equal(t, 1, h)
 }
 
@@ -472,8 +469,8 @@ func TestForEach_Chaining(t *testing.T) {
 
 	w, h := view.size(100, 100)
 	assert.Equal(t, 1, w)
-	// TODO: Should be 9 (5 views + 4 gaps) when Gap is properly implemented
-	assert.Equal(t, 5, h) // Currently 5 (3 items + 2 separators, gap not applied)
+	// 5 views (3 items + 2 separators) + 4 gaps = 5 + 4 = 9
+	assert.Equal(t, 9, h)
 }
 
 // TestHForEach_Chaining tests method chaining
@@ -487,8 +484,8 @@ func TestHForEach_Chaining(t *testing.T) {
 	assert.NotNil(t, view)
 
 	w, h := view.size(100, 100)
-	// TODO: Should be 7 (X + gap + | + gap + Y) when Gap is properly implemented
-	assert.Equal(t, 3, w) // Currently 3 (X + | + Y, gap not applied)
+	// 3 views (2 items + 1 separator) + 2 gaps of 2 = 3 + 4 = 7
+	assert.Equal(t, 7, w)
 	assert.Equal(t, 1, h)
 }
 

@@ -10,11 +10,13 @@ import (
 // textAreaRegistry manages transient state for TextAreas.
 var textAreaRegistry = &textAreaRegistryImpl{
 	states: make(map[string]*textAreaState),
+	active: make(map[string]bool),
 }
 
 type textAreaRegistryImpl struct {
 	mu     sync.Mutex
 	states map[string]*textAreaState
+	active map[string]bool // tracks which IDs were accessed this frame
 }
 
 type textAreaState struct {
@@ -22,16 +24,33 @@ type textAreaState struct {
 	cursorLine int
 }
 
+// Clear marks all entries as inactive. Called at the start of each frame.
+// Entries accessed during the frame via Get() are marked active.
+// Call Prune() after the frame to remove entries that weren't accessed.
 func (r *textAreaRegistryImpl) Clear() {
-	// We do NOT clear the map here because we want state to persist across frames.
-	// However, to prevent memory leaks from unused IDs, we might want a mechanism to prune.
-	// For now, we follow the pattern of persisting state.
-	// TODO: Implement garbage collection for stale IDs?
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Reset active tracking for new frame
+	r.active = make(map[string]bool)
+}
+
+// Prune removes entries that weren't accessed since the last Clear().
+// This prevents unbounded growth from dynamic TextArea IDs.
+func (r *textAreaRegistryImpl) Prune() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id := range r.states {
+		if !r.active[id] {
+			delete(r.states, id)
+		}
+	}
 }
 
 func (r *textAreaRegistryImpl) Get(id string) *textAreaState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.active[id] = true // mark as accessed this frame
 
 	if state, exists := r.states[id]; exists {
 		return state

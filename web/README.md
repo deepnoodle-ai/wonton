@@ -1,6 +1,6 @@
 # web
 
-URL manipulation, text normalization, and media type detection for web crawling and content processing. Provides utilities for normalizing URLs, resolving relative links, cleaning text, and identifying media files.
+URL manipulation, text normalization, media type detection, binary file fetching, and web search abstractions for web crawling and content processing. Provides utilities for normalizing URLs, resolving relative links, cleaning text, identifying media files, downloading binary content, and implementing search functionality.
 
 ## Usage Examples
 
@@ -377,6 +377,119 @@ func main() {
 }
 ```
 
+### Binary File Fetching
+
+```go
+func downloadFile() {
+	fetcher := web.NewDefaultBinaryFetcher()
+
+	// Download to memory
+	result, err := fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
+		URL: "https://example.com/document.pdf",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Downloaded %d bytes: %s\n", result.Size, result.Filename)
+	// result.Data contains the file contents
+
+	// Download to file
+	result, err = fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
+		URL:        "https://example.com/image.png",
+		OutputPath: "/tmp/downloads/image.png",
+		CreateDirs: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Saved to: %s\n", result.DownloadPath)
+
+	// Download with size limit and MIME verification
+	result, err = fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
+		URL:            "https://example.com/file.pdf",
+		OutputPath:     "/tmp/downloads/",  // Directory - filename from response
+		MaxSizeBytes:   10 * 1024 * 1024,   // 10MB limit
+		ExpectedType:   "application/pdf",
+		VerifyMimeType: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+### Error Handling
+
+```go
+func fetchWithRetry(url string) error {
+	fetcher := web.NewDefaultBinaryFetcher()
+
+	_, err := fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
+		URL: url,
+	})
+	if err != nil {
+		// Check if it's a fetch error with status code
+		var fetchErr *web.FetchError
+		if errors.As(err, &fetchErr) {
+			fmt.Printf("HTTP %d: %s\n", fetchErr.StatusCode, fetchErr.Error())
+
+			// Check if we should retry
+			if fetchErr.IsRecoverable() {
+				fmt.Println("Error is recoverable, will retry...")
+				// Retry logic here
+			}
+		}
+		return err
+	}
+	return nil
+}
+```
+
+### Implementing a Search Provider
+
+```go
+// Implement the Searcher interface for your search backend
+type MySearcher struct {
+	apiKey string
+}
+
+func (s *MySearcher) Search(ctx context.Context, input *web.SearchInput) (*web.SearchOutput, error) {
+	// Call your search API
+	// ...
+
+	return &web.SearchOutput{
+		Items: []*web.SearchItem{
+			{
+				URL:         "https://example.com/result1",
+				Title:       "First Result",
+				Description: "Description of the first result",
+			},
+			{
+				URL:         "https://example.com/result2",
+				Title:       "Second Result",
+				Description: "Description of the second result",
+			},
+		},
+	}, nil
+}
+
+func searchExample() {
+	searcher := &MySearcher{apiKey: "..."}
+
+	results, err := searcher.Search(context.Background(), &web.SearchInput{
+		Query: "golang web scraping",
+		Limit: 10,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, item := range results.Items {
+		fmt.Printf("%s: %s\n", item.Title, item.URL)
+	}
+}
+```
+
 ## API Reference
 
 ### URL Functions
@@ -397,6 +510,32 @@ func main() {
 |----------|-------------|--------|---------|
 | `NormalizeText` | Cleans and normalizes text | `text string` | `string` |
 | `EndsWithPunctuation` | Checks if string ends with punctuation | `s string` | `bool` |
+
+### Binary Fetcher Types
+
+| Type | Description |
+|------|-------------|
+| `BinaryFetcher` | Interface for fetching binary files from URLs |
+| `DefaultBinaryFetcher` | Standard implementation with timeouts and security features |
+| `BinaryFetchInput` | Configuration: URL, headers, output path, size limits, MIME verification |
+| `BinaryFetchResult` | Result containing filename, size, content type, and data or path |
+
+### Error Types
+
+| Type | Description |
+|------|-------------|
+| `FetchError` | HTTP fetch error with status code and recoverability check |
+| `NewFetchError(code, err)` | Create a new FetchError |
+| `(*FetchError).IsRecoverable()` | Returns true for 429, 500, 502, 503, 504 status codes |
+
+### Search Types
+
+| Type | Description |
+|------|-------------|
+| `Searcher` | Interface for web search implementations |
+| `SearchInput` | Search query and limit |
+| `SearchOutput` | Container for search results |
+| `SearchItem` | Individual result: URL, title, description, icon, image |
 
 ## URL Normalization Behavior
 

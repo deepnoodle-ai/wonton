@@ -708,3 +708,224 @@ func TestGenerate_EnumTypedValues(t *testing.T) {
 	enabledProp := s.Properties["enabled"]
 	assert.Equal(t, []any{true, false}, enabledProp.Enum)
 }
+
+// Test root map schema generation and serialization
+func TestGenerate_RootMapSchema(t *testing.T) {
+	// Generate schema for a root map type
+	s, err := schema.Generate(map[string]int{})
+	assert.NoError(t, err)
+
+	// Should be an object with additionalProperties schema
+	assert.Equal(t, schema.Object, s.Type)
+	assert.NotNil(t, s.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Integer, s.AdditionalPropertiesSchema.Type)
+	assert.Nil(t, s.Properties) // No fixed properties
+
+	// Serialize to JSON
+	jsonData, err := json.Marshal(s)
+	assert.NoError(t, err)
+
+	// Should have additionalProperties as schema object
+	assert.Contains(t, string(jsonData), `"additionalProperties":{"type":"integer"}`)
+	// Should NOT have empty properties object for pure map schema
+	assert.NotContains(t, string(jsonData), `"properties":{}`)
+}
+
+// Test map schema round-trip (marshal and unmarshal)
+func TestGenerate_MapSchemaRoundTrip(t *testing.T) {
+	type Config struct {
+		Labels map[string]string `json:"labels" description:"Key-value labels"`
+		Counts map[string]int    `json:"counts" description:"Named counters"`
+	}
+
+	original, err := schema.Generate(Config{})
+	assert.NoError(t, err)
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(original)
+	assert.NoError(t, err)
+
+	// Unmarshal back
+	var parsed schema.Schema
+	err = json.Unmarshal(jsonData, &parsed)
+	assert.NoError(t, err)
+
+	// Verify the schema structure was preserved
+	assert.Equal(t, schema.Object, parsed.Type)
+
+	// Check labels property
+	labelsProp := parsed.Properties["labels"]
+	assert.NotNil(t, labelsProp)
+	assert.Equal(t, schema.Object, labelsProp.Type)
+	assert.NotNil(t, labelsProp.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.String, labelsProp.AdditionalPropertiesSchema.Type)
+
+	// Check counts property
+	countsProp := parsed.Properties["counts"]
+	assert.NotNil(t, countsProp)
+	assert.Equal(t, schema.Object, countsProp.Type)
+	assert.NotNil(t, countsProp.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Integer, countsProp.AdditionalPropertiesSchema.Type)
+}
+
+// Test root map schema round-trip
+func TestGenerate_RootMapSchemaRoundTrip(t *testing.T) {
+	original, err := schema.Generate(map[string]string{})
+	assert.NoError(t, err)
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(original)
+	assert.NoError(t, err)
+
+	// Unmarshal back
+	var parsed schema.Schema
+	err = json.Unmarshal(jsonData, &parsed)
+	assert.NoError(t, err)
+
+	// Verify the schema structure was preserved
+	assert.Equal(t, schema.Object, parsed.Type)
+	assert.NotNil(t, parsed.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.String, parsed.AdditionalPropertiesSchema.Type)
+}
+
+// Test property round-trip with additionalProperties schema
+func TestProperty_MapRoundTrip(t *testing.T) {
+	original := &schema.Property{
+		Type:        schema.Object,
+		Description: "Map of string to integer",
+		AdditionalPropertiesSchema: &schema.Property{
+			Type: schema.Integer,
+		},
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(original)
+	assert.NoError(t, err)
+
+	// Should contain schema-valued additionalProperties
+	assert.Contains(t, string(jsonData), `"additionalProperties":{"type":"integer"}`)
+
+	// Unmarshal back
+	var parsed schema.Property
+	err = json.Unmarshal(jsonData, &parsed)
+	assert.NoError(t, err)
+
+	// Verify
+	assert.Equal(t, schema.Object, parsed.Type)
+	assert.Equal(t, "Map of string to integer", parsed.Description)
+	assert.NotNil(t, parsed.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Integer, parsed.AdditionalPropertiesSchema.Type)
+	assert.Nil(t, parsed.AdditionalProperties) // Should be cleared
+}
+
+// Test that boolean additionalProperties still works
+func TestProperty_BoolAdditionalPropertiesRoundTrip(t *testing.T) {
+	original := &schema.Property{
+		Type:                 schema.Object,
+		AdditionalProperties: schema.Ptr(false),
+		Properties: map[string]*schema.Property{
+			"name": {Type: schema.String},
+		},
+	}
+
+	// Marshal to JSON
+	jsonData, err := json.Marshal(original)
+	assert.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"additionalProperties":false`)
+
+	// Unmarshal back
+	var parsed schema.Property
+	err = json.Unmarshal(jsonData, &parsed)
+	assert.NoError(t, err)
+
+	// Verify boolean was preserved
+	assert.NotNil(t, parsed.AdditionalProperties)
+	assert.False(t, *parsed.AdditionalProperties)
+	assert.Nil(t, parsed.AdditionalPropertiesSchema)
+}
+
+// Test nested map types
+func TestGenerate_NestedMapType(t *testing.T) {
+	type DeepMap struct {
+		Data map[string]map[string]int `json:"data" description:"Nested map"`
+	}
+
+	s, err := schema.Generate(DeepMap{})
+	assert.NoError(t, err)
+
+	dataProp := s.Properties["data"]
+	assert.Equal(t, schema.Object, dataProp.Type)
+	assert.NotNil(t, dataProp.AdditionalPropertiesSchema)
+
+	// The value type should be another map schema
+	innerSchema := dataProp.AdditionalPropertiesSchema
+	assert.Equal(t, schema.Object, innerSchema.Type)
+	assert.NotNil(t, innerSchema.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Integer, innerSchema.AdditionalPropertiesSchema.Type)
+}
+
+// Test that invalid additionalProperties values cause errors
+func TestSchema_InvalidAdditionalProperties(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+	}{
+		{"string value", `{"type":"object","additionalProperties":"invalid"}`},
+		{"number value", `{"type":"object","additionalProperties":123}`},
+		{"array value", `{"type":"object","additionalProperties":["a","b"]}`},
+		// Note: null is accepted as it unmarshals to an empty schema, which is valid
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var s schema.Schema
+			err := json.Unmarshal([]byte(tt.json), &s)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "additionalProperties must be boolean or object")
+		})
+	}
+}
+
+// Test that Property also rejects invalid additionalProperties
+func TestProperty_InvalidAdditionalProperties(t *testing.T) {
+	var p schema.Property
+	err := json.Unmarshal([]byte(`{"type":"object","additionalProperties":"bad"}`), &p)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "additionalProperties must be boolean or object")
+}
+
+// Test that unmarshaling clears stale state on reused struct
+func TestSchema_UnmarshalClearsStaleState(t *testing.T) {
+	// Start with a schema that has AdditionalProperties set
+	s := schema.Schema{
+		Type:                 schema.Object,
+		AdditionalProperties: schema.Ptr(true),
+	}
+
+	// Unmarshal JSON with AdditionalPropertiesSchema
+	err := json.Unmarshal([]byte(`{"type":"object","additionalProperties":{"type":"string"}}`), &s)
+	assert.NoError(t, err)
+
+	// AdditionalProperties should be cleared, AdditionalPropertiesSchema should be set
+	assert.Nil(t, s.AdditionalProperties)
+	assert.NotNil(t, s.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.String, s.AdditionalPropertiesSchema.Type)
+}
+
+// Test the reverse: schema clears AdditionalPropertiesSchema when bool is unmarshaled
+func TestSchema_UnmarshalClearsSchemaWhenBool(t *testing.T) {
+	// Start with a schema that has AdditionalPropertiesSchema set
+	s := schema.Schema{
+		Type:                       schema.Object,
+		AdditionalPropertiesSchema: &schema.Property{Type: schema.String},
+	}
+
+	// Unmarshal JSON with boolean additionalProperties
+	err := json.Unmarshal([]byte(`{"type":"object","additionalProperties":false}`), &s)
+	assert.NoError(t, err)
+
+	// AdditionalPropertiesSchema should be cleared, AdditionalProperties should be set
+	assert.Nil(t, s.AdditionalPropertiesSchema)
+	assert.NotNil(t, s.AdditionalProperties)
+	assert.False(t, *s.AdditionalProperties)
+}

@@ -105,12 +105,29 @@ type GIF struct {
 }
 
 // New creates a new GIF with the specified dimensions and the default palette.
+// Dimensions must be positive; values less than 1 are clamped to 1.
 func New(width, height int) *GIF {
 	return NewWithPalette(width, height, DefaultPalette)
 }
 
 // NewWithPalette creates a new GIF with a custom palette.
+// Dimensions must be positive; values less than 1 are clamped to 1.
+// Palette must have 1-256 colors; empty palettes use DefaultPalette,
+// and palettes exceeding 256 colors are truncated.
 func NewWithPalette(width, height int, palette Palette) *GIF {
+	// Clamp dimensions to minimum of 1
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	// Handle invalid palettes
+	if len(palette) == 0 {
+		palette = DefaultPalette
+	} else if len(palette) > 256 {
+		palette = palette[:256]
+	}
 	return &GIF{
 		width:     width,
 		height:    height,
@@ -305,7 +322,11 @@ func (g *GIF) AddFrame(draw func(*Frame)) *GIF {
 
 // AddFrameWithDelay adds a new frame with a custom delay.
 // Delay is in 100ths of a second (e.g., 10 = 100ms).
+// Negative delays are clamped to 0.
 func (g *GIF) AddFrameWithDelay(draw func(*Frame), delay int) *GIF {
+	if delay < 0 {
+		delay = 0
+	}
 	bounds := image.Rect(0, 0, g.width, g.height)
 	img := image.NewPaletted(bounds, g.palette)
 
@@ -329,7 +350,14 @@ func (g *GIF) AddFrameWithDelay(draw func(*Frame), delay int) *GIF {
 // AddImage adds an existing paletted image as a frame.
 // The image is added directly without palette conversion; ensure the image
 // uses a compatible palette or colors may not display correctly.
+// Nil images are ignored. Negative delays are clamped to 0.
 func (g *GIF) AddImage(img *image.Paletted, delay int) *GIF {
+	if img == nil {
+		return g
+	}
+	if delay < 0 {
+		delay = 0
+	}
 	g.images = append(g.images, img)
 	g.delays = append(g.delays, delay)
 	g.disposal = append(g.disposal, gif.DisposalBackground)

@@ -21,6 +21,7 @@ type forEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
+	gap       int
 	cached    *stack // cached result for rendering
 }
 
@@ -44,6 +45,9 @@ func (f *forEachView[T]) buildStack() *stack {
 	}
 
 	f.cached = Stack(views...)
+	if f.gap > 0 {
+		f.cached.Gap(f.gap)
+	}
 	return f.cached
 }
 
@@ -59,7 +63,7 @@ func (f *forEachView[T]) render(ctx *RenderContext) {
 
 // Gap sets the spacing between items (like Stack.Gap).
 func (f *forEachView[T]) Gap(n int) *forEachView[T] {
-	f.buildStack().gap = n
+	f.gap = n
 	return f
 }
 
@@ -83,6 +87,7 @@ type hForEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
+	gap       int
 	cached    *group
 }
 
@@ -106,6 +111,9 @@ func (f *hForEachView[T]) buildStack() *group {
 	}
 
 	f.cached = Group(views...)
+	if f.gap > 0 {
+		f.cached.Gap(f.gap)
+	}
 	return f.cached
 }
 
@@ -120,6 +128,6 @@ func (f *hForEachView[T]) render(ctx *RenderContext) {
 
 // Gap sets the spacing between items (like Group.Gap).
 func (f *hForEachView[T]) Gap(n int) *hForEachView[T] {
-	f.buildStack().gap = n
+	f.gap = n
 	return f
 }
