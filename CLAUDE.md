@@ -38,13 +38,14 @@ and CLI building blocks that work well together.
 | **htmltomd**    | HTML to Markdown conversion                    |
 | **humanize**    | Human-readable formatting                      |
 | **retry**       | Retry with backoff and jitter                  |
+| **schema**      | JSON Schema types and generation for LLM tools |
 | **sse**         | Server-Sent Events client                      |
 | **terminal**    | Terminal control and input decoding            |
 | **termsession** | Session recording (asciinema format)           |
 | **termtest**    | Terminal output testing                        |
 | **tui**         | Declarative TUI with layout engine             |
 | **unidiff**     | Unified diff parsing                           |
-| **web**         | URL manipulation, media type detection         |
+| **web**         | URL utilities, binary fetch, search            |
 
 ## Development Commands
 
