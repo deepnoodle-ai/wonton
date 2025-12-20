@@ -137,10 +137,13 @@ func TestDivider_MethodChaining(t *testing.T) {
 	assert.True(t, d.style.Bold)
 }
 
-func TestDivider_Flex(t *testing.T) {
+func TestDivider_NotFlexible(t *testing.T) {
 	d := Divider()
-	// Dividers should be flexible to fill available width
-	assert.Equal(t, 1, d.flex())
+	// Dividers should NOT implement Flexible - they have fixed height (1 row)
+	// and fill width via size(), not flex distribution.
+	// This matches CSS behavior where <hr> has flex-grow: 0.
+	_, ok := interface{}(d).(Flexible)
+	assert.False(t, ok, "dividerView should not implement Flexible")
 }
 
 func TestDivider_Size_NoTitle(t *testing.T) {
@@ -342,4 +345,20 @@ func TestDivider_MultipleStyles(t *testing.T) {
 	assert.True(t, strings.Contains(output, "Red"), "should contain Red")
 	assert.True(t, strings.Contains(output, "Green"), "should contain Green")
 	assert.True(t, strings.Contains(output, "Blue"), "should contain Blue")
+}
+
+func TestHeaderBar_NotFlexible(t *testing.T) {
+	h := HeaderBar("Title")
+	// Header bars should NOT implement Flexible - they have fixed height (1 row)
+	// and fill width via size(), not flex distribution.
+	_, ok := interface{}(h).(Flexible)
+	assert.False(t, ok, "headerBarView should not implement Flexible")
+}
+
+func TestStatusBar_NotFlexible(t *testing.T) {
+	s := StatusBar("Status")
+	// Status bars should NOT implement Flexible - they have fixed height (1 row)
+	// and fill width via size(), not flex distribution.
+	_, ok := interface{}(s).(Flexible)
+	assert.False(t, ok, "statusBar (headerBarView) should not implement Flexible")
 }

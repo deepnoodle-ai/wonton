@@ -57,10 +57,6 @@ func (d *dividerView) Dim() *dividerView {
 	return d
 }
 
-func (d *dividerView) flex() int {
-	return 1 // Dividers are flexible to fill width
-}
-
 func (d *dividerView) size(maxWidth, maxHeight int) (int, int) {
 	// Request full width if available
 	w := maxWidth
@@ -157,10 +153,6 @@ func (h *headerBarView) Bold() *headerBarView {
 func (h *headerBarView) Style(s Style) *headerBarView {
 	h.style = s
 	return h
-}
-
-func (h *headerBarView) flex() int {
-	return 1 // Header bars fill available width
 }
 
 func (h *headerBarView) size(maxWidth, maxHeight int) (int, int) {
