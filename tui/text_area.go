@@ -22,6 +22,51 @@ type textAreaRegistryImpl struct {
 type textAreaState struct {
 	scrollY    int
 	cursorLine int
+	selection  TextSelection
+
+	// Mouse selection state
+	isDragging        bool
+	contentBounds     image.Rectangle  // content area bounds (excludes border)
+	lineNumberWidth   int
+	cachedLines       []string         // cached for mouse handlers
+	mouseHandler      *MouseHandler
+	selectionEnabled  bool
+	externalSelection *TextSelection   // pointer to externally bound selection (if any)
+}
+
+// getActiveSelection returns the selection to use (external if bound, internal otherwise).
+func (s *textAreaState) getActiveSelection() *TextSelection {
+	if s.externalSelection != nil {
+		return s.externalSelection
+	}
+	return &s.selection
+}
+
+// setSelectionStart sets the start of selection on the active selection.
+func (s *textAreaState) setSelectionStart(pos TextPosition) {
+	sel := s.getActiveSelection()
+	sel.SetStart(pos)
+}
+
+// setSelectionEnd sets the end of selection on the active selection.
+func (s *textAreaState) setSelectionEnd(pos TextPosition) {
+	sel := s.getActiveSelection()
+	sel.SetEnd(pos)
+}
+
+// setFullSelection sets the complete selection on the active selection.
+func (s *textAreaState) setFullSelection(sel TextSelection) {
+	if s.externalSelection != nil {
+		*s.externalSelection = sel
+	} else {
+		s.selection = sel
+	}
+}
+
+// clearActiveSelection clears the active selection.
+func (s *textAreaState) clearActiveSelection() {
+	sel := s.getActiveSelection()
+	sel.Clear()
 }
 
 // Clear marks all entries as inactive. Called at the start of each frame.
@@ -104,6 +149,11 @@ type textAreaView struct {
 	hasCurrentLineStyle  bool
 	cursorLine           *int // pointer to external cursor line position
 	internalCursorLine   int  // internal cursor line if cursorLine is nil
+
+	// Text selection
+	selectionEnabled bool
+	selectionStyle   Style
+	selection        *TextSelection // external selection (optional)
 }
 
 // TextArea creates a scrollable text display component.
@@ -285,6 +335,27 @@ func (t *textAreaView) CursorLine(line *int) *textAreaView {
 	return t
 }
 
+// EnableSelection enables text selection with mouse drag.
+func (t *textAreaView) EnableSelection() *textAreaView {
+	t.selectionEnabled = true
+	if t.selectionStyle == (Style{}) {
+		t.selectionStyle = SelectionStyle
+	}
+	return t
+}
+
+// SelectionStyle sets the style for selected text.
+func (t *textAreaView) SelectionStyleOpt(s Style) *textAreaView {
+	t.selectionStyle = s
+	return t
+}
+
+// Selection binds the selection to an external variable.
+func (t *textAreaView) Selection(sel *TextSelection) *textAreaView {
+	t.selection = sel
+	return t
+}
+
 func (t *textAreaView) getContent() string {
 	if t.binding != nil {
 		return *t.binding
@@ -330,6 +401,76 @@ func (t *textAreaView) setCursorLine(line int) {
 	} else {
 		t.internalCursorLine = line
 	}
+}
+
+func (t *textAreaView) getSelection() *TextSelection {
+	if t.selection != nil {
+		return t.selection
+	}
+	if t.id != "" {
+		return &textAreaRegistry.Get(t.id).selection
+	}
+	return nil
+}
+
+func (t *textAreaView) setSelection(sel TextSelection) {
+	if t.selection != nil {
+		*t.selection = sel
+	} else if t.id != "" {
+		textAreaRegistry.Get(t.id).selection = sel
+	}
+}
+
+func (t *textAreaView) clearSelection() {
+	if t.selection != nil {
+		t.selection.Clear()
+	} else if t.id != "" {
+		textAreaRegistry.Get(t.id).selection.Clear()
+	}
+}
+
+// buildLineView creates a view for a single line, handling selection highlighting.
+func (t *textAreaView) buildLineView(line string, lineNum int, sel *TextSelection, baseStyle Style) View {
+	if line == "" {
+		// For empty lines, still show selection if the entire line is selected
+		if sel != nil && sel.Active && sel.ContainsLine(lineNum) {
+			return Text(" ").Style(t.selectionStyle)
+		}
+		return Text(" ") // preserve empty lines
+	}
+
+	// Check if any part of this line is selected
+	if sel == nil || !sel.Active || !sel.ContainsLine(lineNum) {
+		// No selection on this line
+		return Text("%s", line).Style(baseStyle)
+	}
+
+	// Get the selected range within this line
+	startCol, endCol := sel.LineRange(lineNum, len(line))
+
+	// Build segmented view
+	var segments []View
+
+	// Text before selection
+	if startCol > 0 {
+		segments = append(segments, Text("%s", line[:startCol]).Style(baseStyle))
+	}
+
+	// Selected text
+	if startCol < endCol {
+		selectedText := line[startCol:endCol]
+		segments = append(segments, Text("%s", selectedText).Style(t.selectionStyle))
+	}
+
+	// Text after selection
+	if endCol < len(line) {
+		segments = append(segments, Text("%s", line[endCol:]).Style(baseStyle))
+	}
+
+	if len(segments) == 1 {
+		return segments[0]
+	}
+	return Group(segments...)
 }
 
 func (t *textAreaView) size(maxWidth, maxHeight int) (int, int) {
@@ -382,6 +523,12 @@ func (t *textAreaView) render(ctx *RenderContext) {
 		lnWidth := t.lineNumberWidth()
 		cursorLine := t.getCursorLine()
 
+		// Get selection state if enabled
+		var sel *TextSelection
+		if t.selectionEnabled {
+			sel = t.getSelection()
+		}
+
 		// Determine line number style
 		lnStyle := t.lineNumberStyle
 		if t.hasLineNumberFg {
@@ -398,38 +545,28 @@ func (t *textAreaView) render(ctx *RenderContext) {
 		for i, line := range lines {
 			var lineView View
 
+			// Determine base text style
+			lineStyle := t.textStyle
+			if t.highlightCurrentLine && i == cursorLine {
+				lineStyle = lineStyle.Merge(currentLineStyle)
+			}
+
 			// Build the line content with optional line number
 			if t.showLineNumbers {
 				lineNum := i + 1
 				lineNumText := fmt.Sprintf("%*d ", lnWidth-1, lineNum)
-				lineNumView := Text("%s", lineNumText).Style(lnStyle)
-
-				var textView View
-				if line == "" {
-					textView = Text(" ") // preserve empty lines
-				} else {
-					textView = Text("%s", line).Style(t.textStyle)
-				}
-
-				// Apply current line highlighting if enabled
+				lineNumStyle := lnStyle
 				if t.highlightCurrentLine && i == cursorLine {
-					textView = Text("%s", line).Style(t.textStyle.Merge(currentLineStyle))
-					lineNumView = Text("%s", lineNumText).Style(lnStyle.Merge(currentLineStyle))
+					lineNumStyle = lineNumStyle.Merge(currentLineStyle)
 				}
+				lineNumView := Text("%s", lineNumText).Style(lineNumStyle)
 
+				// Build text view with selection support
+				textView := t.buildLineView(line, i, sel, lineStyle)
 				lineView = Group(lineNumView, textView)
 			} else {
-				// No line numbers, just the text
-				if line == "" {
-					lineView = Text(" ") // preserve empty lines
-				} else {
-					lineStyle := t.textStyle
-					// Apply current line highlighting if enabled
-					if t.highlightCurrentLine && i == cursorLine {
-						lineStyle = lineStyle.Merge(currentLineStyle)
-					}
-					lineView = Text("%s", line).Style(lineStyle)
-				}
+				// No line numbers, build text view with selection support
+				lineView = t.buildLineView(line, i, sel, lineStyle)
 			}
 
 			lineViews[i] = lineView
@@ -481,6 +618,159 @@ func (t *textAreaView) render(ctx *RenderContext) {
 		bounds: bounds,
 	}
 	focusManager.Register(handler)
+
+	// Register mouse region for selection if enabled
+	if t.selectionEnabled && t.id != "" {
+		state := textAreaRegistry.Get(t.id)
+		state.selectionEnabled = true
+		state.cachedLines = strings.Split(content, "\n")
+		state.lineNumberWidth = t.lineNumberWidth()
+		state.externalSelection = t.selection // sync external binding pointer
+
+		// Calculate content bounds (inside border if present)
+		contentBounds := bounds
+		if t.bordered && !t.leftBorderOnly {
+			contentBounds = image.Rect(
+				bounds.Min.X+1,
+				bounds.Min.Y+1,
+				bounds.Max.X-1,
+				bounds.Max.Y-1,
+			)
+		} else if t.leftBorderOnly {
+			contentBounds = image.Rect(
+				bounds.Min.X+1,
+				bounds.Min.Y,
+				bounds.Max.X,
+				bounds.Max.Y,
+			)
+		}
+		state.contentBounds = contentBounds
+
+		t.registerMouseRegion(state, contentBounds)
+	}
+}
+
+// registerMouseRegion sets up mouse handling for text selection.
+func (t *textAreaView) registerMouseRegion(state *textAreaState, bounds image.Rectangle) {
+	// Create mouse handler if needed
+	if state.mouseHandler == nil {
+		state.mouseHandler = NewMouseHandler()
+	}
+
+	// Clear and re-register the region each frame
+	state.mouseHandler.ClearRegions()
+
+	region := &MouseRegion{
+		X:           bounds.Min.X,
+		Y:           bounds.Min.Y,
+		Width:       bounds.Dx(),
+		Height:      bounds.Dy(),
+		CursorStyle: CursorText,
+		Label:       "textarea-selection",
+
+		OnPress: func(e *MouseEvent) {
+			// Start selection on press
+			pos := t.screenToTextPos(state, e.X, e.Y)
+			state.setSelectionStart(pos)
+			state.isDragging = true
+		},
+
+		OnDragStart: func(e *MouseEvent) {
+			// Selection drag started
+			state.isDragging = true
+		},
+
+		OnDrag: func(e *MouseEvent) {
+			if state.isDragging {
+				// Update selection end during drag
+				pos := t.screenToTextPos(state, e.X, e.Y)
+				state.setSelectionEnd(pos)
+			}
+		},
+
+		OnDragEnd: func(e *MouseEvent) {
+			// Finalize selection
+			pos := t.screenToTextPos(state, e.X, e.Y)
+			state.setSelectionEnd(pos)
+			state.isDragging = false
+
+			// Copy-on-select: automatically copy to clipboard when selection completes
+			sel := state.getActiveSelection()
+			if sel != nil && sel.Active && !sel.IsEmpty() {
+				CopySelectionToClipboard(state.cachedLines, *sel)
+			}
+		},
+
+		OnDoubleClick: func(e *MouseEvent) {
+			// Select word
+			pos := t.screenToTextPos(state, e.X, e.Y)
+			sel := SelectWord(state.cachedLines, pos)
+			state.setFullSelection(sel)
+			// Copy-on-select
+			if sel.Active && !sel.IsEmpty() {
+				CopySelectionToClipboard(state.cachedLines, sel)
+			}
+		},
+
+		OnTripleClick: func(e *MouseEvent) {
+			// Select line
+			pos := t.screenToTextPos(state, e.X, e.Y)
+			sel := SelectLine(state.cachedLines, pos.Line)
+			state.setFullSelection(sel)
+			// Copy-on-select
+			if sel.Active && !sel.IsEmpty() {
+				CopySelectionToClipboard(state.cachedLines, sel)
+			}
+		},
+
+		OnClick: func(e *MouseEvent) {
+			// Single click clears selection and sets cursor
+			if e.ClickCount == 1 {
+				state.clearActiveSelection()
+			}
+		},
+	}
+
+	state.mouseHandler.AddRegion(region)
+}
+
+// screenToTextPos converts screen coordinates to text position.
+func (t *textAreaView) screenToTextPos(state *textAreaState, screenX, screenY int) TextPosition {
+	// Convert to content-relative coordinates
+	relX := screenX - state.contentBounds.Min.X
+	relY := screenY - state.contentBounds.Min.Y
+
+	return ScreenToTextPosition(
+		relX,
+		relY,
+		state.scrollY,
+		state.lineNumberWidth,
+		state.cachedLines,
+	)
+}
+
+// HandleMouseEvent processes mouse events for a TextArea with the given ID.
+// This should be called from the application's event handler.
+func TextAreaHandleMouseEvent(id string, event *MouseEvent) bool {
+	state := textAreaRegistry.Get(id)
+	if state == nil || !state.selectionEnabled || state.mouseHandler == nil {
+		return false
+	}
+
+	// Check if event is within our bounds
+	if event.X < state.contentBounds.Min.X || event.X >= state.contentBounds.Max.X ||
+		event.Y < state.contentBounds.Min.Y || event.Y >= state.contentBounds.Max.Y {
+		// For drag events, still process if we started the drag
+		if event.Type != MouseDrag && event.Type != MouseDragEnd {
+			return false
+		}
+		if !state.isDragging {
+			return false
+		}
+	}
+
+	state.mouseHandler.HandleEvent(event)
+	return true
 }
 
 func (t *textAreaView) renderBordered(ctx *RenderContext, w, h int, content *scrollView, scrollY *int, borderStyle, titleStyle Style) {
@@ -583,6 +873,21 @@ func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 	lines := strings.Split(content, "\n")
 	maxLine := len(lines) - 1
 	handled := false
+
+	// Handle Ctrl+C for copy if selection is enabled and there's an active selection
+	if event.Key == KeyCtrlC && h.area.selectionEnabled {
+		if sel := h.area.getSelection(); sel != nil && sel.Active && !sel.IsEmpty() {
+			CopySelectionToClipboard(lines, *sel)
+			return true
+		}
+		// No active selection - don't consume, let app handle Ctrl+C (e.g., for quit)
+	}
+
+	// Handle Escape to clear selection
+	if event.Key == KeyEscape && h.area.selectionEnabled {
+		h.area.clearSelection()
+		return true
+	}
 
 	switch event.Key {
 	case KeyArrowUp:
