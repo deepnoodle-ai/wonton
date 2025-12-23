@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"log"
-	"strings"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -51,23 +49,8 @@ func (app *ReflowApp) View() tui.View {
 	// The long text that will wrap based on width
 	longText := "This is a long text that should wrap automatically when the container width decreases. It demonstrates text reflow in Wonton! The height of the box should adjust to fit the text."
 
-	// Wrap the text to the current width
-	wrapped := tui.WrapText(longText, app.width-4) // -4 for border and padding
-
-	// Create the wrapping text box using Canvas for custom width control
-	wrappingBox := tui.Canvas(func(frame tui.RenderFrame, bounds image.Rectangle) {
-		// Split into lines and render
-		lines := strings.Split(wrapped, "\n")
-		for i, line := range lines {
-			if i >= bounds.Dy() {
-				break
-			}
-			frame.PrintStyled(0, i, line, tui.NewStyle())
-		}
-	}).Size(app.width-4, len(strings.Split(wrapped, "\n")))
-
 	// Wrap in a border
-	borderedBox := tui.Bordered(wrappingBox).
+	borderedBox := tui.Bordered(tui.MaxWidth(app.width-4, tui.WrappedText(longText))).
 		Border(&tui.RoundedBorder).
 		BorderFg(tui.ColorCyan)
 
@@ -79,18 +62,11 @@ func (app *ReflowApp) View() tui.View {
 	// Main layout with everything centered
 	return tui.Stack(
 		tui.Text("%s", debugInfo),
-		tui.Spacer(),
-		tui.Group(
-			tui.Spacer(),
-			tui.Stack(
-				borderedBox,
-				tui.Spacer().MinHeight(1),
-				button,
-			),
-			tui.Spacer(),
-		),
-		tui.Spacer(),
-	)
+		tui.Stack(
+			borderedBox,
+			button,
+		).Gap(1),
+	).Gap(1)
 }
 
 func main() {

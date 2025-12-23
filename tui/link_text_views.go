@@ -188,14 +188,17 @@ func (l *linkRowView) render(ctx *RenderContext) {
 
 // wrappedTextView displays text with wrapping and alignment
 type wrappedTextView struct {
-	text     string
-	style    Style
-	align    Alignment
-	truncate bool
-	fillBg   bool
+	text       string
+	style      Style
+	align      Alignment
+	truncate   bool
+	fillBg     bool
+	flexFactor int
 }
 
 // WrappedText creates a text view with automatic word wrapping.
+// By default, WrappedText is flexible (flex factor 1) so it will expand
+// to fill available space in Group/Stack layouts.
 //
 // Example:
 //
@@ -203,10 +206,24 @@ type wrappedTextView struct {
 //	WrappedText("Text").Bg(ColorBlue).FillBg()
 func WrappedText(text string) *wrappedTextView {
 	return &wrappedTextView{
-		text:  text,
-		style: NewStyle(),
-		align: AlignLeft,
+		text:       text,
+		style:      NewStyle(),
+		align:      AlignLeft,
+		flexFactor: 1, // Default to flexible for proper wrapping in layouts
 	}
+}
+
+// Flex sets the flex factor for this view.
+// A higher value means this view gets more of the available space.
+// Set to 0 to make the view non-flexible (fixed size).
+func (w *wrappedTextView) Flex(factor int) *wrappedTextView {
+	w.flexFactor = factor
+	return w
+}
+
+// flex implements the Flexible interface.
+func (w *wrappedTextView) flex() int {
+	return w.flexFactor
 }
 
 // Fg sets the foreground color.

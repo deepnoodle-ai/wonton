@@ -9,9 +9,9 @@
 //
 // Run with:
 //
-//	go run examples/webwatch/main.go watch https://example.com
-//	go run examples/webwatch/main.go watch --interval 30 https://example.com/pricing
-//	go run examples/webwatch/main.go watch -i 60 --once https://docs.example.com
+//	go run examples/webwatch/main.go https://example.com
+//	go run examples/webwatch/main.go --interval 30 https://example.com/pricing
+//	go run examples/webwatch/main.go -i 60 --once https://docs.example.com
 package main
 
 import (
@@ -43,8 +43,7 @@ func main() {
 		Description("Monitor web pages for content changes").
 		Version("1.0.0")
 
-	cmd := app.Command("watch").
-		Description("Monitor a URL for changes").
+	cmd := app.Main().
 		Args("url")
 
 	cli.ParseFlags[Config](cmd)

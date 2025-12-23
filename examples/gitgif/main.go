@@ -9,6 +9,7 @@
 //
 //	go run ./examples/gitgif
 //	go run ./examples/gitgif --commits 10 --output my-week.gif
+//	go run ./examples/gitgif --repo /path/to/repo
 package main
 
 import (
@@ -34,24 +35,21 @@ func main() {
 		Description("Generate an animated GIF visualizing recent git commits").
 		Version("0.1.0")
 
-	app.GlobalFlags(
-		cli.Int("commits", "c").
-			Default(5).
-			Help("Number of recent commits to visualize"),
-		cli.String("output", "o").
-			Default("commits.gif").
-			Help("Output GIF filename"),
-		cli.Int("delay", "d").
-			Default(100).
-			Help("Delay between frames in 100ths of a second"),
-		cli.String("repo", "r").
-			Default(".").
-			Help("Path to git repository"),
-	)
-
-	app.Command("generate").
-		Description("Generate commit visualization GIF").
-		Alias("gen").
+	app.Main().
+		Flags(
+			cli.Int("commits", "c").
+				Default(5).
+				Help("Number of recent commits to visualize"),
+			cli.String("output", "o").
+				Default("commits.gif").
+				Help("Output GIF filename"),
+			cli.Int("delay", "d").
+				Default(100).
+				Help("Delay between frames in 100ths of a second"),
+			cli.String("repo", "r").
+				Default(".").
+				Help("Path to git repository"),
+		).
 		Run(generateGIF)
 
 	if err := app.Execute(); err != nil {
