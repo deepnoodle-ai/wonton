@@ -402,6 +402,112 @@ func TestMarkdownRenderer_WrapSegments_NoLeadingSpace(t *testing.T) {
 	assert.Contains(t, output, "foo")
 }
 
+func TestMarkdownRenderer_HardLineBreak(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	// In markdown, two trailing spaces create a hard line break
+	markdown := "Line one  \nLine two"
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Should have at least 2 content lines (plus the trailing blank line after paragraph)
+	// The hard line break should create a new line
+	contentLines := 0
+	for _, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			contentLines++
+		}
+	}
+	assert.GreaterOrEqual(t, contentLines, 2, "Hard line break should create separate lines")
+
+	// Verify both texts are present
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Line one")
+	assert.Contains(t, output, "Line two")
+}
+
+func TestMarkdownRenderer_HardLineBreakWithWrapping(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(40)
+
+	// Test that hard line breaks are preserved even when wrapping is enabled
+	markdown := "This is line one  \nThis is line two"
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Should have at least 2 content lines due to the hard break
+	contentLines := 0
+	for _, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			contentLines++
+		}
+	}
+	assert.GreaterOrEqual(t, contentLines, 2, "Hard line break should create separate lines even with wrapping")
+
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "This is line one")
+	assert.Contains(t, output, "This is line two")
+}
+
+func TestMarkdownRenderer_WrapPreservesLineCount(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(40)
+
+	// Two separate paragraphs
+	markdown := "First paragraph here.\n\nSecond paragraph here."
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+
+	// Count lines that have content
+	contentLines := 0
+	blankLines := 0
+	for _, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			contentLines++
+		} else {
+			blankLines++
+		}
+	}
+
+	// Should have 2 content lines and at least 2 blank lines (one after each paragraph)
+	assert.Equal(t, 2, contentLines, "Should have 2 content lines for 2 paragraphs")
+	assert.GreaterOrEqual(t, blankLines, 2, "Should have blank lines after paragraphs")
+}
+
+func TestMarkdownRenderer_SoftLineBreak(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	// Soft line break (single newline without trailing spaces) should be treated as a space
+	// Note: no trailing spaces before newline, so this is NOT a hard break
+	markdown := "Line one\nLine two"
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Without hard break, both texts should appear on the same line (joined with space)
+	// Count non-blank lines
+	contentLines := 0
+	for _, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			contentLines++
+		}
+	}
+	// Should be 1 content line since soft breaks are treated as spaces
+	assert.Equal(t, 1, contentLines, "Soft line break should NOT create separate lines")
+
+	// Verify the content is still present
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Line one")
+	assert.Contains(t, output, "Line two")
+}
+
 // Helper function to convert rendered markdown to plain text for testing
 func renderToPlainText(rendered *RenderedMarkdown) string {
 	var result strings.Builder

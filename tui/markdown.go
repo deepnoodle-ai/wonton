@@ -300,19 +300,51 @@ func (mr *MarkdownRenderer) renderListItem(node *ast.ListItem, ctx *renderContex
 				paraSegments := mr.extractInlineSegments(para, ctx)
 				segments = append(segments, paraSegments...)
 
-				ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-					Segments: segments,
-					Indent:   ctx.indent,
-				})
+				// Wrap the combined marker + content if needed
+				if mr.MaxWidth > 0 {
+					lines := mr.wrapSegments(segments, mr.MaxWidth-ctx.indent)
+					for i, line := range lines {
+						indent := ctx.indent
+						if i > 0 {
+							// Continuation lines get extra indent to align with text after marker
+							indent += markerWidth
+						}
+						ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+							Segments: line,
+							Indent:   indent,
+						})
+					}
+				} else {
+					ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+						Segments: segments,
+						Indent:   ctx.indent,
+					})
+				}
 			} else if textBlock, ok := child.(*ast.TextBlock); ok {
 				// TextBlock is used for simple list items
 				textSegments := mr.extractInlineSegments(textBlock, ctx)
 				segments = append(segments, textSegments...)
 
-				ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-					Segments: segments,
-					Indent:   ctx.indent,
-				})
+				// Wrap the combined marker + content if needed
+				if mr.MaxWidth > 0 {
+					lines := mr.wrapSegments(segments, mr.MaxWidth-ctx.indent)
+					for i, line := range lines {
+						indent := ctx.indent
+						if i > 0 {
+							// Continuation lines get extra indent to align with text after marker
+							indent += markerWidth
+						}
+						ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+							Segments: line,
+							Indent:   indent,
+						})
+					}
+				} else {
+					ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+						Segments: segments,
+						Indent:   ctx.indent,
+					})
+				}
 			} else {
 				ctx.result.Lines = append(ctx.result.Lines, StyledLine{
 					Segments: segments,
@@ -444,6 +476,13 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 			Text:  text,
 			Style: currentStyle,
 		})
+		// Check if this text node ends with a hard line break
+		if n.HardLineBreak() {
+			*segments = append(*segments, StyledSegment{
+				Text:  "\n",
+				Style: currentStyle,
+			})
+		}
 
 	case *ast.String:
 		*segments = append(*segments, StyledSegment{
@@ -548,6 +587,55 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 	currentWidth := 0
 
 	for _, seg := range segments {
+		// Check for hard line breaks (newline characters)
+		if strings.Contains(seg.Text, "\n") {
+			// Split the segment at newlines
+			parts := strings.Split(seg.Text, "\n")
+			for i, part := range parts {
+				// Process the text before the newline
+				words := strings.Fields(part)
+				for _, word := range words {
+					wordWidth := runewidth.StringWidth(word)
+					spaceWidth := 1
+
+					if currentWidth+wordWidth+spaceWidth > maxWidth && len(currentLine) > 0 {
+						lines = append(lines, currentLine)
+						currentLine = nil
+						currentWidth = 0
+					}
+
+					if len(currentLine) > 0 {
+						currentLine = append(currentLine, StyledSegment{
+							Text:  " ",
+							Style: seg.Style,
+						})
+						currentWidth += spaceWidth
+					}
+
+					currentLine = append(currentLine, StyledSegment{
+						Text:      word,
+						Style:     seg.Style,
+						Hyperlink: seg.Hyperlink,
+					})
+					currentWidth += wordWidth
+				}
+
+				// If this isn't the last part, we hit a newline - force a line break
+				if i < len(parts)-1 {
+					if len(currentLine) > 0 {
+						lines = append(lines, currentLine)
+					} else {
+						// Empty line from consecutive newlines
+						lines = append(lines, []StyledSegment{})
+					}
+					currentLine = nil
+					currentWidth = 0
+				}
+			}
+			continue
+		}
+
+		// Normal text without newlines
 		words := strings.Fields(seg.Text)
 
 		for _, word := range words {
