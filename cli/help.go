@@ -90,6 +90,12 @@ func (a *App) renderAppHelp() tui.View {
 		usageText = a.buildRootUsageString()
 	}
 
+	// Get root command flags (always include for root-only apps, or when root command has flags)
+	var rootFlags []Flag
+	if rootCmd := a.commands[""]; rootCmd != nil {
+		rootFlags = rootCmd.flags
+	}
+
 	return tui.Stack(
 		renderHeader(a.name, a.description, a.version, theme),
 		tui.Stack(
@@ -104,6 +110,10 @@ func (a *App) renderAppHelp() tui.View {
 			renderSection("COMMAND GROUPS", theme),
 			renderGroups(a.groups, theme),
 		)),
+		tui.If(len(rootFlags) > 0, tui.Stack(
+			renderSection("FLAGS", theme),
+			renderFlags(rootFlags, theme),
+		)),
 		tui.If(len(a.globalFlags) > 0, tui.Stack(
 			renderSection("GLOBAL FLAGS", theme),
 			renderFlags(a.globalFlags, theme),
@@ -115,11 +125,13 @@ func (a *App) renderAppHelp() tui.View {
 // buildRootUsageString builds the usage string for the root command.
 func (a *App) buildRootUsageString() string {
 	usage := "  " + a.name
-	if len(a.globalFlags) > 0 {
+	rootCmd := a.commands[""]
+	hasFlags := len(a.globalFlags) > 0 || (rootCmd != nil && len(rootCmd.flags) > 0)
+	if hasFlags {
 		usage += " [flags]"
 	}
 	// Check for root command args
-	if rootCmd := a.commands[""]; rootCmd != nil {
+	if rootCmd != nil {
 		for _, arg := range rootCmd.args {
 			if arg.Required {
 				usage += " <" + arg.Name + ">"

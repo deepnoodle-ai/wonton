@@ -680,11 +680,13 @@ func (a *App) showHelp() error {
 		sb.WriteString(" <command> [flags] [args]\n\n")
 	} else {
 		// Root-only app
-		if len(a.globalFlags) > 0 {
+		rootCmd := a.commands[""]
+		hasFlags := len(a.globalFlags) > 0 || (rootCmd != nil && len(rootCmd.flags) > 0)
+		if hasFlags {
 			sb.WriteString(" [flags]")
 		}
 		// Add root command args
-		if rootCmd := a.commands[""]; rootCmd != nil {
+		if rootCmd != nil {
 			for _, arg := range rootCmd.args {
 				if arg.Required {
 					sb.WriteString(" <" + arg.Name + ">")
@@ -721,6 +723,18 @@ func (a *App) showHelp() error {
 		sb.WriteString("Command Groups:\n")
 		for name, group := range a.groups {
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Root command flags section (always show if root command has flags)
+	if rootCmd := a.commands[""]; rootCmd != nil && len(rootCmd.flags) > 0 {
+		sb.WriteString("Flags:\n")
+		for _, f := range rootCmd.flags {
+			if f.IsHidden() {
+				continue
+			}
+			writeFlagHelp(&sb, f)
 		}
 		sb.WriteString("\n")
 	}

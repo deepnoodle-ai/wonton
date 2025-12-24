@@ -748,6 +748,12 @@ func parseInt(s string) (int, error) {
 }
 
 func (c *Command) showHelp() error {
+	// For the root command (name == ""), use the app's help which shows
+	// full application help including the root command's flags
+	if c.name == "" {
+		return c.app.showHelp()
+	}
+
 	if c.app.colorEnabled {
 		// Use the styled tui-based help
 		view := c.renderCommandHelp()

@@ -392,6 +392,13 @@ func Float64(name, short string) *float64Builder {
 	return &float64Builder{name: name, short: short}
 }
 
+// Float is an alias for Float64.
+//
+//	cli.Float("ratio", "r").Default(0.5).Help("Compression ratio")
+func Float(name, short string) *float64Builder {
+	return Float64(name, short)
+}
+
 type float64Builder struct {
 	name, short, help, envVar string
 	value                     float64
