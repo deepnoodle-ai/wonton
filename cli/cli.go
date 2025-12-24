@@ -730,24 +730,14 @@ func (a *App) showHelp() error {
 	// Root command flags section (always show if root command has flags)
 	if rootCmd := a.commands[""]; rootCmd != nil && len(rootCmd.flags) > 0 {
 		sb.WriteString("Flags:\n")
-		for _, f := range rootCmd.flags {
-			if f.IsHidden() {
-				continue
-			}
-			writeFlagHelp(&sb, f)
-		}
+		writeFlagsHelp(&sb, rootCmd.flags)
 		sb.WriteString("\n")
 	}
 
 	// Global flags section
 	if len(a.globalFlags) > 0 {
 		sb.WriteString("Global Flags:\n")
-		for _, f := range a.globalFlags {
-			if f.IsHidden() {
-				continue
-			}
-			writeFlagHelp(&sb, f)
-		}
+		writeFlagsHelp(&sb, a.globalFlags)
 		sb.WriteString("\n")
 	}
 
@@ -900,12 +890,7 @@ func (g *Group) showHelp() error {
 	// Group flags
 	if len(g.flags) > 0 {
 		sb.WriteString("Flags:\n")
-		for _, f := range g.flags {
-			if f.IsHidden() {
-				continue
-			}
-			writeFlagHelp(&sb, f)
-		}
+		writeFlagsHelp(&sb, g.flags)
 		sb.WriteString("\n")
 	}
 

@@ -828,39 +828,50 @@ func (c *Command) showHelp() error {
 	// Command-specific Flags
 	if len(c.flags) > 0 {
 		sb.WriteString("Flags:\n")
-		for _, f := range c.flags {
-			if f.IsHidden() {
-				continue
-			}
-			writeFlagHelp(&sb, f)
-		}
+		writeFlagsHelp(&sb, c.flags)
 		sb.WriteString("\n")
 	}
 
 	// Global Flags
 	if c.app != nil && len(c.app.globalFlags) > 0 {
 		sb.WriteString("Global Flags:\n")
-		for _, f := range c.app.globalFlags {
-			if f.IsHidden() {
-				continue
-			}
-			writeFlagHelp(&sb, f)
-		}
+		writeFlagsHelp(&sb, c.app.globalFlags)
 	}
 
 	fmt.Fprint(c.app.stdout, sb.String())
 	return &HelpRequested{}
 }
 
-// writeFlagHelp writes help text for a single flag.
-func writeFlagHelp(sb *strings.Builder, f Flag) {
+// writeFlagsHelp writes help text for a slice of flags with proper alignment.
+func writeFlagsHelp(sb *strings.Builder, flags []Flag) {
+	// Calculate max flag name length for alignment
+	maxNameLen := 0
+	for _, f := range flags {
+		if f.IsHidden() {
+			continue
+		}
+		if len(f.GetName()) > maxNameLen {
+			maxNameLen = len(f.GetName())
+		}
+	}
+
+	for _, f := range flags {
+		if f.IsHidden() {
+			continue
+		}
+		writeFlagHelp(sb, f, maxNameLen)
+	}
+}
+
+// writeFlagHelp writes help text for a single flag with the given name width.
+func writeFlagHelp(sb *strings.Builder, f Flag, nameWidth int) {
 	flagStr := "  "
 	if f.GetShort() != "" {
 		flagStr += fmt.Sprintf("-%s, ", f.GetShort())
 	} else {
 		flagStr += "    "
 	}
-	flagStr += fmt.Sprintf("--%-12s", f.GetName())
+	flagStr += fmt.Sprintf("--%-*s", nameWidth, f.GetName())
 	sb.WriteString(flagStr)
 	sb.WriteString(" ")
 	sb.WriteString(f.GetHelp())

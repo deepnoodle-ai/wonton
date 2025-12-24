@@ -314,18 +314,29 @@ func renderGroups(groups map[string]*Group, theme HelpTheme) tui.View {
 func renderFlags(flags []Flag, theme HelpTheme) tui.View {
 	views := make([]tui.View, 0, len(flags))
 
+	// Calculate the maximum flag name length for alignment
+	maxNameLen := 0
 	for _, f := range flags {
 		if f.IsHidden() {
 			continue
 		}
-		views = append(views, renderFlag(f, theme))
+		if len(f.GetName()) > maxNameLen {
+			maxNameLen = len(f.GetName())
+		}
+	}
+
+	for _, f := range flags {
+		if f.IsHidden() {
+			continue
+		}
+		views = append(views, renderFlag(f, theme, maxNameLen))
 	}
 
 	return tui.Stack(views...).Gap(0)
 }
 
-// renderFlag renders a single flag
-func renderFlag(f Flag, theme HelpTheme) tui.View {
+// renderFlag renders a single flag with dynamic width alignment
+func renderFlag(f Flag, theme HelpTheme, maxNameLen int) tui.View {
 	// Build flag prefix
 	prefix := "  "
 	if f.GetShort() != "" {
@@ -333,13 +344,14 @@ func renderFlag(f Flag, theme HelpTheme) tui.View {
 	} else {
 		prefix += "    "
 	}
-	prefix += fmt.Sprintf("--%-14s", f.GetName())
+	prefix += fmt.Sprintf("--%-*s", maxNameLen, f.GetName())
 
 	// Build metadata
 	meta := buildFlagMeta(f)
 
 	return tui.Group(
 		tui.Text("%s", prefix).Style(theme.Flag),
+		tui.Text(" "),
 		tui.Text("%s", f.GetHelp()),
 		tui.If(meta != "", tui.Text(" (%s)", meta).Style(theme.Hint)),
 	)
