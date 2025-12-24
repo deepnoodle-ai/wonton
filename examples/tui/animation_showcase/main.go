@@ -110,10 +110,10 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("Rainbow text animation").Bold().Rainbow(2),
+						tui.Text("Rainbow text animation").Bold().Animate(tui.Rainbow(2)),
 						tui.Spacer().MinHeight(1),
 						tui.Text("Each character gets a different color"),
-						tui.Text("that cycles smoothly over time").Rainbow(3),
+						tui.Text("that cycles smoothly over time").Animate(tui.Rainbow(3)),
 					).Padding(2),
 					tui.BorderAnimationPresets.Rainbow(4, false),
 				).Title("Rainbow Text")
@@ -125,9 +125,9 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("Pulsing text").Bold().Pulse(tui.NewRGB(255, 200, 100), 15),
+						tui.Text("Pulsing text").Bold().Animate(tui.Pulse(tui.NewRGB(255, 200, 100), 15)),
 						tui.Spacer().MinHeight(1),
-						tui.Text("Brightness fades in and out").Pulse(tui.NewRGB(100, 200, 255), 20),
+						tui.Text("Brightness fades in and out").Animate(tui.Pulse(tui.NewRGB(100, 200, 255), 20)),
 					).Padding(2),
 					tui.BorderAnimationPresets.Pulsing(tui.NewRGB(255, 200, 100), 15),
 				).Title("Pulse")
@@ -139,9 +139,9 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("Sparkling text effect").Bold().Sparkle(3, tui.NewRGB(200, 200, 255), tui.NewRGB(255, 255, 255)),
+						tui.Text("Sparkling text effect").Bold().Animate(tui.Sparkle(3, tui.NewRGB(200, 200, 255), tui.NewRGB(255, 255, 255))),
 						tui.Spacer().MinHeight(1),
-						tui.Text("Random characters flash bright").Sparkle(2, tui.NewRGB(255, 200, 100), tui.NewRGB(255, 255, 200)),
+						tui.Text("Random characters flash bright").Animate(tui.Sparkle(2, tui.NewRGB(255, 200, 100), tui.NewRGB(255, 255, 200))),
 					).Padding(2),
 					&tui.SparkleBorderAnimation{
 						Speed:      2,
@@ -158,9 +158,9 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("GLITCH EFFECT").Bold().Glitch(2, tui.NewRGB(0, 255, 0), tui.NewRGB(255, 0, 255)),
+						tui.Text("GLITCH EFFECT").Bold().Animate(tui.Glitch(2, tui.NewRGB(0, 255, 0), tui.NewRGB(255, 0, 255))),
 						tui.Spacer().MinHeight(1),
-						tui.Text("Digital corruption style").Glitch(3, tui.NewRGB(255, 100, 100), tui.NewRGB(100, 100, 255)),
+						tui.Text("Digital corruption style").Animate(tui.Glitch(3, tui.NewRGB(255, 100, 100), tui.NewRGB(100, 100, 255))),
 					).Padding(2),
 					tui.BorderAnimationPresets.Fire(2),
 				).Title("Glitch")
@@ -172,9 +172,9 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("Wavy text animation").Bold().Wave(8),
+						tui.Text("Wavy text animation").Bold().Animate(tui.Wave(8)),
 						tui.Spacer().MinHeight(1),
-						tui.Text("Colors flow like a wave").Wave(12),
+						tui.Text("Colors flow like a wave").Animate(tui.Wave(12)),
 					).Padding(2),
 					&tui.WaveBorderAnimation{
 						Speed:     3,
@@ -194,13 +194,13 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 			view: func() tui.View {
 				return tui.AnimatedBordered(
 					tui.Stack(
-						tui.Text("Ultimate Combo!").Bold().Rainbow(2),
+						tui.Text("Ultimate Combo!").Bold().Animate(tui.Rainbow(2)),
 						tui.Spacer().MinHeight(1),
-						tui.Text("Rainbow text").Rainbow(3),
-						tui.Text("Pulsing text").Pulse(tui.NewRGB(255, 200, 100), 15),
-						tui.Text("Sparkling text").Sparkle(3, tui.NewRGB(200, 200, 255), tui.NewRGB(255, 255, 255)),
-						tui.Text("Glitchy text").Glitch(2, tui.NewRGB(100, 255, 200), tui.NewRGB(255, 100, 255)),
-						tui.Text("Wavy text").Wave(10),
+						tui.Text("Rainbow text").Animate(tui.Rainbow(3)),
+						tui.Text("Pulsing text").Animate(tui.Pulse(tui.NewRGB(255, 200, 100), 15)),
+						tui.Text("Sparkling text").Animate(tui.Sparkle(3, tui.NewRGB(200, 200, 255), tui.NewRGB(255, 255, 255))),
+						tui.Text("Glitchy text").Animate(tui.Glitch(2, tui.NewRGB(100, 255, 200), tui.NewRGB(255, 100, 255))),
+						tui.Text("Wavy text").Animate(tui.Wave(10)),
 					).Padding(2),
 					tui.BorderAnimationPresets.Rainbow(2, false),
 				).Title("Kitchen Sink")
@@ -225,7 +225,7 @@ func (app *AnimationShowcaseApp) View() tui.View {
 	effect := app.effects[app.currentEffect]
 
 	return tui.Stack(
-		tui.Text("Animation Showcase").Bold().Rainbow(2),
+		tui.Text("Animation Showcase").Bold().Animate(tui.Rainbow(2)),
 
 		tui.Spacer().MinHeight(1),
 

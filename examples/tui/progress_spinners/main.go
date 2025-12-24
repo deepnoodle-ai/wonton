@@ -132,22 +132,19 @@ func (app *ProgressDemoApp) View() tui.View {
 		tui.HeaderBar("Multi-Progress Demo").Bg(tui.ColorCyan).Fg(tui.ColorBlack),
 		tui.Spacer().MinHeight(1),
 
-		// Progress items using new declarative views
+		// Progress items using declarative views with ForEach
 		tui.ForEach(app.items, func(item *ProgressItem, i int) tui.View {
-			// Build the item view using Loading (spinner) view
-			itemContent := tui.Group(
-				tui.Loading(app.frame).Label(item.Message).Fg(item.Color),
-			)
+			spinner := tui.Loading(app.frame).Label(item.Message).Fg(item.Color)
 
-			// If not spinner-only, add progress bar below using Progress view
+			// If not spinner-only, add progress bar below using Progress component
 			if !item.SpinnerOnly {
 				return tui.Stack(
-					itemContent,
+					spinner,
 					tui.Progress(item.Progress, item.Total).Width(30).Fg(item.Color),
 				)
 			}
 
-			return itemContent
+			return spinner
 		}).Gap(1),
 
 		tui.Spacer(),

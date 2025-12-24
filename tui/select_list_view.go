@@ -8,7 +8,7 @@ import (
 type selectListView struct {
 	items         []ListItem
 	selected      *int
-	onSelect      func(index int)
+	onSelect      func(item ListItem, index int)
 	style         Style
 	selectedStyle Style
 	cursorChar    string
@@ -44,7 +44,8 @@ func SelectListStrings(labels []string, selected *int) *selectListView {
 }
 
 // OnSelect sets a callback when an item is clicked.
-func (l *selectListView) OnSelect(fn func(index int)) *selectListView {
+// The callback receives the selected item and its index.
+func (l *selectListView) OnSelect(fn func(item ListItem, index int)) *selectListView {
 	l.onSelect = fn
 	return l
 }
@@ -194,12 +195,13 @@ func (l *selectListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			idx := y // capture for closure
+			idx := y           // capture for closure
+			clickedItem := item // capture for closure
 			interactiveRegistry.RegisterButton(itemBounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}
-				l.onSelect(idx)
+				l.onSelect(clickedItem, idx)
 			})
 		}
 	}

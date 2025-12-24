@@ -4,6 +4,47 @@ import (
 	"image"
 )
 
+// LayoutManager defines strategies for positioning and sizing child widgets within a container.
+// Different implementations provide different layout behaviors (vertical stack, horizontal stack,
+// grid, flexbox-style, etc.).
+type LayoutManager interface {
+	// Layout positions and sizes all children within the container's bounds.
+	// The container bounds represent the available space for children.
+	// This method should call SetBounds() on each child widget.
+	Layout(containerBounds image.Rectangle, children []ComposableWidget)
+
+	// CalculateMinSize determines the minimum size needed to layout all children.
+	// This enables containers to know their own minimum size based on their contents.
+	CalculateMinSize(children []ComposableWidget) image.Point
+
+	// CalculatePreferredSize determines the preferred size for the container.
+	// This may be larger than minimum if children want more space.
+	CalculatePreferredSize(children []ComposableWidget) image.Point
+}
+
+// LayoutAlignment specifies how content should be aligned within available space
+type LayoutAlignment int
+
+const (
+	LayoutAlignStart   LayoutAlignment = iota // Align to top (vertical) or left (horizontal)
+	LayoutAlignCenter                         // Center content
+	LayoutAlignEnd                            // Align to bottom (vertical) or right (horizontal)
+	LayoutAlignStretch                        // Stretch to fill available space
+)
+
+// ConstraintLayoutManager is an enhanced LayoutManager that supports constraint-based layout.
+type ConstraintLayoutManager interface {
+	LayoutManager // Embed legacy interface for compatibility
+
+	// Measure calculates the size of the container given the constraints.
+	// It should also measure children recursively.
+	Measure(children []ComposableWidget, constraints SizeConstraints) image.Point
+
+	// LayoutWithConstraints positions children.
+	// It is similar to Layout but provides the constraints used during measurement.
+	LayoutWithConstraints(children []ComposableWidget, constraints SizeConstraints, containerBounds image.Rectangle)
+}
+
 // VBoxLayout arranges children vertically in a column, top to bottom.
 // Each child gets its preferred/minimum height, and width fills the container.
 type VBoxLayout struct {

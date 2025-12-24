@@ -1,0 +1,14 @@
+╭─────────────────────────╮ ╭─Content─────────────────╮
+│Navigation               │ │Welcome Home             │
+│─────────────────────────│ │                         │
+│> Home                   │ │                         │
+│  Settings               │ │                         │
+│  Profile                │ │This is the main content │
+│  Help                   │ │Select an item from the s│
+│                         │ │                         │
+│                         │ │                         │
+│                         │ │                         │
+│                         │ │Version: 1.0.0    Help: ?│
+│─────────────────────────│ │                         │
+│  Logout                 │ │                         │
+╰─────────────────────────╯ ╰─────────────────────────╯

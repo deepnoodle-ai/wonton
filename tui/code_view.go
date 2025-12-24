@@ -17,6 +17,7 @@ type codeView struct {
 	showNumbers bool
 	startLine   int
 	scrollY     *int
+	width       int
 	height      int
 	tabWidth    int
 	highlighted [][]StyledSegment
@@ -74,8 +75,21 @@ func (c *codeView) ScrollY(scrollY *int) *codeView {
 	return c
 }
 
+// Width sets a fixed width for the view.
+func (c *codeView) Width(w int) *codeView {
+	c.width = w
+	return c
+}
+
 // Height sets a fixed height for the view.
 func (c *codeView) Height(h int) *codeView {
+	c.height = h
+	return c
+}
+
+// Size sets both width and height at once.
+func (c *codeView) Size(w, h int) *codeView {
+	c.width = w
 	c.height = h
 	return c
 }
@@ -233,19 +247,22 @@ func (c *codeView) size(maxWidth, maxHeight int) (int, int) {
 	c.highlight()
 
 	// Calculate width
-	lnWidth := c.lineNumberWidth()
-	maxCodeWidth := 0
-	for _, line := range c.highlighted {
-		lineWidth := 0
-		for _, seg := range line {
-			lineWidth += runewidth.StringWidth(seg.Text)
+	w := c.width
+	if w == 0 {
+		lnWidth := c.lineNumberWidth()
+		maxCodeWidth := 0
+		for _, line := range c.highlighted {
+			lineWidth := 0
+			for _, seg := range line {
+				lineWidth += runewidth.StringWidth(seg.Text)
+			}
+			if lineWidth > maxCodeWidth {
+				maxCodeWidth = lineWidth
+			}
 		}
-		if lineWidth > maxCodeWidth {
-			maxCodeWidth = lineWidth
-		}
+		w = lnWidth + maxCodeWidth
 	}
 
-	w := lnWidth + maxCodeWidth
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
 	}

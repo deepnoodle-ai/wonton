@@ -448,6 +448,70 @@ func WebSafe() Palette {
 	return p
 }
 
+// Terminal256 creates the standard xterm 256-color palette used by modern
+// terminal emulators. This palette provides excellent coverage for terminal
+// rendering with anti-aliased text, as it includes:
+//
+//   - Colors 0-15: Standard 16 ANSI colors (8 normal + 8 bright)
+//   - Colors 16-231: 6×6×6 RGB color cube (216 colors)
+//   - Colors 232-255: 24-shade grayscale ramp
+//
+// This is the recommended palette for terminal GIF rendering, as the color
+// cube provides smooth intermediate shades for anti-aliased font edges.
+//
+// Example:
+//
+//	palette := gif.Terminal256()
+//	g := gif.NewWithPalette(800, 600, palette)
+func Terminal256() Palette {
+	p := make(Palette, 256)
+
+	// Colors 0-15: Standard ANSI colors
+	ansiColors := []color.RGBA{
+		{0, 0, 0, 255},       // 0: Black
+		{170, 0, 0, 255},     // 1: Red
+		{0, 170, 0, 255},     // 2: Green
+		{170, 85, 0, 255},    // 3: Yellow/Brown
+		{0, 0, 170, 255},     // 4: Blue
+		{170, 0, 170, 255},   // 5: Magenta
+		{0, 170, 170, 255},   // 6: Cyan
+		{170, 170, 170, 255}, // 7: White (gray)
+		{85, 85, 85, 255},    // 8: Bright Black (dark gray)
+		{255, 85, 85, 255},   // 9: Bright Red
+		{85, 255, 85, 255},   // 10: Bright Green
+		{255, 255, 85, 255},  // 11: Bright Yellow
+		{85, 85, 255, 255},   // 12: Bright Blue
+		{255, 85, 255, 255},  // 13: Bright Magenta
+		{85, 255, 255, 255},  // 14: Bright Cyan
+		{255, 255, 255, 255}, // 15: Bright White
+	}
+	for i, c := range ansiColors {
+		p[i] = c
+	}
+
+	// Colors 16-231: 6×6×6 RGB color cube
+	// Each component uses values: 0, 95, 135, 175, 215, 255
+	cubeValues := []uint8{0, 95, 135, 175, 215, 255}
+	idx := 16
+	for r := 0; r < 6; r++ {
+		for g := 0; g < 6; g++ {
+			for b := 0; b < 6; b++ {
+				p[idx] = color.RGBA{cubeValues[r], cubeValues[g], cubeValues[b], 255}
+				idx++
+			}
+		}
+	}
+
+	// Colors 232-255: 24-shade grayscale ramp
+	// Values range from 8 to 238 in steps of 10
+	for i := 0; i < 24; i++ {
+		gray := uint8(8 + i*10)
+		p[232+i] = color.RGBA{gray, gray, gray, 255}
+	}
+
+	return p
+}
+
 // abs returns the absolute value of x.
 func abs(x int) int {
 	if x < 0 {

@@ -1,0 +1,10 @@
+╭────────╮ ╭─Content─────────────────────────╮ ╭──────────╮
+│Tags    │ │Main Content                     │ │Info      │
+│────────│ │This is the primary content area │ │──────────│
+│go      │ │that should expand to fill space.│ │Lines: 42 │
+│tui     │ ╰─────────────────────────────────╯ │Words: 256│
+│cli     │                                     ╰──────────╯
+╰────────╯
+
+
+

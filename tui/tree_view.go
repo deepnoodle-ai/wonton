@@ -76,6 +76,7 @@ type treeView struct {
 	root         *TreeNode
 	selected     *TreeNode
 	scrollY      *int
+	width        int
 	height       int
 	onSelect     func(*TreeNode)
 	style        Style
@@ -157,9 +158,34 @@ func (t *treeView) ScrollY(scrollY *int) *treeView {
 	return t
 }
 
+// Width sets a fixed width for the tree.
+func (t *treeView) Width(w int) *treeView {
+	t.width = w
+	return t
+}
+
 // Height sets a fixed height for the tree.
 func (t *treeView) Height(h int) *treeView {
 	t.height = h
+	return t
+}
+
+// Size sets both width and height at once.
+func (t *treeView) Size(w, h int) *treeView {
+	t.width = w
+	t.height = h
+	return t
+}
+
+// Fg sets the foreground color for nodes.
+func (t *treeView) Fg(c Color) *treeView {
+	t.style = t.style.WithForeground(c)
+	return t
+}
+
+// Bg sets the background color for nodes.
+func (t *treeView) Bg(c Color) *treeView {
+	t.style = t.style.WithBackground(c)
 	return t
 }
 
@@ -243,19 +269,20 @@ func (t *treeView) size(maxWidth, maxHeight int) (int, int) {
 	nodes := t.flatten()
 
 	// Calculate width needed
-	maxW := 0
-	for _, fn := range nodes {
-		// indent + expand char + space + label
-		indent := fn.depth * 2
-		expandWidth := runewidth.StringWidth(t.expandedChar)
-		labelWidth := runewidth.StringWidth(fn.node.Label)
-		w := indent + expandWidth + 1 + labelWidth
-		if w > maxW {
-			maxW = w
+	w := t.width
+	if w == 0 {
+		for _, fn := range nodes {
+			// indent + expand char + space + label
+			indent := fn.depth * 2
+			expandWidth := runewidth.StringWidth(t.expandedChar)
+			labelWidth := runewidth.StringWidth(fn.node.Label)
+			nodeW := indent + expandWidth + 1 + labelWidth
+			if nodeW > w {
+				w = nodeW
+			}
 		}
 	}
 
-	w := maxW
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
 	}

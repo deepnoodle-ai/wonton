@@ -6,9 +6,9 @@
 //
 // Run with:
 //
-//	go run examples/urlx/main.go watch
-//	go run examples/urlx/main.go watch --interval 2s
-//	go run examples/urlx/main.go watch --help
+//	go run examples/urlx/main.go
+//	go run examples/urlx/main.go --interval 2s
+//	go run examples/urlx/main.go --help
 package main
 
 import (
@@ -33,9 +33,7 @@ func main() {
 		Description("Watch clipboard for URLs and convert them to markdown").
 		Version("0.1.0")
 
-	app.Command("watch").
-		Description("Watch clipboard for URLs and convert to markdown").
-		Alias("w").
+	app.Main().
 		Long(`Continuously monitors your clipboard for URLs. When a URL is detected,
 it fetches the page content, converts it to clean markdown, and replaces
 the clipboard content with the markdown version.

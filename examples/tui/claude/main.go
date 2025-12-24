@@ -210,7 +210,7 @@ func (d *ClaudeStyleDemo) renderMessage(msg Message) tui.View {
 		headerColor = tui.ColorWhite
 	}
 
-	// Split content into lines for WrappedText
+	// Split content into lines for wrapped text
 	contentLines := strings.Split(msg.Content, "\n")
 	var contentViews []tui.View
 
@@ -218,7 +218,7 @@ func (d *ClaudeStyleDemo) renderMessage(msg Message) tui.View {
 		if line == "" {
 			contentViews = append(contentViews, tui.Text(""))
 		} else {
-			contentViews = append(contentViews, tui.WrappedText(line).Fg(headerColor))
+			contentViews = append(contentViews, tui.Text("%s", line).Wrap().Flex(1).Fg(headerColor))
 		}
 	}
 

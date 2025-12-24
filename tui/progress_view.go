@@ -444,6 +444,12 @@ func (s *loadingView) Fg(c Color) *loadingView {
 	return s
 }
 
+// Bg sets the background color.
+func (s *loadingView) Bg(c Color) *loadingView {
+	s.style = s.style.WithBackground(c)
+	return s
+}
+
 // Style sets the complete style.
 func (s *loadingView) Style(st Style) *loadingView {
 	s.style = st

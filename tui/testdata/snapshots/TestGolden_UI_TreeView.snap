@@ -1,0 +1,16 @@
+╭─Explorer────────────────────────╮
+│Project Structure                │
+│─────────────────────────────────│
+│▼ src/                           │
+│  ├── main.go                    │
+│  ├── config/                    │
+│  │   ├── settings.go            │
+│  │   └── defaults.go            │
+│  └── utils/                     │
+│      ├── helpers.go             │
+│      └── format.go              │
+│▶ tests/                         │
+│  README.md                      │
+│                                 │
+│                                 │
+╰─────────────────────────────────╯

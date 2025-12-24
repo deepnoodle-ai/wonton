@@ -1,0 +1,14 @@
+                 User Management
+Search: [Filter users...     ]             [+ Add]
+
+
+──────────────────────────────────────────────────
+ID    Name          Role        Status
+────────────────────────────────────────
+1     Alice         Admin       Active
+2     Bob           User        Active
+3     Carol         User        Inactive
+──────────────────────────────────────────────────
+3 users   ↑↓: Navigate | Enter: Edit | Del: Remove
+
+

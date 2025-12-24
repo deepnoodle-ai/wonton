@@ -222,9 +222,8 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		displayLines = lines[len(lines)-maxDisplayLines:]
 	}
 
-	// Build input box content
-	inputBoxLines := make([]tui.View, 0)
-	inputBoxLines = append(inputBoxLines, tui.Text("┌%s┐", strings.Repeat("─", 68)).Fg(tui.ColorCyan))
+	// Build input box content using Bordered component
+	inputBoxLines := make([]tui.View, 0, maxDisplayLines)
 
 	for i := 0; i < maxDisplayLines; i++ {
 		var lineContent string
@@ -236,14 +235,11 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		}
 		// Pad to consistent width
 		lineContent = fmt.Sprintf("%-64s", lineContent)
-		inputBoxLines = append(inputBoxLines, tui.Group(
-			tui.Text("│").Fg(tui.ColorCyan),
-			tui.Text(" %s ", lineContent),
-			tui.Text("│").Fg(tui.ColorCyan),
-		))
+		inputBoxLines = append(inputBoxLines, tui.Text("%s", lineContent))
 	}
 
-	inputBoxLines = append(inputBoxLines, tui.Text("└%s┘", strings.Repeat("─", 68)).Fg(tui.ColorCyan))
+	inputBox := tui.Bordered(tui.Stack(inputBoxLines...)).
+		BorderFg(tui.ColorCyan)
 
 	// Build status and message section
 	statusLine := fmt.Sprintf("Chars: %d | Lines: %d | Cursor: %d", len(app.buffer), len(lines), app.cursor)
@@ -290,11 +286,14 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		pasteHistorySection = tui.Text("No pastes yet. Try pasting something!").Dim()
 	}
 
+	// Header using Bordered component
+	header := tui.Bordered(
+		tui.Text("Bracketed Paste Mode Demo - Wonton Library").Bold(),
+	).BorderFg(tui.ColorCyan)
+
 	return tui.Stack(
 		// Header
-		tui.Text("╔═══════════════════════════════════════════════════════════════╗").Fg(tui.ColorCyan),
-		tui.Text("║          Bracketed Paste Mode Demo - Wonton Library            ║").Fg(tui.ColorCyan).Bold(),
-		tui.Text("╚═══════════════════════════════════════════════════════════════╝").Fg(tui.ColorCyan),
+		header,
 		tui.Spacer(),
 
 		// Instructions
@@ -305,7 +304,7 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 
 		// Input area
 		tui.Text("Input:").Bold(),
-		tui.Stack(inputBoxLines...),
+		inputBox,
 		tui.Spacer(),
 
 		// Status and message

@@ -9,6 +9,7 @@
 //
 //	go run ./examples/gitgif
 //	go run ./examples/gitgif --commits 10 --output my-week.gif
+//	go run ./examples/gitgif --repo /path/to/repo
 package main
 
 import (
@@ -18,7 +19,6 @@ import (
 	"os"
 
 	"github.com/deepnoodle-ai/wonton/cli"
-	wontoncolor "github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/gif"
 	"github.com/deepnoodle-ai/wonton/git"
 	"github.com/deepnoodle-ai/wonton/humanize"
@@ -34,24 +34,21 @@ func main() {
 		Description("Generate an animated GIF visualizing recent git commits").
 		Version("0.1.0")
 
-	app.GlobalFlags(
-		cli.Int("commits", "c").
-			Default(5).
-			Help("Number of recent commits to visualize"),
-		cli.String("output", "o").
-			Default("commits.gif").
-			Help("Output GIF filename"),
-		cli.Int("delay", "d").
-			Default(100).
-			Help("Delay between frames in 100ths of a second"),
-		cli.String("repo", "r").
-			Default(".").
-			Help("Path to git repository"),
-	)
-
-	app.Command("generate").
-		Description("Generate commit visualization GIF").
-		Alias("gen").
+	app.Main().
+		Flags(
+			cli.Int("commits", "c").
+				Default(5).
+				Help("Number of recent commits to visualize"),
+			cli.String("output", "o").
+				Default("commits.gif").
+				Help("Output GIF filename"),
+			cli.Int("delay", "d").
+				Default(100).
+				Help("Delay between frames in 100ths of a second"),
+			cli.String("repo", "r").
+				Default(".").
+				Help("Path to git repository"),
+		).
 		Run(generateGIF)
 
 	if err := app.Execute(); err != nil {
@@ -70,7 +67,7 @@ func generateGIF(ctx *cli.Context) error {
 	repoPath := ctx.String("repo")
 
 	// Load the TTF font
-	font, err := gif.LoadDefaultFont(14)
+	font, err := gif.LoadDefaultFont(18)
 	if err != nil {
 		return fmt.Errorf("failed to load font: %w", err)
 	}
@@ -97,9 +94,8 @@ func generateGIF(ctx *cli.Context) error {
 
 	ctx.Printf("Found %d commits, generating frames...\n", len(commits))
 
-	// Create color palette with gradients for visualization
-	palette := buildPalette()
-	g := gif.NewWithPalette(width, height, palette)
+	// Use the standard xterm 256-color palette for proper anti-aliased text
+	g := gif.NewWithPalette(width, height, gif.Terminal256())
 	g.SetLoopCount(0) // Loop forever
 
 	// Generate frames for each commit
@@ -141,40 +137,6 @@ func generateGIF(ctx *cli.Context) error {
 
 	ctx.Printf("Successfully created %s with %d frames\n", output, len(commits))
 	return nil
-}
-
-func buildPalette() gif.Palette {
-	// Start with basic colors
-	p := gif.Palette{
-		color.RGBA{15, 20, 30, 255},    // Dark background
-		color.RGBA{240, 240, 245, 255}, // White text
-		color.RGBA{100, 100, 110, 255}, // Gray text
-		color.RGBA{80, 200, 120, 255},  // Green for additions
-		color.RGBA{220, 80, 100, 255},  // Red for deletions
-		color.RGBA{100, 150, 230, 255}, // Blue accent
-		color.RGBA{200, 160, 100, 255}, // Gold accent
-	}
-
-	// Add gradient colors for visualization
-	greenGradient := wontoncolor.Gradient(
-		wontoncolor.NewRGB(40, 100, 60),
-		wontoncolor.NewRGB(120, 255, 150),
-		20,
-	)
-	for _, c := range greenGradient {
-		p = append(p, color.RGBA{c.R, c.G, c.B, 255})
-	}
-
-	redGradient := wontoncolor.Gradient(
-		wontoncolor.NewRGB(100, 40, 40),
-		wontoncolor.NewRGB(255, 100, 120),
-		20,
-	)
-	for _, c := range redGradient {
-		p = append(p, color.RGBA{c.R, c.G, c.B, 255})
-	}
-
-	return p
 }
 
 func renderCommitFrame(f *gif.Frame, font *gif.FontFace, commit git.Commit, diff *git.Diff, num, total int) {
@@ -240,7 +202,7 @@ func renderCommitFrame(f *gif.Frame, font *gif.FontFace, commit git.Commit, diff
 			// Draw bar chart showing additions/deletions
 			barX := 480
 			barY := y
-			barMaxWidth := 250
+			barMaxWidth := 150
 			total := file.Additions + file.Deletions
 			if total > 0 {
 				scale := float64(barMaxWidth) / float64(max(total, 50))
@@ -256,7 +218,7 @@ func renderCommitFrame(f *gif.Frame, font *gif.FontFace, commit git.Commit, diff
 
 				// Draw stats text
 				statsText := fmt.Sprintf("+%d -%d", file.Additions, file.Deletions)
-				font.DrawString(img, barX+addWidth+delWidth+10, y, statsText, dimFg)
+				font.DrawString(img, barX+barMaxWidth+10, y, statsText, dimFg)
 			}
 
 			y += lineHeight + 4

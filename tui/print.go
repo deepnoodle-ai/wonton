@@ -193,8 +193,9 @@ func renderToANSI(t *Terminal, width, height int) string {
 			currentStyle = NewStyle()
 		}
 
-		// Add newline (except for the last line if it's empty)
-		if y < height-1 || lineHasContent {
+		// Add newline between lines, but not after the last line
+		// (a trailing newline would cause scrollUp in the test screen)
+		if y < height-1 {
 			output.WriteString("\n")
 		}
 	}

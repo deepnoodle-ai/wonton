@@ -97,8 +97,6 @@ The markdown renderer supports customizable themes. You can change:
 // MarkdownDemoApp demonstrates the declarative Markdown view.
 type MarkdownDemoApp struct {
 	scrollY int
-	width   int
-	height  int
 }
 
 // HandleEvent processes events from the runtime.
@@ -108,36 +106,6 @@ func (app *MarkdownDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
-		// Handle scrolling
-		pageSize := app.height - 3
-		if pageSize < 1 {
-			pageSize = 1
-		}
-
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.scrollY > 0 {
-				app.scrollY--
-			}
-		case tui.KeyArrowDown:
-			app.scrollY++
-		case tui.KeyPageUp:
-			app.scrollY -= pageSize
-			if app.scrollY < 0 {
-				app.scrollY = 0
-			}
-		case tui.KeyPageDown:
-			app.scrollY += pageSize
-		case tui.KeyHome:
-			app.scrollY = 0
-		case tui.KeyEnd:
-			app.scrollY = 1000 // will be clamped
-		}
-
-	case tui.ResizeEvent:
-		app.width = e.Width
-		app.height = e.Height
 	}
 
 	return nil
@@ -145,15 +113,13 @@ func (app *MarkdownDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 // View returns the declarative UI for this app.
 func (app *MarkdownDemoApp) View() tui.View {
-	markdownHeight := app.height - 2
-	if markdownHeight < 1 {
-		markdownHeight = 1
-	}
-
 	return tui.Stack(
-		tui.Markdown(sampleMarkdown, &app.scrollY).
-			Height(markdownHeight).
-			MaxWidth(app.width),
+		tui.Bordered(
+			tui.Scroll(
+				tui.Markdown(sampleMarkdown, nil),
+				&app.scrollY,
+			),
+		).BorderFg(tui.ColorCyan).Title("Markdown Viewer"),
 		tui.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
 			Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 	)

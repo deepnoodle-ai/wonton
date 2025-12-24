@@ -298,8 +298,8 @@ func TestGrayscaleBounds(t *testing.T) {
 
 func TestNewDimensionValidation(t *testing.T) {
 	tests := []struct {
-		name           string
-		width, height  int
+		name             string
+		width, height    int
 		expectW, expectH int
 	}{
 		{"normal", 100, 100, 100, 100},
@@ -632,4 +632,60 @@ func ExampleGrayscale() {
 	})
 
 	g.Save("gradient.gif")
+}
+
+func TestTerminal256(t *testing.T) {
+	palette := Terminal256()
+
+	// Should have exactly 256 colors
+	if len(palette) != 256 {
+		t.Errorf("Terminal256: got %d colors, want 256", len(palette))
+	}
+
+	// Check standard ANSI colors (0-15)
+	// Color 0 should be black
+	if c, ok := palette[0].(color.RGBA); !ok || c.R != 0 || c.G != 0 || c.B != 0 {
+		t.Errorf("Terminal256[0]: expected black, got %v", palette[0])
+	}
+	// Color 15 should be bright white
+	if c, ok := palette[15].(color.RGBA); !ok || c.R != 255 || c.G != 255 || c.B != 255 {
+		t.Errorf("Terminal256[15]: expected white, got %v", palette[15])
+	}
+
+	// Check color cube (16-231)
+	// Color 16 should be RGB(0, 0, 0) - start of cube
+	if c, ok := palette[16].(color.RGBA); !ok || c.R != 0 || c.G != 0 || c.B != 0 {
+		t.Errorf("Terminal256[16]: expected (0,0,0), got %v", palette[16])
+	}
+	// Color 231 should be RGB(255, 255, 255) - end of cube
+	if c, ok := palette[231].(color.RGBA); !ok || c.R != 255 || c.G != 255 || c.B != 255 {
+		t.Errorf("Terminal256[231]: expected (255,255,255), got %v", palette[231])
+	}
+
+	// Check grayscale ramp (232-255)
+	// Color 232 should be dark gray (8, 8, 8)
+	if c, ok := palette[232].(color.RGBA); !ok || c.R != 8 || c.G != 8 || c.B != 8 {
+		t.Errorf("Terminal256[232]: expected (8,8,8), got %v", palette[232])
+	}
+	// Color 255 should be light gray (238, 238, 238)
+	if c, ok := palette[255].(color.RGBA); !ok || c.R != 238 || c.G != 238 || c.B != 238 {
+		t.Errorf("Terminal256[255]: expected (238,238,238), got %v", palette[255])
+	}
+}
+
+// ExampleTerminal256 demonstrates creating a terminal-style palette.
+func ExampleTerminal256() {
+	// Use the standard xterm 256-color palette for terminal rendering
+	palette := Terminal256()
+
+	g := NewWithPalette(400, 300, palette)
+
+	g.AddFrame(func(f *Frame) {
+		// Dark background like a terminal
+		f.Fill(palette[0]) // Black
+
+		// The palette includes all colors needed for anti-aliased text
+	})
+
+	g.Save("terminal.gif")
 }

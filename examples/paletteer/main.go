@@ -559,32 +559,24 @@ func (app *PaletteerApp) viewPalette() tui.View {
 }
 
 func (app *PaletteerApp) renderSlider(value uint8, c color.RGB, selected bool) tui.View {
-	// 30 character bar
+	// Build a slider bar (simplified from original manual approach)
 	width := 30
 	filled := int(value) * width / 255
 
-	parts := make([]tui.View, 0, width+2)
+	// Create filled and empty parts
+	filledPart := strings.Repeat("█", filled)
+	emptyPart := strings.Repeat("░", width-filled)
+
+	bar := tui.Group(
+		tui.Text("%s", filledPart).FgRGB(c.R, c.G, c.B),
+		tui.Text("%s", emptyPart).Fg(tui.ColorBrightBlack),
+	)
+
+	// Wrap with selection brackets if selected
 	if selected {
-		parts = append(parts, tui.Text("["))
-	} else {
-		parts = append(parts, tui.Text(" "))
+		return tui.Group(tui.Text("["), bar, tui.Text("]"))
 	}
-
-	for i := 0; i < width; i++ {
-		if i < filled {
-			parts = append(parts, tui.Text("█").FgRGB(c.R, c.G, c.B))
-		} else {
-			parts = append(parts, tui.Text("░"))
-		}
-	}
-
-	if selected {
-		parts = append(parts, tui.Text("]"))
-	} else {
-		parts = append(parts, tui.Text(" "))
-	}
-
-	return tui.Group(parts...)
+	return tui.Group(tui.Text(" "), bar, tui.Text(" "))
 }
 
 func (app *PaletteerApp) viewGradient() tui.View {
