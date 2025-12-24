@@ -6,8 +6,12 @@ import (
 
 // textView displays styled text
 type textView struct {
-	content string
-	style   Style
+	content    string
+	style      Style
+	wrap       bool
+	align      Alignment
+	fillBg     bool
+	flexFactor int
 }
 
 // Text creates a text view with optional Printf-style formatting.
@@ -144,156 +148,134 @@ func (t *textView) Hint() *textView {
 	return t
 }
 
+// Wrap enables text wrapping to fit within the available width.
+// By default, text is truncated instead of wrapped.
+func (t *textView) Wrap() *textView {
+	t.wrap = true
+	return t
+}
+
+// Truncate disables text wrapping, causing text to be truncated at the edge.
+// This is the default behavior; use Wrap() to enable wrapping instead.
+func (t *textView) Truncate() *textView {
+	t.wrap = false
+	return t
+}
+
+// Align sets the text alignment (left, center, or right).
+func (t *textView) Align(a Alignment) *textView {
+	t.align = a
+	return t
+}
+
+// Center is a shorthand for Align(AlignCenter).
+func (t *textView) Center() *textView {
+	t.align = AlignCenter
+	return t
+}
+
+// Right is a shorthand for Align(AlignRight).
+func (t *textView) Right() *textView {
+	t.align = AlignRight
+	return t
+}
+
+// FillBg fills the entire background with the background color.
+func (t *textView) FillBg() *textView {
+	t.fillBg = true
+	return t
+}
+
+// Flex sets the flex factor for this view in flex layouts.
+// A higher value means this view gets more of the available space.
+// Set to 0 to make the view non-flexible (fixed size).
+func (t *textView) Flex(factor int) *textView {
+	t.flexFactor = factor
+	return t
+}
+
+// flex implements the Flexible interface.
+func (t *textView) flex() int {
+	return t.flexFactor
+}
+
+// Animate applies a TextAnimation to the text, returning an animated text view.
+// This is the preferred way to add animations to text as it allows any TextAnimation
+// implementation to be used, making it fully extensible.
+//
+// Example:
+//
+//	Text("Rainbow text").Animate(Rainbow(3))
+//	Text("Pulsing").Animate(Pulse(tui.NewRGB(0, 255, 0), 10))
+//	Text("Custom").Animate(&MyCustomAnimation{})
+//
+// Animation constructors provide chainable configuration:
+//
+//	Text("Reversed rainbow").Animate(Rainbow(3).Reverse())
+//	Text("Bright pulse").Animate(Pulse(green, 10).Brightness(0.5, 1.0))
+func (t *textView) Animate(animation TextAnimation) *animatedTextView {
+	return &animatedTextView{
+		text:      t.content,
+		animation: animation,
+		style:     t.style,
+	}
+}
+
 func (t *textView) render(ctx *RenderContext) {
-	w, h := ctx.Size()
-	if w == 0 || h == 0 {
+	width, height := ctx.Size()
+	if width == 0 || height == 0 {
 		return
 	}
-	ctx.PrintTruncated(0, 0, t.content, t.style)
-}
 
-// Rainbow returns an animated text view with a rainbow color effect.
-// Speed controls how fast the rainbow moves (lower = faster).
-func (t *textView) Rainbow(speed int) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &RainbowAnimation{
-			Speed:  speed,
-			Length: len([]rune(t.content)),
-		},
-		style: t.style,
-	}
-}
-
-// RainbowReverse returns an animated text view with a reverse rainbow effect.
-func (t *textView) RainbowReverse(speed int) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &RainbowAnimation{
-			Speed:    speed,
-			Length:   len([]rune(t.content)),
-			Reversed: true,
-		},
-		style: t.style,
-	}
-}
-
-// Pulse returns an animated text view with a pulsing brightness effect.
-// Color is the base color, speed controls the pulse rate (lower = faster).
-func (t *textView) Pulse(color RGB, speed int) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &PulseAnimation{
-			Speed: speed,
-			Color: color,
-		},
-		style: t.style,
-	}
-}
-
-// Sparkle returns an animated text view with a twinkling star-like effect.
-// Speed controls animation timing (lower = faster).
-// BaseColor is the default color, sparkColor is the bright sparkle color.
-func (t *textView) Sparkle(speed int, baseColor, sparkColor RGB) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &SparkleAnimation{
-			Speed:      speed,
-			BaseColor:  baseColor,
-			SparkColor: sparkColor,
-			Density:    3,
-		},
-		style: t.style,
-	}
-}
-
-// Typewriter returns an animated text view that reveals characters one by one.
-// Speed controls how fast characters appear (lower = faster).
-// TextColor is the revealed text color, cursorColor is the blinking cursor.
-func (t *textView) Typewriter(speed int, textColor, cursorColor RGB) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &TypewriterAnimation{
-			Speed:       speed,
-			TextColor:   textColor,
-			CursorColor: cursorColor,
-			Loop:        true,
-			HoldFrames:  90,
-		},
-		style: t.style,
-	}
-}
-
-// Glitch returns an animated text view with a cyberpunk-style glitch effect.
-// Speed controls glitch timing (lower = faster).
-// BaseColor is the normal color, glitchColor is the color during glitches.
-func (t *textView) Glitch(speed int, baseColor, glitchColor RGB) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &GlitchAnimation{
-			Speed:       speed,
-			BaseColor:   baseColor,
-			GlitchColor: glitchColor,
-			Intensity:   3,
-		},
-		style: t.style,
-	}
-}
-
-// Slide returns an animated text view with a highlight sliding left to right.
-// Speed controls how fast the highlight moves (lower = faster).
-// BaseColor is the default text color, highlightColor is the sliding highlight.
-func (t *textView) Slide(speed int, baseColor, highlightColor RGB) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &SlideAnimation{
-			Speed:          speed,
-			BaseColor:      baseColor,
-			HighlightColor: highlightColor,
-		},
-		style: t.style,
-	}
-}
-
-// SlideReverse returns an animated text view with a highlight sliding right to left.
-// Speed controls how fast the highlight moves (lower = faster).
-// BaseColor is the default text color, highlightColor is the sliding highlight.
-func (t *textView) SlideReverse(speed int, baseColor, highlightColor RGB) *animatedTextView {
-	return &animatedTextView{
-		text: t.content,
-		animation: &SlideAnimation{
-			Speed:          speed,
-			BaseColor:      baseColor,
-			HighlightColor: highlightColor,
-			Reverse:        true,
-		},
-		style: t.style,
-	}
-}
-
-// Wave returns an animated text view with a wave color effect.
-// Speed controls how fast the wave moves (lower = faster).
-// Colors are the colors to cycle through (defaults to magenta/green/purple).
-func (t *textView) Wave(speed int, colors ...RGB) *animatedTextView {
-	if len(colors) == 0 {
-		colors = []RGB{
-			NewRGB(255, 0, 100),
-			NewRGB(0, 255, 100),
-			NewRGB(100, 0, 255),
+	// Fill background if requested
+	if t.fillBg {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				ctx.SetCell(x, y, ' ', t.style)
+			}
 		}
 	}
-	return &animatedTextView{
-		text: t.content,
-		animation: &WaveAnimation{
-			Speed:  speed,
-			Colors: colors,
-		},
-		style: t.style,
+
+	// Process text
+	displayText := t.content
+	if t.wrap && width > 0 {
+		displayText = WrapText(displayText, width)
+	}
+
+	// Align text if alignment is set
+	if t.align != AlignLeft && width > 0 {
+		displayText = AlignText(displayText, width, t.align)
+	}
+
+	// Render
+	if t.wrap {
+		lines := splitLinesSimple(displayText)
+		for y, line := range lines {
+			if y >= height {
+				break
+			}
+			ctx.PrintStyled(0, y, line, t.style)
+		}
+	} else {
+		ctx.PrintTruncated(0, 0, displayText, t.style)
 	}
 }
 
 func (t *textView) size(maxWidth, maxHeight int) (int, int) {
 	w, h := MeasureText(t.content)
+
+	// For wrapped text, expand to fill available width
+	if t.wrap && maxWidth > 0 && w > maxWidth {
+		w = maxWidth
+	}
+
+	// Calculate height based on wrapped lines
+	if t.wrap && maxWidth > 0 {
+		wrapped := WrapText(t.content, maxWidth)
+		lines := splitLinesSimple(wrapped)
+		h = len(lines)
+	}
+
 	// Apply constraints
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
@@ -304,91 +286,26 @@ func (t *textView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-// focusTextView displays text with different styles based on focus state
-type focusTextView struct {
-	content    string
-	focusID    string // The focus ID to watch
-	style      Style  // Normal style
-	focusStyle *Style // Style when watched element is focused
-}
-
-// FocusText creates a text view that changes style based on a watched focus ID.
-// This is useful for labels that should highlight when their associated input is focused.
-//
-// Example:
-//
-//	FocusText("Name: ", "name-input").
-//	    Style(dimStyle).
-//	    FocusStyle(brightStyle)
-func FocusText(content string, focusID string) *focusTextView {
-	return &focusTextView{
-		content: content,
-		focusID: focusID,
-		style:   NewStyle(),
-	}
-}
-
-// Style sets the normal (unfocused) style.
-func (f *focusTextView) Style(s Style) *focusTextView {
-	f.style = s
-	return f
-}
-
-// FocusStyle sets the style applied when the watched element is focused.
-func (f *focusTextView) FocusStyle(s Style) *focusTextView {
-	f.focusStyle = &s
-	return f
-}
-
-// Fg sets the normal foreground color.
-func (f *focusTextView) Fg(c Color) *focusTextView {
-	f.style = f.style.WithForeground(c)
-	return f
-}
-
-// Bg sets the normal background color.
-func (f *focusTextView) Bg(c Color) *focusTextView {
-	f.style = f.style.WithBackground(c)
-	return f
-}
-
-// Bold enables bold text in the normal style.
-func (f *focusTextView) Bold() *focusTextView {
-	f.style = f.style.WithBold()
-	return f
-}
-
-// Dim enables dim text in the normal style.
-func (f *focusTextView) Dim() *focusTextView {
-	f.style = f.style.WithDim()
-	return f
-}
-
-func (f *focusTextView) size(maxWidth, maxHeight int) (int, int) {
-	w, h := MeasureText(f.content)
-	if maxWidth > 0 && w > maxWidth {
-		w = maxWidth
-	}
-	if maxHeight > 0 && h > maxHeight {
-		h = maxHeight
-	}
-	return w, h
-}
-
-func (f *focusTextView) render(ctx *RenderContext) {
-	w, h := ctx.Size()
-	if w == 0 || h == 0 {
-		return
+// splitLinesSimple splits text on newlines (used by textView)
+func splitLinesSimple(s string) []string {
+	if s == "" {
+		return []string{}
 	}
 
-	// Determine if the watched element is focused
-	isFocused := f.focusID != "" && focusManager.GetFocusedID() == f.focusID
-
-	// Choose style based on focus state
-	style := f.style
-	if isFocused && f.focusStyle != nil {
-		style = *f.focusStyle
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
 	}
-
-	ctx.PrintTruncated(0, 0, f.content, style)
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	} else if start == len(s) && len(s) > 0 && s[len(s)-1] == '\n' {
+		// Trailing newline creates empty last line
+		lines = append(lines, "")
+	}
+	return lines
 }
+

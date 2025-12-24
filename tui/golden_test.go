@@ -1191,3 +1191,794 @@ func TestGolden_TableWidth_FillWidth(t *testing.T) {
 	screen := SprintScreen(view, WithWidth(30))
 	termtest.AssertScreen(t, screen)
 }
+
+// =============================================================================
+// SOPHISTICATED UI LAYOUTS - Complex real-world UI patterns
+// =============================================================================
+
+func TestGolden_UI_ChatInterface(t *testing.T) {
+	// Claude Code-style chat interface with messages and input
+	view := Stack(
+		// Message history area
+		Stack(
+			// Assistant message
+			Stack(
+				Text("Claude Code:").Bold().Fg(ColorWhite),
+				PaddingHV(2, 0, Text("Hello! I can help with your code.")),
+			),
+			Spacer().MinHeight(1),
+			// User message
+			Stack(
+				Text("You:").Bold().Fg(ColorCyan),
+				PaddingHV(2, 0, Text("Can you fix this bug?")),
+			),
+			Spacer().MinHeight(1),
+			// Another assistant message
+			Stack(
+				Text("Claude Code:").Bold().Fg(ColorWhite),
+				PaddingHV(2, 0, Text("I'll take a look at the issue.")),
+			),
+		),
+		// Separator
+		Divider().Fg(ColorCyan),
+		// Input area
+		Group(
+			Text("> ").Bold().Fg(ColorGreen),
+			Text("Type your message...").Dim(),
+		),
+	).Padding(1)
+	screen := SprintScreen(view, WithWidth(45), WithHeight(16))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_MultiPanelDashboard(t *testing.T) {
+	// Dashboard with header, multiple panels, and footer
+	view := Stack(
+		// Header bar
+		HeaderBar("System Dashboard"),
+		// Main content area with three panels
+		Group(
+			Bordered(
+				Stack(
+					Text("CPU").Bold(),
+					Progress(65, 100).Width(12),
+					Text("%s", "65%").Dim(),
+				),
+			).Border(&RoundedBorder).Title("Performance"),
+			Bordered(
+				Stack(
+					Text("Active").Fg(ColorGreen),
+					Text("Users: 42"),
+					Text("Uptime: 7d"),
+				),
+			).Border(&RoundedBorder).Title("Status"),
+			Bordered(
+				Stack(
+					Text("Errors").Fg(ColorRed),
+					Text("Warnings").Fg(ColorYellow),
+					Text("Info").Fg(ColorBlue),
+				),
+			).Border(&RoundedBorder).Title("Logs"),
+		).Gap(1),
+		// Footer
+		StatusBar("Last updated: 12:00 PM"),
+	)
+	screen := SprintScreen(view, WithWidth(60), WithHeight(12))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_FormWithValidation(t *testing.T) {
+	// Form with labels, inputs, and validation states
+	view := Bordered(
+		Stack(
+			Text("Registration Form").Bold().Fg(ColorCyan),
+			Divider(),
+			// Name field - valid
+			Group(
+				Text("Name:     ").Fg(ColorWhite),
+				Text("[John Doe              ]"),
+				Text(" ✓").Fg(ColorGreen),
+			),
+			// Email field - invalid
+			Group(
+				Text("Email:    ").Fg(ColorWhite),
+				Text("[invalid-email         ]"),
+				Text(" ✗").Fg(ColorRed),
+			),
+			// Password field
+			Group(
+				Text("Password: ").Fg(ColorWhite),
+				Text("[********              ]"),
+				Text(" ✓").Fg(ColorGreen),
+			),
+			Spacer().MinHeight(1),
+			// Error message
+			Text("- Email must contain @").Fg(ColorRed),
+			Spacer().MinHeight(1),
+			// Buttons
+			Group(
+				Spacer(),
+				Text("[ Cancel ]"),
+				Text(" "),
+				Text("[ Submit ]").Fg(ColorGreen),
+			),
+		).Gap(1),
+	).Border(&RoundedBorder).Title("Sign Up")
+	screen := SprintScreen(view, WithWidth(50), WithHeight(16))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_FileBrowser(t *testing.T) {
+	// File browser with path, file list, and status
+	view := Stack(
+		// Title and path
+		Text("FILE BROWSER").Bold().Fg(ColorCyan),
+		Group(
+			Text("Path:").Dim(),
+			Text(" /Users/demo/projects"),
+		),
+		Divider(),
+		// File listing
+		Bordered(
+			Stack(
+				Text("> [DIR] src").Fg(ColorYellow),
+				Text("  [DIR] tests"),
+				Text("  [DIR] docs"),
+				Text("  main.go"),
+				Text("  README.md"),
+				Text("  go.mod"),
+			),
+		).Border(&RoundedBorder),
+		// Status line
+		Group(
+			Text("3 dirs, 3 files").Dim(),
+			Spacer(),
+			Text("F2: Hidden | Enter: Open").Dim(),
+		),
+	)
+	screen := SprintScreen(view, WithWidth(40), WithHeight(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_SidebarWithContent(t *testing.T) {
+	// App with sidebar navigation and main content area
+	view := Group(
+		// Sidebar
+		Bordered(
+			Stack(
+				Text("Navigation").Bold(),
+				Divider(),
+				Text("> Home").Fg(ColorCyan),
+				Text("  Settings"),
+				Text("  Profile"),
+				Text("  Help"),
+				Spacer(),
+				Divider(),
+				Text("  Logout").Dim(),
+			),
+		).Border(&RoundedBorder),
+		// Main content
+		Bordered(
+			Stack(
+				Text("Welcome Home").Bold().Fg(ColorGreen),
+				Spacer().MinHeight(1),
+				Text("This is the main content area."),
+				Text("Select an item from the sidebar."),
+				Spacer(),
+				Group(
+					Text("Version: 1.0.0").Dim(),
+					Spacer(),
+					Text("Help: ?").Dim(),
+				),
+			),
+		).Border(&RoundedBorder).Title("Content"),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(55), WithHeight(14))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_ProgressDashboard(t *testing.T) {
+	// Multiple progress indicators with labels
+	view := Bordered(
+		Stack(
+			Text("Build Progress").Bold(),
+			Divider(),
+			Group(
+				MinWidth(12, Text("Compiling:")),
+				Progress(100, 100).Width(20),
+				Text(" Done").Fg(ColorGreen),
+			),
+			Group(
+				MinWidth(12, Text("Testing:")),
+				Progress(75, 100).Width(20),
+				Text("%s", " 75%"),
+			),
+			Group(
+				MinWidth(12, Text("Deploying:")),
+				Progress(30, 100).Width(20),
+				Text("%s", " 30%"),
+			),
+			Group(
+				MinWidth(12, Text("Cleanup:")),
+				Progress(0, 100).Width(20),
+				Text(" Waiting").Dim(),
+			),
+			Divider(),
+			Group(
+				Spacer(),
+				Text("%s", "Overall: 51%").Bold(),
+			),
+		).Gap(1),
+	).Border(&RoundedBorder).Title("CI Pipeline")
+	screen := SprintScreen(view, WithWidth(50), WithHeight(14))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_NestedCards(t *testing.T) {
+	// Cards nested within cards with different border styles
+	view := Bordered(
+		Stack(
+			Text("Outer Container").Bold(),
+			Group(
+				Bordered(
+					Stack(
+						Text("Card A").Fg(ColorCyan),
+						Text("Content 1"),
+						Text("Content 2"),
+					),
+				).Border(&RoundedBorder).Title("A"),
+				Bordered(
+					Stack(
+						Text("Card B").Fg(ColorMagenta),
+						Bordered(
+							Text("Nested"),
+						).Border(&SingleBorder),
+					),
+				).Border(&RoundedBorder).Title("B"),
+			).Gap(1),
+			Divider(),
+			Text("Footer info").Dim(),
+		).Gap(1),
+	).Border(&ThickBorder).Title("Cards Demo")
+	screen := SprintScreen(view, WithWidth(45), WithHeight(14))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_TableInContext(t *testing.T) {
+	// Table embedded within a larger UI context
+	sel := 1
+	view := Stack(
+		HeaderBar("User Management"),
+		Group(
+			Text("Search:"),
+			Text(" [Filter users...     ]"),
+			Spacer(),
+			Text("[+ Add]").Fg(ColorGreen),
+		),
+		Divider(),
+		Table([]TableColumn{
+			{Title: "ID", Width: 4},
+			{Title: "Name", Width: 12},
+			{Title: "Role", Width: 10},
+			{Title: "Status", Width: 8},
+		}, &sel).Rows([][]string{
+			{"1", "Alice", "Admin", "Active"},
+			{"2", "Bob", "User", "Active"},
+			{"3", "Carol", "User", "Inactive"},
+		}),
+		Divider(),
+		Group(
+			Text("3 users").Dim(),
+			Spacer(),
+			Text("↑↓: Navigate | Enter: Edit | Del: Remove").Dim(),
+		),
+	)
+	screen := SprintScreen(view, WithWidth(50), WithHeight(14))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_ThreeColumnLayout(t *testing.T) {
+	// Three-column layout with flexible middle column
+	view := Group(
+		// Left column - fixed narrow
+		Width(10, Bordered(
+			Stack(
+				Text("Tags"),
+				Divider(),
+				Text("go"),
+				Text("tui"),
+				Text("cli"),
+			),
+		).Border(&RoundedBorder)),
+		// Middle column - flexible
+		Bordered(
+			Stack(
+				Text("Main Content").Bold(),
+				Text("This is the primary content area"),
+				Text("that should expand to fill space."),
+			),
+		).Border(&RoundedBorder).Title("Content"),
+		// Right column - fixed narrow
+		Width(12, Bordered(
+			Stack(
+				Text("Info"),
+				Divider(),
+				Text("Lines: 42"),
+				Text("Words: 256"),
+			),
+		).Border(&RoundedBorder)),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(60), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_ToolbarAndContent(t *testing.T) {
+	// Toolbar with buttons above content area
+	view := Stack(
+		// Toolbar
+		Bordered(
+			Group(
+				Text("[New]").Fg(ColorGreen),
+				Text("[Open]"),
+				Text("[Save]").Fg(ColorCyan),
+				Spacer(),
+				Text("|"),
+				Spacer(),
+				Text("[Cut]"),
+				Text("[Copy]"),
+				Text("[Paste]"),
+				Spacer(),
+				Text("[Help]").Dim(),
+			).Gap(1),
+		).Border(&SingleBorder),
+		// Content
+		Stack(
+			Text("Document Editor").Bold(),
+			Spacer().MinHeight(1),
+			Text("Line 1: Hello, World!"),
+			Text("Line 2: This is a demo."),
+			Text("Line 3: Edit me!"),
+			Spacer(),
+		),
+		// Status
+		StatusBar("Ln 1, Col 1 | UTF-8 | Modified"),
+	)
+	screen := SprintScreen(view, WithWidth(55), WithHeight(12))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_AlertBoxes(t *testing.T) {
+	// Different styled alert boxes
+	view := Stack(
+		// Success alert
+		Bordered(
+			Group(
+				Text("✓").Fg(ColorGreen),
+				Text(" Operation completed successfully"),
+			),
+		).Border(&RoundedBorder).BorderFg(ColorGreen),
+		// Warning alert
+		Bordered(
+			Group(
+				Text("!").Fg(ColorYellow),
+				Text(" Please review your changes"),
+			),
+		).Border(&RoundedBorder).BorderFg(ColorYellow),
+		// Error alert
+		Bordered(
+			Group(
+				Text("✗").Fg(ColorRed),
+				Text(" Failed to save file"),
+			),
+		).Border(&RoundedBorder).BorderFg(ColorRed),
+		// Info alert
+		Bordered(
+			Group(
+				Text("i").Fg(ColorBlue),
+				Text(" Press Ctrl+S to save"),
+			),
+		).Border(&RoundedBorder).BorderFg(ColorBlue),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(40), WithHeight(14))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_TabsAndPanels(t *testing.T) {
+	// Tab-like interface with active/inactive indicators
+	view := Stack(
+		// Tab bar
+		Group(
+			Text("[ General ]").Fg(ColorCyan).Bold(),
+			Text("  Network  "),
+			Text("  Security "),
+			Text("  Advanced ").Dim(),
+		),
+		Divider(),
+		// Panel content for "General" tab
+		Bordered(
+			Stack(
+				Text("General Settings").Bold(),
+				Spacer().MinHeight(1),
+				Group(Text("Username:"), Spacer(), Text("admin")),
+				Group(Text("Language:"), Spacer(), Text("English")),
+				Group(Text("Theme:"), Spacer(), Text("Dark")),
+				Spacer(),
+				Group(
+					Spacer(),
+					Text("[Reset]"),
+					Text(" "),
+					Text("[Apply]").Fg(ColorGreen),
+				),
+			).Gap(1),
+		).Border(&RoundedBorder),
+	)
+	screen := SprintScreen(view, WithWidth(45), WithHeight(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_TreeView(t *testing.T) {
+	// Tree-like hierarchical structure
+	view := Bordered(
+		Stack(
+			Text("Project Structure").Bold(),
+			Divider(),
+			Text("▼ src/"),
+			Text("  ├── main.go"),
+			Text("  ├── config/"),
+			Text("  │   ├── settings.go"),
+			Text("  │   └── defaults.go"),
+			Text("  └── utils/"),
+			Text("      ├── helpers.go"),
+			Text("      └── format.go"),
+			Text("▶ tests/"),
+			Text("  README.md"),
+		),
+	).Border(&RoundedBorder).Title("Explorer")
+	screen := SprintScreen(view, WithWidth(35), WithHeight(16))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_UI_KeyboardShortcuts(t *testing.T) {
+	// Help screen showing keyboard shortcuts
+	view := Bordered(
+		Stack(
+			Text("Keyboard Shortcuts").Bold().Fg(ColorCyan),
+			Divider(),
+			Group(MinWidth(12, Text("Ctrl+S")), Text("Save file")),
+			Group(MinWidth(12, Text("Ctrl+O")), Text("Open file")),
+			Group(MinWidth(12, Text("Ctrl+N")), Text("New file")),
+			Divider().Title("Navigation"),
+			Group(MinWidth(12, Text("↑↓")), Text("Move cursor")),
+			Group(MinWidth(12, Text("PgUp/Dn")), Text("Scroll page")),
+			Group(MinWidth(12, Text("Home/End")), Text("Go to start/end")),
+			Divider().Title("Editing"),
+			Group(MinWidth(12, Text("Ctrl+Z")), Text("Undo")),
+			Group(MinWidth(12, Text("Ctrl+Y")), Text("Redo")),
+			Spacer(),
+			Group(
+				Spacer(),
+				Text("Press any key to close").Dim(),
+			),
+		).Gap(0),
+	).Border(&RoundedBorder).Title("Help")
+	screen := SprintScreen(view, WithWidth(40), WithHeight(18))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// ADVANCED FLEX TESTS - Complex flex distribution scenarios
+// =============================================================================
+
+func TestGolden_AdvancedFlex_ThreeWaySplit(t *testing.T) {
+	// Three panels with equal flex in horizontal layout
+	view := Group(
+		Bordered(Fill('A')).Border(&RoundedBorder),
+		Bordered(Fill('B')).Border(&RoundedBorder),
+		Bordered(Fill('C')).Border(&RoundedBorder),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(40), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_AdvancedFlex_WeightedHorizontal(t *testing.T) {
+	// Sidebar (1) : Content (3) ratio
+	view := Group(
+		Width(10, Bordered(Text("Side")).Border(&RoundedBorder)),
+		Bordered(
+			Stack(
+				Text("Main Content"),
+				Text("Takes more space"),
+			),
+		).Border(&RoundedBorder),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(50), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_AdvancedFlex_MixedAxes(t *testing.T) {
+	// Vertical stack with horizontal groups inside
+	view := Stack(
+		Group(
+			Text("[A]"),
+			Spacer(),
+			Text("[B]"),
+			Spacer(),
+			Text("[C]"),
+		),
+		Spacer(),
+		Group(
+			Text("[D]"),
+			Spacer(),
+			Text("[E]"),
+		),
+		Spacer(),
+		Text("Footer").Dim(),
+	)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(9))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_AdvancedFlex_NestedSpacers(t *testing.T) {
+	// Spacers at multiple nesting levels
+	view := Stack(
+		Text("Top"),
+		Spacer(),
+		Group(
+			Text("L"),
+			Spacer(),
+			Stack(
+				Text("Nested Top"),
+				Spacer(),
+				Text("Nested Bot"),
+			),
+			Spacer(),
+			Text("R"),
+		),
+		Spacer(),
+		Text("Bottom"),
+	)
+	screen := SprintScreen(view, WithWidth(30), WithHeight(11))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_AdvancedFlex_SpacerWithMinMax(t *testing.T) {
+	// Spacer constrained by min/max size
+	view := Stack(
+		Text("Header"),
+		Spacer().MinHeight(2),
+		Text("Content with min space above"),
+		Spacer(),
+		Text("Footer"),
+	)
+	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_AdvancedFlex_ZeroFlexWithFlex(t *testing.T) {
+	// Mix of flex(0) and flex(1) children
+	view := Stack(
+		Text("Fixed top"),
+		Text("Fixed second"),
+		Spacer().Flex(1),
+		Text("Fixed before bottom"),
+		Text("Fixed bottom"),
+	)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// DEEP NESTING STRESS TESTS
+// =============================================================================
+
+func TestGolden_DeepNesting_FiveLevels(t *testing.T) {
+	// Five levels of nesting
+	view := Bordered(
+		Padding(1,
+			Bordered(
+				Padding(1,
+					Bordered(
+						Padding(1,
+							Bordered(
+								Padding(1,
+									Bordered(
+										Text("Deep!"),
+									).Border(&SingleBorder),
+								),
+							).Border(&SingleBorder),
+						),
+					).Border(&SingleBorder),
+				),
+			).Border(&SingleBorder),
+		),
+	).Border(&RoundedBorder).Title("Inception")
+	screen := SprintScreen(view, WithWidth(40), WithHeight(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_DeepNesting_MixedContainers(t *testing.T) {
+	// Stack > Group > Stack > Group pattern
+	view := Stack(
+		Text("Level 1 - Stack"),
+		Group(
+			Text("L2-Group:"),
+			Stack(
+				Text("L3-Stack"),
+				Group(
+					Text("L4-G:"),
+					Text("Item A"),
+					Text("Item B"),
+				).Gap(1),
+			),
+		).Gap(2),
+		Divider(),
+		Text("Back to Level 1"),
+	)
+	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_DeepNesting_BordersAndPadding(t *testing.T) {
+	// Multiple borders with different padding
+	view := PaddingLTRB(0, 0, 0, 0,
+		Bordered(
+			PaddingHV(1, 0,
+				Bordered(
+					Padding(1,
+						Text("Centered Text"),
+					),
+				).Border(&RoundedBorder).Title("Inner"),
+			),
+		).Border(&ThickBorder).Title("Outer"),
+	)
+	screen := SprintScreen(view, WithWidth(35), WithHeight(9))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// ALIGNMENT COMBINATIONS
+// =============================================================================
+
+func TestGolden_Alignment_GridLike(t *testing.T) {
+	// Grid-like layout with alignment
+	view := Stack(
+		Group(
+			Width(8, Text("TL")),
+			Width(8, Stack(Text("TC")).Align(AlignCenter)),
+			Width(8, Stack(Text("TR")).Align(AlignRight)),
+		),
+		Spacer().MinHeight(1),
+		Group(
+			Width(8, Text("ML")),
+			Width(8, Stack(Text("MC")).Align(AlignCenter)),
+			Width(8, Stack(Text("MR")).Align(AlignRight)),
+		),
+		Spacer().MinHeight(1),
+		Group(
+			Width(8, Text("BL")),
+			Width(8, Stack(Text("BC")).Align(AlignCenter)),
+			Width(8, Stack(Text("BR")).Align(AlignRight)),
+		),
+	)
+	screen := SprintScreen(view, WithWidth(30), WithHeight(7))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Alignment_CenteredModal(t *testing.T) {
+	// Centered dialog/modal style
+	view := ZStack(
+		Fill('.'),
+		Stack(
+			Bordered(
+				Stack(
+					Text("Confirm Action").Bold(),
+					Divider(),
+					Text("Are you sure?"),
+					Spacer().MinHeight(1),
+					Group(
+						Text("[Cancel]"),
+						Spacer(),
+						Text("[OK]").Fg(ColorGreen),
+					),
+				).Gap(1),
+			).Border(&RoundedBorder).Title("Dialog"),
+		).Align(AlignCenter),
+	).Align(AlignCenter)
+	screen := SprintScreen(view, WithWidth(35), WithHeight(11))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Alignment_BottomRight(t *testing.T) {
+	// Content pushed to bottom-right
+	view := Size(25, 8,
+		Stack(
+			Spacer(),
+			Group(
+				Spacer(),
+				Bordered(Text("Toast")).Border(&RoundedBorder),
+			),
+		),
+	)
+	screen := SprintScreen(view, WithWidth(30), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// UNICODE AND SPECIAL CONTENT
+// =============================================================================
+
+func TestGolden_Unicode_MixedWidthInTable(t *testing.T) {
+	// Table with mix of ASCII and CJK
+	sel := 0
+	view := Table([]TableColumn{
+		{Title: "Code"},
+		{Title: "Name"},
+		{Title: "Country"},
+	}, &sel).Rows([][]string{
+		{"EN", "English", "USA"},
+		{"ZH", "中文", "中国"},
+		{"JP", "日本語", "日本"},
+		{"KR", "한국어", "한국"},
+	})
+	screen := SprintScreen(view, WithWidth(35), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Unicode_EmojiInUI(t *testing.T) {
+	// UI with emoji indicators
+	view := Stack(
+		Text("✅ Task completed"),
+		Text("⚠️ Warning detected"),
+		Text("❌ Operation failed"),
+		Text("📝 Edit document"),
+		Text("🔍 Search results"),
+	)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Unicode_BoxDrawing(t *testing.T) {
+	// Custom box drawing with Unicode
+	view := Stack(
+		Text("┌───────────┐"),
+		Text("│ Custom    │"),
+		Text("│   Box     │"),
+		Text("└───────────┘"),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// CODE DISPLAY IN CONTEXT
+// =============================================================================
+
+func TestGolden_Code_InPanel(t *testing.T) {
+	// Code snippet within a bordered panel
+	code := `func hello() {
+    fmt.Println("Hi")
+}`
+	view := Bordered(
+		Stack(
+			Text("main.go").Dim(),
+			Divider(),
+			Code(code, "go").LineNumbers(true),
+		),
+	).Border(&RoundedBorder).Title("Source")
+	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Code_DiffStyle(t *testing.T) {
+	// Diff-like display with +/- indicators
+	view := Bordered(
+		Stack(
+			Text("  func old() {"),
+			Text("- \treturn nil").Fg(ColorRed),
+			Text("+ \treturn err").Fg(ColorGreen),
+			Text("  }"),
+		),
+	).Border(&RoundedBorder).Title("Changes")
+	screen := SprintScreen(view, WithWidth(30), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}

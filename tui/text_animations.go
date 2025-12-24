@@ -1,9 +1,5 @@
 package tui
 
-import (
-	"unicode/utf8"
-)
-
 // AnimatedElement represents any element that can be animated
 type AnimatedElement interface {
 	Update(frame uint64)
@@ -22,6 +18,30 @@ type RainbowAnimation struct {
 	Speed    int // How fast the rainbow moves (frames per cycle)
 	Length   int // How many characters the rainbow spans
 	Reversed bool
+}
+
+// Rainbow creates a new rainbow animation with the specified speed.
+// Speed controls how fast the rainbow moves (lower = faster).
+//
+// Example:
+//
+//	Text("Hello").Animate(Rainbow(3))
+//	Text("Hello").Animate(Rainbow(3).Reverse())
+func Rainbow(speed int) *RainbowAnimation {
+	return &RainbowAnimation{Speed: speed}
+}
+
+// Reverse sets the rainbow to move in the opposite direction.
+func (r *RainbowAnimation) Reverse() *RainbowAnimation {
+	r.Reversed = true
+	return r
+}
+
+// WithLength sets how many characters the rainbow spans.
+// If not set, defaults to the text length.
+func (r *RainbowAnimation) WithLength(length int) *RainbowAnimation {
+	r.Length = length
+	return r
 }
 
 // GetStyle returns the style for a character at a given frame
@@ -52,6 +72,24 @@ type WaveAnimation struct {
 	Speed     int
 	Amplitude float64
 	Colors    []RGB
+}
+
+// Wave creates a new wave animation with the specified speed and colors.
+// Speed controls how fast the wave moves (lower = faster).
+// Colors are the colors to cycle through; defaults to magenta/green/purple if none provided.
+//
+// Example:
+//
+//	Text("Hello").Animate(Wave(5))
+//	Text("Hello").Animate(Wave(5, NewRGB(255, 0, 0), NewRGB(0, 0, 255)))
+func Wave(speed int, colors ...RGB) *WaveAnimation {
+	return &WaveAnimation{Speed: speed, Colors: colors}
+}
+
+// WithAmplitude sets the wave amplitude.
+func (w *WaveAnimation) WithAmplitude(amplitude float64) *WaveAnimation {
+	w.Amplitude = amplitude
+	return w
 }
 
 // GetStyle returns the style for a character at a given frame
@@ -104,6 +142,33 @@ type SlideAnimation struct {
 	Reverse        bool // True = right to left, false = left to right
 }
 
+// Slide creates a new slide animation with a highlight that moves across text.
+// Speed controls how fast the highlight moves (lower = faster).
+//
+// Example:
+//
+//	Text("Loading").Animate(Slide(2, gray, white))
+//	Text("Loading").Animate(Slide(2, gray, white).Reversed())
+func Slide(speed int, baseColor, highlightColor RGB) *SlideAnimation {
+	return &SlideAnimation{
+		Speed:          speed,
+		BaseColor:      baseColor,
+		HighlightColor: highlightColor,
+	}
+}
+
+// Reversed sets the slide to move from right to left.
+func (s *SlideAnimation) Reversed() *SlideAnimation {
+	s.Reverse = true
+	return s
+}
+
+// WithWidth sets the width of the highlight in characters.
+func (s *SlideAnimation) WithWidth(width int) *SlideAnimation {
+	s.Width = width
+	return s
+}
+
 // GetStyle returns the style for a character at a given frame
 func (s *SlideAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
 	if s.Speed <= 0 {
@@ -151,6 +216,28 @@ type SparkleAnimation struct {
 	Density    int // Higher = more sparkles (1-10 recommended)
 }
 
+// Sparkle creates a new sparkle animation with twinkling star-like effects.
+// Speed controls animation timing (lower = faster).
+//
+// Example:
+//
+//	Text("Stars").Animate(Sparkle(3, gray, white))
+//	Text("Stars").Animate(Sparkle(3, gray, white).WithDensity(5))
+func Sparkle(speed int, baseColor, sparkColor RGB) *SparkleAnimation {
+	return &SparkleAnimation{
+		Speed:      speed,
+		BaseColor:  baseColor,
+		SparkColor: sparkColor,
+		Density:    3,
+	}
+}
+
+// WithDensity sets how many sparkles appear (1-10 recommended, higher = more sparkles).
+func (s *SparkleAnimation) WithDensity(density int) *SparkleAnimation {
+	s.Density = density
+	return s
+}
+
 // GetStyle returns the style for a character at a given frame
 func (s *SparkleAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
 	if s.Speed <= 0 {
@@ -192,6 +279,34 @@ type TypewriterAnimation struct {
 	CursorColor RGB
 	Loop        bool // Whether to restart after fully revealed
 	HoldFrames  int  // Frames to hold before looping (if Loop is true)
+}
+
+// Typewriter creates a new typewriter animation that reveals text character by character.
+// Speed controls how fast characters appear (lower = faster).
+//
+// Example:
+//
+//	Text("Hello, World!").Animate(Typewriter(4, white, green))
+//	Text("Hello, World!").Animate(Typewriter(4, white, green).WithLoop(true))
+func Typewriter(speed int, textColor, cursorColor RGB) *TypewriterAnimation {
+	return &TypewriterAnimation{
+		Speed:       speed,
+		TextColor:   textColor,
+		CursorColor: cursorColor,
+		HoldFrames:  60, // Default hold frames
+	}
+}
+
+// WithLoop sets whether the animation should restart after fully revealed.
+func (t *TypewriterAnimation) WithLoop(loop bool) *TypewriterAnimation {
+	t.Loop = loop
+	return t
+}
+
+// WithHoldFrames sets how many frames to hold before looping (if Loop is true).
+func (t *TypewriterAnimation) WithHoldFrames(frames int) *TypewriterAnimation {
+	t.HoldFrames = frames
+	return t
 }
 
 // GetStyle returns the style for a character at a given frame
@@ -243,6 +358,28 @@ type GlitchAnimation struct {
 	BaseColor   RGB
 	GlitchColor RGB // Color during glitch
 	Intensity   int // How often glitches occur (1-10, higher = more glitches)
+}
+
+// Glitch creates a new glitch animation with a cyberpunk-style digital effect.
+// Speed controls glitch timing (lower = faster).
+//
+// Example:
+//
+//	Text("SYSTEM ERROR").Animate(Glitch(2, gray, red))
+//	Text("SYSTEM ERROR").Animate(Glitch(2, gray, red).WithIntensity(8))
+func Glitch(speed int, baseColor, glitchColor RGB) *GlitchAnimation {
+	return &GlitchAnimation{
+		Speed:       speed,
+		BaseColor:   baseColor,
+		GlitchColor: glitchColor,
+		Intensity:   3,
+	}
+}
+
+// WithIntensity sets how often glitches occur (1-10, higher = more glitches).
+func (g *GlitchAnimation) WithIntensity(intensity int) *GlitchAnimation {
+	g.Intensity = intensity
+	return g
 }
 
 // GetStyle returns the style for a character at a given frame
@@ -300,6 +437,27 @@ type PulseAnimation struct {
 	MaxBrightness float64
 }
 
+// Pulse creates a new pulse animation with a pulsing brightness effect.
+// Color is the base color, speed controls the pulse rate (lower = faster).
+//
+// Example:
+//
+//	Text("Active").Animate(Pulse(green, 10))
+//	Text("Active").Animate(Pulse(green, 10).Brightness(0.3, 1.0))
+func Pulse(color RGB, speed int) *PulseAnimation {
+	return &PulseAnimation{
+		Color: color,
+		Speed: speed,
+	}
+}
+
+// Brightness sets the minimum and maximum brightness levels (0.0 to 1.0).
+func (p *PulseAnimation) Brightness(minBrightness, maxBrightness float64) *PulseAnimation {
+	p.MinBrightness = minBrightness
+	p.MaxBrightness = maxBrightness
+	return p
+}
+
 // GetStyle returns the style for a character at a given frame
 func (p *PulseAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
 	if p.Speed <= 0 {
@@ -335,325 +493,4 @@ func Sine(x float64) float64 {
 	}
 	x = x - 3.14159
 	return -4 * x * (3.14159 - x) / (3.14159 * 3.14159)
-}
-
-// AnimatedText represents text with color animation
-type AnimatedText struct {
-	x, y         int
-	text         string
-	animation    TextAnimation
-	currentFrame uint64
-}
-
-// NewAnimatedText creates a new animated text element
-func NewAnimatedText(x, y int, text string, animation TextAnimation) *AnimatedText {
-	return &AnimatedText{
-		x:         x,
-		y:         y,
-		text:      text,
-		animation: animation,
-	}
-}
-
-// Update updates the animation frame
-func (at *AnimatedText) Update(frame uint64) {
-	at.currentFrame = frame
-}
-
-// Draw renders the animated text
-func (at *AnimatedText) Draw(frame RenderFrame) {
-	runes := []rune(at.text)
-	totalChars := len(runes)
-
-	for i, r := range runes {
-		currentX := at.x + i
-		var style Style
-		if at.animation != nil {
-			// Use the animation's GetStyle method - consolidated rendering
-			style = at.animation.GetStyle(at.currentFrame, i, totalChars)
-		} else {
-			style = NewStyle()
-		}
-		frame.SetCell(currentX, at.y, r, style)
-	}
-}
-
-// Position returns the element's position
-func (at *AnimatedText) Position() (x, y int) {
-	return at.x, at.y
-}
-
-// Dimensions returns the element's dimensions
-func (at *AnimatedText) Dimensions() (width, height int) {
-	return utf8.RuneCountInString(at.text), 1
-}
-
-// SetText updates the text content
-func (at *AnimatedText) SetText(text string) {
-	at.text = text
-}
-
-// SetPosition updates the position
-func (at *AnimatedText) SetPosition(x, y int) {
-	at.x = x
-	at.y = y
-}
-
-// AnimatedMultiLine represents multiple lines of animated content
-type AnimatedMultiLine struct {
-	x, y         int
-	width        int
-	lines        []string
-	animations   []TextAnimation
-	currentFrame uint64
-}
-
-// NewAnimatedMultiLine creates a new multi-line animated element
-func NewAnimatedMultiLine(x, y, width int) *AnimatedMultiLine {
-	return &AnimatedMultiLine{
-		x:          x,
-		y:          y,
-		width:      width,
-		lines:      make([]string, 0),
-		animations: make([]TextAnimation, 0),
-	}
-}
-
-// SetLine sets the content and animation for a specific line
-func (aml *AnimatedMultiLine) SetLine(index int, text string, animation TextAnimation) {
-	// Ensure slices are large enough
-	for len(aml.lines) <= index {
-		aml.lines = append(aml.lines, "")
-		aml.animations = append(aml.animations, nil)
-	}
-
-	aml.lines[index] = text
-	aml.animations[index] = animation
-}
-
-// AddLine adds a new line with animation
-func (aml *AnimatedMultiLine) AddLine(text string, animation TextAnimation) {
-	aml.lines = append(aml.lines, text)
-	aml.animations = append(aml.animations, animation)
-}
-
-// ClearLines removes all lines
-func (aml *AnimatedMultiLine) ClearLines() {
-	aml.lines = aml.lines[:0]
-	aml.animations = aml.animations[:0]
-}
-
-// Update updates the animation frame
-func (aml *AnimatedMultiLine) Update(frame uint64) {
-	aml.currentFrame = frame
-}
-
-// Draw renders all animated lines
-func (aml *AnimatedMultiLine) Draw(frame RenderFrame) {
-	frameW, _ := frame.Size()
-
-	for i, line := range aml.lines {
-		// Clear line first
-		frame.FillStyled(0, aml.y+i, frameW, 1, ' ', NewStyle())
-
-		if i < len(aml.animations) && aml.animations[i] != nil {
-			// Draw animated line
-			runes := []rune(line)
-			totalChars := len(runes)
-
-			for j, r := range runes {
-				if j >= aml.width {
-					break // Respect width limit
-				}
-
-				currentX := aml.x + j
-				// Use the animation's GetStyle method - consolidated rendering
-				style := aml.animations[i].GetStyle(aml.currentFrame, j, totalChars)
-				frame.SetCell(currentX, aml.y+i, r, style)
-			}
-		} else {
-			// Draw static line
-			frame.PrintStyled(aml.x, aml.y+i, line, NewStyle())
-		}
-	}
-}
-
-// Position returns the element's position
-func (aml *AnimatedMultiLine) Position() (x, y int) {
-	return aml.x, aml.y
-}
-
-// Dimensions returns the element's dimensions
-func (aml *AnimatedMultiLine) Dimensions() (width, height int) {
-	return aml.width, len(aml.lines)
-}
-
-// SetPosition updates the element's position
-func (aml *AnimatedMultiLine) SetPosition(x, y int) {
-	aml.x = x
-	aml.y = y
-}
-
-// SetWidth updates the element's width
-func (aml *AnimatedMultiLine) SetWidth(width int) {
-	aml.width = width
-}
-
-// AnimatedStatusBar represents an animated status bar
-type AnimatedStatusBar struct {
-	x, y         int
-	width        int
-	items        []*AnimatedStatusItem
-	separator    string
-	background   RGB
-	currentFrame uint64
-}
-
-// AnimatedStatusItem represents a single status item with animation
-type AnimatedStatusItem struct {
-	Key       string
-	Value     string
-	Icon      string
-	Animation TextAnimation
-	Style     Style
-}
-
-// NewAnimatedStatusBar creates a new animated status bar
-func NewAnimatedStatusBar(x, y, width int) *AnimatedStatusBar {
-	return &AnimatedStatusBar{
-		x:          x,
-		y:          y,
-		width:      width,
-		items:      make([]*AnimatedStatusItem, 0),
-		separator:  " │ ",
-		background: NewRGB(40, 40, 40),
-	}
-}
-
-// AddItem adds a status item with optional animation
-func (asb *AnimatedStatusBar) AddItem(key, value, icon string, animation TextAnimation, style Style) {
-	item := &AnimatedStatusItem{
-		Key:       key,
-		Value:     value,
-		Icon:      icon,
-		Animation: animation,
-		Style:     style,
-	}
-
-	asb.items = append(asb.items, item)
-}
-
-// UpdateItem updates an existing status item
-func (asb *AnimatedStatusBar) UpdateItem(index int, key, value string) {
-	if index >= 0 && index < len(asb.items) {
-		asb.items[index].Key = key
-		asb.items[index].Value = value
-	}
-}
-
-// Update updates the animation frame
-func (asb *AnimatedStatusBar) Update(frame uint64) {
-	asb.currentFrame = frame
-}
-
-// Draw renders the animated status bar
-func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
-	// Draw background
-	bgStyle := NewStyle().WithBgRGB(asb.background)
-	frame.FillStyled(asb.x, asb.y, asb.width, 1, ' ', bgStyle)
-
-	currentX := asb.x
-	for i, item := range asb.items {
-		if currentX >= asb.x+asb.width {
-			break
-		}
-
-		// Add separator if not first item
-		if i > 0 {
-			sepStyle := NewStyle().WithForeground(ColorBrightBlack).WithBgRGB(asb.background)
-			frame.PrintStyled(currentX, asb.y, asb.separator, sepStyle)
-			currentX += utf8.RuneCountInString(asb.separator)
-		}
-
-		// Draw icon if present
-		if item.Icon != "" {
-			iconText := item.Icon + " "
-			if item.Animation != nil {
-				// Apply animation to icon
-				runes := []rune(iconText)
-				for j, r := range runes {
-					style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
-					// Combine with background
-					style = style.WithBgRGB(asb.background)
-					frame.SetCell(currentX+j, asb.y, r, style)
-				}
-			} else {
-				iconStyle := item.Style.WithBgRGB(asb.background)
-				frame.PrintStyled(currentX, asb.y, iconText, iconStyle)
-			}
-			currentX += utf8.RuneCountInString(iconText)
-		}
-
-		// Draw key
-		if item.Key != "" {
-			keyText := item.Key + ": "
-			keyStyle := item.Style
-			if keyStyle.IsEmpty() {
-				keyStyle = NewStyle().WithBold()
-			}
-			keyStyle = keyStyle.WithBgRGB(asb.background)
-			frame.PrintStyled(currentX, asb.y, keyText, keyStyle)
-			currentX += utf8.RuneCountInString(keyText)
-		}
-
-		// Draw value
-		if item.Value != "" {
-			if item.Animation != nil {
-				// Apply animation to value
-				runes := []rune(item.Value)
-				for j, r := range runes {
-					switch anim := item.Animation.(type) {
-					case *RainbowAnimation:
-						colors := SmoothRainbow(anim.Length)
-						offset := int(asb.currentFrame) / anim.Speed
-						if anim.Reversed {
-							offset = -offset
-						}
-						rainbowPos := (j + offset) % len(colors)
-						if rainbowPos < 0 {
-							rainbowPos += len(colors)
-						}
-						rgb := colors[rainbowPos]
-						// Combine with background
-						style := NewStyle().WithFgRGB(rgb).WithBgRGB(asb.background)
-						frame.SetCell(currentX+j, asb.y, r, style)
-					default:
-						style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
-						style = style.WithBgRGB(asb.background)
-						frame.SetCell(currentX+j, asb.y, r, style)
-					}
-				}
-			} else {
-				valueStyle := NewStyle().WithForeground(ColorWhite).WithBgRGB(asb.background)
-				frame.PrintStyled(currentX, asb.y, item.Value, valueStyle)
-			}
-			currentX += utf8.RuneCountInString(item.Value)
-		}
-	}
-}
-
-// Position returns the status bar position
-func (asb *AnimatedStatusBar) Position() (x, y int) {
-	return asb.x, asb.y
-}
-
-// Dimensions returns the status bar dimensions
-func (asb *AnimatedStatusBar) Dimensions() (width, height int) {
-	return asb.width, 1
-}
-
-// SetPosition updates the status bar position
-func (asb *AnimatedStatusBar) SetPosition(x, y int) {
-	asb.x = x
-	asb.y = y
 }

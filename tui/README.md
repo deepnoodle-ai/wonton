@@ -214,40 +214,43 @@ func (a *app) View() tui.View {
 func (a *app) View() tui.View {
 	return tui.Stack(
 		// Rainbow color cycling
-		tui.Text("Welcome to the App!").Rainbow(3),
+		tui.Text("Welcome to the App!").Animate(tui.Rainbow(3)),
 
 		// Pulsing alert
-		tui.Text("ALERT").Pulse(tui.NewRGB(255, 0, 0), 12),
+		tui.Text("ALERT").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 12)),
 
 		// Wave effect
-		tui.Text("Status: Connected").Wave(12,
+		tui.Text("Status: Connected").Animate(tui.Wave(12,
 			tui.NewRGB(50, 150, 255),
 			tui.NewRGB(100, 200, 255),
-		),
+		)),
 
 		// Sliding highlight
-		tui.Text("Processing...").Slide(2,
+		tui.Text("Processing...").Animate(tui.Slide(2,
 			tui.NewRGB(100, 100, 100),
 			tui.NewRGB(255, 255, 255),
-		),
+		)),
 
 		// Sparkle effect
-		tui.Text("✨ Special ✨").Sparkle(3,
+		tui.Text("✨ Special ✨").Animate(tui.Sparkle(3,
 			tui.NewRGB(180, 180, 220),
 			tui.NewRGB(255, 255, 255),
-		),
+		)),
 
 		// Typewriter effect
-		tui.Text("Loading data...").Typewriter(3,
+		tui.Text("Loading data...").Animate(tui.Typewriter(3,
 			tui.NewRGB(0, 255, 100),
 			tui.NewRGB(255, 255, 255),
-		),
+		).WithLoop(true)),
 
 		// Glitch effect
-		tui.Text("SIGNAL_LOST").Glitch(2,
+		tui.Text("SIGNAL_LOST").Animate(tui.Glitch(2,
 			tui.NewRGB(255, 0, 100),
 			tui.NewRGB(0, 255, 255),
-		),
+		)),
+
+		// Reversed rainbow with custom animation configuration
+		tui.Text("Reversed!").Animate(tui.Rainbow(3).Reverse()),
 	).Gap(1)
 }
 ```
@@ -502,17 +505,24 @@ Most views support fluent modifier methods:
 
 ### Animation Modifiers
 
-| Modifier                                | Description         | Parameters                         |
-| --------------------------------------- | ------------------- | ---------------------------------- |
-| `.Rainbow(speed)`                       | Rainbow color cycle | `speed int`                        |
-| `.RainbowReverse(speed)`                | Reverse rainbow     | `speed int`                        |
-| `.Pulse(color, speed)`                  | Pulsing brightness  | `color Color, speed int`           |
-| `.Wave(speed, colors...)`               | Wave color effect   | `speed int, colors ...Color`       |
-| `.Slide(speed, base, highlight)`        | Sliding highlight   | `speed int, base, highlight Color` |
-| `.SlideReverse(speed, base, highlight)` | Reverse slide       | `speed int, base, highlight Color` |
-| `.Sparkle(speed, base, highlight)`      | Sparkle effect      | `speed int, base, highlight Color` |
-| `.Typewriter(speed, base, cursor)`      | Typewriter reveal   | `speed int, base, cursor Color`    |
-| `.Glitch(speed, color1, color2)`        | Glitch effect       | `speed int, color1, color2 Color`  |
+Apply animations using `.Animate(animation)` with animation constructors:
+
+| Animation Constructor                | Description         | Parameters                         | Chainable Methods                          |
+| ------------------------------------ | ------------------- | ---------------------------------- | ------------------------------------------ |
+| `Rainbow(speed)`                     | Rainbow color cycle | `speed int`                        | `.Reverse()`, `.WithLength(int)`           |
+| `Pulse(color, speed)`                | Pulsing brightness  | `color RGB, speed int`             | `.Brightness(min, max float64)`            |
+| `Wave(speed, colors...)`             | Wave color effect   | `speed int, colors ...RGB`         | `.WithAmplitude(float64)`                  |
+| `Slide(speed, base, highlight)`      | Sliding highlight   | `speed int, base, highlight RGB`   | `.Reversed()`, `.WithWidth(int)`           |
+| `Sparkle(speed, base, spark)`        | Sparkle effect      | `speed int, base, spark RGB`       | `.WithDensity(int)`                        |
+| `Typewriter(speed, text, cursor)`    | Typewriter reveal   | `speed int, text, cursor RGB`      | `.WithLoop(bool)`, `.WithHoldFrames(int)`  |
+| `Glitch(speed, base, glitch)`        | Glitch effect       | `speed int, base, glitch RGB`      | `.WithIntensity(int)`                      |
+
+Example:
+```go
+tui.Text("Hello").Animate(tui.Rainbow(3))
+tui.Text("Hello").Animate(tui.Rainbow(3).Reverse())
+tui.Text("Alert").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
+```
 
 ### Event Types
 
@@ -550,6 +560,112 @@ tui.Run(app,
 	tui.WithAlternateScreen(false),     // Disable alternate screen
 	tui.WithRawMode(true),              // Enable raw mode
 )
+```
+
+## Snapshot Testing
+
+The tui package includes a comprehensive snapshot (golden) testing system for verifying rendered output. This approach captures the exact visual output of views and compares against saved snapshots.
+
+### Writing Snapshot Tests
+
+```go
+func TestGolden_MyComponent(t *testing.T) {
+    // Build your view
+    view := Stack(
+        Text("Header").Bold(),
+        Divider(),
+        Text("Content"),
+    )
+
+    // Render to a virtual screen with specific dimensions
+    screen := SprintScreen(view, WithWidth(30), WithHeight(10))
+
+    // Assert against saved snapshot
+    termtest.AssertScreen(t, screen)
+}
+```
+
+### Test Organization
+
+Tests are organized by feature in `golden_test.go` with clear section headers:
+
+```go
+// =============================================================================
+// MY COMPONENT TESTS - Description of what's being tested
+// =============================================================================
+
+func TestGolden_MyComponent_BasicUsage(t *testing.T) { ... }
+func TestGolden_MyComponent_EdgeCase(t *testing.T) { ... }
+```
+
+### Running Tests
+
+```bash
+# Run all golden tests
+go test ./tui -run "TestGolden"
+
+# Run specific test category
+go test ./tui -run "TestGolden_UI"
+
+# Run with verbose output
+go test ./tui -run "TestGolden" -v
+```
+
+### Creating and Updating Snapshots
+
+When you add new tests or intentionally change rendering behavior:
+
+```bash
+# Create/update snapshots (flag must come AFTER package)
+go test ./tui -run "TestGolden_MyComponent" -update
+
+# Update all snapshots
+go test ./tui -run "TestGolden" -update
+```
+
+Snapshots are stored in `testdata/snapshots/` as `.snap` files.
+
+### Reviewing Tests
+
+Use the `reviewtests` tool to review test code alongside snapshots:
+
+```bash
+# Review all tests containing "Flex"
+go run ./tui/cmd/reviewtests Flex
+
+# Review specific test
+go run ./tui/cmd/reviewtests MyComponent
+
+# Review all UI tests
+go run ./tui/cmd/reviewtests UI
+```
+
+The tool displays each test's code and its expected snapshot output for easy verification.
+
+### Best Practices
+
+1. **Descriptive Names**: Use `TestGolden_Category_Scenario` naming convention
+2. **Explicit Dimensions**: Always specify `WithWidth()` and `WithHeight()` for consistent snapshots
+3. **Comments**: Add comments explaining what the test verifies
+4. **Edge Cases**: Test narrow widths, empty containers, and boundary conditions
+5. **Real-World Patterns**: Create tests inspired by actual UI patterns from `examples/`
+
+### Example: Complex UI Test
+
+```go
+func TestGolden_UI_Dashboard(t *testing.T) {
+    // Dashboard with header, panels, and footer
+    view := Stack(
+        HeaderBar("Dashboard"),
+        Group(
+            Bordered(Text("Panel A")).Border(&RoundedBorder).Title("Left"),
+            Bordered(Text("Panel B")).Border(&RoundedBorder).Title("Right"),
+        ).Gap(1),
+        StatusBar("Ready"),
+    )
+    screen := SprintScreen(view, WithWidth(50), WithHeight(10))
+    termtest.AssertScreen(t, screen)
+}
 ```
 
 ## Related Packages

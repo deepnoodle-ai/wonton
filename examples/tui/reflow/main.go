@@ -50,7 +50,7 @@ func (app *ReflowApp) View() tui.View {
 	longText := "This is a long text that should wrap automatically when the container width decreases. It demonstrates text reflow in Wonton! The height of the box should adjust to fit the text."
 
 	// Wrap in a border
-	borderedBox := tui.Bordered(tui.MaxWidth(app.width-4, tui.WrappedText(longText))).
+	borderedBox := tui.Bordered(tui.MaxWidth(app.width-4, tui.Text(longText).Wrap().Flex(1))).
 		Border(&tui.RoundedBorder).
 		BorderFg(tui.ColorCyan)
 

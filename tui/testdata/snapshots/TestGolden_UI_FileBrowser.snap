@@ -1,0 +1,15 @@
+FILE BROWSER
+Path: /Users/demo/projects
+────────────────────────────────────────
+╭─────────────╮
+│> [DIR] src  │
+│  [DIR] tests│
+│  [DIR] docs │
+│  main.go    │
+│  README.md  │
+│  go.mod     │
+╰─────────────╯
+3 dirs, 3 files F2: Hidden | Enter: Open
+
+
+
