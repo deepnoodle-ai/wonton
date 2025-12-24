@@ -542,24 +542,38 @@ func (app *SSEViewApp) formatEvent(evt SSEEvent, selected bool) tui.View {
 func (app *SSEViewApp) formatEventDetail(evt SSEEvent) []tui.View {
 	var views []tui.View
 
-	// Metadata
+	// Header
+	views = append(views,
+		tui.Text("Event #%d", evt.Index).Bold().Fg(tui.ColorCyan),
+		tui.Spacer().MinHeight(1),
+	)
+
+	// Metadata as key-value pairs
 	eventType := evt.Event.Event
 	if eventType == "" {
 		eventType = "message"
 	}
 
-	views = append(views,
-		tui.Text("Event #%d", evt.Index).Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
-		tui.Text("Type: %s", eventType).Fg(tui.ColorYellow),
-		tui.Text("Time: %s", evt.Timestamp.Format("15:04:05.000")),
-	)
-
-	if evt.Event.ID != "" {
-		views = append(views, tui.Text("ID: %s", evt.Event.ID).Fg(tui.ColorBrightBlack))
+	metadata := []struct {
+		key   string
+		value string
+		show  bool
+	}{
+		{"Type", eventType, true},
+		{"Time", evt.Timestamp.Format("15:04:05.000"), true},
+		{"ID", evt.Event.ID, evt.Event.ID != ""},
+		{"Retry", fmt.Sprintf("%dms", evt.Event.Retry), evt.Event.Retry > 0},
 	}
-	if evt.Event.Retry > 0 {
-		views = append(views, tui.Text("Retry: %dms", evt.Event.Retry).Fg(tui.ColorBrightBlack))
+
+	for _, m := range metadata {
+		if m.show {
+			views = append(views,
+				tui.Group(
+					tui.Text("%s: ", m.key).Fg(tui.ColorBrightBlack),
+					tui.Text("%s", m.value).Fg(tui.ColorWhite),
+				),
+			)
+		}
 	}
 
 	views = append(views, tui.Spacer().MinHeight(1))

@@ -46,50 +46,10 @@ func (app *ListDemoApp) Init() error {
 func (app *ListDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		// Handle quit
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
-		// Handle keyboard navigation
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.selected > 0 {
-				app.selected--
-				app.lastAction = "Moved up"
-			}
-		case tui.KeyArrowDown:
-			app.selected++
-			app.lastAction = "Moved down"
-		case tui.KeyHome:
-			app.selected = 0
-			app.lastAction = "Jumped to top"
-		case tui.KeyEnd:
-			// This will be clamped by the list view
-			app.selected = 9999
-			app.lastAction = "Jumped to bottom"
-		case tui.KeyPageUp:
-			app.selected -= 5
-			if app.selected < 0 {
-				app.selected = 0
-			}
-			app.lastAction = "Page up"
-		case tui.KeyPageDown:
-			app.selected += 5
-			app.lastAction = "Page down"
-		case tui.KeyBackspace:
-			if len(app.filterText) > 0 {
-				app.filterText = app.filterText[:len(app.filterText)-1]
-				app.lastAction = fmt.Sprintf("Filter: '%s'", app.filterText)
-			}
-		default:
-			// Handle text input for filtering
-			if e.Rune >= 32 && e.Rune < 127 {
-				app.filterText += string(e.Rune)
-				app.selected = 0 // Reset selection when filtering
-				app.lastAction = fmt.Sprintf("Filter: '%s'", app.filterText)
-			}
-		}
+		// FilterableList component handles navigation and filtering internally
 	}
 
 	return nil

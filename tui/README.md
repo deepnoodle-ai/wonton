@@ -23,7 +23,7 @@ func (a *app) View() tui.View {
 	return tui.Stack(
 		tui.Text("Counter: %d", a.count).Bold(),
 		tui.Text("Press + to increment, - to decrement, q to quit").Dim(),
-	).Gap(1)
+	).Gap(1).Padding(2)
 }
 
 func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
@@ -42,7 +42,7 @@ func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
 }
 
 func main() {
-	if err := tui.Run(&app{}, tui.WithFPS(30)); err != nil {
+	if err := tui.Run(&app{}); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -59,10 +59,14 @@ type listApp struct {
 func (a *listApp) View() tui.View {
 	return tui.Stack(
 		tui.Text("Select an item:").Bold(),
-		tui.SelectListStrings(a.items, &a.selected).
-			OnSelect(func(idx int) {
-				a.selected = idx
-			}).
+		tui.Table([]tui.TableColumn{{Header: "Items"}}, &a.selected).
+			Rows(func() [][]string {
+				var rows [][]string
+				for _, item := range a.items {
+					rows = append(rows, []string{item})
+				}
+				return rows
+			}()).
 			Height(10),
 		tui.Text("Selected: %s", a.items[a.selected]),
 	).Gap(1)
@@ -93,22 +97,22 @@ func (a *formApp) View() tui.View {
 
 		tui.Text("Name:"),
 		tui.InputField(&a.name).
-			Focused(a.focused == 0).
+			ID("name").
 			OnSubmit(func(s string) { a.focused = 1 }),
 
 		tui.Text("Email:"),
 		tui.InputField(&a.email).
-			Focused(a.focused == 1).
+			ID("email").
 			OnSubmit(func(s string) { a.focused = 2 }),
 
 		tui.Text("Password:"),
 		tui.PasswordInput(&a.password).
-			Focused(a.focused == 2).
+			ID("password").
 			OnSubmit(func(s string) { /* submit form */ }),
 
 		tui.Spacer(),
-		tui.HStack(
-			tui.Button("Submit", func() { /* submit */ }).Primary(),
+		tui.Group(
+			tui.Button("Submit", func() { /* submit */ }),
 			tui.Button("Cancel", func() { /* cancel */ }),
 		).Gap(2),
 	).Gap(1).Padding(2)
@@ -118,10 +122,16 @@ func (a *formApp) View() tui.View {
 ### Table Display
 
 ```go
-type tableApp struct{}
+type tableApp struct {
+	selected int
+}
 
 func (a *tableApp) View() tui.View {
-	headers := []string{"Name", "Age", "City"}
+	columns := []tui.TableColumn{
+		{Header: "Name", Width: 15},
+		{Header: "Age", Width: 5},
+		{Header: "City", Width: 20},
+	}
 	rows := [][]string{
 		{"Alice", "28", "New York"},
 		{"Bob", "35", "San Francisco"},
@@ -130,9 +140,10 @@ func (a *tableApp) View() tui.View {
 
 	return tui.Stack(
 		tui.Text("Employee Directory").Bold(),
-		tui.Table(headers, rows).
-			Border(true).
-			Striped(true),
+		tui.Table(columns, &a.selected).
+			Rows(rows).
+			Bordered().
+			Striped(),
 	).Gap(1)
 }
 ```
@@ -142,11 +153,12 @@ func (a *tableApp) View() tui.View {
 ```go
 type docApp struct {
 	markdown string
+	scrollY  int
 }
 
 func (a *docApp) View() tui.View {
-	return tui.Stack(
-		tui.Markdown(a.markdown).Padding(2),
+	return tui.Padding(2,
+		tui.Markdown(a.markdown, &a.scrollY),
 	)
 }
 
@@ -177,29 +189,34 @@ func main() {
 func (a *app) View() tui.View {
 	return tui.Stack(
 		// Header
-		tui.Text("Dashboard").Bold().Color(tui.ColorCyan),
+		tui.Text("Dashboard").Bold().Fg(tui.ColorCyan),
 		tui.Divider(),
 
 		// Main content area (horizontal)
 		tui.Group(
 			// Left sidebar
-			tui.Stack(
-				tui.Text("Menu").Bold(),
-				tui.SelectListStrings([]string{"Home", "Profile", "Settings"}, &a.menuIdx),
-			).Width(20).Border(true),
+			tui.Width(20,
+				tui.Stack(
+					tui.Text("Menu").Bold(),
+					tui.Table([]tui.TableColumn{{Header: ""}}, &a.menuIdx).
+						Rows([][]string{{"Home"}, {"Profile"}, {"Settings"}}),
+				).Bordered(),
+			),
 
 			// Main panel
 			tui.Stack(
 				tui.Text("Content Area"),
 				a.renderContent(),
-			).Flex(1).Border(true),
+			).Flex(1).Bordered(),
 
 			// Right sidebar
-			tui.Stack(
-				tui.Text("Info").Bold(),
-				tui.Text("Status: Active").Dim(),
-			).Width(20).Border(true),
-		).Flex(1),
+			tui.Width(20,
+				tui.Stack(
+					tui.Text("Info").Bold(),
+					tui.Text("Status: Active").Dim(),
+				).Bordered(),
+			),
+		).Gap(1).Flex(1),
 
 		// Footer
 		tui.Divider(),
@@ -214,43 +231,43 @@ func (a *app) View() tui.View {
 func (a *app) View() tui.View {
 	return tui.Stack(
 		// Rainbow color cycling
-		tui.Text("Welcome to the App!").Animate(tui.Rainbow(3)),
+		tui.Text("Welcome to the App!").Animate(Rainbow(3)),
 
 		// Pulsing alert
-		tui.Text("ALERT").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 12)),
+		tui.Text("ALERT").Animate(Pulse(tui.NewRGB(255, 0, 0), 12)),
 
 		// Wave effect
-		tui.Text("Status: Connected").Animate(tui.Wave(12,
+		tui.Text("Status: Connected").Animate(Wave(12,
 			tui.NewRGB(50, 150, 255),
 			tui.NewRGB(100, 200, 255),
 		)),
 
 		// Sliding highlight
-		tui.Text("Processing...").Animate(tui.Slide(2,
+		tui.Text("Processing...").Animate(Slide(2,
 			tui.NewRGB(100, 100, 100),
 			tui.NewRGB(255, 255, 255),
 		)),
 
 		// Sparkle effect
-		tui.Text("✨ Special ✨").Animate(tui.Sparkle(3,
+		tui.Text("✨ Special ✨").Animate(Sparkle(3,
 			tui.NewRGB(180, 180, 220),
 			tui.NewRGB(255, 255, 255),
 		)),
 
 		// Typewriter effect
-		tui.Text("Loading data...").Animate(tui.Typewriter(3,
+		tui.Text("Loading data...").Animate(Typewriter(3,
 			tui.NewRGB(0, 255, 100),
 			tui.NewRGB(255, 255, 255),
 		).WithLoop(true)),
 
 		// Glitch effect
-		tui.Text("SIGNAL_LOST").Animate(tui.Glitch(2,
+		tui.Text("SIGNAL_LOST").Animate(Glitch(2,
 			tui.NewRGB(255, 0, 100),
 			tui.NewRGB(0, 255, 255),
 		)),
 
 		// Reversed rainbow with custom animation configuration
-		tui.Text("Reversed!").Animate(tui.Rainbow(3).Reverse()),
+		tui.Text("Reversed!").Animate(Rainbow(3).Reverse()),
 	).Gap(1)
 }
 ```
@@ -357,6 +374,19 @@ func main() {
 ### Progress Indicators
 
 ```go
+type app struct {
+	progress int
+	frame    uint64
+	status   string
+}
+
+func (a *app) HandleEvent(event tui.Event) []tui.Cmd {
+	if tick, ok := event.(tui.TickEvent); ok {
+		a.frame = tick.Frame
+	}
+	return nil
+}
+
 func (a *app) View() tui.View {
 	return tui.Stack(
 		tui.Text("Download Progress").Bold(),
@@ -398,9 +428,9 @@ func (a *app) View() tui.View {
 
 | Function | Description             | Inputs             | Outputs       |
 | -------- | ----------------------- | ------------------ | ------------- |
-| `Stack`  | Vertical stack layout   | `children ...View` | `*StackView`  |
-| `Group`  | Horizontal stack layout | `children ...View` | `*GroupView`  |
-| `ZStack` | Layered stack layout    | `children ...View` | `*ZStackView` |
+| `Stack`  | Vertical stack layout   | `children ...View` | `*stack`      |
+| `Group`  | Horizontal stack layout | `children ...View` | `*group`      |
+| `ZStack` | Layered stack layout    | `children ...View` | `*zStack`     |
 | `Spacer` | Flexible spacing        | none               | `*spacerView` |
 | `Empty`  | Empty view              | none               | `View`        |
 
@@ -417,80 +447,110 @@ Stack(
 
 ### Text Views
 
-| Function   | Description       | Inputs                               | Outputs         |
-| ---------- | ----------------- | ------------------------------------ | --------------- |
-| `Text`     | Formatted text    | `format string, args ...interface{}` | `*TextView`     |
-| `Markdown` | Markdown renderer | `content string`                     | `*MarkdownView` |
+| Function   | Description       | Inputs                                        | Outputs          |
+| ---------- | ----------------- | --------------------------------------------- | ---------------- |
+| `Text`     | Formatted text    | `format string, args ...interface{}`          | `*textView`      |
+| `Markdown` | Markdown renderer | `content string, scrollY *int`                | `*markdownView`  |
+| `Code`     | Syntax highlight  | `code string, language string`                | `*codeView`      |
+| `DiffView` | Diff display      | `diff *Diff, language string, scrollY *int`   | `*diffView`      |
 
 ### Input Views
 
-| Function        | Description           | Inputs          | Outputs              |
-| --------------- | --------------------- | --------------- | -------------------- |
-| `InputField`    | Text input            | `value *string` | `*InputFieldView`    |
-| `PasswordInput` | Password input        | `value *string` | `*PasswordInputView` |
-| `TextArea`      | Multi-line text input | `value *string` | `*TextAreaView`      |
+| Function        | Description           | Inputs          | Outputs               |
+| --------------- | --------------------- | --------------- | --------------------- |
+| `InputField`    | Text input            | `value *string` | `*inputFieldView`     |
+| `PasswordInput` | Password input        | `value *string` | `*passwordInputView`  |
+| `TextArea`      | Multi-line text input | `value *string` | `*textAreaView`       |
 
-### Selection Views
+### Interactive Views
 
-| Function            | Description      | Inputs                               | Outputs           |
-| ------------------- | ---------------- | ------------------------------------ | ----------------- |
-| `SelectList`        | Selectable list  | `items []interface{}, selected *int` | `*SelectListView` |
-| `SelectListStrings` | String list      | `items []string, selected *int`      | `*SelectListView` |
-| `Button`            | Clickable button | `label string, onClick func()`       | `*ButtonView`     |
+| Function     | Description          | Inputs                         | Outputs          |
+| ------------ | -------------------- | ------------------------------ | ---------------- |
+| `Button`     | Keyboard button      | `label string, onClick func()` | `*buttonView`    |
+| `Clickable`  | Mouse-only clickable | `label string, onClick func()` | `*clickableView` |
 
 ### Display Views
 
-| Function         | Description        | Inputs                              | Outputs         |
-| ---------------- | ------------------ | ----------------------------------- | --------------- |
-| `Table`          | Data table         | `headers []string, rows [][]string` | `*TableView`    |
-| `FilterableList` | Scrollable list    | `items []string`                    | `*ListView`     |
-| `Tree`           | Hierarchical tree  | `root *TreeNode`                    | `*TreeView`     |
-| `Progress`       | Progress indicator | `value, max int`                    | `*ProgressView` |
-| `Loading`        | Loading spinner    | none                                | `*LoadingView`  |
-| `Divider`        | Horizontal line    | none                                | `*DividerView`  |
+| Function   | Description        | Inputs                                       | Outputs          |
+| ---------- | ------------------ | -------------------------------------------- | ---------------- |
+| `Table`    | Data table         | `columns []TableColumn, selected *int`       | `*tableView`     |
+| `Tree`     | Hierarchical tree  | `root *TreeNode`                             | `*treeView`      |
+| `Progress` | Progress indicator | `current, total int`                         | `*progressView`  |
+| `Loading`  | Loading spinner    | `frame uint64`                               | `*loadingView`   |
+| `Divider`  | Horizontal line    | none                                         | `*dividerView`   |
 
-### Container Views
+### Container/Modifier Views
 
-| Function     | Description          | Inputs                    | Outputs        |
-| ------------ | -------------------- | ------------------------- | -------------- |
-| `Border`     | Border container     | `child View`              | `*BorderView`  |
-| `Padding`    | Padding container    | `child View, padding int` | `*PaddingView` |
-| `ScrollView` | Scrollable container | `child View`              | `*ScrollView`  |
+| Function    | Description          | Inputs                           | Outputs           |
+| ----------- | -------------------- | -------------------------------- | ----------------- |
+| `Bordered`  | Border container     | `inner View`                     | `*borderedView`   |
+| `Padding`   | Padding container    | `n int, inner View`              | `View`            |
+| `PaddingHV` | H/V padding          | `h, v int, inner View`           | `View`            |
+| `Width`     | Fixed width          | `w int, inner View`              | `View`            |
+| `Height`    | Fixed height         | `h int, inner View`              | `View`            |
+| `MaxWidth`  | Maximum width        | `w int, inner View`              | `View`            |
+| `MinWidth`  | Minimum width        | `w int, inner View`              | `View`            |
+| `Scroll`    | Scrollable container | `inner View, scrollY *int`       | `*scrollView`     |
+
+**borderedView methods**: `.Title(string)`, `.Border(*BorderStyle)`, `.BorderFg(Color)`, `.FocusBorderFg(Color)`, `.TitleStyle(Style)`
 
 ### Custom Drawing
 
-| Function        | Description         | Inputs                          | Outputs       |
-| --------------- | ------------------- | ------------------------------- | ------------- |
-| `Canvas`        | Custom drawing area | `draw func(ctx *RenderContext)` | `*CanvasView` |
-| `CanvasContext` | Canvas with context | `draw func(ctx *RenderContext)` | `*CanvasView` |
+| Function        | Description           | Inputs                                               | Outputs       |
+| --------------- | --------------------- | ---------------------------------------------------- | ------------- |
+| `Canvas`        | Custom drawing area   | `draw func(frame RenderFrame, bounds Rectangle)`     | `*canvasView` |
+| `CanvasContext` | Canvas with context   | `draw func(ctx *RenderContext)`                      | `*canvasView` |
+
+### Collection Views
+
+| Function   | Description             | Inputs                                        | Outputs          |
+| ---------- | ----------------------- | --------------------------------------------- | ---------------- |
+| `ForEach`  | Map items to views      | `items []T, mapper func(T, int) View`         | `*forEachView`   |
+| `HForEach` | Horizontal map          | `items []T, mapper func(T, int) View`         | `*hForEachView`  |
+
+### Conditional Views
+
+| Function  | Description             | Inputs                                | Outputs |
+| --------- | ----------------------- | ------------------------------------- | ------- |
+| `If`      | Conditional rendering   | `condition bool, view View`           | `View`  |
+| `IfElse`  | Conditional with else   | `condition bool, then, else View`     | `View`  |
+| `Switch`  | Multi-way conditional   | `value T, cases ...CaseView[T]`       | `View`  |
 
 ### View Modifiers
 
-Most views support fluent modifier methods:
+Views support fluent modifier methods:
 
-| Modifier         | Description                | Example                            |
-| ---------------- | -------------------------- | ---------------------------------- |
-| `.Width(int)`    | Sets fixed width           | `tui.Text("Hello").Width(20)`      |
-| `.Height(int)`   | Sets fixed height          | `tui.Stack(...).Height(10)`        |
-| `.MinWidth(int)` | Sets minimum width         | `tui.InputField(&s).MinWidth(30)`  |
-| `.MaxWidth(int)` | Sets maximum width         | `tui.Text(long).MaxWidth(80)`      |
-| `.Flex(int)`     | Sets flex factor           | `tui.Stack(...).Flex(1)`           |
-| `.Border(bool)`  | Adds border                | `tui.Stack(...).Border(true)`      |
-| `.Padding(int)`  | Adds padding               | `tui.Text("Hi").Padding(2)`        |
-| `.Gap(int)`      | Sets spacing (Stack/Group) | `tui.Stack(...).Gap(1)`            |
-| `.Centered()`    | Centers content            | `tui.Text("Title").Centered()`     |
-| `.Focused(bool)` | Sets focus state           | `tui.InputField(&s).Focused(true)` |
+| Modifier          | Description                    | Example                                     |
+| ----------------- | ------------------------------ | ------------------------------------------- |
+| `.Width(int)`     | Sets fixed width (on TextView) | `tui.Text("Hello").Width(20)`               |
+| `.Height(int)`    | Sets fixed height              | `tui.Text("Hi").Height(10)`                 |
+| `.MaxWidth(int)`  | Sets maximum width             | `tui.Text(long).MaxWidth(80)`               |
+| `.Flex(int)`      | Sets flex factor               | `tui.Stack(...).Flex(1)`                    |
+| `.Bordered()`     | Adds border                    | `tui.Stack(...).Bordered()`                 |
+| `.Padding(int)`   | Adds padding (method on stack) | `tui.Stack(...).Padding(2)`                 |
+| `.Gap(int)`       | Sets spacing (Stack/Group)     | `tui.Stack(...).Gap(1)`                     |
+| `.Align(align)`   | Sets alignment (Stack/Group)   | `tui.Stack(...).Align(tui.AlignCenter)`     |
+| `.ID(string)`     | Sets focus ID (inputs)         | `tui.InputField(&s).ID("name")`             |
 
 ### Text Style Modifiers
 
-| Modifier          | Description           |
-| ----------------- | --------------------- |
-| `.Bold()`         | Bold text             |
-| `.Dim()`          | Dimmed text           |
-| `.Italic()`       | Italic text           |
-| `.Underline()`    | Underlined text       |
-| `.Color(Color)`   | Sets foreground color |
-| `.BgColor(Color)` | Sets background color |
+| Modifier            | Description                 |
+| ------------------- | --------------------------- |
+| `.Bold()`           | Bold text                   |
+| `.Dim()`            | Dimmed text                 |
+| `.Italic()`         | Italic text                 |
+| `.Underline()`      | Underlined text             |
+| `.Strikethrough()`  | Strikethrough text          |
+| `.Blink()`          | Blinking text               |
+| `.Reverse()`        | Reverse video (swap fg/bg)  |
+| `.Fg(Color)`        | Sets foreground color       |
+| `.Bg(Color)`        | Sets background color       |
+| `.FgRGB(r, g, b)`   | Sets foreground RGB color   |
+| `.BgRGB(r, g, b)`   | Sets background RGB color   |
+| `.Wrap()`           | Enable text wrapping        |
+| `.Center()`         | Center align text           |
+| `.Right()`          | Right align text            |
+| `.FillBg()`         | Fill background with color  |
 
 ### Semantic Style Modifiers
 
@@ -507,39 +567,44 @@ Most views support fluent modifier methods:
 
 Apply animations using `.Animate(animation)` with animation constructors:
 
-| Animation Constructor                | Description         | Parameters                         | Chainable Methods                          |
-| ------------------------------------ | ------------------- | ---------------------------------- | ------------------------------------------ |
-| `Rainbow(speed)`                     | Rainbow color cycle | `speed int`                        | `.Reverse()`, `.WithLength(int)`           |
-| `Pulse(color, speed)`                | Pulsing brightness  | `color RGB, speed int`             | `.Brightness(min, max float64)`            |
-| `Wave(speed, colors...)`             | Wave color effect   | `speed int, colors ...RGB`         | `.WithAmplitude(float64)`                  |
-| `Slide(speed, base, highlight)`      | Sliding highlight   | `speed int, base, highlight RGB`   | `.Reversed()`, `.WithWidth(int)`           |
-| `Sparkle(speed, base, spark)`        | Sparkle effect      | `speed int, base, spark RGB`       | `.WithDensity(int)`                        |
-| `Typewriter(speed, text, cursor)`    | Typewriter reveal   | `speed int, text, cursor RGB`      | `.WithLoop(bool)`, `.WithHoldFrames(int)`  |
-| `Glitch(speed, base, glitch)`        | Glitch effect       | `speed int, base, glitch RGB`      | `.WithIntensity(int)`                      |
+| Animation Constructor             | Description         | Parameters                         | Chainable Methods                          |
+| --------------------------------- | ------------------- | ---------------------------------- | ------------------------------------------ |
+| `Rainbow(speed)`                  | Rainbow color cycle | `speed int`                        | `.Reverse()`, `.WithLength(int)`           |
+| `Pulse(color, speed)`             | Pulsing brightness  | `color RGB, speed int`             | `.Brightness(min, max float64)`            |
+| `Wave(speed, colors...)`          | Wave color effect   | `speed int, colors ...RGB`         | `.WithAmplitude(float64)`                  |
+| `Slide(speed, base, highlight)`   | Sliding highlight   | `speed int, base, highlight RGB`   | `.Reversed()`, `.WithWidth(int)`           |
+| `Sparkle(speed, base, spark)`     | Sparkle effect      | `speed int, base, spark RGB`       | `.WithDensity(int)`                        |
+| `Typewriter(speed, text, cursor)` | Typewriter reveal   | `speed int, text, cursor RGB`      | `.WithLoop(bool)`, `.WithHoldFrames(int)`  |
+| `Glitch(speed, base, glitch)`     | Glitch effect       | `speed int, base, glitch RGB`      | `.WithIntensity(int)`                      |
 
 Example:
 ```go
-tui.Text("Hello").Animate(tui.Rainbow(3))
-tui.Text("Hello").Animate(tui.Rainbow(3).Reverse())
-tui.Text("Alert").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
+tui.Text("Hello").Animate(Rainbow(3))
+tui.Text("Hello").Animate(Rainbow(3).Reverse())
+tui.Text("Alert").Animate(Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
 ```
 
 ### Event Types
 
-| Event             | Description     | Fields                                             |
-| ----------------- | --------------- | -------------------------------------------------- |
-| `KeyEvent`        | Keyboard input  | `Rune rune, Key Key, Modifiers KeyModifier`        |
-| `MouseEvent`      | Mouse input     | `X, Y int, Button MouseButton, Action MouseAction` |
-| `TickEvent`       | Frame tick      | `Frame uint64`                                     |
-| `WindowSizeEvent` | Terminal resize | `Width, Height int`                                |
+| Event         | Description     | Fields                                             |
+| ------------- | --------------- | -------------------------------------------------- |
+| `KeyEvent`    | Keyboard input  | `Rune rune, Key Key, Modifiers KeyModifier`        |
+| `MouseEvent`  | Mouse input     | `X, Y int, Button MouseButton, Action MouseAction` |
+| `TickEvent`   | Frame tick      | `Frame uint64`                                     |
+| `ResizeEvent` | Terminal resize | `Width, Height int`                                |
+| `ErrorEvent`  | Error occurred  | `Err error`                                        |
+| `QuitEvent`   | Quit requested  | none                                               |
 
 ### Command Types
 
-| Type     | Description                           |
-| -------- | ------------------------------------- |
-| `Cmd`    | Function returning Event (runs async) |
-| `Quit()` | Exits application                     |
-| `Tick`   | Periodic timer                        |
+| Type         | Description                                  |
+| ------------ | -------------------------------------------- |
+| `Cmd`        | Function returning Event (runs async)        |
+| `Quit()`     | Exits application                            |
+| `Tick(dur)`  | Creates a timer command                      |
+| `After(dur)` | Executes function after duration             |
+| `Batch(...)` | Executes multiple commands                   |
+| `Sequence()` | Executes commands sequentially               |
 
 ## Architecture
 
@@ -557,8 +622,10 @@ The TUI framework uses a declarative, single-threaded event model:
 tui.Run(app,
 	tui.WithFPS(60),                    // 60 frames per second
 	tui.WithMouseTracking(true),        // Enable mouse support
-	tui.WithAlternateScreen(false),     // Disable alternate screen
-	tui.WithRawMode(true),              // Enable raw mode
+	tui.WithAlternateScreen(true),      // Use alternate screen buffer (default)
+	tui.WithHideCursor(true),           // Hide cursor during rendering (default)
+	tui.WithBracketedPaste(true),       // Enable bracketed paste mode
+	tui.WithPasteTabWidth(4),           // Convert tabs to spaces in paste
 )
 ```
 
@@ -667,6 +734,32 @@ func TestGolden_UI_Dashboard(t *testing.T) {
     termtest.AssertScreen(t, screen)
 }
 ```
+
+## Non-Interactive Printing
+
+For CLI tools that want to display styled output without taking over the screen, use `Print()`:
+
+```go
+view := tui.Stack(
+	tui.Text("Success!").Success(),
+	tui.Text("Operation completed").Dim(),
+).Gap(1)
+
+// Print to stdout inline (no alternate screen, no event loop)
+tui.Print(view)
+
+// Or render to a string
+output := tui.Sprint(view, tui.WithWidth(80))
+fmt.Println(output)
+```
+
+The `Print` family of functions renders views without:
+- Enabling alternate screen mode
+- Starting an event loop
+- Handling keyboard input
+- Clearing the screen
+
+This is perfect for command-line tools that want rich formatting without a full TUI.
 
 ## Related Packages
 

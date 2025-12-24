@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/termtest"
@@ -1980,5 +1981,755 @@ func TestGolden_Code_DiffStyle(t *testing.T) {
 		),
 	).Border(&RoundedBorder).Title("Changes")
 	screen := SprintScreen(view, WithWidth(30), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// PANEL TESTS - Filled box/rectangle component
+// =============================================================================
+
+func TestGolden_Panel_Basic(t *testing.T) {
+	// Basic panel with background
+	view := Panel(nil).Size(15, 5).Bg(ColorBlue)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(7))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Panel_WithContent(t *testing.T) {
+	// Panel with centered content
+	view := Panel(Text("Hello")).Size(20, 5).Bg(ColorCyan)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(7))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Panel_WithBorder(t *testing.T) {
+	// Panel with border
+	view := Panel(Text("Bordered Panel")).
+		Size(25, 6).
+		Border(BorderRounded).
+		BorderColor(ColorGreen).
+		Title("Panel")
+	screen := SprintScreen(view, WithWidth(30), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Panel_FillChar(t *testing.T) {
+	// Panel with custom fill character
+	view := Panel(nil).Size(12, 4).FillChar('░')
+	screen := SprintScreen(view, WithWidth(15), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// SCROLL TESTS - Scrollable container
+// =============================================================================
+
+func TestGolden_Scroll_BasicTop(t *testing.T) {
+	// Scrolled to top position
+	scrollY := 0
+	view := Height(4, Scroll(
+		Stack(
+			Text("Line 1"),
+			Text("Line 2"),
+			Text("Line 3"),
+			Text("Line 4"),
+			Text("Line 5"),
+			Text("Line 6"),
+			Text("Line 7"),
+			Text("Line 8"),
+		),
+		&scrollY,
+	))
+	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Scroll_MiddlePosition(t *testing.T) {
+	// Scrolled to middle
+	scrollY := 3
+	view := Height(4, Scroll(
+		Stack(
+			Text("Line 1"),
+			Text("Line 2"),
+			Text("Line 3"),
+			Text("Line 4"),
+			Text("Line 5"),
+			Text("Line 6"),
+			Text("Line 7"),
+			Text("Line 8"),
+		),
+		&scrollY,
+	))
+	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Scroll_AnchorBottom(t *testing.T) {
+	// Scroll anchored to bottom (chat style)
+	scrollY := 0
+	view := Height(3, Scroll(
+		Stack(
+			Text("Line 1"),
+			Text("Line 2"),
+			Text("Line 3"),
+			Text("Line 4"),
+			Text("Line 5"),
+		),
+		&scrollY,
+	).Bottom())
+	screen := SprintScreen(view, WithWidth(15), WithHeight(3))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// TREE TESTS - Hierarchical tree view
+// =============================================================================
+
+func TestGolden_Tree_Basic(t *testing.T) {
+	// Basic tree structure
+	root := NewTreeNode("Root").
+		AddChild(NewTreeNode("Child 1")).
+		AddChild(NewTreeNode("Child 2")).
+		AddChild(NewTreeNode("Child 3"))
+
+	view := Tree(root).Height(6)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Tree_Nested(t *testing.T) {
+	// Nested tree structure
+	root := NewTreeNode("Root")
+	child1 := NewTreeNode("Branch A")
+	child1.AddChild(NewTreeNode("Leaf A1"))
+	child1.AddChild(NewTreeNode("Leaf A2"))
+	root.AddChild(child1)
+
+	child2 := NewTreeNode("Branch B")
+	child2.AddChild(NewTreeNode("Leaf B1"))
+	root.AddChild(child2)
+
+	root.ExpandAll()
+
+	view := Tree(root).Height(8)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Tree_Collapsed(t *testing.T) {
+	// Tree with collapsed branches
+	root := NewTreeNode("Root")
+	child1 := NewTreeNode("Branch A")
+	child1.AddChild(NewTreeNode("Hidden"))
+	child1.SetExpanded(false)
+	root.AddChild(child1)
+	root.AddChild(NewTreeNode("Branch B"))
+
+	view := Tree(root).Height(4)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// KEYVALUE TESTS - Label-value pair display
+// =============================================================================
+
+func TestGolden_KeyValue_Basic(t *testing.T) {
+	// Simple key-value pair
+	view := KeyValue("Name", "Alice")
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_KeyValue_CustomSeparator(t *testing.T) {
+	// Custom separator
+	view := KeyValue("Status", "Active").Separator(" -> ")
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_KeyValue_Styled(t *testing.T) {
+	// Styled key-value
+	view := Stack(
+		KeyValue("CPU", "65%").LabelFg(ColorCyan).ValueFg(ColorGreen),
+		KeyValue("Memory", "42%").LabelFg(ColorCyan).ValueFg(ColorYellow),
+		KeyValue("Disk", "89%").LabelFg(ColorCyan).ValueFg(ColorRed),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// LOADING SPINNER TESTS
+// =============================================================================
+
+func TestGolden_Loading_Frame0(t *testing.T) {
+	// Loading spinner at frame 0
+	view := Loading(0).Label("Loading...")
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Loading_Frame5(t *testing.T) {
+	// Loading spinner at different frame
+	view := Loading(5).Label("Processing")
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Loading_NoLabel(t *testing.T) {
+	// Spinner without label
+	view := Loading(3)
+	screen := SprintScreen(view, WithWidth(10))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// METER TESTS - Gauge display
+// =============================================================================
+
+func TestGolden_Meter_Basic(t *testing.T) {
+	// Basic meter
+	view := Meter("CPU", 75, 100).Width(20)
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Meter_WithValue(t *testing.T) {
+	// Meter showing value
+	view := Meter("Memory", 42, 100).Width(15).ShowValue(true)
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Meter_Multiple(t *testing.T) {
+	// Multiple meters stacked
+	view := Stack(
+		Meter("CPU", 65, 100).Width(20).ShowValue(true),
+		Meter("RAM", 80, 100).Width(20).ShowValue(true),
+		Meter("Disk", 45, 100).Width(20).ShowValue(true),
+	).Gap(1)
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// CANVAS TESTS - Custom drawing
+// =============================================================================
+
+func TestGolden_Canvas_SimpleDrawing(t *testing.T) {
+	// Simple canvas drawing
+	view := Canvas(func(frame RenderFrame, bounds image.Rectangle) {
+		frame.PrintStyled(0, 0, "Custom", NewStyle())
+		frame.PrintStyled(0, 1, "Drawing", NewStyle())
+	}).Size(15, 3)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Canvas_WithContext(t *testing.T) {
+	// Canvas with context access
+	view := CanvasContext(func(ctx *RenderContext) {
+		w, h := ctx.Size()
+		ctx.SetCell(0, 0, '┌', NewStyle())
+		ctx.SetCell(w-1, 0, '┐', NewStyle())
+		ctx.SetCell(0, h-1, '└', NewStyle())
+		ctx.SetCell(w-1, h-1, '┘', NewStyle())
+	}).Size(10, 5)
+	screen := SprintScreen(view, WithWidth(15), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// GRID TESTS - Grid components
+// =============================================================================
+
+func TestGolden_CellGrid_Basic(t *testing.T) {
+	// Basic cell grid
+	view := CellGrid(3, 2).CellSize(4, 2).Gap(1)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_ColorGrid_Basic(t *testing.T) {
+	// Color grid with state
+	state := [][]int{
+		{0, 1, 0},
+		{1, 2, 1},
+	}
+	colors := []Color{ColorBlack, ColorRed, ColorGreen}
+	view := ColorGrid(3, 2, state, colors).CellSize(3, 2)
+	screen := SprintScreen(view, WithWidth(15), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_CharGrid_Basic(t *testing.T) {
+	// Character grid
+	data := [][]rune{
+		{'#', '.', '#'},
+		{'.', '#', '.'},
+		{'#', '.', '#'},
+	}
+	view := CharGrid(data)
+	screen := SprintScreen(view, WithWidth(10))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// LINK TESTS - Hyperlink components
+// =============================================================================
+
+func TestGolden_Link_Basic(t *testing.T) {
+	// Basic hyperlink
+	view := Link("https://github.com", "GitHub")
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Link_URLAsText(t *testing.T) {
+	// Link using URL as display text
+	view := Link("https://example.com", "")
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_InlineLinks_Multiple(t *testing.T) {
+	// Multiple inline links
+	view := InlineLinks(" | ",
+		NewHyperlink("https://go.dev", "Go"),
+		NewHyperlink("https://github.com", "GitHub"),
+		NewHyperlink("https://pkg.go.dev", "Packages"),
+	)
+	screen := SprintScreen(view, WithWidth(40))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_LinkRow_Basic(t *testing.T) {
+	// Label with link
+	view := LinkRow("Documentation", "https://docs.example.com", "docs.example.com")
+	screen := SprintScreen(view, WithWidth(40))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_LinkList_Vertical(t *testing.T) {
+	// Vertical list of links
+	view := LinkList(
+		NewHyperlink("https://go.dev", "Go Website"),
+		NewHyperlink("https://pkg.go.dev", "Package Docs"),
+		NewHyperlink("https://go.dev/blog", "Blog"),
+	).Spacing(1)
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// FILEPICKER TESTS
+// =============================================================================
+
+func TestGolden_FilePicker_Basic(t *testing.T) {
+	// File picker with items
+	filter := ""
+	selected := 0
+	items := []ListItem{
+		{Label: "file1.go", Icon: "📄"},
+		{Label: "file2.go", Icon: "📄"},
+		{Label: "README.md", Icon: "📄"},
+	}
+	view := FilePicker(items, &filter, &selected).
+		CurrentPath("/home/user/project").
+		Height(8)
+	screen := SprintScreen(view, WithWidth(35), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// COLLECTION VIEW TESTS - ForEach/HForEach
+// =============================================================================
+
+func TestGolden_ForEach_Basic(t *testing.T) {
+	// ForEach rendering items vertically
+	items := []string{"Apple", "Banana", "Cherry"}
+	view := ForEach(items, func(item string, i int) View {
+		return Text("%d. %s", i+1, item)
+	})
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_ForEach_WithGap(t *testing.T) {
+	// ForEach with gap between items
+	items := []string{"First", "Second", "Third"}
+	view := ForEach(items, func(item string, i int) View {
+		return Text("- %s", item)
+	}).Gap(1)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_ForEach_WithSeparator(t *testing.T) {
+	// ForEach with divider separator
+	items := []string{"Section A", "Section B", "Section C"}
+	view := ForEach(items, func(item string, i int) View {
+		return Text("%s", item).Bold()
+	}).Separator(Divider())
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_HForEach_Basic(t *testing.T) {
+	// HForEach rendering items horizontally
+	items := []string{"A", "B", "C"}
+	view := HForEach(items, func(item string, i int) View {
+		return Text("[%s]", item)
+	})
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_HForEach_WithGap(t *testing.T) {
+	// HForEach with spacing
+	items := []string{"Tab1", "Tab2", "Tab3"}
+	view := HForEach(items, func(item string, i int) View {
+		return Text("%s", item)
+	}).Gap(3)
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// CONDITIONAL VIEW TESTS - If/IfElse/Switch
+// =============================================================================
+
+func TestGolden_If_True(t *testing.T) {
+	// If condition is true
+	view := Stack(
+		Text("Before"),
+		If(true, Text("Conditional content")),
+		Text("After"),
+	)
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_If_False(t *testing.T) {
+	// If condition is false (renders empty)
+	view := Stack(
+		Text("Before"),
+		If(false, Text("Hidden content")),
+		Text("After"),
+	)
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_IfElse_TrueBranch(t *testing.T) {
+	// IfElse taking true branch
+	view := IfElse(true,
+		Text("True branch").Fg(ColorGreen),
+		Text("False branch").Fg(ColorRed),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_IfElse_FalseBranch(t *testing.T) {
+	// IfElse taking false branch
+	view := IfElse(false,
+		Text("True branch").Fg(ColorGreen),
+		Text("False branch").Fg(ColorRed),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Switch_MatchingCase(t *testing.T) {
+	// Switch with matching case
+	status := "active"
+	view := Switch(status,
+		Case("pending", Text("⏳ Pending").Fg(ColorYellow)),
+		Case("active", Text("✓ Active").Fg(ColorGreen)),
+		Case("error", Text("✗ Error").Fg(ColorRed)),
+		Default[string](Text("Unknown")),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Switch_Default(t *testing.T) {
+	// Switch falling through to default
+	status := "unknown"
+	view := Switch(status,
+		Case("pending", Text("Pending")),
+		Case("active", Text("Active")),
+		Default[string](Text("Unknown status").Dim()),
+	)
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// BUTTON TESTS
+// =============================================================================
+
+func TestGolden_Button_Basic(t *testing.T) {
+	// Basic keyboard button
+	view := Button("Submit", func() {})
+	screen := SprintScreen(view, WithWidth(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Button_Styled(t *testing.T) {
+	// Styled button
+	view := Button("Cancel", func() {}).Fg(ColorRed).Bold()
+	screen := SprintScreen(view, WithWidth(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Button_Multiple(t *testing.T) {
+	// Multiple buttons in a row
+	view := Group(
+		Button("OK", func() {}).Fg(ColorGreen),
+		Button("Cancel", func() {}),
+		Button("Help", func() {}).Style(NewStyle().WithDim()),
+	).Gap(2)
+	screen := SprintScreen(view, WithWidth(30))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Clickable_Basic(t *testing.T) {
+	// Mouse-only clickable
+	view := Clickable("[+]", func() {}).Fg(ColorGreen)
+	screen := SprintScreen(view, WithWidth(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_StyledButton_Basic(t *testing.T) {
+	// Filled styled button
+	view := StyledButton("Save", func() {}).Size(12, 3).Bg(ColorBlue)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Toggle_On(t *testing.T) {
+	// Toggle in ON state
+	enabled := true
+	view := Toggle(&enabled).OnLabel("ON").OffLabel("OFF")
+	screen := SprintScreen(view, WithWidth(15))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Toggle_Off(t *testing.T) {
+	// Toggle in OFF state
+	enabled := false
+	view := Toggle(&enabled).OnLabel("ON").OffLabel("OFF")
+	screen := SprintScreen(view, WithWidth(15))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// LIST TESTS - SelectList, FilterableList, CheckboxList, RadioList
+// =============================================================================
+
+func TestGolden_SelectList_Basic(t *testing.T) {
+	// Basic selectable list
+	selected := 0
+	items := []string{"Option A", "Option B", "Option C"}
+	view := SelectListStrings(items, &selected).Height(5)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_SelectList_SelectedItem(t *testing.T) {
+	// List with item 1 selected
+	selected := 1
+	items := []string{"First", "Second", "Third"}
+	view := SelectListStrings(items, &selected).Height(4)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_NoFilter(t *testing.T) {
+	// Filterable list without active filter
+	selected := 0
+	filter := ""
+	items := []string{"Apple", "Banana", "Cherry", "Date"}
+	view := FilterableListStrings(items, &selected).
+		Filter(&filter).
+		FilterPlaceholder("Search...").
+		Height(7)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(7))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_WithFilter(t *testing.T) {
+	// Filterable list with active filter
+	selected := 0
+	filter := "app"
+	items := []string{"Apple", "Banana", "Pineapple"}
+	view := FilterableListStrings(items, &selected).
+		Filter(&filter).
+		Height(6)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_CheckboxList_Mixed(t *testing.T) {
+	// Checkbox list with mixed states
+	items := []string{"Feature A", "Feature B", "Feature C"}
+	checked := []bool{true, false, true}
+	cursor := 0
+	view := CheckboxListStrings(items, checked, &cursor).Height(4)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_CheckboxList_AllChecked(t *testing.T) {
+	// All items checked
+	items := []string{"Item 1", "Item 2", "Item 3"}
+	checked := []bool{true, true, true}
+	cursor := 1
+	view := CheckboxListStrings(items, checked, &cursor).Height(4)
+	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_RadioList_Basic(t *testing.T) {
+	// Radio button list
+	selected := 1
+	options := []string{"Small", "Medium", "Large"}
+	view := RadioListStrings(options, &selected).Height(4)
+	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// INPUT COMPONENT TESTS
+// =============================================================================
+
+func TestGolden_InputField_Empty(t *testing.T) {
+	// Empty input field with placeholder
+	value := ""
+	view := InputField(&value).
+		Label("Name:").
+		Placeholder("Enter name").
+		Width(20)
+	screen := SprintScreen(view, WithWidth(35))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_InputField_WithValue(t *testing.T) {
+	// Input field with value
+	value := "John Doe"
+	view := InputField(&value).
+		Label("Name:").
+		Width(20)
+	screen := SprintScreen(view, WithWidth(35))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_InputField_Bordered(t *testing.T) {
+	// Input field with border
+	value := "test@example.com"
+	view := InputField(&value).
+		Label("Email:").
+		Width(25).
+		Bordered()
+	screen := SprintScreen(view, WithWidth(40), WithHeight(3))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_TextArea_Basic(t *testing.T) {
+	// Basic text area
+	content := "Line 1\nLine 2\nLine 3"
+	view := TextArea(&content).
+		Title("Document").
+		Size(25, 5).
+		LineNumbers(true)
+	screen := SprintScreen(view, WithWidth(30), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_TextArea_Empty(t *testing.T) {
+	// Empty text area with placeholder
+	content := ""
+	view := TextArea(&content).
+		EmptyPlaceholder("Start typing...").
+		Size(25, 4).
+		Bordered()
+	screen := SprintScreen(view, WithWidth(30), WithHeight(6))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// MARKDOWN TESTS
+// =============================================================================
+
+func TestGolden_Markdown_Basic(t *testing.T) {
+	// Basic markdown rendering
+	scrollY := 0
+	content := `# Heading 1
+This is **bold** and *italic* text.
+
+## Heading 2
+- Item 1
+- Item 2
+- Item 3`
+	view := Markdown(content, &scrollY).MaxWidth(40).Height(10)
+	screen := SprintScreen(view, WithWidth(45), WithHeight(10))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_CodeBlock(t *testing.T) {
+	// Markdown with code block
+	scrollY := 0
+	content := "# Example\n\n```go\nfunc main() {\n  fmt.Println(\"Hello\")\n}\n```"
+	view := Markdown(content, &scrollY).MaxWidth(35).Height(8)
+	screen := SprintScreen(view, WithWidth(40), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// DIFFVIEW TESTS
+// =============================================================================
+
+func TestGolden_DiffView_Basic(t *testing.T) {
+	// Basic diff display
+	scrollY := 0
+	diffText := `--- a/test.go
++++ b/test.go
+@@ -1,3 +1,4 @@
+ package main
++import "fmt"
+ func main() {
+ }`
+	view, _ := DiffViewFromText(diffText, "go", &scrollY)
+	view.ShowLineNumbers(true).Height(8)
+	screen := SprintScreen(view, WithWidth(40), WithHeight(8))
+	termtest.AssertScreen(t, screen)
+}
+
+// =============================================================================
+// FOCUSTEXT TESTS
+// =============================================================================
+
+func TestGolden_FocusText_Unfocused(t *testing.T) {
+	// FocusText when element is not focused
+	view := Stack(
+		FocusText("Name: ", "name-input").Dim(),
+		Text("[input field]"),
+	)
+	screen := SprintScreen(view, WithWidth(25))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FocusText_Styled(t *testing.T) {
+	// FocusText with custom styles
+	view := Stack(
+		FocusText("Email: ", "email-input").
+			Style(NewStyle().WithDim()).
+			FocusStyle(NewStyle().WithForeground(ColorCyan).WithBold()),
+		Text("[email@example.com]"),
+	)
+	screen := SprintScreen(view, WithWidth(30))
 	termtest.AssertScreen(t, screen)
 }

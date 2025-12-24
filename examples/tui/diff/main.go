@@ -45,8 +45,6 @@ const sampleDiff = `diff --git a/server.go b/server.go
 type DiffDemoApp struct {
 	diff    *tui.Diff
 	scrollY int
-	width   int
-	height  int
 }
 
 // Init initializes the application by parsing the diff.
@@ -66,36 +64,6 @@ func (app *DiffDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
-		// Handle scrolling
-		pageSize := app.height - 3
-		if pageSize < 1 {
-			pageSize = 1
-		}
-
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.scrollY > 0 {
-				app.scrollY--
-			}
-		case tui.KeyArrowDown:
-			app.scrollY++
-		case tui.KeyPageUp:
-			app.scrollY -= pageSize
-			if app.scrollY < 0 {
-				app.scrollY = 0
-			}
-		case tui.KeyPageDown:
-			app.scrollY += pageSize
-		case tui.KeyHome:
-			app.scrollY = 0
-		case tui.KeyEnd:
-			app.scrollY = 1000 // will be clamped
-		}
-
-	case tui.ResizeEvent:
-		app.width = e.Width
-		app.height = e.Height
 	}
 
 	return nil
@@ -103,19 +71,17 @@ func (app *DiffDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 // View returns the declarative view structure.
 func (app *DiffDemoApp) View() tui.View {
-	diffHeight := app.height - 2
-	if diffHeight < 1 {
-		diffHeight = 1
-	}
-
 	statusStyle := tui.NewStyle().
 		WithBackground(tui.ColorBlue).
 		WithForeground(tui.ColorWhite)
 
 	return tui.Stack(
-		tui.DiffView(app.diff, "go", &app.scrollY).
-			Height(diffHeight).
-			ShowLineNumbers(true),
+		tui.Bordered(
+			tui.Scroll(
+				tui.DiffView(app.diff, "go", nil).ShowLineNumbers(true),
+				&app.scrollY,
+			),
+		).BorderFg(tui.ColorCyan).Title("Diff Viewer"),
 		tui.Text(" Press q to quit | ↑↓ to scroll | PgUp/PgDn for pages | Home/End to jump ").
 			Style(statusStyle),
 	)

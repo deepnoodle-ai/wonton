@@ -34,20 +34,7 @@ func (app *CheckboxDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-		// Handle keyboard navigation
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.cursor > 0 {
-				app.cursor--
-			}
-		case tui.KeyArrowDown:
-			if app.cursor < len(app.items)-1 {
-				app.cursor++
-			}
-		}
-		if e.Rune == ' ' {
-			app.checked[app.cursor] = !app.checked[app.cursor]
-		}
+		// CheckboxList component handles navigation and toggling internally
 	}
 
 	return nil

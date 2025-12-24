@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -79,8 +80,8 @@ func main() {
 			),
 			tui.Group(
 				tui.Text("[").Fg(tui.ColorWhite),
-				tui.Text("%s", repeat("█", filled)).Fg(tui.ColorGreen),
-				tui.Text("%s", repeat("░", empty)).Fg(tui.ColorBrightBlack),
+				tui.Text("%s", strings.Repeat("█", filled)).Fg(tui.ColorGreen),
+				tui.Text("%s", strings.Repeat("░", empty)).Fg(tui.ColorBrightBlack),
 				tui.Text("]").Fg(tui.ColorWhite),
 				tui.Text(" %3d%%", i).Fg(tui.ColorYellow),
 			),
@@ -158,12 +159,4 @@ func main() {
 	fmt.Println()
 
 	fmt.Println("Done! Notice the terminal was not cleared.")
-}
-
-func repeat(s string, n int) string {
-	result := ""
-	for i := 0; i < n; i++ {
-		result += s
-	}
-	return result
 }

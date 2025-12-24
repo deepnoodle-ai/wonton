@@ -1,10 +1,10 @@
 package tui
 
-// hyperlinkView displays a clickable hyperlink (declarative view)
+// linkListView displays a vertical list of hyperlinks.
 type linkListView struct {
-	links   []Hyperlink
-	style   Style
-	spacing int
+	links []Hyperlink
+	style Style
+	gap   int
 }
 
 // LinkList creates a vertical list of hyperlinks.
@@ -17,9 +17,9 @@ type linkListView struct {
 //	)
 func LinkList(links ...Hyperlink) *linkListView {
 	return &linkListView{
-		links:   links,
-		style:   NewStyle().WithUnderline().WithForeground(ColorBlue),
-		spacing: 0,
+		links: links,
+		style: NewStyle().WithUnderline().WithForeground(ColorBlue),
+		gap:   0,
 	}
 }
 
@@ -29,9 +29,16 @@ func (l *linkListView) Style(s Style) *linkListView {
 	return l
 }
 
+// Gap sets vertical spacing between links.
+func (l *linkListView) Gap(g int) *linkListView {
+	l.gap = g
+	return l
+}
+
 // Spacing sets vertical spacing between links.
+// Deprecated: Use Gap instead for consistency with other layout components.
 func (l *linkListView) Spacing(s int) *linkListView {
-	l.spacing = s
+	l.gap = s
 	return l
 }
 
@@ -44,8 +51,8 @@ func (l *linkListView) size(maxWidth, maxHeight int) (int, int) {
 		}
 	}
 	h := len(l.links)
-	if l.spacing > 0 && len(l.links) > 1 {
-		h += (len(l.links) - 1) * l.spacing
+	if l.gap > 0 && len(l.links) > 1 {
+		h += (len(l.links) - 1) * l.gap
 	}
 
 	if maxWidth > 0 && w > maxWidth {
@@ -64,7 +71,7 @@ func (l *linkListView) render(ctx *RenderContext) {
 	}
 
 	y := 0
-	rowHeight := 1 + l.spacing
+	rowHeight := 1 + l.gap
 
 	for _, link := range l.links {
 		if y >= height {

@@ -1,0 +1,8 @@
+Example
+
+    func main() {
+      fmt.Println("Hello")
+    }
+
+
+

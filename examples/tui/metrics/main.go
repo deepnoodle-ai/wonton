@@ -8,20 +8,20 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// MetricsApp demonstrates the performance metrics system using the Runtime architecture.
-// It shows live metrics during an animated demo and final metrics after completion.
+// MetricsApp demonstrates the performance metrics system.
+//
+// NOTE: This example uses manual Terminal/Runtime setup instead of tui.Run()
+// because it needs direct access to Terminal.GetMetrics() to display performance data.
+// Most examples should use tui.Run() - only use manual setup when you need
+// low-level terminal features like metrics, custom escape sequences, or direct I/O.
 type MetricsApp struct {
 	terminal    *tui.Terminal
 	frame       uint64
 	demoRunning bool
 	startTime   time.Time
 	demoDone    bool
-
-	// Animation colors
-	colors []tui.Color
-
-	// Current metrics snapshot
-	metrics tui.MetricsSnapshot
+	colors      []tui.Color
+	metrics     tui.MetricsSnapshot
 }
 
 // HandleEvent processes events from the Runtime.
@@ -29,17 +29,12 @@ func (app *MetricsApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.TickEvent:
 		app.frame = e.Frame
-
-		// Get current metrics before rendering
 		app.metrics = app.terminal.GetMetrics()
 
 		// Check if demo duration has elapsed (5 seconds)
 		if app.demoRunning && time.Since(app.startTime) >= 5*time.Second {
 			app.demoRunning = false
 			app.demoDone = true
-
-			// Disable raw mode so Ctrl+C works for final screen
-			app.terminal.DisableRawMode()
 		}
 
 	case tui.KeyEvent:
@@ -162,57 +157,33 @@ func (app *MetricsApp) viewFinalMetrics() tui.View {
 	).Padding(2)
 }
 
-// Init initializes the application.
+// Init initializes the application and starts the demo.
 func (app *MetricsApp) Init() error {
-	// Enable performance metrics
 	app.terminal.EnableMetrics()
-
-	// Enable alternate screen, hide cursor
-	// Note: Runtime automatically enables raw mode
-	app.terminal.EnableAlternateScreen()
-	app.terminal.HideCursor()
-
-	// Start the demo
 	app.demoRunning = true
 	app.startTime = time.Now()
-
 	return nil
 }
 
-// Destroy cleans up the application.
-func (app *MetricsApp) Destroy() {
-	// Restore terminal state
-	app.terminal.ShowCursor()
-	app.terminal.DisableAlternateScreen()
-	// Note: Runtime automatically disables raw mode
-}
-
 func main() {
-	// Create terminal
+	// Manual terminal/runtime setup (needed for metrics access)
+	// Most apps should use: tui.Run(&MyApp{}, tui.WithFPS(60))
 	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)
 	}
 	defer terminal.Close()
 
-	// Create the metrics application
 	app := &MetricsApp{
 		terminal: terminal,
-		frame:    0,
 		colors: []tui.Color{
-			tui.ColorRed,
-			tui.ColorYellow,
-			tui.ColorGreen,
-			tui.ColorCyan,
-			tui.ColorBlue,
-			tui.ColorMagenta,
+			tui.ColorRed, tui.ColorYellow, tui.ColorGreen,
+			tui.ColorCyan, tui.ColorBlue, tui.ColorMagenta,
 		},
 	}
 
-	// Create and run the runtime with 60 FPS for smooth animation
 	runtime := tui.NewRuntime(terminal, app, 60)
 
-	// Run the event loop (blocks until quit)
 	if err := runtime.Run(); err != nil {
 		log.Fatalf("Runtime error: %v\n", err)
 	}

@@ -35,6 +35,13 @@ func (app *MouseGridApp) Init() error {
 // HandleEvent processes events
 func (app *MouseGridApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
+	case tui.MouseEvent:
+		// Handle mouse clicks on grid
+		if e.Type == tui.MousePress && e.Button == tui.MouseButtonLeft {
+			app.handleGridClick(e.X, e.Y)
+		}
+		return nil
+
 	case tui.KeyEvent:
 		// Handle keyboard input
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyCtrlC {
@@ -49,6 +56,44 @@ func (app *MouseGridApp) HandleEvent(event tui.Event) []tui.Cmd {
 	}
 
 	return nil
+}
+
+// handleGridClick toggles the color of a grid cell when clicked
+func (app *MouseGridApp) handleGridClick(mouseX, mouseY int) {
+	// Grid starts at row 3 (after title, description, and spacer)
+	// Cell dimensions: 6 wide, 3 tall, with 1 gap between cells
+	cellWidth := 6
+	cellHeight := 3
+	gap := 1
+
+	// Calculate grid starting position (centered horizontally)
+	gridWidth := app.gridW*cellWidth + (app.gridW-1)*gap
+	startX := (app.width - gridWidth) / 2
+	startY := 3
+
+	// Check if click is within grid bounds
+	if mouseX < startX || mouseY < startY {
+		return
+	}
+
+	// Calculate which cell was clicked
+	relX := mouseX - startX
+	relY := mouseY - startY
+
+	// Account for gaps
+	col := relX / (cellWidth + gap)
+	row := relY / (cellHeight + gap)
+
+	// Verify click is actually on a cell (not in the gap)
+	cellStartX := col * (cellWidth + gap)
+	cellStartY := row * (cellHeight + gap)
+
+	if relX >= cellStartX && relX < cellStartX+cellWidth &&
+		relY >= cellStartY && relY < cellStartY+cellHeight &&
+		row < app.gridH && col < app.gridW {
+		// Toggle to next color (cycle through 0-4)
+		app.gridState[row][col] = (app.gridState[row][col] + 1) % 5
+	}
 }
 
 // View returns the declarative view structure

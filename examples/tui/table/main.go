@@ -55,32 +55,7 @@ func (app *TableDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
-
-		// Handle keyboard navigation
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.selected > 0 {
-				app.selected--
-			}
-		case tui.KeyArrowDown:
-			if app.selected < len(app.rows)-1 {
-				app.selected++
-			}
-		case tui.KeyPageUp:
-			app.selected -= 10
-			if app.selected < 0 {
-				app.selected = 0
-			}
-		case tui.KeyPageDown:
-			app.selected += 10
-			if app.selected >= len(app.rows) {
-				app.selected = len(app.rows) - 1
-			}
-		case tui.KeyHome:
-			app.selected = 0
-		case tui.KeyEnd:
-			app.selected = len(app.rows) - 1
-		}
+		// Table component handles navigation internally
 
 	case tui.ResizeEvent:
 		app.width = e.Width

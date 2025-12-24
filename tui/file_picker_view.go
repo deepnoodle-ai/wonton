@@ -11,11 +11,12 @@ type filePickerView struct {
 	filter      *string
 	selected    *int
 	currentPath string
-	onSelect    func(item ListItem)
+	onSelect    func(item ListItem, index int)
 	showHidden  bool
 	style       Style
 	inputStyle  Style
 	pathStyle   Style
+	width       int
 	height      int
 }
 
@@ -47,7 +48,8 @@ func (f *filePickerView) CurrentPath(path string) *filePickerView {
 }
 
 // OnSelect sets a callback when an item is selected.
-func (f *filePickerView) OnSelect(fn func(item ListItem)) *filePickerView {
+// The callback receives the selected item and its index.
+func (f *filePickerView) OnSelect(fn func(item ListItem, index int)) *filePickerView {
 	f.onSelect = fn
 	return f
 }
@@ -88,8 +90,21 @@ func (f *filePickerView) PathStyle(s Style) *filePickerView {
 	return f
 }
 
+// Width sets a fixed width for the file picker.
+func (f *filePickerView) Width(w int) *filePickerView {
+	f.width = w
+	return f
+}
+
 // Height sets a fixed height for the file picker.
 func (f *filePickerView) Height(h int) *filePickerView {
+	f.height = h
+	return f
+}
+
+// Size sets both width and height at once.
+func (f *filePickerView) Size(w, h int) *filePickerView {
+	f.width = w
 	f.height = h
 	return f
 }
@@ -124,11 +139,17 @@ func (f *filePickerView) size(maxWidth, maxHeight int) (int, int) {
 		}
 	}
 
-	w := maxWidth
+	w := f.width
 	if w == 0 {
-		w = 40
+		w = maxWidth
+		if w == 0 {
+			w = 40
+		}
 	}
 
+	if maxWidth > 0 && w > maxWidth {
+		w = maxWidth
+	}
 	if maxHeight > 0 && h > maxHeight {
 		h = maxHeight
 	}
@@ -188,9 +209,9 @@ func (f *filePickerView) render(ctx *RenderContext) {
 	listView := SelectList(items, f.selected).
 		Style(f.style).
 		Height(listHeight).
-		OnSelect(func(index int) {
-			if f.onSelect != nil && index < len(items) {
-				f.onSelect(items[index])
+		OnSelect(func(item ListItem, index int) {
+			if f.onSelect != nil {
+				f.onSelect(item, index)
 			}
 		})
 

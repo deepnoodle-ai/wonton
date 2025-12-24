@@ -32,6 +32,12 @@ func (h *hyperlinkView) Fg(c Color) *hyperlinkView {
 	return h
 }
 
+// Bg sets the background color.
+func (h *hyperlinkView) Bg(c Color) *hyperlinkView {
+	h.style = h.style.WithBackground(c)
+	return h
+}
+
 // Bold makes the link text bold.
 func (h *hyperlinkView) Bold() *hyperlinkView {
 	h.style = h.style.WithBold()

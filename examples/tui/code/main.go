@@ -37,16 +37,13 @@ func (app *codeApp) HandleEvent(event tui.Event) []tui.Cmd {
 		if e.Rune == 'q' || e.Key == tui.KeyEscape {
 			return []tui.Cmd{tui.Quit()}
 		}
-		if e.Key == tui.KeyArrowDown {
-			app.scrollY++
-		}
-		if e.Key == tui.KeyArrowUp && app.scrollY > 0 {
-			app.scrollY--
-		}
 	}
 	return nil
 }
 
 func (app *codeApp) View() tui.View {
-	return tui.Code(app.code, "go").ScrollY(&app.scrollY)
+	return tui.Scroll(
+		tui.Code(app.code, "go"),
+		&app.scrollY,
+	)
 }

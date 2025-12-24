@@ -33,6 +33,12 @@ func (d *dividerView) Fg(c Color) *dividerView {
 	return d
 }
 
+// Bg sets the background color.
+func (d *dividerView) Bg(c Color) *dividerView {
+	d.style = d.style.WithBackground(c)
+	return d
+}
+
 // Style sets the complete style.
 func (d *dividerView) Style(s Style) *dividerView {
 	d.style = s

@@ -165,7 +165,14 @@ func (l *listView) FilterFunc(fn func(item ListItem, query string) bool) *listVi
 	return l
 }
 
+// ScrollY binds an external scroll position for programmatic control.
+func (l *listView) ScrollY(scrollY *int) *listView {
+	l.scrollOffset = scrollY
+	return l
+}
+
 // ScrollOffset binds an external scroll offset for programmatic control.
+// Deprecated: Use ScrollY instead for consistency with other scrollable components.
 func (l *listView) ScrollOffset(offset *int) *listView {
 	l.scrollOffset = offset
 	return l

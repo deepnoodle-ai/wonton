@@ -107,23 +107,6 @@ func (app *FilePickerDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 			return nil
 		}
 
-		// Handle navigation (these are passed to SelectList via InputRegistry)
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.selected > 0 {
-				app.selected--
-			}
-			return nil
-		case tui.KeyArrowDown:
-			if app.selected < len(app.files)-1 {
-				app.selected++
-			}
-			return nil
-		case tui.KeyEnter:
-			app.handleSelect()
-			return nil
-		}
-
 	case tui.ResizeEvent:
 		app.width = e.Width
 		app.height = e.Height
@@ -181,7 +164,7 @@ func (app *FilePickerDemoApp) View() tui.View {
 		tui.FilePicker(app.files, &app.filter, &app.selected).
 			CurrentPath(app.currentDir).
 			Height(pickerHeight).
-			OnSelect(func(item tui.ListItem) {
+			OnSelect(func(item tui.ListItem, index int) {
 				app.handleSelect()
 			}),
 		tui.Spacer().MinHeight(1),

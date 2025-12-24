@@ -52,7 +52,7 @@ func (app *InputFormsApp) View() tui.View {
 	children = append(children,
 		tui.Group(
 			tui.Text("Name:     "),
-			tui.Input(&app.name).Placeholder("Enter your name").Width(40),
+			tui.Input(&app.name).ID("name").Placeholder("Enter your name").Width(40),
 		),
 		tui.Spacer().MinHeight(1),
 	)
@@ -61,7 +61,7 @@ func (app *InputFormsApp) View() tui.View {
 	children = append(children,
 		tui.Group(
 			tui.Text("Email:    "),
-			tui.Input(&app.email).Placeholder("Enter your email").Width(40),
+			tui.Input(&app.email).ID("email").Placeholder("Enter your email").Width(40),
 		),
 		tui.Spacer().MinHeight(1),
 	)
@@ -71,6 +71,7 @@ func (app *InputFormsApp) View() tui.View {
 		tui.Group(
 			tui.Text("Password: "),
 			tui.Input(&app.password).
+				ID("password").
 				Placeholder("Enter password").
 				Width(40).
 				Mask('*'),
