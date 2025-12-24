@@ -577,6 +577,23 @@ func (mr *MarkdownRenderer) mergeStyles(base Style, overlay Style) Style {
 	return result
 }
 
+// isPunctuation returns true if the string consists only of punctuation
+// that should not have a leading space
+func isPunctuation(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch r {
+		case '.', ',', '!', '?', ':', ';', ')', ']', '}', '"', '\'':
+			// These are trailing punctuation that shouldn't have a leading space
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int) [][]StyledSegment {
 	if maxWidth <= 0 {
 		return [][]StyledSegment{segments}
@@ -598,18 +615,26 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 					wordWidth := runewidth.StringWidth(word)
 					spaceWidth := 1
 
-					if currentWidth+wordWidth+spaceWidth > maxWidth && len(currentLine) > 0 {
+					// Don't count space for punctuation since we won't add one
+					spaceNeeded := spaceWidth
+					if isPunctuation(word) {
+						spaceNeeded = 0
+					}
+
+					if currentWidth+wordWidth+spaceNeeded > maxWidth && len(currentLine) > 0 {
 						lines = append(lines, currentLine)
 						currentLine = nil
 						currentWidth = 0
 					}
 
-					if len(currentLine) > 0 {
+					// Add space before word if not at start of line (but not before punctuation)
+					needsSpace := len(currentLine) > 0 && !isPunctuation(word)
+					if needsSpace {
 						currentLine = append(currentLine, StyledSegment{
 							Text:  " ",
 							Style: seg.Style,
 						})
-						currentWidth += spaceWidth
+						currentWidth++
 					}
 
 					currentLine = append(currentLine, StyledSegment{
@@ -643,20 +668,26 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 			spaceWidth := 1
 
 			// Check if adding this word would exceed the limit
-			if currentWidth+wordWidth+spaceWidth > maxWidth && len(currentLine) > 0 {
+			// Don't count space for punctuation since we won't add one
+			spaceNeeded := spaceWidth
+			if isPunctuation(word) {
+				spaceNeeded = 0
+			}
+			if currentWidth+wordWidth+spaceNeeded > maxWidth && len(currentLine) > 0 {
 				// Start a new line
 				lines = append(lines, currentLine)
 				currentLine = nil
 				currentWidth = 0
 			}
 
-			// Add space before word if not at start of line
-			if len(currentLine) > 0 {
+			// Add space before word if not at start of line (but not before punctuation)
+			needsSpace := len(currentLine) > 0 && !isPunctuation(word)
+			if needsSpace {
 				currentLine = append(currentLine, StyledSegment{
 					Text:  " ",
 					Style: seg.Style,
 				})
-				currentWidth += spaceWidth
+				currentWidth++
 			}
 
 			// Add the word

@@ -508,6 +508,64 @@ func TestMarkdownRenderer_SoftLineBreak(t *testing.T) {
 	assert.Contains(t, output, "Line two")
 }
 
+func TestMarkdownRenderer_PunctuationAfterFormatting(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	tests := []struct {
+		name     string
+		markdown string
+		expected string // Exact expected text (no extra space before punctuation)
+	}{
+		{
+			name:     "Exclamation after link",
+			markdown: "Check out [this link](https://example.com)!",
+			expected: "Check out this link!",
+		},
+		{
+			name:     "Exclamation after bold",
+			markdown: "This is **bold**!",
+			expected: "This is bold!",
+		},
+		{
+			name:     "Exclamation after italic",
+			markdown: "This is *italic*!",
+			expected: "This is italic!",
+		},
+		{
+			name:     "Exclamation after code",
+			markdown: "Run `cmd`!",
+			expected: "Run cmd!",
+		},
+		{
+			name:     "Period after link",
+			markdown: "See [docs](https://docs.com).",
+			expected: "See docs.",
+		},
+		{
+			name:     "Comma after bold",
+			markdown: "**Important**, not optional",
+			expected: "Important, not optional",
+		},
+		{
+			name:     "Question mark after italic",
+			markdown: "Is this *correct*?",
+			expected: "Is this correct?",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+
+			output := strings.TrimSpace(renderToPlainText(result))
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
 // Helper function to convert rendered markdown to plain text for testing
 func renderToPlainText(rendered *RenderedMarkdown) string {
 	var result strings.Builder
