@@ -35,12 +35,12 @@ func (app *TextDemoApp) View() tui.View {
 			// Top row
 			tui.Group(
 				// Top Left: Wrapped, Left Aligned
-				tui.Text("WRAPPED LEFT:\n"+longText).
+				tui.Text("WRAPPED LEFT:\n%s", longText).
 					Wrap().Flex(1).
 					Bg(tui.ColorBlue).Fg(tui.ColorWhite).FillBg(),
 
 				// Top Right: Wrapped, Center Aligned
-				tui.Text("WRAPPED CENTER:\n"+longText).
+				tui.Text("WRAPPED CENTER:\n%s", longText).
 					Wrap().Flex(1).Center().
 					Bg(tui.ColorGreen).Fg(tui.ColorBlack).FillBg(),
 			),
@@ -48,12 +48,12 @@ func (app *TextDemoApp) View() tui.View {
 			// Bottom row
 			tui.Group(
 				// Bottom Left: Wrapped, Right Aligned
-				tui.Text("WRAPPED RIGHT:\n"+longText).
+				tui.Text("WRAPPED RIGHT:\n%s", longText).
 					Wrap().Flex(1).Right().
 					Bg(tui.ColorRed).Fg(tui.ColorWhite).FillBg(),
 
 				// Bottom Right: Truncated (clipped at edge, no wrapping), Center Aligned
-				tui.Text("TRUNCATED (Clipped at edge):\n"+longText).
+				tui.Text("TRUNCATED (Clipped at edge):\n%s", longText).
 					Flex(1).Center().
 					Bg(tui.ColorYellow).Fg(tui.ColorBlack).FillBg(),
 			),

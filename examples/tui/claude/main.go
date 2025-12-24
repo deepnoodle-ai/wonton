@@ -218,7 +218,7 @@ func (d *ClaudeStyleDemo) renderMessage(msg Message) tui.View {
 		if line == "" {
 			contentViews = append(contentViews, tui.Text(""))
 		} else {
-			contentViews = append(contentViews, tui.Text(line).Wrap().Flex(1).Fg(headerColor))
+			contentViews = append(contentViews, tui.Text("%s", line).Wrap().Flex(1).Fg(headerColor))
 		}
 	}
 
