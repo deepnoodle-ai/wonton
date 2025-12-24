@@ -6,15 +6,6 @@
 //	htmltomd https://example.com
 //	htmltomd ./page.html
 //	cat page.html | htmltomd -
-//
-// Options:
-//
-//	-r, --refs      Use referenced link style [text][n] instead of inline [text](url)
-//	-s, --setext    Use setext-style headings (underlined) for h1/h2
-//	-i, --indent    Use indented code blocks instead of fenced
-//	-b, --bullet    Bullet character for lists (default "-")
-//	--skip          Comma-separated tags to skip (e.g. "nav,footer,aside")
-//	-t, --timeout   HTTP request timeout (default 30s)
 package main
 
 import (
@@ -38,9 +29,7 @@ func main() {
 		Description("Convert HTML to Markdown").
 		Version(version)
 
-	// Default command for conversion
-	app.Command("convert").
-		Description("Convert HTML to Markdown from a URL, file, or stdin").
+	app.Main().
 		Args("source").
 		Flags(
 			cli.Bool("refs", "r").Help("Use referenced link style [text][n]"),
@@ -52,21 +41,8 @@ func main() {
 		).
 		Run(runConvert)
 
-	// Make convert the default command by handling args directly
-	args := os.Args[1:]
-
-	// If first arg doesn't start with - and isn't "help" or "version", treat as convert
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") &&
-		args[0] != "help" && args[0] != "version" && args[0] != "convert" {
-		args = append([]string{"convert"}, args...)
-	} else if len(args) == 0 || (len(args) > 0 && strings.HasPrefix(args[0], "-")) {
-		// If no args or first arg is a flag, prepend convert
-		args = append([]string{"convert"}, args...)
-	}
-
-	if err := app.ExecuteArgs(args); err != nil {
-		// Don't print help errors (already shown)
-		if _, ok := err.(*cli.HelpRequested); !ok {
+	if err := app.Execute(); err != nil {
+		if !cli.IsHelpRequested(err) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

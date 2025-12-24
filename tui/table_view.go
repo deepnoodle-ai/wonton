@@ -9,8 +9,9 @@ import (
 
 // TableColumn represents a table column configuration.
 type TableColumn struct {
-	Title string
-	Width int // If 0, auto-calculated based on content
+	Title    string
+	Width    int // If 0, auto-calculated based on content
+	MinWidth int // Minimum width (won't shrink below this)
 }
 
 // tableView displays a scrollable data table as a declarative view.
@@ -31,6 +32,8 @@ type tableView struct {
 	maxColumnWidth       int  // 0 = no limit
 	invertSelectedColors bool // invert fg/bg on selected row
 	headerBottomBorder   bool
+	columnGap            int  // gap between columns (default 2)
+	fillWidth            bool // expand to fill container width
 }
 
 // Table creates a new table view with the given columns.
@@ -42,12 +45,14 @@ type tableView struct {
 //	    Rows([][]string{{"Alice", "30"}, {"Bob", "25"}})
 func Table(columns []TableColumn, selected *int) *tableView {
 	return &tableView{
-		columns:       columns,
-		selected:      selected,
-		style:         NewStyle(),
-		headerStyle:   NewStyle().WithBold().WithUnderline(),
-		selectedStyle: NewStyle().WithReverse(),
-		showHeader:    true,
+		columns:            columns,
+		selected:           selected,
+		style:              NewStyle(),
+		headerStyle:        NewStyle().WithBold(),
+		selectedStyle:      NewStyle().WithReverse(),
+		showHeader:         true,
+		headerBottomBorder: true,
+		columnGap:          2,
 	}
 }
 
@@ -163,6 +168,20 @@ func (t *tableView) HeaderBottomBorder(show bool) *tableView {
 	return t
 }
 
+// ColumnGap sets the gap (in spaces) between columns. Default is 2.
+func (t *tableView) ColumnGap(gap int) *tableView {
+	t.columnGap = gap
+	return t
+}
+
+// FillWidth causes the table to expand to fill its container width.
+// Extra space is distributed to auto-sized columns (those without explicit Width).
+// If all columns have explicit widths, extra space goes to the largest column.
+func (t *tableView) FillWidth() *tableView {
+	t.fillWidth = true
+	return t
+}
+
 // calculateColumnWidths computes the actual width for each column.
 func (t *tableView) calculateColumnWidths() {
 	if len(t.columns) == 0 {
@@ -195,14 +214,189 @@ func (t *tableView) calculateColumnWidths() {
 	}
 }
 
+// expandColumns distributes extra space to columns.
+// Prefers auto-sized columns (Width=0), falls back to largest column.
+func (t *tableView) expandColumns(extraSpace int) {
+	if extraSpace <= 0 || len(t.columnWidths) == 0 {
+		return
+	}
+
+	// Find auto-sized columns (those without explicit Width)
+	var autoSizedIdxs []int
+	for i, col := range t.columns {
+		if col.Width == 0 {
+			autoSizedIdxs = append(autoSizedIdxs, i)
+		}
+	}
+
+	// Distribute extra space
+	if len(autoSizedIdxs) > 0 {
+		// Distribute evenly among auto-sized columns
+		perColumn := extraSpace / len(autoSizedIdxs)
+		remainder := extraSpace % len(autoSizedIdxs)
+		for i, idx := range autoSizedIdxs {
+			t.columnWidths[idx] += perColumn
+			if i < remainder {
+				t.columnWidths[idx]++
+			}
+		}
+	} else {
+		// All columns have explicit widths; give extra to the largest
+		maxIdx := 0
+		for i, w := range t.columnWidths {
+			if w > t.columnWidths[maxIdx] {
+				maxIdx = i
+			}
+		}
+		t.columnWidths[maxIdx] += extraSpace
+	}
+}
+
+// effectiveMinWidth returns the minimum width for a column, using sensible defaults:
+// 1. Explicit MinWidth if set
+// 2. Explicit Width if set (you specified a size, you want it)
+// 3. Header title width (never narrower than header)
+func (t *tableView) effectiveMinWidth(colIdx int) int {
+	if colIdx >= len(t.columns) {
+		return 1
+	}
+	col := t.columns[colIdx]
+
+	if col.MinWidth > 0 {
+		return col.MinWidth
+	}
+	if col.Width > 0 {
+		return col.Width
+	}
+	// Default to header width
+	headerWidth := runewidth.StringWidth(col.Title)
+	if headerWidth < 1 {
+		return 1
+	}
+	return headerWidth
+}
+
+// fitColumnWidths adjusts column widths to fit within availableWidth.
+// It shrinks columns proportionally when total width exceeds available space,
+// but respects MinWidth constraints on columns.
+func (t *tableView) fitColumnWidths(availableWidth int) {
+	if len(t.columnWidths) == 0 || availableWidth <= 0 {
+		return
+	}
+
+	// Calculate total width including gaps between columns
+	totalGaps := 0
+	if len(t.columnWidths) > 1 {
+		totalGaps = (len(t.columnWidths) - 1) * t.columnGap
+	}
+
+	totalWidth := totalGaps
+	for _, w := range t.columnWidths {
+		totalWidth += w
+	}
+
+	// Available space for columns (excluding gaps)
+	availableForColumns := availableWidth - totalGaps
+	if availableForColumns < len(t.columnWidths) {
+		availableForColumns = len(t.columnWidths)
+	}
+
+	// If we have extra space and fillWidth is enabled, expand columns
+	if totalWidth < availableWidth && t.fillWidth {
+		extraSpace := availableForColumns - (totalWidth - totalGaps)
+		t.expandColumns(extraSpace)
+		return
+	}
+
+	if totalWidth <= availableWidth {
+		return // Already fits, no expansion needed
+	}
+
+	// Calculate total of min widths and shrinkable space
+	totalMinWidth := 0
+	for i := range t.columns {
+		totalMinWidth += t.effectiveMinWidth(i)
+	}
+
+	// If min widths exceed available, just use min widths
+	if totalMinWidth >= availableForColumns {
+		for i := range t.columnWidths {
+			t.columnWidths[i] = t.effectiveMinWidth(i)
+		}
+		return
+	}
+
+	// Shrink columns proportionally, respecting min widths
+	// First pass: calculate how much we need to shrink
+	columnTotal := totalWidth - totalGaps
+	excess := columnTotal - availableForColumns
+
+	// Shrink columns that can be shrunk (above their min width)
+	for excess > 0 {
+		// Find shrinkable columns and their total shrinkable space
+		shrinkable := 0
+		shrinkableWidth := 0
+		for i, w := range t.columnWidths {
+			minW := t.effectiveMinWidth(i)
+			if w > minW {
+				shrinkable++
+				shrinkableWidth += w - minW
+			}
+		}
+
+		if shrinkable == 0 || shrinkableWidth == 0 {
+			break // Nothing more to shrink
+		}
+
+		// Shrink proportionally
+		shrinkAmount := excess
+		if shrinkAmount > shrinkableWidth {
+			shrinkAmount = shrinkableWidth
+		}
+
+		for i := range t.columnWidths {
+			minW := t.effectiveMinWidth(i)
+			canShrink := t.columnWidths[i] - minW
+			if canShrink > 0 {
+				// Proportional share of shrinking
+				share := int(float64(canShrink) / float64(shrinkableWidth) * float64(shrinkAmount))
+				if share > canShrink {
+					share = canShrink
+				}
+				t.columnWidths[i] -= share
+				excess -= share
+			}
+		}
+	}
+
+	// Distribute any remaining space to the largest column
+	newTotal := 0
+	for _, w := range t.columnWidths {
+		newTotal += w
+	}
+	if newTotal < availableForColumns && len(t.columnWidths) > 0 {
+		maxIdx := 0
+		for i, w := range t.columnWidths {
+			if w > t.columnWidths[maxIdx] {
+				maxIdx = i
+			}
+		}
+		t.columnWidths[maxIdx] += availableForColumns - newTotal
+	}
+}
+
 func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
 	t.calculateColumnWidths()
 
-	// Calculate total width
+	// Calculate total width including gaps
 	w := t.width
 	if w == 0 {
 		for _, cw := range t.columnWidths {
 			w += cw
+		}
+		// Add gaps between columns
+		if len(t.columnWidths) > 1 {
+			w += (len(t.columnWidths) - 1) * t.columnGap
 		}
 	}
 
@@ -231,6 +425,7 @@ func (t *tableView) render(ctx *RenderContext) {
 	}
 
 	t.calculateColumnWidths()
+	t.fitColumnWidths(width) // Shrink columns to fit container
 
 	currentY := 0
 
@@ -258,13 +453,28 @@ func (t *tableView) render(ctx *RenderContext) {
 
 			ctx.PrintStyled(currentX, currentY, title, t.headerStyle)
 			currentX += w
+			// Add gap after column (except last)
+			if i < len(t.columns)-1 {
+				currentX += t.columnGap
+			}
 		}
 		currentY++
 
 		// Draw header bottom border if enabled
 		if t.headerBottomBorder {
-			border := repeatStr("─", width)
-			ctx.PrintStyled(0, currentY, border, t.headerStyle)
+			// Use actual table width (sum of columns + gaps)
+			tableWidth := 0
+			for _, cw := range t.columnWidths {
+				tableWidth += cw
+			}
+			if len(t.columnWidths) > 1 {
+				tableWidth += (len(t.columnWidths) - 1) * t.columnGap
+			}
+			if tableWidth > width {
+				tableWidth = width
+			}
+			border := repeatStr("─", tableWidth)
+			ctx.PrintStyled(0, currentY, border, t.style)
 			currentY++
 		}
 	}
@@ -343,6 +553,11 @@ func (t *tableView) render(ctx *RenderContext) {
 
 			ctx.PrintStyled(currentX, currentY+i, paddedCell, style)
 			currentX += w
+			// Add gap after column (except last), filled with row style
+			if colIdx < len(t.columnWidths)-1 && t.columnGap > 0 {
+				ctx.PrintStyled(currentX, currentY+i, repeatStr(" ", t.columnGap), style)
+				currentX += t.columnGap
+			}
 		}
 
 		// Register clickable region for this row

@@ -137,11 +137,13 @@ func (z *zStack) Padding(n int) View {
 	return Padding(n, z)
 }
 
-// sizeView wraps a view with fixed or maximum size constraints
+// sizeView wraps a view with fixed, minimum, or maximum size constraints
 type sizeView struct {
 	inner     View
 	width     int // 0 = use inner's width
 	height    int // 0 = use inner's height
+	minWidth  int // 0 = no min constraint
+	minHeight int // 0 = no min constraint
 	maxWidth  int // 0 = no max constraint
 	maxHeight int // 0 = no max constraint
 }
@@ -196,6 +198,35 @@ func MaxHeight(h int, inner View) View {
 	return &sizeView{inner: inner, maxHeight: h}
 }
 
+// MinWidth wraps a view with a minimum width constraint.
+// The view can be larger but will not be smaller than this width.
+//
+// Example:
+//
+//	MinWidth(40, content)  // At least 40 cells wide
+func MinWidth(w int, inner View) View {
+	return &sizeView{inner: inner, minWidth: w}
+}
+
+// MinHeight wraps a view with a minimum height constraint.
+// The view can be larger but will not be smaller than this height.
+//
+// Example:
+//
+//	MinHeight(10, content)  // At least 10 rows tall
+func MinHeight(h int, inner View) View {
+	return &sizeView{inner: inner, minHeight: h}
+}
+
+// MinSize wraps a view with minimum width and height constraints.
+//
+// Example:
+//
+//	MinSize(40, 10, content)  // At least 40x10 cells
+func MinSize(w, h int, inner View) View {
+	return &sizeView{inner: inner, minWidth: w, minHeight: h}
+}
+
 func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 	// Apply max constraints
 	constrainedMaxW := maxWidth
@@ -220,7 +251,15 @@ func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 		h = s.height
 	}
 
-	// Clamp to constraints
+	// Apply min constraints
+	if s.minWidth > 0 && w < s.minWidth {
+		w = s.minWidth
+	}
+	if s.minHeight > 0 && h < s.minHeight {
+		h = s.minHeight
+	}
+
+	// Clamp to max constraints
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
 	}

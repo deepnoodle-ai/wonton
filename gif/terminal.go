@@ -280,38 +280,10 @@ func NewTerminalRendererWithOptions(screen *TerminalScreen, opts RendererOptions
 }
 
 // terminalPalette returns a color palette suitable for terminal rendering.
+// It uses the standard xterm 256-color palette which provides excellent
+// coverage for anti-aliased text rendering.
 func terminalPalette() Palette {
-	return Palette{
-		// Basic 16 ANSI colors
-		RGB(0, 0, 0),       // 0: Black
-		RGB(170, 0, 0),     // 1: Red
-		RGB(0, 170, 0),     // 2: Green
-		RGB(170, 85, 0),    // 3: Yellow/Brown
-		RGB(0, 0, 170),     // 4: Blue
-		RGB(170, 0, 170),   // 5: Magenta
-		RGB(0, 170, 170),   // 6: Cyan
-		RGB(170, 170, 170), // 7: White (gray)
-		RGB(85, 85, 85),    // 8: Bright Black (dark gray)
-		RGB(255, 85, 85),   // 9: Bright Red
-		RGB(85, 255, 85),   // 10: Bright Green
-		RGB(255, 255, 85),  // 11: Bright Yellow
-		RGB(85, 85, 255),   // 12: Bright Blue
-		RGB(255, 85, 255),  // 13: Bright Magenta
-		RGB(85, 255, 255),  // 14: Bright Cyan
-		RGB(255, 255, 255), // 15: Bright White
-		// Extended grayscale for smoother rendering
-		RGB(28, 28, 28),
-		RGB(48, 48, 48),
-		RGB(68, 68, 68),
-		RGB(88, 88, 88),
-		RGB(108, 108, 108),
-		RGB(128, 128, 128),
-		RGB(148, 148, 148),
-		RGB(168, 168, 168),
-		RGB(188, 188, 188),
-		RGB(208, 208, 208),
-		RGB(228, 228, 228),
-	}
+	return Terminal256()
 }
 
 // SetLoopCount sets how many times the GIF animation should loop.

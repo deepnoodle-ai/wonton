@@ -2,14 +2,10 @@
 //
 // Usage:
 //
-//	crawl <command> [options]
-//
-// Commands:
-//
-//	crawl           Crawl a website starting from seed URLs
-//	fetch           Fetch and display a single URL
-//	links           Extract and display links from a URL
-//	meta            Extract and display metadata from a URL
+//	crawl [options] <urls...>      Crawl websites starting from seed URLs
+//	crawl fetch <url>              Fetch and display a single URL
+//	crawl links <url>              Extract and display links from a URL
+//	crawl meta <url>               Extract and display metadata from a URL
 package main
 
 import (
@@ -33,9 +29,8 @@ func main() {
 		Description("Web crawler CLI with rich terminal display").
 		Version("1.0.0")
 
-	// crawl command - crawl a website
-	app.Command("crawl").
-		Description("Crawl a website starting from seed URLs").
+	// Default action - crawl a website
+	app.Main().
 		Args("urls...").
 		Flags(
 			cli.Int("workers", "w").Default(4).Help("Number of concurrent workers"),

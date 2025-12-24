@@ -34,7 +34,6 @@ func (app *TableDemoApp) View() tui.View {
 			UppercaseHeaders(true).
 			MaxColumnWidth(25).
 			InvertSelectedColors(true).
-			HeaderBottomBorder(true).
 			SelectedBg(tui.ColorBlue).
 			SelectedFg(tui.ColorWhite).
 			OnSelect(func(row int) {

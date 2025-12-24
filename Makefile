@@ -10,3 +10,7 @@ cover-html:
 cover-text:
 	go test -coverprofile cover.out $(COVER_PKGS)
 	go tool cover -func=cover.out
+
+.PHONY: fmt
+fmt:
+	gofmt -s -w .

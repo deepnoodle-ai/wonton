@@ -584,8 +584,7 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		URL:             rawURL,
 		Prettify:        false,
 		OnlyMainContent: false,
-		// Note: The Fetcher field in Request is for specifying a fetcher name/type
-		// We'll leave it empty and use the actual fetcher instance directly
+		Formats:         []string{"html", "links"},
 	}
 
 	// Fetch if there was not a cache hit
