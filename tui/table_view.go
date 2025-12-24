@@ -405,7 +405,10 @@ func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
 	if h == 0 {
 		h = len(t.rows)
 		if t.showHeader {
-			h++
+			h++ // header row
+			if t.headerBottomBorder {
+				h++ // header border row
+			}
 		}
 	}
 

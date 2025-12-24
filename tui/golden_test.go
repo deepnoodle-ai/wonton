@@ -362,7 +362,8 @@ func TestGolden_Progress_Fraction(t *testing.T) {
 }
 
 func TestGolden_Progress_Pattern(t *testing.T) {
-	view := Progress(60, 100).Width(20).EmptyPattern("\xb7-")
+	// Use proper UTF-8: middle dot (·) is U+00B7, encoded as \xc2\xb7
+	view := Progress(60, 100).Width(20).EmptyPattern("·-")
 	screen := SprintScreen(view, WithWidth(30))
 	termtest.AssertScreen(t, screen)
 }

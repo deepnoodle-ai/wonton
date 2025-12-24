@@ -271,11 +271,25 @@ func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 }
 
 func (s *sizeView) render(ctx *RenderContext) {
-	width, height := ctx.Size()
-	if width == 0 || height == 0 {
+	ctxWidth, ctxHeight := ctx.Size()
+	if ctxWidth == 0 || ctxHeight == 0 {
 		return
 	}
-	s.inner.render(ctx)
+
+	// Calculate the constrained size
+	constrainedW, constrainedH := s.size(ctxWidth, ctxHeight)
+
+	// Clamp to context bounds
+	if constrainedW > ctxWidth {
+		constrainedW = ctxWidth
+	}
+	if constrainedH > ctxHeight {
+		constrainedH = ctxHeight
+	}
+
+	// Create subcontext with the constrained size
+	innerCtx := ctx.SubContext(image.Rect(0, 0, constrainedW, constrainedH))
+	s.inner.render(innerCtx)
 }
 
 // Width modifier methods for view types
