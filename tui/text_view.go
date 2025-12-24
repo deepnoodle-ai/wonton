@@ -308,4 +308,3 @@ func splitLinesSimple(s string) []string {
 	}
 	return lines
 }
-

@@ -195,7 +195,7 @@ func (l *selectListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			idx := y           // capture for closure
+			idx := y            // capture for closure
 			clickedItem := item // capture for closure
 			interactiveRegistry.RegisterButton(itemBounds, func() {
 				if l.selected != nil {

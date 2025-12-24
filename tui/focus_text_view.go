@@ -1,4 +1,5 @@
 package tui
+
 // focusTextView displays text with different styles based on focus state
 type focusTextView struct {
 	content    string
