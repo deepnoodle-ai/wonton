@@ -648,7 +648,7 @@ myapp run --port 8080 --port 443 nginx
 | `String(name, short)`   | Create string flag builder       | `string`, `string` | `*stringBuilder`   |
 | `Bool(name, short)`     | Create bool flag builder         | `string`, `string` | `*boolBuilder`     |
 | `Int(name, short)`      | Create int flag builder          | `string`, `string` | `*intBuilder`      |
-| `Float(name, short)`    | Create float64 flag builder      | `string`, `string` | `*floatBuilder`    |
+| `Float64(name, short)`  | Create float64 flag builder      | `string`, `string` | `*float64Builder`  |
 | `Duration(name, short)` | Create duration flag builder     | `string`, `string` | `*durationBuilder` |
 | `Strings(name, short)`  | Create string slice flag builder | `string`, `string` | `*stringsBuilder`  |
 | `Ints(name, short)`     | Create int slice flag builder    | `string`, `string` | `*intsBuilder`     |

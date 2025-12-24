@@ -2433,8 +2433,8 @@ func TestIntBuilderWithValidator(t *testing.T) {
 	assert.NoError(t, b.Validate("8080"))
 }
 
-func TestFloatBuilder(t *testing.T) {
-	b := Float("rate", "r").
+func TestFloat64Builder(t *testing.T) {
+	b := Float64("rate", "r").
 		Default(0.5).
 		Help("Rate value").
 		Env("RATE").
@@ -2452,8 +2452,8 @@ func TestFloatBuilder(t *testing.T) {
 	assert.NoError(t, b.Validate("1.5"))
 }
 
-func TestFloatBuilderWithValidator(t *testing.T) {
-	b := Float("rate", "r").ValidateWith(func(f float64) error {
+func TestFloat64BuilderWithValidator(t *testing.T) {
+	b := Float64("rate", "r").ValidateWith(func(f float64) error {
 		if f < 0 || f > 1 {
 			return Error("rate must be between 0 and 1")
 		}
@@ -2590,7 +2590,7 @@ func TestFlagBuildersInCommand(t *testing.T) {
 		Flags(
 			String("name", "n").Default("world").Help("Name"),
 			Int("count", "c").Default(1).Help("Count"),
-			Float("rate", "r").Default(0.5).Help("Rate"),
+			Float64("rate", "r").Default(0.5).Help("Rate"),
 			Bool("verbose", "v").Help("Verbose"),
 			Duration("timeout", "t").Default(30*time.Second).Help("Timeout"),
 		).

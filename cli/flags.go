@@ -385,39 +385,39 @@ func (b *intBuilder) IsHidden() bool        { return b.hidden }
 func (b *intBuilder) GetEnum() []string     { return nil }
 func (b *intBuilder) Validate(string) error { return nil }
 
-// Float creates a new float64 flag builder.
+// Float64 creates a new float64 flag builder.
 //
-//	cli.Float("ratio", "r").Default(0.5).Help("Compression ratio")
-func Float(name, short string) *floatBuilder {
-	return &floatBuilder{name: name, short: short}
+//	cli.Float64("ratio", "r").Default(0.5).Help("Compression ratio")
+func Float64(name, short string) *float64Builder {
+	return &float64Builder{name: name, short: short}
 }
 
-type floatBuilder struct {
+type float64Builder struct {
 	name, short, help, envVar string
 	value                     float64
 	required, hidden          bool
 	validator                 func(float64) error
 }
 
-func (b *floatBuilder) Default(v float64) *floatBuilder { b.value = v; return b }
-func (b *floatBuilder) Help(v string) *floatBuilder     { b.help = v; return b }
-func (b *floatBuilder) Env(v string) *floatBuilder      { b.envVar = v; return b }
-func (b *floatBuilder) Required() *floatBuilder         { b.required = true; return b }
-func (b *floatBuilder) Hidden() *floatBuilder           { b.hidden = true; return b }
-func (b *floatBuilder) ValidateWith(f func(float64) error) *floatBuilder {
+func (b *float64Builder) Default(v float64) *float64Builder { b.value = v; return b }
+func (b *float64Builder) Help(v string) *float64Builder     { b.help = v; return b }
+func (b *float64Builder) Env(v string) *float64Builder      { b.envVar = v; return b }
+func (b *float64Builder) Required() *float64Builder         { b.required = true; return b }
+func (b *float64Builder) Hidden() *float64Builder           { b.hidden = true; return b }
+func (b *float64Builder) ValidateWith(f func(float64) error) *float64Builder {
 	b.validator = f
 	return b
 }
 
-func (b *floatBuilder) GetName() string       { return b.name }
-func (b *floatBuilder) GetShort() string      { return b.short }
-func (b *floatBuilder) GetHelp() string       { return b.help }
-func (b *floatBuilder) GetEnvVar() string     { return b.envVar }
-func (b *floatBuilder) GetDefault() any       { return b.value }
-func (b *floatBuilder) IsRequired() bool      { return b.required }
-func (b *floatBuilder) IsHidden() bool        { return b.hidden }
-func (b *floatBuilder) GetEnum() []string     { return nil }
-func (b *floatBuilder) Validate(string) error { return nil }
+func (b *float64Builder) GetName() string       { return b.name }
+func (b *float64Builder) GetShort() string      { return b.short }
+func (b *float64Builder) GetHelp() string       { return b.help }
+func (b *float64Builder) GetEnvVar() string     { return b.envVar }
+func (b *float64Builder) GetDefault() any       { return b.value }
+func (b *float64Builder) IsRequired() bool      { return b.required }
+func (b *float64Builder) IsHidden() bool        { return b.hidden }
+func (b *float64Builder) GetEnum() []string     { return nil }
+func (b *float64Builder) Validate(string) error { return nil }
 
 // Duration creates a new duration flag builder.
 //
