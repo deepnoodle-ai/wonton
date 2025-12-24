@@ -1,7 +1,7 @@
 # Wonton
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/deepnoodle-ai/wonton.svg)](https://pkg.go.dev/github.com/deepnoodle-ai/wonton)
-[![Go Report Card](https://goreportcard.com/badge/github.com/deepnoodle-ai/wonton)](https://goreportcard.com/report/github.com/deepnoodle-ai/wonton)
+[![Go Report Card](https://goreportcard.com/badge/github.com/deepnoodle-ai/wonton?v=1)](https://goreportcard.com/report/github.com/deepnoodle-ai/wonton)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A tasty Go toolkit for CLI tools and terminal UIs. Especially suited for
