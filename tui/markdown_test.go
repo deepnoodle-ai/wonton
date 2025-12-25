@@ -788,6 +788,152 @@ func TestMarkdownRenderer_LinksWithUnderscores(t *testing.T) {
 	}
 }
 
+func TestMarkdownRenderer_InlineCodeWithParentheses(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	tests := []struct {
+		name     string
+		markdown string
+		expected string
+	}{
+		{
+			name:     "function call in code",
+			markdown: "Use `foo(bar)` to call",
+			expected: "Use foo(bar) to call",
+		},
+		{
+			name:     "function with args in code",
+			markdown: "Call `doSomething(arg1, arg2)` here",
+			expected: "Call doSomething(arg1, arg2) here",
+		},
+		{
+			name:     "multiple parens in code",
+			markdown: "Run `fn(a)(b)` now",
+			expected: "Run fn(a)(b) now",
+		},
+		{
+			name:     "method call in code",
+			markdown: "Use `obj.method(x)` for this",
+			expected: "Use obj.method(x) for this",
+		},
+		{
+			name:     "nested parens in code",
+			markdown: "Try `foo(bar(baz))` here",
+			expected: "Try foo(bar(baz)) here",
+		},
+		{
+			name:     "parens in regular text",
+			markdown: "This is (parenthetical) text",
+			expected: "This is (parenthetical) text",
+		},
+		{
+			name:     "function before code",
+			markdown: "The `foo()` function",
+			expected: "The foo() function",
+		},
+		{
+			name:     "bold with parens",
+			markdown: "This is **foo(bar)** text",
+			expected: "This is foo(bar) text",
+		},
+		{
+			name:     "italic with parens",
+			markdown: "This is *foo(bar)* text",
+			expected: "This is foo(bar) text",
+		},
+		{
+			name:     "link with parens in text",
+			markdown: "Check [foo(bar)](https://example.com)",
+			expected: "Check foo(bar)",
+		},
+		{
+			name:     "parenthetical after code",
+			markdown: "`cmd` (optional)",
+			expected: "cmd (optional)",
+		},
+		{
+			name:     "code after open paren",
+			markdown: "Call (`foo`)",
+			expected: "Call (foo)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+
+			output := strings.TrimSpace(renderToPlainText(result))
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
+func TestMarkdownRenderer_LinkDisplaySpacing(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	tests := []struct {
+		name     string
+		markdown string
+		expected string
+	}{
+		{
+			name:     "link at start of text",
+			markdown: "[Example](https://example.com) is a site",
+			expected: "Example is a site",
+		},
+		{
+			name:     "link at end of text",
+			markdown: "Visit [Example](https://example.com)",
+			expected: "Visit Example",
+		},
+		{
+			name:     "link in middle of text",
+			markdown: "Check out [Example](https://example.com) for more",
+			expected: "Check out Example for more",
+		},
+		{
+			name:     "multiple links",
+			markdown: "See [one](url1) and [two](url2) here",
+			expected: "See one and two here",
+		},
+		{
+			name:     "link with punctuation after",
+			markdown: "Read [the docs](https://docs.com).",
+			expected: "Read the docs.",
+		},
+		{
+			name:     "link with punctuation before",
+			markdown: "Is this [correct](url)?",
+			expected: "Is this correct?",
+		},
+		{
+			name:     "link after colon",
+			markdown: "See: [link](url)",
+			expected: "See: link",
+		},
+		{
+			name:     "link in parens",
+			markdown: "Check ([link](url)) here",
+			expected: "Check (link) here",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+
+			output := strings.TrimSpace(renderToPlainText(result))
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
 func TestMarkdownRenderer_NoTrailingEmptyLines(t *testing.T) {
 	renderer := NewMarkdownRenderer()
 

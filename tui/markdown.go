@@ -659,6 +659,41 @@ func isPunctuation(s string) bool {
 	return true
 }
 
+// isOpeningPunctuation returns true if the string consists only of opening
+// brackets/punctuation that should not have trailing space
+func isOpeningPunctuation(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch r {
+		case '(', '[', '{':
+			// Opening brackets that shouldn't have a trailing space
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// lastSegmentEndsWithOpening checks if the last segment in a line ends with
+// an opening bracket that shouldn't have a trailing space
+func lastSegmentEndsWithOpening(line []StyledSegment) bool {
+	if len(line) == 0 {
+		return false
+	}
+	lastText := line[len(line)-1].Text
+	if lastText == "" {
+		return false
+	}
+	lastRune := rune(lastText[len(lastText)-1])
+	switch lastRune {
+	case '(', '[', '{':
+		return true
+	}
+	return false
+}
+
 func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int) [][]StyledSegment {
 	if maxWidth <= 0 {
 		return [][]StyledSegment{segments}
@@ -692,8 +727,9 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 						currentWidth = 0
 					}
 
-					// Add space before word if not at start of line (but not before punctuation)
-					needsSpace := len(currentLine) > 0 && !isPunctuation(word)
+					// Add space before word if not at start of line
+					// but not before closing punctuation or after opening punctuation
+					needsSpace := len(currentLine) > 0 && !isPunctuation(word) && !lastSegmentEndsWithOpening(currentLine)
 					if needsSpace {
 						currentLine = append(currentLine, StyledSegment{
 							Text:  " ",
@@ -745,8 +781,9 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 				currentWidth = 0
 			}
 
-			// Add space before word if not at start of line (but not before punctuation)
-			needsSpace := len(currentLine) > 0 && !isPunctuation(word)
+			// Add space before word if not at start of line
+			// but not before closing punctuation or after opening punctuation
+			needsSpace := len(currentLine) > 0 && !isPunctuation(word) && !lastSegmentEndsWithOpening(currentLine)
 			if needsSpace {
 				currentLine = append(currentLine, StyledSegment{
 					Text:  " ",
