@@ -9,6 +9,8 @@ import (
 	"github.com/mattn/go-runewidth"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -43,6 +45,11 @@ type MarkdownTheme struct {
 
 	// Syntax highlighting theme name for code blocks
 	SyntaxTheme string
+
+	// Table styles
+	TableBorderStyle Style
+	TableHeaderStyle Style
+	TableCellStyle   Style
 }
 
 // DefaultMarkdownTheme returns a default markdown theme with good contrast
@@ -70,6 +77,10 @@ func DefaultMarkdownTheme() MarkdownTheme {
 		HorizontalRuleStyle: NewStyle().WithForeground(ColorBrightBlack),
 
 		SyntaxTheme: "monokai",
+
+		TableBorderStyle: NewStyle().WithForeground(ColorBrightBlack),
+		TableHeaderStyle: NewStyle().WithBold(),
+		TableCellStyle:   NewStyle(),
 	}
 }
 
@@ -87,7 +98,7 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 		Theme:    DefaultMarkdownTheme(),
 		MaxWidth: 80,
 		TabWidth: 4,
-		parser:   goldmark.New(),
+		parser:   goldmark.New(goldmark.WithExtensions(extension.Table)),
 	}
 }
 
@@ -181,6 +192,9 @@ func (mr *MarkdownRenderer) renderNode(node ast.Node, ctx *renderContext) {
 
 	case *ast.ThematicBreak:
 		mr.renderHorizontalRule(ctx)
+
+	case *east.Table:
+		mr.renderTable(n, ctx)
 
 	default:
 		mr.renderChildren(node, ctx)
@@ -818,4 +832,200 @@ func (mr *MarkdownRenderer) highlightCode(code, language string) [][]StyledSegme
 	}
 
 	return result
+}
+
+// tableCellData holds the rendered content of a table cell
+type tableCellData struct {
+	segments  []StyledSegment
+	width     int
+	alignment east.Alignment
+}
+
+// tableRowData holds a row of cells
+type tableRowData struct {
+	cells    []tableCellData
+	isHeader bool
+}
+
+// renderTable renders a table with box-drawing borders
+func (mr *MarkdownRenderer) renderTable(node *east.Table, ctx *renderContext) {
+	var rows []tableRowData
+	var colWidths []int
+
+	// First pass: collect all cell content and calculate column widths
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		var row tableRowData
+
+		switch r := child.(type) {
+		case *east.TableHeader:
+			row.isHeader = true
+			for cell := r.FirstChild(); cell != nil; cell = cell.NextSibling() {
+				if tc, ok := cell.(*east.TableCell); ok {
+					segments := mr.extractInlineSegments(tc, ctx)
+					width := mr.segmentsWidth(segments)
+					row.cells = append(row.cells, tableCellData{
+						segments:  segments,
+						width:     width,
+						alignment: tc.Alignment,
+					})
+				}
+			}
+		case *east.TableRow:
+			for cell := r.FirstChild(); cell != nil; cell = cell.NextSibling() {
+				if tc, ok := cell.(*east.TableCell); ok {
+					segments := mr.extractInlineSegments(tc, ctx)
+					width := mr.segmentsWidth(segments)
+					row.cells = append(row.cells, tableCellData{
+						segments:  segments,
+						width:     width,
+						alignment: tc.Alignment,
+					})
+				}
+			}
+		}
+
+		// Update column widths
+		for i, cell := range row.cells {
+			if i >= len(colWidths) {
+				colWidths = append(colWidths, cell.width)
+			} else if cell.width > colWidths[i] {
+				colWidths[i] = cell.width
+			}
+		}
+
+		rows = append(rows, row)
+	}
+
+	if len(rows) == 0 || len(colWidths) == 0 {
+		return
+	}
+
+	// Add padding to column widths (1 space each side)
+	for i := range colWidths {
+		colWidths[i] += 2
+	}
+
+	// Render top border: ┌──────┬──────┐
+	mr.renderTableBorder(ctx, colWidths, "┌", "─", "┬", "┐")
+
+	// Render rows
+	for i, row := range rows {
+		mr.renderTableRow(ctx, row.cells, colWidths, row.isHeader)
+
+		if row.isHeader && i < len(rows)-1 {
+			// Header separator: ├──────┼──────┤
+			mr.renderTableBorder(ctx, colWidths, "├", "─", "┼", "┤")
+		}
+	}
+
+	// Render bottom border: └──────┴──────┘
+	mr.renderTableBorder(ctx, colWidths, "└", "─", "┴", "┘")
+
+	// Add blank line after table
+	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+}
+
+// segmentsWidth calculates the total display width of segments
+func (mr *MarkdownRenderer) segmentsWidth(segments []StyledSegment) int {
+	width := 0
+	for _, seg := range segments {
+		width += runewidth.StringWidth(seg.Text)
+	}
+	return width
+}
+
+// renderTableBorder renders a horizontal table border
+func (mr *MarkdownRenderer) renderTableBorder(ctx *renderContext, colWidths []int, left, horiz, mid, right string) {
+	var segments []StyledSegment
+	style := mr.Theme.TableBorderStyle
+
+	segments = append(segments, StyledSegment{Text: left, Style: style})
+	for i, w := range colWidths {
+		segments = append(segments, StyledSegment{Text: strings.Repeat(horiz, w), Style: style})
+		if i < len(colWidths)-1 {
+			segments = append(segments, StyledSegment{Text: mid, Style: style})
+		}
+	}
+	segments = append(segments, StyledSegment{Text: right, Style: style})
+
+	ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+		Segments: segments,
+		Indent:   ctx.indent,
+	})
+}
+
+// renderTableRow renders a single table row with cells
+func (mr *MarkdownRenderer) renderTableRow(ctx *renderContext, cells []tableCellData, colWidths []int, isHeader bool) {
+	var segments []StyledSegment
+	borderStyle := mr.Theme.TableBorderStyle
+
+	segments = append(segments, StyledSegment{Text: "│", Style: borderStyle})
+
+	for i, width := range colWidths {
+		var cellSegs []StyledSegment
+		var alignment east.Alignment
+
+		if i < len(cells) {
+			cellSegs = cells[i].segments
+			alignment = cells[i].alignment
+		}
+
+		// Apply header or cell style
+		baseStyle := mr.Theme.TableCellStyle
+		if isHeader {
+			baseStyle = mr.Theme.TableHeaderStyle
+		}
+
+		// Calculate content width and padding needed
+		contentWidth := mr.segmentsWidth(cellSegs)
+		padding := width - contentWidth
+
+		// Apply alignment
+		var leftPad, rightPad int
+		switch alignment {
+		case east.AlignRight:
+			leftPad = padding - 1
+			rightPad = 1
+		case east.AlignCenter:
+			leftPad = padding / 2
+			rightPad = padding - leftPad
+		default: // AlignLeft, AlignNone
+			leftPad = 1
+			rightPad = padding - 1
+		}
+
+		if leftPad < 0 {
+			leftPad = 0
+		}
+		if rightPad < 0 {
+			rightPad = 0
+		}
+
+		// Add left padding
+		if leftPad > 0 {
+			segments = append(segments, StyledSegment{Text: strings.Repeat(" ", leftPad), Style: baseStyle})
+		}
+
+		// Add cell content with merged styles
+		for _, seg := range cellSegs {
+			mergedStyle := mr.mergeStyles(baseStyle, seg.Style)
+			segments = append(segments, StyledSegment{
+				Text:      seg.Text,
+				Style:     mergedStyle,
+				Hyperlink: seg.Hyperlink,
+			})
+		}
+
+		// Add right padding
+		if rightPad > 0 {
+			segments = append(segments, StyledSegment{Text: strings.Repeat(" ", rightPad), Style: baseStyle})
+		}
+
+		segments = append(segments, StyledSegment{Text: "│", Style: borderStyle})
+	}
+
+	ctx.result.Lines = append(ctx.result.Lines, StyledLine{
+		Segments: segments,
+		Indent:   ctx.indent,
+	})
 }

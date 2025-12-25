@@ -633,6 +633,98 @@ func renderToPlainText(rendered *RenderedMarkdown) string {
 	return result.String()
 }
 
+func TestMarkdownRenderer_SimpleTable(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	markdown := `| Name | Status |
+|------|--------|
+| Alice | Active |
+| Bob | Pending |`
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	output := renderToPlainText(result)
+
+	// Check that table content is present
+	assert.Contains(t, output, "Name")
+	assert.Contains(t, output, "Status")
+	assert.Contains(t, output, "Alice")
+	assert.Contains(t, output, "Active")
+	assert.Contains(t, output, "Bob")
+	assert.Contains(t, output, "Pending")
+
+	// Check for box-drawing characters
+	assert.Contains(t, output, "┌")
+	assert.Contains(t, output, "┐")
+	assert.Contains(t, output, "└")
+	assert.Contains(t, output, "┘")
+	assert.Contains(t, output, "│")
+	assert.Contains(t, output, "─")
+}
+
+func TestMarkdownRenderer_TableAlignment(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	markdown := `| Left | Center | Right |
+|:-----|:------:|------:|
+| L | C | R |`
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Left")
+	assert.Contains(t, output, "Center")
+	assert.Contains(t, output, "Right")
+}
+
+func TestMarkdownRenderer_TableWithFormatting(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	markdown := `| Feature | Description |
+|---------|-------------|
+| **Bold** | Some text |
+| *Italic* | More text |
+| ` + "`code`" + ` | Code text |`
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Bold")
+	assert.Contains(t, output, "Italic")
+	assert.Contains(t, output, "code")
+}
+
+func TestMarkdownRenderer_TableWithOtherContent(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	markdown := `# Heading
+
+Some paragraph text.
+
+| Col1 | Col2 |
+|------|------|
+| A | B |
+
+More text after the table.`
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Heading")
+	assert.Contains(t, output, "Some paragraph text")
+	assert.Contains(t, output, "Col1")
+	assert.Contains(t, output, "Col2")
+	assert.Contains(t, output, "More text after the table")
+}
+
 func TestMarkdownRenderer_LinksWithUnderscores(t *testing.T) {
 	renderer := NewMarkdownRenderer()
 	renderer.WithMaxWidth(80)
