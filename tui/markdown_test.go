@@ -474,9 +474,9 @@ func TestMarkdownRenderer_WrapPreservesLineCount(t *testing.T) {
 		}
 	}
 
-	// Should have 2 content lines and at least 2 blank lines (one after each paragraph)
+	// Should have 2 content lines and 1 blank line between them (no trailing blank)
 	assert.Equal(t, 2, contentLines, "Should have 2 content lines for 2 paragraphs")
-	assert.GreaterOrEqual(t, blankLines, 2, "Should have blank lines after paragraphs")
+	assert.Equal(t, 1, blankLines, "Should have 1 blank line between paragraphs")
 }
 
 func TestMarkdownRenderer_SoftLineBreak(t *testing.T) {
@@ -780,6 +780,66 @@ func TestMarkdownRenderer_LinksWithUnderscores(t *testing.T) {
 				}
 			}
 			assert.True(t, found, "Expected to find hyperlink")
+		})
+	}
+}
+
+func TestMarkdownRenderer_NoTrailingEmptyLines(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	tests := []struct {
+		name     string
+		markdown string
+	}{
+		{
+			name:     "Single paragraph",
+			markdown: "This is a simple paragraph.",
+		},
+		{
+			name:     "Multiple paragraphs",
+			markdown: "First paragraph.\n\nSecond paragraph.",
+		},
+		{
+			name:     "Heading",
+			markdown: "# Heading",
+		},
+		{
+			name:     "Heading with paragraph",
+			markdown: "# Heading\n\nSome text after.",
+		},
+		{
+			name:     "Unordered list",
+			markdown: "- Item 1\n- Item 2\n- Item 3",
+		},
+		{
+			name:     "Ordered list",
+			markdown: "1. First\n2. Second\n3. Third",
+		},
+		{
+			name:     "Code block",
+			markdown: "```\ncode here\n```",
+		},
+		{
+			name:     "Blockquote",
+			markdown: "> This is a quote",
+		},
+		{
+			name:     "Mixed content",
+			markdown: "# Title\n\nSome text.\n\n- List item\n\n```\ncode\n```",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+			assert.True(t, len(result.Lines) > 0, "Expected at least one line")
+
+			// Last line should not be empty
+			lastLine := result.Lines[len(result.Lines)-1]
+			assert.True(t, len(lastLine.Segments) > 0,
+				"Last line should not be empty (have segments), got %d lines total", len(result.Lines))
 		})
 	}
 }

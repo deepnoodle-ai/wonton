@@ -152,6 +152,16 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 
 	mr.renderNode(doc, ctx)
 
+	// Trim trailing empty lines
+	for len(result.Lines) > 0 {
+		last := result.Lines[len(result.Lines)-1]
+		if len(last.Segments) == 0 {
+			result.Lines = result.Lines[:len(result.Lines)-1]
+		} else {
+			break
+		}
+	}
+
 	return result, nil
 }
 
