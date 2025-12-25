@@ -506,6 +506,10 @@ func TestMarkdownRenderer_SoftLineBreak(t *testing.T) {
 	output := renderToPlainText(result)
 	assert.Contains(t, output, "Line one")
 	assert.Contains(t, output, "Line two")
+
+	// Verify that soft break becomes a space (not concatenated without space)
+	assert.Contains(t, output, "one Line", "Soft line break should become a space")
+	assert.NotContains(t, output, "oneLine", "Text should not be concatenated without space")
 }
 
 func TestMarkdownRenderer_PunctuationAfterFormatting(t *testing.T) {

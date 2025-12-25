@@ -534,6 +534,13 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 			Text:  text,
 			Style: currentStyle,
 		})
+		// Check if this text node ends with a soft line break (becomes a space)
+		if n.SoftLineBreak() {
+			*segments = append(*segments, StyledSegment{
+				Text:  " ",
+				Style: currentStyle,
+			})
+		}
 		// Check if this text node ends with a hard line break
 		if n.HardLineBreak() {
 			*segments = append(*segments, StyledSegment{
