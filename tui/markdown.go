@@ -465,7 +465,41 @@ func (mr *MarkdownRenderer) extractInlineSegments(node ast.Node, ctx *renderCont
 
 	mr.extractInlineSegmentsRec(node, ctx, baseStyle, &segments)
 
+	// Merge adjacent segments with the same style and no hyperlinks.
+	// This fixes cases where goldmark splits text at underscore boundaries
+	// (e.g., "read_file" becomes ["read_", "file"]) even when no emphasis
+	// is applied.
+	segments = mergeAdjacentSegments(segments)
+
 	return segments
+}
+
+// mergeAdjacentSegments combines consecutive segments that have the same
+// style and no hyperlinks. This is needed because goldmark's emphasis parser
+// splits text at potential delimiter boundaries (like underscores) even when
+// no emphasis is applied.
+func mergeAdjacentSegments(segments []StyledSegment) []StyledSegment {
+	if len(segments) <= 1 {
+		return segments
+	}
+
+	result := make([]StyledSegment, 0, len(segments))
+	current := segments[0]
+
+	for i := 1; i < len(segments); i++ {
+		next := segments[i]
+
+		// Merge if same style and neither has a hyperlink
+		if current.Style == next.Style && current.Hyperlink == nil && next.Hyperlink == nil {
+			current.Text += next.Text
+		} else {
+			result = append(result, current)
+			current = next
+		}
+	}
+	result = append(result, current)
+
+	return result
 }
 
 func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderContext, currentStyle Style, segments *[]StyledSegment) {

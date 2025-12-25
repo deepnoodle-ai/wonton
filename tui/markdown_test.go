@@ -566,6 +566,54 @@ func TestMarkdownRenderer_PunctuationAfterFormatting(t *testing.T) {
 	}
 }
 
+func TestMarkdownRenderer_SnakeCase(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	tests := []struct {
+		name     string
+		markdown string
+		expected string
+	}{
+		{
+			name:     "snake_case word",
+			markdown: "The function read_file reads files",
+			expected: "The function read_file reads files",
+		},
+		{
+			name:     "multiple underscores",
+			markdown: "Use the get_user_data function",
+			expected: "Use the get_user_data function",
+		},
+		{
+			name:     "snake_case at start",
+			markdown: "read_file is a function",
+			expected: "read_file is a function",
+		},
+		{
+			name:     "snake_case at end",
+			markdown: "Call the read_file",
+			expected: "Call the read_file",
+		},
+		{
+			name:     "underscore in list",
+			markdown: "• read_file - reads files",
+			expected: "• read_file - reads files",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+
+			output := strings.TrimSpace(renderToPlainText(result))
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
 // Helper function to convert rendered markdown to plain text for testing
 func renderToPlainText(rendered *RenderedMarkdown) string {
 	var result strings.Builder
@@ -583,4 +631,63 @@ func renderToPlainText(rendered *RenderedMarkdown) string {
 	}
 
 	return result.String()
+}
+
+func TestMarkdownRenderer_LinksWithUnderscores(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	tests := []struct {
+		name     string
+		markdown string
+		expected string
+		linkText string
+		linkURL  string
+	}{
+		{
+			name:     "link text with underscore",
+			markdown: "Check [my_link](https://example.com)",
+			expected: "Check my_link",
+			linkText: "my_link",
+			linkURL:  "https://example.com",
+		},
+		{
+			name:     "link text with multiple underscores",
+			markdown: "See [get_user_data](https://api.com/get_user_data)",
+			expected: "See get_user_data",
+			linkText: "get_user_data",
+			linkURL:  "https://api.com/get_user_data",
+		},
+		{
+			name:     "URL with underscores",
+			markdown: "Check [docs](https://example.com/path_to_file)",
+			expected: "Check docs",
+			linkText: "docs",
+			linkURL:  "https://example.com/path_to_file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := renderer.Render(tt.markdown)
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+
+			output := strings.TrimSpace(renderToPlainText(result))
+			assert.Equal(t, tt.expected, output)
+
+			// Verify hyperlink was created correctly
+			found := false
+			for _, line := range result.Lines {
+				for _, seg := range line.Segments {
+					if seg.Hyperlink != nil {
+						assert.Equal(t, tt.linkText, seg.Hyperlink.Text)
+						assert.Equal(t, tt.linkURL, seg.Hyperlink.URL)
+						found = true
+					}
+				}
+			}
+			assert.True(t, found, "Expected to find hyperlink")
+		})
+	}
 }
