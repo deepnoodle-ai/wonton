@@ -406,20 +406,23 @@ func (a *app) View() tui.View {
 
 ### Application Types
 
-| Type            | Description                            |
-| --------------- | -------------------------------------- |
-| `Application`   | Main interface for declarative UI apps |
-| `EventHandler`  | Optional interface for handling events |
-| `Initializable` | Optional interface for initialization  |
-| `Destroyable`   | Optional interface for cleanup         |
-| `View`          | Core interface for UI components       |
-| `RenderContext` | Drawing context with animation frame   |
+| Type                  | Description                                  |
+| --------------------- | -------------------------------------------- |
+| `Application`         | Main interface for full-screen UI apps       |
+| `InlineApplication`   | Interface for inline apps (LiveView method)  |
+| `EventHandler`        | Optional interface for handling events       |
+| `Initializable`       | Optional interface for initialization        |
+| `Destroyable`         | Optional interface for cleanup               |
+| `View`                | Core interface for UI components             |
+| `RenderContext`       | Drawing context with animation frame         |
 
 ### Runtime Functions
 
 | Function            | Description                | Inputs                                   | Outputs         |
 | ------------------- | -------------------------- | ---------------------------------------- | --------------- |
-| `Run`               | Starts application runtime | `app Application, opts ...RuntimeOption` | `error`         |
+| `Run`               | Starts full-screen app     | `app Application, opts ...RuntimeOption` | `error`         |
+| `NewInlineApp`      | Creates inline app runner  | `opts ...InlineOption`                   | `*InlineApp`    |
+| `RunInline`         | Convenience inline runner  | `app any, opts ...InlineOption`          | `error`         |
 | `WithFPS`           | Sets frame rate            | `fps int`                                | `RuntimeOption` |
 | `WithMouseTracking` | Enables mouse support      | `enabled bool`                           | `RuntimeOption` |
 | `Quit`              | Returns quit command       | none                                     | `Cmd`           |
@@ -760,6 +763,96 @@ The `Print` family of functions renders views without:
 - Clearing the screen
 
 This is perfect for command-line tools that want rich formatting without a full TUI.
+
+## Inline Applications
+
+For applications that need both scrollback output and live updating regions, use `InlineApp`. This is ideal for chat interfaces, build tools with logs, REPLs, and similar applications.
+
+### Basic InlineApp
+
+```go
+type CounterApp struct {
+    runner *tui.InlineApp
+    count  int
+}
+
+func (app *CounterApp) LiveView() tui.View {
+    return tui.Stack(
+        tui.Divider(),
+        tui.Text(" Count: %d", app.count).Bold(),
+        tui.Text(" Press +/- to change, q to quit").Dim(),
+        tui.Divider(),
+    )
+}
+
+func (app *CounterApp) HandleEvent(event tui.Event) []tui.Cmd {
+    if key, ok := event.(tui.KeyEvent); ok {
+        switch key.Rune {
+        case '+':
+            app.count++
+            app.runner.Printf("Incremented to %d", app.count)
+        case '-':
+            app.count--
+            app.runner.Printf("Decremented to %d", app.count)
+        case 'q':
+            return []tui.Cmd{tui.Quit()}
+        }
+    }
+    return nil
+}
+
+func main() {
+    app := &CounterApp{}
+    app.runner = tui.NewInlineApp()
+    if err := app.runner.Run(app); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+### InlineApp vs Run
+
+| Feature | `tui.Run()` | `tui.InlineApp` |
+|---------|-------------|-----------------|
+| Screen mode | Alternate (full screen) | Inline (coexists with scrollback) |
+| Interface | `View()` | `LiveView()` |
+| Output | View-only | `Print()` to scrollback + live region |
+| Use case | Full TUI applications | Chat, logs, REPLs |
+| Terminal history | Cleared on exit | Preserved |
+
+### InlineApp Options
+
+```go
+runner := tui.NewInlineApp(
+    tui.WithInlineWidth(80),              // Set rendering width
+    tui.WithInlineFPS(30),                // Enable tick events for animations
+    tui.WithInlineMouseTracking(true),    // Enable mouse events
+    tui.WithInlineBracketedPaste(true),   // Enable bracketed paste mode
+    tui.WithInlineKittyKeyboard(true),    // Enable Kitty keyboard protocol
+    tui.WithInlinePasteTabWidth(4),       // Convert tabs in pasted text
+)
+```
+
+### InlineApp Architecture
+
+InlineApp uses the same three-goroutine architecture as `Run()`:
+
+1. **Event loop**: Processes events sequentially, calls `HandleEvent` and `LiveView`
+2. **Input reader**: Reads from stdin, sends key/mouse events
+3. **Command executor**: Runs async `Cmd` functions
+
+This design ensures:
+- No race conditions in application code
+- `HandleEvent` and `LiveView` are never called concurrently
+- No locks needed in your application
+
+### Rendering Optimization
+
+InlineApp minimizes flicker using:
+
+- **Line-level diffing**: Only changed lines are redrawn
+- **Synchronized output mode**: Terminal buffers changes and renders atomically (DEC 2026)
+- **Atomic Print**: Scrollback output and live region re-render happen as one operation
 
 ## Related Packages
 
