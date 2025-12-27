@@ -67,8 +67,8 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 		return handled
 	}
 
-	// Handle Enter for submit (but not in multiline mode with Shift)
-	if event.Key == KeyEnter && !event.Shift && !s.multiline {
+	// Handle Enter for submit (unless Shift is pressed for multiline newlines)
+	if event.Key == KeyEnter && !event.Shift {
 		if s.onSubmit != nil {
 			s.onSubmit(s.input.Value())
 		}
