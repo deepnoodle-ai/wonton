@@ -96,7 +96,7 @@ func (app *App) stepView() tui.View {
 		tui.Group(
 			tui.Text(" %s", progress).Dim(),
 			tui.Text("  "),
-			tui.Text(progressBar).Fg(tui.ColorCyan),
+			tui.Text("%s", progressBar).Fg(tui.ColorCyan),
 		),
 		tui.Text(""),
 		tui.Text(" %s", currentStep.Title).Bold(),
