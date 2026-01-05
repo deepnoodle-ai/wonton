@@ -152,10 +152,10 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 
 	mr.renderNode(doc, ctx)
 
-	// Trim trailing empty lines
+	// Trim trailing empty lines (including lines with only whitespace)
 	for len(result.Lines) > 0 {
 		last := result.Lines[len(result.Lines)-1]
-		if len(last.Segments) == 0 {
+		if isBlankLine(last) {
 			result.Lines = result.Lines[:len(result.Lines)-1]
 		} else {
 			break
@@ -163,6 +163,19 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 	}
 
 	return result, nil
+}
+
+// isBlankLine returns true if the line is empty or contains only whitespace
+func isBlankLine(line StyledLine) bool {
+	if len(line.Segments) == 0 {
+		return true
+	}
+	for _, seg := range line.Segments {
+		if strings.TrimSpace(seg.Text) != "" {
+			return false // Found non-whitespace content, not blank
+		}
+	}
+	return true // All segments are whitespace-only
 }
 
 type renderContext struct {

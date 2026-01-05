@@ -993,3 +993,248 @@ func TestMarkdownRenderer_NoTrailingEmptyLines(t *testing.T) {
 		})
 	}
 }
+
+func TestIsBlankLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     StyledLine
+		expected bool
+	}{
+		{
+			name:     "nil segments",
+			line:     StyledLine{Segments: nil},
+			expected: true,
+		},
+		{
+			name:     "empty segments slice",
+			line:     StyledLine{Segments: []StyledSegment{}},
+			expected: true,
+		},
+		{
+			name:     "single space segment",
+			line:     StyledLine{Segments: []StyledSegment{{Text: " "}}},
+			expected: true,
+		},
+		{
+			name:     "multiple whitespace segments",
+			line:     StyledLine{Segments: []StyledSegment{{Text: " "}, {Text: "  "}, {Text: "\t"}}},
+			expected: true,
+		},
+		{
+			name:     "empty string segment",
+			line:     StyledLine{Segments: []StyledSegment{{Text: ""}}},
+			expected: true,
+		},
+		{
+			name:     "content segment",
+			line:     StyledLine{Segments: []StyledSegment{{Text: "hello"}}},
+			expected: false,
+		},
+		{
+			name:     "content with surrounding whitespace",
+			line:     StyledLine{Segments: []StyledSegment{{Text: " hello "}}},
+			expected: false,
+		},
+		{
+			name:     "mixed whitespace and content",
+			line:     StyledLine{Segments: []StyledSegment{{Text: " "}, {Text: "world"}}},
+			expected: false,
+		},
+		{
+			name:     "line with only indent (no segments)",
+			line:     StyledLine{Indent: 4, Segments: nil},
+			expected: true,
+		},
+		{
+			name:     "line with indent and content",
+			line:     StyledLine{Indent: 4, Segments: []StyledSegment{{Text: "indented"}}},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isBlankLine(tt.line)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestMarkdownRenderer_TrailingBlankLineTrimming(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	t.Run("paragraph followed by list has no trailing blank", func(t *testing.T) {
+		// This is a common pattern that was causing extra blank lines
+		markdown := "Here is the content:\n\n- Item 1\n- Item 2\n- Item 3"
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		// Verify last line has content (not blank)
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+
+		// Verify internal blank line exists (between paragraph and list)
+		hasInternalBlank := false
+		for i := 0; i < len(result.Lines)-1; i++ {
+			if isBlankLine(result.Lines[i]) {
+				hasInternalBlank = true
+				break
+			}
+		}
+		assert.True(t, hasInternalBlank, "Should have internal blank line for paragraph spacing")
+	})
+
+	t.Run("list followed by paragraph has no trailing blank", func(t *testing.T) {
+		markdown := "- Item 1\n- Item 2\n\nFollowing paragraph."
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+	})
+
+	t.Run("multiple paragraphs preserve internal blanks but trim trailing", func(t *testing.T) {
+		markdown := "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		// Count blank lines
+		blankCount := 0
+		contentCount := 0
+		for _, line := range result.Lines {
+			if isBlankLine(line) {
+				blankCount++
+			} else {
+				contentCount++
+			}
+		}
+
+		// Should have 3 content lines and 2 internal blank lines
+		assert.Equal(t, 3, contentCount, "Should have 3 content lines")
+		assert.Equal(t, 2, blankCount, "Should have 2 internal blank lines (between paragraphs)")
+
+		// Last line should not be blank
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+	})
+
+	t.Run("complex document with list ending has no trailing blank", func(t *testing.T) {
+		// Simulates typical AI assistant output ending with a list
+		markdown := `Here is what I found:
+
+The file contains:
+
+- Configuration settings
+- API endpoints
+- Database schemas
+
+Would you like more details?`
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+
+		// Last line should contain the question
+		output := renderToPlainText(result)
+		lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+		lastTextLine := lines[len(lines)-1]
+		assert.Contains(t, lastTextLine, "Would you like more details")
+	})
+
+	t.Run("code block at end has no trailing blank", func(t *testing.T) {
+		markdown := "Here is some code:\n\n```go\nfunc main() {}\n```"
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+	})
+
+	t.Run("blockquote at end has no trailing blank", func(t *testing.T) {
+		markdown := "Someone said:\n\n> This is a famous quote"
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+	})
+
+	t.Run("horizontal rule at end has no trailing blank", func(t *testing.T) {
+		markdown := "Some content\n\n---"
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		lastLine := result.Lines[len(result.Lines)-1]
+		assert.False(t, isBlankLine(lastLine), "Last line should not be blank")
+	})
+}
+
+func TestMarkdownRenderer_InternalSpacingPreserved(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	t.Run("blank line between paragraphs is preserved", func(t *testing.T) {
+		markdown := "First paragraph.\n\nSecond paragraph."
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+
+		// Should have exactly: content, blank, content (3 lines)
+		// The blank line between paragraphs should be preserved
+		assert.Equal(t, 3, len(result.Lines), "Should have 3 lines: para, blank, para")
+
+		assert.False(t, isBlankLine(result.Lines[0]), "First line should have content")
+		assert.True(t, isBlankLine(result.Lines[1]), "Second line should be blank (spacing)")
+		assert.False(t, isBlankLine(result.Lines[2]), "Third line should have content")
+	})
+
+	t.Run("blank line between paragraph and list is preserved", func(t *testing.T) {
+		markdown := "Introduction:\n\n- Item 1\n- Item 2"
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+
+		// Find the blank line
+		foundBlank := false
+		for i := 0; i < len(result.Lines)-1; i++ {
+			if isBlankLine(result.Lines[i]) {
+				foundBlank = true
+				// Verify next line has content (list item)
+				assert.False(t, isBlankLine(result.Lines[i+1]),
+					"Line after internal blank should have content")
+				break
+			}
+		}
+		assert.True(t, foundBlank, "Should have blank line between paragraph and list")
+	})
+
+	t.Run("blank line between list and paragraph is preserved", func(t *testing.T) {
+		markdown := "- Item 1\n- Item 2\n\nConclusion."
+
+		result, err := renderer.Render(markdown)
+		assert.NoError(t, err)
+
+		// Count blanks - should be exactly 1 (between list and conclusion)
+		blankCount := 0
+		for _, line := range result.Lines {
+			if isBlankLine(line) {
+				blankCount++
+			}
+		}
+		assert.Equal(t, 1, blankCount, "Should have exactly 1 blank line between list and paragraph")
+	})
+}
