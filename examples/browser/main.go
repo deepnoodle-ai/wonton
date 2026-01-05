@@ -694,10 +694,10 @@ func (app *BrowserApp) buildHeader() tui.View {
 		navText = fmt.Sprintf(" [%d/%d] ", app.historyIndex+1, len(app.history))
 	}
 
-	// Loading indicator
+	// Status indicator
 	var statusIndicator tui.View
 	if app.loading {
-		statusIndicator = tui.Text(" Loading... ").Animate(tui.Pulse(tui.NewRGB(255, 200, 100), 8))
+		statusIndicator = tui.Text(" Loading... ").FgRGB(255, 200, 100)
 	} else if app.errorMsg != "" {
 		statusIndicator = tui.Text(" Error ").FgRGB(255, 100, 100)
 	} else {
@@ -798,7 +798,7 @@ func (app *BrowserApp) buildMetadataView() tui.View {
 		maxValLen = 30
 	}
 
-	// Title (special - bold and prominent with gradient)
+	// Title
 	title := app.metadata.Title
 	if title == "" {
 		title = "(untitled)"
@@ -806,11 +806,7 @@ func (app *BrowserApp) buildMetadataView() tui.View {
 	if len(title) > maxValLen {
 		title = title[:maxValLen-3] + "..."
 	}
-	rows = append(rows, tui.Text(" %s", title).Bold().Animate(tui.Wave(6,
-		tui.NewRGB(180, 200, 255),
-		tui.NewRGB(255, 220, 180),
-		tui.NewRGB(180, 200, 255),
-	)))
+	rows = append(rows, tui.Text(" %s", title).Bold().FgRGB(220, 230, 255))
 
 	// Site name
 	if app.metadata.SiteName != "" {
@@ -863,7 +859,7 @@ func (app *BrowserApp) buildContentView() tui.View {
 	if app.loading {
 		content = tui.Stack(
 			tui.Spacer().MinHeight(2),
-			tui.Text("Loading...").Animate(tui.Pulse(tui.NewRGB(255, 200, 100), 10)),
+			tui.Text("Loading...").FgRGB(255, 200, 100),
 		)
 	} else if app.errorMsg != "" {
 		content = tui.Stack(

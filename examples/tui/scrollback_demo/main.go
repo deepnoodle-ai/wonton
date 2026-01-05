@@ -85,7 +85,7 @@ func main() {
 	}
 
 	// Create the live printer for the dynamic bottom region
-	live := tui.NewLivePrinter(tui.WithWidth(80))
+	live := tui.NewLivePrinter(tui.PrintConfig{Width: 80})
 	defer live.Stop()
 
 	// Render initial state
@@ -155,7 +155,7 @@ func printHeader() {
 				tui.Text("  Ctrl+L   - Clear scrollback"),
 			).Padding(1),
 		).Border(&tui.RoundedBorder).BorderFg(tui.ColorBrightBlack),
-		tui.WithWidth(60),
+		tui.PrintConfig{Width: 60},
 	)
 	fmt.Println()
 }
@@ -297,7 +297,7 @@ func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 		)
 	}
 
-	tui.Print(view, tui.WithWidth(80))
+	tui.Print(view, tui.PrintConfig{Width: 80})
 	fmt.Println() // Newline after each message
 }
 

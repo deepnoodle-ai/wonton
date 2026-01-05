@@ -51,7 +51,7 @@ func (app *CounterApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 func main() {
 	app := &CounterApp{}
-	app.runner = tui.NewInlineApp(tui.WithInlineWidth(60))
+	app.runner = tui.NewInlineApp(tui.InlineAppConfig{Width: 60})
 
 	if err := app.runner.Run(app); err != nil {
 		log.Fatal(err)

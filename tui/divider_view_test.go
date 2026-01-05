@@ -189,7 +189,7 @@ func TestDivider_Render_SimpleLine(t *testing.T) {
 	var buf strings.Builder
 	d := Divider()
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -201,7 +201,7 @@ func TestDivider_Render_CustomChar(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Char('═')
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -212,7 +212,7 @@ func TestDivider_Render_WithTitle(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Title("Section")
 
-	err := Print(d, WithWidth(40), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -225,7 +225,7 @@ func TestDivider_Render_WithTitle_NarrowWidth(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Title("Very Long Title That Won't Fit")
 
-	err := Print(d, WithWidth(10), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 10, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -237,7 +237,7 @@ func TestDivider_Render_Colored(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Fg(ColorRed)
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -249,7 +249,7 @@ func TestDivider_Render_Bold(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Bold()
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -261,7 +261,7 @@ func TestDivider_Render_Dim(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Dim()
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -273,7 +273,7 @@ func TestDivider_Render_ZeroWidth(t *testing.T) {
 	var buf strings.Builder
 	d := Divider()
 
-	err := Print(d, WithWidth(0), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 0, Output: &buf})
 	assert.NoError(t, err)
 	// Should not panic with zero width
 }
@@ -288,7 +288,7 @@ func TestDivider_Render_InStack(t *testing.T) {
 		Text("Footer"),
 	)
 
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -303,7 +303,7 @@ func TestDivider_Render_WithTitleAndCustomChar(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Char('═').Title("Section")
 
-	err := Print(d, WithWidth(40), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -316,7 +316,7 @@ func TestDivider_Render_Styled(t *testing.T) {
 	style := NewStyle().WithForeground(ColorMagenta).WithBold()
 	d := Divider().Style(style).Title("Styled")
 
-	err := Print(d, WithWidth(40), WithOutput(&buf))
+	err := Print(d, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -338,7 +338,7 @@ func TestDivider_MultipleStyles(t *testing.T) {
 		Divider().Fg(ColorBlue).Title("Blue"),
 	)
 
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()

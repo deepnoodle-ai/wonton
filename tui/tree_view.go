@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/mattn/go-runewidth"
@@ -73,6 +74,7 @@ func (n *TreeNode) CollapseAll() {
 
 // treeView displays a tree of nodes with expand/collapse support.
 type treeView struct {
+	id           string
 	root         *TreeNode
 	selected     *TreeNode
 	scrollY      *int
@@ -85,6 +87,8 @@ type treeView struct {
 	collapsedChr string
 	leafChar     string
 	branchChars  TreeBranchChars
+	bounds       image.Rectangle
+	focused      bool
 }
 
 // TreeBranchChars defines the characters used for drawing tree branches.
@@ -117,6 +121,9 @@ func ASCIITreeBranchChars() TreeBranchChars {
 
 // Tree creates a tree view with the given root node.
 //
+// The component handles keyboard navigation (arrow keys) and expand/collapse (Enter/Space)
+// automatically when focused. Use Tab to focus the tree.
+//
 // Example:
 //
 //	root := tui.NewTreeNode("Root").SetExpanded(true).AddChildren(
@@ -129,7 +136,10 @@ func ASCIITreeBranchChars() TreeBranchChars {
 //	    fmt.Println("Selected:", node.Label)
 //	})
 func Tree(root *TreeNode) *treeView {
+	// Generate ID from root pointer address
+	id := fmt.Sprintf("tree_%p", root)
 	return &treeView{
+		id:           id,
 		root:         root,
 		expandedChar: "▼",
 		collapsedChr: "▶",
@@ -150,6 +160,130 @@ func (t *treeView) Selected(node *TreeNode) *treeView {
 func (t *treeView) OnSelect(fn func(*TreeNode)) *treeView {
 	t.onSelect = fn
 	return t
+}
+
+// ID sets a custom ID for this tree (for focus management).
+func (t *treeView) ID(id string) *treeView {
+	t.id = id
+	return t
+}
+
+// Focusable interface implementation
+func (t *treeView) FocusID() string {
+	return t.id
+}
+
+func (t *treeView) IsFocused() bool {
+	return t.focused
+}
+
+func (t *treeView) SetFocused(focused bool) {
+	t.focused = focused
+}
+
+func (t *treeView) FocusBounds() image.Rectangle {
+	return t.bounds
+}
+
+func (t *treeView) HandleKeyEvent(event KeyEvent) bool {
+	if t.root == nil {
+		return false
+	}
+
+	// Get all visible (flattened) nodes
+	visibleNodes := t.flattenVisibleNodes(t.root, 0)
+	if len(visibleNodes) == 0 {
+		return false
+	}
+
+	// Find current selection index
+	currentIdx := -1
+	for i, node := range visibleNodes {
+		if node == t.selected {
+			currentIdx = i
+			break
+		}
+	}
+
+	// If nothing selected, select first node
+	if currentIdx == -1 {
+		t.selected = visibleNodes[0]
+		currentIdx = 0
+	}
+
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if currentIdx > 0 {
+			t.selected = visibleNodes[currentIdx-1]
+			t.adjustScroll(currentIdx - 1)
+			return true
+		}
+	case KeyArrowDown:
+		if currentIdx < len(visibleNodes)-1 {
+			t.selected = visibleNodes[currentIdx+1]
+			t.adjustScroll(currentIdx + 1)
+			return true
+		}
+	case KeyEnter:
+		// Toggle expand/collapse on Enter
+		if t.selected != nil && !t.selected.IsLeaf() {
+			t.selected.Expanded = !t.selected.Expanded
+			return true
+		}
+	}
+
+	// Handle space to select/toggle
+	if event.Rune == ' ' {
+		if t.selected != nil {
+			if !t.selected.IsLeaf() {
+				t.selected.Expanded = !t.selected.Expanded
+			}
+			if t.onSelect != nil {
+				t.onSelect(t.selected)
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
+// adjustScroll adjusts scroll position to keep selected item visible
+func (t *treeView) adjustScroll(selectedIdx int) {
+	if t.scrollY == nil {
+		return
+	}
+
+	visibleHeight := t.height
+	if visibleHeight <= 0 {
+		visibleHeight = 10 // default
+	}
+
+	// Scroll down if needed
+	if selectedIdx-*t.scrollY >= visibleHeight {
+		*t.scrollY = selectedIdx - visibleHeight + 1
+	}
+
+	// Scroll up if needed
+	if selectedIdx < *t.scrollY {
+		*t.scrollY = selectedIdx
+	}
+}
+
+// flattenVisibleNodes returns all visible nodes in traversal order
+func (t *treeView) flattenVisibleNodes(node *TreeNode, depth int) []*TreeNode {
+	if node == nil {
+		return nil
+	}
+
+	result := []*TreeNode{node}
+	if node.Expanded {
+		for _, child := range node.Children {
+			result = append(result, t.flattenVisibleNodes(child, depth+1)...)
+		}
+	}
+	return result
 }
 
 // ScrollY sets the scroll position pointer.
@@ -302,6 +436,12 @@ func (t *treeView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || t.root == nil {
 		return
+	}
+
+	// Register with focus manager for keyboard input (if available)
+	t.bounds = ctx.AbsoluteBounds()
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(t)
 	}
 
 	nodes := t.flatten()

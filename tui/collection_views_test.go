@@ -51,7 +51,7 @@ func TestForEach_WithIndex(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(20), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -81,7 +81,7 @@ func TestForEach_SeparatorRendering(t *testing.T) {
 	}).Separator(Text("-"))
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(20), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -124,7 +124,7 @@ func TestForEach_Render(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(20), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -148,7 +148,7 @@ func TestForEach_ComplexViews(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -179,7 +179,7 @@ func TestForEach_StructItems(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -232,7 +232,7 @@ func TestHForEach_WithIndex(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(20), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 20, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -262,7 +262,7 @@ func TestHForEach_SeparatorRendering(t *testing.T) {
 	}).Separator(Text(" | "))
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -306,7 +306,7 @@ func TestHForEach_Render(t *testing.T) {
 	})
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -323,7 +323,7 @@ func TestHForEach_TabItems(t *testing.T) {
 	}).Gap(1)
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(60), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 60, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -340,7 +340,7 @@ func TestHForEach_ComplexViews(t *testing.T) {
 	}).Separator(Text(" "))
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()

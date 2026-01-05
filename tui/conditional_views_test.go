@@ -33,7 +33,7 @@ func TestIf_RenderTrue(t *testing.T) {
 	var buf strings.Builder
 	view := If(true, Text("Visible"))
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -44,7 +44,7 @@ func TestIf_RenderFalse(t *testing.T) {
 	var buf strings.Builder
 	view := If(false, Text("Hidden"))
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -68,7 +68,7 @@ func TestIf_WithStyledView(t *testing.T) {
 	var buf strings.Builder
 	view := If(true, Text("Warning").Fg(ColorYellow).Bold())
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -111,7 +111,7 @@ func TestIfElse_RenderTrue(t *testing.T) {
 	var buf strings.Builder
 	view := IfElse(true, Text("Logged in"), Text("Not logged in"))
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -123,7 +123,7 @@ func TestIfElse_RenderFalse(t *testing.T) {
 	var buf strings.Builder
 	view := IfElse(false, Text("Logged in"), Text("Not logged in"))
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -174,7 +174,7 @@ func TestIfElse_InStack(t *testing.T) {
 	)
 
 	var buf strings.Builder
-	err := Print(stack, WithWidth(80), WithOutput(&buf))
+	err := Print(stack, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -298,7 +298,7 @@ func TestSwitch_RenderMatch(t *testing.T) {
 		Default[string](Text("Unknown")),
 	)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -316,7 +316,7 @@ func TestSwitch_RenderNoMatchWithDefault(t *testing.T) {
 		Default[string](Text("Unknown state")),
 	)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -332,7 +332,7 @@ func TestSwitch_RenderNoMatchNoDefault(t *testing.T) {
 		Case("error", Text("Error!")),
 	)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -394,7 +394,7 @@ func TestSwitch_InStack(t *testing.T) {
 	)
 
 	var buf strings.Builder
-	err := Print(stack, WithWidth(80), WithOutput(&buf))
+	err := Print(stack, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -446,7 +446,7 @@ func TestConditionals_Combined(t *testing.T) {
 	)
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -470,7 +470,7 @@ func TestConditionals_Nested(t *testing.T) {
 	))
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -484,7 +484,7 @@ func TestConditionals_WithStyling(t *testing.T) {
 	view := If(hasError, Text("Warning!").Fg(ColorRed).Bold())
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()

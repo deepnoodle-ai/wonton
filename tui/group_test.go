@@ -190,7 +190,7 @@ func TestGroup_RenderWithGap(t *testing.T) {
 		Text("Right"),
 	).Gap(3)
 
-	err := Print(g, WithWidth(80), WithHeight(5), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 80, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -205,7 +205,7 @@ func TestGroup_RenderWithAlignment(t *testing.T) {
 		Stack(Text("Tall1"), Text("Tall2")),
 	).Align(AlignCenter)
 
-	err := Print(g, WithWidth(80), WithHeight(5), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 80, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -221,7 +221,7 @@ func TestGroup_RenderWithFlex(t *testing.T) {
 		Text("Right"),
 	)
 
-	err := Print(g, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -235,7 +235,7 @@ func TestGroup_EmptyRender(t *testing.T) {
 	var buf strings.Builder
 	g := Group()
 
-	err := Print(g, WithWidth(80), WithHeight(10), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 80, Height: 10, Output: &buf})
 	assert.NoError(t, err)
 	// Should not error on empty group
 }
@@ -263,7 +263,7 @@ func TestGroup_ClippingOverflow(t *testing.T) {
 	)
 
 	// Width constraint smaller than content
-	err := Print(g, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 10, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 	// Should not error when clipping
 }
@@ -272,7 +272,7 @@ func TestGroup_SingleChildClipping(t *testing.T) {
 	var buf strings.Builder
 	g := Group(Text("VeryLongText"))
 
-	err := Print(g, WithWidth(5), WithHeight(1), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 5, Height: 1, Output: &buf})
 	assert.NoError(t, err)
 	// Should clip content gracefully
 }
@@ -423,6 +423,24 @@ func TestGroup_WideChildrenWithConstraint(t *testing.T) {
 	assert.Equal(t, 30, w)
 }
 
+func TestGroup_RenderScalesChildrenProportionally(t *testing.T) {
+	// Two fixed-width children that together exceed available space
+	g := Group(
+		Text("AAAAAAAAAA"),           // 10 chars
+		Text("BBBBBBBBBBBBBBBBBBBB"), // 20 chars
+	)
+
+	// Render into a 15-wide frame (children want 30)
+	screen := SprintScreen(g, PrintConfig{Width: 15, Height: 1})
+	output := screen.Text()
+
+	// Both children should be visible and scaled proportionally
+	// Child 1 (10 chars) should get 10*15/30 = 5 chars
+	// Child 2 (20 chars) should get 15-5 = 10 chars
+	assert.True(t, strings.Contains(output, "AAAAA"), "First child should be scaled to ~5 chars")
+	assert.True(t, strings.Contains(output, "BBBBBBBBBB"), "Second child should get remaining space")
+}
+
 func TestGroup_NoMaxConstraints(t *testing.T) {
 	g := Group(
 		Text("Test"),
@@ -478,7 +496,7 @@ func TestGroup_RenderZeroSize(t *testing.T) {
 	g := Group(Text("A"))
 
 	// Zero width should not render
-	err := Print(g, WithWidth(0), WithHeight(10), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 0, Height: 10, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -487,7 +505,7 @@ func TestGroup_RenderZeroHeight(t *testing.T) {
 	g := Group(Text("A"))
 
 	// Zero height should not render
-	err := Print(g, WithWidth(10), WithHeight(0), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 10, Height: 0, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -499,7 +517,7 @@ func TestGroup_Render_Basic(t *testing.T) {
 		Text("Middle"),
 		Text("Right"),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := SprintScreen(g, PrintConfig{Width: 30})
 
 	// All text should appear on the same row
 	termtest.AssertRowContains(t, screen, 0, "Left")
@@ -512,7 +530,7 @@ func TestGroup_Render_WithGap(t *testing.T) {
 		Text("A"),
 		Text("B"),
 	).Gap(3)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	row := screen.Row(0)
 	// "A" followed by 3 spaces, then "B"
@@ -528,7 +546,7 @@ func TestGroup_Render_WithSpacer(t *testing.T) {
 		Spacer(),
 		Text("Right"),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := SprintScreen(g, PrintConfig{Width: 30})
 
 	row := screen.Row(0)
 	// Left and Right should be at opposite ends
@@ -543,7 +561,7 @@ func TestGroup_Render_VaryingHeights(t *testing.T) {
 		Text("Short"),
 		Stack(Text("Tall1"), Text("Tall2")),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := SprintScreen(g, PrintConfig{Width: 30})
 
 	// Both columns should be visible
 	termtest.AssertRowContains(t, screen, 0, "Short")
@@ -557,7 +575,7 @@ func TestGroup_Render_LeftAlign(t *testing.T) {
 		Text("A"),
 		Stack(Text("1"), Text("2"), Text("3")),
 	).Align(AlignLeft)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	// "A" should be at the top (row 0)
 	termtest.AssertRowContains(t, screen, 0, "A")
@@ -570,7 +588,7 @@ func TestGroup_Render_CenterAlign(t *testing.T) {
 		Text("X"),
 		Stack(Text("A"), Text("B"), Text("C")),
 	).Align(AlignCenter)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	// "X" should be vertically centered (row 1 for 3-row tall content)
 	termtest.AssertRowContains(t, screen, 1, "X")
@@ -582,7 +600,7 @@ func TestGroup_Render_RightAlign(t *testing.T) {
 		Text("Z"),
 		Stack(Text("A"), Text("B"), Text("C")),
 	).Align(AlignRight)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	// "Z" should be at the bottom (row 2 for 3-row tall content)
 	termtest.AssertRowContains(t, screen, 2, "Z")
@@ -593,7 +611,7 @@ func TestGroup_Render_WithStyles(t *testing.T) {
 		Text("Bold").Bold(),
 		Text("Normal"),
 	)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	// Check content is present
 	termtest.AssertRowContains(t, screen, 0, "Bold")
@@ -610,7 +628,7 @@ func TestGroup_Render_Nested(t *testing.T) {
 		Group(Text("A"), Text("B")),
 		Text("]"),
 	)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := SprintScreen(g, PrintConfig{Width: 20})
 
 	row := screen.Row(0)
 	assert.True(t, strings.Contains(row, "["))

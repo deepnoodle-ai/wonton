@@ -44,7 +44,7 @@ func TestFlexConstraints_CanvasInNestedContainer(t *testing.T) {
 	)
 
 	// Render with constraints to trigger measurement
-	screen := SprintScreen(view, WithWidth(80), WithHeight(24))
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 24})
 	_ = screen
 
 	// BUG: Canvas gets 0 height because Group has flex()=0, so it's
@@ -77,7 +77,7 @@ func TestFlexConstraints_NestedFlexContainers(t *testing.T) {
 	).Flex(1)
 
 	// Render with constraints
-	screen := SprintScreen(view, WithWidth(40), WithHeight(20))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 20})
 	_ = screen // trigger render
 
 	// BUG: Canvas currently gets 0 height because Group is measured unconstrained
@@ -188,7 +188,7 @@ func TestFlexConstraints_MixedNestedLayout_Bug(t *testing.T) {
 		Text("Footer"),          // fixed, 1 line
 	)
 
-	screen := SprintScreen(view, WithWidth(80), WithHeight(24))
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 24})
 	_ = screen
 
 	// Header and footer take 2 lines, leaving 22 for the Group
@@ -225,7 +225,7 @@ func TestFlexConstraints_MixedNestedLayout_Workaround(t *testing.T) {
 		Text("Footer"),                  // fixed, 1 line
 	)
 
-	screen := SprintScreen(view, WithWidth(80), WithHeight(24))
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 24})
 	_ = screen
 
 	// Header and footer take 2 lines, leaving 22 for the Group
@@ -319,7 +319,7 @@ func TestFlexConstraints_CanvasRenders(t *testing.T) {
 	)
 
 	// Trigger rendering
-	screen := SprintScreen(view, WithWidth(20), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 10})
 	_ = screen
 
 	// Core behavior: Canvas should now render because Group inherits flex from Canvas
@@ -351,7 +351,7 @@ func TestFlexConstraints_UserFeedbackScenario(t *testing.T) {
 		Spacer().Flex(3),            // 30% of space (placeholder)
 	)
 
-	screen := SprintScreen(view, WithWidth(80), WithHeight(100))
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 100})
 	_ = screen
 
 	// Stack with Flex(7) should get 70 lines (70% of 100)

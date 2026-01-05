@@ -1238,3 +1238,64 @@ func TestMarkdownRenderer_InternalSpacingPreserved(t *testing.T) {
 		assert.Equal(t, 1, blankCount, "Should have exactly 1 blank line between list and paragraph")
 	})
 }
+
+// TestMarkdownRenderer_WrappedLinkSegmentText verifies that when a hyperlink
+// wraps across multiple lines, each segment contains the correct text (the
+// individual word) rather than the full hyperlink text. This prevents the bug
+// where "Get in Touch" would render as "Get Ge Get in Touch" when the link
+// text was split across lines.
+func TestMarkdownRenderer_WrappedLinkSegmentText(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(15) // Force wrapping of "Get in Touch"
+
+	markdown := "[Get in Touch](https://example.com)"
+
+	result, err := renderer.Render(markdown)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Collect all hyperlink segments
+	var linkSegments []StyledSegment
+	for _, line := range result.Lines {
+		for _, seg := range line.Segments {
+			if seg.Hyperlink != nil {
+				linkSegments = append(linkSegments, seg)
+			}
+		}
+	}
+
+	// Should have multiple segments due to wrapping
+	assert.GreaterOrEqual(t, len(linkSegments), 2, "Link should wrap into multiple segments")
+
+	// Each segment's Text should match an individual word, not the full link text
+	for _, seg := range linkSegments {
+		// The segment text should NOT be the full hyperlink text
+		// (unless it's a single-word link that didn't need wrapping)
+		trimmedSegText := strings.TrimSpace(seg.Text)
+		if trimmedSegText != "" {
+			// Segment text should be a single word from the link
+			assert.NotContains(t, trimmedSegText, " ",
+				"Segment text should be a single word, not the full link text")
+			// And should NOT equal the full hyperlink text if it has spaces
+			if strings.Contains(seg.Hyperlink.Text, " ") {
+				assert.NotEqual(t, seg.Hyperlink.Text, trimmedSegText,
+					"Segment text should not be the full hyperlink text")
+			}
+		}
+	}
+
+	// Verify all segments still point to the same URL
+	for _, seg := range linkSegments {
+		assert.Equal(t, "https://example.com", seg.Hyperlink.URL)
+	}
+
+	// Verify the combined text of all segments equals the original link text
+	var combinedText strings.Builder
+	for i, seg := range linkSegments {
+		if i > 0 && !strings.HasPrefix(seg.Text, " ") {
+			combinedText.WriteString(" ")
+		}
+		combinedText.WriteString(strings.TrimSpace(seg.Text))
+	}
+	assert.Equal(t, "Get in Touch", combinedText.String())
+}

@@ -115,109 +115,35 @@ type InlineApplication interface {
 	LiveView() View
 }
 
-// InlineOption configures an InlineApp.
-type InlineOption func(*inlineConfig)
-
-// inlineConfig holds configuration for InlineApp.
-type inlineConfig struct {
-	width          int
-	output         io.Writer
-	input          io.Reader
-	fps            int
-	mouseTracking  bool
-	bracketedPaste bool
-	pasteTabWidth  int
-	kittyKeyboard  bool
+// InlineAppConfig configures an InlineApp.
+// All fields are optional with sensible zero-value defaults.
+type InlineAppConfig struct {
+	Width          int       // 0 = auto (terminal width or 80). Rendering width.
+	Output         io.Writer // nil = os.Stdout. Where to write output.
+	Input          io.Reader // nil = os.Stdin. Where to read input.
+	FPS            int       // 0 = no ticks. Frames per second for TickEvents.
+	MouseTracking  bool      // Enable mouse event tracking.
+	BracketedPaste bool      // Enable bracketed paste mode.
+	PasteTabWidth  int       // 0 = preserve tabs. Convert tabs to N spaces in pastes.
+	KittyKeyboard  bool      // Enable Kitty keyboard protocol.
 }
 
-func defaultInlineConfig() inlineConfig {
-	// Try to get terminal width, fall back to 80
-	width := 80
-	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-		if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-			width = w
+func (c InlineAppConfig) withDefaults() InlineAppConfig {
+	if c.Width == 0 {
+		c.Width = 80
+		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
+			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+				c.Width = w
+			}
 		}
 	}
-	return inlineConfig{
-		width:          width,
-		output:         os.Stdout,
-		input:          os.Stdin,
-		fps:            0, // No ticks by default (different from Run which defaults to 30)
-		mouseTracking:  false,
-		bracketedPaste: false,
-		pasteTabWidth:  0,
-		kittyKeyboard:  false,
+	if c.Output == nil {
+		c.Output = os.Stdout
 	}
-}
-
-// WithInlineWidth sets the rendering width. Default is terminal width or 80.
-func WithInlineWidth(width int) InlineOption {
-	return func(c *inlineConfig) {
-		if width > 0 {
-			c.width = width
-		}
+	if c.Input == nil {
+		c.Input = os.Stdin
 	}
-}
-
-// WithInlineOutput sets the output writer. Default is os.Stdout.
-func WithInlineOutput(w io.Writer) InlineOption {
-	return func(c *inlineConfig) {
-		c.output = w
-	}
-}
-
-// WithInlineInput sets the input reader. Default is os.Stdin.
-// This is primarily used for testing.
-func WithInlineInput(r io.Reader) InlineOption {
-	return func(c *inlineConfig) {
-		c.input = r
-	}
-}
-
-// WithInlineFPS sets the frames per second for TickEvents.
-// Default is 0 (no ticks). Set to > 0 to enable periodic TickEvents
-// for animations.
-func WithInlineFPS(fps int) InlineOption {
-	return func(c *inlineConfig) {
-		if fps >= 0 {
-			c.fps = fps
-		}
-	}
-}
-
-// WithInlineMouseTracking enables mouse event tracking in the live region.
-// When enabled, the application will receive MouseEvent events.
-func WithInlineMouseTracking(enabled bool) InlineOption {
-	return func(c *inlineConfig) {
-		c.mouseTracking = enabled
-	}
-}
-
-// WithInlineBracketedPaste enables bracketed paste mode.
-// When enabled, pasted text is wrapped in escape sequences,
-// allowing proper handling of multi-line pastes.
-func WithInlineBracketedPaste(enabled bool) InlineOption {
-	return func(c *inlineConfig) {
-		c.bracketedPaste = enabled
-	}
-}
-
-// WithInlinePasteTabWidth configures how tabs in pasted content are handled.
-// If width is 0 (default), tabs are preserved as-is.
-// If width > 0, each tab is converted to that many spaces.
-func WithInlinePasteTabWidth(width int) InlineOption {
-	return func(c *inlineConfig) {
-		c.pasteTabWidth = width
-	}
-}
-
-// WithInlineKittyKeyboard enables the Kitty keyboard protocol.
-// This allows detection of modifier keys like Shift+Enter.
-// For terminals that don't support it, a backslash+Enter fallback is used.
-func WithInlineKittyKeyboard(enabled bool) InlineOption {
-	return func(c *inlineConfig) {
-		c.kittyKeyboard = enabled
-	}
+	return c
 }
 
 // InlineApp manages the runtime for inline terminal applications.
@@ -233,7 +159,7 @@ func WithInlineKittyKeyboard(enabled bool) InlineOption {
 // responsive UI through non-blocking async operations.
 type InlineApp struct {
 	// Configuration
-	config inlineConfig
+	config InlineAppConfig
 
 	// Runtime state
 	app    any
@@ -242,6 +168,9 @@ type InlineApp struct {
 	done   chan struct{}
 	ticker *time.Ticker
 	frame  uint64
+
+	// Focus management
+	focusMgr *FocusManager
 
 	// Rendering
 	live   *LivePrinter
@@ -266,25 +195,27 @@ type InlineApp struct {
 //
 // Example:
 //
-//	runner := tui.NewInlineApp(
-//	    tui.WithInlineWidth(80),
-//	    tui.WithInlineBracketedPaste(true),
-//	)
+//	runner := tui.NewInlineApp(tui.InlineAppConfig{
+//	    Width:          80,
+//	    BracketedPaste: true,
+//	})
 //	if err := runner.Run(&MyApp{}); err != nil {
 //	    log.Fatal(err)
 //	}
-func NewInlineApp(opts ...InlineOption) *InlineApp {
-	cfg := defaultInlineConfig()
-	for _, opt := range opts {
-		opt(&cfg)
+func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
+	cfg := InlineAppConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
 	}
-
+	cfg = cfg.withDefaults()
 	return &InlineApp{
-		config: cfg,
-		events: make(chan Event, 100),
-		cmds:   make(chan Cmd, 100),
-		done:   make(chan struct{}),
-		output: cfg.output,
+		config:   cfg,
+		events:   make(chan Event, 100),
+		cmds:     make(chan Cmd, 100),
+		done:     make(chan struct{}),
+		output:   cfg.Output,
+		live:     NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output}),
+		focusMgr: NewFocusManager(),
 	}
 }
 
@@ -347,23 +278,20 @@ func (r *InlineApp) Run(app any) error {
 	}
 
 	// Enable terminal features
-	if r.config.bracketedPaste {
+	if r.config.BracketedPaste {
 		fmt.Fprint(r.output, "\033[?2004h")
 	}
-	if r.config.kittyKeyboard {
+	if r.config.KittyKeyboard {
 		fmt.Fprint(r.output, "\033[>1u")
 	}
-	if r.config.mouseTracking {
+	if r.config.MouseTracking {
 		// Enable mouse tracking (SGR mode for better coordinates)
 		fmt.Fprint(r.output, "\033[?1000h\033[?1006h")
 	}
 
-	// Create live printer for the live region
-	r.live = NewLivePrinter(WithWidth(r.config.width), WithOutput(r.output))
-
 	// Start ticker if FPS > 0
-	if r.config.fps > 0 {
-		r.ticker = time.NewTicker(time.Second / time.Duration(r.config.fps))
+	if r.config.FPS > 0 {
+		r.ticker = time.NewTicker(time.Second / time.Duration(r.config.FPS))
 	}
 
 	// Render initial view
@@ -419,13 +347,13 @@ func (r *InlineApp) cleanup() {
 	r.live.Stop()
 
 	// Disable terminal features (reverse order)
-	if r.config.mouseTracking {
+	if r.config.MouseTracking {
 		fmt.Fprint(r.output, "\033[?1006l\033[?1000l")
 	}
-	if r.config.kittyKeyboard {
+	if r.config.KittyKeyboard {
 		fmt.Fprint(r.output, "\033[<u")
 	}
-	if r.config.bracketedPaste {
+	if r.config.BracketedPaste {
 		fmt.Fprint(r.output, "\033[?2004l")
 	}
 
@@ -509,15 +437,28 @@ func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
 
 // processEvent calls the application's HandleEvent (if implemented) and queues any returned commands.
 func (r *InlineApp) processEvent(event Event) {
-	// Route events to interactive elements via unified focus manager
+	// Handle focus events from commands
+	switch e := event.(type) {
+	case FocusSetEvent:
+		r.focusMgr.SetFocus(e.ID)
+		return
+	case FocusNextEvent:
+		r.focusMgr.FocusNext()
+		return
+	case FocusPrevEvent:
+		r.focusMgr.FocusPrev()
+		return
+	}
+
+	// Route events to interactive elements via focus manager
 	switch e := event.(type) {
 	case MouseEvent:
 		if e.Type == MouseClick {
-			focusManager.HandleClick(e.X, e.Y)
+			r.focusMgr.HandleClick(e.X, e.Y)
 			interactiveRegistry.HandleClick(e.X, e.Y)
 		}
 	case KeyEvent:
-		focusManager.HandleKey(e)
+		r.focusMgr.HandleKey(e)
 	}
 
 	// Call user's event handler
@@ -545,7 +486,7 @@ func (r *InlineApp) render() {
 
 	if app, ok := r.app.(InlineApplication); ok {
 		// Clear registries before render
-		focusManager.Clear()
+		r.focusMgr.Clear()
 		buttonRegistry.Clear()
 		interactiveRegistry.Clear()
 		inputRegistry.Clear()
@@ -553,8 +494,8 @@ func (r *InlineApp) render() {
 
 		view := app.LiveView()
 
-		// Render the view using LivePrinter
-		r.live.Update(view)
+		// Render the view using LivePrinter with focus manager
+		r.live.UpdateWithFocus(view, r.focusMgr)
 
 		// Prune TextArea state for IDs that weren't rendered
 		textAreaRegistry.Prune()
@@ -563,8 +504,8 @@ func (r *InlineApp) render() {
 
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
 func (r *InlineApp) inputReader() {
-	decoder := terminal.NewKeyDecoder(r.config.input)
-	decoder.SetPasteTabWidth(r.config.pasteTabWidth)
+	decoder := terminal.NewKeyDecoder(r.config.Input)
+	decoder.SetPasteTabWidth(r.config.PasteTabWidth)
 
 	// Channel to receive stdin reads from a separate goroutine
 	inputChan := make(chan Event, 1)
@@ -729,7 +670,7 @@ func (r *InlineApp) Print(view View) {
 	r.live.Clear()
 
 	// Print to scrollback with raw mode line endings
-	Fprint(r.output, view, WithWidth(r.config.width), WithRawMode())
+	Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Re-render live region (skip its internal sync since we're already in one)
@@ -788,7 +729,17 @@ func (r *InlineApp) ClearScrollback() {
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.
-// Equivalent to: NewInlineApp(opts...).Run(app)
-func RunInline(app any, opts ...InlineOption) error {
-	return NewInlineApp(opts...).Run(app)
+// You can configure it by passing a configuration function that receives the app.
+//
+// Example:
+//
+//	err := tui.RunInline(&MyApp{}, func(app *tui.InlineApp) {
+//	    app.Width(80).BracketedPaste(true)
+//	})
+func RunInline(app any, cfg func(*InlineApp)) error {
+	runner := NewInlineApp()
+	if cfg != nil {
+		cfg(runner)
+	}
+	return runner.Run(app)
 }

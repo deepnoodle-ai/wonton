@@ -13,8 +13,8 @@ func TestInputField_Creation(t *testing.T) {
 
 	assert.NotNil(t, field)
 	assert.Equal(t, &value, field.binding)
-	assert.Equal(t, 20, field.width) // Default width
-	assert.NotEmpty(t, field.id)     // Auto-generated ID
+	assert.Equal(t, 0, field.width) // Default width (0 means fill available width)
+	assert.NotEmpty(t, field.id)    // Auto-generated ID
 }
 
 func TestInputField_NilBinding(t *testing.T) {
@@ -340,14 +340,14 @@ func TestInputCursorStyle_Values(t *testing.T) {
 func TestInputField_Render_WithValue(t *testing.T) {
 	value := "hello"
 	field := InputField(&value).Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 	termtest.AssertRowContains(t, screen, 0, "hello")
 }
 
 func TestInputField_Render_WithLabel(t *testing.T) {
 	value := "test"
 	field := InputField(&value).Label("Name: ").Width(20)
-	screen := SprintScreen(field, WithWidth(40))
+	screen := SprintScreen(field, PrintConfig{Width: 40})
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "test")
@@ -356,7 +356,7 @@ func TestInputField_Render_WithLabel(t *testing.T) {
 func TestInputField_Render_WithBorder(t *testing.T) {
 	value := "content"
 	field := InputField(&value).Width(20).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 
 	// Check for border characters (rounded border uses ╭, ╮, ╰, ╯)
 	termtest.AssertRowContains(t, screen, 0, "╭")
@@ -367,7 +367,7 @@ func TestInputField_Render_WithBorder(t *testing.T) {
 func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 	value := "john"
 	field := InputField(&value).Label("Username:").Width(25).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 
 	// Label should be embedded in the top border
 	termtest.AssertRowContains(t, screen, 0, "Username")
@@ -377,7 +377,7 @@ func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 func TestInputField_Render_WithPrompt(t *testing.T) {
 	value := "command"
 	field := InputField(&value).Prompt(">").Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 
 	termtest.AssertRowContains(t, screen, 0, ">")
 	termtest.AssertRowContains(t, screen, 0, "command")
@@ -386,7 +386,7 @@ func TestInputField_Render_WithPrompt(t *testing.T) {
 func TestInputField_Render_Placeholder(t *testing.T) {
 	value := ""
 	field := InputField(&value).Placeholder("Enter name...").Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 	termtest.AssertRowContains(t, screen, 0, "Enter name...")
 }
 
@@ -398,7 +398,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 		InputField(&name).Label("Name: ").Width(20),
 		InputField(&email).Label("Email: ").Width(25),
 	)
-	screen := SprintScreen(form, WithWidth(40))
+	screen := SprintScreen(form, PrintConfig{Width: 40})
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "Alice")
@@ -409,7 +409,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 func TestInputField_Render_HorizontalBorder(t *testing.T) {
 	value := "text"
 	field := InputField(&value).Width(20).HorizontalBorderOnly()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := SprintScreen(field, PrintConfig{Width: 30})
 
 	// Check for horizontal border character
 	termtest.AssertRowContains(t, screen, 0, "─")

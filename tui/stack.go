@@ -47,15 +47,20 @@ func (s *stack) Flex(factor int) *stack {
 
 // flex implements the Flexible interface.
 // If no explicit flex factor is set, the stack inherits flexibility from
-// its children. This allows flexible views (like Canvas) to expand even
-// when nested inside containers, matching CSS flexbox behavior.
+// its flexible children (like Canvas or Fill), but NOT from Spacers.
+// Spacers are layout utilities that shouldn't make their container flexible.
 func (s *stack) flex() int {
 	if s.flexFactor != 0 {
 		return s.flexFactor
 	}
-	// Auto-derive: inherit max flex from children
-	// This makes Stack(Canvas()) flexible because Canvas is flexible
+	// Auto-derive: inherit flex from non-Spacer flexible children
+	// This makes Stack(Canvas()) flexible, but Stack(Text, Spacer, Text)
+	// won't become flexible just because it contains a Spacer
 	for _, child := range s.children {
+		// Skip spacers - they're layout utilities, not content
+		if _, isSpacer := child.(*spacerView); isSpacer {
+			continue
+		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
 			return flex.flex()
 		}
@@ -129,16 +134,34 @@ func (s *stack) size(maxWidth, maxHeight int) (int, int) {
 			remainingHeight = 0
 		}
 
-		// Distribute remaining space among flexible children
-		distributedHeight := 0
+		// First pass: get minimum sizes for all flex children
+		minHeights := make([]int, len(flexChildren))
+		totalMinHeight := 0
+		for i, idx := range flexChildren {
+			_, minH := s.children[idx].size(maxWidth, 0)
+			minHeights[i] = minH
+			totalMinHeight += minH
+		}
+
+		// Calculate extra space beyond minimums
+		extraHeight := remainingHeight - totalMinHeight
+		if extraHeight < 0 {
+			extraHeight = 0
+		}
+
+		// Distribute extra space proportionally, ensuring minimums are respected
+		distributedExtra := 0
 		for i, idx := range flexChildren {
 			flex := s.children[idx].(Flexible).flex()
-			height := (remainingHeight * flex) / totalFlex
+			extra := (extraHeight * flex) / totalFlex
 			// Give remainder to last flex child to avoid rounding issues
 			if i == len(flexChildren)-1 {
-				height = remainingHeight - distributedHeight
+				extra = extraHeight - distributedExtra
 			}
-			distributedHeight += height
+			distributedExtra += extra
+
+			// Total height = minimum + proportional extra
+			height := minHeights[i] + extra
 
 			// Get the width for this flexible child
 			w, _ := s.children[idx].size(maxWidth, height)

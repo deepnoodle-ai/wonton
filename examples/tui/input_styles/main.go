@@ -54,8 +54,7 @@ func (app *InputStylesApp) View() tui.View {
 			Placeholder("Underline cursor").
 			HorizontalBorderOnly().
 			CursorShape(tui.InputCursorUnderline).
-			CursorColor(tui.ColorCyan).
-			Width(60),
+			CursorColor(tui.ColorCyan),
 
 		tui.Spacer().MinHeight(1),
 

@@ -110,7 +110,7 @@ func TestZStack_RenderBasic(t *testing.T) {
 		Text("Top"),
 	)
 
-	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -126,7 +126,7 @@ func TestZStack_RenderWithAlignment(t *testing.T) {
 		Text("X"),
 	).Align(AlignCenter)
 
-	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	// Should render without error
@@ -137,7 +137,7 @@ func TestZStack_RenderEmpty(t *testing.T) {
 	var buf strings.Builder
 	z := ZStack()
 
-	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -146,12 +146,12 @@ func TestZStack_RenderZeroSize(t *testing.T) {
 	z := ZStack(Text("Test"))
 
 	// Zero width should not panic
-	err := Print(z, WithWidth(0), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 0, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	// Zero height should not panic
 	buf.Reset()
-	err = Print(z, WithWidth(20), WithHeight(0), WithOutput(&buf))
+	err = Print(z, PrintConfig{Width: 20, Height: 0, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -164,7 +164,7 @@ func TestZStack_OverlappingViews(t *testing.T) {
 		Text("Layer 3"),
 	)
 
-	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	// Should have rendered all layers (though they may overlap)
@@ -272,7 +272,7 @@ func TestZStack_ComplexOverlay(t *testing.T) {
 		Text("!"),                 // Top overlay
 	).Align(AlignCenter)
 
-	err := Print(z, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	assert.True(t, buf.Len() > 0, "should render complex overlay")
@@ -297,7 +297,7 @@ func TestZStack_WithDifferentAlignments(t *testing.T) {
 				Text("FG"),
 			).Align(tt.align)
 
-			err := Print(z, WithWidth(20), WithHeight(3), WithOutput(&buf))
+			err := Print(z, PrintConfig{Width: 20, Height: 3, Output: &buf})
 			assert.NoError(t, err)
 			assert.True(t, buf.Len() > 0, "should produce output for "+tt.name)
 		})
@@ -328,7 +328,7 @@ func TestZStack_SizeReMeasurement(t *testing.T) {
 	w1, h1 := z.size(100, 100)
 
 	// Render (which re-measures)
-	err := Print(z, WithWidth(50), WithHeight(50), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 50, Height: 50, Output: &buf})
 	assert.NoError(t, err)
 
 	// Size should still work correctly after render

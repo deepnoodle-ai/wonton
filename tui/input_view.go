@@ -9,7 +9,7 @@ import (
 )
 
 // inputRegistry manages text input state (bindings, callbacks, etc.)
-// Focus management is delegated to the global focusManager.
+// Focus management is delegated to the FocusManager passed via RenderContext.
 var inputRegistry = &inputRegistryImpl{
 	inputs: make(map[string]*inputState),
 }
@@ -93,11 +93,11 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 func (r *inputRegistryImpl) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// Note: we don't clear the inputs map, just let focusManager handle order
+	// Note: we don't clear the inputs map, just let focus manager handle order
 }
 
 // Register adds or updates an input.
-func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, placeholderStyle *Style, mask rune, pastePlaceholder bool, cursorBlink bool, multiline bool, maxHeight int, onChange, onSubmit func(string)) *inputState {
+func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Rectangle, placeholder string, placeholderStyle *Style, mask rune, pastePlaceholder bool, cursorBlink bool, multiline bool, maxHeight int, onChange, onSubmit func(string), fm *FocusManager) *inputState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -166,18 +166,24 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 		}
 	}
 
-	// Register with the global focus manager
-	focusManager.Register(state)
+	// Register with the focus manager (if available)
+	if fm != nil {
+		fm.Register(state)
+	}
 
 	return state
 }
 
 // GetFocused returns the currently focused input state (if any input is focused).
-func (r *inputRegistryImpl) GetFocused() *inputState {
+func (r *inputRegistryImpl) GetFocused(fm *FocusManager) *inputState {
+	if fm == nil {
+		return nil
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	focused := focusManager.GetFocused()
+	focused := fm.GetFocused()
 	if focused == nil {
 		return nil
 	}
@@ -369,11 +375,12 @@ func (i *inputView) render(ctx *RenderContext) {
 	}
 
 	// Determine if this input is focused
-	isFocused := focusManager.GetFocusedID() == i.id
+	fm := ctx.FocusManager()
+	isFocused := fm != nil && fm.GetFocusedID() == i.id
 
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
-	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit)
+	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit, fm)
 
 	// Apply focus-aware styling to the TextInput
 	if isFocused && i.focusStyle != nil {

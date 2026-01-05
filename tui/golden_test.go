@@ -17,42 +17,42 @@ import (
 
 func TestGolden_Text_Simple(t *testing.T) {
 	view := Text("Hello, World!")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Text_Empty(t *testing.T) {
 	// Empty text should render without crashing
 	view := Text("")
-	screen := SprintScreen(view, WithWidth(20), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Text_Unicode_CJK(t *testing.T) {
 	// CJK characters are double-width
 	view := Text("Hello: \xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95") // "中文测试"
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Text_Emoji(t *testing.T) {
 	// Emoji are typically double-width
 	view := Text("Status: \xe2\x9c\x85 Done") // checkmark emoji
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Text_Truncation(t *testing.T) {
 	// Text too long for container should be truncated
 	view := Text("This is a very long line that should be truncated")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Text_MultipleStyles(t *testing.T) {
 	// Multiple style attributes combined
 	view := Text("Important!").Bold().Underline()
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -64,7 +64,7 @@ func TestGolden_Text_SemanticStyles(t *testing.T) {
 		Text("Warning message").Warning(),
 		Text("Info message").Info(),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -78,14 +78,14 @@ func TestGolden_Stack_Basic(t *testing.T) {
 		Text("Line 2"),
 		Text("Line 3"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Stack_Empty(t *testing.T) {
 	// Empty stack should handle gracefully
 	view := Stack()
-	screen := SprintScreen(view, WithWidth(20), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -96,7 +96,7 @@ func TestGolden_Stack_Gap(t *testing.T) {
 		Text("Second"),
 		Text("Third"),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -109,7 +109,7 @@ func TestGolden_Stack_AlignCenter(t *testing.T) {
 		Text("XXX"),
 		Text("X"),
 	).Align(AlignCenter)
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -120,7 +120,7 @@ func TestGolden_Stack_AlignRight(t *testing.T) {
 		Text("Medium text"),
 		Text("Longer text here"),
 	).Align(AlignRight)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -131,7 +131,7 @@ func TestGolden_Stack_WithSpacer(t *testing.T) {
 		Spacer(),
 		Text("Bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -144,7 +144,7 @@ func TestGolden_Stack_MultipleSpacer(t *testing.T) {
 		Spacer(),
 		Text("C"),
 	)
-	screen := SprintScreen(view, WithWidth(10), WithHeight(9))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 9})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -157,7 +157,7 @@ func TestGolden_Group_Basic(t *testing.T) {
 		Text("Left"),
 		Text("Right"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -167,7 +167,7 @@ func TestGolden_Group_Gap(t *testing.T) {
 		Text("B"),
 		Text("C"),
 	).Gap(3)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -178,7 +178,7 @@ func TestGolden_Group_WithSpacer(t *testing.T) {
 		Spacer(),
 		Text("Right"),
 	)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -188,7 +188,7 @@ func TestGolden_Group_VerticalAlign(t *testing.T) {
 		Stack(Text("A"), Text("B"), Text("C")),
 		Text("X"),
 	).Align(AlignCenter)
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -202,7 +202,7 @@ func TestGolden_ZStack_Layers(t *testing.T) {
 		Fill('.'),
 		Text("Overlay"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -211,7 +211,7 @@ func TestGolden_ZStack_CenterAlign(t *testing.T) {
 		Fill('-'),
 		Text("Centered"),
 	).Align(AlignCenter)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -221,19 +221,19 @@ func TestGolden_ZStack_CenterAlign(t *testing.T) {
 
 func TestGolden_Border_Rounded(t *testing.T) {
 	view := Bordered(Text("Rounded")).Border(&RoundedBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Border_Thick(t *testing.T) {
 	view := Bordered(Text("Thick")).Border(&ThickBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Border_ASCII(t *testing.T) {
 	view := Bordered(Text("ASCII")).Border(&ASCIIBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -241,7 +241,7 @@ func TestGolden_Border_WithTitle(t *testing.T) {
 	view := Bordered(Text("Content")).
 		Border(&RoundedBorder).
 		Title("Title")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -250,7 +250,7 @@ func TestGolden_Border_TitleTooLong(t *testing.T) {
 	view := Bordered(Text("X")).
 		Border(&RoundedBorder).
 		Title("This title is way too long")
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -259,27 +259,27 @@ func TestGolden_Border_Nested(t *testing.T) {
 	view := Bordered(
 		Bordered(Text("Inner")).Border(&RoundedBorder),
 	).Border(&ThickBorder).Title("Outer")
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Padding_Uniform(t *testing.T) {
 	view := Padding(2, Text("Padded"))
-	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Padding_HV(t *testing.T) {
 	// Different horizontal and vertical padding
 	view := PaddingHV(4, 1, Text("HV"))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Padding_LTRB(t *testing.T) {
 	// Different padding on each side
 	view := PaddingLTRB(1, 0, 3, 2, Text("LTRB"))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -289,26 +289,26 @@ func TestGolden_Padding_LTRB(t *testing.T) {
 
 func TestGolden_Divider_Simple(t *testing.T) {
 	view := Divider()
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Divider_CustomChar(t *testing.T) {
 	view := Divider().Char('=')
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Divider_WithTitle(t *testing.T) {
 	view := Divider().Title("Section")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Divider_TitleTooWide(t *testing.T) {
 	// Title wider than available space
 	view := Divider().Title("Very Long Section Title")
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -318,13 +318,13 @@ func TestGolden_Divider_TitleTooWide(t *testing.T) {
 
 func TestGolden_HeaderBar(t *testing.T) {
 	view := HeaderBar("My Application")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_StatusBar(t *testing.T) {
 	view := StatusBar("Ready | Ln 1, Col 1")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -334,44 +334,44 @@ func TestGolden_StatusBar(t *testing.T) {
 
 func TestGolden_Progress_Zero(t *testing.T) {
 	view := Progress(0, 100).Width(20)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_Half(t *testing.T) {
 	view := Progress(50, 100).Width(20)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_Full(t *testing.T) {
 	view := Progress(100, 100).Width(20)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_WithLabel(t *testing.T) {
 	view := Progress(75, 100).Width(15).Label("Loading:")
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_Fraction(t *testing.T) {
 	view := Progress(3, 10).Width(15).ShowFraction()
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_Pattern(t *testing.T) {
 	// Use proper UTF-8: middle dot (·) is U+00B7, encoded as \xc2\xb7
 	view := Progress(60, 100).Width(20).EmptyPattern("·-")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Progress_NoPercent(t *testing.T) {
 	view := Progress(40, 100).Width(20).HidePercent()
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -389,7 +389,7 @@ func TestGolden_Table_Basic(t *testing.T) {
 		{"Bob", "25"},
 		{"Carol", "35"},
 	})
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -403,7 +403,7 @@ func TestGolden_Table_SelectedRow(t *testing.T) {
 		{"Second", "200"},
 		{"Third", "300"},
 	})
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -416,7 +416,7 @@ func TestGolden_Table_NoHeader(t *testing.T) {
 		{"X", "1"},
 		{"Y", "2"},
 	})
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -428,7 +428,7 @@ func TestGolden_Table_UppercaseHeaders(t *testing.T) {
 	}, &sel).UppercaseHeaders(true).Rows([][]string{
 		{"test", "ok"},
 	})
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -441,7 +441,7 @@ func TestGolden_Table_ColumnTruncation(t *testing.T) {
 		{"This is a very long description", "Active"},
 		{"Short", "Inactive"},
 	})
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -456,7 +456,7 @@ func TestGolden_Table_WideContent(t *testing.T) {
 		{"CN", "\xe4\xbd\xa0\xe5\xa5\xbd"}, // "你好"
 		{"JP", "\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf"}, // "こんにちは"
 	})
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -469,21 +469,21 @@ func TestGolden_Code_Go(t *testing.T) {
 	fmt.Println("Hello")
 }`
 	view := Code(code, "go").LineNumbers(true)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Code_NoLineNumbers(t *testing.T) {
 	code := `print("Hello")`
 	view := Code(code, "python").LineNumbers(false)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Code_PlainText(t *testing.T) {
 	code := "Just some plain text\nWith multiple lines"
 	view := Code(code, "text").LineNumbers(true)
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -501,7 +501,7 @@ func TestGolden_Complex_FormLayout(t *testing.T) {
 			Group(Spacer(), Text("[Submit]")),
 		).Gap(1),
 	).Border(&RoundedBorder).Title("User Profile")
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -515,7 +515,7 @@ func TestGolden_Complex_Dashboard(t *testing.T) {
 		).Gap(1),
 		StatusBar("Connected"),
 	)
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -530,7 +530,7 @@ func TestGolden_Complex_Menu(t *testing.T) {
 			Text("  Quit").Dim(),
 		),
 	).Border(&RoundedBorder).Title("Menu")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -553,7 +553,7 @@ func TestGolden_Complex_SplitView(t *testing.T) {
 			),
 		).Border(&RoundedBorder).Title("Editor"),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(40))
+	screen := SprintScreen(view, PrintConfig{Width: 40})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -564,7 +564,7 @@ func TestGolden_Complex_StatusWithProgress(t *testing.T) {
 		Progress(67, 100).Width(25),
 		Text("2 of 3 complete").Dim(),
 	)
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -582,7 +582,7 @@ func TestGolden_Complex_DeepNesting(t *testing.T) {
 			),
 		),
 	).Border(&ThickBorder).Title("Deep")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -592,13 +592,13 @@ func TestGolden_Complex_DeepNesting(t *testing.T) {
 
 func TestGolden_Fill_Char(t *testing.T) {
 	view := Fill('#')
-	screen := SprintScreen(view, WithWidth(10), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Fill_Block(t *testing.T) {
 	view := Fill('\u2588') // Full block
-	screen := SprintScreen(view, WithWidth(8), WithHeight(2))
+	screen := SprintScreen(view, PrintConfig{Width: 8, Height: 2})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -608,7 +608,7 @@ func TestGolden_Fill_Block(t *testing.T) {
 
 func TestGolden_Width_Fixed(t *testing.T) {
 	view := Width(10, Text("Constrained text here"))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -620,13 +620,13 @@ func TestGolden_Height_Fixed(t *testing.T) {
 		Text("Line 4"),
 		Text("Line 5"),
 	))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_MinWidth(t *testing.T) {
 	view := MinWidth(15, Text("Short"))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -640,7 +640,7 @@ func TestGolden_Edge_VeryNarrow(t *testing.T) {
 		Text("ABC"),
 		Text("DEFGH"),
 	)
-	screen := SprintScreen(view, WithWidth(3))
+	screen := SprintScreen(view, PrintConfig{Width: 3})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -650,7 +650,7 @@ func TestGolden_Edge_SingleColumn(t *testing.T) {
 		Text("X"),
 		Text("Y"),
 	)
-	screen := SprintScreen(view, WithWidth(1))
+	screen := SprintScreen(view, PrintConfig{Width: 1})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -660,7 +660,7 @@ func TestGolden_Edge_ZeroGap(t *testing.T) {
 		Text("A"),
 		Text("B"),
 	).Gap(0)
-	screen := SprintScreen(view, WithWidth(10))
+	screen := SprintScreen(view, PrintConfig{Width: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -670,7 +670,7 @@ func TestGolden_Edge_LargeGap(t *testing.T) {
 		Text("Top"),
 		Text("Bottom"),
 	).Gap(3)
-	screen := SprintScreen(view, WithWidth(10))
+	screen := SprintScreen(view, PrintConfig{Width: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -687,7 +687,7 @@ func TestGolden_Flex_EqualDistribution(t *testing.T) {
 		Spacer(),
 		Text("C"),
 	)
-	screen := SprintScreen(view, WithWidth(10), WithHeight(11))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 11})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -700,7 +700,7 @@ func TestGolden_Flex_UnequalFactors(t *testing.T) {
 		Spacer().Flex(2),
 		Text("Bot"),
 	)
-	screen := SprintScreen(view, WithWidth(5), WithHeight(12))
+	screen := SprintScreen(view, PrintConfig{Width: 5, Height: 12})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -713,7 +713,7 @@ func TestGolden_Flex_GroupHorizontal(t *testing.T) {
 		Spacer(),
 		Text("[C]"),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -726,7 +726,7 @@ func TestGolden_Flex_GroupUnequalFactors(t *testing.T) {
 		Spacer().Flex(3),
 		Text("R"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -738,7 +738,7 @@ func TestGolden_Flex_MixedFixedAndFlex(t *testing.T) {
 		Spacer(),
 		Text("Fixed 3"),
 	)
-	screen := SprintScreen(view, WithWidth(12), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 12, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -749,7 +749,7 @@ func TestGolden_Flex_FillExpands(t *testing.T) {
 		Fill('.'),
 		Text("Footer"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -765,7 +765,7 @@ func TestGolden_Flex_NestedFlexContainers(t *testing.T) {
 		Spacer(),
 		Text("Outer Bot"),
 	)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -776,7 +776,7 @@ func TestGolden_Flex_SpacerMinWidth(t *testing.T) {
 		Spacer().MinWidth(10),
 		Text("B"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -787,7 +787,7 @@ func TestGolden_Flex_SpacerMinHeight(t *testing.T) {
 		Spacer().MinHeight(3),
 		Text("Bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(10), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -798,7 +798,7 @@ func TestGolden_Flex_NoFlexChildren(t *testing.T) {
 		Text("Line 2"),
 		Text("Line 3"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -808,7 +808,7 @@ func TestGolden_Flex_SingleFlexChild(t *testing.T) {
 		Text("Header"),
 		Fill('#'),
 	)
-	screen := SprintScreen(view, WithWidth(12), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 12, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -819,21 +819,21 @@ func TestGolden_Flex_SingleFlexChild(t *testing.T) {
 func TestGolden_Size_FixedWidth(t *testing.T) {
 	// Fixed width larger than content
 	view := Width(20, Text("Short"))
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_FixedWidthTruncates(t *testing.T) {
 	// Fixed width smaller than content - should truncate
 	view := Width(8, Text("This is too long"))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_FixedHeight(t *testing.T) {
 	// Fixed height larger than content
 	view := Height(5, Text("Single line"))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -845,49 +845,49 @@ func TestGolden_Size_FixedHeightClips(t *testing.T) {
 		Text("Line 3"),
 		Text("Line 4"),
 	))
-	screen := SprintScreen(view, WithWidth(10), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_FixedBoth(t *testing.T) {
 	// Fixed width and height
 	view := Size(15, 4, Text("Fixed box"))
-	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MinWidthExpands(t *testing.T) {
 	// MinWidth expands small content
 	view := MinWidth(20, Text("Tiny"))
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MinWidthNoEffect(t *testing.T) {
 	// MinWidth has no effect when content is larger
 	view := MinWidth(5, Text("Already wide enough"))
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MaxWidthConstrains(t *testing.T) {
 	// MaxWidth constrains large content
 	view := MaxWidth(10, Text("This text is way too long for the max"))
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MaxWidthNoEffect(t *testing.T) {
 	// MaxWidth has no effect when content is smaller
 	view := MaxWidth(30, Text("Small"))
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MinHeightExpands(t *testing.T) {
 	// MinHeight expands short content
 	view := MinHeight(5, Text("One line"))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -896,28 +896,28 @@ func TestGolden_Size_MaxHeightClips(t *testing.T) {
 	view := MaxHeight(3, Stack(
 		Text("1"), Text("2"), Text("3"), Text("4"), Text("5"),
 	))
-	screen := SprintScreen(view, WithWidth(10), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 10, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MinAndMaxWidth(t *testing.T) {
 	// Both min and max width constraints
 	view := MaxWidth(15, MinWidth(10, Text("Mid")))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_MinSize(t *testing.T) {
 	// MinSize sets both dimensions
 	view := MinSize(12, 4, Text("X"))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Size_NestedConstraints(t *testing.T) {
 	// Nested size constraints
 	view := MaxWidth(20, MinWidth(15, Width(18, Text("Nested"))))
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -932,7 +932,7 @@ func TestGolden_ParentChild_AutoWidthFromChildren(t *testing.T) {
 		Text("This is longer"),
 		Text("Medium"),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -943,7 +943,7 @@ func TestGolden_ParentChild_AutoHeightFromChildren(t *testing.T) {
 		Stack(Text("B1"), Text("B2"), Text("B3")),
 		Text("C"),
 	)
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -954,7 +954,7 @@ func TestGolden_ParentChild_FixedParentFlexChildren(t *testing.T) {
 		Spacer(),
 		Text("Footer"),
 	))
-	screen := SprintScreen(view, WithWidth(25), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -964,14 +964,14 @@ func TestGolden_ParentChild_ConstrainedParent(t *testing.T) {
 		Text("This is a very long line"),
 		Text("Short"),
 	))
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_ParentChild_ChildExceedsParent(t *testing.T) {
 	// Child wants more space than parent provides
 	view := Width(10, Text("Way too long for this"))
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -981,21 +981,21 @@ func TestGolden_ParentChild_NestedAutoSize(t *testing.T) {
 		Group(Text("A1"), Text("A2")),
 		Group(Text("B1"), Text("B2"), Text("B3")),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_ParentChild_BorderedAutoSize(t *testing.T) {
 	// Border adds 2 to each dimension
 	view := Bordered(Text("Content")).Border(&RoundedBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_ParentChild_PaddingAutoSize(t *testing.T) {
 	// Padding adds to dimensions
 	view := Padding(2, Text("Padded"))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1013,7 +1013,7 @@ func TestGolden_ParentChild_ComplexNesting(t *testing.T) {
 			Text("Auto"),
 		).Gap(2),
 	)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1028,7 +1028,7 @@ func TestGolden_FlexConstraint_FlexWithMinSize(t *testing.T) {
 		MinHeight(3, Fill('.')),
 		Text("Bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1040,7 +1040,7 @@ func TestGolden_FlexConstraint_FlexWithMaxSize(t *testing.T) {
 		Spacer(),
 		Text("Bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1051,7 +1051,7 @@ func TestGolden_FlexConstraint_ConstrainedFlexGroup(t *testing.T) {
 		Spacer(),
 		MaxWidth(8, Text("Very long text here")),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1062,7 +1062,7 @@ func TestGolden_FlexConstraint_FixedInFlex(t *testing.T) {
 		Size(10, 2, Text("Fixed")),
 		Spacer(),
 	)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1080,7 +1080,7 @@ func TestGolden_AutoWidth_StackTakesWidest(t *testing.T) {
 			Text("BB"),
 		),
 	).Border(&RoundedBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1093,7 +1093,7 @@ func TestGolden_AutoWidth_GroupSumsChildren(t *testing.T) {
 			Text("CC"),
 		).Gap(1),
 	).Border(&RoundedBorder)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1104,7 +1104,7 @@ func TestGolden_AutoWidth_EmptyContainer(t *testing.T) {
 		Stack(), // Empty nested stack
 		Text("After"),
 	)
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1115,7 +1115,7 @@ func TestGolden_AutoWidth_DividerFillsWidth(t *testing.T) {
 		Divider(),
 		Text("Content"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1135,7 +1135,7 @@ func TestGolden_TableWidth_AutoColumns(t *testing.T) {
 		{"2", "Bob", "Manager"},
 		{"100", "Carol", "Lead engineer"},
 	})
-	screen := SprintScreen(view, WithWidth(45))
+	screen := SprintScreen(view, PrintConfig{Width: 45})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1149,7 +1149,7 @@ func TestGolden_TableWidth_FixedColumns(t *testing.T) {
 	}, &sel).Rows([][]string{
 		{"X", "YYYYYYYY", "Z"},
 	})
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1163,7 +1163,7 @@ func TestGolden_TableWidth_MixedColumns(t *testing.T) {
 	}, &sel).Rows([][]string{
 		{"XXXXXXXX", "Short", "Medium length"},
 	})
-	screen := SprintScreen(view, WithWidth(40))
+	screen := SprintScreen(view, PrintConfig{Width: 40})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1176,7 +1176,7 @@ func TestGolden_TableWidth_MinWidthRespected(t *testing.T) {
 	}, &sel).Rows([][]string{
 		{"A", "1"},
 	})
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1189,7 +1189,7 @@ func TestGolden_TableWidth_FillWidth(t *testing.T) {
 	}, &sel).FillWidth().Rows([][]string{
 		{"X", "Y"},
 	})
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1228,7 +1228,7 @@ func TestGolden_UI_ChatInterface(t *testing.T) {
 			Text("Type your message...").Dim(),
 		),
 	).Padding(1)
-	screen := SprintScreen(view, WithWidth(45), WithHeight(16))
+	screen := SprintScreen(view, PrintConfig{Width: 45, Height: 16})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1264,7 +1264,7 @@ func TestGolden_UI_MultiPanelDashboard(t *testing.T) {
 		// Footer
 		StatusBar("Last updated: 12:00 PM"),
 	)
-	screen := SprintScreen(view, WithWidth(60), WithHeight(12))
+	screen := SprintScreen(view, PrintConfig{Width: 60, Height: 12})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1305,7 +1305,7 @@ func TestGolden_UI_FormWithValidation(t *testing.T) {
 			),
 		).Gap(1),
 	).Border(&RoundedBorder).Title("Sign Up")
-	screen := SprintScreen(view, WithWidth(50), WithHeight(16))
+	screen := SprintScreen(view, PrintConfig{Width: 50, Height: 16})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1337,7 +1337,7 @@ func TestGolden_UI_FileBrowser(t *testing.T) {
 			Text("F2: Hidden | Enter: Open").Dim(),
 		),
 	)
-	screen := SprintScreen(view, WithWidth(40), WithHeight(15))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1374,7 +1374,7 @@ func TestGolden_UI_SidebarWithContent(t *testing.T) {
 			),
 		).Border(&RoundedBorder).Title("Content"),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(55), WithHeight(14))
+	screen := SprintScreen(view, PrintConfig{Width: 55, Height: 14})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1411,7 +1411,7 @@ func TestGolden_UI_ProgressDashboard(t *testing.T) {
 			),
 		).Gap(1),
 	).Border(&RoundedBorder).Title("CI Pipeline")
-	screen := SprintScreen(view, WithWidth(50), WithHeight(14))
+	screen := SprintScreen(view, PrintConfig{Width: 50, Height: 14})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1441,7 +1441,7 @@ func TestGolden_UI_NestedCards(t *testing.T) {
 			Text("Footer info").Dim(),
 		).Gap(1),
 	).Border(&ThickBorder).Title("Cards Demo")
-	screen := SprintScreen(view, WithWidth(45), WithHeight(14))
+	screen := SprintScreen(view, PrintConfig{Width: 45, Height: 14})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1474,7 +1474,7 @@ func TestGolden_UI_TableInContext(t *testing.T) {
 			Text("↑↓: Navigate | Enter: Edit | Del: Remove").Dim(),
 		),
 	)
-	screen := SprintScreen(view, WithWidth(50), WithHeight(14))
+	screen := SprintScreen(view, PrintConfig{Width: 50, Height: 14})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1509,7 +1509,7 @@ func TestGolden_UI_ThreeColumnLayout(t *testing.T) {
 			),
 		).Border(&RoundedBorder)),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(60), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 60, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1544,7 +1544,7 @@ func TestGolden_UI_ToolbarAndContent(t *testing.T) {
 		// Status
 		StatusBar("Ln 1, Col 1 | UTF-8 | Modified"),
 	)
-	screen := SprintScreen(view, WithWidth(55), WithHeight(12))
+	screen := SprintScreen(view, PrintConfig{Width: 55, Height: 12})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1580,7 +1580,7 @@ func TestGolden_UI_AlertBoxes(t *testing.T) {
 			),
 		).Border(&RoundedBorder).BorderFg(ColorBlue),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(40), WithHeight(14))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 14})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1613,7 +1613,7 @@ func TestGolden_UI_TabsAndPanels(t *testing.T) {
 			).Gap(1),
 		).Border(&RoundedBorder),
 	)
-	screen := SprintScreen(view, WithWidth(45), WithHeight(15))
+	screen := SprintScreen(view, PrintConfig{Width: 45, Height: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1635,7 +1635,7 @@ func TestGolden_UI_TreeView(t *testing.T) {
 			Text("  README.md"),
 		),
 	).Border(&RoundedBorder).Title("Explorer")
-	screen := SprintScreen(view, WithWidth(35), WithHeight(16))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 16})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1662,7 +1662,7 @@ func TestGolden_UI_KeyboardShortcuts(t *testing.T) {
 			),
 		).Gap(0),
 	).Border(&RoundedBorder).Title("Help")
-	screen := SprintScreen(view, WithWidth(40), WithHeight(18))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 18})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1677,7 +1677,7 @@ func TestGolden_AdvancedFlex_ThreeWaySplit(t *testing.T) {
 		Bordered(Fill('B')).Border(&RoundedBorder),
 		Bordered(Fill('C')).Border(&RoundedBorder),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(40), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1692,7 +1692,7 @@ func TestGolden_AdvancedFlex_WeightedHorizontal(t *testing.T) {
 			),
 		).Border(&RoundedBorder),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(50), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 50, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1715,7 +1715,7 @@ func TestGolden_AdvancedFlex_MixedAxes(t *testing.T) {
 		Spacer(),
 		Text("Footer").Dim(),
 	)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(9))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 9})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1738,7 +1738,7 @@ func TestGolden_AdvancedFlex_NestedSpacers(t *testing.T) {
 		Spacer(),
 		Text("Bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(30), WithHeight(11))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 11})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1751,7 +1751,7 @@ func TestGolden_AdvancedFlex_SpacerWithMinMax(t *testing.T) {
 		Spacer(),
 		Text("Footer"),
 	)
-	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1764,7 +1764,7 @@ func TestGolden_AdvancedFlex_ZeroFlexWithFlex(t *testing.T) {
 		Text("Fixed before bottom"),
 		Text("Fixed bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1793,7 +1793,7 @@ func TestGolden_DeepNesting_FiveLevels(t *testing.T) {
 			).Border(&SingleBorder),
 		),
 	).Border(&RoundedBorder).Title("Inception")
-	screen := SprintScreen(view, WithWidth(40), WithHeight(15))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1815,7 +1815,7 @@ func TestGolden_DeepNesting_MixedContainers(t *testing.T) {
 		Divider(),
 		Text("Back to Level 1"),
 	)
-	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1832,7 +1832,7 @@ func TestGolden_DeepNesting_BordersAndPadding(t *testing.T) {
 			),
 		).Border(&ThickBorder).Title("Outer"),
 	)
-	screen := SprintScreen(view, WithWidth(35), WithHeight(9))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 9})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1861,7 +1861,7 @@ func TestGolden_Alignment_GridLike(t *testing.T) {
 			Width(8, Stack(Text("BR")).Align(AlignRight)),
 		),
 	)
-	screen := SprintScreen(view, WithWidth(30), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1885,7 +1885,7 @@ func TestGolden_Alignment_CenteredModal(t *testing.T) {
 			).Border(&RoundedBorder).Title("Dialog"),
 		).Align(AlignCenter),
 	).Align(AlignCenter)
-	screen := SprintScreen(view, WithWidth(35), WithHeight(11))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 11})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1900,7 +1900,7 @@ func TestGolden_Alignment_BottomRight(t *testing.T) {
 			),
 		),
 	)
-	screen := SprintScreen(view, WithWidth(30), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1921,7 +1921,7 @@ func TestGolden_Unicode_MixedWidthInTable(t *testing.T) {
 		{"JP", "日本語", "日本"},
 		{"KR", "한국어", "한국"},
 	})
-	screen := SprintScreen(view, WithWidth(35), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1934,7 +1934,7 @@ func TestGolden_Unicode_EmojiInUI(t *testing.T) {
 		Text("📝 Edit document"),
 		Text("🔍 Search results"),
 	)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1946,7 +1946,7 @@ func TestGolden_Unicode_BoxDrawing(t *testing.T) {
 		Text("│   Box     │"),
 		Text("└───────────┘"),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1966,7 +1966,7 @@ func TestGolden_Code_InPanel(t *testing.T) {
 			Code(code, "go").LineNumbers(true),
 		),
 	).Border(&RoundedBorder).Title("Source")
-	screen := SprintScreen(view, WithWidth(35), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1980,7 +1980,7 @@ func TestGolden_Code_DiffStyle(t *testing.T) {
 			Text("  }"),
 		),
 	).Border(&RoundedBorder).Title("Changes")
-	screen := SprintScreen(view, WithWidth(30), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -1991,14 +1991,14 @@ func TestGolden_Code_DiffStyle(t *testing.T) {
 func TestGolden_Panel_Basic(t *testing.T) {
 	// Basic panel with background
 	view := Panel(nil).Size(15, 5).Bg(ColorBlue)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Panel_WithContent(t *testing.T) {
 	// Panel with centered content
 	view := Panel(Text("Hello")).Size(20, 5).Bg(ColorCyan)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2009,14 +2009,14 @@ func TestGolden_Panel_WithBorder(t *testing.T) {
 		Border(BorderRounded).
 		BorderColor(ColorGreen).
 		Title("Panel")
-	screen := SprintScreen(view, WithWidth(30), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Panel_FillChar(t *testing.T) {
 	// Panel with custom fill character
 	view := Panel(nil).Size(12, 4).FillChar('░')
-	screen := SprintScreen(view, WithWidth(15), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2040,7 +2040,7 @@ func TestGolden_Scroll_BasicTop(t *testing.T) {
 		),
 		&scrollY,
 	))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2060,7 +2060,7 @@ func TestGolden_Scroll_MiddlePosition(t *testing.T) {
 		),
 		&scrollY,
 	))
-	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2077,7 +2077,7 @@ func TestGolden_Scroll_AnchorBottom(t *testing.T) {
 		),
 		&scrollY,
 	).Bottom())
-	screen := SprintScreen(view, WithWidth(15), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2093,7 +2093,7 @@ func TestGolden_Tree_Basic(t *testing.T) {
 		AddChild(NewTreeNode("Child 3"))
 
 	view := Tree(root).Height(6)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2112,7 +2112,7 @@ func TestGolden_Tree_Nested(t *testing.T) {
 	root.ExpandAll()
 
 	view := Tree(root).Height(8)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2126,7 +2126,7 @@ func TestGolden_Tree_Collapsed(t *testing.T) {
 	root.AddChild(NewTreeNode("Branch B"))
 
 	view := Tree(root).Height(4)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2137,14 +2137,14 @@ func TestGolden_Tree_Collapsed(t *testing.T) {
 func TestGolden_KeyValue_Basic(t *testing.T) {
 	// Simple key-value pair
 	view := KeyValue("Name", "Alice")
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_KeyValue_CustomSeparator(t *testing.T) {
 	// Custom separator
 	view := KeyValue("Status", "Active").Separator(" -> ")
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2155,7 +2155,7 @@ func TestGolden_KeyValue_Styled(t *testing.T) {
 		KeyValue("Memory", "42%").LabelFg(ColorCyan).ValueFg(ColorYellow),
 		KeyValue("Disk", "89%").LabelFg(ColorCyan).ValueFg(ColorRed),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2166,21 +2166,21 @@ func TestGolden_KeyValue_Styled(t *testing.T) {
 func TestGolden_Loading_Frame0(t *testing.T) {
 	// Loading spinner at frame 0
 	view := Loading(0).Label("Loading...")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Loading_Frame5(t *testing.T) {
 	// Loading spinner at different frame
 	view := Loading(5).Label("Processing")
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Loading_NoLabel(t *testing.T) {
 	// Spinner without label
 	view := Loading(3)
-	screen := SprintScreen(view, WithWidth(10))
+	screen := SprintScreen(view, PrintConfig{Width: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2191,14 +2191,14 @@ func TestGolden_Loading_NoLabel(t *testing.T) {
 func TestGolden_Meter_Basic(t *testing.T) {
 	// Basic meter
 	view := Meter("CPU", 75, 100).Width(20)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Meter_WithValue(t *testing.T) {
 	// Meter showing value
 	view := Meter("Memory", 42, 100).Width(15).ShowValue(true)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2209,7 +2209,7 @@ func TestGolden_Meter_Multiple(t *testing.T) {
 		Meter("RAM", 80, 100).Width(20).ShowValue(true),
 		Meter("Disk", 45, 100).Width(20).ShowValue(true),
 	).Gap(1)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2223,7 +2223,7 @@ func TestGolden_Canvas_SimpleDrawing(t *testing.T) {
 		frame.PrintStyled(0, 0, "Custom", NewStyle())
 		frame.PrintStyled(0, 1, "Drawing", NewStyle())
 	}).Size(15, 3)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2236,7 +2236,7 @@ func TestGolden_Canvas_WithContext(t *testing.T) {
 		ctx.SetCell(0, h-1, '└', NewStyle())
 		ctx.SetCell(w-1, h-1, '┘', NewStyle())
 	}).Size(10, 5)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2247,7 +2247,7 @@ func TestGolden_Canvas_WithContext(t *testing.T) {
 func TestGolden_CellGrid_Basic(t *testing.T) {
 	// Basic cell grid
 	view := CellGrid(3, 2).CellSize(4, 2).Gap(1)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2259,7 +2259,7 @@ func TestGolden_ColorGrid_Basic(t *testing.T) {
 	}
 	colors := []Color{ColorBlack, ColorRed, ColorGreen}
 	view := ColorGrid(3, 2, state, colors).CellSize(3, 2)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2271,7 +2271,7 @@ func TestGolden_CharGrid_Basic(t *testing.T) {
 		{'#', '.', '#'},
 	}
 	view := CharGrid(data)
-	screen := SprintScreen(view, WithWidth(10))
+	screen := SprintScreen(view, PrintConfig{Width: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2282,14 +2282,14 @@ func TestGolden_CharGrid_Basic(t *testing.T) {
 func TestGolden_Link_Basic(t *testing.T) {
 	// Basic hyperlink
 	view := Link("https://github.com", "GitHub")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Link_URLAsText(t *testing.T) {
 	// Link using URL as display text
 	view := Link("https://example.com", "")
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2300,14 +2300,14 @@ func TestGolden_InlineLinks_Multiple(t *testing.T) {
 		NewHyperlink("https://github.com", "GitHub"),
 		NewHyperlink("https://pkg.go.dev", "Packages"),
 	)
-	screen := SprintScreen(view, WithWidth(40))
+	screen := SprintScreen(view, PrintConfig{Width: 40})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_LinkRow_Basic(t *testing.T) {
 	// Label with link
 	view := LinkRow("Documentation", "https://docs.example.com", "docs.example.com")
-	screen := SprintScreen(view, WithWidth(40))
+	screen := SprintScreen(view, PrintConfig{Width: 40})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2318,7 +2318,7 @@ func TestGolden_LinkList_Vertical(t *testing.T) {
 		NewHyperlink("https://pkg.go.dev", "Package Docs"),
 		NewHyperlink("https://go.dev/blog", "Blog"),
 	).Spacing(1)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2338,7 +2338,7 @@ func TestGolden_FilePicker_Basic(t *testing.T) {
 	view := FilePicker(items, &filter, &selected).
 		CurrentPath("/home/user/project").
 		Height(8)
-	screen := SprintScreen(view, WithWidth(35), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 35, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2352,7 +2352,7 @@ func TestGolden_ForEach_Basic(t *testing.T) {
 	view := ForEach(items, func(item string, i int) View {
 		return Text("%d. %s", i+1, item)
 	})
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2362,7 +2362,7 @@ func TestGolden_ForEach_WithGap(t *testing.T) {
 	view := ForEach(items, func(item string, i int) View {
 		return Text("- %s", item)
 	}).Gap(1)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2372,7 +2372,7 @@ func TestGolden_ForEach_WithSeparator(t *testing.T) {
 	view := ForEach(items, func(item string, i int) View {
 		return Text("%s", item).Bold()
 	}).Separator(Divider())
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2382,7 +2382,7 @@ func TestGolden_HForEach_Basic(t *testing.T) {
 	view := HForEach(items, func(item string, i int) View {
 		return Text("[%s]", item)
 	})
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2392,7 +2392,7 @@ func TestGolden_HForEach_WithGap(t *testing.T) {
 	view := HForEach(items, func(item string, i int) View {
 		return Text("%s", item)
 	}).Gap(3)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2407,7 +2407,7 @@ func TestGolden_If_True(t *testing.T) {
 		If(true, Text("Conditional content")),
 		Text("After"),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2418,7 +2418,7 @@ func TestGolden_If_False(t *testing.T) {
 		If(false, Text("Hidden content")),
 		Text("After"),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2428,7 +2428,7 @@ func TestGolden_IfElse_TrueBranch(t *testing.T) {
 		Text("True branch").Fg(ColorGreen),
 		Text("False branch").Fg(ColorRed),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2438,7 +2438,7 @@ func TestGolden_IfElse_FalseBranch(t *testing.T) {
 		Text("True branch").Fg(ColorGreen),
 		Text("False branch").Fg(ColorRed),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2451,7 +2451,7 @@ func TestGolden_Switch_MatchingCase(t *testing.T) {
 		Case("error", Text("✗ Error").Fg(ColorRed)),
 		Default[string](Text("Unknown")),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2463,7 +2463,7 @@ func TestGolden_Switch_Default(t *testing.T) {
 		Case("active", Text("Active")),
 		Default[string](Text("Unknown status").Dim()),
 	)
-	screen := SprintScreen(view, WithWidth(20))
+	screen := SprintScreen(view, PrintConfig{Width: 20})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2474,14 +2474,14 @@ func TestGolden_Switch_Default(t *testing.T) {
 func TestGolden_Button_Basic(t *testing.T) {
 	// Basic keyboard button
 	view := Button("Submit", func() {})
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Button_Styled(t *testing.T) {
 	// Styled button
 	view := Button("Cancel", func() {}).Fg(ColorRed).Bold()
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2492,21 +2492,21 @@ func TestGolden_Button_Multiple(t *testing.T) {
 		Button("Cancel", func() {}),
 		Button("Help", func() {}).Style(NewStyle().WithDim()),
 	).Gap(2)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_Clickable_Basic(t *testing.T) {
 	// Mouse-only clickable
 	view := Clickable("[+]", func() {}).Fg(ColorGreen)
-	screen := SprintScreen(view, WithWidth(10))
+	screen := SprintScreen(view, PrintConfig{Width: 10})
 	termtest.AssertScreen(t, screen)
 }
 
 func TestGolden_StyledButton_Basic(t *testing.T) {
 	// Filled styled button
 	view := StyledButton("Save", func() {}).Size(12, 3).Bg(ColorBlue)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2514,7 +2514,7 @@ func TestGolden_Toggle_On(t *testing.T) {
 	// Toggle in ON state
 	enabled := true
 	view := Toggle(&enabled).OnLabel("ON").OffLabel("OFF")
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2522,7 +2522,7 @@ func TestGolden_Toggle_Off(t *testing.T) {
 	// Toggle in OFF state
 	enabled := false
 	view := Toggle(&enabled).OnLabel("ON").OffLabel("OFF")
-	screen := SprintScreen(view, WithWidth(15))
+	screen := SprintScreen(view, PrintConfig{Width: 15})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2535,7 +2535,7 @@ func TestGolden_SelectList_Basic(t *testing.T) {
 	selected := 0
 	items := []string{"Option A", "Option B", "Option C"}
 	view := SelectListStrings(items, &selected).Height(5)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2544,7 +2544,7 @@ func TestGolden_SelectList_SelectedItem(t *testing.T) {
 	selected := 1
 	items := []string{"First", "Second", "Third"}
 	view := SelectListStrings(items, &selected).Height(4)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2557,7 +2557,7 @@ func TestGolden_FilterableList_NoFilter(t *testing.T) {
 		Filter(&filter).
 		FilterPlaceholder("Search...").
 		Height(7)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(7))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 7})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2569,7 +2569,66 @@ func TestGolden_FilterableList_WithFilter(t *testing.T) {
 	view := FilterableListStrings(items, &selected).
 		Filter(&filter).
 		Height(6)
-	screen := SprintScreen(view, WithWidth(25), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 6})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_MultiSelect(t *testing.T) {
+	// Multi-select list with chosen items
+	selected := 2
+	chosen := []int{0, 2} // Apple and Cherry chosen
+	items := []string{"Apple", "Banana", "Cherry", "Date"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		ChosenFg(ColorGreen).
+		Height(5).
+		Width(20)
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_WithMarkers(t *testing.T) {
+	// List with checkbox markers
+	selected := 1
+	chosen := []int{0, 2}
+	items := []string{"Apple", "Banana", "Cherry", "Date"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		Markers("[ ]", "[x]").
+		Height(5).
+		Width(25)
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_ScrollIndicators(t *testing.T) {
+	// List with scroll indicators (more items than visible height)
+	selected := 5
+	scrollOffset := 3
+	items := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+	view := FilterableListStrings(items, &selected).
+		ScrollOffset(&scrollOffset).
+		Height(5).
+		Width(20)
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_ChosenAndSelected(t *testing.T) {
+	// Item that is both chosen and under cursor shows merged style
+	selected := 1
+	chosen := []int{1} // Banana is both selected and chosen
+	items := []string{"Apple", "Banana", "Cherry"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		SelectedBg(ColorBlue).
+		ChosenFg(ColorGreen).
+		Height(4).
+		Width(20)
+	screen := SprintScreen(view, PrintConfig{Width: 25, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2579,7 +2638,7 @@ func TestGolden_CheckboxList_Mixed(t *testing.T) {
 	checked := []bool{true, false, true}
 	cursor := 0
 	view := CheckboxListStrings(items, checked, &cursor).Height(4)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2589,7 +2648,7 @@ func TestGolden_CheckboxList_AllChecked(t *testing.T) {
 	checked := []bool{true, true, true}
 	cursor := 1
 	view := CheckboxListStrings(items, checked, &cursor).Height(4)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 20, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2598,7 +2657,7 @@ func TestGolden_RadioList_Basic(t *testing.T) {
 	selected := 1
 	options := []string{"Small", "Medium", "Large"}
 	view := RadioListStrings(options, &selected).Height(4)
-	screen := SprintScreen(view, WithWidth(15), WithHeight(4))
+	screen := SprintScreen(view, PrintConfig{Width: 15, Height: 4})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2613,7 +2672,7 @@ func TestGolden_InputField_Empty(t *testing.T) {
 		Label("Name:").
 		Placeholder("Enter name").
 		Width(20)
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2623,7 +2682,7 @@ func TestGolden_InputField_WithValue(t *testing.T) {
 	view := InputField(&value).
 		Label("Name:").
 		Width(20)
-	screen := SprintScreen(view, WithWidth(35))
+	screen := SprintScreen(view, PrintConfig{Width: 35})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2634,7 +2693,7 @@ func TestGolden_InputField_Bordered(t *testing.T) {
 		Label("Email:").
 		Width(25).
 		Bordered()
-	screen := SprintScreen(view, WithWidth(40), WithHeight(3))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 3})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2645,7 +2704,7 @@ func TestGolden_TextArea_Basic(t *testing.T) {
 		Title("Document").
 		Size(25, 5).
 		LineNumbers(true)
-	screen := SprintScreen(view, WithWidth(30), WithHeight(5))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 5})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2656,7 +2715,7 @@ func TestGolden_TextArea_Empty(t *testing.T) {
 		EmptyPlaceholder("Start typing...").
 		Size(25, 4).
 		Bordered()
-	screen := SprintScreen(view, WithWidth(30), WithHeight(6))
+	screen := SprintScreen(view, PrintConfig{Width: 30, Height: 6})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2675,7 +2734,7 @@ This is **bold** and *italic* text.
 - Item 2
 - Item 3`
 	view := Markdown(content, &scrollY).MaxWidth(40).Height(10)
-	screen := SprintScreen(view, WithWidth(45), WithHeight(10))
+	screen := SprintScreen(view, PrintConfig{Width: 45, Height: 10})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2684,7 +2743,7 @@ func TestGolden_Markdown_CodeBlock(t *testing.T) {
 	scrollY := 0
 	content := "# Example\n\n```go\nfunc main() {\n  fmt.Println(\"Hello\")\n}\n```"
 	view := Markdown(content, &scrollY).MaxWidth(35).Height(8)
-	screen := SprintScreen(view, WithWidth(40), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2704,7 +2763,7 @@ func TestGolden_DiffView_Basic(t *testing.T) {
  }`
 	view, _ := DiffViewFromText(diffText, "go", &scrollY)
 	view.ShowLineNumbers(true).Height(8)
-	screen := SprintScreen(view, WithWidth(40), WithHeight(8))
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 8})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2718,7 +2777,7 @@ func TestGolden_FocusText_Unfocused(t *testing.T) {
 		FocusText("Name: ", "name-input").Dim(),
 		Text("[input field]"),
 	)
-	screen := SprintScreen(view, WithWidth(25))
+	screen := SprintScreen(view, PrintConfig{Width: 25})
 	termtest.AssertScreen(t, screen)
 }
 
@@ -2730,6 +2789,6 @@ func TestGolden_FocusText_Styled(t *testing.T) {
 			FocusStyle(NewStyle().WithForeground(ColorCyan).WithBold()),
 		Text("[email@example.com]"),
 	)
-	screen := SprintScreen(view, WithWidth(30))
+	screen := SprintScreen(view, PrintConfig{Width: 30})
 	termtest.AssertScreen(t, screen)
 }

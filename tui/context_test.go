@@ -319,3 +319,100 @@ func TestRenderContext_SubContextPreservesFrameCount(t *testing.T) {
 	assert.Equal(t, uint64(12345), sub2.Frame())
 	assert.Equal(t, uint64(12345), sub3.Frame())
 }
+
+// Focus manager tests for RenderContext
+
+func TestRenderContext_FocusManager_NilByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	ctx := NewRenderContext(frame, 0)
+
+	// FocusManager should be nil by default
+	assert.Nil(t, ctx.FocusManager())
+}
+
+func TestRenderContext_WithFocusManager(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	fm := NewFocusManager()
+	ctx := NewRenderContext(frame, 42).WithFocusManager(fm)
+
+	assert.NotNil(t, ctx.FocusManager())
+	assert.Equal(t, fm, ctx.FocusManager())
+	assert.Equal(t, uint64(42), ctx.Frame()) // Other fields preserved
+}
+
+func TestRenderContext_SubContextPreservesFocusManager(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	fm := NewFocusManager()
+	ctx := NewRenderContext(frame, 0).WithFocusManager(fm)
+
+	sub1 := ctx.SubContext(image.Rect(0, 0, 40, 12))
+	sub2 := sub1.SubContext(image.Rect(0, 0, 20, 6))
+
+	// All contexts should share the same focus manager
+	assert.Equal(t, fm, ctx.FocusManager())
+	assert.Equal(t, fm, sub1.FocusManager())
+	assert.Equal(t, fm, sub2.FocusManager())
+}
+
+func TestRenderContext_WithFramePreservesFocusManager(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	fm := NewFocusManager()
+	ctx := NewRenderContext(frame, 99).WithFocusManager(fm)
+
+	subFrame := frame.SubFrame(image.Rect(0, 0, 40, 12))
+	newCtx := ctx.WithFrame(subFrame)
+
+	// Focus manager should be preserved
+	assert.Equal(t, fm, newCtx.FocusManager())
+	assert.Equal(t, uint64(99), newCtx.Frame()) // Frame count also preserved
+}
+
+func TestRenderContext_FocusManagerUsage(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	fm := NewFocusManager()
+	ctx := NewRenderContext(frame, 0).WithFocusManager(fm)
+
+	// Verify the focus manager can be used through the context
+	mock := &mockFocusableForCtxTest{id: "test"}
+	ctx.FocusManager().Register(mock)
+
+	assert.Equal(t, "test", ctx.FocusManager().GetFocusedID())
+	assert.True(t, mock.focused)
+}
+
+// mockFocusableForCtxTest is a simple focusable for context tests
+type mockFocusableForCtxTest struct {
+	id      string
+	focused bool
+}
+
+func (m *mockFocusableForCtxTest) FocusID() string               { return m.id }
+func (m *mockFocusableForCtxTest) IsFocused() bool               { return m.focused }
+func (m *mockFocusableForCtxTest) SetFocused(focused bool)       { m.focused = focused }
+func (m *mockFocusableForCtxTest) FocusBounds() image.Rectangle  { return image.Rect(0, 0, 10, 10) }
+func (m *mockFocusableForCtxTest) HandleKeyEvent(e KeyEvent) bool { return false }

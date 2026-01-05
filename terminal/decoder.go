@@ -228,7 +228,7 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 		return kd.decodeMouseEvent()
 	}
 
-	// Simple sequences: ESC [ A/B/C/D/H/F
+	// Simple sequences: ESC [ A/B/C/D/H/F/Z
 	switch ch {
 	case 'A':
 		return KeyEvent{Key: KeyArrowUp}, nil
@@ -242,6 +242,9 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 		return KeyEvent{Key: KeyHome}, nil
 	case 'F':
 		return KeyEvent{Key: KeyEnd}, nil
+	case 'Z':
+		// Shift+Tab (also known as BackTab)
+		return KeyEvent{Key: KeyTab, Shift: true}, nil
 	case 'M':
 		// Legacy mouse format: ESC [ M followed by 3 bytes
 		return kd.decodeLegacyMouseEvent()
@@ -479,7 +482,7 @@ func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
 		return KeyEvent{Key: KeyUnknown}, err
 	}
 
-	// Simple sequences: ESC [ A/B/C/D/H/F
+	// Simple sequences: ESC [ A/B/C/D/H/F/Z
 	switch ch {
 	case 'A':
 		return KeyEvent{Key: KeyArrowUp}, nil
@@ -493,6 +496,9 @@ func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
 		return KeyEvent{Key: KeyHome}, nil
 	case 'F':
 		return KeyEvent{Key: KeyEnd}, nil
+	case 'Z':
+		// Shift+Tab (also known as BackTab)
+		return KeyEvent{Key: KeyTab, Shift: true}, nil
 	}
 
 	// Numeric sequences: ESC [ <number> ~  or  ESC [ <number> ; <modifier> <key>

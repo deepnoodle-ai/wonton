@@ -206,7 +206,7 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	}
 
 	// Create live printer for the input region
-	lp := NewLivePrinter(WithOutput(cfg.output), WithWidth(80))
+	lp := NewLivePrinter(PrintConfig{Width: 80, Output: cfg.output})
 
 	// Render initial view
 	lp.Update(state.buildView())
