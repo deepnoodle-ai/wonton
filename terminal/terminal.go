@@ -1732,8 +1732,29 @@ func (t *Terminal) flushInternal() error {
 
 				// Write char
 				output.WriteRune(cell.Char)
-				// Move cursor by the character's display width
-				currentX += cell.Width
+
+				// Update cursor position tracking.
+				//
+				// WIDE CHARACTER HANDLING:
+				// For wide characters (width > 1, typically emojis and CJK characters),
+				// we cannot assume the terminal correctly advanced its cursor by the
+				// character's display width. Different terminals handle this inconsistently:
+				//
+				// - Some terminals (like iTerm2) correctly advance the cursor by 2 cells
+				//   after printing a 2-cell-wide emoji.
+				// - Other terminals (like VSCode's xterm.js) may advance by only 1 cell,
+				//   or have other inconsistent behavior between cursor tracking and
+				//   visual rendering.
+				//
+				// By setting currentX to -1 after wide characters, we force an explicit
+				// cursor positioning command (CSI row;col H) before the next character
+				// write. This ensures correct rendering regardless of the terminal's
+				// cursor advancement behavior, at the cost of slightly more output bytes.
+				if cell.Width > 1 {
+					currentX = -1 // Force cursor reposition on next character
+				} else {
+					currentX += cell.Width
+				}
 
 				// Update front buffer
 				t.frontBuffer[y][x] = cell
