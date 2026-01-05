@@ -1,14 +1,14 @@
-╭─────────────────────────╮ ╭─Content─────────────────╮
-│Navigation               │ │Welcome Home             │
-│─────────────────────────│ │                         │
-│> Home                   │ │                         │
-│  Settings               │ │                         │
-│  Profile                │ │This is the main content │
-│  Help                   │ │Select an item from the s│
-│                         │ │                         │
-│                         │ │                         │
-│                         │ │                         │
-│                         │ │Version: 1.0.0    Help: ?│
-│─────────────────────────│ │                         │
-│  Logout                 │ │                         │
-╰─────────────────────────╯ ╰─────────────────────────╯
+╭──────────╮ ╭─Content────────────────────────╮
+│Navigation│ │Welcome Home                    │
+│──────────│ │                                │
+│> Home    │ │                                │
+│  Settings│ │                                │
+│  Profile │ │                                │
+│  Help    │ │This is the main content area.  │
+│          │ │Select an item from the sidebar.│
+│          │ │                                │
+│          │ │                                │
+│          │ │                                │
+│──────────│ │                                │
+│  Logout  │ │Version: 1.0.0           Help: ?│
+╰──────────╯ ╰────────────────────────────────╯

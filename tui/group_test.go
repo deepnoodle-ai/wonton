@@ -423,6 +423,24 @@ func TestGroup_WideChildrenWithConstraint(t *testing.T) {
 	assert.Equal(t, 30, w)
 }
 
+func TestGroup_RenderScalesChildrenProportionally(t *testing.T) {
+	// Two fixed-width children that together exceed available space
+	g := Group(
+		Text("AAAAAAAAAA"),           // 10 chars
+		Text("BBBBBBBBBBBBBBBBBBBB"), // 20 chars
+	)
+
+	// Render into a 15-wide frame (children want 30)
+	screen := SprintScreen(g, WithWidth(15), WithHeight(1))
+	output := screen.Text()
+
+	// Both children should be visible and scaled proportionally
+	// Child 1 (10 chars) should get 10*15/30 = 5 chars
+	// Child 2 (20 chars) should get 15-5 = 10 chars
+	assert.True(t, strings.Contains(output, "AAAAA"), "First child should be scaled to ~5 chars")
+	assert.True(t, strings.Contains(output, "BBBBBBBBBB"), "Second child should get remaining space")
+}
+
 func TestGroup_NoMaxConstraints(t *testing.T) {
 	g := Group(
 		Text("Test"),

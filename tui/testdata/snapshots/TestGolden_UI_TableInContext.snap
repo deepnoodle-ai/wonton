@@ -1,7 +1,5 @@
                  User Management
 Search: [Filter users...     ]             [+ Add]
-
-
 ──────────────────────────────────────────────────
 ID    Name          Role        Status
 ────────────────────────────────────────
@@ -10,5 +8,7 @@ ID    Name          Role        Status
 3     Carol         User        Inactive
 ──────────────────────────────────────────────────
 3 users   ↑↓: Navigate | Enter: Edit | Del: Remove
+
+
 
 

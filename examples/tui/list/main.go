@@ -11,6 +11,7 @@ import (
 type ListDemoApp struct {
 	items        []tui.ListItem
 	selected     int
+	chosen       []int // tracks which items have been chosen (Enter key)
 	filterText   string
 	scrollOffset int
 	lastAction   string
@@ -75,8 +76,6 @@ func (app *ListDemoApp) View() tui.View {
 
 		// Main content area with list
 		tui.Group(
-			// Left padding
-			tui.Spacer().MinWidth(2),
 
 			// List with border
 			tui.Bordered(
@@ -87,33 +86,33 @@ func (app *ListDemoApp) View() tui.View {
 					Width(40).
 					SelectedFg(tui.ColorWhite).
 					SelectedBg(tui.ColorBlue).
+					ChosenFg(tui.ColorGreen).
+					MultiSelect(true).
+					Chosen(&app.chosen).
+					Markers("[ ]", "[x]").
 					ScrollOffset(&app.scrollOffset).
 					OnSelect(func(item tui.ListItem, idx int) {
-						app.lastAction = fmt.Sprintf("Selected: %s (index %d)", item.Label, idx)
+						app.lastAction = fmt.Sprintf("Toggled: %s (index %d)", item.Label, idx)
 					}),
 			).Title("Fruits").Border(&tui.RoundedBorder),
 
-			// Right padding
-			tui.Spacer().MinWidth(2),
+			// Gap between list and info panel
+			// tui.Spacer().MinWidth(1),
 
-			// Info panel (with minimum width for long text)
-			tui.Group(
-				tui.Stack(
-					tui.Text("Selection Info").Bold(),
-					tui.Divider(),
-					tui.Spacer().MinHeight(1),
-					tui.Text("Index: %d", app.selected),
-					tui.Text("Scroll: %d", app.scrollOffset),
-					tui.Spacer().MinHeight(1),
-					tui.Text("Last Action:").Dim(),
-					tui.Text("%s", app.lastAction).Fg(tui.ColorGreen),
-					tui.Spacer(),
-				).Padding(1),
-				tui.Spacer().MinWidth(35),
-			),
+			// Info panel
+			tui.Stack(
+				tui.Text("Selection Info").Bold(),
+				tui.Divider(),
+				tui.Text("Index: %d", app.selected),
+				tui.Text("Scroll: %d", app.scrollOffset),
+				tui.Text(""),
+				tui.Text("Last Action:").Dim(),
+				tui.Text("%s", app.lastAction).Fg(tui.ColorGreen),
+				tui.Spacer(),
+			).Padding(1),
 
 			// Right padding
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(1),
 		),
 
 		// Bottom spacer

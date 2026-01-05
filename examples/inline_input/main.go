@@ -57,7 +57,7 @@ func main() {
 		// Print user message to scrollback
 		userView := tui.Stack(
 			tui.Text("You:").Bold().Fg(tui.ColorGreen),
-			tui.Padding(1, tui.Text(input)),
+			tui.Padding(1, tui.Text("%s", input)),
 		)
 		tui.Print(userView)
 		fmt.Println()
@@ -84,7 +84,7 @@ func simulateResponse(userInput string) {
 		partial += string(char)
 		live.Update(tui.Stack(
 			tui.Text("Assistant:").Bold().Fg(tui.ColorBlue),
-			tui.Padding(1, tui.Text(partial)),
+			tui.Padding(1, tui.Text("%s", partial)),
 		))
 		time.Sleep(20 * time.Millisecond)
 	}

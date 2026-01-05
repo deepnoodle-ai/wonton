@@ -41,15 +41,20 @@ func (g *group) Flex(factor int) *group {
 
 // flex implements the Flexible interface.
 // If no explicit flex factor is set, the group inherits flexibility from
-// its children. This allows flexible views (like Canvas) to expand even
-// when nested inside containers, matching CSS flexbox behavior.
+// its flexible children (like Canvas or Fill), but NOT from Spacers.
+// Spacers are layout utilities that shouldn't make their container flexible.
 func (g *group) flex() int {
 	if g.flexFactor != 0 {
 		return g.flexFactor
 	}
-	// Auto-derive: inherit max flex from children
-	// This makes Group(Canvas()) flexible because Canvas is flexible
+	// Auto-derive: inherit flex from non-Spacer flexible children
+	// This makes Group(Canvas()) flexible, but Group(Text, Spacer, Text)
+	// won't become flexible just because it contains a Spacer
 	for _, child := range g.children {
+		// Skip spacers - they're layout utilities, not content
+		if _, isSpacer := child.(*spacerView); isSpacer {
+			continue
+		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
 			return flex.flex()
 		}
@@ -123,16 +128,34 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 			remainingWidth = 0
 		}
 
-		// Distribute remaining space among flexible children
-		distributedWidth := 0
+		// First pass: get minimum sizes for all flex children
+		minWidths := make([]int, len(flexChildren))
+		totalMinWidth := 0
+		for i, idx := range flexChildren {
+			minW, _ := g.children[idx].size(0, maxHeight)
+			minWidths[i] = minW
+			totalMinWidth += minW
+		}
+
+		// Calculate extra space beyond minimums
+		extraWidth := remainingWidth - totalMinWidth
+		if extraWidth < 0 {
+			extraWidth = 0
+		}
+
+		// Distribute extra space proportionally, ensuring minimums are respected
+		distributedExtra := 0
 		for i, idx := range flexChildren {
 			flex := g.children[idx].(Flexible).flex()
-			width := (remainingWidth * flex) / totalFlex
+			extra := (extraWidth * flex) / totalFlex
 			// Give remainder to last flex child
 			if i == len(flexChildren)-1 {
-				width = remainingWidth - distributedWidth
+				extra = extraWidth - distributedExtra
 			}
-			distributedWidth += width
+			distributedExtra += extra
+
+			// Total width = minimum + proportional extra
+			width := minWidths[i] + extra
 
 			// Get the height for this flexible child
 			_, ht := g.children[idx].size(width, maxHeight)
@@ -178,6 +201,62 @@ func (g *group) render(ctx *RenderContext) {
 
 	// Re-measure with actual bounds
 	g.size(width, height)
+
+	// Calculate total width needed
+	totalWidth := 0
+	visibleCount := 0
+	for _, size := range g.childSizes {
+		if size.X > 0 || size.Y > 0 {
+			totalWidth += size.X
+			visibleCount++
+		}
+	}
+	if visibleCount > 1 {
+		totalWidth += g.gap * (visibleCount - 1)
+	}
+
+	// If total exceeds available width, shrink children proportionally
+	// This ensures all children get fair space rather than clipping later ones
+	if totalWidth > width && totalWidth > 0 {
+		// Calculate scale factor, reserving space for gaps
+		gapSpace := 0
+		if visibleCount > 1 {
+			gapSpace = g.gap * (visibleCount - 1)
+		}
+		availableForChildren := width - gapSpace
+		if availableForChildren < 0 {
+			availableForChildren = 0
+		}
+		contentWidth := totalWidth - gapSpace
+		if contentWidth <= 0 {
+			contentWidth = 1
+		}
+
+		// Scale each child proportionally
+		usedWidth := 0
+		lastVisibleIdx := -1
+		for i := range g.childSizes {
+			if g.childSizes[i].X > 0 || g.childSizes[i].Y > 0 {
+				lastVisibleIdx = i
+			}
+		}
+		for i := range g.childSizes {
+			if g.childSizes[i].X == 0 && g.childSizes[i].Y == 0 {
+				continue
+			}
+			if i == lastVisibleIdx {
+				// Give remainder to last child to avoid rounding errors
+				g.childSizes[i].X = availableForChildren - usedWidth
+			} else {
+				scaledWidth := (g.childSizes[i].X * availableForChildren) / contentWidth
+				if scaledWidth < 1 && g.childSizes[i].X > 0 {
+					scaledWidth = 1 // Minimum 1 cell for visible children
+				}
+				g.childSizes[i].X = scaledWidth
+				usedWidth += scaledWidth
+			}
+		}
+	}
 
 	currentX := 0
 	renderedVisible := false

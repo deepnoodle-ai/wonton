@@ -2573,6 +2573,65 @@ func TestGolden_FilterableList_WithFilter(t *testing.T) {
 	termtest.AssertScreen(t, screen)
 }
 
+func TestGolden_FilterableList_MultiSelect(t *testing.T) {
+	// Multi-select list with chosen items
+	selected := 2
+	chosen := []int{0, 2} // Apple and Cherry chosen
+	items := []string{"Apple", "Banana", "Cherry", "Date"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		ChosenFg(ColorGreen).
+		Height(5).
+		Width(20)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_WithMarkers(t *testing.T) {
+	// List with checkbox markers
+	selected := 1
+	chosen := []int{0, 2}
+	items := []string{"Apple", "Banana", "Cherry", "Date"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		Markers("[ ]", "[x]").
+		Height(5).
+		Width(25)
+	screen := SprintScreen(view, WithWidth(30), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_ScrollIndicators(t *testing.T) {
+	// List with scroll indicators (more items than visible height)
+	selected := 5
+	scrollOffset := 3
+	items := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+	view := FilterableListStrings(items, &selected).
+		ScrollOffset(&scrollOffset).
+		Height(5).
+		Width(20)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(5))
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_FilterableList_ChosenAndSelected(t *testing.T) {
+	// Item that is both chosen and under cursor shows merged style
+	selected := 1
+	chosen := []int{1} // Banana is both selected and chosen
+	items := []string{"Apple", "Banana", "Cherry"}
+	view := FilterableListStrings(items, &selected).
+		MultiSelect(true).
+		Chosen(&chosen).
+		SelectedBg(ColorBlue).
+		ChosenFg(ColorGreen).
+		Height(4).
+		Width(20)
+	screen := SprintScreen(view, WithWidth(25), WithHeight(4))
+	termtest.AssertScreen(t, screen)
+}
+
 func TestGolden_CheckboxList_Mixed(t *testing.T) {
 	// Checkbox list with mixed states
 	items := []string{"Feature A", "Feature B", "Feature C"}
