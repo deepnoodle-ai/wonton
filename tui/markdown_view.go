@@ -153,8 +153,11 @@ func (m *markdownView) render(ctx *RenderContext) {
 		// Render segments
 		for _, seg := range line.Segments {
 			if seg.Hyperlink != nil {
-				// Render as hyperlink
-				ctx.PrintHyperlink(x, y, *seg.Hyperlink)
+				// Render as hyperlink using segment's text (which may be a
+				// single word after wrapping), not the full hyperlink text
+				link := *seg.Hyperlink
+				link.Text = seg.Text
+				ctx.PrintHyperlink(x, y, link)
 			} else {
 				// Render as styled text
 				ctx.PrintStyled(x, y, seg.Text, seg.Style)
