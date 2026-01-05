@@ -67,7 +67,7 @@ func (app *App) resultView() tui.View {
 
 	return tui.Stack(
 		tui.Group(
-			tui.Text(icon).Style(style),
+			tui.Text("%s", icon).Style(style),
 			tui.Text(" %s", app.result),
 		),
 		tui.Text(""),
