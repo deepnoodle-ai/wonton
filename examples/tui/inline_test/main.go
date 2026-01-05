@@ -263,9 +263,7 @@ func (e BatchPrintEvent) Timestamp() time.Time { return e.Time }
 
 func main() {
 	app := &TestApp{}
-	app.runner = tui.NewInlineApp(
-		tui.WithInlineWidth(70),
-	)
+	app.runner = tui.NewInlineApp(tui.InlineAppConfig{Width: 70})
 
 	fmt.Println("=== InlineApp Test Example ===")
 	fmt.Println("This example tests:")

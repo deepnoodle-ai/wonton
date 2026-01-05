@@ -312,7 +312,8 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 	}
 
 	// Determine if this input is focused
-	isFocused := focusManager.GetFocusedID() == f.id
+	fm := ctx.FocusManager()
+	isFocused := fm != nil && fm.GetFocusedID() == f.id
 
 	if f.bordered && f.border != nil && !f.horizontalBarOnly {
 		// Draw full bordered input with label embedded in top border
@@ -544,7 +545,7 @@ func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h in
 func (f *inputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
-	state := inputRegistry.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit)
+	state := inputRegistry.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit, ctx.FocusManager())
 
 	// Apply cursor customizations if set
 	if f.cursorShape != InputCursorBlock {

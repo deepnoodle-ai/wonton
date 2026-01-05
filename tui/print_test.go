@@ -11,7 +11,7 @@ func TestPrint_SimpleText(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Hello, World!")
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -22,7 +22,7 @@ func TestPrint_StyledText(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Bold").Bold()
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -35,7 +35,7 @@ func TestPrint_ColoredText(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Red").Fg(ColorRed)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -52,7 +52,7 @@ func TestPrint_Stack(t *testing.T) {
 		Text("Line 3"),
 	)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -68,7 +68,7 @@ func TestPrint_Stack(t *testing.T) {
 func TestSprint(t *testing.T) {
 	view := Text("Sprint test")
 
-	output := Sprint(view, WithWidth(80))
+	output := Sprint(view, PrintConfig{Width: 80})
 	assert.True(t, strings.Contains(output, "Sprint test"), "output should contain text")
 }
 
@@ -76,7 +76,7 @@ func TestFprint(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Fprint test")
 
-	err := Fprint(&buf, view, WithWidth(80))
+	err := Fprint(&buf, view, PrintConfig{Width: 80})
 	assert.NoError(t, err)
 	assert.True(t, strings.Contains(buf.String(), "Fprint test"), "output should contain text")
 }
@@ -85,7 +85,7 @@ func TestPrint_WithHeight(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Fixed height")
 
-	err := Print(view, WithWidth(80), WithHeight(5), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -96,7 +96,7 @@ func TestPrint_Bordered(t *testing.T) {
 	var buf strings.Builder
 	view := Bordered(Text("Bordered")).Border(&SingleBorder)
 
-	err := Print(view, WithWidth(40), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 40, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -109,14 +109,14 @@ func TestPrint_Empty(t *testing.T) {
 	var buf strings.Builder
 	view := Empty()
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 	// Should not error on empty view
 }
 
 func TestLivePrinter_Update(t *testing.T) {
 	var buf strings.Builder
-	lp := NewLivePrinter(WithWidth(40), WithOutput(&buf))
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
 
 	// First update
 	err := lp.Update(Text("First"))
@@ -134,7 +134,7 @@ func TestLivePrinter_Update(t *testing.T) {
 
 func TestLivePrinter_Clear(t *testing.T) {
 	var buf strings.Builder
-	lp := NewLivePrinter(WithWidth(40), WithOutput(&buf))
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
 
 	lp.Update(Text("Content"))
 	lp.Clear()
@@ -153,7 +153,7 @@ func TestLive_Convenience(t *testing.T) {
 			update(Text("Count: %d", i))
 			count++
 		}
-	}, WithWidth(40), WithOutput(&buf))
+	}, PrintConfig{Width: 40, Output: &buf})
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, count)

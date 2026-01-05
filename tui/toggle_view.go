@@ -142,9 +142,11 @@ func (t *toggleView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Register with focus manager for keyboard input
+	// Register with focus manager for keyboard input (if available)
 	t.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(t)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(t)
+	}
 
 	isOn := t.value != nil && *t.value
 

@@ -243,50 +243,50 @@ for {
 
 ### Terminal Management
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `NewTerminal` | Create new terminal instance | None | `*Terminal, error` |
-| `NewTestTerminal` | Create terminal for testing | `width, height int, out io.Writer` | `*Terminal` |
-| `Close` | Clean up terminal state | None | `error` |
-| `Size` | Get terminal dimensions | None | `width, height int` |
-| `RefreshSize` | Update cached terminal size | None | `error` |
+| Function          | Description                  | Inputs                             | Outputs             |
+| ----------------- | ---------------------------- | ---------------------------------- | ------------------- |
+| `NewTerminal`     | Create new terminal instance | None                               | `*Terminal, error`  |
+| `NewTestTerminal` | Create terminal for testing  | `width, height int, out io.Writer` | `*Terminal`         |
+| `Close`           | Clean up terminal state      | None                               | `error`             |
+| `Size`            | Get terminal dimensions      | None                               | `width, height int` |
+| `RefreshSize`     | Update cached terminal size  | None                               | `error`             |
 
 ### Frame Rendering
 
-| Method | Description | Inputs | Outputs |
-|--------|-------------|--------|---------|
-| `BeginFrame` | Start frame rendering (locks terminal) | None | `RenderFrame, error` |
-| `EndFrame` | Finish frame and flush changes | `frame RenderFrame` | `error` |
-| `Flush` | Manually flush buffer changes | None | None |
+| Method       | Description                            | Inputs              | Outputs              |
+| ------------ | -------------------------------------- | ------------------- | -------------------- |
+| `BeginFrame` | Start frame rendering (locks terminal) | None                | `RenderFrame, error` |
+| `EndFrame`   | Finish frame and flush changes         | `frame RenderFrame` | `error`              |
+| `Flush`      | Manually flush buffer changes          | None                | None                 |
 
 ### RenderFrame Methods
 
-| Method | Description | Inputs | Outputs |
-|--------|-------------|--------|---------|
-| `SetCell` | Set character and style at position | `x, y int, char rune, style Style` | `error` |
-| `PrintStyled` | Print text with wrapping | `x, y int, text string, style Style` | `error` |
-| `PrintTruncated` | Print text with truncation | `x, y int, text string, style Style` | `error` |
-| `FillStyled` | Fill rectangle with character | `x, y, width, height int, char rune, style Style` | `error` |
-| `Fill` | Fill entire frame | `char rune, style Style` | `error` |
-| `Size` | Get frame dimensions | None | `width, height int` |
-| `GetBounds` | Get frame bounds | None | `image.Rectangle` |
-| `SubFrame` | Create subframe for region | `rect image.Rectangle` | `RenderFrame` |
-| `PrintHyperlink` | Print clickable hyperlink (OSC 8) | `x, y int, link Hyperlink` | `error` |
+| Method           | Description                         | Inputs                                            | Outputs             |
+| ---------------- | ----------------------------------- | ------------------------------------------------- | ------------------- |
+| `SetCell`        | Set character and style at position | `x, y int, char rune, style Style`                | `error`             |
+| `PrintStyled`    | Print text with wrapping            | `x, y int, text string, style Style`              | `error`             |
+| `PrintTruncated` | Print text with truncation          | `x, y int, text string, style Style`              | `error`             |
+| `FillStyled`     | Fill rectangle with character       | `x, y, width, height int, char rune, style Style` | `error`             |
+| `Fill`           | Fill entire frame                   | `char rune, style Style`                          | `error`             |
+| `Size`           | Get frame dimensions                | None                                              | `width, height int` |
+| `GetBounds`      | Get frame bounds                    | None                                              | `image.Rectangle`   |
+| `SubFrame`       | Create subframe for region          | `rect image.Rectangle`                            | `RenderFrame`       |
+| `PrintHyperlink` | Print clickable hyperlink (OSC 8)   | `x, y int, link Hyperlink`                        | `error`             |
 
 ### Input Decoding
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `NewKeyDecoder` | Create input decoder | `r io.Reader` | `*KeyDecoder` |
-| `ReadEvent` | Read next input event | None | `Event, error` |
-| `ParseMouseEvent` | Parse mouse event from bytes | `seq []byte` | `*MouseEvent, error` |
+| Function          | Description                  | Inputs        | Outputs              |
+| ----------------- | ---------------------------- | ------------- | -------------------- |
+| `NewKeyDecoder`   | Create input decoder         | `r io.Reader` | `*KeyDecoder`        |
+| `ReadEvent`       | Read next input event        | None          | `Event, error`       |
+| `ParseMouseEvent` | Parse mouse event from bytes | `seq []byte`  | `*MouseEvent, error` |
 
 ### Styles
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `NewStyle` | Create new style | None | `Style` |
-| `NewRGB` | Create RGB color | `r, g, b uint8` | `RGB` |
+| Function   | Description      | Inputs          | Outputs |
+| ---------- | ---------------- | --------------- | ------- |
+| `NewStyle` | Create new style | None            | `Style` |
+| `NewRGB`   | Create RGB color | `r, g, b uint8` | `RGB`   |
 
 See full API reference in the [package godoc](https://pkg.go.dev/github.com/deepnoodle-ai/wonton/terminal).
 

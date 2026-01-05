@@ -72,34 +72,34 @@ func (a *testInitDestroyApp) Destroy() {
 	a.destroyCalled = true
 }
 
-// TestInlineApp_NewInlineApp tests the constructor and options
+// TestInlineApp_NewInlineApp tests the constructor and config
 func TestInlineApp_NewInlineApp(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		runner := NewInlineApp()
 		assert.NotNil(t, runner)
-		assert.Equal(t, 0, runner.config.fps)
-		assert.False(t, runner.config.mouseTracking)
-		assert.False(t, runner.config.bracketedPaste)
+		assert.Equal(t, 0, runner.config.FPS)
+		assert.False(t, runner.config.MouseTracking)
+		assert.False(t, runner.config.BracketedPaste)
 	})
 
-	t.Run("with options", func(t *testing.T) {
+	t.Run("with config", func(t *testing.T) {
 		var buf bytes.Buffer
-		runner := NewInlineApp(
-			WithInlineWidth(100),
-			WithInlineOutput(&buf),
-			WithInlineFPS(30),
-			WithInlineMouseTracking(true),
-			WithInlineBracketedPaste(true),
-			WithInlinePasteTabWidth(4),
-			WithInlineKittyKeyboard(true),
-		)
+		runner := NewInlineApp(InlineAppConfig{
+			Width:          100,
+			Output:         &buf,
+			FPS:            30,
+			MouseTracking:  true,
+			BracketedPaste: true,
+			PasteTabWidth:  4,
+			KittyKeyboard:  true,
+		})
 
-		assert.Equal(t, 100, runner.config.width)
-		assert.Equal(t, 30, runner.config.fps)
-		assert.True(t, runner.config.mouseTracking)
-		assert.True(t, runner.config.bracketedPaste)
-		assert.Equal(t, 4, runner.config.pasteTabWidth)
-		assert.True(t, runner.config.kittyKeyboard)
+		assert.Equal(t, 100, runner.config.Width)
+		assert.Equal(t, 30, runner.config.FPS)
+		assert.True(t, runner.config.MouseTracking)
+		assert.True(t, runner.config.BracketedPaste)
+		assert.Equal(t, 4, runner.config.PasteTabWidth)
+		assert.True(t, runner.config.KittyKeyboard)
 	})
 }
 
@@ -163,10 +163,10 @@ func TestInlineApp_PrintFormats(t *testing.T) {
 	// Full integration testing would require a real terminal
 
 	var buf bytes.Buffer
-	runner := NewInlineApp(
-		WithInlineOutput(&buf),
-		WithInlineWidth(40),
-	)
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  40,
+	})
 
 	// We can't fully test Print without running, but we can test the method exists
 	assert.NotNil(t, runner.Printf)
@@ -176,7 +176,7 @@ func TestInlineApp_PrintFormats(t *testing.T) {
 func TestInlineApp_RunInline(t *testing.T) {
 	// RunInline should return error for non-terminal stdin
 	app := &testInlineApp{liveText: "test"}
-	err := RunInline(app)
+	err := RunInline(app, nil)
 
 	// Should error because stdin is not a terminal in tests
 	assert.Error(t, err)
@@ -262,16 +262,16 @@ func TestInlineApp_ProcessEventWithQuitCheck(t *testing.T) {
 // TestInlineApp_LivePrinterIntegration tests LivePrinter output
 func TestInlineApp_LivePrinterIntegration(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(
-		WithInlineOutput(&buf),
-		WithInlineWidth(40),
-	)
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  40,
+	})
 
 	app := &testInlineApp{liveText: "Hello, World!"}
 	runner.app = app
 
 	// Create a live printer manually for testing
-	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
+	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
 
 	// Render should call LiveView and update the live printer
 	runner.render()
@@ -284,29 +284,29 @@ func TestInlineApp_LivePrinterIntegration(t *testing.T) {
 	assert.Contains(t, output, "Hello")
 }
 
-// TestInlineApp_OptionsDefaults tests option default values
-func TestInlineApp_OptionsDefaults(t *testing.T) {
-	cfg := defaultInlineConfig()
+// TestInlineApp_ConfigDefaults tests config default values
+func TestInlineApp_ConfigDefaults(t *testing.T) {
+	cfg := InlineAppConfig{}.withDefaults()
 
 	// Check defaults match the design doc
-	assert.Equal(t, 0, cfg.fps)
-	assert.False(t, cfg.mouseTracking)
-	assert.False(t, cfg.bracketedPaste)
-	assert.Equal(t, 0, cfg.pasteTabWidth)
-	assert.False(t, cfg.kittyKeyboard)
+	assert.Equal(t, 0, cfg.FPS)
+	assert.False(t, cfg.MouseTracking)
+	assert.False(t, cfg.BracketedPaste)
+	assert.Equal(t, 0, cfg.PasteTabWidth)
+	assert.False(t, cfg.KittyKeyboard)
 }
 
 // TestInlineApp_ConcurrentPrint tests thread safety of Print
 func TestInlineApp_ConcurrentPrint(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(
-		WithInlineOutput(&buf),
-		WithInlineWidth(40),
-	)
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  40,
+	})
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
+	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
 
 	// Multiple goroutines calling methods concurrently
 	var wg sync.WaitGroup
@@ -326,14 +326,14 @@ func TestInlineApp_ConcurrentPrint(t *testing.T) {
 // TestInlineApp_PrintRawModeLineEndings tests that Print uses raw mode line endings
 func TestInlineApp_PrintRawModeLineEndings(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(
-		WithInlineOutput(&buf),
-		WithInlineWidth(40),
-	)
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  40,
+	})
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
+	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
 
 	// Print a multi-line view
 	runner.Print(Stack(
@@ -353,7 +353,7 @@ func TestWithRawMode(t *testing.T) {
 	t.Run("without raw mode uses LF", func(t *testing.T) {
 		var buf bytes.Buffer
 		view := Stack(Text("Line 1"), Text("Line 2"))
-		Fprint(&buf, view, WithWidth(20))
+		Fprint(&buf, view, PrintConfig{Width: 20})
 		output := buf.String()
 
 		// Should contain plain \n (or no special line ending if single line equivalent)
@@ -364,7 +364,7 @@ func TestWithRawMode(t *testing.T) {
 	t.Run("with raw mode uses CRLF", func(t *testing.T) {
 		var buf bytes.Buffer
 		view := Stack(Text("Line 1"), Text("Line 2"))
-		Fprint(&buf, view, WithWidth(20), WithRawMode())
+		Fprint(&buf, view, PrintConfig{Width: 20, RawMode: true})
 		output := buf.String()
 
 		// Should contain \r\n

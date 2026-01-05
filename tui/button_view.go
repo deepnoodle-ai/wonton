@@ -64,7 +64,7 @@ func (r *buttonRegistryImpl) Clear() {
 }
 
 // Register adds or updates a button.
-func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callback func(), focusStyle Style) *buttonState {
+func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callback func(), focusStyle Style, fm *FocusManager) *buttonState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -80,8 +80,10 @@ func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callbac
 	state.callback = callback
 	state.focusStyle = focusStyle
 
-	// Register with the global focus manager
-	focusManager.Register(state)
+	// Register with the focus manager (if available)
+	if fm != nil {
+		fm.Register(state)
+	}
 
 	return state
 }
@@ -241,7 +243,7 @@ func (b *buttonView) render(ctx *RenderContext) {
 
 	// Register this button for focus management
 	bounds := ctx.AbsoluteBounds()
-	state := buttonRegistry.Register(b.id, bounds, b.callback, b.focusStyle)
+	state := buttonRegistry.Register(b.id, bounds, b.callback, b.focusStyle, ctx.FocusManager())
 
 	// Choose style based on focus state
 	style := b.style

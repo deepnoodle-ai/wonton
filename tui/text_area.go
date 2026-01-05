@@ -369,7 +369,8 @@ func (t *textAreaView) render(ctx *RenderContext) {
 	}
 
 	// Determine if focused
-	isFocused := t.id != "" && focusManager.GetFocusedID() == t.id
+	fm := ctx.FocusManager()
+	isFocused := t.id != "" && fm != nil && fm.GetFocusedID() == t.id
 
 	// Build content view
 	content := t.getContent()
@@ -474,13 +475,15 @@ func (t *textAreaView) render(ctx *RenderContext) {
 	// Update scroll position
 	t.setScrollY(scrollY)
 
-	// Register as focusable for Tab navigation
+	// Register as focusable for Tab navigation (if focus manager available)
 	bounds := ctx.AbsoluteBounds()
-	handler := &textAreaFocusHandler{
-		area:   t,
-		bounds: bounds,
+	if fm != nil {
+		handler := &textAreaFocusHandler{
+			area:   t,
+			bounds: bounds,
+		}
+		fm.Register(handler)
 	}
-	focusManager.Register(handler)
 }
 
 func (t *textAreaView) renderBordered(ctx *RenderContext, w, h int, content *scrollView, scrollY *int, borderStyle, titleStyle Style) {

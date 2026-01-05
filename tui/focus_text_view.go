@@ -78,7 +78,8 @@ func (f *focusTextView) render(ctx *RenderContext) {
 	}
 
 	// Determine if the watched element is focused
-	isFocused := f.focusID != "" && focusManager.GetFocusedID() == f.focusID
+	fm := ctx.FocusManager()
+	isFocused := f.focusID != "" && fm != nil && fm.GetFocusedID() == f.focusID
 
 	// Choose style based on focus state
 	style := f.style

@@ -637,7 +637,7 @@ func TestTextArea_Render_EmptyContent(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Size(40, 5)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -648,7 +648,7 @@ func TestTextArea_Render_CustomEmptyPlaceholder(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Size(40, 5).EmptyPlaceholder("Nothing here")
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -660,7 +660,7 @@ func TestTextArea_Render_WithContent(t *testing.T) {
 	content := "Hello World\nLine 2\nLine 3"
 	ta := TextArea(&content).Size(40, 5)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -672,7 +672,7 @@ func TestTextArea_Render_WithStaticContent(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Static content").Size(40, 5)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -683,7 +683,7 @@ func TestTextArea_Render_Bordered(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test").Size(20, 5).Bordered()
 
-	err := Print(ta, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -696,7 +696,7 @@ func TestTextArea_Render_BorderedWithTitle(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test").Size(30, 5).Bordered().Title("My Title")
 
-	err := Print(ta, WithWidth(30), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 30, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -708,7 +708,7 @@ func TestTextArea_Render_WithLineNumbers(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Line A\nLine B\nLine C").Size(40, 5).LineNumbers(true)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -721,7 +721,7 @@ func TestTextArea_Render_LeftBorderOnly(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test content").Size(30, 5).LeftBorderOnly()
 
-	err := Print(ta, WithWidth(30), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 30, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -773,26 +773,19 @@ func TestTextArea_Render_RegistersFocusHandler(t *testing.T) {
 	assert.NoError(t, err)
 	defer terminal.EndFrame(frame)
 
-	// Clear focus manager state
-	focusManager.Clear()
+	// Create focus manager for this test
+	fm := NewFocusManager()
 
 	ta := TextArea(nil).Content("Test").Size(40, 10).ID("test-textarea")
 
-	ctx := NewRenderContext(frame, 0)
+	ctx := NewRenderContext(frame, 0).WithFocusManager(fm)
 	subCtx := ctx.SubContext(image.Rect(0, 0, 40, 10))
 
 	ta.render(subCtx)
 
 	// Focus handler should be registered
-	handlers := focusManager.focusables
-	found := false
-	for _, h := range handlers {
-		if h.FocusID() == "test-textarea" {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "should register focus handler")
+	found := fm.GetFocusedID() == "test-textarea" // First registered element gets auto-focused
+	assert.True(t, found, "should register focus handler and auto-focus first element")
 }
 
 // renderBordered tests
@@ -858,7 +851,7 @@ func TestTextArea_RenderBordered_TitleTruncation(t *testing.T) {
 	// Very long title should be truncated
 	ta := TextArea(nil).Content("Test").Size(15, 5).Bordered().Title("Very Long Title That Should Be Truncated")
 
-	err := Print(ta, WithWidth(15), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 15, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	// Should not panic and should render something
@@ -886,7 +879,7 @@ func TestTextArea_RenderBordered_WithCustomBorderStyle(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test").Size(20, 5).Border(&DoubleBorder)
 
-	err := Print(ta, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -898,7 +891,7 @@ func TestTextArea_RenderBordered_WithBorderFg(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test").Size(20, 5).Bordered().BorderFg(ColorRed)
 
-	err := Print(ta, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -929,7 +922,7 @@ func TestTextArea_Render_WithHighlightCurrentLine(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Line 1\nLine 2\nLine 3").Size(40, 5).HighlightCurrentLine(true)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -944,7 +937,7 @@ func TestTextArea_Render_WithCustomCurrentLineStyle(t *testing.T) {
 		HighlightCurrentLine(true).
 		CurrentLineStyle(NewStyle().WithBackground(ColorBlue))
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -956,7 +949,7 @@ func TestTextArea_Render_EmptyLines(t *testing.T) {
 	// Content with empty lines
 	ta := TextArea(nil).Content("Line 1\n\nLine 3").Size(40, 5)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -972,7 +965,7 @@ func TestTextArea_Render_WithLineNumbersAndHighlight(t *testing.T) {
 		HighlightCurrentLine(true).
 		CursorLine(&cursorLine)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, PrintConfig{Width: 40, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()

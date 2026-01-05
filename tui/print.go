@@ -10,62 +10,28 @@ import (
 	"golang.org/x/term"
 )
 
-// PrintOption configures the Print function.
-type PrintOption func(*printConfig)
-
-type printConfig struct {
-	width   int
-	height  int // 0 = auto (based on view size)
-	output  io.Writer
-	rawMode bool // Use \r\n line endings for raw terminal mode
+// PrintConfig configures printing functions like Print, Fprint, and Sprint.
+// All fields are optional with sensible zero-value defaults.
+type PrintConfig struct {
+	Width   int       // 0 = auto (terminal width or 80). Positive values set the width.
+	Height  int       // 0 = auto (based on view size). Positive values set a fixed height.
+	Output  io.Writer // nil = os.Stdout. Specify where to write output.
+	RawMode bool      // false = use \n line endings. true = use \r\n for raw terminal mode.
 }
 
-func defaultPrintConfig() printConfig {
-	// Try to get terminal width, fall back to 80
-	width := 80
-	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-		if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-			width = w
+func (c PrintConfig) withDefaults() PrintConfig {
+	if c.Width == 0 {
+		c.Width = 80
+		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
+			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+				c.Width = w
+			}
 		}
 	}
-	return printConfig{
-		width:  width,
-		height: 0, // auto
-		output: os.Stdout,
+	if c.Output == nil {
+		c.Output = os.Stdout
 	}
-}
-
-// WithWidth sets the width for rendering. Default is terminal width or 80.
-func WithWidth(width int) PrintOption {
-	return func(c *printConfig) {
-		if width > 0 {
-			c.width = width
-		}
-	}
-}
-
-// WithHeight sets a fixed height for rendering.
-// Default is 0 (auto), which uses the view's natural height.
-func WithHeight(height int) PrintOption {
-	return func(c *printConfig) {
-		c.height = height
-	}
-}
-
-// WithOutput sets the output writer. Default is os.Stdout.
-func WithOutput(w io.Writer) PrintOption {
-	return func(c *printConfig) {
-		c.output = w
-	}
-}
-
-// WithRawMode configures Print to use \r\n line endings for raw terminal mode.
-// In raw mode, \n alone only moves down without returning to column 0.
-// This option ensures proper line breaks when printing in raw terminal mode.
-func WithRawMode() PrintOption {
-	return func(c *printConfig) {
-		c.rawMode = true
-	}
+	return c
 }
 
 // Print renders a view to the terminal without taking over the screen.
@@ -88,30 +54,31 @@ func WithRawMode() PrintOption {
 //	)
 //	tui.Print(view)
 //
-// Options can customize the output:
+// With configuration:
 //
-//	tui.Print(view, tui.WithWidth(60))
-func Print(view View, opts ...PrintOption) error {
-	cfg := defaultPrintConfig()
-	for _, opt := range opts {
-		opt(&cfg)
+//	tui.Print(view, tui.PrintConfig{Width: 60})
+func Print(view View, cfgs ...PrintConfig) error {
+	cfg := PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
 	}
+	cfg = cfg.withDefaults()
 
 	// Measure the view to get its natural height
-	_, viewHeight := view.size(cfg.width, 0)
+	_, viewHeight := view.size(cfg.Width, 0)
 	if viewHeight == 0 {
 		viewHeight = 1 // At least one line
 	}
 
 	// Use configured height or view's natural height
-	height := cfg.height
+	height := cfg.Height
 	if height == 0 {
 		height = viewHeight
 	}
 
 	// Create an in-memory terminal buffer
 	var buf strings.Builder
-	terminal := NewTestTerminal(cfg.width, height, &buf)
+	terminal := NewTestTerminal(cfg.Width, height, &buf)
 
 	// Render the view to the buffer
 	frame, err := terminal.BeginFrame()
@@ -124,17 +91,17 @@ func Print(view View, opts ...PrintOption) error {
 
 	// Create render context and render the view
 	ctx := NewRenderContext(frame, 0)
-	view.size(cfg.width, height) // Measure phase
+	view.size(cfg.Width, height) // Measure phase
 	view.render(ctx)             // Render phase
 
 	// End the frame (this populates the buffer)
 	terminal.EndFrame(frame)
 
 	// Convert buffer to ANSI output
-	output := renderToANSI(terminal, cfg.width, height, cfg.rawMode)
+	output := renderToANSI(terminal, cfg.Width, height, cfg.RawMode)
 
 	// Write to output
-	_, err = io.WriteString(cfg.output, output)
+	_, err = io.WriteString(cfg.Output, output)
 	return err
 }
 
@@ -222,17 +189,24 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 }
 
 // Fprint renders a view to the specified writer.
-// This is a convenience wrapper around Print with WithOutput.
-func Fprint(w io.Writer, view View, opts ...PrintOption) error {
-	opts = append([]PrintOption{WithOutput(w)}, opts...)
-	return Print(view, opts...)
+func Fprint(w io.Writer, view View, cfgs ...PrintConfig) error {
+	cfg := PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
+	cfg.Output = w
+	return Print(view, cfg)
 }
 
 // Sprint renders a view to a string with ANSI escape codes.
-func Sprint(view View, opts ...PrintOption) string {
+func Sprint(view View, cfgs ...PrintConfig) string {
 	var buf strings.Builder
-	opts = append([]PrintOption{WithOutput(&buf)}, opts...)
-	Print(view, opts...)
+	cfg := PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
+	cfg.Output = &buf
+	Print(view, cfg)
 	return buf.String()
 }
 
@@ -244,32 +218,33 @@ func Sprint(view View, opts ...PrintOption) string {
 //
 //	func TestButton(t *testing.T) {
 //	    btn := Button("Submit", func() {})
-//	    screen := SprintScreen(btn, WithWidth(20))
+//	    screen := SprintScreen(btn, PrintConfig{Width: 20})
 //	    termtest.AssertRowContains(t, screen, 0, "Submit")
 //	}
-func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
-	cfg := defaultPrintConfig()
-	for _, opt := range opts {
-		opt(&cfg)
+func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
+	cfg := PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
 	}
+	cfg = cfg.withDefaults()
 
 	// Get view dimensions
-	_, viewHeight := view.size(cfg.width, 0)
+	_, viewHeight := view.size(cfg.Width, 0)
 	if viewHeight == 0 {
 		viewHeight = 1
 	}
 
 	// Use configured height or view's natural height + 1 for trailing newline
-	height := cfg.height
+	height := cfg.Height
 	if height == 0 {
 		height = viewHeight + 1
 	}
 
 	// Render to string
-	output := Sprint(view, opts...)
+	output := Sprint(view, cfg)
 
 	// Create screen and write output
-	screen := termtest.NewScreen(cfg.width, height)
+	screen := termtest.NewScreen(cfg.Width, height)
 	screen.Write([]byte(output))
 	return screen
 }
@@ -304,7 +279,7 @@ func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
 //
 // # Example
 //
-//	live := tui.NewLivePrinter(tui.WithWidth(60))
+//	live := tui.NewLivePrinter(tui.PrintConfig{Width: 60})
 //	defer live.Stop()
 //
 //	for i := 0; i <= 100; i++ {
@@ -312,7 +287,7 @@ func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
 //	    time.Sleep(50 * time.Millisecond)
 //	}
 type LivePrinter struct {
-	config       printConfig
+	config       PrintConfig
 	lastHeight   int
 	started      bool
 	frameCount   uint64
@@ -321,11 +296,12 @@ type LivePrinter struct {
 }
 
 // NewLivePrinter creates a new LivePrinter for updating a region in place.
-func NewLivePrinter(opts ...PrintOption) *LivePrinter {
-	cfg := defaultPrintConfig()
-	for _, opt := range opts {
-		opt(&cfg)
+func NewLivePrinter(cfgs ...PrintConfig) *LivePrinter {
+	cfg := PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
 	}
+	cfg = cfg.withDefaults()
 	return &LivePrinter{
 		config: cfg,
 	}
@@ -338,7 +314,13 @@ func NewLivePrinter(opts ...PrintOption) *LivePrinter {
 // similar to how the Terminal package uses cell-level diffing. This reduces
 // the amount of data written and minimizes flicker.
 func (lp *LivePrinter) Update(view View) error {
-	return lp.update(view, true)
+	return lp.update(view, true, nil)
+}
+
+// UpdateWithFocus renders a view with focus management support.
+// The focus manager is passed through the render context to focusable components.
+func (lp *LivePrinter) UpdateWithFocus(view View, fm *FocusManager) error {
+	return lp.update(view, true, fm)
 }
 
 // UpdateNoSync is like Update but without synchronized output mode wrapping.
@@ -351,18 +333,18 @@ func (lp *LivePrinter) Update(view View) error {
 //
 // Most users should use Update() instead, which handles sync mode automatically.
 func (lp *LivePrinter) UpdateNoSync(view View) error {
-	return lp.update(view, false)
+	return lp.update(view, false, nil)
 }
 
-// update is the internal implementation shared by Update and UpdateNoSync.
-func (lp *LivePrinter) update(view View, useSync bool) error {
+// update is the internal implementation shared by Update, UpdateWithFocus, and UpdateNoSync.
+func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	// Measure the view
-	_, viewHeight := view.size(lp.config.width, 0)
+	_, viewHeight := view.size(lp.config.Width, 0)
 	if viewHeight == 0 {
 		viewHeight = 1
 	}
 
-	height := lp.config.height
+	height := lp.config.Height
 	if height == 0 {
 		height = viewHeight
 	}
@@ -373,22 +355,22 @@ func (lp *LivePrinter) update(view View, useSync bool) error {
 		// After rendering N lines (with newlines between but not at end),
 		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
 		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.output, "\033[%dA", lp.lastHeight-1)
+			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
 		}
 		// Move to beginning of line
-		fmt.Fprint(lp.config.output, "\r")
+		fmt.Fprint(lp.config.Output, "\r")
 	}
 
 	// Hide cursor on first update for cleaner display
 	if !lp.started {
-		fmt.Fprint(lp.config.output, "\033[?25l")
+		fmt.Fprint(lp.config.Output, "\033[?25l")
 		lp.hiddenCursor = true
 		lp.started = true
 	}
 
 	// Create terminal buffer and render
 	var buf strings.Builder
-	terminal := NewTestTerminal(lp.config.width, height, &buf)
+	terminal := NewTestTerminal(lp.config.Width, height, &buf)
 
 	frame, err := terminal.BeginFrame()
 	if err != nil {
@@ -397,13 +379,16 @@ func (lp *LivePrinter) update(view View, useSync bool) error {
 
 	frame.Fill(' ', NewStyle())
 	ctx := NewRenderContext(frame, lp.frameCount)
+	if fm != nil {
+		ctx = ctx.WithFocusManager(fm)
+	}
 	lp.frameCount++
-	view.size(lp.config.width, height)
+	view.size(lp.config.Width, height)
 	view.render(ctx)
 	terminal.EndFrame(frame)
 
 	// Convert to individual lines for diffing
-	newLines := renderToLines(terminal, lp.config.width, height)
+	newLines := renderToLines(terminal, lp.config.Width, height)
 
 	// Build output with line-level diffing
 	var output strings.Builder
@@ -452,7 +437,7 @@ func (lp *LivePrinter) update(view View, useSync bool) error {
 		finalOutput = output.String()
 	}
 
-	_, err = io.WriteString(lp.config.output, finalOutput)
+	_, err = io.WriteString(lp.config.Output, finalOutput)
 	return err
 }
 
@@ -461,12 +446,12 @@ func (lp *LivePrinter) update(view View, useSync bool) error {
 func (lp *LivePrinter) Stop() {
 	if lp.hiddenCursor {
 		// Show cursor again
-		fmt.Fprint(lp.config.output, "\033[?25h")
+		fmt.Fprint(lp.config.Output, "\033[?25h")
 		lp.hiddenCursor = false
 	}
 	// Ensure we're on a new line after the content
 	if lp.started && lp.lastHeight > 0 {
-		fmt.Fprintln(lp.config.output)
+		fmt.Fprintln(lp.config.Output)
 	}
 }
 
@@ -475,9 +460,9 @@ func (lp *LivePrinter) Clear() {
 	if lp.started && lp.lastHeight > 0 {
 		// Move up and clear
 		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.output, "\033[%dA", lp.lastHeight-1)
+			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
 		}
-		fmt.Fprint(lp.config.output, "\r\033[0J")
+		fmt.Fprint(lp.config.Output, "\r\033[0J")
 	}
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state
@@ -640,9 +625,9 @@ func renderToLines(t *Terminal, width, height int) []string {
 //	        update(tui.Text("Loading... %d%%", i))
 //	        time.Sleep(50 * time.Millisecond)
 //	    }
-//	}, tui.WithWidth(40))
-func Live(fn func(update func(View)), opts ...PrintOption) error {
-	lp := NewLivePrinter(opts...)
+//	}, tui.PrintConfig{Width: 40})
+func Live(fn func(update func(View)), cfgs ...PrintConfig) error {
+	lp := NewLivePrinter(cfgs...)
 	defer lp.Stop()
 
 	var lastErr error

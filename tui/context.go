@@ -6,7 +6,7 @@ import "image"
 // It flows through the view tree during rendering, giving views access to:
 //   - Drawing operations (via the embedded RenderFrame)
 //   - Animation frame counter
-//   - Future: theme, focus state, accessibility settings, etc.
+//   - Focus management
 //
 // Views should use SubContext() when rendering children to properly scope
 // the drawing area while preserving context information.
@@ -14,6 +14,7 @@ type RenderContext struct {
 	frame      RenderFrame
 	frameCount uint64
 	bounds     image.Rectangle
+	focusMgr   *FocusManager
 }
 
 // NewRenderContext creates a new render context.
@@ -25,6 +26,21 @@ func NewRenderContext(frame RenderFrame, frameCount uint64) *RenderContext {
 		frameCount: frameCount,
 		bounds:     image.Rect(0, 0, w, h),
 	}
+}
+
+// WithFocusManager returns a new context with the given focus manager.
+func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
+	return &RenderContext{
+		frame:      c.frame,
+		frameCount: c.frameCount,
+		bounds:     c.bounds,
+		focusMgr:   fm,
+	}
+}
+
+// FocusManager returns the focus manager for this context, or nil if none.
+func (c *RenderContext) FocusManager() *FocusManager {
+	return c.focusMgr
 }
 
 // Frame returns the current animation frame counter.
@@ -51,7 +67,7 @@ func (c *RenderContext) Size() (width, height int) {
 
 // SubContext creates a child context with a sub-region of the drawing area.
 // The bounds are relative to the current context's origin.
-// All context information (frame counter, etc.) is preserved.
+// All context information (frame counter, focus manager, etc.) is preserved.
 func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 	// Translate bounds to be relative to current context's bounds
 	absoluteBounds := bounds.Add(c.bounds.Min)
@@ -62,6 +78,7 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 		frame:      c.frame.SubFrame(clippedBounds),
 		frameCount: c.frameCount,
 		bounds:     image.Rect(0, 0, clippedBounds.Dx(), clippedBounds.Dy()),
+		focusMgr:   c.focusMgr,
 	}
 }
 
@@ -110,13 +127,14 @@ func (c *RenderContext) AbsoluteBounds() image.Rectangle {
 }
 
 // WithFrame creates a new context using a different RenderFrame but preserving
-// the frame counter. This is useful for views that need custom frame wrappers
-// (like scroll views).
+// the frame counter and focus manager. This is useful for views that need
+// custom frame wrappers (like scroll views).
 func (c *RenderContext) WithFrame(frame RenderFrame) *RenderContext {
 	w, h := frame.Size()
 	return &RenderContext{
 		frame:      frame,
 		frameCount: c.frameCount,
 		bounds:     image.Rect(0, 0, w, h),
+		focusMgr:   c.focusMgr,
 	}
 }

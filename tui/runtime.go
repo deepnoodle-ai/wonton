@@ -30,6 +30,9 @@ type Runtime struct {
 	fps      int
 	frame    uint64 // Frame counter for TickEvents
 
+	// Focus management
+	focusMgr *FocusManager
+
 	mu          sync.Mutex
 	running     bool
 	resizeUnsub func() // Unsubscribe function for resize callback
@@ -67,6 +70,7 @@ func NewRuntime(terminal *Terminal, app any, fps int) *Runtime {
 		fps:           fps,
 		frame:         0,
 		pasteTabWidth: 0, // Default: preserve tabs
+		focusMgr:      NewFocusManager(),
 	}
 }
 
@@ -278,18 +282,31 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 
 // processEvent calls the application's HandleEvent (if implemented) and queues any returned commands.
 func (r *Runtime) processEvent(event Event) {
-	// Route events to interactive elements via unified focus manager
+	// Handle focus events from commands
+	switch e := event.(type) {
+	case FocusSetEvent:
+		r.focusMgr.SetFocus(e.ID)
+		return
+	case FocusNextEvent:
+		r.focusMgr.FocusNext()
+		return
+	case FocusPrevEvent:
+		r.focusMgr.FocusPrev()
+		return
+	}
+
+	// Route events to interactive elements via focus manager
 	switch e := event.(type) {
 	case MouseEvent:
 		if e.Type == MouseClick {
 			// Check if the click hit a focusable element
-			focusManager.HandleClick(e.X, e.Y)
+			r.focusMgr.HandleClick(e.X, e.Y)
 			// Check if the click hit a non-focusable interactive region
 			interactiveRegistry.HandleClick(e.X, e.Y)
 		}
 	case KeyEvent:
 		// Route key events to focused element (handles Tab/Shift+Tab navigation)
-		if focusManager.HandleKey(e) {
+		if r.focusMgr.HandleKey(e) {
 			// Focused element consumed the event, but still pass to app
 		}
 	}
@@ -323,7 +340,7 @@ func (r *Runtime) render() {
 	if app, ok := r.app.(Application); ok {
 		// Application interface - use declarative View() rendering
 		// Clear registries before render (they get repopulated during render)
-		focusManager.Clear()
+		r.focusMgr.Clear()
 		buttonRegistry.Clear()
 		interactiveRegistry.Clear()
 		inputRegistry.Clear()
@@ -337,8 +354,8 @@ func (r *Runtime) render() {
 		view := app.View()
 		width, height := frame.Size()
 
-		// Create render context with frame counter for animations
-		ctx := NewRenderContext(frame, r.frame)
+		// Create render context with frame counter and focus manager for animations
+		ctx := NewRenderContext(frame, r.frame).WithFocusManager(r.focusMgr)
 
 		// Measure phase (populates cached child sizes)
 		view.size(width, height)

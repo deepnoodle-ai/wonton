@@ -119,6 +119,79 @@ func (a *formApp) View() tui.View {
 }
 ```
 
+### Prompt Choice (Claude Code Style)
+
+A selection widget with numbered options where one option can accept inline text input. Similar to confirmation prompts in Claude Code.
+
+```go
+type confirmApp struct {
+	runner    *tui.InlineApp
+	selected  int
+	inputText string
+	done      bool
+}
+
+func (app *confirmApp) LiveView() tui.View {
+	if app.done {
+		return tui.Text("Done!").Success()
+	}
+
+	return tui.Stack(
+		tui.Text("Do you want to proceed?").Bold(),
+		tui.Text(""),
+		tui.PromptChoice(&app.selected, &app.inputText).
+			Option("Yes").
+			Option("Yes, and remember this choice").
+			InputOption("Type custom instructions here...").
+			OnSelect(func(idx int, text string) {
+				switch idx {
+				case 0:
+					// "Yes" selected
+				case 1:
+					// "Yes, and remember" selected
+				case 2:
+					// Custom input provided in 'text'
+					fmt.Println("Custom:", text)
+				}
+				app.done = true
+			}).
+			OnCancel(func() {
+				app.done = true
+			}),
+	)
+}
+```
+
+**Keyboard Controls:**
+- Arrow Up/Down: Navigate between options
+- 1-9: Jump directly to numbered option
+- Enter: Confirm selection
+- Escape: Cancel
+- Any character: When on input option, types into the field
+
+**Visual Output:**
+```
+Do you want to proceed?
+
+❯ 1. Yes
+  2. Yes, and remember this choice
+  3. Type custom instructions here...
+
+Esc to cancel
+```
+
+**Customization:**
+```go
+tui.PromptChoice(&selected, &input).
+	Option("Option A").
+	Option("Option B").
+	InputOption("Custom...").
+	CursorChar(">").           // Change cursor indicator
+	ShowNumbers(false).        // Hide number prefixes
+	HintText("Enter to confirm").  // Custom hint text
+	Style(tui.NewStyle().WithForeground(tui.ColorCyan))
+```
+
 ### Table Display
 
 ```go
@@ -467,10 +540,11 @@ Stack(
 
 ### Interactive Views
 
-| Function     | Description          | Inputs                         | Outputs          |
-| ------------ | -------------------- | ------------------------------ | ---------------- |
-| `Button`     | Keyboard button      | `label string, onClick func()` | `*buttonView`    |
-| `Clickable`  | Mouse-only clickable | `label string, onClick func()` | `*clickableView` |
+| Function       | Description                | Inputs                               | Outputs              |
+| -------------- | -------------------------- | ------------------------------------ | -------------------- |
+| `Button`       | Keyboard button            | `label string, onClick func()`       | `*buttonView`        |
+| `Clickable`    | Mouse-only clickable       | `label string, onClick func()`       | `*clickableView`     |
+| `PromptChoice` | Selection with inline input | `selected *int, inputText *string`  | `*promptChoiceView`  |
 
 ### Display Views
 

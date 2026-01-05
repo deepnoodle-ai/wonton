@@ -213,9 +213,11 @@ func (l *selectListView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Register with focus manager for keyboard input
+	// Register with focus manager for keyboard input (if available)
 	l.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(l)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(l)
+	}
 
 	selectedIdx := 0
 	if l.selected != nil {

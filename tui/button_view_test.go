@@ -106,7 +106,7 @@ func TestButtonRegistry_Register(t *testing.T) {
 	callback := func() { called = true }
 	focusStyle := NewStyle().WithReverse()
 
-	state := registry.Register("btn1", bounds, callback, focusStyle)
+	state := registry.Register("btn1", bounds, callback, focusStyle, nil)
 
 	assert.NotNil(t, state)
 	assert.Equal(t, "btn1", state.id)
@@ -125,7 +125,7 @@ func TestButtonRegistry_Register_UpdateExisting(t *testing.T) {
 
 	// First registration
 	bounds1 := image.Rect(0, 0, 10, 1)
-	state1 := registry.Register("btn1", bounds1, nil, NewStyle())
+	state1 := registry.Register("btn1", bounds1, nil, NewStyle(), nil)
 	originalID := state1.id
 
 	// Second registration with same ID should update the same state object
@@ -133,7 +133,7 @@ func TestButtonRegistry_Register_UpdateExisting(t *testing.T) {
 	callbackCalled := false
 	newCallback := func() { callbackCalled = true }
 	newStyle := NewStyle().WithBold()
-	state2 := registry.Register("btn1", bounds2, newCallback, newStyle)
+	state2 := registry.Register("btn1", bounds2, newCallback, newStyle, nil)
 
 	// Should be same state object (same pointer)
 	assert.True(t, state1 == state2, "Expected same state object")
@@ -152,7 +152,7 @@ func TestButtonRegistry_Clear(t *testing.T) {
 	}
 
 	// Register a button
-	registry.Register("btn1", image.Rect(0, 0, 10, 1), nil, NewStyle())
+	registry.Register("btn1", image.Rect(0, 0, 10, 1), nil, NewStyle(), nil)
 
 	// Clear should not panic
 	registry.Clear()
@@ -422,13 +422,13 @@ func TestClickable_Chaining(t *testing.T) {
 
 func TestButton_Render(t *testing.T) {
 	btn := Button("Submit", func() {})
-	screen := SprintScreen(btn, WithWidth(20))
+	screen := SprintScreen(btn, PrintConfig{Width: 20})
 	termtest.AssertRowContains(t, screen, 0, "Submit")
 }
 
 func TestButton_Render_WithStyle(t *testing.T) {
 	btn := Button("OK", func() {}).Fg(ColorGreen).Bold()
-	screen := SprintScreen(btn, WithWidth(20))
+	screen := SprintScreen(btn, PrintConfig{Width: 20})
 
 	termtest.AssertRowContains(t, screen, 0, "OK")
 
@@ -443,7 +443,7 @@ func TestButton_Render_InStack(t *testing.T) {
 		Button("Save", func() {}),
 		Button("Cancel", func() {}),
 	)
-	screen := SprintScreen(stack, WithWidth(20))
+	screen := SprintScreen(stack, PrintConfig{Width: 20})
 
 	termtest.AssertRowContains(t, screen, 0, "Form:")
 	termtest.AssertRowContains(t, screen, 1, "Save")
@@ -452,13 +452,13 @@ func TestButton_Render_InStack(t *testing.T) {
 
 func TestClickable_Render(t *testing.T) {
 	c := Clickable("Click me", func() {})
-	screen := SprintScreen(c, WithWidth(20))
+	screen := SprintScreen(c, PrintConfig{Width: 20})
 	termtest.AssertRowContains(t, screen, 0, "Click me")
 }
 
 func TestClickable_Render_WithStyle(t *testing.T) {
 	c := Clickable("Link", func() {}).Fg(ColorCyan).Bold()
-	screen := SprintScreen(c, WithWidth(20))
+	screen := SprintScreen(c, PrintConfig{Width: 20})
 
 	termtest.AssertRowContains(t, screen, 0, "Link")
 
@@ -472,7 +472,7 @@ func TestButton_Render_InGroup(t *testing.T) {
 		Button("Yes", func() {}),
 		Button("No", func() {}),
 	).Gap(2)
-	screen := SprintScreen(group, WithWidth(20))
+	screen := SprintScreen(group, PrintConfig{Width: 20})
 
 	termtest.AssertRowContains(t, screen, 0, "Yes")
 	termtest.AssertRowContains(t, screen, 0, "No")

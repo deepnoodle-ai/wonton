@@ -87,7 +87,7 @@ func TestStack_Render(t *testing.T) {
 		Text("Line 2"),
 	)
 
-	err := Print(s, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(s, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -102,7 +102,7 @@ func TestStack_RenderWithGap(t *testing.T) {
 		Text("B"),
 	).Gap(1)
 
-	err := Print(s, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(s, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -117,7 +117,7 @@ func TestStack_RenderWithAlignment(t *testing.T) {
 		Text("There"),
 	).Align(AlignCenter)
 
-	err := Print(s, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(s, PrintConfig{Width: 20, Height: 5, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -321,7 +321,7 @@ func TestStack_Render_Basic(t *testing.T) {
 		Text("Second"),
 		Text("Third"),
 	)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	termtest.AssertRow(t, screen, 0, "First")
 	termtest.AssertRow(t, screen, 1, "Second")
@@ -333,7 +333,7 @@ func TestStack_Render_WithGap(t *testing.T) {
 		Text("A"),
 		Text("B"),
 	).Gap(2)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	termtest.AssertRow(t, screen, 0, "A")
 	termtest.AssertRow(t, screen, 1, "") // Gap line 1
@@ -346,7 +346,7 @@ func TestStack_Render_LeftAlign(t *testing.T) {
 		Text("Short"),
 		Text("Longer text"),
 	).Align(AlignLeft)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	termtest.AssertRowPrefix(t, screen, 0, "Short")
 	termtest.AssertRowPrefix(t, screen, 1, "Longer text")
@@ -357,7 +357,7 @@ func TestStack_Render_CenterAlign(t *testing.T) {
 		Text("Hi"),
 		Text("Hello"),
 	).Align(AlignCenter)
-	screen := SprintScreen(s, WithWidth(10))
+	screen := SprintScreen(s, PrintConfig{Width: 10})
 
 	// "Hi" (2 chars) centered in 10-char space = 4 spaces + "Hi"
 	// "Hello" (5 chars) centered in 10-char space = 2 spaces + "Hello"
@@ -370,7 +370,7 @@ func TestStack_Render_RightAlign(t *testing.T) {
 		Text("Hi"),
 		Text("Hello"),
 	).Align(AlignRight)
-	screen := SprintScreen(s, WithWidth(10))
+	screen := SprintScreen(s, PrintConfig{Width: 10})
 
 	// Content should be right-aligned within their row
 	row0 := screen.Row(0)
@@ -381,7 +381,7 @@ func TestStack_Render_RightAlign(t *testing.T) {
 
 func TestStack_Render_WithPadding(t *testing.T) {
 	s := Stack(Text("Content")).Padding(1)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	// Row 0 should be empty (top padding)
 	termtest.AssertRow(t, screen, 0, "")
@@ -400,7 +400,7 @@ func TestStack_Render_Nested(t *testing.T) {
 		),
 		Text("Footer"),
 	)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	termtest.AssertRow(t, screen, 0, "Header")
 	termtest.AssertRow(t, screen, 1, "- Item 1")
@@ -413,7 +413,7 @@ func TestStack_Render_WithStyles(t *testing.T) {
 		Text("Bold").Bold(),
 		Text("Normal"),
 	)
-	screen := SprintScreen(s, WithWidth(20))
+	screen := SprintScreen(s, PrintConfig{Width: 20})
 
 	// Check content
 	termtest.AssertRowContains(t, screen, 0, "Bold")

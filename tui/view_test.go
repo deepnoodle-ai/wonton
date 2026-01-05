@@ -30,7 +30,7 @@ func TestEmpty_SizeNoConstraints(t *testing.T) {
 
 func TestEmpty_Render(t *testing.T) {
 	var buf strings.Builder
-	err := Print(Empty(), WithWidth(80), WithOutput(&buf))
+	err := Print(Empty(), PrintConfig{Width: 80, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -91,7 +91,7 @@ func TestSpacer_Chaining(t *testing.T) {
 
 func TestSpacer_Render(t *testing.T) {
 	var buf strings.Builder
-	err := Print(Spacer(), WithWidth(80), WithHeight(10), WithOutput(&buf))
+	err := Print(Spacer(), PrintConfig{Width: 80, Height: 10, Output: &buf})
 	assert.NoError(t, err)
 }
 
@@ -240,7 +240,7 @@ func TestGroup_Render(t *testing.T) {
 		Text("C"),
 	)
 
-	err := Print(g, WithWidth(80), WithHeight(10), WithOutput(&buf))
+	err := Print(g, PrintConfig{Width: 80, Height: 10, Output: &buf})
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -300,6 +300,6 @@ func TestZStack_Render(t *testing.T) {
 		Text("Top"),
 	)
 
-	err := Print(z, WithWidth(80), WithHeight(10), WithOutput(&buf))
+	err := Print(z, PrintConfig{Width: 80, Height: 10, Output: &buf})
 	assert.NoError(t, err)
 }

@@ -58,7 +58,7 @@ func main() {
 	defer term.Restore(fd, oldState)
 
 	// === LIVE REGION with two async processes ===
-	live := tui.NewLivePrinter(tui.WithWidth(70))
+	live := tui.NewLivePrinter(tui.PrintConfig{Width: 70})
 	defer live.Stop()
 
 	// Two independent async processes
@@ -295,7 +295,7 @@ func printBorderedBox(n int) {
 				tui.Text("%s", bodies[rand.Intn(len(bodies))]),
 			).Padding(1),
 		).Border(borders[rand.Intn(len(borders))]).BorderFg(colors[rand.Intn(len(colors))]),
-		tui.WithWidth(50),
+		tui.PrintConfig{Width: 50},
 	)
 }
 
@@ -392,7 +392,7 @@ func printRandomComplex(n int) {
 		metrics,
 		tui.Text(""),
 		tui.Stack(eventViews...),
-	), tui.WithWidth(60))
+	), tui.PrintConfig{Width: 60})
 }
 
 func printRandomView(n int) {
@@ -524,9 +524,9 @@ func repeatChar(ch rune, count int) string {
 
 // printRaw prints a view in raw mode, converting \n to \r\n for proper display.
 // In raw mode, \n only moves down without returning to column 0.
-func printRaw(view tui.View, opts ...tui.PrintOption) {
+func printRaw(view tui.View, opts ...tui.PrintConfig) {
 	var buf bytes.Buffer
-	opts = append(opts, tui.WithOutput(&buf))
+	opts = append(opts, tui.PrintConfig{Output: &buf})
 	tui.Print(view, opts...)
 
 	// Convert \n to \r\n for raw mode

@@ -60,6 +60,9 @@ type listView struct {
 // The component handles keyboard navigation (arrow keys), filtering (typing),
 // and selection (Enter) automatically when focused. Use Tab to focus the list.
 //
+// For focus management to work, you must set an ID using the ID() method.
+// Without an ID, the list will not be focusable via Tab key navigation.
+//
 // To track chosen items (items confirmed with Enter), use Chosen() to bind
 // an external slice. Use MultiSelect(true) to allow multiple items to be
 // chosen, or leave as single-select mode (default) where choosing a new item
@@ -69,6 +72,7 @@ type listView struct {
 // Example:
 //
 //	FilterableList(items, &app.selected).
+//	    ID("my-list").
 //	    Filter(&app.filterText).
 //	    Height(10).
 //	    MultiSelect(true).
@@ -81,11 +85,7 @@ func FilterableList(items []ListItem, selected *int) *listView {
 		filteredIdxs[i] = i
 	}
 
-	// Generate ID from selected pointer address
-	id := fmt.Sprintf("list_%p", selected)
-
 	return &listView{
-		id:                id,
 		items:             items,
 		filteredIdxs:      filteredIdxs,
 		selected:          selected,
@@ -482,9 +482,11 @@ func (l *listView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Register with focus manager for keyboard input
+	// Register with focus manager for keyboard input (if available)
 	l.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(l)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(l)
+	}
 
 	yOffset := 0
 
@@ -792,14 +794,16 @@ type checkboxListView struct {
 // The component handles keyboard navigation (arrow keys) and toggling (space)
 // automatically when focused. Use Tab to focus the list.
 //
+// For focus management to work, you must set an ID using the ID() method.
+// Without an ID, the list will not be focusable via Tab key navigation.
+//
 // Example:
 //
-//	CheckboxList(items, app.checked, &app.cursor).OnToggle(func(i int, c bool) { ... })
+//	CheckboxList(items, app.checked, &app.cursor).
+//	    ID("my-checkbox-list").
+//	    OnToggle(func(i int, c bool) { ... })
 func CheckboxList(items []ListItem, checked []bool, cursor *int) *checkboxListView {
-	// Generate ID from cursor pointer address
-	id := fmt.Sprintf("checkbox_%p", cursor)
 	return &checkboxListView{
-		id:            id,
 		items:         items,
 		checked:       checked,
 		cursor:        cursor,
@@ -1021,9 +1025,11 @@ func (c *checkboxListView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Register with focus manager for keyboard input
+	// Register with focus manager for keyboard input (if available)
 	c.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(c)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(c)
+	}
 
 	cursorIdx := 0
 	if c.cursor != nil {
@@ -1109,14 +1115,16 @@ type radioListView struct {
 // The component handles keyboard navigation (arrow keys) and selection (Enter/Space)
 // automatically when focused. Use Tab to focus the list.
 //
+// For focus management to work, you must set an ID using the ID() method.
+// Without an ID, the list will not be focusable via Tab key navigation.
+//
 // Example:
 //
-//	RadioList(items, &app.selected).OnSelect(func(i int) { ... })
+//	RadioList(items, &app.selected).
+//	    ID("my-radio-list").
+//	    OnSelect(func(i int) { ... })
 func RadioList(items []ListItem, selected *int) *radioListView {
-	// Generate ID from selected pointer address
-	id := fmt.Sprintf("radio_%p", selected)
 	return &radioListView{
-		id:             id,
 		items:          items,
 		selected:       selected,
 		style:          NewStyle(),
@@ -1287,9 +1295,11 @@ func (r *radioListView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Register with focus manager for keyboard input
+	// Register with focus manager for keyboard input (if available)
 	r.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(r)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(r)
+	}
 
 	selectedIdx := 0
 	if r.selected != nil {

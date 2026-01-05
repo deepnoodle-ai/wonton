@@ -132,7 +132,8 @@ func (f *borderedView) render(ctx *RenderContext) {
 	}
 
 	// Determine if the watched element is focused
-	isFocused := f.focusID != "" && focusManager.GetFocusedID() == f.focusID
+	fm := ctx.FocusManager()
+	isFocused := f.focusID != "" && fm != nil && fm.GetFocusedID() == f.focusID
 
 	// Choose border style based on focus
 	borderStyle := f.borderStyle

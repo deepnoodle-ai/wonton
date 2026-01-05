@@ -3,6 +3,7 @@ package tui
 import (
 	"image"
 	"sync"
+	"time"
 )
 
 // Focusable is implemented by views that can receive keyboard focus.
@@ -30,6 +31,9 @@ type Focusable interface {
 
 // FocusManager manages focus state for all focusable elements.
 // It handles Tab/Shift+Tab navigation and routes keyboard events.
+//
+// Each Runtime or InlineApp instance has its own FocusManager, avoiding
+// global state and allowing multiple independent TUI applications.
 type FocusManager struct {
 	mu         sync.Mutex
 	focusables map[string]Focusable
@@ -37,9 +41,11 @@ type FocusManager struct {
 	order      []string // registration order for Tab navigation
 }
 
-// Global focus manager instance
-var focusManager = &FocusManager{
-	focusables: make(map[string]Focusable),
+// NewFocusManager creates a new focus manager instance.
+func NewFocusManager() *FocusManager {
+	return &FocusManager{
+		focusables: make(map[string]Focusable),
+	}
 }
 
 // Clear clears all registered focusables (called before each render).
@@ -220,10 +226,41 @@ func (fm *FocusManager) HandleClick(x, y int) bool {
 	return false
 }
 
+// FocusSetEvent is produced by the Focus command and processed by the Runtime
+// or InlineApp to set focus to a specific element. This event flows through
+// the command/event system rather than directly manipulating focus state,
+// allowing proper integration with the event loop.
+type FocusSetEvent struct {
+	ID   string    // The ID of the element to focus
+	Time time.Time // When the event was created
+}
+
+// Timestamp implements Event.
+func (e FocusSetEvent) Timestamp() time.Time { return e.Time }
+
+// FocusNextEvent is produced by the FocusNext command and processed by the
+// Runtime or InlineApp to move focus to the next element in Tab order.
+type FocusNextEvent struct {
+	Time time.Time // When the event was created
+}
+
+// Timestamp implements Event.
+func (e FocusNextEvent) Timestamp() time.Time { return e.Time }
+
+// FocusPrevEvent is produced by the FocusPrev command and processed by the
+// Runtime or InlineApp to move focus to the previous element in Tab order.
+type FocusPrevEvent struct {
+	Time time.Time // When the event was created
+}
+
+// Timestamp implements Event.
+func (e FocusPrevEvent) Timestamp() time.Time { return e.Time }
+
 // Focus returns a command that sets focus to the specified element ID.
-// Use this in HandleEvent to programmatically focus an element.
+// The command produces a FocusSetEvent that the Runtime or InlineApp processes
+// to update the focus state.
 //
-// Example:
+// Use this in HandleEvent to programmatically focus an element:
 //
 //	func (app *App) HandleEvent(e Event) []Cmd {
 //	    if key, ok := e.(KeyEvent); ok && key.Rune == 'n' {
@@ -231,39 +268,31 @@ func (fm *FocusManager) HandleClick(x, y int) bool {
 //	    }
 //	    return nil
 //	}
+//
+// The element ID must match the ID used when creating the focusable component
+// (e.g., Input("id"), Button("id", ...), etc.).
 func Focus(id string) Cmd {
 	return func() Event {
-		focusManager.SetFocus(id)
-		return nil
+		return FocusSetEvent{ID: id, Time: time.Now()}
 	}
 }
 
-// FocusNext returns a command that moves focus to the next element.
+// FocusNext returns a command that moves focus to the next element in Tab order.
+// The command produces a FocusNextEvent that the Runtime or InlineApp processes.
+// This is equivalent to pressing Tab.
 func FocusNext() Cmd {
 	return func() Event {
-		focusManager.FocusNext()
-		return nil
+		return FocusNextEvent{Time: time.Now()}
 	}
 }
 
-// FocusPrev returns a command that moves focus to the previous element.
+// FocusPrev returns a command that moves focus to the previous element in Tab order.
+// The command produces a FocusPrevEvent that the Runtime or InlineApp processes.
+// This is equivalent to pressing Shift+Tab.
 func FocusPrev() Cmd {
 	return func() Event {
-		focusManager.FocusPrev()
-		return nil
+		return FocusPrevEvent{Time: time.Now()}
 	}
-}
-
-// GetFocusedID returns the ID of the currently focused element.
-// Useful for conditionally styling views based on focus state.
-func GetFocusedID() string {
-	return focusManager.GetFocusedID()
-}
-
-// RegisterFocusable registers a custom focusable component with the focus manager.
-// This is called automatically by FocusableView during render.
-func RegisterFocusable(f Focusable) {
-	focusManager.Register(f)
 }
 
 // FocusHandler defines callbacks for custom focusable behavior.
@@ -338,6 +367,8 @@ func (f *focusableWrapper) size(maxWidth, maxHeight int) (int, int) {
 
 func (f *focusableWrapper) render(ctx *RenderContext) {
 	f.bounds = ctx.AbsoluteBounds()
-	focusManager.Register(f)
+	if fm := ctx.FocusManager(); fm != nil {
+		fm.Register(f)
+	}
 	f.inner.render(ctx)
 }
