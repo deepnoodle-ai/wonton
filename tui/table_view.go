@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image"
 	"strings"
 
@@ -16,6 +17,7 @@ type TableColumn struct {
 
 // tableView displays a scrollable data table as a declarative view.
 type tableView struct {
+	id                   string
 	columns              []TableColumn
 	rows                 [][]string
 	selected             *int
@@ -34,17 +36,25 @@ type tableView struct {
 	headerBottomBorder   bool
 	columnGap            int  // gap between columns (default 2)
 	fillWidth            bool // expand to fill container width
+	bounds               image.Rectangle
+	focused              bool
 }
 
 // Table creates a new table view with the given columns.
 // selected should be a pointer to the currently selected row index.
+//
+// The component handles keyboard navigation (arrow keys) and selection (Enter)
+// automatically when focused. Use Tab to focus the table.
 //
 // Example:
 //
 //	Table([]TableColumn{{Title: "Name"}, {Title: "Age"}}, &app.selected).
 //	    Rows([][]string{{"Alice", "30"}, {"Bob", "25"}})
 func Table(columns []TableColumn, selected *int) *tableView {
+	// Generate ID from selected pointer address
+	id := fmt.Sprintf("table_%p", selected)
 	return &tableView{
+		id:                 id,
 		columns:            columns,
 		selected:           selected,
 		style:              NewStyle(),
@@ -66,6 +76,79 @@ func (t *tableView) Rows(rows [][]string) *tableView {
 func (t *tableView) OnSelect(fn func(row int)) *tableView {
 	t.onSelect = fn
 	return t
+}
+
+// ID sets a custom ID for this table (for focus management).
+func (t *tableView) ID(id string) *tableView {
+	t.id = id
+	return t
+}
+
+// Focusable interface implementation
+func (t *tableView) FocusID() string {
+	return t.id
+}
+
+func (t *tableView) IsFocused() bool {
+	return t.focused
+}
+
+func (t *tableView) SetFocused(focused bool) {
+	t.focused = focused
+}
+
+func (t *tableView) FocusBounds() image.Rectangle {
+	return t.bounds
+}
+
+func (t *tableView) HandleKeyEvent(event KeyEvent) bool {
+	if len(t.rows) == 0 {
+		return false
+	}
+
+	// Calculate visible height (excluding header if shown)
+	visibleHeight := t.height
+	if t.showHeader {
+		visibleHeight--
+		if t.headerBottomBorder {
+			visibleHeight--
+		}
+	}
+	if visibleHeight <= 0 {
+		visibleHeight = 10 // default
+	}
+
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if t.selected != nil && *t.selected > 0 {
+			*t.selected--
+			// Adjust scroll if needed
+			if t.scrollY > *t.selected {
+				t.scrollY = *t.selected
+			}
+			return true
+		}
+	case KeyArrowDown:
+		if t.selected != nil && *t.selected < len(t.rows)-1 {
+			*t.selected++
+			// Adjust scroll if needed
+			if *t.selected-t.scrollY >= visibleHeight {
+				t.scrollY = *t.selected - visibleHeight + 1
+			}
+			return true
+		}
+	case KeyEnter:
+		// Enter selects the current row
+		if t.selected != nil && *t.selected >= 0 && *t.selected < len(t.rows) {
+			if t.onSelect != nil {
+				t.onSelect(*t.selected)
+			}
+			return true
+		}
+	}
+
+	return false
 }
 
 // ShowHeader enables or disables the header row.
@@ -426,6 +509,10 @@ func (t *tableView) render(ctx *RenderContext) {
 	if width == 0 || height == 0 || len(t.columns) == 0 {
 		return
 	}
+
+	// Register with focus manager for keyboard input
+	t.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(t)
 
 	t.calculateColumnWidths()
 	t.fitColumnWidths(width) // Shrink columns to fit container

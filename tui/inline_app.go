@@ -285,6 +285,7 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 		cmds:   make(chan Cmd, 100),
 		done:   make(chan struct{}),
 		output: cfg.output,
+		live:   NewLivePrinter(WithWidth(cfg.width), WithOutput(cfg.output)),
 	}
 }
 
@@ -357,9 +358,6 @@ func (r *InlineApp) Run(app any) error {
 		// Enable mouse tracking (SGR mode for better coordinates)
 		fmt.Fprint(r.output, "\033[?1000h\033[?1006h")
 	}
-
-	// Create live printer for the live region
-	r.live = NewLivePrinter(WithWidth(r.config.width), WithOutput(r.output))
 
 	// Start ticker if FPS > 0
 	if r.config.fps > 0 {

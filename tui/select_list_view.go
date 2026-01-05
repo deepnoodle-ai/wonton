@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"image"
 )
 
 // selectListView displays a selectable list of items (declarative view)
 type selectListView struct {
+	id            string
 	items         []ListItem
 	selected      *int
 	onSelect      func(item ListItem, index int)
@@ -15,16 +17,24 @@ type selectListView struct {
 	showCursor    bool
 	width         int
 	height        int
+	bounds        image.Rectangle
+	focused       bool
 }
 
 // SelectList creates a selectable list view using the existing ListItem type.
 // selected should be a pointer to the currently selected index.
 //
+// The component handles keyboard navigation (arrow keys) and selection (Enter)
+// automatically when focused. Use Tab to focus the list.
+//
 // Example:
 //
-//	SelectList(items, &app.selectedIndex).OnSelect(func(i int) { app.handleSelect(i) })
+//	SelectList(items, &app.selectedIndex).OnSelect(func(item, idx) { app.handleSelect(item, idx) })
 func SelectList(items []ListItem, selected *int) *selectListView {
+	// Generate ID from selected pointer address
+	id := fmt.Sprintf("select_%p", selected)
 	return &selectListView{
+		id:            id,
 		items:         items,
 		selected:      selected,
 		style:         NewStyle(),
@@ -48,6 +58,55 @@ func SelectListStrings(labels []string, selected *int) *selectListView {
 func (l *selectListView) OnSelect(fn func(item ListItem, index int)) *selectListView {
 	l.onSelect = fn
 	return l
+}
+
+// ID sets a custom ID for this select list (for focus management).
+func (l *selectListView) ID(id string) *selectListView {
+	l.id = id
+	return l
+}
+
+// Focusable interface implementation
+func (l *selectListView) FocusID() string {
+	return l.id
+}
+
+func (l *selectListView) IsFocused() bool {
+	return l.focused
+}
+
+func (l *selectListView) SetFocused(focused bool) {
+	l.focused = focused
+}
+
+func (l *selectListView) FocusBounds() image.Rectangle {
+	return l.bounds
+}
+
+func (l *selectListView) HandleKeyEvent(event KeyEvent) bool {
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if l.selected != nil && *l.selected > 0 {
+			*l.selected--
+			return true
+		}
+	case KeyArrowDown:
+		if l.selected != nil && *l.selected < len(l.items)-1 {
+			*l.selected++
+			return true
+		}
+	case KeyEnter:
+		// Enter selects the current item
+		if l.selected != nil && *l.selected >= 0 && *l.selected < len(l.items) {
+			if l.onSelect != nil {
+				l.onSelect(l.items[*l.selected], *l.selected)
+			}
+			return true
+		}
+	}
+
+	return false
 }
 
 // Fg sets the foreground color for normal items.
@@ -153,6 +212,10 @@ func (l *selectListView) render(ctx *RenderContext) {
 	if width == 0 || height == 0 || len(l.items) == 0 {
 		return
 	}
+
+	// Register with focus manager for keyboard input
+	l.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(l)
 
 	selectedIdx := 0
 	if l.selected != nil {

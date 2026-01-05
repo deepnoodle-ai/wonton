@@ -63,7 +63,7 @@ func InputField(binding *string) *inputFieldView {
 	return &inputFieldView{
 		id:         id,
 		binding:    binding,
-		width:      20,
+		width:      0, // 0 means fill available width
 		labelStyle: NewStyle().WithForeground(ColorBrightBlack),
 	}
 }
@@ -230,8 +230,13 @@ func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
 		borderSize = 2
 	}
 
-	// Calculate input width
+	// Calculate input width (0 means fill available width)
 	totalW := f.width
+	if totalW <= 0 && maxWidth > 0 {
+		totalW = maxWidth
+	} else if totalW <= 0 {
+		totalW = 80 // Fallback if no maxWidth specified
+	}
 
 	// Account for prompt width
 	promptW := 0
@@ -321,7 +326,6 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 
 		// Draw label if present
 		if f.label != "" {
-			labelW, _ := MeasureText(f.label)
 			labelStyle := f.labelStyle
 			if isFocused {
 				if f.focusLabelStyle != nil {
@@ -330,7 +334,13 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 					labelStyle = NewStyle().WithForeground(ColorCyan).WithBold()
 				}
 			}
-			ctx.PrintTruncated(x, 0, f.label, labelStyle)
+			// Add space after label if it doesn't already have one
+			labelText := f.label
+			if !strings.HasSuffix(labelText, " ") {
+				labelText += " "
+			}
+			labelW, _ := MeasureText(labelText)
+			ctx.PrintTruncated(x, 0, labelText, labelStyle)
 			x += labelW
 		}
 
@@ -470,17 +480,27 @@ func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h in
 	// Draw top border
 	topY := 0
 	if f.label != "" && w > 4 {
-		// Draw label on the left, then fill rest with border
+		// Draw a few border characters before the label
+		bx := x
+		prefixChars := 2 // Number of border chars before label
+		for i := 0; i < prefixChars && bx < x+w; i++ {
+			ctx.PrintTruncated(bx, topY, borderChar, borderStyle)
+			bx++
+		}
+
+		// Draw label
 		label := strings.TrimSuffix(strings.TrimSuffix(f.label, ": "), ":")
 		labelText := " " + label + " "
 		labelW, _ := MeasureText(labelText)
-		maxLabelW := w - 2
+		maxLabelW := w - prefixChars - 2
 		if labelW > maxLabelW {
 			labelW = maxLabelW
 		}
-		ctx.PrintTruncated(x, topY, labelText, labelStyle)
+		ctx.PrintTruncated(bx, topY, labelText, labelStyle)
+		bx += labelW
+
 		// Fill rest of line with border
-		for bx := x + labelW; bx < x+w; bx++ {
+		for ; bx < x+w; bx++ {
 			ctx.PrintTruncated(bx, topY, borderChar, borderStyle)
 		}
 	} else {

@@ -25,11 +25,14 @@ type filePickerView struct {
 // filter should be a pointer to the filter text.
 // selected should be a pointer to the selected index.
 //
+// The filter input and list are keyboard navigable. Use Tab to switch
+// between them, type to filter, and arrow keys to navigate the list.
+//
 // Example:
 //
 //	FilePicker(app.files, &app.filter, &app.selected).
 //	    CurrentPath(app.currentDir).
-//	    OnSelect(func(item ListItem) { app.handleSelect(item) })
+//	    OnSelect(func(item ListItem, index int) { app.handleSelect(item, index) })
 func FilePicker(items []ListItem, filter *string, selected *int) *filePickerView {
 	return &filePickerView{
 		items:      items,

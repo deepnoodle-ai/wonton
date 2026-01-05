@@ -13,6 +13,11 @@ type ListItemRenderer func(item ListItem, selected bool) View
 // listView is a flexible list component that supports keyboard navigation,
 // scrolling, filtering, and custom rendering of items.
 type listView struct {
+	// Focus management
+	id      string
+	bounds  image.Rectangle
+	focused bool
+
 	// Data
 	items        []ListItem
 	filteredIdxs []int // indices into items array after filtering
@@ -43,6 +48,9 @@ type listView struct {
 // FilterableList creates a new filterable list view with the given items.
 // selected is a pointer to the currently selected index in the filtered list.
 //
+// The component handles keyboard navigation (arrow keys), filtering (typing),
+// and selection (Enter) automatically when focused. Use Tab to focus the list.
+//
 // Example:
 //
 //	FilterableList(items, &app.selected).
@@ -55,7 +63,11 @@ func FilterableList(items []ListItem, selected *int) *listView {
 		filteredIdxs[i] = i
 	}
 
+	// Generate ID from selected pointer address
+	id := fmt.Sprintf("list_%p", selected)
+
 	return &listView{
+		id:                id,
 		items:             items,
 		filteredIdxs:      filteredIdxs,
 		selected:          selected,
@@ -80,6 +92,84 @@ func FilterableListStrings(labels []string, selected *int) *listView {
 func (l *listView) OnSelect(fn func(item ListItem, index int)) *listView {
 	l.onSelect = fn
 	return l
+}
+
+// ID sets a custom ID for this list (for focus management).
+func (l *listView) ID(id string) *listView {
+	l.id = id
+	return l
+}
+
+// Focusable interface implementation
+func (l *listView) FocusID() string {
+	return l.id
+}
+
+func (l *listView) IsFocused() bool {
+	return l.focused
+}
+
+func (l *listView) SetFocused(focused bool) {
+	l.focused = focused
+}
+
+func (l *listView) FocusBounds() image.Rectangle {
+	return l.bounds
+}
+
+func (l *listView) HandleKeyEvent(event KeyEvent) bool {
+	// Get visible height for scroll calculations
+	visibleHeight := l.height
+	if visibleHeight == 0 {
+		visibleHeight = 10 // default
+	}
+	if l.showFilter && l.filterText != nil {
+		visibleHeight -= 2 // account for filter input and divider
+	}
+
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if l.selected != nil && *l.selected > 0 {
+			*l.selected--
+			// Adjust scroll if needed
+			if l.scrollOffset != nil && *l.scrollOffset > *l.selected {
+				*l.scrollOffset = *l.selected
+			}
+			return true
+		}
+	case KeyArrowDown:
+		if l.selected != nil && *l.selected < len(l.filteredIdxs)-1 {
+			*l.selected++
+			// Adjust scroll if needed
+			if l.scrollOffset != nil && *l.selected-*l.scrollOffset >= visibleHeight {
+				*l.scrollOffset = *l.selected - visibleHeight + 1
+			}
+			return true
+		}
+	case KeyEnter:
+		if l.selected != nil && *l.selected >= 0 && *l.selected < len(l.filteredIdxs) {
+			if l.onSelect != nil {
+				origIdx := l.filteredIdxs[*l.selected]
+				l.onSelect(l.items[origIdx], *l.selected)
+			}
+			return true
+		}
+	case KeyBackspace:
+		// Handle filter text deletion
+		if l.showFilter && l.filterText != nil && len(*l.filterText) > 0 {
+			*l.filterText = (*l.filterText)[:len(*l.filterText)-1]
+			return true
+		}
+	}
+
+	// Handle printable characters for filtering
+	if l.showFilter && l.filterText != nil && event.Rune >= 32 && event.Rune < 127 {
+		*l.filterText += string(event.Rune)
+		return true
+	}
+
+	return false
 }
 
 // Style sets the style for normal items.
@@ -224,11 +314,13 @@ func (l *listView) size(maxWidth, maxHeight int) (int, int) {
 		// Calculate width from items
 		for _, idx := range l.filteredIdxs {
 			item := l.items[idx]
-			itemW, _ := MeasureText(item.Label)
+			var fullText string
 			if item.Icon != "" {
-				iconW, _ := MeasureText(item.Icon)
-				itemW += iconW + 1
+				fullText = item.Icon + "  " + item.Label // Double space after icon
+			} else {
+				fullText = item.Label
 			}
+			itemW, _ := MeasureText(fullText)
 			if itemW > w {
 				w = itemW
 			}
@@ -267,6 +359,10 @@ func (l *listView) render(ctx *RenderContext) {
 	if width == 0 || height == 0 {
 		return
 	}
+
+	// Register with focus manager for keyboard input
+	l.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(l)
 
 	yOffset := 0
 
@@ -431,12 +527,12 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 		style = l.selectedStyle
 	}
 
-	// Render item with icon if present
-	x := 0
+	// Build the full text to render
+	var fullText string
 	if item.Icon != "" {
-		ctx.PrintStyled(x, 0, item.Icon+" ", style)
-		iconW, _ := MeasureText(item.Icon)
-		x += iconW + 1
+		fullText = item.Icon + "  " + item.Label // Double space after icon for safety
+	} else {
+		fullText = item.Label
 	}
 
 	// Fill background for selected item
@@ -446,8 +542,8 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 		}
 	}
 
-	// Render label
-	ctx.PrintTruncated(x, 0, item.Label, style)
+	// Render the full text
+	ctx.PrintTruncated(0, 0, fullText, style)
 
 	// Register click handler
 	if l.onSelect != nil {
@@ -466,6 +562,7 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 
 // checkboxListView displays a list with checkable items
 type checkboxListView struct {
+	id             string
 	items          []ListItem
 	checked        []bool
 	cursor         *int
@@ -478,17 +575,25 @@ type checkboxListView struct {
 	uncheckedChar  string
 	width          int
 	height         int
+	bounds         image.Rectangle
+	focused        bool
 }
 
 // CheckboxList creates a list with checkable items.
 // checked should be a slice tracking which items are checked.
 // cursor should be a pointer to the current cursor position.
 //
+// The component handles keyboard navigation (arrow keys) and toggling (space)
+// automatically when focused. Use Tab to focus the list.
+//
 // Example:
 //
 //	CheckboxList(items, app.checked, &app.cursor).OnToggle(func(i int, c bool) { ... })
 func CheckboxList(items []ListItem, checked []bool, cursor *int) *checkboxListView {
+	// Generate ID from cursor pointer address
+	id := fmt.Sprintf("checkbox_%p", cursor)
 	return &checkboxListView{
+		id:            id,
 		items:         items,
 		checked:       checked,
 		cursor:        cursor,
@@ -513,6 +618,58 @@ func CheckboxListStrings(labels []string, checked []bool, cursor *int) *checkbox
 func (c *checkboxListView) OnToggle(fn func(index int, checked bool)) *checkboxListView {
 	c.onToggle = fn
 	return c
+}
+
+// ID sets a custom ID for this checkbox list (for focus management).
+func (c *checkboxListView) ID(id string) *checkboxListView {
+	c.id = id
+	return c
+}
+
+// Focusable interface implementation
+func (c *checkboxListView) FocusID() string {
+	return c.id
+}
+
+func (c *checkboxListView) IsFocused() bool {
+	return c.focused
+}
+
+func (c *checkboxListView) SetFocused(focused bool) {
+	c.focused = focused
+}
+
+func (c *checkboxListView) FocusBounds() image.Rectangle {
+	return c.bounds
+}
+
+func (c *checkboxListView) HandleKeyEvent(event KeyEvent) bool {
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if c.cursor != nil && *c.cursor > 0 {
+			*c.cursor--
+			return true
+		}
+	case KeyArrowDown:
+		if c.cursor != nil && *c.cursor < len(c.items)-1 {
+			*c.cursor++
+			return true
+		}
+	}
+
+	// Handle space to toggle
+	if event.Rune == ' ' {
+		if c.cursor != nil && *c.cursor >= 0 && *c.cursor < len(c.checked) {
+			c.checked[*c.cursor] = !c.checked[*c.cursor]
+			if c.onToggle != nil {
+				c.onToggle(*c.cursor, c.checked[*c.cursor])
+			}
+			return true
+		}
+	}
+
+	return false
 }
 
 // Fg sets the foreground color for normal items.
@@ -658,6 +815,10 @@ func (c *checkboxListView) render(ctx *RenderContext) {
 		return
 	}
 
+	// Register with focus manager for keyboard input
+	c.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(c)
+
 	cursorIdx := 0
 	if c.cursor != nil {
 		cursorIdx = *c.cursor
@@ -722,6 +883,7 @@ func (c *checkboxListView) render(ctx *RenderContext) {
 
 // radioListView displays a list with radio button items
 type radioListView struct {
+	id             string
 	items          []ListItem
 	selected       *int
 	onSelect       func(index int)
@@ -731,16 +893,24 @@ type radioListView struct {
 	unselectedChar string
 	width          int
 	height         int
+	bounds         image.Rectangle
+	focused        bool
 }
 
 // RadioList creates a list with radio button items (single selection).
 // selected should be a pointer to the currently selected index.
 //
+// The component handles keyboard navigation (arrow keys) and selection (Enter/Space)
+// automatically when focused. Use Tab to focus the list.
+//
 // Example:
 //
 //	RadioList(items, &app.selected).OnSelect(func(i int) { ... })
 func RadioList(items []ListItem, selected *int) *radioListView {
+	// Generate ID from selected pointer address
+	id := fmt.Sprintf("radio_%p", selected)
 	return &radioListView{
+		id:             id,
 		items:          items,
 		selected:       selected,
 		style:          NewStyle(),
@@ -763,6 +933,65 @@ func RadioListStrings(labels []string, selected *int) *radioListView {
 func (r *radioListView) OnSelect(fn func(index int)) *radioListView {
 	r.onSelect = fn
 	return r
+}
+
+// ID sets a custom ID for this radio list (for focus management).
+func (r *radioListView) ID(id string) *radioListView {
+	r.id = id
+	return r
+}
+
+// Focusable interface implementation
+func (r *radioListView) FocusID() string {
+	return r.id
+}
+
+func (r *radioListView) IsFocused() bool {
+	return r.focused
+}
+
+func (r *radioListView) SetFocused(focused bool) {
+	r.focused = focused
+}
+
+func (r *radioListView) FocusBounds() image.Rectangle {
+	return r.bounds
+}
+
+func (r *radioListView) HandleKeyEvent(event KeyEvent) bool {
+	// Handle arrow keys for navigation
+	switch event.Key {
+	case KeyArrowUp:
+		if r.selected != nil && *r.selected > 0 {
+			*r.selected--
+			return true
+		}
+	case KeyArrowDown:
+		if r.selected != nil && *r.selected < len(r.items)-1 {
+			*r.selected++
+			return true
+		}
+	case KeyEnter:
+		// Enter selects the current item
+		if r.selected != nil && *r.selected >= 0 && *r.selected < len(r.items) {
+			if r.onSelect != nil {
+				r.onSelect(*r.selected)
+			}
+			return true
+		}
+	}
+
+	// Handle space to select
+	if event.Rune == ' ' {
+		if r.selected != nil && *r.selected >= 0 && *r.selected < len(r.items) {
+			if r.onSelect != nil {
+				r.onSelect(*r.selected)
+			}
+			return true
+		}
+	}
+
+	return false
 }
 
 // Fg sets the foreground color.
@@ -851,6 +1080,10 @@ func (r *radioListView) render(ctx *RenderContext) {
 	if width == 0 || height == 0 || len(r.items) == 0 {
 		return
 	}
+
+	// Register with focus manager for keyboard input
+	r.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(r)
 
 	selectedIdx := 0
 	if r.selected != nil {

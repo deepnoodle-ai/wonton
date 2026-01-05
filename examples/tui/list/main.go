@@ -96,18 +96,21 @@ func (app *ListDemoApp) View() tui.View {
 			// Right padding
 			tui.Spacer().MinWidth(2),
 
-			// Info panel
-			tui.Stack(
-				tui.Text("Selection Info").Bold(),
-				tui.Divider(),
-				tui.Spacer().MinHeight(1),
-				tui.Text("Index: %d", app.selected),
-				tui.Text("Scroll: %d", app.scrollOffset),
-				tui.Spacer().MinHeight(1),
-				tui.Text("Last Action:").Dim(),
-				tui.Text("%s", app.lastAction).Fg(tui.ColorGreen),
-				tui.Spacer(),
-			).Padding(1),
+			// Info panel (with minimum width for long text)
+			tui.Group(
+				tui.Stack(
+					tui.Text("Selection Info").Bold(),
+					tui.Divider(),
+					tui.Spacer().MinHeight(1),
+					tui.Text("Index: %d", app.selected),
+					tui.Text("Scroll: %d", app.scrollOffset),
+					tui.Spacer().MinHeight(1),
+					tui.Text("Last Action:").Dim(),
+					tui.Text("%s", app.lastAction).Fg(tui.ColorGreen),
+					tui.Spacer(),
+				).Padding(1),
+				tui.Spacer().MinWidth(35),
+			),
 
 			// Right padding
 			tui.Spacer().MinWidth(2),

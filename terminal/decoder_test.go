@@ -117,6 +117,26 @@ func TestKeyDecoder_ArrowKeys(t *testing.T) {
 	}
 }
 
+// TestKeyDecoder_ShiftTab tests Shift+Tab (BackTab) detection
+func TestKeyDecoder_ShiftTab(t *testing.T) {
+	// Shift+Tab sends ESC [ Z
+	input := []byte{0x1B, '[', 'Z'}
+	decoder := NewKeyDecoder(bytes.NewReader(input))
+	event, err := decoder.ReadKeyEvent()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if event.Key != KeyTab {
+		t.Errorf("expected KeyTab, got %v", event.Key)
+	}
+
+	if !event.Shift {
+		t.Error("expected Shift to be true for Shift+Tab")
+	}
+}
+
 // TestKeyDecoder_FunctionKeys tests F1-F12 function keys
 func TestKeyDecoder_FunctionKeys(t *testing.T) {
 	tests := []struct {

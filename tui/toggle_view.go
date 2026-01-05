@@ -1,7 +1,13 @@
 package tui
 
+import (
+	"fmt"
+	"image"
+)
+
 // toggleView displays an on/off toggle switch
 type toggleView struct {
+	id         string
 	value      *bool
 	onLabel    string
 	offLabel   string
@@ -9,16 +15,24 @@ type toggleView struct {
 	offStyle   Style
 	onChange   func(bool)
 	showLabels bool
+	bounds     image.Rectangle
+	focused    bool
 }
 
 // Toggle creates an on/off toggle switch.
 // value should be a pointer to a bool controlling the toggle state.
 //
+// The component handles keyboard input (Space/Enter to toggle) automatically when focused.
+// Use Tab to focus the toggle.
+//
 // Example:
 //
 //	Toggle(&app.darkMode).OnChange(func(v bool) { app.updateTheme() })
 func Toggle(value *bool) *toggleView {
+	// Generate ID from value pointer address
+	id := fmt.Sprintf("toggle_%p", value)
 	return &toggleView{
+		id:         id,
 		value:      value,
 		onLabel:    "ON",
 		offLabel:   "OFF",
@@ -64,6 +78,46 @@ func (t *toggleView) ShowLabels(show bool) *toggleView {
 	return t
 }
 
+// ID sets a custom ID for this toggle (for focus management).
+func (t *toggleView) ID(id string) *toggleView {
+	t.id = id
+	return t
+}
+
+// Focusable interface implementation
+func (t *toggleView) FocusID() string {
+	return t.id
+}
+
+func (t *toggleView) IsFocused() bool {
+	return t.focused
+}
+
+func (t *toggleView) SetFocused(focused bool) {
+	t.focused = focused
+}
+
+func (t *toggleView) FocusBounds() image.Rectangle {
+	return t.bounds
+}
+
+func (t *toggleView) HandleKeyEvent(event KeyEvent) bool {
+	if t.value == nil {
+		return false
+	}
+
+	// Handle Space or Enter to toggle
+	if event.Rune == ' ' || event.Key == KeyEnter {
+		*t.value = !*t.value
+		if t.onChange != nil {
+			t.onChange(*t.value)
+		}
+		return true
+	}
+
+	return false
+}
+
 func (t *toggleView) size(maxWidth, maxHeight int) (int, int) {
 	// [●] ON  or  [○] OFF
 	w := 3 // switch chars
@@ -87,6 +141,10 @@ func (t *toggleView) render(ctx *RenderContext) {
 	if w == 0 || h == 0 {
 		return
 	}
+
+	// Register with focus manager for keyboard input
+	t.bounds = ctx.AbsoluteBounds()
+	focusManager.Register(t)
 
 	isOn := t.value != nil && *t.value
 
