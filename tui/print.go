@@ -307,6 +307,13 @@ func NewLivePrinter(cfgs ...PrintConfig) *LivePrinter {
 	}
 }
 
+// SetWidth updates the width of the live printer.
+// This is useful when the terminal is resized.
+// The next Update() will use the new width.
+func (lp *LivePrinter) SetWidth(w int) {
+	lp.config.Width = w
+}
+
 // Update renders a new view, replacing the previous content in place.
 // The cursor moves back to overwrite the previous output.
 //
@@ -393,6 +400,12 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	// Build output with line-level diffing
 	var output strings.Builder
 
+	// When height changes, disable line-level diffing for this frame.
+	// This ensures we rewrite all lines, maintaining correct cursor positioning.
+	// Without this, skipped lines during height transitions can cause cursor
+	// misalignment, leading to scrollback contamination.
+	heightChanging := height != lp.lastHeight
+
 	for y := 0; y < height; y++ {
 		newLine := ""
 		if y < len(newLines) {
@@ -405,7 +418,8 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 			oldLine = lp.lastLines[y]
 		}
 
-		if newLine != oldLine || y >= len(lp.lastLines) {
+		// Always rewrite when height is changing, or when line content differs
+		if heightChanging || newLine != oldLine || y >= len(lp.lastLines) {
 			// Line changed - clear and rewrite
 			output.WriteString("\r\033[2K") // Move to column 0 and clear line
 			output.WriteString(newLine)
@@ -417,9 +431,13 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		}
 	}
 
-	// If the new content is shorter than before, clear the extra lines
+	// If the new content is shorter than before, clear the extra lines.
+	// We move down one line first to avoid clearing the last content line,
+	// then clear from cursor to end of screen.
 	if height < lp.lastHeight {
+		output.WriteString("\n")      // Move to first orphaned line
 		output.WriteString("\033[0J") // Clear from cursor to end of screen
+		output.WriteString("\033[A")  // Move back up to last content line
 	}
 
 	// Store lines for next frame's diffing
