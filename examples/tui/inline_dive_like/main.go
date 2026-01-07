@@ -90,6 +90,7 @@ func (a *diveLikeApp) LiveView() tui.View {
 		footerViews = append(footerViews, tui.Text(" Press Ctrl+C again to exit").Hint())
 	}
 
+	// Pad footer to consistent height to prevent layout shifts
 	for len(footerViews) < 8 {
 		footerViews = append(footerViews, tui.Text(""))
 	}

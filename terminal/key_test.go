@@ -20,6 +20,6 @@ func TestKeyEventTimestampDefaultsToNow(t *testing.T) {
 	ts := event.Timestamp()
 	end := time.Now()
 
-	assert.True(t, !ts.Before(start))
-	assert.True(t, !ts.After(end))
+	assert.False(t, ts.Before(start))
+	assert.False(t, ts.After(end))
 }

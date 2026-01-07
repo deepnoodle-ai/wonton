@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/terminal"
@@ -299,9 +297,8 @@ func (r *InlineApp) Run(app any) error {
 		r.ticker = time.NewTicker(time.Second / time.Duration(r.config.FPS))
 	}
 
-	// Initialize resize channel
-	r.resizeChan = make(chan os.Signal, 1)
-	signal.Notify(r.resizeChan, syscall.SIGWINCH)
+	// Initialize resize watcher (platform-specific)
+	r.setupResizeWatcher()
 
 	// Render initial view
 	r.render()
@@ -358,9 +355,8 @@ func (r *InlineApp) cleanup() {
 		r.ticker.Stop()
 	}
 
-	// Stop resize listener
-	signal.Stop(r.resizeChan)
-	close(r.resizeChan)
+	// Stop resize listener (platform-specific)
+	r.cleanupResizeWatcher()
 
 	// Stop live printer
 	r.live.Stop()

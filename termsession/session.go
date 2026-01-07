@@ -1,5 +1,3 @@
-//go:build unix
-
 package termsession
 
 import (
@@ -9,7 +7,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/creack/pty"
 	"golang.org/x/term"
@@ -380,7 +377,7 @@ func (s *Session) IsRecording() bool {
 // handleResize listens for SIGWINCH and propagates size changes
 func (s *Session) handleResize() {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
+	setupResizeSignal(ch)
 	defer signal.Stop(ch)
 
 	for {

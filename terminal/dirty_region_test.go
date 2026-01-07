@@ -11,7 +11,7 @@ func TestDirtyRegionEmptyAndClear(t *testing.T) {
 	assert.True(t, dr.Empty())
 
 	dr.Mark(2, 3)
-	assert.True(t, !dr.Empty())
+	assert.False(t, dr.Empty())
 
 	dr.Clear()
 	assert.True(t, dr.Empty())

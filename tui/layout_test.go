@@ -58,6 +58,7 @@ func TestLayout(t *testing.T) {
 		footer = &Footer{Height: 3, Border: true}
 		l.SetFooter(footer)
 		y, h = l.ContentArea()
+		assert.Equal(t, 0, y)
 		assert.Equal(t, 21, h)
 	})
 

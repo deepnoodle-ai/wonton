@@ -673,7 +673,7 @@ func TestClient_ConnectInvalidURL(t *testing.T) {
 }
 
 func TestClient_ConnectRequestError(t *testing.T) {
-	client := NewClient("http://localhost:1") // Likely connection refused
+	client := NewClient("http://192.0.2.1:1") // Unroutable IP (TEST-NET-1)
 	ctx := context.Background()
 	_, errs := client.Connect(ctx)
 	err := <-errs
@@ -761,24 +761,12 @@ func TestClient_ConnectReadError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.(http.Flusher).Flush()
-
-		// Hijack or just close the connection abruptly if possible,
-		// but a simple way is to send data that exceeds buffer if we can,
-		// or just use a pipe that fails.
-		// Actually, we can just close the body in a way that causes error.
+		w.Write([]byte("data: this is a very long line that exceeds the buffer\n\n"))
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL)
 	client.BufferSize = 10 // Very small buffer
-
-	// Send a line longer than 10 bytes
-	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data: this is a very long line that exceeds the buffer\n\n"))
-	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
