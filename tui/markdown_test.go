@@ -389,8 +389,8 @@ func TestMarkdownRenderer_WrapSegments_NoLeadingSpace(t *testing.T) {
 	for i, line := range result.Lines {
 		if len(line.Segments) > 0 {
 			firstSeg := line.Segments[0]
-			if len(firstSeg.Text) > 0 && firstSeg.Text[0] == ' ' {
-				t.Errorf("Line %d starts with a space: %q", i, firstSeg.Text)
+			if len(firstSeg.Text) > 0 {
+				assert.NotEqual(t, ' ', firstSeg.Text[0], "Line %d starts with a space: %q", i, firstSeg.Text)
 			}
 		}
 	}

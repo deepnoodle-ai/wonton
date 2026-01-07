@@ -760,6 +760,9 @@ func (c *Command) showHelp() error {
 		if err := tui.Fprint(c.app.stdout, view); err != nil {
 			return err
 		}
+		if err := writeHelpNewline(c.app.stdout); err != nil {
+			return err
+		}
 		return &HelpRequested{}
 	}
 
@@ -838,7 +841,9 @@ func (c *Command) showHelp() error {
 		writeFlagsHelp(&sb, c.app.globalFlags)
 	}
 
-	fmt.Fprint(c.app.stdout, sb.String())
+	if err := writeHelpOutput(c.app.stdout, sb.String()); err != nil {
+		return err
+	}
 	return &HelpRequested{}
 }
 

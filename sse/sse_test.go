@@ -618,3 +618,231 @@ func ExampleNewClient() {
 	// URL: https://api.example.com/stream
 	// Auth header set: true
 }
+
+func TestHTTPError_ErrorMessage(t *testing.T) {
+	err := &HTTPError{StatusCode: 404, Status: "Not Found"}
+	assert.Equal(t, "sse: Not Found", err.Error())
+}
+
+func TestReaderRetryInvalid(t *testing.T) {
+	// Negative retry
+	data := "retry: -1000\ndata: test\n\n"
+	reader := NewReader(strings.NewReader(data))
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, event.Retry)
+
+	// Non-numeric retry
+	data = "retry: abc\ndata: test\n\n"
+	reader = NewReader(strings.NewReader(data))
+	event, err = reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, event.Retry)
+}
+
+func TestStream_ReadError(t *testing.T) {
+	// A reader that returns an error
+	errReader := &errorReader{err: io.ErrUnexpectedEOF}
+	err := Stream(errReader, func(e Event) error { return nil })
+	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
+}
+
+func TestStream_CallbackError(t *testing.T) {
+	data := "data: test\n\n"
+	customErr := fmt.Errorf("custom error")
+	err := Stream(strings.NewReader(data), func(e Event) error {
+		return customErr
+	})
+	assert.ErrorIs(t, err, customErr)
+}
+
+type errorReader struct {
+	err error
+}
+
+func (r *errorReader) Read(p []byte) (n int, err error) {
+	return 0, r.err
+}
+
+func TestClient_ConnectInvalidURL(t *testing.T) {
+	client := NewClient(":") // Invalid URL
+	ctx := context.Background()
+	_, errs := client.Connect(ctx)
+	err := <-errs
+	assert.Error(t, err)
+}
+
+func TestClient_ConnectRequestError(t *testing.T) {
+	client := NewClient("http://localhost:1") // Likely connection refused
+	ctx := context.Background()
+	_, errs := client.Connect(ctx)
+	err := <-errs
+	assert.Error(t, err)
+}
+
+func TestClient_ConnectContextCancel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		time.Sleep(100 * time.Millisecond)
+		w.Write([]byte("data: delayed\n\n"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	events, errs := client.Connect(ctx)
+
+	cancel() // Cancel immediately
+
+	// Drain channels
+	for range events {
+	}
+	err := <-errs
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestClient_ConnectContextCancelInSelect(t *testing.T) {
+	// Test context cancellation while blocked on sending to events channel
+	ctx, cancel := context.WithCancel(context.Background())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		w.Write([]byte("data: event1\n\n"))
+		w.(http.Flusher).Flush()
+		// Wait for context to be done before exiting server
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	eventsChan, errsChan := client.Connect(ctx)
+
+	// Receive first event
+	<-eventsChan
+
+	cancel()
+
+	for range eventsChan {
+	}
+	err := <-errsChan
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestReader_ScannerError(t *testing.T) {
+	// A reader that returns an error after some data
+	r, w := io.Pipe()
+	go func() {
+		w.Write([]byte("data: partial"))
+		w.CloseWithError(fmt.Errorf("scan error"))
+	}()
+
+	reader := NewReader(r)
+	_, err := reader.Read()
+	assert.ErrorContains(t, err, "scan error")
+}
+
+func TestReader_PartialEventAtEOF(t *testing.T) {
+	data := "data: partial" // No trailing \n\n
+	reader := NewReader(strings.NewReader(data))
+
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "partial", event.Data)
+
+	_, err = reader.Read()
+	assert.Equal(t, io.EOF, err)
+}
+
+func TestClient_ConnectReadError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+
+		// Hijack or just close the connection abruptly if possible,
+		// but a simple way is to send data that exceeds buffer if we can,
+		// or just use a pipe that fails.
+		// Actually, we can just close the body in a way that causes error.
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.BufferSize = 10 // Very small buffer
+
+	// Send a line longer than 10 bytes
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: this is a very long line that exceeds the buffer\n\n"))
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+	for range events {
+	}
+	err := <-errs
+	assert.ErrorContains(t, err, "token too long")
+}
+
+func TestClient_NoContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "") // Try to force empty
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: works\n\n"))
+		w.(http.Flusher).Flush()
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+
+	select {
+	case event, ok := <-events:
+		if !ok {
+			err := <-errs
+			t.Fatalf("events channel closed, err: %v", err)
+		}
+		assert.Equal(t, event.Data, "works")
+	case err := <-errs:
+		t.Fatalf("Connect failed: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("Timeout waiting for event")
+	}
+
+	// Close server to end stream
+	server.CloseClientConnections()
+
+	// Drain error channel if any
+	for range events {
+	}
+	err := <-errs
+	if err != nil && err != io.EOF && !strings.Contains(err.Error(), "closed") {
+		// We don't strictly require no error on abrupt close here,
+		// but we want to ensure it passed the Content-Type check.
+	}
+}
+
+func TestClient_DefaultHTTPClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: default\n\n"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.HTTPClient = nil // Ensure it's nil
+
+	events, _ := client.Connect(context.Background())
+	event := <-events
+	assert.Equal(t, event.Data, "default")
+}

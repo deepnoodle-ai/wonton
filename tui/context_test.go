@@ -411,8 +411,8 @@ type mockFocusableForCtxTest struct {
 	focused bool
 }
 
-func (m *mockFocusableForCtxTest) FocusID() string               { return m.id }
-func (m *mockFocusableForCtxTest) IsFocused() bool               { return m.focused }
-func (m *mockFocusableForCtxTest) SetFocused(focused bool)       { m.focused = focused }
-func (m *mockFocusableForCtxTest) FocusBounds() image.Rectangle  { return image.Rect(0, 0, 10, 10) }
+func (m *mockFocusableForCtxTest) FocusID() string                { return m.id }
+func (m *mockFocusableForCtxTest) IsFocused() bool                { return m.focused }
+func (m *mockFocusableForCtxTest) SetFocused(focused bool)        { m.focused = focused }
+func (m *mockFocusableForCtxTest) FocusBounds() image.Rectangle   { return image.Rect(0, 0, 10, 10) }
 func (m *mockFocusableForCtxTest) HandleKeyEvent(e KeyEvent) bool { return false }

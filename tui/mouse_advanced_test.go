@@ -486,7 +486,7 @@ func TestMouseHandler_CancelDrag(t *testing.T) {
 		},
 		OnDragEnd: func(event *MouseEvent) {
 			// Should not be called on cancel
-			t.Error("OnDragEnd should not be called when drag is cancelled")
+			t.Fatal("OnDragEnd should not be called when drag is cancelled")
 		},
 	}
 

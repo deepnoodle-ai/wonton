@@ -159,3 +159,138 @@ func TestLive_Convenience(t *testing.T) {
 	assert.Equal(t, 3, count)
 	assert.True(t, strings.Contains(buf.String(), "Count:"), "should contain text")
 }
+
+// TestLivePrinter_SetWidth tests updating printer width
+func TestLivePrinter_SetWidth(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	// Initial width
+	assert.Equal(t, 40, lp.config.Width)
+
+	// Update width
+	lp.SetWidth(80)
+	assert.Equal(t, 80, lp.config.Width)
+
+	// Next update should use new width
+	err := lp.Update(Text("Testing wider output"))
+	assert.NoError(t, err)
+
+	// Update to smaller width
+	lp.SetWidth(20)
+	assert.Equal(t, 20, lp.config.Width)
+
+	err = lp.Update(Text("Narrow"))
+	assert.NoError(t, err)
+
+	lp.Stop()
+}
+
+// TestLivePrinter_HeightChange tests behavior when content height changes
+func TestLivePrinter_HeightChange(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	// Start with tall content (3 lines)
+	err := lp.Update(Stack(
+		Text("Line 1"),
+		Text("Line 2"),
+		Text("Line 3"),
+	))
+	assert.NoError(t, err)
+
+	// Clear buffer to check next update
+	buf.Reset()
+
+	// Update with shorter content (1 line)
+	// This should trigger the orphaned line clearing logic
+	err = lp.Update(Text("Single line"))
+	assert.NoError(t, err)
+
+	output := buf.String()
+
+	// Should contain clear sequence for orphaned lines
+	assert.True(t, strings.Contains(output, "\033[0J"), "should clear orphaned lines")
+
+	lp.Stop()
+}
+
+// TestLivePrinter_HeightIncrease tests behavior when content grows taller
+func TestLivePrinter_HeightIncrease(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	// Start with short content (1 line)
+	err := lp.Update(Text("Short"))
+	assert.NoError(t, err)
+
+	buf.Reset()
+
+	// Update with taller content (3 lines)
+	err = lp.Update(Stack(
+		Text("Line 1"),
+		Text("Line 2"),
+		Text("Line 3"),
+	))
+	assert.NoError(t, err)
+
+	output := buf.String()
+
+	// Should contain all new lines
+	assert.True(t, strings.Contains(output, "Line 1"), "should contain Line 1")
+	assert.True(t, strings.Contains(output, "Line 2"), "should contain Line 2")
+	assert.True(t, strings.Contains(output, "Line 3"), "should contain Line 3")
+
+	lp.Stop()
+}
+
+// TestLivePrinter_HeightChangeDisablesDiffing tests that line diffing is disabled during height changes
+func TestLivePrinter_HeightChangeDisablesDiffing(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	// Initial content with 2 lines
+	err := lp.Update(Stack(
+		Text("Line 1"),
+		Text("Line 2"),
+	))
+	assert.NoError(t, err)
+
+	buf.Reset()
+
+	// Update with same first line but different height (3 lines)
+	// Even though "Line 1" hasn't changed, it should be rewritten
+	// because height is changing
+	err = lp.Update(Stack(
+		Text("Line 1"),
+		Text("Line 2 changed"),
+		Text("Line 3 new"),
+	))
+	assert.NoError(t, err)
+
+	output := buf.String()
+
+	// Should contain clear and rewrite sequences for all lines
+	// (not just the changed ones) because height changed
+	clearCount := strings.Count(output, "\033[2K")
+	assert.True(t, clearCount >= 3, "should clear all lines when height changes")
+
+	lp.Stop()
+}
+
+// TestLivePrinter_MultipleWidthChanges tests multiple width updates
+func TestLivePrinter_MultipleWidthChanges(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	widths := []int{80, 120, 60, 100}
+	for _, width := range widths {
+		lp.SetWidth(width)
+		assert.Equal(t, width, lp.config.Width)
+
+		err := lp.Update(Text("Width: %d", width))
+		assert.NoError(t, err)
+	}
+
+	lp.Stop()
+}
