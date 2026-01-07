@@ -117,3 +117,103 @@ func TestPromptsRequireInteractive(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "interactive")
 }
+
+func TestContextStrings(t *testing.T) {
+	t.Run("returns slice when flag is []string", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"tags": []string{"tag1", "tag2", "tag3"},
+		})
+		assert.Equal(t, []string{"tag1", "tag2", "tag3"}, ctx.Strings("tags"))
+	})
+
+	t.Run("returns single item slice when flag is string", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"tag": "single",
+		})
+		assert.Equal(t, []string{"single"}, ctx.Strings("tag"))
+	})
+
+	t.Run("returns nil when flag is empty string", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"tag": "",
+		})
+		assert.Nil(t, ctx.Strings("tag"))
+	})
+
+	t.Run("returns nil when flag not set", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{})
+		assert.Nil(t, ctx.Strings("missing"))
+	})
+}
+
+func TestContextInts(t *testing.T) {
+	t.Run("returns slice when flag is []int", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"ports": []int{8080, 8081, 8082},
+		})
+		assert.Equal(t, []int{8080, 8081, 8082}, ctx.Ints("ports"))
+	})
+
+	t.Run("returns single item slice when flag is int", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{
+			"port": 8080,
+		})
+		assert.Equal(t, []int{8080}, ctx.Ints("port"))
+	})
+
+	t.Run("returns nil when flag not set", func(t *testing.T) {
+		ctx := newTestContext(map[string]any{})
+		assert.Nil(t, ctx.Ints("missing"))
+	})
+}
+
+func TestContextStringWithNonStringTypes(t *testing.T) {
+	ctx := newTestContext(map[string]any{
+		"number": 123,
+		"bool":   true,
+	})
+
+	assert.Equal(t, "123", ctx.String("number"))
+	assert.Equal(t, "true", ctx.String("bool"))
+	assert.Equal(t, "", ctx.String("missing"))
+}
+
+func TestContextIntParsesVariousTypes(t *testing.T) {
+	ctx := newTestContext(map[string]any{
+		"fromInt":    42,
+		"fromInt64":  int64(100),
+		"fromFloat":  float64(55.7),
+		"fromString": "99",
+		"invalid":    "not-a-number",
+	})
+
+	assert.Equal(t, 42, ctx.Int("fromInt"))
+	assert.Equal(t, 100, ctx.Int("fromInt64"))
+	assert.Equal(t, 55, ctx.Int("fromFloat"))
+	assert.Equal(t, 99, ctx.Int("fromString"))
+	assert.Equal(t, 0, ctx.Int("invalid"))
+	assert.Equal(t, 0, ctx.Int("missing"))
+}
+
+func TestContextInt64ParsesVariousTypes(t *testing.T) {
+	ctx := newTestContext(map[string]any{
+		"fromInt":    42,
+		"fromInt64":  int64(100),
+		"fromFloat":  float64(55.7),
+		"fromString": "99",
+	})
+
+	assert.Equal(t, int64(42), ctx.Int64("fromInt"))
+	assert.Equal(t, int64(100), ctx.Int64("fromInt64"))
+	assert.Equal(t, int64(55), ctx.Int64("fromFloat"))
+	assert.Equal(t, int64(99), ctx.Int64("fromString"))
+	assert.Equal(t, int64(0), ctx.Int64("missing"))
+}
+
+func TestContextIsSetWithNilSetFlags(t *testing.T) {
+	ctx := &Context{
+		flags:    map[string]any{"test": "value"},
+		setFlags: nil,
+	}
+	assert.False(t, ctx.IsSet("test"))
+}

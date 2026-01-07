@@ -66,10 +66,10 @@ func (r *promptChoiceRegistryImpl) Get(id string) *TextInput {
 // the FocusManager for Tab navigation between multiple focusable elements.
 type promptChoiceView struct {
 	id          string
-	selected    *int      // Currently selected option index
-	inputText   *string   // Text for the input option (if any)
-	options     []string  // Fixed options
-	inputLabel  string    // Label for the input option (empty = no input option)
+	selected    *int     // Currently selected option index
+	inputText   *string  // Text for the input option (if any)
+	options     []string // Fixed options
+	inputLabel  string   // Label for the input option (empty = no input option)
 	onSelect    func(idx int, inputText string)
 	onCancel    func()
 	style       Style

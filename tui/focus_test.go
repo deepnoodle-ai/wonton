@@ -275,10 +275,10 @@ func TestFocusManager_EmptyManager(t *testing.T) {
 	fm := NewFocusManager()
 
 	// Operations on empty manager should not panic
-	fm.FocusNext()  // No-op with no elements
-	fm.FocusPrev()  // No-op with no elements
-	fm.HandleKey(KeyEvent{Key: KeyTab})  // Tab cycles through nothing
-	fm.HandleClick(0, 0)  // Click hits nothing
+	fm.FocusNext()                      // No-op with no elements
+	fm.FocusPrev()                      // No-op with no elements
+	fm.HandleKey(KeyEvent{Key: KeyTab}) // Tab cycles through nothing
+	fm.HandleClick(0, 0)                // Click hits nothing
 
 	// Verify empty state
 	assert.Equal(t, "", fm.GetFocusedID())
@@ -310,9 +310,9 @@ type mockFocusableWithHandler struct {
 	onKey   func(KeyEvent) bool
 }
 
-func (m *mockFocusableWithHandler) FocusID() string           { return m.id }
-func (m *mockFocusableWithHandler) IsFocused() bool           { return m.focused }
-func (m *mockFocusableWithHandler) SetFocused(focused bool)   { m.focused = focused }
+func (m *mockFocusableWithHandler) FocusID() string              { return m.id }
+func (m *mockFocusableWithHandler) IsFocused() bool              { return m.focused }
+func (m *mockFocusableWithHandler) SetFocused(focused bool)      { m.focused = focused }
 func (m *mockFocusableWithHandler) FocusBounds() image.Rectangle { return image.Rect(0, 0, 10, 10) }
 func (m *mockFocusableWithHandler) HandleKeyEvent(e KeyEvent) bool {
 	if m.onKey != nil {
@@ -328,10 +328,10 @@ type mockFocusableWithBounds struct {
 	bounds  image.Rectangle
 }
 
-func (m *mockFocusableWithBounds) FocusID() string              { return m.id }
-func (m *mockFocusableWithBounds) IsFocused() bool              { return m.focused }
-func (m *mockFocusableWithBounds) SetFocused(focused bool)      { m.focused = focused }
-func (m *mockFocusableWithBounds) FocusBounds() image.Rectangle { return m.bounds }
+func (m *mockFocusableWithBounds) FocusID() string                { return m.id }
+func (m *mockFocusableWithBounds) IsFocused() bool                { return m.focused }
+func (m *mockFocusableWithBounds) SetFocused(focused bool)        { m.focused = focused }
+func (m *mockFocusableWithBounds) FocusBounds() image.Rectangle   { return m.bounds }
 func (m *mockFocusableWithBounds) HandleKeyEvent(e KeyEvent) bool { return false }
 
 // Focus command and event tests

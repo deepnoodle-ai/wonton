@@ -184,6 +184,9 @@ type InlineApp struct {
 	oldState *term.State
 	stdinFd  int
 
+	// Resize handling
+	resizeChan chan os.Signal
+
 	// Mouse click synthesis state (same as Runtime)
 	mousePressX      int
 	mousePressY      int
@@ -294,12 +297,15 @@ func (r *InlineApp) Run(app any) error {
 		r.ticker = time.NewTicker(time.Second / time.Duration(r.config.FPS))
 	}
 
+	// Initialize resize watcher (platform-specific)
+	r.setupResizeWatcher()
+
 	// Render initial view
 	r.render()
 
-	// Start the three goroutines
+	// Start the four goroutines
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	// Goroutine 1: Main event loop
 	go func() {
@@ -317,6 +323,12 @@ func (r *InlineApp) Run(app any) error {
 	go func() {
 		defer wg.Done()
 		r.commandExecutor()
+	}()
+
+	// Goroutine 4: Resize listener
+	go func() {
+		defer wg.Done()
+		r.resizeListener()
 	}()
 
 	// Wait for all goroutines to finish
@@ -342,6 +354,9 @@ func (r *InlineApp) cleanup() {
 	if r.ticker != nil {
 		r.ticker.Stop()
 	}
+
+	// Stop resize listener (platform-specific)
+	r.cleanupResizeWatcher()
 
 	// Stop live printer
 	r.live.Stop()
@@ -437,6 +452,14 @@ func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
 
 // processEvent calls the application's HandleEvent (if implemented) and queues any returned commands.
 func (r *InlineApp) processEvent(event Event) {
+	// Handle resize events
+	if resize, ok := event.(ResizeEvent); ok {
+		r.mu.Lock()
+		r.config.Width = resize.Width
+		r.live.SetWidth(resize.Width)
+		r.mu.Unlock()
+	}
+
 	// Handle focus events from commands
 	switch e := event.(type) {
 	case FocusSetEvent:
@@ -628,6 +651,26 @@ func (r *InlineApp) processMouseEvent(event Event) (Event, Event) {
 
 	default:
 		return event, nil
+	}
+}
+
+// resizeListener watches for terminal resize signals (Goroutine 4).
+func (r *InlineApp) resizeListener() {
+	for {
+		select {
+		case <-r.resizeChan:
+			// Get new size
+			width, height, err := term.GetSize(r.stdinFd)
+			if err == nil {
+				select {
+				case r.events <- ResizeEvent{Time: time.Now(), Width: width, Height: height}:
+				case <-r.done:
+					return
+				}
+			}
+		case <-r.done:
+			return
+		}
 	}
 }
 

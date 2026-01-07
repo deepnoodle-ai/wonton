@@ -651,6 +651,9 @@ func (a *App) showHelp() error {
 		if err := tui.Fprint(a.stdout, view); err != nil {
 			return err
 		}
+		if err := writeHelpNewline(a.stdout); err != nil {
+			return err
+		}
 		return &HelpRequested{}
 	}
 
@@ -748,7 +751,9 @@ func (a *App) showHelp() error {
 		sb.WriteString(" <command> --help' for more information on a command.\n")
 	}
 
-	fmt.Fprint(a.stdout, sb.String())
+	if err := writeHelpOutput(a.stdout, sb.String()); err != nil {
+		return err
+	}
 	return &HelpRequested{}
 }
 
@@ -901,7 +906,9 @@ func (g *Group) showHelp() error {
 	sb.WriteString(g.name)
 	sb.WriteString(" <command> --help' for more information on a command.\n")
 
-	fmt.Fprint(g.app.stdout, sb.String())
+	if err := writeHelpOutput(g.app.stdout, sb.String()); err != nil {
+		return err
+	}
 	return &HelpRequested{}
 }
 

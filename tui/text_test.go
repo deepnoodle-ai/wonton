@@ -222,15 +222,13 @@ func TestWrappedText_NoLeadingSpace(t *testing.T) {
 	// Test WrapText directly first
 	wrapped := WrapText("hello world foo", 10)
 	expected := "hello\nworld foo"
-	if wrapped != expected {
-		t.Errorf("WrapText mismatch:\ngot:  %q\nwant: %q", wrapped, expected)
-	}
+	assert.Equal(t, expected, wrapped)
 
 	// Check that wrapped lines don't start with spaces
 	lines := strings.Split(wrapped, "\n")
 	for i, line := range lines {
-		if len(line) > 0 && line[0] == ' ' {
-			t.Errorf("WrapText line %d starts with space: %q", i, line)
+		if len(line) > 0 {
+			assert.NotEqual(t, ' ', line[0], "WrapText line %d starts with space: %q", i, line)
 		}
 	}
 }
@@ -241,13 +239,12 @@ func TestWrappedText_MultipleWraps(t *testing.T) {
 	lines := strings.Split(wrapped, "\n")
 
 	for i, line := range lines {
-		if len(line) > 0 && line[0] == ' ' {
-			t.Errorf("WrapText line %d starts with space: %q", i, line)
+		if len(line) > 0 {
+			assert.NotEqual(t, ' ', line[0], "WrapText line %d starts with space: %q", i, line)
 		}
 	}
 
 	// Verify all words are present
-	if !strings.Contains(wrapped, "one") || !strings.Contains(wrapped, "five") {
-		t.Errorf("Missing content in wrapped text: %q", wrapped)
-	}
+	assert.Contains(t, wrapped, "one")
+	assert.Contains(t, wrapped, "five")
 }

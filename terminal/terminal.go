@@ -102,7 +102,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/mattn/go-runewidth"
@@ -1849,7 +1848,8 @@ func (t *Terminal) WatchResize() {
 	t.resizing = true
 	t.mu.Unlock()
 
-	signal.Notify(t.resizeChan, syscall.SIGWINCH)
+	// Set up platform-specific resize signal handling
+	t.setupResizeSignal()
 
 	go func() {
 		for {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"testing"
+
+	"github.com/deepnoodle-ai/wonton/assert"
 )
 
 // TestKeyDecoder_SingleByteKeys tests simple single-byte key detection
@@ -26,13 +28,8 @@ func TestKeyDecoder_SingleByteKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expected.Key {
-				t.Errorf("expected key %v, got %v", tt.expected.Key, event.Key)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expected.Key)
 		})
 	}
 }
@@ -73,17 +70,9 @@ func TestKeyDecoder_CtrlKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expected {
-				t.Errorf("expected key %v, got %v", tt.expected, event.Key)
-			}
-
-			if !event.Ctrl {
-				t.Errorf("expected Ctrl modifier to be true")
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expected)
+			assert.True(t, event.Ctrl)
 		})
 	}
 }
@@ -106,13 +95,8 @@ func TestKeyDecoder_ArrowKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expected {
-				t.Errorf("expected key %v, got %v", tt.expected, event.Key)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expected)
 		})
 	}
 }
@@ -124,17 +108,9 @@ func TestKeyDecoder_ShiftTab(t *testing.T) {
 	decoder := NewKeyDecoder(bytes.NewReader(input))
 	event, err := decoder.ReadKeyEvent()
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if event.Key != KeyTab {
-		t.Errorf("expected KeyTab, got %v", event.Key)
-	}
-
-	if !event.Shift {
-		t.Error("expected Shift to be true for Shift+Tab")
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, event.Key, KeyTab)
+	assert.True(t, event.Shift)
 }
 
 // TestKeyDecoder_FunctionKeys tests F1-F12 function keys
@@ -169,13 +145,8 @@ func TestKeyDecoder_FunctionKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expected {
-				t.Errorf("expected key %v, got %v", tt.expected, event.Key)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expected)
 		})
 	}
 }
@@ -204,13 +175,8 @@ func TestKeyDecoder_NavigationKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expected {
-				t.Errorf("expected key %v, got %v", tt.expected, event.Key)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expected)
 		})
 	}
 }
@@ -236,13 +202,8 @@ func TestKeyDecoder_PrintableCharacters(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Rune != tt.expected {
-				t.Errorf("expected rune %q, got %q", tt.expected, event.Rune)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Rune, tt.expected)
 		})
 	}
 }
@@ -266,13 +227,8 @@ func TestKeyDecoder_UTF8Characters(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader([]byte(tt.input)))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Rune != tt.expected {
-				t.Errorf("expected rune %q, got %q", tt.expected, event.Rune)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Rune, tt.expected)
 		})
 	}
 }
@@ -295,17 +251,9 @@ func TestKeyDecoder_AltModifier(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Rune != tt.expected {
-				t.Errorf("expected rune %q, got %q", tt.expected, event.Rune)
-			}
-
-			if !event.Alt {
-				t.Errorf("expected Alt modifier to be true")
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Rune, tt.expected)
+			assert.True(t, event.Alt)
 		})
 	}
 }
@@ -330,21 +278,10 @@ func TestKeyDecoder_ModifiedArrowKeys(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadKeyEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if event.Key != tt.expectedKey {
-				t.Errorf("expected key %v, got %v", tt.expectedKey, event.Key)
-			}
-
-			if event.Ctrl != tt.expectCtrl {
-				t.Errorf("expected Ctrl=%v, got %v", tt.expectCtrl, event.Ctrl)
-			}
-
-			if event.Alt != tt.expectAlt {
-				t.Errorf("expected Alt=%v, got %v", tt.expectAlt, event.Alt)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, event.Key, tt.expectedKey)
+			assert.Equal(t, event.Ctrl, tt.expectCtrl)
+			assert.Equal(t, event.Alt, tt.expectAlt)
 		})
 	}
 }
@@ -354,9 +291,7 @@ func TestKeyDecoder_EOF(t *testing.T) {
 	decoder := NewKeyDecoder(bytes.NewReader([]byte{}))
 	_, err := decoder.ReadKeyEvent()
 
-	if err != io.EOF {
-		t.Errorf("expected EOF error, got %v", err)
-	}
+	assert.ErrorIs(t, err, io.EOF)
 }
 
 // TestKeyDecoder_UnknownSequence tests handling of unknown escape sequences
@@ -366,14 +301,8 @@ func TestKeyDecoder_UnknownSequence(t *testing.T) {
 	decoder := NewKeyDecoder(bytes.NewReader(input))
 	event, err := decoder.ReadKeyEvent()
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should return KeyUnknown for unrecognized sequences
-	if event.Key != KeyUnknown {
-		t.Errorf("expected KeyUnknown for unrecognized sequence, got %v", event.Key)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, event.Key, KeyUnknown)
 }
 
 // TestKeyDecoder_SequentialReads tests reading multiple key events in sequence
@@ -401,27 +330,19 @@ func TestKeyDecoder_SequentialReads(t *testing.T) {
 
 	for i, tt := range tests {
 		event, err := decoder.ReadKeyEvent()
-		if err != nil {
-			t.Fatalf("test %d (%s): unexpected error: %v", i, tt.name, err)
-		}
+		assert.NoError(t, err, "test %d (%s)", i, tt.name)
 
 		switch expected := tt.expected.(type) {
 		case rune:
-			if event.Rune != expected {
-				t.Errorf("test %d (%s): expected rune %q, got %q", i, tt.name, expected, event.Rune)
-			}
+			assert.Equal(t, event.Rune, expected, "test %d (%s)", i, tt.name)
 		case Key:
-			if event.Key != expected {
-				t.Errorf("test %d (%s): expected key %v, got %v", i, tt.name, expected, event.Key)
-			}
+			assert.Equal(t, event.Key, expected, "test %d (%s)", i, tt.name)
 		}
 	}
 
 	// Should be EOF now
 	_, err := decoder.ReadKeyEvent()
-	if err != io.EOF {
-		t.Errorf("expected EOF after all events, got %v", err)
-	}
+	assert.ErrorIs(t, err, io.EOF)
 }
 
 // TestKeyDecoder_ReadEvent_MouseEvent tests that ReadEvent can decode SGR mouse events
@@ -473,30 +394,14 @@ func TestKeyDecoder_ReadEvent_MouseEvent(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
+			assert.NoError(t, err)
 			mouseEvent, ok := event.(MouseEvent)
-			if !ok {
-				t.Fatalf("expected MouseEvent, got %T", event)
-			}
+			assert.True(t, ok)
 
-			if mouseEvent.X != tt.expectedX {
-				t.Errorf("expected X=%d, got X=%d", tt.expectedX, mouseEvent.X)
-			}
-
-			if mouseEvent.Y != tt.expectedY {
-				t.Errorf("expected Y=%d, got Y=%d", tt.expectedY, mouseEvent.Y)
-			}
-
-			if mouseEvent.Button != tt.expectedButton {
-				t.Errorf("expected Button=%v, got Button=%v", tt.expectedButton, mouseEvent.Button)
-			}
-
-			if mouseEvent.Type != tt.expectedType {
-				t.Errorf("expected Type=%v, got Type=%v", tt.expectedType, mouseEvent.Type)
-			}
+			assert.Equal(t, mouseEvent.X, tt.expectedX)
+			assert.Equal(t, mouseEvent.Y, tt.expectedY)
+			assert.Equal(t, mouseEvent.Button, tt.expectedButton)
+			assert.Equal(t, mouseEvent.Type, tt.expectedType)
 		})
 	}
 }
@@ -520,21 +425,15 @@ func TestKeyDecoder_ReadEvent_KeyEvent(t *testing.T) {
 			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
 			event, err := decoder.ReadEvent()
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
+			assert.NoError(t, err)
 			keyEvent, ok := event.(KeyEvent)
-			if !ok {
-				t.Fatalf("expected KeyEvent, got %T", event)
-			}
+			assert.True(t, ok)
 
-			if tt.expectedKey != KeyUnknown && keyEvent.Key != tt.expectedKey {
-				t.Errorf("expected Key=%v, got Key=%v", tt.expectedKey, keyEvent.Key)
+			if tt.expectedKey != KeyUnknown {
+				assert.Equal(t, keyEvent.Key, tt.expectedKey)
 			}
-
-			if tt.expectedR != 0 && keyEvent.Rune != tt.expectedR {
-				t.Errorf("expected Rune=%q, got Rune=%q", tt.expectedR, keyEvent.Rune)
+			if tt.expectedR != 0 {
+				assert.Equal(t, keyEvent.Rune, tt.expectedR)
 			}
 		})
 	}
@@ -554,56 +453,101 @@ func TestKeyDecoder_ReadEvent_MixedInput(t *testing.T) {
 
 	// Event 1: Key 'a'
 	event, err := decoder.ReadEvent()
-	if err != nil {
-		t.Fatalf("event 1: unexpected error: %v", err)
-	}
+	assert.NoError(t, err, "event 1")
 	keyEvent, ok := event.(KeyEvent)
-	if !ok {
-		t.Fatalf("event 1: expected KeyEvent, got %T", event)
-	}
-	if keyEvent.Rune != 'a' {
-		t.Errorf("event 1: expected Rune='a', got %q", keyEvent.Rune)
-	}
+	assert.True(t, ok, "event 1")
+	assert.Equal(t, keyEvent.Rune, 'a', "event 1")
 
 	// Event 2: Mouse press
 	event, err = decoder.ReadEvent()
-	if err != nil {
-		t.Fatalf("event 2: unexpected error: %v", err)
-	}
+	assert.NoError(t, err, "event 2")
 	mouseEvent, ok := event.(MouseEvent)
-	if !ok {
-		t.Fatalf("event 2: expected MouseEvent, got %T", event)
-	}
-	if mouseEvent.Type != MousePress {
-		t.Errorf("event 2: expected Type=MousePress, got %v", mouseEvent.Type)
-	}
-	if mouseEvent.X != 5 || mouseEvent.Y != 5 {
-		t.Errorf("event 2: expected (5,5), got (%d,%d)", mouseEvent.X, mouseEvent.Y)
-	}
+	assert.True(t, ok, "event 2")
+	assert.Equal(t, mouseEvent.Type, MousePress, "event 2")
+	assert.Equal(t, mouseEvent.X, 5, "event 2")
+	assert.Equal(t, mouseEvent.Y, 5, "event 2")
 
 	// Event 3: Key 'b'
 	event, err = decoder.ReadEvent()
-	if err != nil {
-		t.Fatalf("event 3: unexpected error: %v", err)
-	}
+	assert.NoError(t, err, "event 3")
 	keyEvent, ok = event.(KeyEvent)
-	if !ok {
-		t.Fatalf("event 3: expected KeyEvent, got %T", event)
-	}
-	if keyEvent.Rune != 'b' {
-		t.Errorf("event 3: expected Rune='b', got %q", keyEvent.Rune)
-	}
+	assert.True(t, ok, "event 3")
+	assert.Equal(t, keyEvent.Rune, 'b', "event 3")
 
 	// Event 4: Mouse release
 	event, err = decoder.ReadEvent()
-	if err != nil {
-		t.Fatalf("event 4: unexpected error: %v", err)
-	}
+	assert.NoError(t, err, "event 4")
 	mouseEvent, ok = event.(MouseEvent)
-	if !ok {
-		t.Fatalf("event 4: expected MouseEvent, got %T", event)
+	assert.True(t, ok, "event 4")
+	assert.Equal(t, mouseEvent.Type, MouseRelease, "event 4")
+}
+
+func TestKeyDecoder_ReadEvent_BracketedPaste(t *testing.T) {
+	input := []byte{
+		0x1B, '[', '2', '0', '0', '~',
+		'l', 'i', 'n', 'e', '1', '\r', '\n',
+		'l', 'i', 'n', 'e', '2', '\t', 'e', 'n', 'd',
+		'\r', 'l', 'i', 'n', 'e', '3',
+		0x1B, '[', '2', '0', '1', '~',
 	}
-	if mouseEvent.Type != MouseRelease {
-		t.Errorf("event 4: expected Type=MouseRelease, got %v", mouseEvent.Type)
+	decoder := NewKeyDecoder(bytes.NewReader(input))
+	decoder.SetPasteTabWidth(2)
+
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+
+	keyEvent, ok := event.(KeyEvent)
+	assert.True(t, ok)
+
+	expected := "line1\nline2  end\nline3"
+	assert.Equal(t, keyEvent.Paste, expected)
+}
+
+func TestKeyDecoder_ReadEvent_KittyCSIuModifiers(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []byte
+		expectedKey Key
+		expectCtrl  bool
+		expectShift bool
+	}{
+		{
+			name:        "Ctrl+Enter via CSI u",
+			input:       []byte{0x1B, '[', '1', '3', ';', '5', 'u'},
+			expectedKey: KeyEnter,
+			expectCtrl:  true,
+			expectShift: true,
+		},
+		{
+			name:        "Ctrl+C via CSI u",
+			input:       []byte{0x1B, '[', '9', '9', ';', '5', 'u'},
+			expectedKey: KeyCtrlC,
+			expectCtrl:  true,
+			expectShift: false,
+		},
 	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
+			event, err := decoder.ReadEvent()
+			assert.NoError(t, err)
+
+			keyEvent, ok := event.(KeyEvent)
+			assert.True(t, ok)
+
+			assert.Equal(t, keyEvent.Key, tt.expectedKey)
+			assert.Equal(t, keyEvent.Ctrl, tt.expectCtrl)
+			assert.Equal(t, keyEvent.Shift, tt.expectShift)
+		})
+	}
+}
+
+func TestKeyDecoder_ReadEvent_EscapeStandalone(t *testing.T) {
+	decoder := NewKeyDecoder(bytes.NewReader([]byte{0x1B}))
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	keyEvent, ok := event.(KeyEvent)
+	assert.True(t, ok)
+	assert.Equal(t, keyEvent.Key, KeyEscape)
 }

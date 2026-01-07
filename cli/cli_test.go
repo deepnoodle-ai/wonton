@@ -221,6 +221,7 @@ func TestHelp(t *testing.T) {
 	app := New("test").Description("Test application")
 	app.Version("1.0.0")
 	app.SetStdout(&buf)
+	app.SetColorEnabled(false)
 	app.Command("run").Description("Run something")
 
 	app.ExecuteArgs([]string{"help"})
@@ -230,6 +231,7 @@ func TestHelp(t *testing.T) {
 	assert.Contains(t, output, "Test application")
 	assert.Contains(t, output, "1.0.0")
 	assert.Contains(t, output, "run")
+	assert.True(t, strings.HasSuffix(output, "\n"))
 }
 
 func TestCommandHelp(t *testing.T) {
@@ -237,6 +239,7 @@ func TestCommandHelp(t *testing.T) {
 
 	app := New("test").Description("Test")
 	app.SetStdout(&buf)
+	app.SetColorEnabled(false)
 	app.Command("run").
 		Description("Run something").
 		Args("file").
@@ -253,6 +256,7 @@ func TestCommandHelp(t *testing.T) {
 	assert.Contains(t, output, "Run something")
 	assert.Contains(t, output, "--verbose")
 	assert.Contains(t, output, "<file>")
+	assert.True(t, strings.HasSuffix(output, "\n"))
 }
 
 func TestContext(t *testing.T) {
