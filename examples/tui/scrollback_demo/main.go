@@ -389,17 +389,22 @@ func printToScrollback(live *tui.LivePrinter, fd int, fallbackHeight int, view t
 	}
 
 	liveHeight := live.LastHeight()
-	scrollRegionBottom := height - liveHeight
-	if height > 0 && liveHeight > 0 && scrollRegionBottom > 1 {
-		output := tui.Sprint(view, tui.PrintConfig{Width: width, RawMode: true})
-		fmt.Fprintf(os.Stdout, "\033[1;%dr", scrollRegionBottom)
-		fmt.Fprintf(os.Stdout, "\033[%d;1H", scrollRegionBottom)
-		fmt.Fprint(os.Stdout, output)
-		fmt.Fprint(os.Stdout, "\r\n")
-		fmt.Fprint(os.Stdout, "\033[r")
-		return
+
+	// 1. Clear live region
+	if height > 0 && liveHeight > 0 {
+		startRow := height - liveHeight + 1
+		if startRow < 1 {
+			startRow = 1
+		}
+		for i := 0; i < liveHeight; i++ {
+			fmt.Fprintf(os.Stdout, "\033[%d;1H\033[2K", startRow+i)
+		}
+		fmt.Fprintf(os.Stdout, "\033[%d;1H", startRow)
+	} else {
+		live.Clear()
 	}
 
+	// 2. Print content (letting it scroll naturally)
 	tui.Print(view, tui.PrintConfig{Width: width, RawMode: true})
 	fmt.Print("\r\n")
 }

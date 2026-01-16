@@ -563,7 +563,6 @@ func (lp *LivePrinter) Clear() {
 	lp.lastPinned = false
 }
 
-// renderToANSILive is like renderToANSI but clears each line for live updates.
 func renderToANSILive(t *Terminal, width, height int) string {
 	var output strings.Builder
 
@@ -662,12 +661,6 @@ func renderViewLines(view View, width, height int) ([]string, int, error) {
 }
 
 // renderToLines converts the terminal buffer to a slice of ANSI-encoded lines.
-// Each line is a complete ANSI string (with style codes) that can be compared
-// for line-level diffing. This enables LivePrinter to only update changed lines,
-// significantly reducing bandwidth and flicker when only part of the view changes.
-//
-// The output format matches what would be rendered to the terminal, so string
-// comparison accurately detects visual changes.
 func renderToLines(t *Terminal, width, height int) []string {
 	lines := make([]string, height)
 

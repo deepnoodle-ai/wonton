@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -179,6 +180,9 @@ type InlineApp struct {
 	// Synchronization
 	mu      sync.Mutex // Protects Print operations and running state
 	running bool
+
+	// Live region initialization (one-time spacing for pinned mode)
+	liveInitialized bool
 
 	// Terminal state (for cleanup)
 	oldState *term.State
@@ -516,7 +520,11 @@ func (r *InlineApp) processEvent(event Event) {
 func (r *InlineApp) render() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.renderNoLock()
+}
 
+// renderNoLock is the internal version of render that assumes r.mu is already held.
+func (r *InlineApp) renderNoLock() {
 	if app, ok := r.app.(InlineApplication); ok {
 		// Clear registries before render
 		r.focusMgr.Clear()
@@ -526,6 +534,17 @@ func (r *InlineApp) render() {
 		textAreaRegistry.Clear()
 
 		view := app.LiveView()
+		_, viewHeight := view.size(r.config.Width, 0)
+		if viewHeight == 0 {
+			viewHeight = 1
+		}
+		if r.termRows > 0 && viewHeight > r.termRows {
+			viewHeight = r.termRows
+		}
+		if !r.liveInitialized && r.termRows > 0 {
+			fmt.Fprint(r.output, strings.Repeat("\r\n", viewHeight))
+			r.liveInitialized = true
+		}
 
 		// Render the view using LivePrinter with focus manager
 		r.live.UpdatePinnedWithFocus(view, r.focusMgr, r.termRows)
@@ -711,44 +730,51 @@ func (r *InlineApp) commandExecutor() {
 //
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
+// Print renders a View to the scrollback history.
+// The view can be any tui.View: Text, Stack, Group, Bordered, etc.
+//
+// This method temporarily clears the live region, prints the view to scrollback,
+// and restores the live region below.
+//
+// Thread-safe: Can be called from HandleEvent (recommended) or from
+// a Cmd goroutine via the app reference.
 func (r *InlineApp) Print(view View) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Wrap entire operation in synchronized output mode to prevent flicker.
-	// This ensures clear + print + re-render appears as one atomic update.
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
 	liveHeight := r.live.LastHeight()
-	scrollRegionBottom := r.termRows - liveHeight
-	if r.termRows > 0 && liveHeight > 0 && scrollRegionBottom > 0 {
-		lines, _, err := renderViewLines(view, r.config.Width, 0)
-		if err == nil {
-			fmt.Fprintf(r.output, "\033[1;%dr", scrollRegionBottom)
-			fmt.Fprintf(r.output, "\033[%d;1H", scrollRegionBottom)
-			for _, line := range lines {
-				fmt.Fprint(r.output, "\r\n\033[2K")
-				fmt.Fprint(r.output, line)
-			}
-			fmt.Fprint(r.output, "\033[r")
-		} else {
-			r.live.Clear()
-			Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
-			fmt.Fprint(r.output, "\r\n")
+
+	// 1. Clear the current live region to prevent ghosting
+	if r.termRows > 0 && liveHeight > 0 {
+		// Pinned mode: Clear using absolute positioning
+		startRow := r.termRows - liveHeight + 1
+		if startRow < 1 {
+			startRow = 1
 		}
+		for i := 0; i < liveHeight; i++ {
+			fmt.Fprintf(r.output, "\033[%d;1H\033[2K", startRow+i)
+		}
+		// Move cursor to the start of where the live region was
+		fmt.Fprintf(r.output, "\033[%d;1H", startRow)
 	} else {
-		// Clear live region (moves cursor back)
+		// Standard mode: Clear using LivePrinter's logic (moves up and clears)
 		r.live.Clear()
-
-		// Print to scrollback with raw mode line endings
-		Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
-		fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 	}
 
-	// Re-render live region (skip its internal sync since we're already in one)
-	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdatePinnedNoSync(app.LiveView(), r.termRows)
-	}
+	// 2. Print the new content
+	// This uses natural terminal behavior. If the content hits the bottom
+	// of the screen, the terminal will scroll the history up automatically.
+	// We use RawMode=true for proper line endings (\r\n).
+	Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
+	fmt.Fprint(r.output, "\r\n") // Ensure we end on a new line
+
+	// 3. Re-render the live region at the bottom
+	// If scrolling happened, the live region needs to be drawn at the new bottom.
+	// renderNoLock handles UpdatePinned vs Update automatically based on config.
+	r.renderNoLock()
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
@@ -795,9 +821,8 @@ func (r *InlineApp) ClearScrollback() {
 	fmt.Fprint(r.output, "\033[3J\033[2J\033[H")
 
 	// Re-render live region
-	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdatePinned(app.LiveView(), r.termRows)
-	}
+	r.liveInitialized = false
+	r.renderNoLock()
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.

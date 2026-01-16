@@ -376,30 +376,6 @@ func TestInlineApp_PrintRawModeLineEndings(t *testing.T) {
 	assert.Contains(t, output, "\r\n")
 }
 
-func TestInlineApp_Print_UsesScrollRegionWhenPinned(t *testing.T) {
-	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  20,
-	})
-
-	app := &twoLineInlineApp{}
-	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 20, Output: &buf})
-	runner.termRows = 10
-
-	err := runner.live.UpdatePinned(app.LiveView(), runner.termRows)
-	assert.NoError(t, err)
-	buf.Reset()
-
-	runner.Print(Text("Message"))
-	output := buf.String()
-
-	assert.Contains(t, output, "\033[1;8r")
-	assert.Contains(t, output, "\033[8;1H")
-	assert.Contains(t, output, "\033[r")
-}
-
 func TestInlineApp_RenderPinnedUpdatesOnResize(t *testing.T) {
 	var buf bytes.Buffer
 	runner := NewInlineApp(InlineAppConfig{
