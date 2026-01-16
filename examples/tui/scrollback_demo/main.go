@@ -53,9 +53,6 @@ type Message struct {
 }
 
 func main() {
-	// Print welcome header (becomes scrollback history)
-	printHeader()
-
 	// Check if stdin is a terminal
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
@@ -84,12 +81,19 @@ func main() {
 		running: true,
 	}
 
+	width, height := 80, 24
+	if w, h, err := term.GetSize(fd); err == nil {
+		width, height = w, h
+	}
+
 	// Create the live printer for the dynamic bottom region
-	live := tui.NewLivePrinter(tui.PrintConfig{Width: 80})
+	live := tui.NewLivePrinter(tui.PrintConfig{Width: width})
 	defer live.Stop()
 
 	// Render initial state
-	live.Update(state.buildLiveView())
+	updateLive(live, state.buildLiveView(), fd, height)
+	printHeader(live, fd, height)
+	updateLive(live, state.buildLiveView(), fd, height)
 
 	// Start async activity simulation in background
 	activityChan := make(chan struct{})
@@ -125,43 +129,44 @@ func main() {
 		}
 
 		// Handle the event
-		state.handleKeyEvent(event, live)
+		state.handleKeyEvent(event, live, fd, height)
 
 		// Update the live region
 		if state.running {
-			live.Update(state.buildLiveView())
+			updateLive(live, state.buildLiveView(), fd, height)
 		}
 	}
 
 	// Print final message to scrollback
-	fmt.Println("\nGoodbye!")
+	fmt.Print("\r\nGoodbye!\r\n")
+}
+
+func headerView() tui.View {
+	return tui.Bordered(
+		tui.Stack(
+			tui.Text("Scrollback + Live Region Demo").Bold().Fg(tui.ColorCyan),
+			tui.Text(""),
+			tui.Text("This demonstrates:"),
+			tui.Text("  - Static scrollback history (above)"),
+			tui.Text("  - Dynamic live region (below)"),
+			tui.Text("  - Raw keyboard input"),
+			tui.Text(""),
+			tui.Text("Commands:"),
+			tui.Text("  Enter    - Submit message (adds to scrollback)"),
+			tui.Text("  Ctrl+C   - Exit"),
+			tui.Text("  Ctrl+L   - Clear scrollback"),
+		).Padding(1),
+	).Border(&tui.RoundedBorder).BorderFg(tui.ColorBrightBlack)
 }
 
 // printHeader prints the initial header that becomes part of scrollback history.
-func printHeader() {
-	tui.Print(
-		tui.Bordered(
-			tui.Stack(
-				tui.Text("Scrollback + Live Region Demo").Bold().Fg(tui.ColorCyan),
-				tui.Text(""),
-				tui.Text("This demonstrates:"),
-				tui.Text("  - Static scrollback history (above)"),
-				tui.Text("  - Dynamic live region (below)"),
-				tui.Text("  - Raw keyboard input"),
-				tui.Text(""),
-				tui.Text("Commands:"),
-				tui.Text("  Enter    - Submit message (adds to scrollback)"),
-				tui.Text("  Ctrl+C   - Exit"),
-				tui.Text("  Ctrl+L   - Clear scrollback"),
-			).Padding(1),
-		).Border(&tui.RoundedBorder).BorderFg(tui.ColorBrightBlack),
-		tui.PrintConfig{Width: 60},
-	)
-	fmt.Println()
+func printHeader(live *tui.LivePrinter, fd int, fallbackHeight int) {
+	view := headerView()
+	printToScrollback(live, fd, fallbackHeight, view)
 }
 
 // handleKeyEvent processes a keyboard event.
-func (s *AppState) handleKeyEvent(event terminal.KeyEvent, live *tui.LivePrinter) {
+func (s *AppState) handleKeyEvent(event terminal.KeyEvent, live *tui.LivePrinter, fd int, fallbackHeight int) {
 	// Handle paste events
 	if event.Paste != "" {
 		for _, r := range event.Paste {
@@ -175,15 +180,12 @@ func (s *AppState) handleKeyEvent(event terminal.KeyEvent, live *tui.LivePrinter
 	switch event.Key {
 	case terminal.KeyEnter:
 		if len(s.input) > 0 {
-			// Clear the live region before printing to scrollback
-			live.Clear()
-
 			// Add message to scrollback
-			s.printMessageToScrollback(string(s.input), true)
+			s.printMessageToScrollback(live, fd, fallbackHeight, string(s.input), true)
 
 			// Simulate a response after a short delay
 			response := s.generateResponse(string(s.input))
-			s.printMessageToScrollback(response, false)
+			s.printMessageToScrollback(live, fd, fallbackHeight, response, false)
 
 			// Clear input
 			s.input = nil
@@ -191,19 +193,18 @@ func (s *AppState) handleKeyEvent(event terminal.KeyEvent, live *tui.LivePrinter
 			s.status = "Ready"
 
 			// Re-initialize live printer (it was cleared)
-			live.Update(s.buildLiveView())
+			updateLive(live, s.buildLiveView(), fd, fallbackHeight)
 		}
 
 	case terminal.KeyCtrlC:
-		live.Clear()
 		s.running = false
 
 	case terminal.KeyCtrlL:
 		// Clear scrollback (print escape sequence)
 		live.Clear()
 		fmt.Print("\033[2J\033[H") // Clear screen and move cursor to home
-		printHeader()
-		live.Update(s.buildLiveView())
+		printHeader(live, fd, fallbackHeight)
+		updateLive(live, s.buildLiveView(), fd, fallbackHeight)
 
 	case terminal.KeyBackspace:
 		if s.cursorPos > 0 {
@@ -278,8 +279,7 @@ func (s *AppState) updateStatus() {
 }
 
 // printMessageToScrollback prints a message to the scrollback history.
-// This uses tui.Print which outputs to the terminal and becomes permanent history.
-func (s *AppState) printMessageToScrollback(text string, isUser bool) {
+func (s *AppState) printMessageToScrollback(live *tui.LivePrinter, fd int, fallbackHeight int, text string, isUser bool) {
 	timestamp := time.Now().Format("15:04:05")
 
 	var view tui.View
@@ -297,8 +297,7 @@ func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 		)
 	}
 
-	tui.Print(view, tui.PrintConfig{Width: 80})
-	fmt.Println() // Newline after each message
+	printToScrollback(live, fd, fallbackHeight, view)
 }
 
 // generateResponse creates a simple response based on the input.
@@ -366,4 +365,41 @@ func (s *AppState) buildLiveView() tui.View {
 		tui.Divider().Fg(tui.ColorBrightBlack),
 		statusView,
 	)
+}
+
+func updateLive(live *tui.LivePrinter, view tui.View, fd int, fallbackHeight int) {
+	width, height := 0, fallbackHeight
+	if w, h, err := term.GetSize(fd); err == nil {
+		width, height = w, h
+	}
+	if width > 0 {
+		live.SetWidth(width)
+	}
+	if height > 0 {
+		live.UpdatePinned(view, height)
+	} else {
+		live.Update(view)
+	}
+}
+
+func printToScrollback(live *tui.LivePrinter, fd int, fallbackHeight int, view tui.View) {
+	width, height := 80, fallbackHeight
+	if w, h, err := term.GetSize(fd); err == nil {
+		width, height = w, h
+	}
+
+	liveHeight := live.LastHeight()
+	scrollRegionBottom := height - liveHeight
+	if height > 0 && liveHeight > 0 && scrollRegionBottom > 1 {
+		output := tui.Sprint(view, tui.PrintConfig{Width: width, RawMode: true})
+		fmt.Fprintf(os.Stdout, "\033[1;%dr", scrollRegionBottom)
+		fmt.Fprintf(os.Stdout, "\033[%d;1H", scrollRegionBottom)
+		fmt.Fprint(os.Stdout, output)
+		fmt.Fprint(os.Stdout, "\r\n")
+		fmt.Fprint(os.Stdout, "\033[r")
+		return
+	}
+
+	tui.Print(view, tui.PrintConfig{Width: width, RawMode: true})
+	fmt.Print("\r\n")
 }

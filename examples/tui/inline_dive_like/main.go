@@ -107,6 +107,9 @@ func (a *diveLikeApp) LiveView() tui.View {
 func (a *diveLikeApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
+		if e.Key == tui.KeyCtrlC || e.Key == tui.KeyEscape {
+			return []tui.Cmd{tui.Quit()}
+		}
 		switch e.Rune {
 		case 'q':
 			return []tui.Cmd{tui.Quit()}

@@ -73,6 +73,12 @@ func (a *testInitDestroyApp) Destroy() {
 	a.destroyCalled = true
 }
 
+type twoLineInlineApp struct{}
+
+func (a *twoLineInlineApp) LiveView() View {
+	return Stack(Text("Live 1"), Text("Live 2"))
+}
+
 // testFocusable is a simple focusable for testing
 type testFocusable struct {
 	id      string
@@ -368,6 +374,54 @@ func TestInlineApp_PrintRawModeLineEndings(t *testing.T) {
 	// In raw mode, we should see \r\n (CRLF) not just \n
 	// The final newline after print should also be \r\n
 	assert.Contains(t, output, "\r\n")
+}
+
+func TestInlineApp_Print_UsesScrollRegionWhenPinned(t *testing.T) {
+	var buf bytes.Buffer
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  20,
+	})
+
+	app := &twoLineInlineApp{}
+	runner.app = app
+	runner.live = NewLivePrinter(PrintConfig{Width: 20, Output: &buf})
+	runner.termRows = 10
+
+	err := runner.live.UpdatePinned(app.LiveView(), runner.termRows)
+	assert.NoError(t, err)
+	buf.Reset()
+
+	runner.Print(Text("Message"))
+	output := buf.String()
+
+	assert.Contains(t, output, "\033[1;8r")
+	assert.Contains(t, output, "\033[8;1H")
+	assert.Contains(t, output, "\033[r")
+}
+
+func TestInlineApp_RenderPinnedUpdatesOnResize(t *testing.T) {
+	var buf bytes.Buffer
+	runner := NewInlineApp(InlineAppConfig{
+		Output: &buf,
+		Width:  20,
+	})
+
+	app := &twoLineInlineApp{}
+	runner.app = app
+	runner.live = NewLivePrinter(PrintConfig{Width: 20, Output: &buf})
+	runner.termRows = 10
+
+	runner.render()
+	buf.Reset()
+
+	runner.processEvent(ResizeEvent{Time: time.Now(), Width: 20, Height: 6})
+	runner.render()
+	output := buf.String()
+
+	assert.Contains(t, output, "\033[9;1H\033[2K")
+	assert.Contains(t, output, "\033[10;1H\033[2K")
+	assert.Contains(t, output, "\033[5;1H")
 }
 
 // TestWithRawMode tests the WithRawMode option for Print

@@ -132,6 +132,19 @@ func TestLivePrinter_Update(t *testing.T) {
 	lp.Stop()
 }
 
+func TestLivePrinter_UpdatePinned_UsesAbsolutePosition(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	err := lp.UpdatePinned(Text("Pinned"), 10)
+	assert.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "\033[10;1H")
+
+	lp.Stop()
+}
+
 func TestLivePrinter_Clear(t *testing.T) {
 	var buf strings.Builder
 	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})

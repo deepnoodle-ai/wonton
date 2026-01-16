@@ -289,6 +289,9 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 type LivePrinter struct {
 	config       PrintConfig
 	lastHeight   int
+	lastStartRow int
+	lastTermRows int
+	lastPinned   bool
 	started      bool
 	frameCount   uint64
 	hiddenCursor bool
@@ -314,6 +317,11 @@ func (lp *LivePrinter) SetWidth(w int) {
 	lp.config.Width = w
 }
 
+// LastHeight returns the most recent rendered height.
+func (lp *LivePrinter) LastHeight() int {
+	return lp.lastHeight
+}
+
 // Update renders a new view, replacing the previous content in place.
 // The cursor moves back to overwrite the previous output.
 //
@@ -321,13 +329,13 @@ func (lp *LivePrinter) SetWidth(w int) {
 // similar to how the Terminal package uses cell-level diffing. This reduces
 // the amount of data written and minimizes flicker.
 func (lp *LivePrinter) Update(view View) error {
-	return lp.update(view, true, nil)
+	return lp.update(view, true, nil, liveUpdateMode{})
 }
 
 // UpdateWithFocus renders a view with focus management support.
 // The focus manager is passed through the render context to focusable components.
 func (lp *LivePrinter) UpdateWithFocus(view View, fm *FocusManager) error {
-	return lp.update(view, true, fm)
+	return lp.update(view, true, fm, liveUpdateMode{})
 }
 
 // UpdateNoSync is like Update but without synchronized output mode wrapping.
@@ -340,11 +348,36 @@ func (lp *LivePrinter) UpdateWithFocus(view View, fm *FocusManager) error {
 //
 // Most users should use Update() instead, which handles sync mode automatically.
 func (lp *LivePrinter) UpdateNoSync(view View) error {
-	return lp.update(view, false, nil)
+	return lp.update(view, false, nil, liveUpdateMode{})
 }
 
-// update is the internal implementation shared by Update, UpdateWithFocus, and UpdateNoSync.
-func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
+// UpdatePinned renders a view pinned to the bottom of the terminal.
+// This avoids scrollback contamination when the terminal is resized.
+func (lp *LivePrinter) UpdatePinned(view View, termHeight int) error {
+	return lp.update(view, true, nil, liveUpdateMode{pinned: true, termRows: termHeight})
+}
+
+// UpdatePinnedWithFocus renders a pinned view with focus management support.
+func (lp *LivePrinter) UpdatePinnedWithFocus(view View, fm *FocusManager, termHeight int) error {
+	return lp.update(view, true, fm, liveUpdateMode{pinned: true, termRows: termHeight})
+}
+
+// UpdatePinnedNoSync is like UpdatePinned but without synchronized output wrapping.
+func (lp *LivePrinter) UpdatePinnedNoSync(view View, termHeight int) error {
+	return lp.update(view, false, nil, liveUpdateMode{pinned: true, termRows: termHeight})
+}
+
+type liveUpdateMode struct {
+	pinned   bool
+	termRows int
+}
+
+// update is the internal implementation shared by Update variants.
+func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager, mode liveUpdateMode) error {
+	if mode.pinned && mode.termRows <= 0 {
+		mode.pinned = false
+	}
+
 	// Measure the view
 	_, viewHeight := view.size(lp.config.Width, 0)
 	if viewHeight == 0 {
@@ -356,8 +389,25 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		height = viewHeight
 	}
 
-	// If we've already rendered, move cursor back up
-	if lp.started && lp.lastHeight > 0 {
+	if mode.pinned && mode.termRows > 0 && height > mode.termRows {
+		height = mode.termRows
+	}
+
+	if mode.pinned != lp.lastPinned {
+		lp.lastLines = nil
+		lp.lastHeight = 0
+	}
+
+	startRow := 1
+	if mode.pinned && mode.termRows > 0 {
+		startRow = mode.termRows - height + 1
+		if startRow < 1 {
+			startRow = 1
+		}
+	}
+
+	// If we've already rendered, move cursor back up (non-pinned mode).
+	if !mode.pinned && lp.started && lp.lastHeight > 0 {
 		// Move cursor up to the start of the previous render.
 		// After rendering N lines (with newlines between but not at end),
 		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
@@ -404,7 +454,17 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	// This ensures we rewrite all lines, maintaining correct cursor positioning.
 	// Without this, skipped lines during height transitions can cause cursor
 	// misalignment, leading to scrollback contamination.
-	heightChanging := height != lp.lastHeight
+	positionChanged := mode.pinned && lp.lastPinned && (startRow != lp.lastStartRow || mode.termRows != lp.lastTermRows)
+	heightChanging := height != lp.lastHeight || positionChanged
+
+	if mode.pinned {
+		if positionChanged && lp.lastPinned && lp.lastHeight > 0 {
+			for y := 0; y < lp.lastHeight; y++ {
+				output.WriteString(fmt.Sprintf("\033[%d;1H\033[2K", lp.lastStartRow+y))
+			}
+		}
+		output.WriteString(fmt.Sprintf("\033[%d;1H", startRow))
+	}
 
 	for y := 0; y < height; y++ {
 		newLine := ""
@@ -435,14 +495,23 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	// We move down one line first to avoid clearing the last content line,
 	// then clear from cursor to end of screen.
 	if height < lp.lastHeight {
-		output.WriteString("\n")      // Move to first orphaned line
-		output.WriteString("\033[0J") // Clear from cursor to end of screen
-		output.WriteString("\033[A")  // Move back up to last content line
+		if mode.pinned {
+			for y := height; y < lp.lastHeight; y++ {
+				output.WriteString(fmt.Sprintf("\033[%d;1H\033[2K", startRow+y))
+			}
+		} else {
+			output.WriteString("\n")      // Move to first orphaned line
+			output.WriteString("\033[0J") // Clear from cursor to end of screen
+			output.WriteString("\033[A")  // Move back up to last content line
+		}
 	}
 
 	// Store lines for next frame's diffing
 	lp.lastLines = newLines
 	lp.lastHeight = height
+	lp.lastStartRow = startRow
+	lp.lastTermRows = mode.termRows
+	lp.lastPinned = mode.pinned
 
 	// Optionally wrap in synchronized output mode to prevent flicker.
 	// This tells the terminal to buffer all changes and render atomically.
@@ -476,15 +545,22 @@ func (lp *LivePrinter) Stop() {
 // Clear removes the live region content and resets state.
 func (lp *LivePrinter) Clear() {
 	if lp.started && lp.lastHeight > 0 {
-		// Move up and clear
-		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
+		if lp.lastPinned {
+			for y := 0; y < lp.lastHeight; y++ {
+				fmt.Fprintf(lp.config.Output, "\033[%d;1H\033[2K", lp.lastStartRow+y)
+			}
+		} else {
+			// Move up and clear
+			if lp.lastHeight > 1 {
+				fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
+			}
+			fmt.Fprint(lp.config.Output, "\r\033[0J")
 		}
-		fmt.Fprint(lp.config.Output, "\r\033[0J")
 	}
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state
 	lp.started = false
+	lp.lastPinned = false
 }
 
 // renderToANSILive is like renderToANSI but clears each line for live updates.
@@ -559,6 +635,30 @@ func renderToANSILive(t *Terminal, width, height int) string {
 	}
 
 	return output.String()
+}
+
+// renderViewLines renders a view into ANSI-encoded lines for inline output.
+func renderViewLines(view View, width, height int) ([]string, int, error) {
+	_, viewHeight := view.size(width, 0)
+	if viewHeight == 0 {
+		viewHeight = 1
+	}
+	if height == 0 {
+		height = viewHeight
+	}
+
+	terminal := NewTestTerminal(width, height, io.Discard)
+	frame, err := terminal.BeginFrame()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to begin frame: %w", err)
+	}
+	frame.Fill(' ', NewStyle())
+	ctx := NewRenderContext(frame, 0)
+	view.size(width, height)
+	view.render(ctx)
+	terminal.EndFrame(frame)
+
+	return renderToLines(terminal, width, height), height, nil
 }
 
 // renderToLines converts the terminal buffer to a slice of ANSI-encoded lines.

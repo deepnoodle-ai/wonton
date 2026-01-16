@@ -183,6 +183,7 @@ type InlineApp struct {
 	// Terminal state (for cleanup)
 	oldState *term.State
 	stdinFd  int
+	termRows int
 
 	// Resize handling
 	resizeChan chan os.Signal
@@ -278,6 +279,14 @@ func (r *InlineApp) Run(app any) error {
 		r.running = false
 		r.mu.Unlock()
 		return fmt.Errorf("failed to enable raw mode: %w", err)
+	}
+
+	if width, height, err := term.GetSize(r.stdinFd); err == nil {
+		r.mu.Lock()
+		r.config.Width = width
+		r.live.SetWidth(width)
+		r.termRows = height
+		r.mu.Unlock()
 	}
 
 	// Enable terminal features
@@ -457,6 +466,7 @@ func (r *InlineApp) processEvent(event Event) {
 		r.mu.Lock()
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
+		r.termRows = resize.Height
 		r.mu.Unlock()
 	}
 
@@ -518,7 +528,7 @@ func (r *InlineApp) render() {
 		view := app.LiveView()
 
 		// Render the view using LivePrinter with focus manager
-		r.live.UpdateWithFocus(view, r.focusMgr)
+		r.live.UpdatePinnedWithFocus(view, r.focusMgr, r.termRows)
 
 		// Prune TextArea state for IDs that weren't rendered
 		textAreaRegistry.Prune()
@@ -709,16 +719,35 @@ func (r *InlineApp) Print(view View) {
 	// This ensures clear + print + re-render appears as one atomic update.
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
-	// Clear live region (moves cursor back)
-	r.live.Clear()
+	liveHeight := r.live.LastHeight()
+	scrollRegionBottom := r.termRows - liveHeight
+	if r.termRows > 0 && liveHeight > 0 && scrollRegionBottom > 0 {
+		lines, _, err := renderViewLines(view, r.config.Width, 0)
+		if err == nil {
+			fmt.Fprintf(r.output, "\033[1;%dr", scrollRegionBottom)
+			fmt.Fprintf(r.output, "\033[%d;1H", scrollRegionBottom)
+			for _, line := range lines {
+				fmt.Fprint(r.output, "\r\n\033[2K")
+				fmt.Fprint(r.output, line)
+			}
+			fmt.Fprint(r.output, "\033[r")
+		} else {
+			r.live.Clear()
+			Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
+			fmt.Fprint(r.output, "\r\n")
+		}
+	} else {
+		// Clear live region (moves cursor back)
+		r.live.Clear()
 
-	// Print to scrollback with raw mode line endings
-	Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
-	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
+		// Print to scrollback with raw mode line endings
+		Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
+		fmt.Fprint(r.output, "\r\n") // Add newline after printed content
+	}
 
 	// Re-render live region (skip its internal sync since we're already in one)
 	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdateNoSync(app.LiveView())
+		r.live.UpdatePinnedNoSync(app.LiveView(), r.termRows)
 	}
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
@@ -767,7 +796,7 @@ func (r *InlineApp) ClearScrollback() {
 
 	// Re-render live region
 	if app, ok := r.app.(InlineApplication); ok {
-		r.live.Update(app.LiveView())
+		r.live.UpdatePinned(app.LiveView(), r.termRows)
 	}
 }
 
