@@ -287,12 +287,13 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 //	    time.Sleep(50 * time.Millisecond)
 //	}
 type LivePrinter struct {
-	config       PrintConfig
-	lastHeight   int
-	started      bool
-	frameCount   uint64
-	hiddenCursor bool
-	lastLines    []string // Previous frame's lines for diffing
+	config         PrintConfig
+	lastHeight     int
+	started        bool
+	frameCount     uint64
+	hiddenCursor   bool
+	lastLines      []string // Previous frame's lines for diffing
+	terminalHeight int      // Current terminal height (0 = unknown, used to constrain content)
 }
 
 // NewLivePrinter creates a new LivePrinter for updating a region in place.
@@ -312,6 +313,12 @@ func NewLivePrinter(cfgs ...PrintConfig) *LivePrinter {
 // The next Update() will use the new width.
 func (lp *LivePrinter) SetWidth(w int) {
 	lp.config.Width = w
+}
+
+// SetTerminalHeight updates the known terminal height.
+// This is used to constrain content height so it doesn't exceed the terminal.
+func (lp *LivePrinter) SetTerminalHeight(h int) {
+	lp.terminalHeight = h
 }
 
 // Update renders a new view, replacing the previous content in place.
@@ -356,23 +363,28 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		height = viewHeight
 	}
 
-	// If we've already rendered, move cursor back up
-	if lp.started && lp.lastHeight > 0 {
-		// Move cursor up to the start of the previous render.
-		// After rendering N lines (with newlines between but not at end),
-		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
-		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
-		}
-		// Move to beginning of line
-		fmt.Fprint(lp.config.Output, "\r")
+	// Constrain height to terminal height if known
+	if lp.terminalHeight > 0 && height > lp.terminalHeight {
+		height = lp.terminalHeight
 	}
 
-	// Hide cursor on first update for cleaner display
+	out := lp.config.Output
+
+	// First render - hide cursor
 	if !lp.started {
-		fmt.Fprint(lp.config.Output, "\033[?25l")
+		fmt.Fprint(out, "\033[?25l") // Hide cursor
 		lp.hiddenCursor = true
 		lp.started = true
+	}
+
+	// Handle cursor positioning for subsequent renders.
+	// Use relative positioning - we know cursor is at the last line of
+	// previous content, so move up (lastHeight - 1) to get to first line.
+	if lp.lastHeight > 0 {
+		if lp.lastHeight > 1 {
+			fmt.Fprintf(out, "\033[%dA", lp.lastHeight-1)
+		}
+		fmt.Fprint(out, "\r")
 	}
 
 	// Create terminal buffer and render
@@ -401,9 +413,6 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	var output strings.Builder
 
 	// When height changes, disable line-level diffing for this frame.
-	// This ensures we rewrite all lines, maintaining correct cursor positioning.
-	// Without this, skipped lines during height transitions can cause cursor
-	// misalignment, leading to scrollback contamination.
 	heightChanging := height != lp.lastHeight
 
 	for y := 0; y < height; y++ {
@@ -420,7 +429,6 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 
 		// Always rewrite when height is changing, or when line content differs
 		if heightChanging || newLine != oldLine || y >= len(lp.lastLines) {
-			// Line changed - clear and rewrite
 			output.WriteString("\r\033[2K") // Move to column 0 and clear line
 			output.WriteString(newLine)
 		}
@@ -431,10 +439,10 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		}
 	}
 
-	// If the new content is shorter than before, clear the extra lines.
-	// We move down one line first to avoid clearing the last content line,
-	// then clear from cursor to end of screen.
-	if height < lp.lastHeight {
+	// If the new content is shorter than before, clear the orphaned lines below.
+	// BUT only if we're not filling the terminal - if height == terminalHeight,
+	// we're at the bottom and doing \n would scroll, creating whitespace.
+	if height < lp.lastHeight && (lp.terminalHeight == 0 || height < lp.terminalHeight) {
 		output.WriteString("\n")      // Move to first orphaned line
 		output.WriteString("\033[0J") // Clear from cursor to end of screen
 		output.WriteString("\033[A")  // Move back up to last content line

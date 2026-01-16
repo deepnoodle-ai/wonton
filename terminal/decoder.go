@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -374,7 +375,16 @@ func (kd *KeyDecoder) ReadKeyEvent() (KeyEvent, error) {
 	case 0x7F, 0x08: // Backspace (DEL or BS)
 		return KeyEvent{Key: KeyBackspace}, nil
 	case 0x1B: // Escape (might be start of sequence)
-		return kd.handleEscape()
+		event, err := kd.handleEscape()
+		if err != nil {
+			return KeyEvent{Key: KeyUnknown}, err
+		}
+		// handleEscape can return CursorPositionEvent, but ReadKeyEvent only returns KeyEvent
+		if keyEvent, ok := event.(KeyEvent); ok {
+			return keyEvent, nil
+		}
+		// Non-key events (like CursorPositionEvent) are returned as KeyUnknown
+		return KeyEvent{Key: KeyUnknown}, nil
 
 	// Ctrl combinations (0x01-0x1A map to Ctrl+A through Ctrl+Z)
 	case 0x01:
@@ -434,7 +444,8 @@ func (kd *KeyDecoder) ReadKeyEvent() (KeyEvent, error) {
 
 // handleEscape processes an escape key or escape sequence
 // We've already consumed the ESC byte (0x1B)
-func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
+// Returns Event (typically KeyEvent, but can be CursorPositionEvent for cursor position responses)
+func (kd *KeyDecoder) handleEscape() (Event, error) {
 	// Check if there are more bytes already buffered.
 	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
 	// sequence, the following bytes should already be in the buffer.
@@ -475,7 +486,8 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 
 // decodeCSI decodes ANSI CSI sequences (ESC [ ...)
 // We've already consumed ESC and '['
-func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
+// Returns Event (typically KeyEvent, but can be CursorPositionEvent for cursor position responses)
+func (kd *KeyDecoder) decodeCSI() (Event, error) {
 	// Read the next character
 	ch, err := kd.reader.ReadByte()
 	if err != nil {
@@ -750,69 +762,87 @@ func (kd *KeyDecoder) ctrlLetterEvent(letter rune, shift, alt bool) (KeyEvent, e
 }
 
 // decodeCSIModified decodes CSI sequences with modifiers (e.g., ESC [ 1 ; 5 A for Ctrl+Up)
-func (kd *KeyDecoder) decodeCSIModified(num string) (KeyEvent, error) {
-	// Read modifier number
-	modByte, err := kd.reader.ReadByte()
-	if err != nil {
-		return KeyEvent{Key: KeyUnknown}, err
-	}
+// It also handles cursor position responses (ESC [ row ; col R).
+func (kd *KeyDecoder) decodeCSIModified(num string) (Event, error) {
+	// Read the second number (could be modifier digit or multi-digit col in cursor position)
+	var secondNum []byte
+	for {
+		b, err := kd.reader.ReadByte()
+		if err != nil {
+			return KeyEvent{Key: KeyUnknown}, err
+		}
 
-	// Read the key code
-	keyByte, err := kd.reader.ReadByte()
-	if err != nil {
-		return KeyEvent{Key: KeyUnknown}, err
-	}
+		if b >= '0' && b <= '9' {
+			secondNum = append(secondNum, b)
+			continue
+		}
 
-	// Decode the key
-	var key Key
-	switch keyByte {
-	case 'A':
-		key = KeyArrowUp
-	case 'B':
-		key = KeyArrowDown
-	case 'C':
-		key = KeyArrowRight
-	case 'D':
-		key = KeyArrowLeft
-	case 'u':
-		// CSI u sequence (Kitty keyboard protocol)
-		// num contains the Unicode codepoint
-		return kd.decodeCSIuWithModifier(num, modByte)
-	case '~':
-		// Modified key ending with ~ (e.g., ESC[3;5~ for Ctrl+Delete)
-		switch num {
-		case "3":
-			key = KeyDelete
-		case "5":
-			key = KeyPageUp
-		case "6":
-			key = KeyPageDown
+		// Check for cursor position response: ESC [ row ; col R
+		if b == 'R' && len(secondNum) > 0 {
+			row, _ := strconv.Atoi(num)
+			col, _ := strconv.Atoi(string(secondNum))
+			return CursorPositionEvent{Row: row, Col: col, Time: time.Now()}, nil
+		}
+
+		// It's a regular modified key sequence
+		// secondNum should be a single-digit modifier, and b is the key
+		if len(secondNum) != 1 {
+			return KeyEvent{Key: KeyUnknown}, nil
+		}
+		modByte := secondNum[0]
+		keyByte := b
+
+		// Decode the key
+		var key Key
+		switch keyByte {
+		case 'A':
+			key = KeyArrowUp
+		case 'B':
+			key = KeyArrowDown
+		case 'C':
+			key = KeyArrowRight
+		case 'D':
+			key = KeyArrowLeft
+		case 'u':
+			// CSI u sequence (Kitty keyboard protocol)
+			// num contains the Unicode codepoint
+			return kd.decodeCSIuWithModifier(num, modByte)
+		case '~':
+			// Modified key ending with ~ (e.g., ESC[3;5~ for Ctrl+Delete)
+			switch num {
+			case "3":
+				key = KeyDelete
+			case "5":
+				key = KeyPageUp
+			case "6":
+				key = KeyPageDown
+			default:
+				return KeyEvent{Key: KeyUnknown}, nil
+			}
 		default:
 			return KeyEvent{Key: KeyUnknown}, nil
 		}
-	default:
-		return KeyEvent{Key: KeyUnknown}, nil
-	}
 
-	event := KeyEvent{Key: key}
+		event := KeyEvent{Key: key}
 
-	// Decode modifiers (2=Shift, 3=Alt, 4=Shift+Alt, 5=Ctrl, 6=Shift+Ctrl, 7=Alt+Ctrl, 8=Shift+Alt+Ctrl)
-	if modByte == '2' || modByte == '4' || modByte == '6' || modByte == '8' {
-		event.Shift = true
-	}
-	if modByte == '3' || modByte == '4' || modByte == '7' || modByte == '8' {
-		event.Alt = true
-	}
-	if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
-		event.Ctrl = true
-	}
+		// Decode modifiers (2=Shift, 3=Alt, 4=Shift+Alt, 5=Ctrl, 6=Shift+Ctrl, 7=Alt+Ctrl, 8=Shift+Alt+Ctrl)
+		if modByte == '2' || modByte == '4' || modByte == '6' || modByte == '8' {
+			event.Shift = true
+		}
+		if modByte == '3' || modByte == '4' || modByte == '7' || modByte == '8' {
+			event.Alt = true
+		}
+		if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
+			event.Ctrl = true
+		}
 
-	// Normalize Ctrl+Enter and Alt+Enter to also set Shift, so apps can just check Shift for "soft newline".
-	if key == KeyEnter && (event.Ctrl || event.Alt) {
-		event.Shift = true
-	}
+		// Normalize Ctrl+Enter and Alt+Enter to also set Shift, so apps can just check Shift for "soft newline".
+		if key == KeyEnter && (event.Ctrl || event.Alt) {
+			event.Shift = true
+		}
 
-	return event, nil
+		return event, nil
+	}
 }
 
 // decodeSS3 decodes ANSI SS3 sequences (ESC O ...)

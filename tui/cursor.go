@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 // Cursor and terminal control functions for inline terminal mode.
@@ -164,4 +165,123 @@ func ShowCursor(cfg ...CursorConfig) {
 // Newline prints a newline character.
 func Newline(cfg ...CursorConfig) {
 	fmt.Fprintln(cursorOutput(cfg))
+}
+
+// CursorPosition represents a cursor position on screen (0-based).
+type CursorPosition struct {
+	Row int
+	Col int
+}
+
+// QueryCursorPosition queries the terminal for the current cursor position.
+// It sends the Device Status Report (DSR) escape sequence and parses the response.
+//
+// This function requires the terminal to be in raw mode to read the response.
+// The fd parameter should be the file descriptor for stdin (typically os.Stdin.Fd()).
+//
+// The returned position is 0-based (row 0 is the first row).
+// Returns an error if the query times out or the response cannot be parsed.
+func QueryCursorPosition(fd int) (CursorPosition, error) {
+	return QueryCursorPositionWithTimeout(fd, 100*time.Millisecond)
+}
+
+// QueryCursorPositionWithTimeout is like QueryCursorPosition but with a custom timeout.
+func QueryCursorPositionWithTimeout(fd int, timeout time.Duration) (CursorPosition, error) {
+	// Send cursor position query: ESC[6n (Device Status Report)
+	_, err := os.Stdout.WriteString("\033[6n")
+	if err != nil {
+		return CursorPosition{}, fmt.Errorf("failed to send cursor query: %w", err)
+	}
+
+	// Read response: ESC[<row>;<col>R
+	// We need to read byte by byte until we get 'R'
+	response := make([]byte, 0, 16)
+	deadline := time.Now().Add(timeout)
+
+	// Use os.NewFile to get a file handle from the fd
+	stdin := os.NewFile(uintptr(fd), "/dev/stdin")
+
+	// Set read deadline if possible
+	stdin.SetReadDeadline(deadline)
+	defer stdin.SetReadDeadline(time.Time{})
+
+	buf := make([]byte, 1)
+	inEscape := false
+	for time.Now().Before(deadline) {
+		n, err := stdin.Read(buf)
+		if err != nil {
+			if os.IsTimeout(err) {
+				return CursorPosition{}, fmt.Errorf("cursor query timed out")
+			}
+			return CursorPosition{}, fmt.Errorf("failed to read cursor response: %w", err)
+		}
+		if n == 0 {
+			continue
+		}
+
+		b := buf[0]
+		if b == '\033' {
+			inEscape = true
+			response = response[:0]
+			continue
+		}
+		if inEscape {
+			response = append(response, b)
+			if b == 'R' {
+				break
+			}
+		}
+	}
+
+	// Parse response: [<row>;<col>R
+	if len(response) < 4 || response[0] != '[' || response[len(response)-1] != 'R' {
+		return CursorPosition{}, fmt.Errorf("invalid cursor response: %q", response)
+	}
+
+	// Extract row and col from [<row>;<col>R
+	var row, col int
+	_, err = fmt.Sscanf(string(response), "[%d;%d", &row, &col)
+	if err != nil {
+		return CursorPosition{}, fmt.Errorf("failed to parse cursor response %q: %w", response, err)
+	}
+
+	// Convert from 1-based to 0-based
+	return CursorPosition{Row: row - 1, Col: col - 1}, nil
+}
+
+// MoveCursorTo moves the cursor to an absolute position (0-based row and column).
+func MoveCursorTo(row, col int, cfg ...CursorConfig) {
+	// Convert to 1-based for ANSI escape sequence
+	fmt.Fprintf(cursorOutput(cfg), "\033[%d;%dH", row+1, col+1)
+}
+
+// SetScrollRegion sets the scrolling region to the specified rows (0-based, inclusive).
+// Content outside this region will not scroll when new lines are added.
+// Use ResetScrollRegion to restore normal scrolling behavior.
+func SetScrollRegion(top, bottom int, cfg ...CursorConfig) {
+	// Convert to 1-based for ANSI escape sequence
+	fmt.Fprintf(cursorOutput(cfg), "\033[%d;%dr", top+1, bottom+1)
+}
+
+// ResetScrollRegion resets the scroll region to the full screen.
+func ResetScrollRegion(cfg ...CursorConfig) {
+	fmt.Fprint(cursorOutput(cfg), "\033[r")
+}
+
+// ScrollUp scrolls the content in the current scroll region up by n lines.
+// New blank lines appear at the bottom of the region.
+func ScrollUp(n int, cfg ...CursorConfig) {
+	if n <= 0 {
+		return
+	}
+	fmt.Fprintf(cursorOutput(cfg), "\033[%dS", n)
+}
+
+// ScrollDown scrolls the content in the current scroll region down by n lines.
+// New blank lines appear at the top of the region.
+func ScrollDown(n int, cfg ...CursorConfig) {
+	if n <= 0 {
+		return
+	}
+	fmt.Fprintf(cursorOutput(cfg), "\033[%dT", n)
 }

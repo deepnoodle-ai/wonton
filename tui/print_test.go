@@ -294,3 +294,56 @@ func TestLivePrinter_MultipleWidthChanges(t *testing.T) {
 
 	lp.Stop()
 }
+
+// TestLivePrinter_SetTerminalHeight tests the terminal height constraint
+func TestLivePrinter_SetTerminalHeight(t *testing.T) {
+	var buf strings.Builder
+	lp := NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+
+	// Set terminal height before first render
+	lp.SetTerminalHeight(10)
+
+	// Render a 5-line view
+	err := lp.Update(Stack(
+		Text("Line 1"),
+		Text("Line 2"),
+		Text("Line 3"),
+		Text("Line 4"),
+		Text("Line 5"),
+	))
+	assert.NoError(t, err)
+	assert.Equal(t, 5, lp.lastHeight)
+	assert.Len(t, lp.lastLines, 5)
+
+	// Shrink terminal height to 3 - content should be constrained
+	lp.SetTerminalHeight(3)
+	buf.Reset()
+
+	err = lp.Update(Stack(
+		Text("Line A"),
+		Text("Line B"),
+		Text("Line C"),
+		Text("Line D"),
+		Text("Line E"),
+	))
+	assert.NoError(t, err)
+
+	// Should now only track 3 lines (constrained by terminal height)
+	assert.Equal(t, 3, lp.lastHeight)
+	assert.Len(t, lp.lastLines, 3)
+
+	// Expand terminal height
+	lp.SetTerminalHeight(10)
+	buf.Reset()
+
+	err = lp.Update(Stack(
+		Text("Full 1"),
+		Text("Full 2"),
+		Text("Full 3"),
+		Text("Full 4"),
+	))
+	assert.NoError(t, err)
+	assert.Equal(t, 4, lp.lastHeight, "should show all lines when terminal is large enough")
+
+	lp.Stop()
+}

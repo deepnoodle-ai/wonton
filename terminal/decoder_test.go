@@ -551,3 +551,44 @@ func TestKeyDecoder_ReadEvent_EscapeStandalone(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, keyEvent.Key, KeyEscape)
 }
+
+// TestKeyDecoder_CursorPositionResponse tests parsing of cursor position responses
+// Cursor position response format: ESC [ row ; col R
+func TestKeyDecoder_CursorPositionResponse(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []byte
+		expectedRow int
+		expectedCol int
+	}{
+		{"Position 1,1", []byte{0x1B, '[', '1', ';', '1', 'R'}, 1, 1},
+		{"Position 10,20", []byte{0x1B, '[', '1', '0', ';', '2', '0', 'R'}, 10, 20},
+		{"Position 24,80", []byte{0x1B, '[', '2', '4', ';', '8', '0', 'R'}, 24, 80},
+		{"Position 100,200", []byte{0x1B, '[', '1', '0', '0', ';', '2', '0', '0', 'R'}, 100, 200},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := NewKeyDecoder(bytes.NewReader(tt.input))
+			event, err := decoder.ReadEvent()
+			assert.NoError(t, err)
+
+			// Should be a CursorPositionEvent, not a KeyEvent
+			cpEvent, ok := event.(CursorPositionEvent)
+			assert.True(t, ok, "expected CursorPositionEvent, got %T", event)
+			assert.Equal(t, tt.expectedRow, cpEvent.Row)
+			assert.Equal(t, tt.expectedCol, cpEvent.Col)
+		})
+	}
+}
+
+// TestKeyDecoder_ReadKeyEvent_CursorPositionReturnsUnknown tests that ReadKeyEvent
+// returns KeyUnknown for cursor position responses (since it can only return KeyEvent)
+func TestKeyDecoder_ReadKeyEvent_CursorPositionReturnsUnknown(t *testing.T) {
+	// Cursor position response: ESC [ 10 ; 20 R
+	input := []byte{0x1B, '[', '1', '0', ';', '2', '0', 'R'}
+	decoder := NewKeyDecoder(bytes.NewReader(input))
+	event, err := decoder.ReadKeyEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, KeyUnknown, event.Key)
+}

@@ -187,6 +187,9 @@ type InlineApp struct {
 	// Resize handling
 	resizeChan chan os.Signal
 
+	// Cursor position query mechanism
+	cursorPosChan chan terminal.CursorPositionEvent // Receives cursor position responses
+
 	// Mouse click synthesis state (same as Runtime)
 	mousePressX      int
 	mousePressY      int
@@ -212,13 +215,14 @@ func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
 	}
 	cfg = cfg.withDefaults()
 	return &InlineApp{
-		config:   cfg,
-		events:   make(chan Event, 100),
-		cmds:     make(chan Cmd, 100),
-		done:     make(chan struct{}),
-		output:   cfg.Output,
-		live:     NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output}),
-		focusMgr: NewFocusManager(),
+		config:        cfg,
+		events:        make(chan Event, 100),
+		cmds:          make(chan Cmd, 100),
+		done:          make(chan struct{}),
+		output:        cfg.Output,
+		live:          NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output}),
+		focusMgr:      NewFocusManager(),
+		cursorPosChan: make(chan terminal.CursorPositionEvent, 1),
 	}
 }
 
@@ -299,6 +303,11 @@ func (r *InlineApp) Run(app any) error {
 
 	// Initialize resize watcher (platform-specific)
 	r.setupResizeWatcher()
+
+	// Set initial terminal height to constrain content
+	if _, height, err := term.GetSize(r.stdinFd); err == nil && height > 0 {
+		r.live.SetTerminalHeight(height)
+	}
 
 	// Render initial view
 	r.render()
@@ -457,6 +466,8 @@ func (r *InlineApp) processEvent(event Event) {
 		r.mu.Lock()
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
+		// Constrain live region to terminal height to prevent scrollback contamination
+		r.live.SetTerminalHeight(resize.Height)
 		r.mu.Unlock()
 	}
 
@@ -561,6 +572,18 @@ func (r *InlineApp) inputReader() {
 		case <-r.done:
 			return
 		case event := <-inputChan:
+			// Route cursor position responses to special channel (for cursor queries)
+			if cpEvent, ok := event.(terminal.CursorPositionEvent); ok {
+				select {
+				case r.cursorPosChan <- cpEvent:
+				case <-r.done:
+					return
+				default:
+					// If channel is full, discard (stale response)
+				}
+				continue
+			}
+
 			// Check for backslash key - might be start of backslash+Enter sequence
 			if keyEvent, ok := event.(KeyEvent); ok && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
 				select {
@@ -768,6 +791,43 @@ func (r *InlineApp) ClearScrollback() {
 	// Re-render live region
 	if app, ok := r.app.(InlineApplication); ok {
 		r.live.Update(app.LiveView())
+	}
+}
+
+// QueryCursorPosition queries the terminal for the current cursor position.
+// It sends ESC[6n and waits for the terminal to respond with ESC[row;colR.
+// The response is routed through the input reader goroutine.
+//
+// Returns the 1-based row and column, or an error if the query times out.
+// This method should be called from the event loop goroutine to avoid races.
+//
+// Timeout is 100ms which should be sufficient for any responsive terminal.
+func (r *InlineApp) QueryCursorPosition() (row, col int, err error) {
+	return r.QueryCursorPositionWithTimeout(100 * time.Millisecond)
+}
+
+// QueryCursorPositionWithTimeout is like QueryCursorPosition but with a custom timeout.
+func (r *InlineApp) QueryCursorPositionWithTimeout(timeout time.Duration) (row, col int, err error) {
+	// Drain any stale cursor position responses
+	select {
+	case <-r.cursorPosChan:
+	default:
+	}
+
+	// Send cursor position query: ESC[6n (Device Status Report)
+	_, err = fmt.Fprint(r.output, "\033[6n")
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to send cursor query: %w", err)
+	}
+
+	// Wait for response with timeout
+	select {
+	case cpEvent := <-r.cursorPosChan:
+		return cpEvent.Row, cpEvent.Col, nil
+	case <-time.After(timeout):
+		return 0, 0, fmt.Errorf("cursor query timed out")
+	case <-r.done:
+		return 0, 0, fmt.Errorf("application stopped")
 	}
 }
 

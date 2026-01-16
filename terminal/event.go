@@ -25,3 +25,17 @@ type Event interface {
 	// Timestamp returns when the event occurred.
 	Timestamp() time.Time
 }
+
+// CursorPositionEvent represents a cursor position response from the terminal.
+// This is sent by the terminal in response to a cursor position query (ESC[6n).
+// The response format is ESC [ row ; col R.
+type CursorPositionEvent struct {
+	Row  int       // 1-based row number
+	Col  int       // 1-based column number
+	Time time.Time // When the event was received
+}
+
+// Timestamp implements Event.
+func (e CursorPositionEvent) Timestamp() time.Time {
+	return e.Time
+}
