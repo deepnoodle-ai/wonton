@@ -113,7 +113,7 @@ var defaultOpts = []gocmp.Option{
 	gocmp.Exporter(func(reflect.Type) bool { return true }),
 }
 
-// Equal asserts that got and want are deeply equal using go-cmp.
+// Equal asserts that got and want are deeply equal.
 //
 // This function performs deep comparison of any Go values including structs,
 // slices, maps, and nested types. Unexported fields are compared by default.
@@ -130,7 +130,8 @@ var defaultOpts = []gocmp.Option{
 //	assert.Equal(t, user, want, "fetching user %d", userID)
 func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 	t.Helper()
-	if diff := gocmp.Diff(want, got, defaultOpts...); diff != "" {
+	if !reflect.DeepEqual(got, want) {
+		diff := gocmp.Diff(want, got, defaultOpts...)
 		msg := formatMsg(msgAndArgs...)
 		if msg != "" {
 			t.Fatalf("\n%s\n%s", formatDiff(diff), msg)

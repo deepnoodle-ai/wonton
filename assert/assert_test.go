@@ -283,6 +283,32 @@ func TestEqual(t *testing.T) {
 			t.Error("EqualOpts should pass with cmp options")
 		}
 	})
+
+	t.Run("custom string types equal", func(t *testing.T) {
+		type TokenType string
+		const LET TokenType = "LET"
+		const IDENT TokenType = "IDENT"
+
+		m := &mockT{}
+		var tokType TokenType = "LET"
+		Equal(m, tokType, LET)
+		if m.failed {
+			t.Error("Equal should pass for equal custom string types")
+		}
+	})
+
+	t.Run("custom string types not equal", func(t *testing.T) {
+		type TokenType string
+		const LET TokenType = "LET"
+		const IDENT TokenType = "IDENT"
+
+		m := &mockT{}
+		var tokType TokenType = "IDENT"
+		Equal(m, tokType, LET)
+		if !m.failed {
+			t.Error("Equal should fail for different custom string types")
+		}
+	})
 }
 
 func TestNotEqual(t *testing.T) {
