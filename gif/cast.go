@@ -99,6 +99,12 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	if opts.Rows > 0 {
 		rows = opts.Rows
 	}
+	if cols <= 0 {
+		cols = 80
+	}
+	if rows <= 0 {
+		rows = 24
+	}
 
 	// Create emulator and renderer
 	emulator := NewEmulator(cols, rows)

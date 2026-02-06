@@ -181,3 +181,26 @@ func TestTerminalRenderer_LoopCount(t *testing.T) {
 	// but we can ensure the method is callable and returns the renderer
 	assert.NotNil(t, renderer)
 }
+
+func TestTerminalScreen_ScrollUp_ZeroHeight(t *testing.T) {
+	// Test that scrollUp doesn't panic with zero or negative height
+	screen := gif.NewTerminalScreen(10, 0)
+
+	// This should not panic
+	screen.WriteString("Test\n", nil, nil)
+
+	// Verify screen is still usable
+	assert.Equal(t, screen.Height, 0)
+}
+
+func TestTerminalScreen_WriteString_ZeroHeight(t *testing.T) {
+	// Test WriteString behavior with zero height
+	screen := gif.NewTerminalScreen(10, 0)
+
+	// Writing should not panic even though there's nowhere to write
+	screen.WriteString("Hello World", nil, nil)
+
+	// With zero height, cursor should be at 0,0 but no cells exist
+	assert.Equal(t, screen.Height, 0)
+	assert.Equal(t, len(screen.Cells), 0)
+}
