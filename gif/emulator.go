@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Emulator interprets ANSI escape sequences and maintains terminal screen state.
@@ -156,8 +157,11 @@ func (e *Emulator) ProcessOutput(data string) {
 			continue
 		}
 
+		// Decode the next rune (handles multi-byte UTF-8)
+		r, size := utf8.DecodeRuneInString(data[i:])
+
 		// Handle control characters
-		switch data[i] {
+		switch r {
 		case '\n':
 			e.screen.CursorX = 0
 			e.screen.CursorY++
@@ -179,7 +183,7 @@ func (e *Emulator) ProcessOutput(data string) {
 			}
 		case '\x07': // Bell - ignore
 		default:
-			if data[i] >= 32 { // Printable character
+			if r >= 32 { // Printable character
 				if e.screen.CursorX >= e.screen.Width {
 					e.screen.CursorX = 0
 					e.screen.CursorY++
@@ -188,11 +192,11 @@ func (e *Emulator) ProcessOutput(data string) {
 						e.screen.CursorY = e.screen.Height - 1
 					}
 				}
-				e.screen.SetCell(e.screen.CursorX, e.screen.CursorY, rune(data[i]), e.fg, e.bg)
+				e.screen.SetCell(e.screen.CursorX, e.screen.CursorY, r, e.fg, e.bg)
 				e.screen.CursorX++
 			}
 		}
-		i++
+		i += size
 	}
 }
 
