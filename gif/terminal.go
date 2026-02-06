@@ -90,6 +90,9 @@ func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 // start of the current line. The screen scrolls up if text extends beyond the
 // bottom row.
 func (ts *TerminalScreen) WriteString(s string, fg, bg color.Color) {
+	if ts.Height <= 0 || ts.Width <= 0 {
+		return
+	}
 	if fg == nil {
 		fg = ts.DefaultFG
 	}
@@ -125,6 +128,9 @@ func (ts *TerminalScreen) WriteString(s string, fg, bg color.Color) {
 
 // scrollUp scrolls the screen up by one line.
 func (ts *TerminalScreen) scrollUp() {
+	if ts.Height <= 0 {
+		return
+	}
 	// Move all lines up
 	for y := 1; y < ts.Height; y++ {
 		ts.Cells[y-1] = ts.Cells[y]

@@ -160,3 +160,54 @@ func TestRecordingEventJSON(t *testing.T) {
 	expected := `[1.5,"o","test"]`
 	assert.Equal(t, string(data), expected)
 }
+
+func TestRenderCastEvents_ZeroDimensions(t *testing.T) {
+	// Test that zero or negative dimensions fallback to defaults (80x24)
+	header := &termsession.RecordingHeader{
+		Version: 2,
+		Width:   0,
+		Height:  0,
+	}
+
+	events := []termsession.RecordingEvent{
+		{Time: 0.1, Type: "o", Data: "Test"},
+	}
+
+	opts := gif.DefaultCastOptions()
+
+	g, err := gif.RenderCastEvents(header, events, opts)
+	assert.NoError(t, err)
+	assert.NotNil(t, g)
+
+	// Should use default dimensions (80x24)
+	// Verify at least one frame was created
+	assert.Greater(t, g.FrameCount(), 0)
+	assert.Greater(t, g.Width(), 0)
+	assert.Greater(t, g.Height(), 0)
+}
+
+func TestRenderCastEvents_NegativeDimensions(t *testing.T) {
+	// Test that negative dimensions fallback to defaults (80x24)
+	header := &termsession.RecordingHeader{
+		Version: 2,
+		Width:   -10,
+		Height:  -5,
+	}
+
+	events := []termsession.RecordingEvent{
+		{Time: 0.1, Type: "o", Data: "Test"},
+	}
+
+	opts := gif.DefaultCastOptions()
+	opts.Cols = -1 // Also test negative override
+	opts.Rows = -1
+
+	g, err := gif.RenderCastEvents(header, events, opts)
+	assert.NoError(t, err)
+	assert.NotNil(t, g)
+
+	// Should use default dimensions (80x24)
+	assert.Greater(t, g.FrameCount(), 0)
+	assert.Greater(t, g.Width(), 0)
+	assert.Greater(t, g.Height(), 0)
+}
