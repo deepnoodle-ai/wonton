@@ -16,7 +16,7 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 - `color` - ANSI colors (standard, 256, RGB), HSL conversion, and gradient generation
 - `env` - Configuration from environment variables, .env files, and JSON files with struct tag parsing
 - `fetch` - HTTP page fetching with metadata extraction, markdown conversion, and link discovery
-- `crawler` - Concurrent web crawler with rate limiting and configurable follow behavior
+- `crawler` - Concurrent web crawler with rate-limited requests and configurable follow behavior
 - `sse` - Server-Sent Events parser and client (useful for streaming LLM responses)
 - `schema` - JSON Schema generation from Go structs for LLM tool definitions
 - `git` - Read-only git operations: log, diff, status, branches
@@ -808,7 +808,12 @@ func (app *App) fetchData() tui.Cmd {
         if err != nil {
             return ErrorEvent{Time: time.Now(), Err: err}
         }
-        return DataLoadedEvent{Time: time.Now(), Data: resp.Body}
+        defer resp.Body.Close()
+        data, err := io.ReadAll(resp.Body)
+        if err != nil {
+            return ErrorEvent{Time: time.Now(), Err: err}
+        }
+        return DataLoadedEvent{Time: time.Now(), Data: data}
     }
 }
 
@@ -852,7 +857,7 @@ tui.Run(app,
 
 ## Example: TUI with Async Fetching
 
-A fullscreen app that fetches a URL and displays it as markdown. Demonstrates
+A fullscreen app that fetches a URL and displays it as Markdown. Demonstrates
 the Cmd pattern for async operations, TickEvent for loading animation, and
 keyboard event handling:
 
@@ -1120,7 +1125,7 @@ InlineApp vs fullscreen `tui.Run()`:
 | Best for         | Full TUI apps, dashboards         | Chat, logs, REPLs, build tools       |
 
 Keep inline app live regions small (status bars, input prompts). For large
-scrollable content like markdown documents, use fullscreen `tui.Run()`.
+scrollable content like Markdown documents, use fullscreen `tui.Run()`.
 
 ## Key Patterns
 
