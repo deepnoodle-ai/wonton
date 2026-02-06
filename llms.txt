@@ -206,6 +206,10 @@ tui.Input(&name).ID("name").Placeholder("Enter name").Width(40)
 tui.Input(&password).ID("pw").Placeholder("Password").Width(40).Mask('*')
 tui.Button("[ Submit ]", func() { validate() }).Fg(tui.ColorGreen)
 
+// Text takes a format string (like fmt.Sprintf) — pass variables as arguments
+tui.Text("Count: %d", count)  // correct
+// tui.Text(someString)       // flagged by go vet (use tui.Text("%s", someString))
+
 // Tables
 tui.Table(
     []tui.TableColumn{{Title: "Name"}, {Title: "Role"}, {Title: "Status"}},
@@ -512,7 +516,12 @@ humanize.Truncate("Hello, World!", 8)       // "Hello..."
 
 ## Example: Colors and Gradients
 
-**Important:** `color.Color` and `color.RGB` have different `Apply` signatures:
+**Important:** Use the right color method based on your needs:
+- `.Fg(tui.ColorRed)` — ANSI named colors (16 colors)
+- `.FgRGB(r, g, b)` — RGB colors on text/views (true color)
+- `.Style(tui.NewStyle().WithFgRGB(...))` — required for animated progress bars
+
+The `color.Color` and `color.RGB` types have different `Apply` signatures:
 
 ```go
 // color.Color.Apply takes one argument (text only)
@@ -560,6 +569,7 @@ recorder.Close()             // flush and close
 // Record an interactive PTY session.
 // The child's PTY output is automatically piped to the parent's stdout.
 // SessionOptions also accepts Env ([]string) for environment variables.
+// Terminal dimensions are read from the parent's terminal; if unavailable, defaults to 80x24.
 session, _ := termsession.NewSession(termsession.SessionOptions{
     Command: []string{"bash"},
     Dir:     "/home/user",
@@ -569,6 +579,21 @@ session, _ := termsession.NewSession(termsession.SessionOptions{
 _ = session.Record("session.cast", termsession.RecordingOptions{Title: "Shell Session"})
 session.Wait()  // blocks until the child process exits
 session.Close()
+
+// Self-recording pattern: spawn a child process to record the app's own output
+// (useful when building CLI tools that export their session as GIF)
+if os.Getenv("MY_APP_RECORDING") == "" {
+    session, _ := termsession.NewSession(termsession.SessionOptions{
+        Command: os.Args,
+        Env:     append(os.Environ(), "MY_APP_RECORDING=1"),
+    })
+    _ = session.Record("session.cast", termsession.RecordingOptions{})
+    session.Wait()
+    session.Close()
+    // Convert .cast to .gif, then exit...
+    return
+}
+// Normal app logic (already being recorded by parent)
 
 // Play back a recording
 player, _ := termsession.NewPlayer("demo.cast", termsession.PlayerOptions{
@@ -584,6 +609,10 @@ header, events, _ := termsession.LoadCastFile("demo.cast")
 fmt.Println(header.Title, header.Width, header.Height)
 fmt.Println(termsession.Duration(events))
 outputOnly := termsession.OutputEvents(events) // filter to "o" events only
+
+// NewRecorder (manual recording) vs NewSession (automatic child capture):
+// - Use Recorder for manual RecordOutput() calls (you control what gets recorded)
+// - Use NewSession to automatically capture a child process's full terminal output
 ```
 
 ## Example: Animated GIF Creation
@@ -612,6 +641,8 @@ g.AddFrameWithDelay(func(f *gif.Frame) {
 }, 50) // delay in 100ths of a second
 
 // Render a terminal recording (.cast file) to GIF
+// Note: RenderCast may not perfectly render all ANSI sequences — complex TUI
+// output with cursor movement may produce imperfect GIFs.
 opts := gif.DefaultCastOptions()
 opts.Speed = 1.5        // playback speed multiplier
 opts.MaxIdle = 2.0      // cap idle time between events
@@ -976,9 +1007,11 @@ func main() {
 }
 ```
 
-Note: `Init()` returns `error`, not `[]Cmd`. To trigger an initial async
-operation, set a flag and return the command from the first `TickEvent` handler
-(requires `WithFPS` > 0), or start a goroutine that calls back via an event.
+**Important:** `Init()` returns `error`, not `[]Cmd`. You cannot return commands
+from Init. To trigger an initial async operation, either:
+1. Set a flag (like `fetchQueued`) and return the command from the first
+   `TickEvent` handler (requires `WithFPS` > 0), or
+2. Start a goroutine in Init that sends an event via SendEvent.
 
 ## Example: Inline Application
 
@@ -1002,10 +1035,10 @@ type InlineApplication interface {
 Use `InlineApp.Print(view View)` or `Printf(format, args...)` to add content
 to scrollback above the live region. **Important:** `Printf` outputs plain text
 only — ANSI escape codes will appear as raw text. For colored or styled
-scrollback content, use `Print(view)` which renders a full `tui.View`.
-`Print()` renders views statically (at frame 0) — text animations like
-`.Animate(Rainbow(...))` will appear as a single frozen frame. Use animations
-only in `LiveView()`, where they update each tick:
+scrollback content, use `Print(view)` which renders a full `tui.View` at the
+current terminal width. `Print()` renders views statically (at frame 0) — text
+animations like `.Animate(Rainbow(...))` will appear as a single frozen frame.
+Use animations only in `LiveView()`, where they update each tick:
 
 ```go
 // Plain text scrollback
@@ -1108,6 +1141,8 @@ func main() {
     app.runner = tui.NewInlineApp(tui.InlineAppConfig{
         FPS: 30,  // 30+ for smooth animations; 10 is enough for basic status updates
     })
+    // InlineApp requires an interactive terminal (stdin must be a TTY).
+    // It will fail with "stdin is not a terminal" when piped.
     if err := app.runner.Run(app); err != nil {
         log.Fatal(err)
     }
