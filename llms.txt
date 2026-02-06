@@ -1,0 +1,1195 @@
+# Wonton
+
+Wonton is a Go module for rapid CLI and TUI application development. It provides
+terminal UI components, a CLI framework, web crawling, git operations, and
+utilities commonly needed by agentic command-line tools. Requires Go 1.25+.
+Module path: `github.com/deepnoodle-ai/wonton`.
+
+Wonton is organized as a flat collection of focused packages under one module.
+Import only the packages you need. All public APIs have GoDoc comments. The
+`examples/` directory contains working programs demonstrating real usage patterns.
+
+## Packages
+
+- `cli` - CLI framework with commands, flags, groups, middleware, and shell completion
+- `tui` - Declarative terminal UI with layout engine, inputs, tables, lists, markdown rendering, animations, and mouse support
+- `color` - ANSI colors (standard, 256, RGB), HSL conversion, and gradient generation
+- `env` - Configuration from environment variables, .env files, and JSON files with struct tag parsing
+- `fetch` - HTTP page fetching with metadata extraction, markdown conversion, and link discovery
+- `crawler` - Concurrent web crawler with rate-limited requests and configurable follow behavior
+- `sse` - Server-Sent Events parser and client (useful for streaming LLM responses)
+- `schema` - JSON Schema generation from Go structs for LLM tool definitions
+- `git` - Read-only git operations: log, diff, status, branches
+- `retry` - Retry with exponential/linear/constant backoff, jitter, and permanent errors
+- `humanize` - Human-readable formatting for bytes, durations, numbers, relative times
+- `htmlparse` - HTML parsing with metadata extraction, link discovery, content transformation
+- `htmltomd` - HTML to Markdown conversion
+- `unidiff` - Unified diff parsing
+- `clipboard` - System clipboard read/write
+- `terminal` - Terminal control, raw mode, input decoding
+- `termsession` - Terminal session recording in asciinema v2 format
+- `termtest` - Golden-file testing for terminal output
+- `gif` - Animated GIF creation, including rendering terminal recordings to GIF
+- `web` - URL utilities, host comparison, text normalization
+- `assert` - Test assertions with colored diffs
+
+## Example: CLI Application
+
+Build a CLI with commands, flags, and groups:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    "strings"
+
+    "github.com/deepnoodle-ai/wonton/cli"
+)
+
+func main() {
+    app := cli.New("myapp").
+        Description("A demonstration CLI application").
+        Version("1.0.0").
+        AddCompletionCommand()
+
+    app.Command("greet").
+        Description("Greet someone").
+        Args("name?").
+        Flags(
+            cli.Bool("loud", "l").Help("Greet loudly"),
+            cli.Int("times", "t").Default(1).Help("Number of times to greet"),
+        ).
+        Run(func(ctx *cli.Context) error {
+            name := ctx.Arg(0)
+            if name == "" {
+                name = "World"
+            }
+            greeting := fmt.Sprintf("Hello, %s!", name)
+            if ctx.Bool("loud") {
+                greeting = strings.ToUpper(greeting)
+            }
+            for i := 0; i < ctx.Int("times"); i++ {
+                ctx.Println(greeting)
+            }
+            return nil
+        })
+
+    users := app.Group("users").Description("User management")
+
+    users.Command("create").
+        Description("Create a new user").
+        Args("username").
+        Flags(
+            cli.String("role", "r").Default("user").Enum("admin", "user", "guest").Help("User role"),
+        ).
+        Run(func(ctx *cli.Context) error {
+            ctx.Printf("Created user '%s' with role '%s'\n", ctx.Arg(0), ctx.String("role"))
+            return nil
+        })
+
+    if err := app.Execute(); err != nil {
+        if cli.IsHelpRequested(err) {
+            os.Exit(0)
+        }
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(cli.GetExitCode(err))
+    }
+}
+```
+
+## Example: Single-Command CLI
+
+For tools with no subcommands, use `app.Main()` to configure the root command directly:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/deepnoodle-ai/wonton/cli"
+)
+
+func main() {
+    app := cli.New("urlping").
+        Description("Ping URLs and show live results").
+        Version("1.0.0")
+
+    app.Main().
+        Args("urls...").
+        Flags(
+            cli.Int("count", "n").Default(5).Help("Number of rounds"),
+            cli.Int("timeout", "t").Default(10).Help("Per-request timeout in seconds"),
+        ).
+        Run(func(ctx *cli.Context) error {
+            urls := ctx.Args()
+            if len(urls) == 0 {
+                return cli.Error("at least one URL is required").Hint("urlping https://example.com")
+            }
+            fmt.Printf("Pinging %d URLs, %d rounds\n", len(urls), ctx.Int("count"))
+            return nil
+        })
+
+    if err := app.Execute(); err != nil {
+        if cli.IsHelpRequested(err) {
+            os.Exit(0)
+        }
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(cli.GetExitCode(err))
+    }
+}
+```
+
+## Example: Declarative TUI
+
+Build terminal UIs with a declarative View/HandleEvent pattern:
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/deepnoodle-ai/wonton/tui"
+)
+
+type App struct {
+    count int
+}
+
+func (app *App) View() tui.View {
+    return tui.Stack(
+        tui.Text("Counter: %d", app.count).Bold().Fg(tui.ColorGreen),
+        tui.Spacer().MinHeight(1),
+        tui.Group(
+            tui.Clickable("[ - ]", func() { app.count-- }).Fg(tui.ColorRed),
+            tui.Clickable("[ + ]", func() { app.count++ }).Fg(tui.ColorGreen),
+            tui.Clickable("[Reset]", func() { app.count = 0 }).Fg(tui.ColorYellow),
+        ).Gap(2),
+        tui.Spacer(),
+        tui.Text("[+] increment  [-] decrement  [q] quit").Dim(),
+    ).Align(tui.AlignCenter).Padding(2)
+}
+
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
+    switch e := event.(type) {
+    case tui.KeyEvent:
+        switch {
+        case e.Rune == 'q' || e.Key == tui.KeyCtrlC:
+            return []tui.Cmd{tui.Quit()}
+        case e.Rune == '+' || e.Rune == '=':
+            app.count++
+        case e.Rune == '-':
+            app.count--
+        }
+    }
+    return nil
+}
+
+func main() {
+    if err := tui.Run(&App{}, tui.WithMouseTracking(true)); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+## Example: TUI with Forms, Tables, and Markdown
+
+The tui package includes inputs, buttons, tables, lists, markdown rendering, borders, scrolling, and more:
+
+```go
+// Input fields with validation
+tui.Input(&name).ID("name").Placeholder("Enter name").Width(40)
+tui.Input(&password).ID("pw").Placeholder("Password").Width(40).Mask('*')
+tui.Button("[ Submit ]", func() { validate() }).Fg(tui.ColorGreen)
+
+// Text takes a format string (like fmt.Sprintf) — pass variables as arguments
+tui.Text("Count: %d", count)  // correct
+// tui.Text(someString)       // flagged by go vet (use tui.Text("%s", someString))
+
+// Tables
+tui.Table(
+    []tui.TableColumn{{Title: "Name"}, {Title: "Role"}, {Title: "Status"}},
+    &selectedRow,
+).Rows(rows).Height(20).ShowHeader(true).FillWidth().
+    SelectedBg(tui.ColorCyan).SelectedFg(tui.ColorBlack)
+
+// Filterable lists
+tui.FilterableListStrings(items, &selected).Height(20)
+
+// Markdown rendering with syntax highlighting
+// Second arg is *int for scroll position (nil = no scrolling)
+tui.Markdown(markdownContent, &scrollY).Height(20).MaxWidth(80)
+
+// Progress bars (default fill: green, default empty: dim)
+tui.Progress(50, 100).Width(30).ShowPercent()
+tui.Progress(75, 100).Label("Downloading: ").ShowFraction().Fg(tui.ColorCyan)
+tui.Progress(30, 100).FilledChar('=').EmptyChar('-').EmptyFg(tui.ColorBrightBlack)
+tui.Progress(50, 100).EmptyPattern("·-").HidePercent()  // repeating pattern, no percent
+
+// Animated progress bars — require .Style() with FgRGB (not .Fg(), which is ANSI-only).
+// Shimmer/Pulse animate automatically from the render context (no frame param needed).
+// .Shimmer()/.Pulse() must come LAST — they return a different type without
+// .Label(), .Width(), etc.
+baseStyle := tui.NewStyle().WithFgRGB(tui.NewRGB(60, 160, 255))
+tui.Progress(60, 100).Width(30).Label("Sync: ").Style(baseStyle).Shimmer(tui.NewRGB(255, 255, 255), 3)
+tui.Progress(40, 100).Width(30).Style(baseStyle).Pulse(tui.NewRGB(0, 200, 0), 10)
+
+// Loading spinners (the one animation that needs a manual frame counter)
+tui.Loading(app.frame).Label("Loading...")
+tui.Loading(app.frame).CharSet(tui.SpinnerLine.Frames).Speed(2).Fg(tui.ColorYellow)
+// Presets: SpinnerDots (default), SpinnerLine, SpinnerArrows,
+// SpinnerCircle, SpinnerSquare, SpinnerBounce, SpinnerBar
+
+// Text animations — .Animate() returns *animatedTextView (not *textView),
+// so use tui.View when conditionally animating. Animate automatically from
+// the render context (no frame param needed).
+tui.Text("Rainbow text").Animate(tui.Rainbow(3))           // moving rainbow, speed=3
+tui.Text("Rainbow text").Animate(tui.Rainbow(3).Reverse())  // reversed direction
+tui.Text("OK").Animate(tui.Rainbow(2).WithLength(30))       // WithLength for smooth gradient on short text
+tui.Text("Wave effect").Animate(tui.Wave(5))                // wave with default colors
+tui.Text("Wave effect").Animate(tui.Wave(5, tui.NewRGB(255, 0, 0), tui.NewRGB(0, 0, 255)))
+tui.Text("Shimmer").Animate(tui.Slide(2, tui.NewRGB(100,100,100), tui.NewRGB(255,255,255)))
+tui.Text("Active").Animate(tui.Pulse(tui.NewRGB(0, 200, 0), 10))
+tui.Text("Stars").Animate(tui.Sparkle(3, tui.NewRGB(100,100,100), tui.NewRGB(255,255,255)))
+tui.Text("Hello").Animate(tui.Typewriter(4, tui.NewRGB(255,255,255), tui.NewRGB(0,255,0)))
+tui.Text("ERROR").Animate(tui.Glitch(2, tui.NewRGB(100,100,100), tui.NewRGB(255,0,0)))
+// Custom: implement TextAnimation { GetStyle(frame uint64, charIndex, totalChars int) Style }
+
+// Borders and scrolling
+tui.Bordered(
+    tui.Scroll(content, &scrollY),
+).BorderFg(tui.ColorCyan).Title("My Panel")
+
+// Layout
+tui.Stack(children...)      // vertical layout
+tui.Group(children...)      // horizontal layout
+tui.HeaderBar("Title")      // full-width header
+tui.StatusBar("Status")     // full-width footer
+tui.Divider()               // horizontal divider line
+
+// Size constraints (wrap a view with explicit dimensions)
+tui.Width(60, content)      // fixed width
+tui.Height(20, content)     // fixed height
+tui.MaxWidth(100, content)  // maximum width cap
+tui.MinWidth(40, content)   // minimum width floor
+tui.MaxHeight(30, content)  // maximum height cap
+tui.MinHeight(5, content)   // minimum height floor
+```
+
+## Example: Animated Dashboard View
+
+Combining animated progress bars and text animations in a `LiveView()`. Shows
+chain ordering (`.Shimmer()` last), conditional animation with `tui.View` typing,
+and `Loading()` as the one spinner that needs a manual frame counter:
+
+```go
+func (app *App) LiveView() tui.View {
+    // Progress bar: configure everything before .Shimmer() — it returns a
+    // different type that doesn't have .Label(), .Width(), etc.
+    baseStyle := tui.NewStyle().WithFgRGB(tui.NewRGB(60, 160, 255))
+    var progress tui.View
+    if app.done {
+        progress = tui.Progress(app.current, app.total).
+            Width(40).ShowPercent().Label("Progress: ").Fg(tui.ColorGreen)
+    } else {
+        progress = tui.Progress(app.current, app.total).
+            Width(40).ShowPercent().Label("Progress: ").
+            Style(baseStyle).Shimmer(tui.NewRGB(255, 255, 255), 3)  // must be last
+    }
+
+    // Text animation: .Animate() returns *animatedTextView, so the variable
+    // must be tui.View (not *textView) when conditionally animated.
+    var status tui.View
+    if app.done {
+        status = tui.Text("%d ok  %d fail", app.ok, app.fail).Bold()
+    } else {
+        // WithLength(30) spreads the rainbow over 30 color stops instead of
+        // the text length — prevents choppy color jumps on short strings
+        status = tui.Text("%d ok  %d fail", app.ok, app.fail).
+            Animate(tui.Rainbow(2).WithLength(30))
+    }
+
+    // Loading() is the one animation that needs a manual frame counter
+    var spinner tui.View
+    if app.fetching {
+        spinner = tui.Loading(app.frame).Label("Fetching...")
+    } else {
+        spinner = tui.Text("")
+    }
+
+    return tui.Stack(progress, status, spinner)
+}
+```
+
+## Example: Environment Configuration
+
+Load config from env vars, .env files, and JSON with struct tags:
+
+```go
+type Config struct {
+    Host     string        `env:"HOST" default:"0.0.0.0"`
+    Port     int           `env:"PORT" default:"8080"`
+    Debug    bool          `env:"DEBUG" default:"false"`
+    Timeout  time.Duration `env:"TIMEOUT" default:"30s"`
+    DBName   string        `env:"DB_NAME,required"`
+    DBPass   string        `env:"DB_PASS,notEmpty"`
+    Hosts    []string      `env:"ALLOWED_HOSTS"`         // comma-separated
+    DataDir  string        `env:"DATA_DIR,expand" default:"$HOME/data"`
+}
+
+cfg, err := env.Parse[Config](
+    env.WithPrefix("MYAPP"),             // MYAPP_HOST, MYAPP_PORT, etc.
+    env.WithEnvFile(".env", ".env.local"),
+    env.WithJSONFile("config.json"),
+)
+```
+
+Nested structs use `envPrefix` tags to namespace variables:
+
+```go
+type Config struct {
+    Database struct {
+        Host string `env:"HOST" default:"localhost"`
+        Port int    `env:"PORT" default:"5432"`
+    } `envPrefix:"DB_"`
+}
+```
+
+## Example: Web Crawling
+
+Crawl websites concurrently with configurable follow behavior:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "github.com/deepnoodle-ai/wonton/crawler"
+    "github.com/deepnoodle-ai/wonton/fetch"
+)
+
+func main() {
+    fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{})
+
+    c, _ := crawler.New(crawler.Options{
+        Workers:        4,
+        MaxURLs:        100,
+        FollowBehavior: crawler.FollowSameDomain,
+        DefaultFetcher: fetcher,
+        RequestDelay:   500 * time.Millisecond, // polite delay between requests
+    })
+
+    ctx := context.Background()
+    c.Crawl(ctx, []string{"https://example.com"}, func(_ context.Context, result *crawler.Result) {
+        if result.Error != nil {
+            fmt.Printf("Error: %s: %v\n", result.URL, result.Error)
+            return
+        }
+        fmt.Printf("OK: %s - %s\n", result.URL, result.Response.Metadata.Title)
+    })
+}
+```
+
+## Example: HTTP Fetching with Content Processing
+
+Fetch pages and get HTML, markdown, metadata, and links. HTTPFetcher is
+content-oriented (GET only); for HEAD requests, use `net/http` directly.
+
+```go
+fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{Timeout: 30 * time.Second})
+
+resp, err := fetcher.Fetch(ctx, &fetch.Request{
+    URL:             "https://example.com",
+    Formats:         []string{"html", "markdown", "links"},
+    OnlyMainContent: true,
+})
+
+fmt.Println(resp.Metadata.Title)
+fmt.Println(resp.Markdown)
+for _, link := range resp.Links {
+    fmt.Println(link.URL, link.Text)
+}
+```
+
+## Example: Server-Sent Events (SSE)
+
+```go
+client := sse.NewClient("https://api.example.com/stream")
+client.Headers.Set("Authorization", "Bearer token")
+
+events, errs := client.Connect(ctx)
+for event := range events {
+    var msg Message
+    event.JSON(&msg) // parse JSON payload
+    fmt.Println(event.Event, event.Data)
+}
+// Event fields: Event (type), Data (payload), ID, Retry
+// Also: sse.ParseString(data), sse.Stream(reader, callback)
+```
+
+## Example: Git Operations
+
+```go
+repo, _ := git.Open(".")
+
+branch, _ := repo.CurrentBranch(ctx)
+status, _ := repo.Status(ctx) // .IsClean, .Branch, .Staged, .Unstaged
+
+commits, _ := repo.Log(ctx, git.LogOptions{Limit: 50, Author: "alice", Path: "src/"})
+// Commit: .ShortHash, .Hash, .Subject, .Body, .Author.Name, .Timestamp
+
+diff, _ := repo.Diff(ctx, git.DiffOptions{From: "HEAD~3", To: "HEAD", IncludePatch: true})
+// Diff: .Files ([]DiffFile), .TotalAdded, .TotalRemoved
+// DiffFile: .Path, .Status, .Additions, .Deletions, .Patch
+
+// Also: repo.Show(ctx, ref), repo.DiffFile(ctx, path, opts)
+// repo.LocalBranches(ctx), repo.TrackedFiles(ctx), repo.ShowFile(ctx, ref, path)
+```
+
+## Example: Clipboard
+
+```go
+if clipboard.Available() {
+    text, err := clipboard.Read()              // read with 5s default timeout
+    clipboard.Write("copied text")             // write with 5s default timeout
+    clipboard.WriteWithTimeout("text", 10*time.Second)
+    clipboard.ReadContext(ctx)                 // with context for cancellation
+    clipboard.Clear()                          // clear clipboard
+}
+```
+
+## Example: JSON Schema for LLM Tools
+
+Generate JSON Schema from Go structs for tool definitions:
+
+```go
+type SearchParams struct {
+    Query   string   `json:"query" description:"Search query"`
+    Limit   int      `json:"limit,omitempty" description:"Max results" minimum:"1" maximum:"100"`
+    Tags    []string `json:"tags,omitempty" description:"Filter by tags"`
+    Format  string   `json:"format" enum:"json,csv,text" default:"json"`
+}
+
+s, _ := schema.Generate(SearchParams{})
+// Use s with OpenAI/Anthropic tool definitions
+```
+
+## Example: Retry with Backoff
+
+Retry failed operations with configurable strategies:
+
+```go
+result, err := retry.Do(ctx, func() (string, error) {
+    return fetchData()
+},
+    retry.WithMaxAttempts(5),
+    retry.WithBackoff(time.Second, 30*time.Second),
+    retry.WithJitter(0.1),
+)
+
+// Simple retry (no return value)
+err := retry.DoSimple(ctx, func() error {
+    return sendRequest()
+}, retry.WithMaxAttempts(3))
+
+// Mark errors as non-retryable
+return retry.MarkPermanent(errors.New("invalid input"))
+```
+
+## Example: Human-Readable Formatting
+
+```go
+humanize.Bytes(1536)                        // "1.5 KiB"
+humanize.Duration(90 * time.Second)         // "1m 30s"
+humanize.Time(time.Now().Add(-2*time.Hour)) // "2 hours ago"
+humanize.Number(1234567)                    // "1,234,567"
+humanize.Ordinal(3)                         // "3rd"
+humanize.PluralWord(5, "item", "items")     // "5 items"
+humanize.Truncate("Hello, World!", 8)       // "Hello..."
+```
+
+## Example: Colors and Gradients
+
+**Important:** Use the right color method based on your needs:
+- `.Fg(tui.ColorRed)` — ANSI named colors (16 colors)
+- `.FgRGB(r, g, b)` — RGB colors on text/views (true color)
+- `.Style(tui.NewStyle().WithFgRGB(...))` — required for animated progress bars
+
+The `color.Color` and `color.RGB` types have different `Apply` signatures:
+
+```go
+// color.Color.Apply takes one argument (text only)
+fmt.Println(color.Red.Apply("Error message"))
+fmt.Println(color.Green.Apply("Success"))
+
+// color.RGB.Apply takes two arguments: (text, background bool)
+rgb := color.NewRGB(255, 128, 0)
+fmt.Println(rgb.Apply("Orange text", false))       // foreground
+fmt.Println(rgb.Apply("Orange background", true))   // background
+
+gradient := color.Gradient(color.NewRGB(255, 0, 0), color.NewRGB(0, 0, 255), 10)
+
+if color.ShouldColorize(os.Stdout) {
+    // Terminal supports color
+}
+```
+
+## Example: HTML to Markdown
+
+```go
+md := htmltomd.Convert(htmlContent)
+md := htmltomd.ConvertWithOptions(htmlContent, &htmltomd.Options{
+    LinkStyle:    htmltomd.LinkStyleReferenced,
+    HeadingStyle: htmltomd.HeadingStyleSetext,
+})
+```
+
+## Example: Terminal Session Recording
+
+Record terminal sessions in asciinema v2 format (.cast files):
+
+```go
+// Record output directly (no PTY)
+recorder, _ := termsession.NewRecorder("demo.cast", 80, 24, termsession.RecordingOptions{
+    Title: "My Demo",
+    Compress: true,         // gzip compression
+    IdleTimeLimit: 2.0,     // cap idle gaps at 2 seconds
+})
+recorder.RecordOutput("$ ls\n")
+recorder.RecordOutput("file1.txt  file2.go\n")
+recorder.RecordInput("q\n")  // record user input
+recorder.Close()             // flush and close
+
+// Record an interactive PTY session.
+// The child's PTY output is automatically piped to the parent's stdout.
+// SessionOptions also accepts Env ([]string) for environment variables.
+// Terminal dimensions are read from the parent's terminal; if unavailable, defaults to 80x24.
+session, _ := termsession.NewSession(termsession.SessionOptions{
+    Command: []string{"bash"},
+    Dir:     "/home/user",
+    Env:     append(os.Environ(), "MY_VAR=1"),
+})
+// Record() returns an error if the file can't be created.
+_ = session.Record("session.cast", termsession.RecordingOptions{Title: "Shell Session"})
+session.Wait()  // blocks until the child process exits
+session.Close()
+
+// Self-recording pattern: spawn a child process to record the app's own output
+// (useful when building CLI tools that export their session as GIF)
+if os.Getenv("MY_APP_RECORDING") == "" {
+    session, _ := termsession.NewSession(termsession.SessionOptions{
+        Command: os.Args,
+        Env:     append(os.Environ(), "MY_APP_RECORDING=1"),
+    })
+    _ = session.Record("session.cast", termsession.RecordingOptions{})
+    session.Wait()
+    session.Close()
+    // Convert .cast to .gif, then exit...
+    return
+}
+// Normal app logic (already being recorded by parent)
+
+// Play back a recording
+player, _ := termsession.NewPlayer("demo.cast", termsession.PlayerOptions{
+    Speed:   2.0,  // 2x playback speed
+    MaxIdle: 1.0,  // cap gaps at 1 second
+    Output:  os.Stdout,
+})
+go player.Play()
+// player.Pause(), player.Resume(), player.SetSpeed(3.0), player.Seek(5.0)
+
+// Load and analyze recordings
+header, events, _ := termsession.LoadCastFile("demo.cast")
+fmt.Println(header.Title, header.Width, header.Height)
+fmt.Println(termsession.Duration(events))
+outputOnly := termsession.OutputEvents(events) // filter to "o" events only
+
+// NewRecorder (manual recording) vs NewSession (automatic child capture):
+// - Use Recorder for manual RecordOutput() calls (you control what gets recorded)
+// - Use NewSession to automatically capture a child process's full terminal output
+```
+
+## Example: Animated GIF Creation
+
+Create animated GIFs programmatically, or render terminal recordings to GIF:
+
+```go
+// Create a simple animated GIF
+g := gif.New(100, 100)
+for i := 0; i < 10; i++ {
+    offset := i * 5
+    g.AddFrame(func(f *gif.Frame) {
+        f.Fill(gif.White)
+        f.FillCircle(50, 20+offset, 10, gif.Red)
+    })
+}
+g.Save("animation.gif")
+
+// Custom palette and frame delay
+g := gif.NewWithPalette(200, 100, gif.Terminal256())
+g.SetLoopCount(0) // 0 = infinite loop, -1 = play once
+g.AddFrameWithDelay(func(f *gif.Frame) {
+    f.Fill(gif.Black)
+    f.DrawRect(10, 10, 180, 80, gif.Green)
+    f.DrawLine(10, 50, 190, 50, gif.Cyan)
+}, 50) // delay in 100ths of a second
+
+// Render a terminal recording (.cast file) to GIF
+// Note: RenderCast may not perfectly render all ANSI sequences — complex TUI
+// output with cursor movement may produce imperfect GIFs.
+opts := gif.DefaultCastOptions()
+opts.Speed = 1.5        // playback speed multiplier
+opts.MaxIdle = 2.0      // cap idle time between events
+opts.FPS = 10           // target frames per second
+opts.FontSize = 14      // TTF font size in points
+g, _ := gif.RenderCast("recording.cast", opts)
+g.Save("demo.gif")
+
+// Terminal emulation → GIF (render ANSI output directly)
+emulator := gif.NewEmulator(80, 24)
+emulator.ProcessOutput("\x1b[32mHello\x1b[0m World\n")
+renderer := gif.NewTerminalRenderer(emulator.Screen(), 8) // 8px padding
+renderer.RenderFrame(100)  // capture frame with 1s delay
+renderer.Save("terminal.gif")
+```
+
+Available palettes: `gif.DefaultPalette`, `gif.Grayscale(n)`, `gif.WebSafe()`,
+`gif.Terminal256()`. Frame drawing: `Fill`, `FillRect`, `FillCircle`, `DrawLine`,
+`DrawRect`, `DrawCircle`, `SetPixel`.
+
+## Example: Unified Diff Parsing
+
+```go
+diff, _ := unidiff.Parse(diffText)
+for _, file := range diff.Files {
+    fmt.Println(file.NewPath)
+    for _, hunk := range file.Hunks {
+        for _, line := range hunk.Lines {
+            // line.Type is LineAdded, LineRemoved, or LineContext
+            fmt.Println(line.Content)
+        }
+    }
+}
+```
+
+## Example: Web Utilities
+
+URL normalization, host comparison, link resolution, media detection, text cleaning, and binary fetching:
+
+```go
+// Normalize URLs (adds https://, strips query/fragment)
+u, _ := web.NormalizeURL("example.com/path?q=1#frag")
+fmt.Println(u) // "https://example.com/path"
+
+// Check if URLs share the same registrable domain
+url1, _ := url.Parse("https://www.example.com")
+url2, _ := url.Parse("https://api.example.com")
+web.AreRelatedHosts(url1, url2) // true
+web.AreSameHost(url1, url2)     // false (different subdomains)
+
+// Resolve relative links against a base domain
+resolved, ok := web.ResolveLink("example.com", "/about")
+// resolved: "https://example.com/about", ok: true
+
+// Detect media URLs (images, videos, archives, etc.)
+imgURL, _ := url.Parse("https://example.com/photo.jpg")
+web.IsMediaURL(imgURL)          // true
+web.IsMediaExtension(".pdf")    // true
+web.IsMediaExtension(".html")   // false
+
+// Clean text extracted from web pages (unescape HTML, strip non-printable chars)
+web.NormalizeText("  Hello &amp; goodbye  ") // "Hello & goodbye"
+web.EndsWithPunctuation("Done.")             // true
+
+// Fetch binary files with size limits and MIME verification
+fetcher := web.NewDefaultBinaryFetcher()
+result, _ := fetcher.FetchBinary(ctx, &web.BinaryFetchInput{
+    URL:            "https://example.com/file.pdf",
+    OutputPath:     "/tmp/downloads/",
+    CreateDirs:     true,
+    MaxSizeBytes:   10 * 1024 * 1024, // 10 MB
+    ExpectedType:   "application/pdf",
+    VerifyMimeType: true,
+})
+fmt.Println(result.DownloadPath, result.Size)
+
+// Web search interface (implement for your search provider)
+type MySearcher struct{}
+func (s *MySearcher) Search(ctx context.Context, input *web.SearchInput) (*web.SearchOutput, error) {
+    // Call your search API...
+    return &web.SearchOutput{Items: items}, nil
+}
+
+// HTTP error handling with status codes and recoverability
+err := web.NewFetchError(503, fmt.Errorf("service unavailable"))
+err.IsRecoverable() // true (429, 500, 502, 503, 504 are recoverable)
+```
+
+## TUI Architecture
+
+### Application Interfaces
+
+Fullscreen apps implement `Application` (required) and optionally `EventHandler`,
+`Initializable`, and `Destroyable`:
+
+```go
+// Required - renders the UI
+type Application interface {
+    View() View
+}
+
+// Optional - handles events and returns async commands
+type EventHandler interface {
+    HandleEvent(event Event) []Cmd
+}
+
+// Optional - runs before the event loop starts
+type Initializable interface {
+    Init() error
+}
+
+// Optional - runs after the event loop exits
+type Destroyable interface {
+    Destroy()
+}
+```
+
+Thread safety: `View()`/`LiveView()` and `HandleEvent()` are NEVER called
+concurrently — both fullscreen and InlineApp runtimes run them sequentially on
+one goroutine. Do not use mutexes to protect app state (see InlineApp example
+comments for why `Print()` + mutexes deadlock).
+
+### Event System
+
+All events implement the `Event` interface:
+
+```go
+type Event interface {
+    Timestamp() time.Time
+}
+```
+
+Built-in event types:
+
+| Event         | Fields                                           | Description                |
+| ------------- | ------------------------------------------------ | -------------------------- |
+| `KeyEvent`    | `Rune rune, Key Key, Shift bool`                 | Keyboard input             |
+| `MouseEvent`  | `X, Y int, Button MouseButton, Type MouseAction` | Mouse input                |
+| `TickEvent`   | `Time time.Time, Frame uint64`                   | Periodic timer (from FPS)  |
+| `ResizeEvent` | `Time time.Time, Width, Height int`               | Terminal resize            |
+| `QuitEvent`   | `Time time.Time`                                 | Shutdown signal            |
+| `ErrorEvent`  | `Time time.Time, Err error, Cause string`        | Async command error        |
+| `BatchEvent`  | `Time time.Time, Events []Event`                 | Multiple events together   |
+
+Custom events must implement `Timestamp() time.Time`:
+
+```go
+type DataLoadedEvent struct {
+    Time time.Time
+    Data []byte
+}
+
+func (e DataLoadedEvent) Timestamp() time.Time { return e.Time }
+```
+
+### Key Constants
+
+Arrow keys use the `KeyArrow` prefix (NOT `KeyUp`/`KeyDown`):
+
+```go
+KeyArrowUp, KeyArrowDown, KeyArrowLeft, KeyArrowRight
+KeyEnter, KeyTab, KeyBackspace, KeyEscape, KeyDelete, KeyInsert
+KeyHome, KeyEnd, KeyPageUp, KeyPageDown
+KeyF1 through KeyF12
+KeyCtrlA through KeyCtrlZ
+KeyUnknown  // for printable rune-only events
+```
+
+`KeyEvent` fields: `Rune` holds the character (e.g. `'q'`), `Key` holds the
+special key constant, `Shift` is true for shift+key combos. For printable
+characters, `Key == KeyUnknown` and `Rune != 0`.
+
+### Commands (Async Operations)
+
+`Cmd` is a function that runs in a background goroutine and returns an event:
+
+```go
+type Cmd func() Event
+```
+
+**Thread safety:** Cmd goroutines run concurrently with the event loop. They
+may safely read app fields that were set before the Cmd was returned (like
+config values, URLs, counts), but must **never write** to app state directly —
+even simple bool or int assignments are data races. Use `SendEvent()` to
+deliver all state changes back to `HandleEvent`, where mutations are safe.
+
+Return commands from `HandleEvent` to run async work:
+
+```go
+func (app *App) fetchData() tui.Cmd {
+    return func() tui.Event {
+        // Runs in a goroutine - do HTTP requests, file I/O, etc.
+        resp, err := http.Get("https://api.example.com/data")
+        if err != nil {
+            return ErrorEvent{Time: time.Now(), Err: err}
+        }
+        defer resp.Body.Close()
+        data, err := io.ReadAll(resp.Body)
+        if err != nil {
+            return ErrorEvent{Time: time.Now(), Err: err}
+        }
+        return DataLoadedEvent{Time: time.Now(), Data: data}
+    }
+}
+
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
+    switch e := event.(type) {
+    case tui.KeyEvent:
+        if e.Rune == 'r' {
+            app.loading = true
+            return []tui.Cmd{app.fetchData()}
+        }
+    case DataLoadedEvent:
+        app.loading = false
+        app.data = e.Data
+    }
+    return nil
+}
+```
+
+Built-in command helpers:
+
+```go
+tui.Quit()                          // Exit the application
+tui.Tick(duration)                  // Sleep then return TickEvent
+tui.After(duration, func())         // Sleep, run func, return TickEvent
+tui.Batch(cmds...)                  // Run multiple commands in parallel (returns []Cmd)
+tui.Sequence(cmds...)               // Run commands sequentially (returns Cmd)
+tui.None()                          // Empty command list (returns nil)
+```
+
+### Runtime Options
+
+```go
+tui.Run(app,
+    tui.WithFPS(60),                // Frame rate for TickEvents (0 = no ticks)
+    tui.WithMouseTracking(true),    // Enable mouse events
+    tui.WithAlternateScreen(true),  // Use alternate screen buffer (default: true)
+    tui.WithBracketedPaste(true),   // Enable bracketed paste mode
+    tui.WithPasteTabWidth(4),       // Convert tabs to spaces in pasted text
+)
+```
+
+## Example: TUI with Async Fetching
+
+A fullscreen app that fetches a URL and displays it as Markdown. Demonstrates
+the Cmd pattern for async operations, TickEvent for loading animation, and
+keyboard event handling:
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
+    "github.com/deepnoodle-ai/wonton/fetch"
+    "github.com/deepnoodle-ai/wonton/tui"
+)
+
+type PageLoadedEvent struct {
+    Time     time.Time
+    Markdown string
+    Title    string
+    Err      error
+}
+
+func (e PageLoadedEvent) Timestamp() time.Time { return e.Time }
+
+type App struct {
+    fetcher     *fetch.HTTPFetcher
+    url         string
+    markdown    string
+    scrollY     int
+    loading     bool
+    errMsg      string
+    frame       uint64
+    fetchQueued bool
+}
+
+func (app *App) View() tui.View {
+    var content tui.View
+    if app.loading {
+        content = tui.Stack(
+            tui.Spacer(),
+            tui.Loading(app.frame).Label("Fetching..."),
+            tui.Spacer(),
+        ).Align(tui.AlignCenter)
+    } else if app.errMsg != "" {
+        content = tui.Text("Error: %s", app.errMsg).Error()
+    } else {
+        content = tui.Markdown(app.markdown, &app.scrollY)
+    }
+
+    return tui.Stack(
+        tui.HeaderBar(fmt.Sprintf(" %s", app.url)),
+        tui.Stack(content).Flex(1),
+        tui.StatusBar(" [r] reload  [j/k] scroll  [q] quit"),
+    )
+}
+
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
+    switch e := event.(type) {
+    case PageLoadedEvent:
+        app.loading = false
+        if e.Err != nil {
+            app.errMsg = e.Err.Error()
+        } else {
+            app.markdown = e.Markdown
+            app.scrollY = 0
+        }
+    case tui.TickEvent:
+        app.frame = e.Frame
+        if app.fetchQueued {
+            app.fetchQueued = false
+            return []tui.Cmd{app.fetchPage()}
+        }
+    case tui.KeyEvent:
+        switch {
+        case e.Rune == 'q' || e.Key == tui.KeyCtrlC:
+            return []tui.Cmd{tui.Quit()}
+        case e.Rune == 'r':
+            return []tui.Cmd{app.fetchPage()}
+        case e.Rune == 'j' || e.Key == tui.KeyArrowDown:
+            app.scrollY++
+        case e.Rune == 'k' || e.Key == tui.KeyArrowUp:
+            app.scrollY--
+        }
+    }
+    return nil
+}
+
+func (app *App) fetchPage() tui.Cmd {
+    app.loading = true
+    return func() tui.Event {
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer cancel()
+        resp, err := app.fetcher.Fetch(ctx, &fetch.Request{
+            URL:             app.url,
+            Formats:         []string{"markdown"},
+            OnlyMainContent: true,
+        })
+        if err != nil {
+            return PageLoadedEvent{Time: time.Now(), Err: err}
+        }
+        return PageLoadedEvent{Time: time.Now(), Markdown: resp.Markdown, Title: resp.Metadata.Title}
+    }
+}
+
+func main() {
+    app := &App{
+        fetcher:     fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{Timeout: 30 * time.Second}),
+        url:         "https://example.com",
+        loading:     true,
+        fetchQueued: true, // Trigger fetch on first TickEvent
+    }
+    if err := tui.Run(app, tui.WithFPS(10)); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+**Important:** `Init()` returns `error`, not `[]Cmd`. You cannot return commands
+from Init. To trigger an initial async operation, either:
+1. Set a flag (like `fetchQueued`) and return the command from the first
+   `TickEvent` handler (requires `WithFPS` > 0), or
+2. Start a goroutine in Init that sends an event via SendEvent.
+
+## Example: Inline Application
+
+InlineApp splits the terminal into two zones: normal scrollback on top, and a
+small live-updating region pinned at the bottom. Scrollback content (added via
+`Print()`/`Printf()`) streams upward and remains in terminal history after exit.
+The live region (rendered by `LiveView()`) updates in-place each frame — use it
+for status dashboards, progress bars, spinners, and input prompts. This is NOT
+fullscreen; it coexists with normal terminal output. Ideal for build tools,
+chat interfaces, REPLs, and any tool that mixes streaming output with live status.
+
+Inline apps implement `InlineApplication` (with `LiveView()`) instead of
+`Application` (with `View()`):
+
+```go
+type InlineApplication interface {
+    LiveView() View  // Renders the live region (updated in place)
+}
+```
+
+Use `InlineApp.Print(view View)` or `Printf(format, args...)` to add content
+to scrollback above the live region. **Important:** `Printf` outputs plain text
+only — ANSI escape codes will appear as raw text. For colored or styled
+scrollback content, use `Print(view)` which renders a full `tui.View` at the
+current terminal width. `Print()` renders views statically (at frame 0) — text
+animations like `.Animate(Rainbow(...))` will appear as a single frozen frame.
+Use animations only in `LiveView()`, where they update each tick:
+
+```go
+// Plain text scrollback
+app.runner.Printf("Round %d complete", round)
+
+// Styled scrollback — use Print(view) for colors and formatting
+app.runner.Print(tui.Group(
+    tui.Text("✓").FgRGB(60, 220, 60),
+    tui.Text(" 200  "),
+    tui.Text("143ms").FgRGB(30, 255, 0),
+    tui.Text("  https://example.com"),
+).Gap(0))
+```
+
+InlineApp supports the same Cmd pattern as fullscreen apps — return `[]tui.Cmd`
+from `HandleEvent` to run async operations. Use `SendEvent(event Event)` from
+within Cmd goroutines to stream intermediate results back to the event loop
+(thread-safe). **Never write to app state from a Cmd goroutine** — even
+`app.loading = true` is a data race. Instead, send an event and handle the
+state change in `HandleEvent`.
+
+```go
+type ItemEvent struct {
+    Time time.Time
+    Name string
+}
+
+func (e ItemEvent) Timestamp() time.Time { return e.Time }
+
+type DoneEvent struct {
+    Time time.Time
+}
+
+func (e DoneEvent) Timestamp() time.Time { return e.Time }
+
+type App struct {
+    runner      *tui.InlineApp
+    count       int
+    frame       uint64  // only needed for Loading() spinner; other animations are automatic
+    processing  bool
+    fetchQueued bool    // triggers initial Cmd on first TickEvent (Init can't return Cmds)
+}
+
+// No mutexes! The runtime calls LiveView() and HandleEvent() sequentially —
+// never concurrently. Mutexes would deadlock: HandleEvent → Print() →
+// re-renders LiveView() synchronously, so both would try to acquire the lock.
+func (app *App) LiveView() tui.View {
+    var status tui.View  // use tui.View (not *textView) since Loading returns a different type
+    if app.processing {
+        status = tui.Loading(app.frame).Label("Working...")
+    } else {
+        status = tui.Text("Done: %d items", app.count).Fg(tui.ColorGreen)
+    }
+    return tui.Stack(
+        tui.Divider(),
+        status,
+        tui.Text(" Press q to quit").Dim(),
+        tui.Divider(),
+    )
+}
+
+func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
+    switch e := event.(type) {
+    case tui.TickEvent:
+        app.frame = e.Frame
+        if app.fetchQueued {
+            app.fetchQueued = false
+            app.processing = true
+            return []tui.Cmd{app.processItems()}
+        }
+    case ItemEvent:
+        app.count++
+        // Print() adds styled content to scrollback above the live region
+        app.runner.Print(tui.Text("  Got: %s", e.Name).Fg(tui.ColorCyan))
+    case DoneEvent:
+        app.processing = false
+    case tui.KeyEvent:
+        if e.Rune == 'q' || e.Key == tui.KeyCtrlC {
+            return []tui.Cmd{tui.Quit()}
+        }
+    }
+    return nil
+}
+
+// processItems returns a Cmd — the runtime runs it in a goroutine automatically.
+// Use SendEvent to stream intermediate results back to HandleEvent. The Cmd's
+// return value delivers the final event.
+func (app *App) processItems() tui.Cmd {
+    return func() tui.Event {
+        for _, name := range []string{"alpha", "beta", "gamma"} {
+            time.Sleep(500 * time.Millisecond)
+            app.runner.SendEvent(ItemEvent{Time: time.Now(), Name: name})
+        }
+        return DoneEvent{Time: time.Now()}
+    }
+}
+
+func main() {
+    app := &App{fetchQueued: true}
+    app.runner = tui.NewInlineApp(tui.InlineAppConfig{
+        FPS: 30,  // 30+ for smooth animations; 10 is enough for basic status updates
+    })
+    // InlineApp requires an interactive terminal (stdin must be a TTY).
+    // It will fail with "stdin is not a terminal" when piped.
+    if err := app.runner.Run(app); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+InlineApp vs fullscreen `tui.Run()`:
+
+| Feature          | `tui.Run()` (fullscreen)          | `InlineApp`                          |
+| ---------------- | --------------------------------- | ------------------------------------ |
+| Screen mode      | Alternate screen (full takeover)  | Inline (coexists with scrollback)    |
+| App interface    | `View() View`                     | `LiveView() View`                    |
+| Output           | View-only                         | `Print(View)`, `Printf()` to scroll |
+| Terminal history | Cleared on exit                   | Preserved                            |
+| Best for         | Full TUI apps, dashboards         | Chat, logs, REPLs, build tools       |
+
+Keep inline app live regions small (status bars, input prompts). For large
+scrollable content like Markdown documents, use fullscreen `tui.Run()`.
+
+## Key Patterns
+
+- **TUI apps** implement `View() tui.View` and optionally `HandleEvent(tui.Event) []tui.Cmd`. Call `tui.Run(&app)` to start. Return `tui.Quit()` to exit.
+- **Inline apps** implement `LiveView() tui.View`. Create with `tui.NewInlineApp(tui.InlineAppConfig{})` and call `runner.Run(&app)`. Use `FPS: 30` or higher for smooth animations; `FPS: 10` suffices for basic status updates.
+- **Async operations** return a `tui.Cmd` (a `func() tui.Event`) from `HandleEvent`. The runtime runs it in a goroutine and delivers the result event. Use `SendEvent` inside Cmd goroutines to stream intermediate results.
+- **Custom events** must implement `Timestamp() time.Time` to satisfy the `tui.Event` interface.
+- **InlineApp scrollback**: `Print(view)` for styled output, `Printf()` for plain text. Animations only work in `LiveView()`, not in `Print()` output.
+- **CLI apps** use a fluent builder: `cli.New("name").Command("cmd").Flags(...).Run(handler)`. Call `app.Execute()`.
+- **Single-command CLIs** (no subcommands): use `app.Main()` to get the root command, then chain `.Args()`, `.Flags()`, `.Run()`: `cli.New("name").Main().Args("url").Flags(cli.Int("timeout", "t").Default(30)).Run(handler)`. Alternatively, call `Args()`, `GlobalFlags()`, and `Run()` directly on the app.
+- **CLI errors**: Return `cli.Error("message").Hint("suggestion")` or `cli.Errorf("failed: %s", err).Detail("key: %s", val).Code("ERR_FOO")` from Run handlers. Use `cli.Exit(code)` for a specific exit code. Check errors with `cli.IsHelpRequested(err)` and `cli.GetExitCode(err)`.
+- **Layout** uses `tui.Stack` (vertical) and `tui.Group` (horizontal). Style with `.Fg()`, `.Bg()`, `.Bold()`, `.Dim()`, `.Padding()`, `.Gap()`.
+- **Colors**: `.Fg(c Color)` accepts named constants (`tui.ColorRed`, `tui.ColorGreen`, etc.). For RGB colors, use `.FgRGB(r, g, b uint8)` or `.BgRGB(r, g, b uint8)` instead. Text also supports semantic styles: `.Success()`, `.Error()`, `.Warning()`, `.Info()`, `.Muted()`, `.Hint()`.
+- **Positional args**: Access with `ctx.Arg(0)` for a single arg or `ctx.Args()` (returns `[]string`) for variadic args declared with `Args("files...")`. `ctx.NArg()` returns the count.
+- **Flags** are type-safe: `cli.String("name", "n")`, `cli.Bool(...)`, `cli.Int(...)`. Read with `ctx.String("name")`, `ctx.Bool(...)`, `ctx.Int(...)`.
+- The `cli` and `tui` packages compose together: a CLI command's Run handler can call `tui.Run()` for interactive mode.
+
+## Running Examples
+
+```bash
+go run ./examples/cli/basic --help
+go run ./examples/tui/counter
+go run ./examples/tui/input_forms
+go run ./examples/tui/markdown
+go run ./examples/tui/inline_counter
+go run ./examples/tui/inline_chat
+go run ./examples/browser https://example.com
+go run ./examples/crawl https://example.com
+go run ./examples/gitscan
+go run ./examples/webwatch https://example.com
+```
