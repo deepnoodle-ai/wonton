@@ -99,6 +99,50 @@ func main() {
 }
 ```
 
+## Example: Single-Command CLI
+
+For tools with no subcommands, use `app.Main()` to configure the root command directly:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/deepnoodle-ai/wonton/cli"
+)
+
+func main() {
+    app := cli.New("urlping").
+        Description("Ping URLs and show live results").
+        Version("1.0.0")
+
+    app.Main().
+        Args("urls...").
+        Flags(
+            cli.Int("count", "n").Default(5).Help("Number of rounds"),
+            cli.Int("timeout", "t").Default(10).Help("Per-request timeout in seconds"),
+        ).
+        Run(func(ctx *cli.Context) error {
+            urls := ctx.Args()
+            if len(urls) == 0 {
+                return cli.Error("at least one URL is required").Hint("urlping https://example.com")
+            }
+            fmt.Printf("Pinging %d URLs, %d rounds\n", len(urls), ctx.Int("count"))
+            return nil
+        })
+
+    if err := app.Execute(); err != nil {
+        if cli.IsHelpRequested(err) {
+            os.Exit(0)
+        }
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(cli.GetExitCode(err))
+    }
+}
+```
+
 ## Example: Declarative TUI
 
 Build terminal UIs with a declarative View/HandleEvent pattern:
@@ -513,13 +557,17 @@ recorder.RecordOutput("file1.txt  file2.go\n")
 recorder.RecordInput("q\n")  // record user input
 recorder.Close()             // flush and close
 
-// Record an interactive PTY session
+// Record an interactive PTY session.
+// The child's PTY output is automatically piped to the parent's stdout.
+// SessionOptions also accepts Env ([]string) for environment variables.
 session, _ := termsession.NewSession(termsession.SessionOptions{
     Command: []string{"bash"},
     Dir:     "/home/user",
+    Env:     append(os.Environ(), "MY_VAR=1"),
 })
-session.Record("session.cast", termsession.RecordingOptions{Title: "Shell Session"})
-session.Wait()
+// Record() returns an error if the file can't be created.
+_ = session.Record("session.cast", termsession.RecordingOptions{Title: "Shell Session"})
+session.Wait()  // blocks until the child process exits
 session.Close()
 
 // Play back a recording
@@ -744,6 +792,12 @@ characters, `Key == KeyUnknown` and `Rune != 0`.
 type Cmd func() Event
 ```
 
+**Thread safety:** Cmd goroutines run concurrently with the event loop. They
+may safely read app fields that were set before the Cmd was returned (like
+config values, URLs, counts), but must **never write** to app state directly —
+even simple bool or int assignments are data races. Use `SendEvent()` to
+deliver all state changes back to `HandleEvent`, where mutations are safe.
+
 Return commands from `HandleEvent` to run async work:
 
 ```go
@@ -964,7 +1018,9 @@ app.runner.Print(tui.Group(
 InlineApp supports the same Cmd pattern as fullscreen apps — return `[]tui.Cmd`
 from `HandleEvent` to run async operations. Use `SendEvent(event Event)` from
 within Cmd goroutines to stream intermediate results back to the event loop
-(thread-safe). Do not use standalone goroutines that directly mutate app state.
+(thread-safe). **Never write to app state from a Cmd goroutine** — even
+`app.loading = true` is a data race. Instead, send an event and handle the
+state change in `HandleEvent`.
 
 ```go
 type ItemEvent struct {
