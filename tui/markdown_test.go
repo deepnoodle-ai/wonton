@@ -297,6 +297,84 @@ func TestMarkdownRenderer_MaxWidth(t *testing.T) {
 	assert.Greater(t, len(result.Lines), 2, "Expected text to wrap into multiple lines")
 }
 
+func TestMarkdownRenderer_DefaultMaxWidthIsZero(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	assert.Equal(t, 0, renderer.MaxWidth, "Default MaxWidth should be 0 (no limit)")
+}
+
+func TestMarkdownRenderer_NoMaxWidthRendersWithoutWrapping(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	// A long line should not be wrapped when MaxWidth is 0
+	long := strings.Repeat("word ", 30)
+	result, err := renderer.Render(long)
+	assert.NoError(t, err)
+
+	// Count content lines (excluding blank lines)
+	contentLines := 0
+	for _, line := range result.Lines {
+		if len(line.Segments) > 0 {
+			contentLines++
+		}
+	}
+	assert.Equal(t, 1, contentLines, "With no MaxWidth, text should not be wrapped")
+}
+
+func TestMarkdownView_DefaultMaxWidthIsZero(t *testing.T) {
+	scrollY := 0
+	view := Markdown("test", &scrollY)
+	assert.Equal(t, 0, view.maxWidth, "Default maxWidth should be 0 (no limit)")
+}
+
+func TestMarkdownView_SizeReturnsIntrinsicWidth(t *testing.T) {
+	// When no container width is provided, size() should measure the content
+	// instead of returning 0
+	scrollY := 0
+	view := Markdown("Hello, World!", &scrollY)
+	w, h := view.size(0, 0)
+	assert.Greater(t, w, 0, "Width should be > 0 even without a container width")
+	assert.Greater(t, h, 0, "Height should be > 0")
+}
+
+func TestMarkdownView_SizeUsesContainerWidth(t *testing.T) {
+	scrollY := 0
+	view := Markdown("Short text", &scrollY)
+	w, _ := view.size(120, 0)
+	assert.Equal(t, 120, w, "Width should match container width")
+}
+
+func TestMarkdownView_ExplicitMaxWidthConstrains(t *testing.T) {
+	scrollY := 0
+	long := strings.Repeat("word ", 30)
+	view := Markdown(long, &scrollY).MaxWidth(40)
+	view.renderContent(120)
+
+	// Verify lines are wrapped at MaxWidth, not container width
+	for _, line := range view.rendered.Lines {
+		lw := line.Indent
+		for _, seg := range line.Segments {
+			lw += runewidth.StringWidth(seg.Text)
+		}
+		if len(line.Segments) > 0 {
+			assert.LessOrEqual(t, lw, 40, "Lines should wrap at MaxWidth")
+		}
+	}
+}
+
+func TestMarkdownRenderer_HorizontalRuleFallbackWidth(t *testing.T) {
+	// When MaxWidth is 0, horizontal rules should still render with a
+	// reasonable width (the view sets MaxWidth before rendering, but
+	// standalone renderer usage needs a fallback)
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render("---")
+	assert.NoError(t, err)
+
+	// The rule should render with some width, not be empty
+	output := renderToPlainText(result)
+	ruleChars := strings.Count(output, renderer.Theme.HorizontalRuleChar)
+	assert.Greater(t, ruleChars, 0, "Horizontal rule should render with fallback width")
+}
+
 func TestMarkdownView_BasicRendering(t *testing.T) {
 	scrollY := 0
 	view := Markdown("# Test\n\nParagraph", &scrollY)

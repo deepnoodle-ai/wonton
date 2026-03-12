@@ -1,0 +1,5 @@
+This is a paragraph that should wrap at
+40 characters even though the container
+is 80 characters wide.
+
+

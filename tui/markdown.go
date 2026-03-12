@@ -97,7 +97,7 @@ type MarkdownRenderer struct {
 func NewMarkdownRenderer() *MarkdownRenderer {
 	return &MarkdownRenderer{
 		Theme:    DefaultMarkdownTheme(),
-		MaxWidth: 80,
+		MaxWidth: 0,
 		TabWidth: 4,
 		parser:   goldmark.New(goldmark.WithExtensions(extension.Table)),
 	}
@@ -269,18 +269,10 @@ func (mr *MarkdownRenderer) renderHeading(node *ast.Heading, ctx *renderContext)
 func (mr *MarkdownRenderer) renderParagraph(node *ast.Paragraph, ctx *renderContext) {
 	segments := mr.extractInlineSegments(node, ctx)
 
-	// Word wrap if needed
-	if mr.MaxWidth > 0 {
-		lines := mr.wrapSegments(segments, mr.MaxWidth-ctx.indent)
-		for _, line := range lines {
-			ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-				Segments: line,
-				Indent:   ctx.indent,
-			})
-		}
-	} else {
+	// Word wrap and handle hard line breaks
+	for _, line := range mr.wrapSegments(segments, mr.MaxWidth-ctx.indent) {
 		ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-			Segments: segments,
+			Segments: line,
 			Indent:   ctx.indent,
 		})
 	}
@@ -333,54 +325,26 @@ func (mr *MarkdownRenderer) renderListItem(node *ast.ListItem, ctx *renderContex
 			// Add marker before first element
 			segments := []StyledSegment{{Text: marker, Style: NewStyle()}}
 
-			// Extract inline segments from the first child
+			// Extract inline segments from the first child and wrap with marker
+			var hasInline bool
 			if para, ok := child.(*ast.Paragraph); ok {
-				paraSegments := mr.extractInlineSegments(para, ctx)
-				segments = append(segments, paraSegments...)
-
-				// Wrap the combined marker + content if needed
-				if mr.MaxWidth > 0 {
-					lines := mr.wrapSegments(segments, mr.MaxWidth-ctx.indent)
-					for i, line := range lines {
-						indent := ctx.indent
-						if i > 0 {
-							// Continuation lines get extra indent to align with text after marker
-							indent += markerWidth
-						}
-						ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-							Segments: line,
-							Indent:   indent,
-						})
-					}
-				} else {
-					ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-						Segments: segments,
-						Indent:   ctx.indent,
-					})
-				}
+				segments = append(segments, mr.extractInlineSegments(para, ctx)...)
+				hasInline = true
 			} else if textBlock, ok := child.(*ast.TextBlock); ok {
-				// TextBlock is used for simple list items
-				textSegments := mr.extractInlineSegments(textBlock, ctx)
-				segments = append(segments, textSegments...)
+				segments = append(segments, mr.extractInlineSegments(textBlock, ctx)...)
+				hasInline = true
+			}
 
-				// Wrap the combined marker + content if needed
-				if mr.MaxWidth > 0 {
-					lines := mr.wrapSegments(segments, mr.MaxWidth-ctx.indent)
-					for i, line := range lines {
-						indent := ctx.indent
-						if i > 0 {
-							// Continuation lines get extra indent to align with text after marker
-							indent += markerWidth
-						}
-						ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-							Segments: line,
-							Indent:   indent,
-						})
+			if hasInline {
+				for i, line := range mr.wrapSegments(segments, mr.MaxWidth-ctx.indent) {
+					indent := ctx.indent
+					if i > 0 {
+						// Continuation lines align with text after marker
+						indent += markerWidth
 					}
-				} else {
 					ctx.result.Lines = append(ctx.result.Lines, StyledLine{
-						Segments: segments,
-						Indent:   ctx.indent,
+						Segments: line,
+						Indent:   indent,
 					})
 				}
 			} else {
@@ -479,7 +443,9 @@ func (mr *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, ctx *renderCo
 
 func (mr *MarkdownRenderer) renderHorizontalRule(ctx *renderContext) {
 	width := mr.MaxWidth
-	if width == 0 {
+	if width <= 0 {
+		// When no max width is set, use a reasonable default for standalone rendering.
+		// In a view context, MaxWidth will be set to the container width before rendering.
 		width = 80
 	}
 
@@ -708,9 +674,43 @@ func lastSegmentEndsWithOpening(line []StyledSegment) bool {
 	return false
 }
 
+// splitSegmentsAtNewlines splits segments containing hard line breaks (\n)
+// into separate lines. This is used when no max width wrapping is configured.
+func splitSegmentsAtNewlines(segments []StyledSegment) [][]StyledSegment {
+	var lines [][]StyledSegment
+	var currentLine []StyledSegment
+	for _, seg := range segments {
+		if !strings.Contains(seg.Text, "\n") {
+			currentLine = append(currentLine, seg)
+			continue
+		}
+		parts := strings.Split(seg.Text, "\n")
+		for i, part := range parts {
+			if i > 0 {
+				lines = append(lines, currentLine)
+				currentLine = nil
+			}
+			if part != "" {
+				currentLine = append(currentLine, StyledSegment{
+					Text:      part,
+					Style:     seg.Style,
+					Hyperlink: seg.Hyperlink,
+				})
+			}
+		}
+	}
+	if len(currentLine) > 0 {
+		lines = append(lines, currentLine)
+	}
+	if len(lines) == 0 {
+		return [][]StyledSegment{segments}
+	}
+	return lines
+}
+
 func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int) [][]StyledSegment {
 	if maxWidth <= 0 {
-		return [][]StyledSegment{segments}
+		return splitSegmentsAtNewlines(segments)
 	}
 
 	var lines [][]StyledSegment
