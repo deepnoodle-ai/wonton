@@ -211,13 +211,22 @@ func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
 		cfg = cfgs[0]
 	}
 	cfg = cfg.withDefaults()
+	live := NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output})
+
+	// Set max height to terminal height so the live region never exceeds it.
+	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
+		if _, h, err := term.GetSize(fd); err == nil && h > 0 {
+			live.SetMaxHeight(h)
+		}
+	}
+
 	return &InlineApp{
 		config:   cfg,
 		events:   make(chan Event, 100),
 		cmds:     make(chan Cmd, 100),
 		done:     make(chan struct{}),
 		output:   cfg.Output,
-		live:     NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output}),
+		live:     live,
 		focusMgr: NewFocusManager(),
 	}
 }
@@ -457,6 +466,9 @@ func (r *InlineApp) processEvent(event Event) {
 		r.mu.Lock()
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
+		if resize.Height > 0 {
+			r.live.SetMaxHeight(resize.Height)
+		}
 		r.mu.Unlock()
 	}
 
@@ -698,6 +710,13 @@ func (r *InlineApp) commandExecutor() {
 //
 // This method temporarily clears the live region, prints the view to scrollback,
 // and restores the live region below.
+//
+// Important: Print triggers a re-render of the live region. After writing
+// scrollback content, Print calls UpdateNoSync(LiveView()) to redraw the live
+// view. Any app state that affects LiveView() output must be set before calling
+// Print, not after. Changing state between a Print call and the next render tick
+// causes the two frames to disagree on live region height, which produces ghost
+// lines or other visual artifacts.
 //
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.

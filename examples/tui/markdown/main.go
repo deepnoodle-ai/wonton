@@ -81,6 +81,18 @@ The markdown renderer supports customizable themes. You can change:
 - List markers
 - And more!
 
+## Wide Table Example
+
+The following table tests rendering of wide content that exceeds 120 characters in some rows:
+
+| Package         | Description                                    | Status      | Maintainer              | Last Updated | Notes                                                                                      |
+| --------------- | ---------------------------------------------- | ----------- | ----------------------- | ------------ | ------------------------------------------------------------------------------------------ |
+| **assert**      | Test assertions with diffs                     | Stable      | @curtis                 | 2026-03-01   | Supports deep equality via reflect.DeepEqual for structs, maps, and slices                 |
+| **cli**         | Commands, flags, config, middleware            | Stable      | @curtis                 | 2026-02-15   | Includes automatic help generation, shell completions, and environment variable binding     |
+| **tui**         | Declarative TUI with layout engine             | Active Dev  | @curtis                 | 2026-03-12   | Flexbox-inspired layout with markdown rendering, scrollable views, and inline app embedding |
+| **crawler**     | Web crawler with caching and rate limiting     | Beta        | @deepnoodle-bot         | 2026-01-20   | Configurable concurrency, robots.txt compliance, and persistent disk-based response caching |
+| **schema**      | JSON Schema types and generation for LLM tools | Stable      | @curtis                 | 2026-02-28   | Auto-generates JSON Schema from Go structs with support for descriptions and enum values    |
+
 ## Controls
 
 - **Arrow Up/Down**: Scroll the document

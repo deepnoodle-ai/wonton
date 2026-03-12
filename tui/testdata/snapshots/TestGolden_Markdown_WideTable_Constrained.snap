@@ -1,0 +1,10 @@
+┌───────┬─────────────────────────────┬─────────┬──────────┐
+│ Pack… │ Description                 │ Status  │ Maintai… │
+├───────┼─────────────────────────────┼─────────┼──────────┤
+│ asse… │ Test assertions with diffs  │ Stable  │ @curtis  │
+│ cli   │ Commands, flags, config, m… │ Stable  │ @curtis  │
+│ tui   │ Declarative TUI with layou… │ Active… │ @curtis  │
+└───────┴─────────────────────────────┴─────────┴──────────┘
+
+
+

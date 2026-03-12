@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/mattn/go-runewidth"
 )
 
 func TestMarkdownRenderer_BasicFormatting(t *testing.T) {
@@ -727,6 +728,168 @@ More text after the table.`
 	assert.Contains(t, output, "Col1")
 	assert.Contains(t, output, "Col2")
 	assert.Contains(t, output, "More text after the table")
+}
+
+func TestMarkdownRenderer_WideTableConstrainedToMaxWidth(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(60)
+
+	md := `| Name | Description | Status |
+| --- | --- | --- |
+| alpha | A very long description that exceeds normal column width | Active |
+| beta | Another long description for testing purposes here | Inactive |`
+
+	result, err := renderer.Render(md)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// Every line should fit within MaxWidth
+	for i, line := range result.Lines {
+		width := 0
+		for _, seg := range line.Segments {
+			width += runewidth.StringWidth(seg.Text)
+		}
+		width += line.Indent
+		if len(line.Segments) > 0 {
+			assert.LessOrEqual(t, width, 60,
+				"line %d exceeds MaxWidth: width=%d", i, width)
+		}
+	}
+
+	// Table content should still be present (possibly truncated)
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Description")
+	assert.Contains(t, output, "Status")
+	// Box drawing characters should be present
+	assert.Contains(t, output, "┌")
+	assert.Contains(t, output, "┘")
+}
+
+func TestMarkdownRenderer_TruncateSegments(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+
+	tests := []struct {
+		name     string
+		segments []StyledSegment
+		maxWidth int
+		wantText string
+	}{
+		{
+			name: "no truncation needed",
+			segments: []StyledSegment{
+				{Text: "Hello"},
+			},
+			maxWidth: 10,
+			wantText: "Hello",
+		},
+		{
+			name: "single segment truncated",
+			segments: []StyledSegment{
+				{Text: "Hello, World!"},
+			},
+			maxWidth: 8,
+			wantText: "Hello, …",
+		},
+		{
+			name: "multi segment truncated",
+			segments: []StyledSegment{
+				{Text: "Hello "},
+				{Text: "World!"},
+			},
+			maxWidth: 9,
+			wantText: "Hello Wo…",
+		},
+		{
+			name: "very narrow truncation",
+			segments: []StyledSegment{
+				{Text: "Hello"},
+			},
+			maxWidth: 2,
+			wantText: "H…",
+		},
+		{
+			name: "exact fit not truncated",
+			segments: []StyledSegment{
+				{Text: "Hello"},
+			},
+			maxWidth: 5,
+			wantText: "Hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := renderer.truncateSegments(tt.segments, tt.maxWidth)
+			var got strings.Builder
+			for _, seg := range result {
+				got.WriteString(seg.Text)
+			}
+			assert.Equal(t, tt.wantText, got.String())
+
+			// Verify result width doesn't exceed maxWidth
+			totalWidth := 0
+			for _, seg := range result {
+				totalWidth += runewidth.StringWidth(seg.Text)
+			}
+			assert.LessOrEqual(t, totalWidth, tt.maxWidth)
+		})
+	}
+}
+
+func TestMarkdownRenderer_TableMaxWidthSeparateFromMaxWidth(t *testing.T) {
+	// TableMaxWidth should control table constraining independently of MaxWidth
+	renderer := NewMarkdownRenderer()
+	renderer.MaxWidth = 40   // narrow text wrapping
+	renderer.TableMaxWidth = 80 // wide tables allowed
+
+	md := `| Package | Description | Status |
+| --- | --- | --- |
+| assert | Test assertions with diffs | Stable |
+| cli | Commands, flags, config, middleware | Active |`
+
+	result, err := renderer.Render(md)
+	assert.NoError(t, err)
+
+	// Table should respect TableMaxWidth (80), not MaxWidth (40)
+	for _, line := range result.Lines {
+		width := 0
+		for _, seg := range line.Segments {
+			width += runewidth.StringWidth(seg.Text)
+		}
+		width += line.Indent
+		if len(line.Segments) > 0 {
+			assert.LessOrEqual(t, width, 80)
+		}
+	}
+
+	// With wide TableMaxWidth, all content should be present without truncation
+	output := renderToPlainText(result)
+	assert.Contains(t, output, "Package")
+	assert.Contains(t, output, "Description")
+	assert.Contains(t, output, "Status")
+	assert.Contains(t, output, "Commands, flags, config, middleware")
+}
+
+func TestMarkdownRenderer_TableFitsWithinMaxWidth(t *testing.T) {
+	// A small table that naturally fits should not be modified
+	renderer := NewMarkdownRenderer()
+	renderer.WithMaxWidth(80)
+
+	md := `| A | B |
+| --- | --- |
+| 1 | 2 |`
+
+	result, err := renderer.Render(md)
+	assert.NoError(t, err)
+
+	output := renderToPlainText(result)
+	// Content should be present and not truncated
+	assert.Contains(t, output, "A")
+	assert.Contains(t, output, "B")
+	assert.Contains(t, output, "1")
+	assert.Contains(t, output, "2")
+	// Should NOT contain ellipsis since table fits
+	assert.NotContains(t, output, "…")
 }
 
 func TestMarkdownRenderer_LinksWithUnderscores(t *testing.T) {

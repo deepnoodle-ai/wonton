@@ -2747,6 +2747,47 @@ func TestGolden_Markdown_CodeBlock(t *testing.T) {
 	termtest.AssertScreen(t, screen)
 }
 
+func TestGolden_Markdown_Table(t *testing.T) {
+	// Small table that fits within width
+	scrollY := 0
+	content := `| Name | Status |
+|------|--------|
+| Alice | Active |
+| Bob | Pending |`
+	view := Markdown(content, &scrollY).MaxWidth(40).Height(8)
+	screen := SprintScreen(view, PrintConfig{Width: 40, Height: 8})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_WideTable_Constrained(t *testing.T) {
+	// Wide table that must be shrunk to fit within available width
+	scrollY := 0
+	content := `| Package | Description | Status | Maintainer |
+| --- | --- | --- | --- |
+| assert | Test assertions with diffs | Stable | @curtis |
+| cli | Commands, flags, config, middleware | Stable | @curtis |
+| tui | Declarative TUI with layout engine | Active Dev | @curtis |`
+	view := Markdown(content, &scrollY).MaxWidth(60).Height(10)
+	screen := SprintScreen(view, PrintConfig{Width: 60, Height: 10})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_WideTable_FullWidth(t *testing.T) {
+	// Table uses full terminal width when wider than text wrapping width.
+	// MaxWidth(40) controls paragraph wrapping but the table should expand
+	// to use the full 80-column layout width.
+	scrollY := 0
+	content := `Some text.
+
+| Package | Description | Status | Maintainer |
+| --- | --- | --- | --- |
+| assert | Test assertions with diffs | Stable | @curtis |
+| cli | Commands, flags, config | Stable | @curtis |`
+	view := Markdown(content, &scrollY).MaxWidth(40).Height(10)
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 10})
+	termtest.AssertScreen(t, screen)
+}
+
 // =============================================================================
 // DIFFVIEW TESTS
 // =============================================================================

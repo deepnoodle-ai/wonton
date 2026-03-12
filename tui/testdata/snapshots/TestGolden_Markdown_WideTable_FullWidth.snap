@@ -1,0 +1,10 @@
+Some text.
+
+┌─────────┬────────────────────────────┬────────┬────────────┐
+│ Package │ Description                │ Status │ Maintainer │
+├─────────┼────────────────────────────┼────────┼────────────┤
+│ assert  │ Test assertions with diffs │ Stable │ @curtis    │
+│ cli     │ Commands, flags, config    │ Stable │ @curtis    │
+└─────────┴────────────────────────────┴────────┴────────────┘
+
+
