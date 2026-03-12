@@ -86,10 +86,11 @@ func DefaultMarkdownTheme() MarkdownTheme {
 
 // MarkdownRenderer renders markdown content to styled terminal output
 type MarkdownRenderer struct {
-	Theme    MarkdownTheme
-	MaxWidth int // Maximum width for text wrapping (0 = no limit)
-	TabWidth int // Width of tab character in spaces
-	parser   goldmark.Markdown
+	Theme         MarkdownTheme
+	MaxWidth      int // Maximum width for text wrapping (0 = no limit)
+	TableMaxWidth int // Maximum width for tables (0 = use MaxWidth)
+	TabWidth      int // Width of tab character in spaces
+	parser        goldmark.Markdown
 }
 
 // NewMarkdownRenderer creates a new markdown renderer with the default theme
@@ -972,6 +973,45 @@ func (mr *MarkdownRenderer) renderTable(node *east.Table, ctx *renderContext) {
 		colWidths[i] += 2
 	}
 
+	// Constrain table width to available width
+	tableMax := mr.TableMaxWidth
+	if tableMax <= 0 {
+		tableMax = mr.MaxWidth
+	}
+	if tableMax > 0 {
+		numCols := len(colWidths)
+		// Total width = sum(colWidths) + numCols + 1 (for border characters)
+		borderWidth := numCols + 1
+		totalWidth := borderWidth
+		for _, w := range colWidths {
+			totalWidth += w
+		}
+
+		if totalWidth > tableMax {
+			available := tableMax - borderWidth
+			if available < numCols*3 { // minimum 3 chars per column (padding + 1 char)
+				available = numCols * 3
+			}
+
+			// Distribute available width proportionally
+			oldTotal := totalWidth - borderWidth
+			newWidths := make([]int, numCols)
+			remaining := available
+			for i := range colWidths {
+				if i == numCols-1 {
+					newWidths[i] = remaining
+				} else {
+					newWidths[i] = colWidths[i] * available / oldTotal
+					if newWidths[i] < 3 {
+						newWidths[i] = 3
+					}
+					remaining -= newWidths[i]
+				}
+			}
+			colWidths = newWidths
+		}
+	}
+
 	// Render top border: ┌──────┬──────┐
 	mr.renderTableBorder(ctx, colWidths, "┌", "─", "┬", "┐")
 
@@ -999,6 +1039,73 @@ func (mr *MarkdownRenderer) segmentsWidth(segments []StyledSegment) int {
 		width += runewidth.StringWidth(seg.Text)
 	}
 	return width
+}
+
+// truncateSegments truncates a slice of styled segments to fit within maxWidth,
+// appending an ellipsis if content was truncated.
+func (mr *MarkdownRenderer) truncateSegments(segments []StyledSegment, maxWidth int) []StyledSegment {
+	if maxWidth <= 0 {
+		return nil
+	}
+
+	// Check if content fits without truncation
+	if mr.segmentsWidth(segments) <= maxWidth {
+		return segments
+	}
+
+	// Reserve space for ellipsis
+	ellipsis := "…"
+	ellipsisWidth := runewidth.StringWidth(ellipsis)
+	targetWidth := maxWidth - ellipsisWidth
+	if targetWidth < 0 {
+		targetWidth = 0
+	}
+
+	var result []StyledSegment
+	remaining := targetWidth
+	truncated := false
+
+	for _, seg := range segments {
+		segWidth := runewidth.StringWidth(seg.Text)
+		if segWidth <= remaining {
+			result = append(result, seg)
+			remaining -= segWidth
+		} else {
+			// Truncate this segment
+			truncated = true
+			if remaining > 0 {
+				var truncText strings.Builder
+				w := 0
+				for _, r := range seg.Text {
+					rw := runewidth.RuneWidth(r)
+					if w+rw > remaining {
+						break
+					}
+					truncText.WriteRune(r)
+					w += rw
+				}
+				if truncText.Len() > 0 {
+					result = append(result, StyledSegment{
+						Text:      truncText.String(),
+						Style:     seg.Style,
+						Hyperlink: seg.Hyperlink,
+					})
+				}
+			}
+			break
+		}
+	}
+
+	if truncated {
+		// Add ellipsis with style from last segment
+		style := Style{}
+		if len(result) > 0 {
+			style = result[len(result)-1].Style
+		}
+		result = append(result, StyledSegment{Text: ellipsis, Style: style})
+	}
+
+	return result
 }
 
 // renderTableBorder renders a horizontal table border
@@ -1045,6 +1152,17 @@ func (mr *MarkdownRenderer) renderTableRow(ctx *renderContext, cells []tableCell
 
 		// Calculate content width and padding needed
 		contentWidth := mr.segmentsWidth(cellSegs)
+
+		// Truncate cell content if it exceeds available space (width - 2 for padding)
+		maxContent := width - 2
+		if maxContent < 1 {
+			maxContent = 1
+		}
+		if contentWidth > maxContent {
+			cellSegs = mr.truncateSegments(cellSegs, maxContent)
+			contentWidth = mr.segmentsWidth(cellSegs)
+		}
+
 		padding := width - contentWidth
 
 		// Apply alignment

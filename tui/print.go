@@ -288,6 +288,7 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 //	}
 type LivePrinter struct {
 	config       PrintConfig
+	maxHeight    int // Terminal height limit. 0 = unconstrained.
 	lastHeight   int
 	started      bool
 	frameCount   uint64
@@ -312,6 +313,14 @@ func NewLivePrinter(cfgs ...PrintConfig) *LivePrinter {
 // The next Update() will use the new width.
 func (lp *LivePrinter) SetWidth(w int) {
 	lp.config.Width = w
+}
+
+// SetMaxHeight sets the maximum height (in lines) for the live region.
+// When the view's natural height exceeds this limit, it is capped to prevent
+// the live region from exceeding the terminal height, which would corrupt
+// cursor positioning. 0 means unconstrained (the default).
+func (lp *LivePrinter) SetMaxHeight(h int) {
+	lp.maxHeight = h
 }
 
 // Update renders a new view, replacing the previous content in place.
@@ -351,9 +360,9 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		viewHeight = 1
 	}
 
-	height := lp.config.Height
-	if height == 0 {
-		height = viewHeight
+	renderHeight := lp.config.Height
+	if renderHeight == 0 {
+		renderHeight = viewHeight
 	}
 
 	// If we've already rendered, move cursor back up
@@ -375,9 +384,10 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		lp.started = true
 	}
 
-	// Create terminal buffer and render
+	// Create terminal buffer and render at the full (uncapped) height.
+	// This lets the view lay out all its content naturally.
 	var buf strings.Builder
-	terminal := NewTestTerminal(lp.config.Width, height, &buf)
+	terminal := NewTestTerminal(lp.config.Width, renderHeight, &buf)
 
 	frame, err := terminal.BeginFrame()
 	if err != nil {
@@ -390,12 +400,26 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		ctx = ctx.WithFocusManager(fm)
 	}
 	lp.frameCount++
-	view.size(lp.config.Width, height)
+	view.size(lp.config.Width, renderHeight)
 	view.render(ctx)
 	terminal.EndFrame(frame)
 
 	// Convert to individual lines for diffing
-	newLines := renderToLines(terminal, lp.config.Width, height)
+	allLines := renderToLines(terminal, lp.config.Width, renderHeight)
+
+	// Cap the displayed height to maxHeight to prevent the live region from
+	// exceeding the terminal. When capped, show the BOTTOM of the content
+	// so the most recent output (streaming text, latest tool call, input field)
+	// remains visible.
+	displayHeight := renderHeight
+	var newLines []string
+	if lp.maxHeight > 0 && displayHeight > lp.maxHeight {
+		displayHeight = lp.maxHeight
+		newLines = allLines[len(allLines)-displayHeight:]
+	} else {
+		newLines = allLines
+	}
+	height := displayHeight
 
 	// Build output with line-level diffing
 	var output strings.Builder

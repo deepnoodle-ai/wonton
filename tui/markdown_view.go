@@ -60,7 +60,14 @@ func (m *markdownView) renderContent(width int) {
 		return // use cached render
 	}
 
-	m.renderer.MaxWidth = width
+	// Use the configured maxWidth for paragraph text wrapping (readability),
+	// but allow tables to use the full available width.
+	wrapWidth := m.maxWidth
+	if width < wrapWidth {
+		wrapWidth = width
+	}
+	m.renderer.MaxWidth = wrapWidth
+	m.renderer.TableMaxWidth = width
 	rendered, err := m.renderer.Render(m.content)
 	if err != nil {
 		m.rendered = &RenderedMarkdown{
@@ -82,12 +89,12 @@ func (m *markdownView) renderContent(width int) {
 }
 
 func (m *markdownView) size(maxWidth, maxHeight int) (int, int) {
-	w := m.maxWidth
-	if maxWidth > 0 && w > maxWidth {
-		w = maxWidth
+	w := maxWidth
+	if w <= 0 {
+		w = m.maxWidth
 	}
 
-	// Render to get line count
+	// Render to get line count using the available width
 	m.renderContent(w)
 
 	h := m.height
@@ -159,8 +166,8 @@ func (m *markdownView) render(ctx *RenderContext) {
 				link.Text = seg.Text
 				ctx.PrintHyperlink(x, y, link)
 			} else {
-				// Render as styled text
-				ctx.PrintStyled(x, y, seg.Text, seg.Style)
+				// Render as styled text (truncated at frame edge)
+				ctx.PrintTruncated(x, y, seg.Text, seg.Style)
 			}
 
 			x += runewidth.StringWidth(seg.Text)

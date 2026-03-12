@@ -928,6 +928,20 @@ InlineApp minimizes flicker using:
 - **Synchronized output mode**: Terminal buffers changes and renders atomically (DEC 2026)
 - **Atomic Print**: Scrollback output and live region re-render happen as one operation
 
+### Common Gotchas
+
+**Print() re-renders the live region.** `Print()` isn't just a scrollback write — after printing, it calls `UpdateNoSync(LiveView())` to redraw the live view. This means any app state that affects `LiveView()` output must be settled *before* calling `Print()`. If you change state after `Print()`, the next render tick will see a different `LiveView()` height than the one `Print()` just drew, producing ghost lines at the bottom of the live region.
+
+```go
+// WRONG: state change after Print causes height mismatch
+a.printResults()    // Print() → UpdateNoSync(LiveView()) sees running=true (tall view)
+a.running = false   // next render() sees running=false (short view) → ghost lines
+
+// RIGHT: settle state before Print
+a.running = false   // LiveView() will now return the short view
+a.printResults()    // Print() → UpdateNoSync(LiveView()) sees running=false (short view)
+```
+
 ## Related Packages
 
 - [terminal](../terminal) - Low-level terminal control and ANSI sequences
