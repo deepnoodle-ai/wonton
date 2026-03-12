@@ -215,49 +215,6 @@ func (g *group) render(ctx *RenderContext) {
 		totalWidth += g.gap * (visibleCount - 1)
 	}
 
-	// If total exceeds available width, shrink children proportionally
-	// This ensures all children get fair space rather than clipping later ones
-	if totalWidth > width && totalWidth > 0 {
-		// Calculate scale factor, reserving space for gaps
-		gapSpace := 0
-		if visibleCount > 1 {
-			gapSpace = g.gap * (visibleCount - 1)
-		}
-		availableForChildren := width - gapSpace
-		if availableForChildren < 0 {
-			availableForChildren = 0
-		}
-		contentWidth := totalWidth - gapSpace
-		if contentWidth <= 0 {
-			contentWidth = 1
-		}
-
-		// Scale each child proportionally
-		usedWidth := 0
-		lastVisibleIdx := -1
-		for i := range g.childSizes {
-			if g.childSizes[i].X > 0 || g.childSizes[i].Y > 0 {
-				lastVisibleIdx = i
-			}
-		}
-		for i := range g.childSizes {
-			if g.childSizes[i].X == 0 && g.childSizes[i].Y == 0 {
-				continue
-			}
-			if i == lastVisibleIdx {
-				// Give remainder to last child to avoid rounding errors
-				g.childSizes[i].X = availableForChildren - usedWidth
-			} else {
-				scaledWidth := (g.childSizes[i].X * availableForChildren) / contentWidth
-				if scaledWidth < 1 && g.childSizes[i].X > 0 {
-					scaledWidth = 1 // Minimum 1 cell for visible children
-				}
-				g.childSizes[i].X = scaledWidth
-				usedWidth += scaledWidth
-			}
-		}
-	}
-
 	currentX := 0
 	renderedVisible := false
 
