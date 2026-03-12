@@ -1,0 +1,8 @@
+Wide Content
+
+This is a paragraph that should wrap at the container width, not at some arbitrary default like 80 characters. The text
+fills the available space.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• List items also fill the available width when no max width is configured

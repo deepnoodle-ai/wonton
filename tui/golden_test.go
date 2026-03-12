@@ -2788,6 +2788,50 @@ func TestGolden_Markdown_WideTable_FullWidth(t *testing.T) {
 	termtest.AssertScreen(t, screen)
 }
 
+func TestGolden_Markdown_FillsContainerWidth(t *testing.T) {
+	// With no MaxWidth set, markdown should fill the full container width.
+	// Paragraphs wrap at the container edge, not at 80 characters.
+	scrollY := 0
+	content := `# Wide Content
+
+This is a paragraph that should wrap at the container width, not at some arbitrary default like 80 characters. The text fills the available space.
+
+---
+
+- List items also fill the available width when no max width is configured`
+	view := Markdown(content, &scrollY).Height(8)
+	screen := SprintScreen(view, PrintConfig{Width: 120, Height: 8})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_ExplicitMaxWidth(t *testing.T) {
+	// With an explicit MaxWidth, paragraphs should wrap at that width
+	// even though the container is wider.
+	scrollY := 0
+	content := `This is a paragraph that should wrap at 40 characters even though the container is 80 characters wide.`
+	view := Markdown(content, &scrollY).MaxWidth(40).Height(5)
+	screen := SprintScreen(view, PrintConfig{Width: 80, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_HardLineBreakNoMaxWidth(t *testing.T) {
+	// Hard line breaks (two trailing spaces) should work even without MaxWidth.
+	scrollY := 0
+	content := "Line one  \nLine two  \nLine three"
+	view := Markdown(content, &scrollY).Height(5)
+	screen := SprintScreen(view, PrintConfig{Width: 60, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
+func TestGolden_Markdown_HorizontalRuleFillsWidth(t *testing.T) {
+	// Horizontal rule should fill the container width, not default to 80.
+	scrollY := 0
+	content := "Above\n\n---\n\nBelow"
+	view := Markdown(content, &scrollY).Height(5)
+	screen := SprintScreen(view, PrintConfig{Width: 100, Height: 5})
+	termtest.AssertScreen(t, screen)
+}
+
 // =============================================================================
 // DIFFVIEW TESTS
 // =============================================================================

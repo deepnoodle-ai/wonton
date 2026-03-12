@@ -27,7 +27,7 @@ func Markdown(content string, scrollY *int) *markdownView {
 		content:  content,
 		scrollY:  scrollY,
 		theme:    DefaultMarkdownTheme(),
-		maxWidth: 80,
+		maxWidth: 0,
 		renderer: NewMarkdownRenderer(),
 	}
 }
@@ -62,9 +62,9 @@ func (m *markdownView) renderContent(width int) {
 
 	// Use the configured maxWidth for paragraph text wrapping (readability),
 	// but allow tables to use the full available width.
-	wrapWidth := m.maxWidth
-	if width < wrapWidth {
-		wrapWidth = width
+	wrapWidth := width
+	if m.maxWidth > 0 && m.maxWidth < width {
+		wrapWidth = m.maxWidth
 	}
 	m.renderer.MaxWidth = wrapWidth
 	m.renderer.TableMaxWidth = width
@@ -94,8 +94,21 @@ func (m *markdownView) size(maxWidth, maxHeight int) (int, int) {
 		w = m.maxWidth
 	}
 
-	// Render to get line count using the available width
+	// Render to determine dimensions
 	m.renderContent(w)
+
+	// When no width constraint is given, measure the widest rendered line
+	if w <= 0 && m.rendered != nil {
+		for _, line := range m.rendered.Lines {
+			lw := line.Indent
+			for _, seg := range line.Segments {
+				lw += runewidth.StringWidth(seg.Text)
+			}
+			if lw > w {
+				w = lw
+			}
+		}
+	}
 
 	h := m.height
 	if h == 0 && m.rendered != nil {
