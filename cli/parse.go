@@ -131,8 +131,8 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			// Short flag(s)
 			shorts := arg[1:]
 
-			// Handle -h specially
-			if shorts == "h" {
+			// Handle -h as help unless a global flag explicitly claims -h
+			if shorts == "h" && p.app.isHelpShort() {
 				result.GlobalFlags = append(result.GlobalFlags, arg)
 				i++
 				continue
@@ -258,6 +258,26 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 		for _, alias := range cmd.aliases {
 			if alias == arg {
 				return name, ""
+			}
+		}
+	}
+
+	// Check flat-routed group subcommands (group prefix not required).
+	// Use groupOrder for deterministic resolution when multiple groups
+	// have commands with the same name.
+	for _, gName := range p.app.groupOrder {
+		g := p.app.groups[gName]
+		if g == nil || !g.flatRouting {
+			continue
+		}
+		if _, ok := g.commands[arg]; ok {
+			return arg, gName
+		}
+		for cmdName, cmd := range g.commands {
+			for _, alias := range cmd.aliases {
+				if alias == arg {
+					return cmdName, gName
+				}
 			}
 		}
 	}

@@ -582,8 +582,8 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			// Short flag(s)
 			shorts := arg[1:]
 			for j, r := range shorts {
-				// -h is always help
-				if r == 'h' {
+				// -h shows help unless a flag explicitly claims the -h short
+				if r == 'h' && c.isHelpShort() {
 					return c.showHelp()
 				}
 				flag := c.findFlagByShort(string(r))
@@ -675,6 +675,13 @@ func (c *Command) findFlagByShort(short string) Flag {
 		}
 	}
 	return nil
+}
+
+// isHelpShort reports whether -h should trigger help for this command.
+// Returns false if the command or its app's global flags have explicitly
+// claimed -h as a short flag name.
+func (c *Command) isHelpShort() bool {
+	return c.findFlagByShort("h") == nil
 }
 
 // looksLikeFlag returns true if the string looks like a flag rather than a value.

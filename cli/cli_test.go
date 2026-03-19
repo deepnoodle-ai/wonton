@@ -3911,3 +3911,296 @@ func TestBareDashWithoutRootHandler(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown command")
 }
+
+func TestFlatRoutingDirectInvocation(t *testing.T) {
+	var executed string
+	var receivedArg string
+
+	app := New("pretty").Description("Image tool")
+	transform := app.Group("transform").FlatRouting(true).Description("Image transforms")
+	transform.Command("resize").
+		Description("Resize an image").
+		Args("size").
+		Run(func(ctx *Context) error {
+			executed = "resize"
+			receivedArg = ctx.Arg(0)
+			return nil
+		})
+	transform.Command("crop").
+		Description("Crop an image").
+		Run(func(ctx *Context) error {
+			executed = "crop"
+			return nil
+		})
+
+	// Direct invocation without group prefix
+	err := app.ExecuteArgs([]string{"resize", "800x600"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize", executed)
+	assert.Equal(t, "800x600", receivedArg)
+
+	// Direct invocation of another subcommand
+	executed = ""
+	err = app.ExecuteArgs([]string{"crop"})
+	assert.NoError(t, err)
+	assert.Equal(t, "crop", executed)
+}
+
+func TestFlatRoutingGroupPrefixStillWorks(t *testing.T) {
+	var executed string
+
+	app := New("pretty").Description("Image tool")
+	transform := app.Group("transform").FlatRouting(true).Description("Image transforms")
+	transform.Command("resize").
+		Description("Resize an image").
+		Run(func(ctx *Context) error {
+			executed = "resize"
+			return nil
+		})
+
+	// Group prefix still works
+	executed = ""
+	err := app.ExecuteArgs([]string{"transform", "resize"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize", executed)
+
+	// Colon syntax still works
+	executed = ""
+	err = app.ExecuteArgs([]string{"transform:resize"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize", executed)
+}
+
+func TestFlatRoutingTopLevelCommandTakesPriority(t *testing.T) {
+	var executed string
+
+	app := New("test").Description("Test")
+
+	// Register a top-level command
+	app.Command("resize").
+		Description("Top-level resize").
+		Run(func(ctx *Context) error {
+			executed = "top-level"
+			return nil
+		})
+
+	// Register a flat-routed group with a command of the same name
+	transform := app.Group("transform").FlatRouting(true).Description("Transforms")
+	transform.Command("resize").
+		Description("Group resize").
+		Run(func(ctx *Context) error {
+			executed = "group"
+			return nil
+		})
+
+	// Top-level command should win
+	err := app.ExecuteArgs([]string{"resize"})
+	assert.NoError(t, err)
+	assert.Equal(t, "top-level", executed)
+
+	// But group prefix still reaches the group command
+	executed = ""
+	err = app.ExecuteArgs([]string{"transform", "resize"})
+	assert.NoError(t, err)
+	assert.Equal(t, "group", executed)
+}
+
+func TestFlatRoutingWithMainCommand(t *testing.T) {
+	var executed string
+	var mainArg string
+
+	app := New("pretty").Description("Image tool")
+
+	// Main command with optional prompt arg (the scenario from the bug report)
+	app.Main().
+		Args("prompt?").
+		Run(func(ctx *Context) error {
+			executed = "main"
+			mainArg = ctx.Arg(0)
+			return nil
+		})
+
+	transform := app.Group("transform").FlatRouting(true).Description("Image transforms")
+	transform.Command("resize").
+		Description("Resize an image").
+		Run(func(ctx *Context) error {
+			executed = "resize"
+			return nil
+		})
+
+	// "resize" should route to the group command, not be swallowed by Main
+	err := app.ExecuteArgs([]string{"resize"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize", executed)
+
+	// Unknown args should still go to Main
+	executed = ""
+	err = app.ExecuteArgs([]string{"hello world"})
+	assert.NoError(t, err)
+	assert.Equal(t, "main", executed)
+	assert.Equal(t, "hello world", mainArg)
+
+	// No args should go to Main
+	executed = ""
+	err = app.ExecuteArgs([]string{})
+	assert.NoError(t, err)
+	assert.Equal(t, "main", executed)
+}
+
+func TestFlatRoutingWithAlias(t *testing.T) {
+	var executed string
+
+	app := New("test").Description("Test")
+	transform := app.Group("transform").FlatRouting(true).Description("Transforms")
+	transform.Command("resize").
+		Description("Resize").
+		Alias("rs").
+		Run(func(ctx *Context) error {
+			executed = "resize"
+			return nil
+		})
+
+	// Alias should work with flat routing
+	err := app.ExecuteArgs([]string{"rs"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize", executed)
+}
+
+func TestFlatRoutingHelpOutput(t *testing.T) {
+	app := New("pretty").Description("Image tool").SetColorEnabled(false)
+
+	app.Command("serve").
+		Description("Start server").
+		Run(func(ctx *Context) error { return nil })
+
+	transform := app.Group("transform").FlatRouting(true).Description("Image transforms")
+	transform.Command("resize").
+		Description("Resize an image").
+		Run(func(ctx *Context) error { return nil })
+	transform.Command("crop").
+		Description("Crop an image").
+		Run(func(ctx *Context) error { return nil })
+
+	// Non-flat group for contrast
+	users := app.Group("users").Description("User management")
+	users.Command("list").
+		Description("List users").
+		Run(func(ctx *Context) error { return nil })
+
+	var buf bytes.Buffer
+	app.SetStdout(&buf)
+	app.ExecuteArgs([]string{"help"})
+
+	output := buf.String()
+
+	// Flat-routed group should appear as its own section
+	assert.Contains(t, output, "TRANSFORM:")
+	assert.Contains(t, output, "resize")
+	assert.Contains(t, output, "crop")
+
+	// Regular group should appear in Command Groups
+	assert.Contains(t, output, "Command Groups:")
+	assert.Contains(t, output, "users")
+
+	// "serve" should be in Commands section
+	assert.Contains(t, output, "Commands:")
+	assert.Contains(t, output, "serve")
+}
+
+func TestFlatRoutingHelpExcludesFlatFromCommandGroups(t *testing.T) {
+	app := New("test").Description("Test").SetColorEnabled(false)
+
+	// Only flat-routed groups - no "Command Groups" section
+	transform := app.Group("transform").FlatRouting(true).Description("Transforms")
+	transform.Command("resize").
+		Description("Resize").
+		Run(func(ctx *Context) error { return nil })
+
+	var buf bytes.Buffer
+	app.SetStdout(&buf)
+	app.ExecuteArgs([]string{"help"})
+
+	output := buf.String()
+	assert.Contains(t, output, "TRANSFORM:")
+	assert.NotContains(t, output, "Command Groups:")
+}
+
+func TestShortFlagHOverridesHelp(t *testing.T) {
+	var host string
+
+	app := New("test").Description("Test")
+	app.Command("serve").
+		Description("Start server").
+		Flags(
+			String("host", "h").Default("localhost").Help("Host to bind to"),
+		).
+		Run(func(ctx *Context) error {
+			host = ctx.String("host")
+			return nil
+		})
+
+	// -h should be treated as --host, not help
+	err := app.ExecuteArgs([]string{"serve", "-h", "0.0.0.0"})
+	assert.NoError(t, err)
+	assert.Equal(t, "0.0.0.0", host)
+}
+
+func TestShortFlagHDefaultStillShowsHelp(t *testing.T) {
+	app := New("test").Description("Test")
+	app.Command("serve").
+		Description("Start server").
+		Flags(
+			String("port", "p").Default("8080").Help("Port"),
+		).
+		Run(func(ctx *Context) error { return nil })
+
+	// -h should still show help when no flag claims it
+	var buf bytes.Buffer
+	app.SetStdout(&buf).SetColorEnabled(false)
+	app.ExecuteArgs([]string{"serve", "-h"})
+	assert.Contains(t, buf.String(), "Start server")
+}
+
+func TestGlobalShortFlagHOverridesHelp(t *testing.T) {
+	var host string
+
+	app := New("test").Description("Test").
+		GlobalFlags(
+			String("host", "h").Default("localhost").Help("Host"),
+		)
+	app.Command("serve").
+		Description("Start server").
+		Run(func(ctx *Context) error {
+			host = ctx.String("host")
+			return nil
+		})
+
+	// -h before command should be treated as --host, not help
+	err := app.ExecuteArgs([]string{"-h", "0.0.0.0", "serve"})
+	assert.NoError(t, err)
+	assert.Equal(t, "0.0.0.0", host)
+}
+
+func TestShortFlagHInBundledFlags(t *testing.T) {
+	var verbose bool
+	var host string
+
+	app := New("test").Description("Test")
+	app.Command("serve").
+		Description("Start server").
+		Flags(
+			Bool("verbose", "v").Help("Verbose output"),
+			String("host", "h").Default("localhost").Help("Host"),
+		).
+		Run(func(ctx *Context) error {
+			verbose = ctx.Bool("verbose")
+			host = ctx.String("host")
+			return nil
+		})
+
+	// -vh should set verbose=true and host=value (h is last, takes value)
+	err := app.ExecuteArgs([]string{"serve", "-vh", "0.0.0.0"})
+	assert.NoError(t, err)
+	assert.True(t, verbose)
+	assert.Equal(t, "0.0.0.0", host)
+}

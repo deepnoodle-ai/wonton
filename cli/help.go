@@ -91,35 +91,76 @@ func (a *App) renderAppHelp() tui.View {
 		rootFlags = rootCmd.flags
 	}
 
-	return tui.Stack(
+	views := []tui.View{
 		renderHeader(a.name, a.description, a.version, theme),
-		tui.If(a.longDesc != "", tui.Text("  %s", a.longDesc).Style(theme.Hint)),
-		tui.Stack(
-			renderSection("USAGE", theme),
-			usageView,
-		),
-		tui.If(len(a.examples) > 0, tui.Stack(
+	}
+	if a.longDesc != "" {
+		views = append(views, tui.Text("  %s", a.longDesc).Style(theme.Hint))
+	}
+	views = append(views, tui.Stack(
+		renderSection("USAGE", theme),
+		usageView,
+	))
+	if len(a.examples) > 0 {
+		views = append(views, tui.Stack(
 			renderSection("EXAMPLES", theme),
 			renderExamples(a.examples, theme),
-		)),
-		tui.If(len(a.commands) > 0 && hasSubcmds, tui.Stack(
+		))
+	}
+	if len(a.commands) > 0 && hasSubcmds {
+		views = append(views, tui.Stack(
 			renderSection("COMMANDS", theme),
 			renderOrderedCommands(a.commands, a.commandOrder, theme),
-		)),
-		tui.If(len(a.groups) > 0, tui.Stack(
+		))
+	}
+
+	// Flat-routed groups appear as their own named sections
+	for _, name := range a.groupOrder {
+		group := a.groups[name]
+		if group == nil || !group.flatRouting {
+			continue
+		}
+		views = append(views, tui.Stack(
+			renderSection(strings.ToUpper(name), theme),
+			renderOrderedCommands(group.commands, group.commandOrder, theme),
+		))
+	}
+
+	// Non-flat-routed groups appear in COMMAND GROUPS
+	if a.hasNonFlatGroups() {
+		views = append(views, tui.Stack(
 			renderSection("COMMAND GROUPS", theme),
-			renderOrderedGroups(a.groups, a.groupOrder, theme),
-		)),
-		tui.If(len(rootFlags) > 0, tui.Stack(
+			renderFilteredGroups(a.groups, a.groupOrder, false, theme),
+		))
+	}
+
+	if len(rootFlags) > 0 {
+		views = append(views, tui.Stack(
 			renderSection("FLAGS", theme),
 			renderFlags(rootFlags, theme),
-		)),
-		tui.If(len(a.globalFlags) > 0, tui.Stack(
+		))
+	}
+	if len(a.globalFlags) > 0 {
+		views = append(views, tui.Stack(
 			renderSection("GLOBAL FLAGS", theme),
 			renderFlags(a.globalFlags, theme),
-		)),
-		tui.If(hasSubcmds, renderFooter(a.name, theme)),
-	).Gap(1)
+		))
+	}
+	if hasSubcmds {
+		views = append(views, renderFooter(a.name, theme))
+	}
+
+	return tui.Stack(views...).Gap(1)
+}
+
+// hasNonFlatGroups returns true if any group does not use flat routing.
+func (a *App) hasNonFlatGroups() bool {
+	for _, g := range a.groups {
+		if !g.flatRouting {
+			return true
+		}
+	}
+	return false
 }
 
 // buildUsageView builds the usage section view, showing dual usage lines when
@@ -343,6 +384,40 @@ func renderOrderedGroups(groups map[string]*Group, order []string, theme HelpThe
 		return renderGroups(groups, theme)
 	}
 	return renderGroupList(groups, order, theme)
+}
+
+// renderFilteredGroups renders groups filtered by flat routing mode.
+// If flat is true, only flat-routed groups are shown; if false, only non-flat groups.
+func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, theme HelpTheme) tui.View {
+	if len(order) == 0 {
+		order = sortedGroupKeys(groups)
+	}
+	views := make([]tui.View, 0, len(order)*2)
+	for _, name := range order {
+		group := groups[name]
+		if group == nil || group.flatRouting != flat {
+			continue
+		}
+		views = append(views, tui.Group(
+			tui.Text("  %-16s", name).Style(theme.Command),
+			tui.Text("%s", group.description),
+		))
+		subOrder := group.commandOrder
+		if len(subOrder) == 0 {
+			subOrder = sortedKeys(group.commands)
+		}
+		for _, subName := range subOrder {
+			subCmd := group.commands[subName]
+			if subCmd == nil || subCmd.hidden {
+				continue
+			}
+			views = append(views, tui.Group(
+				tui.Text("    %-14s", subName).Style(theme.Flag),
+				tui.Text("%s", subCmd.description).Style(theme.Hint),
+			))
+		}
+	}
+	return tui.Stack(views...).Gap(0)
 }
 
 // renderGroupList renders groups in the given name order.

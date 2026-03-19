@@ -749,6 +749,30 @@ func (r *InlineApp) Printf(format string, args ...any) {
 	r.Print(Text(format, args...))
 }
 
+// PrintRaw writes raw bytes directly to the terminal scrollback, bypassing the
+// cell-based view renderer. This is needed for escape sequences that cannot go
+// through the view system (e.g., Kitty graphics protocol image data).
+//
+// The method clears the live region, writes the raw data, then restores the live
+// region — the same lifecycle as Print, but without cell rendering.
+//
+// Thread-safe: Can be called from HandleEvent or from a Cmd goroutine.
+func (r *InlineApp) PrintRaw(data []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
+	r.live.Clear()
+
+	r.output.Write(data)
+
+	if app, ok := r.app.(InlineApplication); ok {
+		r.live.UpdateNoSync(app.LiveView())
+	}
+
+	fmt.Fprint(r.output, "\033[?2026l") // End sync
+}
+
 // Stop gracefully stops the inline application by sending a QuitEvent.
 // This can be called from any goroutine.
 func (r *InlineApp) Stop() {
