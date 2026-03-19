@@ -307,6 +307,9 @@ func (a *App) Main() *Command {
 //
 // Users can invoke grouped commands as "myapp users list" or "myapp users:list".
 func (a *App) Group(name string) *Group {
+	if existing, ok := a.groups[name]; ok {
+		return existing
+	}
 	g := &Group{
 		name:     name,
 		app:      a,
@@ -853,6 +856,9 @@ func (g *Group) Description(desc string) *Group {
 // Command adds a command to the group.
 // Use builder methods like Description(), Args(), and Flags() to configure the command.
 func (g *Group) Command(name string) *Command {
+	if existing, ok := g.commands[name]; ok {
+		return existing
+	}
 	cmd := newCommand(name, g.app)
 	cmd.group = g
 	g.commands[name] = cmd
