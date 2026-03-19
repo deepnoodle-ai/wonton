@@ -270,23 +270,33 @@ func (c *Command) renderCommandHelp() tui.View {
 	).Gap(1)
 }
 
-// buildUsageString constructs the usage string for a command
+// buildUsageString constructs the usage string for a command.
+// For commands in flat-routed groups, it returns both the flat form
+// (e.g., "app resize") and the grouped form (e.g., "app transform resize").
 func buildUsageString(c *Command) string {
+	suffix := ""
+	if len(c.flags) > 0 || len(c.app.globalFlags) > 0 {
+		suffix += " [flags]"
+	}
+	for _, arg := range c.args {
+		if arg.Required {
+			suffix += " <" + arg.Name + ">"
+		} else {
+			suffix += " [" + arg.Name + "]"
+		}
+	}
+
+	if c.group != nil && c.group.flatRouting {
+		flat := "  " + c.app.name + " " + c.name + suffix
+		grouped := "  " + c.app.name + " " + c.group.name + " " + c.name + suffix
+		return flat + "\n" + grouped
+	}
+
 	usage := "  " + c.app.name
 	if c.group != nil {
 		usage += " " + c.group.name
 	}
-	usage += " " + c.name
-	if len(c.flags) > 0 || len(c.app.globalFlags) > 0 {
-		usage += " [flags]"
-	}
-	for _, arg := range c.args {
-		if arg.Required {
-			usage += " <" + arg.Name + ">"
-		} else {
-			usage += " [" + arg.Name + "]"
-		}
-	}
+	usage += " " + c.name + suffix
 	return usage
 }
 

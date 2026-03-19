@@ -762,15 +762,14 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	defer r.mu.Unlock()
 
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
-	r.live.Clear()
+	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
+	r.live.Clear()
 	r.output.Write(data)
 
 	if app, ok := r.app.(InlineApplication); ok {
 		r.live.UpdateNoSync(app.LiveView())
 	}
-
-	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
 
 // Stop gracefully stops the inline application by sending a QuitEvent.

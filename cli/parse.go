@@ -262,6 +262,12 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 		}
 	}
 
+	// Check if it's a group name (before flat routing, so that a group name
+	// is never stolen by a flat-routed subcommand with the same name).
+	if _, ok := p.app.groups[arg]; ok {
+		return "", arg
+	}
+
 	// Check flat-routed group subcommands (group prefix not required).
 	// Use groupOrder for deterministic resolution when multiple groups
 	// have commands with the same name.
@@ -297,11 +303,6 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 				}
 			}
 		}
-	}
-
-	// Check if it's a group name
-	if _, ok := p.app.groups[arg]; ok {
-		return "", arg
 	}
 
 	return "", ""

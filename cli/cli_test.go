@@ -4204,3 +4204,51 @@ func TestShortFlagHInBundledFlags(t *testing.T) {
 	assert.True(t, verbose)
 	assert.Equal(t, "0.0.0.0", host)
 }
+
+func TestFlatRoutingGroupNameTakesPriority(t *testing.T) {
+	var executed string
+
+	app := New("test").Description("Test")
+
+	// Flat-routed group with a subcommand whose name matches another group
+	images := app.Group("images").FlatRouting(true).Description("Image tools")
+	images.Command("resize").
+		Description("Resize image").
+		Run(func(ctx *Context) error {
+			executed = "images:resize"
+			return nil
+		})
+
+	// A separate group named "resize" with its own subcommand
+	resize := app.Group("resize").Description("Resize operations")
+	resize.Command("width").
+		Description("Resize by width").
+		Run(func(ctx *Context) error {
+			executed = "resize:width"
+			return nil
+		})
+
+	// "resize width" should route to the resize group, not the flat match
+	err := app.ExecuteArgs([]string{"resize", "width"})
+	assert.NoError(t, err)
+	assert.Equal(t, "resize:width", executed)
+}
+
+func TestFlatRoutingCommandHelpShowsBothForms(t *testing.T) {
+	app := New("pretty").Description("Image tool").SetColorEnabled(false)
+
+	transform := app.Group("transform").FlatRouting(true).Description("Transforms")
+	transform.Command("resize").
+		Description("Resize an image").
+		Args("size").
+		Run(func(ctx *Context) error { return nil })
+
+	var buf bytes.Buffer
+	app.SetStdout(&buf)
+	app.ExecuteArgs([]string{"resize", "--help"})
+
+	output := buf.String()
+	// Should show both the flat form and the grouped form
+	assert.Contains(t, output, "pretty resize")
+	assert.Contains(t, output, "pretty transform resize")
+}

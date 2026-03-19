@@ -792,7 +792,7 @@ func (c *Command) showHelp() error {
 	var sb strings.Builder
 
 	// Command name and description
-	if c.group != nil {
+	if c.group != nil && !c.group.flatRouting {
 		sb.WriteString(fmt.Sprintf("%s %s", c.group.name, c.name))
 	} else {
 		sb.WriteString(c.name)
@@ -813,28 +813,8 @@ func (c *Command) showHelp() error {
 	}
 
 	// Usage
-	sb.WriteString("Usage:\n  ")
-	sb.WriteString(c.app.name)
-	if c.group != nil {
-		sb.WriteString(" ")
-		sb.WriteString(c.group.name)
-	}
-	sb.WriteString(" ")
-	sb.WriteString(c.name)
-	if len(c.flags) > 0 {
-		sb.WriteString(" [flags]")
-	}
-	for _, arg := range c.args {
-		if arg.Required {
-			sb.WriteString(" <")
-			sb.WriteString(arg.Name)
-			sb.WriteString(">")
-		} else {
-			sb.WriteString(" [")
-			sb.WriteString(arg.Name)
-			sb.WriteString("]")
-		}
-	}
+	sb.WriteString("Usage:\n")
+	sb.WriteString(buildUsageString(c))
 	sb.WriteString("\n\n")
 
 	// Arguments
