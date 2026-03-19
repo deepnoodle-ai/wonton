@@ -759,8 +759,11 @@ func (a *App) showHelp() error {
 	// Examples section
 	if len(a.examples) > 0 {
 		sb.WriteString("Examples:\n")
-		for _, ex := range a.examples {
-			sb.WriteString(fmt.Sprintf("  %s  $ %s\n", ex.Description, ex.Command))
+		for i, ex := range a.examples {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(fmt.Sprintf("  %s\n  $ %s\n", ex.Description, ex.Command))
 		}
 		sb.WriteString("\n")
 	}

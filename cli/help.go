@@ -461,12 +461,12 @@ func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) 
 func renderExamples(examples []Example, theme HelpTheme) tui.View {
 	views := make([]tui.View, len(examples))
 	for i, ex := range examples {
-		views[i] = tui.Group(
-			tui.Text("  %s  ", ex.Description).Style(theme.Hint),
-			tui.Text("$ %s", ex.Command).Style(theme.Command),
-		)
+		views[i] = tui.Stack(
+			tui.Text("  %s", ex.Description).Style(theme.Hint),
+			tui.Text("  $ %s", ex.Command).Style(theme.Command),
+		).Gap(0)
 	}
-	return tui.Stack(views...).Gap(0)
+	return tui.Stack(views...).Gap(1)
 }
 
 // renderFlags renders the flags list as a Stack
