@@ -95,7 +95,7 @@ func (a *App) renderAppHelp() tui.View {
 		renderHeader(a.name, a.description, a.version, theme),
 	}
 	if a.longDesc != "" {
-		views = append(views, tui.Text("%s", a.longDesc).Style(theme.Hint))
+		views = append(views, tui.Text("%s", a.longDesc))
 	}
 	views = append(views, tui.Stack(
 		renderSection("USAGE", theme),
