@@ -713,20 +713,18 @@ func (a *App) showHelp() error {
 	// Fallback to plain text for non-color terminals
 	var sb strings.Builder
 
-	// App name and description
+	// App name, description, and version
 	sb.WriteString(a.name)
 	if a.description != "" {
 		sb.WriteString(" - ")
 		sb.WriteString(a.description)
 	}
-	sb.WriteString("\n\n")
-
-	// Version
 	if a.version != "" {
-		sb.WriteString("Version: ")
+		sb.WriteString(" (v")
 		sb.WriteString(a.version)
-		sb.WriteString("\n\n")
+		sb.WriteString(")")
 	}
+	sb.WriteString("\n\n")
 
 	// Long description
 	if a.longDesc != "" {

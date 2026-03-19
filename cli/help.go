@@ -95,7 +95,7 @@ func (a *App) renderAppHelp() tui.View {
 		renderHeader(a.name, a.description, a.version, theme),
 	}
 	if a.longDesc != "" {
-		views = append(views, tui.Text("  %s", a.longDesc).Style(theme.Hint))
+		views = append(views, tui.Text("%s", a.longDesc).Style(theme.Hint))
 	}
 	views = append(views, tui.Stack(
 		renderSection("USAGE", theme),
@@ -294,17 +294,20 @@ func buildUsageString(c *Command) string {
 func renderHeader(name, description, version string, theme HelpTheme) tui.View {
 	titleLine := renderGradientText(name, theme.TitleStart, theme.TitleEnd)
 	if description != "" {
-		titleLine = tui.Group(
+		parts := []tui.View{
 			titleLine,
 			tui.Text(" - "),
 			tui.Text("%s", description),
-		)
+		}
+		if version != "" {
+			parts = append(parts, tui.Text(" (v%s)", version).Style(theme.Hint))
+		}
+		titleLine = tui.Group(parts...)
+	} else if version != "" {
+		titleLine = tui.Group(titleLine, tui.Text(" (v%s)", version).Style(theme.Hint))
 	}
 
-	return tui.Stack(
-		titleLine,
-		tui.If(version != "", tui.Text("  v%s", version).Style(theme.Hint)),
-	).Gap(0)
+	return titleLine
 }
 
 // renderCommandHeader creates the styled command header
