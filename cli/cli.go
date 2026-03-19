@@ -165,11 +165,14 @@ import (
 type App struct {
 	name        string
 	description string
+	longDesc    string
 	version     string
 
-	commands   map[string]*Command
-	groups     map[string]*Group
-	middleware []Middleware
+	commands     map[string]*Command
+	commandOrder []string // insertion order for stable help output
+	groups       map[string]*Group
+	groupOrder   []string // insertion order for stable help output
+	middleware   []Middleware
 
 	// Global flags
 	globalFlags []Flag
@@ -178,6 +181,9 @@ type App struct {
 	handler    Handler
 	args       []*Arg
 	validators []func(*Context) error
+
+	// Examples for help output
+	examples []Example
 
 	// I/O
 	stdin  io.Reader
@@ -191,6 +197,12 @@ type App struct {
 
 	// Help styling
 	helpTheme *HelpTheme
+}
+
+// Example represents a usage example for help output.
+type Example struct {
+	Description string
+	Command     string
 }
 
 // New creates a new CLI application with the given name.
@@ -228,6 +240,36 @@ func (a *App) Version(v string) *App {
 	return a
 }
 
+// Long sets a longer description or quickstart text for help output.
+// This text appears after the usage section and before commands.
+//
+// Example:
+//
+//	app.Long("Quick start:\n  myapp login\n  myapp \"Do something\"")
+func (a *App) Long(desc string) *App {
+	a.longDesc = desc
+	return a
+}
+
+// Examples adds usage examples to the application help output.
+// Examples appear after the description and before the commands section.
+//
+// Example:
+//
+//	app.Examples(
+//	    cli.NewExample("Start interactively", "myapp"),
+//	    cli.NewExample("With a prompt", "myapp \"Design a logo\""),
+//	)
+func (a *App) Examples(examples ...Example) *App {
+	a.examples = append(a.examples, examples...)
+	return a
+}
+
+// NewExample creates a new usage example for help output.
+func NewExample(description, command string) Example {
+	return Example{Description: description, Command: command}
+}
+
 // Command registers a new command or returns an existing one.
 // Use builder methods like Description(), Args(), and Flags() to configure the command.
 func (a *App) Command(name string) *Command {
@@ -236,6 +278,7 @@ func (a *App) Command(name string) *Command {
 	}
 	cmd := newCommand(name, a)
 	a.commands[name] = cmd
+	a.commandOrder = append(a.commandOrder, name)
 	return cmd
 }
 
@@ -264,12 +307,16 @@ func (a *App) Main() *Command {
 //
 // Users can invoke grouped commands as "myapp users list" or "myapp users:list".
 func (a *App) Group(name string) *Group {
+	if existing, ok := a.groups[name]; ok {
+		return existing
+	}
 	g := &Group{
 		name:     name,
 		app:      a,
 		commands: make(map[string]*Command),
 	}
 	a.groups[name] = g
+	a.groupOrder = append(a.groupOrder, name)
 	return g
 }
 
@@ -675,45 +722,55 @@ func (a *App) showHelp() error {
 		sb.WriteString("\n\n")
 	}
 
-	// Usage section
-	sb.WriteString("Usage:\n  ")
-	sb.WriteString(a.name)
-	hasSubcmds := a.hasSubcommands()
-	if hasSubcmds {
-		sb.WriteString(" <command> [flags] [args]\n\n")
-	} else {
-		// Root-only app
-		rootCmd := a.commands[""]
-		hasFlags := len(a.globalFlags) > 0 || (rootCmd != nil && len(rootCmd.flags) > 0)
-		if hasFlags {
-			sb.WriteString(" [flags]")
-		}
-		// Add root command args
-		if rootCmd != nil {
-			for _, arg := range rootCmd.args {
-				if arg.Required {
-					sb.WriteString(" <" + arg.Name + ">")
-				} else {
-					sb.WriteString(" [" + arg.Name + "]")
-				}
-			}
-		} else {
-			for _, arg := range a.args {
-				if arg.Required {
-					sb.WriteString(" <" + arg.Name + ">")
-				} else {
-					sb.WriteString(" [" + arg.Name + "]")
-				}
-			}
-		}
+	// Long description
+	if a.longDesc != "" {
+		sb.WriteString(a.longDesc)
 		sb.WriteString("\n\n")
 	}
 
-	// Commands section
+	// Usage section
+	hasSubcmds := a.hasSubcommands()
+	sb.WriteString("Usage:\n")
+	if hasSubcmds {
+		rootCmd := a.commands[""]
+		hasRootWithArgs := rootCmd != nil && (len(rootCmd.args) > 0 || rootCmd.handler != nil)
+		if hasRootWithArgs {
+			// Show both usage lines
+			sb.WriteString(a.buildRootUsageString())
+			if rootCmd.usageSummary != "" {
+				sb.WriteString("  " + rootCmd.usageSummary)
+			}
+			sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("  %s <command> [flags]", a.name))
+			sb.WriteString("  Run a subcommand")
+			sb.WriteString("\n\n")
+		} else {
+			sb.WriteString(fmt.Sprintf("  %s <command> [flags] [args]\n\n", a.name))
+		}
+	} else {
+		sb.WriteString(a.buildRootUsageString())
+		sb.WriteString("\n\n")
+	}
+
+	// Examples section
+	if len(a.examples) > 0 {
+		sb.WriteString("Examples:\n")
+		for _, ex := range a.examples {
+			sb.WriteString(fmt.Sprintf("  %s  $ %s\n", ex.Description, ex.Command))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Commands section (in insertion order)
 	if len(a.commands) > 0 && hasSubcmds {
 		sb.WriteString("Commands:\n")
-		for name, cmd := range a.commands {
-			if cmd.hidden || name == "" {
+		order := a.commandOrder
+		if len(order) == 0 {
+			order = sortedKeys(a.commands)
+		}
+		for _, name := range order {
+			cmd := a.commands[name]
+			if cmd == nil || cmd.hidden || name == "" {
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
@@ -721,10 +778,18 @@ func (a *App) showHelp() error {
 		sb.WriteString("\n")
 	}
 
-	// Command groups section
+	// Command groups section (in insertion order)
 	if len(a.groups) > 0 {
 		sb.WriteString("Command Groups:\n")
-		for name, group := range a.groups {
+		order := a.groupOrder
+		if len(order) == 0 {
+			order = sortedGroupKeys(a.groups)
+		}
+		for _, name := range order {
+			group := a.groups[name]
+			if group == nil {
+				continue
+			}
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
 		}
 		sb.WriteString("\n")
@@ -768,10 +833,11 @@ func (a *App) showHelp() error {
 // Groups can have their own handler that runs when invoked without a subcommand,
 // their own flags, and middleware that applies to all subcommands.
 type Group struct {
-	name        string
-	description string
-	app         *App
-	commands    map[string]*Command
+	name         string
+	description  string
+	app          *App
+	commands     map[string]*Command
+	commandOrder []string // insertion order for stable help output
 
 	// Handler for running group without subcommand
 	handler    Handler
@@ -790,9 +856,13 @@ func (g *Group) Description(desc string) *Group {
 // Command adds a command to the group.
 // Use builder methods like Description(), Args(), and Flags() to configure the command.
 func (g *Group) Command(name string) *Command {
+	if existing, ok := g.commands[name]; ok {
+		return existing
+	}
 	cmd := newCommand(name, g.app)
 	cmd.group = g
 	g.commands[name] = cmd
+	g.commandOrder = append(g.commandOrder, name)
 	return cmd
 }
 

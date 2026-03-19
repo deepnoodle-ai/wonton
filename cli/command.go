@@ -56,11 +56,12 @@ type Middleware func(Handler) Handler
 //	        return nil
 //	    })
 type Command struct {
-	name        string
-	description string
-	longDesc    string
-	app         *App
-	group       *Group
+	name         string
+	description  string
+	longDesc     string
+	usageSummary string
+	app          *App
+	group        *Group
 
 	// Handler
 	handler Handler
@@ -160,6 +161,20 @@ func (c *Command) Run(h Handler) *Command {
 // Long sets a longer description for help output.
 func (c *Command) Long(desc string) *Command {
 	c.longDesc = desc
+	return c
+}
+
+// UsageSummary sets a short summary that appears next to the usage line in help.
+// This is useful for the root command when the app has both a root handler and subcommands.
+//
+// Example:
+//
+//	app.Main().
+//	    Args("prompt?").
+//	    UsageSummary("Start designing (interactive)").
+//	    Run(runMain)
+func (c *Command) UsageSummary(summary string) *Command {
+	c.usageSummary = summary
 	return c
 }
 

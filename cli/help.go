@@ -82,13 +82,8 @@ func (a *App) renderAppHelp() tui.View {
 	theme := a.getHelpTheme()
 	hasSubcmds := a.hasSubcommands()
 
-	// Build usage string based on whether we have subcommands
-	var usageText string
-	if hasSubcmds {
-		usageText = fmt.Sprintf("  %s <command> [flags] [args]", a.name)
-	} else {
-		usageText = a.buildRootUsageString()
-	}
+	// Build usage view based on whether we have subcommands and a root command with args
+	usageView := a.buildUsageView(hasSubcmds, theme)
 
 	// Get root command flags (always include for root-only apps, or when root command has flags)
 	var rootFlags []Flag
@@ -98,17 +93,22 @@ func (a *App) renderAppHelp() tui.View {
 
 	return tui.Stack(
 		renderHeader(a.name, a.description, a.version, theme),
+		tui.If(a.longDesc != "", tui.Text("  %s", a.longDesc).Style(theme.Hint)),
 		tui.Stack(
 			renderSection("USAGE", theme),
-			tui.Text("%s", usageText),
+			usageView,
 		),
+		tui.If(len(a.examples) > 0, tui.Stack(
+			renderSection("EXAMPLES", theme),
+			renderExamples(a.examples, theme),
+		)),
 		tui.If(len(a.commands) > 0 && hasSubcmds, tui.Stack(
 			renderSection("COMMANDS", theme),
-			renderCommands(a.commands, theme),
+			renderOrderedCommands(a.commands, a.commandOrder, theme),
 		)),
 		tui.If(len(a.groups) > 0, tui.Stack(
 			renderSection("COMMAND GROUPS", theme),
-			renderGroups(a.groups, theme),
+			renderOrderedGroups(a.groups, a.groupOrder, theme),
 		)),
 		tui.If(len(rootFlags) > 0, tui.Stack(
 			renderSection("FLAGS", theme),
@@ -120,6 +120,45 @@ func (a *App) renderAppHelp() tui.View {
 		)),
 		tui.If(hasSubcmds, renderFooter(a.name, theme)),
 	).Gap(1)
+}
+
+// buildUsageView builds the usage section view, showing dual usage lines when
+// the app has both a root command with args and subcommands.
+func (a *App) buildUsageView(hasSubcmds bool, theme HelpTheme) tui.View {
+	if !hasSubcmds {
+		return tui.Text("%s", a.buildRootUsageString())
+	}
+
+	rootCmd := a.commands[""]
+	hasRootWithArgs := rootCmd != nil && (len(rootCmd.args) > 0 || rootCmd.handler != nil)
+
+	if !hasRootWithArgs {
+		return tui.Text("  %s <command> [flags] [args]", a.name)
+	}
+
+	// Show both usage lines: root command and subcommand
+	rootUsage := a.buildRootUsageString()
+	rootSummary := ""
+	if rootCmd != nil && rootCmd.usageSummary != "" {
+		rootSummary = rootCmd.usageSummary
+	}
+	subcmdUsage := fmt.Sprintf("  %s <command> [flags]", a.name)
+
+	views := []tui.View{}
+	if rootSummary != "" {
+		views = append(views, tui.Group(
+			tui.Text("%s", rootUsage),
+			tui.Text("  %s", rootSummary).Style(theme.Hint),
+		))
+	} else {
+		views = append(views, tui.Text("%s", rootUsage))
+	}
+	views = append(views, tui.Group(
+		tui.Text("%s", subcmdUsage),
+		tui.Text("  Run a subcommand").Style(theme.Hint),
+	))
+
+	return tui.Stack(views...).Gap(0)
 }
 
 // buildRootUsageString builds the usage string for the root command.
@@ -262,14 +301,26 @@ func renderGradientText(text string, start, end color.RGB) tui.View {
 	return tui.Group(views...)
 }
 
-// renderCommands renders the command list as a Stack
+// renderCommands renders the command list as a Stack (alphabetical order, for maps without order tracking).
 func renderCommands(commands map[string]*Command, theme HelpTheme) tui.View {
 	names := sortedKeys(commands)
-	views := make([]tui.View, 0, len(names))
+	return renderCommandList(commands, names, theme)
+}
 
+// renderOrderedCommands renders the command list in insertion order.
+func renderOrderedCommands(commands map[string]*Command, order []string, theme HelpTheme) tui.View {
+	if len(order) == 0 {
+		return renderCommands(commands, theme)
+	}
+	return renderCommandList(commands, order, theme)
+}
+
+// renderCommandList renders commands in the given name order.
+func renderCommandList(commands map[string]*Command, names []string, theme HelpTheme) tui.View {
+	views := make([]tui.View, 0, len(names))
 	for _, name := range names {
 		cmd := commands[name]
-		if cmd.hidden {
+		if cmd == nil || cmd.hidden || name == "" {
 			continue
 		}
 		views = append(views, tui.Group(
@@ -277,27 +328,45 @@ func renderCommands(commands map[string]*Command, theme HelpTheme) tui.View {
 			tui.Text("%s", cmd.description),
 		))
 	}
-
 	return tui.Stack(views...).Gap(0)
 }
 
-// renderGroups renders the command groups list as a Stack
+// renderGroups renders the command groups list as a Stack (alphabetical order).
 func renderGroups(groups map[string]*Group, theme HelpTheme) tui.View {
 	names := sortedGroupKeys(groups)
+	return renderGroupList(groups, names, theme)
+}
+
+// renderOrderedGroups renders the command groups in insertion order.
+func renderOrderedGroups(groups map[string]*Group, order []string, theme HelpTheme) tui.View {
+	if len(order) == 0 {
+		return renderGroups(groups, theme)
+	}
+	return renderGroupList(groups, order, theme)
+}
+
+// renderGroupList renders groups in the given name order.
+func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) tui.View {
 	views := make([]tui.View, 0, len(names)*2)
 
 	for _, name := range names {
 		group := groups[name]
+		if group == nil {
+			continue
+		}
 		views = append(views, tui.Group(
 			tui.Text("  %-16s", name).Style(theme.Command),
 			tui.Text("%s", group.description),
 		))
 
-		// Subcommands
-		subNames := sortedKeys(group.commands)
-		for _, subName := range subNames {
+		// Subcommands in insertion order
+		subOrder := group.commandOrder
+		if len(subOrder) == 0 {
+			subOrder = sortedKeys(group.commands)
+		}
+		for _, subName := range subOrder {
 			subCmd := group.commands[subName]
-			if subCmd.hidden {
+			if subCmd == nil || subCmd.hidden {
 				continue
 			}
 			views = append(views, tui.Group(
@@ -307,6 +376,18 @@ func renderGroups(groups map[string]*Group, theme HelpTheme) tui.View {
 		}
 	}
 
+	return tui.Stack(views...).Gap(0)
+}
+
+// renderExamples renders the examples section as a Stack.
+func renderExamples(examples []Example, theme HelpTheme) tui.View {
+	views := make([]tui.View, len(examples))
+	for i, ex := range examples {
+		views[i] = tui.Group(
+			tui.Text("  %s  ", ex.Description).Style(theme.Hint),
+			tui.Text("$ %s", ex.Command).Style(theme.Command),
+		)
+	}
 	return tui.Stack(views...).Gap(0)
 }
 

@@ -496,3 +496,184 @@ func TestSortedGroupKeys(t *testing.T) {
 	assert.Equal(t, "middle", keys[1])
 	assert.Equal(t, "zebra", keys[2])
 }
+
+func TestCommandInsertionOrder(t *testing.T) {
+	t.Run("commands appear in insertion order", func(t *testing.T) {
+		app := New("myapp")
+		app.Command("login").Description("Log in").Run(func(ctx *Context) error { return nil })
+		app.Command("init").Description("Initialize").Run(func(ctx *Context) error { return nil })
+		app.Command("setup").Description("Setup").Run(func(ctx *Context) error { return nil })
+		app.Command("status").Description("Show status").Run(func(ctx *Context) error { return nil })
+
+		assert.Equal(t, 4, len(app.commandOrder))
+		assert.Equal(t, "login", app.commandOrder[0])
+		assert.Equal(t, "init", app.commandOrder[1])
+		assert.Equal(t, "setup", app.commandOrder[2])
+		assert.Equal(t, "status", app.commandOrder[3])
+	})
+
+	t.Run("group commands appear in insertion order", func(t *testing.T) {
+		app := New("myapp")
+		g := app.Group("config").Description("Config")
+		g.Command("get").Description("Get").Run(func(ctx *Context) error { return nil })
+		g.Command("set").Description("Set").Run(func(ctx *Context) error { return nil })
+		g.Command("delete").Description("Delete").Run(func(ctx *Context) error { return nil })
+
+		assert.Equal(t, 3, len(g.commandOrder))
+		assert.Equal(t, "get", g.commandOrder[0])
+		assert.Equal(t, "set", g.commandOrder[1])
+		assert.Equal(t, "delete", g.commandOrder[2])
+	})
+
+	t.Run("groups appear in insertion order", func(t *testing.T) {
+		app := New("myapp")
+		app.Group("deploy").Description("Deployment")
+		app.Group("auth").Description("Authentication")
+		app.Group("config").Description("Configuration")
+
+		assert.Equal(t, 3, len(app.groupOrder))
+		assert.Equal(t, "deploy", app.groupOrder[0])
+		assert.Equal(t, "auth", app.groupOrder[1])
+		assert.Equal(t, "config", app.groupOrder[2])
+	})
+}
+
+func TestDualUsageLines(t *testing.T) {
+	t.Run("shows dual usage when root has args and subcommands exist", func(t *testing.T) {
+		app := New("pretty")
+		app.Main().
+			Args("prompt?").
+			UsageSummary("Start designing (interactive)").
+			Run(func(ctx *Context) error { return nil })
+		app.Command("login").Description("Log in").Run(func(ctx *Context) error { return nil })
+
+		view := app.renderAppHelp()
+		assert.NotNil(t, view)
+	})
+
+	t.Run("shows single usage when root has no args", func(t *testing.T) {
+		app := New("myapp")
+		app.Command("build").Description("Build").Run(func(ctx *Context) error { return nil })
+
+		view := app.renderAppHelp()
+		assert.NotNil(t, view)
+	})
+
+	t.Run("UsageSummary is stored on command", func(t *testing.T) {
+		app := New("myapp")
+		cmd := app.Main().UsageSummary("Do the main thing")
+
+		assert.Equal(t, "Do the main thing", cmd.usageSummary)
+	})
+}
+
+func TestAppLongDescription(t *testing.T) {
+	t.Run("Long sets long description", func(t *testing.T) {
+		app := New("myapp")
+		app.Long("Quick start:\n  myapp login\n  myapp \"Do something\"")
+
+		assert.Equal(t, "Quick start:\n  myapp login\n  myapp \"Do something\"", app.longDesc)
+	})
+
+	t.Run("renders help with long description", func(t *testing.T) {
+		app := New("myapp")
+		app.Long("Extended description here")
+		app.Command("build").Description("Build").Run(func(ctx *Context) error { return nil })
+
+		view := app.renderAppHelp()
+		assert.NotNil(t, view)
+	})
+}
+
+func TestAppExamples(t *testing.T) {
+	t.Run("Examples adds examples", func(t *testing.T) {
+		app := New("myapp")
+		app.Examples(
+			NewExample("Start interactively", "myapp"),
+			NewExample("With a prompt", "myapp \"Design a logo\""),
+		)
+
+		assert.Equal(t, 2, len(app.examples))
+		assert.Equal(t, "Start interactively", app.examples[0].Description)
+		assert.Equal(t, "myapp", app.examples[0].Command)
+	})
+
+	t.Run("renders help with examples", func(t *testing.T) {
+		app := New("myapp")
+		app.Examples(
+			NewExample("Quick start", "myapp init"),
+		)
+		app.Command("init").Description("Initialize").Run(func(ctx *Context) error { return nil })
+
+		view := app.renderAppHelp()
+		assert.NotNil(t, view)
+	})
+
+	t.Run("NewExample creates example", func(t *testing.T) {
+		ex := NewExample("Do a thing", "myapp do-thing")
+		assert.Equal(t, "Do a thing", ex.Description)
+		assert.Equal(t, "myapp do-thing", ex.Command)
+	})
+}
+
+func TestRenderExamples(t *testing.T) {
+	theme := DefaultHelpTheme()
+
+	examples := []Example{
+		{Description: "Quick start", Command: "myapp init"},
+		{Description: "With prompt", Command: "myapp \"Hello\""},
+	}
+
+	view := renderExamples(examples, theme)
+	assert.NotNil(t, view)
+}
+
+func TestRenderOrderedCommands(t *testing.T) {
+	theme := DefaultHelpTheme()
+
+	t.Run("renders in order", func(t *testing.T) {
+		commands := map[string]*Command{
+			"zebra": {name: "zebra", description: "Last alphabetically"},
+			"alpha": {name: "alpha", description: "First alphabetically"},
+		}
+		order := []string{"zebra", "alpha"}
+
+		view := renderOrderedCommands(commands, order, theme)
+		assert.NotNil(t, view)
+	})
+
+	t.Run("falls back to sorted when no order", func(t *testing.T) {
+		commands := map[string]*Command{
+			"zebra": {name: "zebra", description: "Z"},
+			"alpha": {name: "alpha", description: "A"},
+		}
+
+		view := renderOrderedCommands(commands, nil, theme)
+		assert.NotNil(t, view)
+	})
+}
+
+func TestRenderOrderedGroups(t *testing.T) {
+	theme := DefaultHelpTheme()
+
+	t.Run("renders in order", func(t *testing.T) {
+		groups := map[string]*Group{
+			"deploy": {name: "deploy", description: "Deploy", commands: map[string]*Command{}},
+			"auth":   {name: "auth", description: "Auth", commands: map[string]*Command{}},
+		}
+		order := []string{"deploy", "auth"}
+
+		view := renderOrderedGroups(groups, order, theme)
+		assert.NotNil(t, view)
+	})
+
+	t.Run("falls back to sorted when no order", func(t *testing.T) {
+		groups := map[string]*Group{
+			"deploy": {name: "deploy", description: "Deploy", commands: map[string]*Command{}},
+			"auth":   {name: "auth", description: "Auth", commands: map[string]*Command{}},
+		}
+
+		view := renderOrderedGroups(groups, nil, theme)
+		assert.NotNil(t, view)
+	})
+}
