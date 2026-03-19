@@ -437,7 +437,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 
 	// Check for help/version in global flags
 	for _, gf := range result.GlobalFlags {
-		if gf == "--help" || gf == "-h" {
+		if gf == "--help" || (gf == "-h" && a.isHelpShort()) {
 			return a.showHelp()
 		}
 		if gf == "--version" {
@@ -615,6 +615,12 @@ func (a *App) findGlobalFlagByShort(short string) Flag {
 	return nil
 }
 
+// isHelpShort reports whether -h should trigger help at the app level.
+// Returns false if a global flag has explicitly claimed -h as its short name.
+func (a *App) isHelpShort() bool {
+	return a.findGlobalFlagByShort("h") == nil
+}
+
 // findCommand looks up a command by name, including group commands and aliases.
 // It returns the command, the remaining args (after consuming subcommand name if applicable), and any error.
 func (a *App) findCommand(name string, args []string) (*Command, []string, error) {
@@ -707,20 +713,18 @@ func (a *App) showHelp() error {
 	// Fallback to plain text for non-color terminals
 	var sb strings.Builder
 
-	// App name and description
+	// App name, description, and version
 	sb.WriteString(a.name)
 	if a.description != "" {
 		sb.WriteString(" - ")
 		sb.WriteString(a.description)
 	}
-	sb.WriteString("\n\n")
-
-	// Version
 	if a.version != "" {
-		sb.WriteString("Version: ")
+		sb.WriteString(" (v")
 		sb.WriteString(a.version)
-		sb.WriteString("\n\n")
+		sb.WriteString(")")
 	}
+	sb.WriteString("\n\n")
 
 	// Long description
 	if a.longDesc != "" {
@@ -755,8 +759,11 @@ func (a *App) showHelp() error {
 	// Examples section
 	if len(a.examples) > 0 {
 		sb.WriteString("Examples:\n")
-		for _, ex := range a.examples {
-			sb.WriteString(fmt.Sprintf("  %s  $ %s\n", ex.Description, ex.Command))
+		for i, ex := range a.examples {
+			if i > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(fmt.Sprintf("  %s\n  $ %s\n", ex.Description, ex.Command))
 		}
 		sb.WriteString("\n")
 	}
@@ -778,8 +785,29 @@ func (a *App) showHelp() error {
 		sb.WriteString("\n")
 	}
 
-	// Command groups section (in insertion order)
-	if len(a.groups) > 0 {
+	// Flat-routed groups appear as their own named sections
+	for _, name := range a.groupOrder {
+		group := a.groups[name]
+		if group == nil || !group.flatRouting {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%s:\n", strings.ToUpper(name)))
+		subOrder := group.commandOrder
+		if len(subOrder) == 0 {
+			subOrder = sortedKeys(group.commands)
+		}
+		for _, subName := range subOrder {
+			cmd := group.commands[subName]
+			if cmd == nil || cmd.hidden {
+				continue
+			}
+			sb.WriteString(fmt.Sprintf("  %-15s %s\n", subName, cmd.description))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Non-flat-routed command groups section (in insertion order)
+	if a.hasNonFlatGroups() {
 		sb.WriteString("Command Groups:\n")
 		order := a.groupOrder
 		if len(order) == 0 {
@@ -787,7 +815,7 @@ func (a *App) showHelp() error {
 		}
 		for _, name := range order {
 			group := a.groups[name]
-			if group == nil {
+			if group == nil || group.flatRouting {
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
@@ -845,6 +873,12 @@ type Group struct {
 	args       []*Arg
 	middleware []Middleware
 	validators []func(*Context) error
+
+	// flatRouting makes group subcommands invocable without the group prefix.
+	// For example, with FlatRouting enabled on a "transform" group containing
+	// a "resize" command, users can type "app resize" instead of "app transform resize".
+	// The group name is still used for visual grouping in help output.
+	flatRouting bool
 }
 
 // Description sets the group description.
@@ -904,6 +938,23 @@ func (g *Group) Use(mw ...Middleware) *Group {
 // Validate adds a validation function for the group.
 func (g *Group) Validate(v func(*Context) error) *Group {
 	g.validators = append(g.validators, v)
+	return g
+}
+
+// FlatRouting makes the group's subcommands directly invocable without the
+// group prefix. The group name becomes a help-only section header.
+//
+// For example, with a "transform" group containing "resize" and "crop":
+//
+//	app.Group("transform").FlatRouting(true).Description("Image transforms")
+//	// Users can now invoke: app resize (instead of app transform resize)
+//	// Help output shows commands grouped under a TRANSFORM section header
+//
+// Direct top-level commands always take priority over flat-routed group commands.
+// The group prefix ("app transform resize") and colon syntax ("app transform:resize")
+// continue to work as well.
+func (g *Group) FlatRouting(enabled bool) *Group {
+	g.flatRouting = enabled
 	return g
 }
 

@@ -582,8 +582,8 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			// Short flag(s)
 			shorts := arg[1:]
 			for j, r := range shorts {
-				// -h is always help
-				if r == 'h' {
+				// -h shows help unless a flag explicitly claims the -h short
+				if r == 'h' && c.isHelpShort() {
 					return c.showHelp()
 				}
 				flag := c.findFlagByShort(string(r))
@@ -675,6 +675,13 @@ func (c *Command) findFlagByShort(short string) Flag {
 		}
 	}
 	return nil
+}
+
+// isHelpShort reports whether -h should trigger help for this command.
+// Returns false if the command or its app's global flags have explicitly
+// claimed -h as a short flag name.
+func (c *Command) isHelpShort() bool {
+	return c.findFlagByShort("h") == nil
 }
 
 // looksLikeFlag returns true if the string looks like a flag rather than a value.
@@ -785,7 +792,7 @@ func (c *Command) showHelp() error {
 	var sb strings.Builder
 
 	// Command name and description
-	if c.group != nil {
+	if c.group != nil && !c.group.flatRouting {
 		sb.WriteString(fmt.Sprintf("%s %s", c.group.name, c.name))
 	} else {
 		sb.WriteString(c.name)
@@ -806,28 +813,8 @@ func (c *Command) showHelp() error {
 	}
 
 	// Usage
-	sb.WriteString("Usage:\n  ")
-	sb.WriteString(c.app.name)
-	if c.group != nil {
-		sb.WriteString(" ")
-		sb.WriteString(c.group.name)
-	}
-	sb.WriteString(" ")
-	sb.WriteString(c.name)
-	if len(c.flags) > 0 {
-		sb.WriteString(" [flags]")
-	}
-	for _, arg := range c.args {
-		if arg.Required {
-			sb.WriteString(" <")
-			sb.WriteString(arg.Name)
-			sb.WriteString(">")
-		} else {
-			sb.WriteString(" [")
-			sb.WriteString(arg.Name)
-			sb.WriteString("]")
-		}
-	}
+	sb.WriteString("Usage:\n")
+	sb.WriteString(buildUsageString(c))
 	sb.WriteString("\n\n")
 
 	// Arguments

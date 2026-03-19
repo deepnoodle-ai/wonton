@@ -131,8 +131,8 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			// Short flag(s)
 			shorts := arg[1:]
 
-			// Handle -h specially
-			if shorts == "h" {
+			// Handle -h as help unless a global flag explicitly claims -h
+			if shorts == "h" && p.app.isHelpShort() {
 				result.GlobalFlags = append(result.GlobalFlags, arg)
 				i++
 				continue
@@ -262,6 +262,32 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 		}
 	}
 
+	// Check if it's a group name (before flat routing, so that a group name
+	// is never stolen by a flat-routed subcommand with the same name).
+	if _, ok := p.app.groups[arg]; ok {
+		return "", arg
+	}
+
+	// Check flat-routed group subcommands (group prefix not required).
+	// Use groupOrder for deterministic resolution when multiple groups
+	// have commands with the same name.
+	for _, gName := range p.app.groupOrder {
+		g := p.app.groups[gName]
+		if g == nil || !g.flatRouting {
+			continue
+		}
+		if _, ok := g.commands[arg]; ok {
+			return arg, gName
+		}
+		for cmdName, cmd := range g.commands {
+			for _, alias := range cmd.aliases {
+				if alias == arg {
+					return cmdName, gName
+				}
+			}
+		}
+	}
+
 	// Check for group:command pattern
 	if parts := strings.SplitN(arg, ":", 2); len(parts) == 2 {
 		if g, ok := p.app.groups[parts[0]]; ok {
@@ -277,11 +303,6 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 				}
 			}
 		}
-	}
-
-	// Check if it's a group name
-	if _, ok := p.app.groups[arg]; ok {
-		return "", arg
 	}
 
 	return "", ""
