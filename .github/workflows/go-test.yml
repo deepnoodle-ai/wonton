@@ -8,8 +8,12 @@ on:
 
 jobs:
   test:
-    name: Run Tests and Build
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +24,57 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Install dependencies
+      - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
-        run: go test -v ./...
+      - name: Vet
+        run: go vet ./...
 
       - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+      # The race detector is slow and amplifies PTY I/O timing, so we only
+      # run it on the POSIX hosts. Windows has no PTY tests to race on.
+      - name: Test (race)
+        if: matrix.os != 'windows-latest'
+        run: go test -race ./...
+
+  cross-compile:
+    name: cross-compile (${{ matrix.target.goos }}/${{ matrix.target.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # 32-bit pointer-size sanity check. Catches any uintptr-vs-int
+          # assumptions in pty/runewidth/terminal that would only show up
+          # on a 32-bit build.
+          - { goos: linux, goarch: '386' }
+          # arm64 is what most cloud Linux runs on now.
+          - { goos: linux, goarch: arm64 }
+          # Smoke test that the windows stub still compiles.
+          - { goos: windows, goarch: amd64 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Vet
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: go vet ./...
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
         run: go build ./...
