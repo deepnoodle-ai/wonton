@@ -7,9 +7,13 @@
 //
 // # Platform Support
 //
-// Tier 1 (tested): Linux, Darwin (macOS).
-// Tier 2 (compiles, best-effort): FreeBSD, OpenBSD, NetBSD, DragonFly BSD.
-// Unsupported: Windows and other platforms return [ErrUnsupported].
+// Supported: Linux, Darwin (macOS). Both are exercised by the test suite and
+// by CI.
+//
+// Unsupported: Windows and all other platforms return [ErrUnsupported]. BSD
+// support (FreeBSD, OpenBSD, NetBSD, DragonFly) is pending — the earlier
+// best-effort shims were never compiled against the current
+// golang.org/x/sys/unix release and are not in the tree.
 //
 // # Example
 //

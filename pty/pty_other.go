@@ -1,4 +1,4 @@
-//go:build !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd && !windows
+//go:build !darwin && !linux && !windows
 
 package pty
 

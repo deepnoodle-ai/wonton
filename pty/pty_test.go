@@ -16,14 +16,7 @@ func skipIfUnsupported(t *testing.T) {
 	t.Helper()
 	switch runtime.GOOS {
 	case "linux", "darwin":
-		// Tier 1: always run.
-	case "freebsd", "netbsd", "openbsd", "dragonfly":
-		// Tier 2: run if available.
-		if _, err := os.Stat("/dev/ptmx"); err != nil {
-			if _, err := os.Stat("/dev/ptm"); err != nil {
-				t.Skip("no PTY device available")
-			}
-		}
+		// Supported: always run.
 	default:
 		t.Skip("PTY not supported on " + runtime.GOOS)
 	}
