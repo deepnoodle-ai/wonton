@@ -5,7 +5,7 @@ import (
 	"image"
 	"sync"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // inputRegistry manages text input state (bindings, callbacks, etc.)
@@ -332,7 +332,7 @@ func calcWrappedHeight(text string, width int) int {
 			x = 0
 			continue
 		}
-		charWidth := runewidth.StringWidth(string(r))
+		charWidth := runewidth.RuneWidth(r)
 		if x+charWidth > width {
 			lines++
 			x = charWidth

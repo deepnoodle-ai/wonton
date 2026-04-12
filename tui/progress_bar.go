@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // ProgressBar represents a progress bar widget

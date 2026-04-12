@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // markdownView displays rendered markdown content.

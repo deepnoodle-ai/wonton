@@ -104,7 +104,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 	"golang.org/x/term"
 )
 

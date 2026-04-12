@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // Spinner represents an animated loading spinner widget

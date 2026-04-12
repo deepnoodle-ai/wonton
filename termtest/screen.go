@@ -71,7 +71,7 @@ package termtest
 import (
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // Style represents terminal text styling attributes.
