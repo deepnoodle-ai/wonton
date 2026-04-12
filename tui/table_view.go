@@ -5,7 +5,7 @@ import (
 	"image"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // TableColumn represents a table column configuration.
@@ -533,13 +533,10 @@ func (t *tableView) render(ctx *RenderContext) {
 				title = strings.ToUpper(title)
 			}
 
-			// Truncate if needed
-			if runewidth.StringWidth(title) > w {
-				title = runewidth.Truncate(title, w, "…")
-			}
-			// Pad
-			padding := w - runewidth.StringWidth(title)
-			if padding > 0 {
+			// Truncate if needed and compute padding in one pass.
+			var titleW int
+			title, titleW = runewidth.Fit(title, w, "…")
+			if padding := w - titleW; padding > 0 {
 				title += repeatStr(" ", padding)
 			}
 
@@ -633,13 +630,11 @@ func (t *tableView) render(ctx *RenderContext) {
 			}
 			w := t.columnWidths[colIdx]
 
-			// Truncate/Pad
-			if runewidth.StringWidth(cell) > w {
-				cell = runewidth.Truncate(cell, w, "…")
-			}
-			padding := w - runewidth.StringWidth(cell)
+			// Truncate/Pad in one pass.
+			var cellW int
+			cell, cellW = runewidth.Fit(cell, w, "…")
 			paddedCell := cell
-			if padding > 0 {
+			if padding := w - cellW; padding > 0 {
 				paddedCell += repeatStr(" ", padding)
 			}
 
