@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"sync"
 
-	"github.com/creack/pty"
+	"github.com/deepnoodle-ai/wonton/pty"
 	"golang.org/x/term"
 )
 
@@ -29,7 +29,7 @@ import (
 // and record simultaneously.
 type Session struct {
 	cmd      *exec.Cmd
-	pty      *os.File
+	pty      *pty.PTY
 	oldState *term.State
 	recorder *Recorder
 
@@ -217,11 +217,11 @@ func (s *Session) Start() error {
 	}
 
 	// Start command in PTY
-	ptmx, err := pty.Start(s.cmd)
+	p, err := pty.Start(s.cmd, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start PTY: %w", err)
 	}
-	s.pty = ptmx
+	s.pty = p
 
 	// Set raw mode on input (if it's a terminal)
 	if f, ok := s.input.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
@@ -325,7 +325,7 @@ func (s *Session) Resize(width, height int) error {
 		return fmt.Errorf("session not started")
 	}
 
-	if err := pty.Setsize(ptmx, &pty.Winsize{
+	if err := ptmx.Resize(pty.Size{
 		Rows: uint16(height),
 		Cols: uint16(width),
 	}); err != nil {
@@ -412,7 +412,7 @@ func (s *Session) syncSize() error {
 	s.mu.Unlock()
 
 	if ptmx != nil {
-		if err := pty.Setsize(ptmx, &pty.Winsize{
+		if err := ptmx.Resize(pty.Size{
 			Rows: uint16(height),
 			Cols: uint16(width),
 		}); err != nil {
