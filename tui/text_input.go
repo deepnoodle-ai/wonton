@@ -288,7 +288,11 @@ func (t *TextInput) Draw(frame RenderFrame) {
 					continue
 				}
 
-				if x+cw > drawX+width {
+				// Only wrap when there is already content on the current line.
+				// A grapheme whose display width exceeds the available width
+				// still gets drawn (and clipped) on the current line instead of
+				// producing a blank leading line.
+				if x > drawX && x+cw > drawX+width {
 					// Wrap to next line
 					visualLine++
 					x = drawX
@@ -420,7 +424,7 @@ func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
 			y++
 			x = startX
 		} else {
-			if x+cw > startX+width {
+			if x > startX && x+cw > startX+width {
 				// Wrap to next line
 				y++
 				x = startX
@@ -450,7 +454,7 @@ func (t *TextInput) countVisualLines(width int) int {
 			x = 0
 			continue
 		}
-		if x+cw > width {
+		if x > 0 && x+cw > width {
 			lines++
 			x = cw
 		} else {
@@ -478,7 +482,7 @@ func (t *TextInput) getCursorLine(width int) int {
 			line++
 			x = 0
 		} else {
-			if x+cw > width {
+			if x > 0 && x+cw > width {
 				line++
 				x = cw
 			} else {
@@ -506,7 +510,7 @@ func (t *TextInput) getCursorXInLine(width int) int {
 		if cluster == "\n" {
 			x = 0
 		} else {
-			if x+cw > width {
+			if x > 0 && x+cw > width {
 				x = cw
 			} else {
 				x += cw
@@ -543,7 +547,7 @@ func (t *TextInput) getVisualLines(displayText string) []lineRange {
 			x = 0
 			continue
 		}
-		if x+cw > width {
+		if x > 0 && x+cw > width {
 			lines = append(lines, lineRange{lineStart, offset})
 			lineStart = offset
 			x = cw

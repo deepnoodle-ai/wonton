@@ -23,10 +23,10 @@ conformance test. Where we lose, we say so.
 | Unicode version | 17.0.0 | 15.0.0 | **17.0.0** |
 | UAX#29 GraphemeBreakTest conformance | partial (per-rune width only) | yes (15.0) | **yes (17.0, 766/766 cases)** |
 | UAX#29 GB9c Indic_Conjunct_Break | no | no | **yes** |
-| `StringWidth` allocations | per-call | per-call | **0 on any input** |
+| `StringWidth` internal state | constructs per-call iterator | constructs per-call iterator state | **no iterator object; direct loop** |
 | `FitLeft` / `FitRight` / `Fit` | — | — | **new to Go ecosystem** |
 | `WidthIndex` (byte → visual column) | — | — | **new to Go ecosystem** |
-| Public `Graphemes(s)` iterator | via `uax29` | yes (allocates iterator) | **yes, allocation-free `iter.Seq2[string,int]`** |
+| Public `Graphemes(s)` iterator | via `uax29` | yes (`*Graphemes` struct, `[]rune` per cluster) | **yes, `iter.Seq2[string,int]` with no retained state** |
 | Two/three-em dash width (`U+2E3A`, `U+2E3B`) | 1, 1 (wrong) | 3, 4 | **3, 4** |
 | Emoji keycap sequences (`#️⃣` etc.) | width 1 (wrong) | width 1 (wrong) | **width 2 (correct)** |
 | VS16-forced emoji (`❤️`, `⚠️`, rainbow flag base) | width 1 (wrong) | width 2 | **width 2** |
@@ -76,10 +76,12 @@ Brahmic-script conjunct consonants.
 ## 2. Unicode 17.0
 
 Tables are generated from Unicode 17.0.0 (released September 2025). The
-generator is in `runewidth/generate.go` and is reproducible via
-`go run generate.go` (or `go run generate.go -version=<other>` for any other
-version). Downloaded source files are cached under `testdata/unicode/<version>/`
-and gitignored.
+generator is in `runewidth/generate.go` and is reproducible from the repo root
+via `cd runewidth && go run generate.go` (or
+`cd runewidth && go run generate.go -version=<other>` for any other version).
+The `//go:build ignore` tag on `generate.go` means it must be invoked from the
+`runewidth/` directory. Downloaded source files are cached under
+`runewidth/testdata/unicode/<version>/` and gitignored.
 
 New code points added in 17.0 are correctly classified. `TestRuneWidth_Unicode17`
 asserts, for example, that `U+20C1` SAUDI RIYAL SIGN is width 1 with no grapheme
@@ -108,10 +110,17 @@ for cluster, width := range runewidth.Graphemes(text) {
 }
 ```
 
-It is **allocation-free**: the closure returned by `Graphemes` captures only
-a byte offset and the parser state, both stack-allocated. `uniseg.NewGraphemes`
-by contrast allocates a `*Graphemes` struct per call and a `[]rune` per
-cluster via `g.Runes()`.
+Under Go 1.23+ `range-over-func` inlining and escape analysis, the closure
+returned by `Graphemes` captures only a byte offset and the parser state, and
+benchmem reports **zero heap allocations** on the measured inputs. There is
+no retained iterator object whose lifetime extends past the caller's loop, so
+no cleanup, no reset step, and no `g.Runes()`-style per-cluster slice. In
+contrast, `uniseg.NewGraphemes` is *designed* to return a `*Graphemes` struct
+the caller keeps across calls and builds a `[]rune` per cluster via
+`g.Runes()`; `go-runewidth` v0.0.21 constructs a `uax29` grapheme iterator
+per `StringWidth` call (Go 1.25 escape analysis often stack-promotes it, so
+the cost is hidden from benchmem on short inputs, but the iterator object
+still exists at the source level).
 
 ## 4. Width model beyond 0/1/2
 
@@ -134,16 +143,24 @@ BenchmarkFitRight_Emoji-16       164750  7268   ns/op   0 B/op   0 allocs/op
 BenchmarkFitRight_Mixed-16       668138  1877   ns/op   0 B/op   0 allocs/op
 ```
 
-`StringWidth`, `FitLeft`, `FitRight`, `Truncate`, `Fit`, and `Graphemes`
-all allocate **zero bytes on any input** — ASCII or Unicode. `FitRight` in v1
-allocated a cluster-start slice for non-ASCII; it has been reimplemented as a
-two-pass forward scan (total width, then drop clusters from the front until
-the remainder fits). `WidthIndex` is the only core operation that allocates,
-and it allocates exactly one `[]int` the length of its input (the return value).
+`StringWidth`, `FitLeft`, `FitRight`, `Truncate`, `Fit`, and `Graphemes` all
+report **zero heap allocations under benchmem** on every measured input —
+ASCII or Unicode. `FitRight` in v1 allocated a cluster-start slice for
+non-ASCII; it has been reimplemented as a two-pass forward scan (total width,
+then drop clusters from the front until the remainder fits). `WidthIndex` is
+the only core operation with an unavoidable heap allocation, and it allocates
+exactly one `[]int` the length of its input (the return value).
 
-`go-runewidth` v0.0.21's `StringWidth` allocates a grapheme iterator per call.
-`uniseg.StringWidth` allocates the iterator state. `wonton/runewidth` does
-neither.
+The other two libraries also report `0 B/op 0 allocs/op` under benchmem on
+these same inputs, because Go 1.25's escape analysis stack-promotes their
+internal iterator objects. The structural difference is what happens at the
+source level: `wonton`'s `StringWidth` is a direct loop over
+`firstGraphemeCluster` (no iterator object at all), whereas `go-runewidth`
+v0.0.21 constructs a `uax29` grapheme iterator per call and `uniseg`
+`StringWidth` constructs a cluster-state object per call. On long or nested
+inputs where escape analysis can't prove the object doesn't escape, those
+show up as heap allocations; on the short flat corpus the benchmarks measure,
+all three report zero.
 
 ## 6. New APIs
 
@@ -186,8 +203,10 @@ Documented in section 3.
 
 Measured on Apple M4 Max, Go 1.25, `-benchtime=500ms`. Full source in
 `runewidth/internal/bench/bench_test.go`. All rows are `StringWidth` over the
-named corpus element. **All three libraries allocate zero bytes on every row**,
-so only the nanoseconds-per-op are shown.
+named corpus element. **All three libraries report zero heap allocations
+under benchmem on every row on these inputs** (see section 5 for why this
+hides a structural difference in internal state), so only the
+nanoseconds-per-op are shown.
 
 | Benchmark | Wonton | go-runewidth v0.0.21 | uniseg v0.4.7 | Winner |
 |-----------|-------:|---------------------:|---------------:|--------|
@@ -265,8 +284,10 @@ behavioral regressions in golden snapshots.
 
 `runewidth/generate.go` has been hardened:
 
-- `-version` flag (default `17.0.0`). Run `go run generate.go -version=18.0.0`
-  to retarget without editing source.
+- `-version` flag (default `17.0.0`). Run
+  `cd runewidth && go run generate.go -version=18.0.0` to retarget without
+  editing source. (The `//go:build ignore` tag means `generate.go` must be
+  invoked from the `runewidth/` directory, not the repo root.)
 - Downloaded UCD files are cached under `runewidth/testdata/unicode/<version>/`
   so reruns are offline-friendly. The cache directory is gitignored.
 - Generated `tables.go` header lists table sizes so regressions in table growth

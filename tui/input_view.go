@@ -334,7 +334,7 @@ func calcWrappedHeight(text string, width int) int {
 			x = 0
 			continue
 		}
-		if x+charWidth > width {
+		if x > 0 && x+charWidth > width {
 			lines++
 			x = charWidth
 		} else {
