@@ -144,3 +144,20 @@ func TestTerminal_BypassInputUpdatesBuffers(t *testing.T) {
 	assert.Equal(t, term.virtualX, 1)
 	assert.Equal(t, term.virtualY, 1)
 }
+
+func TestTerminal_BypassInputPreservesGraphemeClusters(t *testing.T) {
+	term := NewTestTerminal(10, 2, &bytes.Buffer{})
+	term.BypassInput("#\uFE0F\u20E3A")
+
+	assert.Equal(t, '#', term.backBuffer[0][0].Char)
+	assert.Equal(t, "\uFE0F\u20E3", term.backBuffer[0][0].Trailing)
+	assert.Equal(t, 2, term.backBuffer[0][0].Width)
+	assert.Equal(t, true, term.backBuffer[0][1].Continuation)
+	assert.Equal(t, 'A', term.backBuffer[0][2].Char)
+
+	assert.Equal(t, '#', term.frontBuffer[0][0].Char)
+	assert.Equal(t, "\uFE0F\u20E3", term.frontBuffer[0][0].Trailing)
+	assert.Equal(t, 'A', term.frontBuffer[0][2].Char)
+	assert.Equal(t, 3, term.virtualX)
+	assert.Equal(t, 0, term.virtualY)
+}

@@ -61,6 +61,18 @@ func Open() (*PTY, *os.File, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// Go 1.26's os.OpenFile sets O_NONBLOCK on /dev/ptmx on Darwin, but the
+	// Darwin runtime poller does not drive ptmx — so a non-blocking Read
+	// returns EAGAIN directly to the caller and any io.Copy loop exits with
+	// zero bytes. Force the master back to blocking so Reads wait for data
+	// as the rest of the package assumes. Tests that want deadline or
+	// close-interrupt semantics opt back into non-blocking explicitly via
+	// syscall.SetNonblock.
+	if err := syscall.SetNonblock(int(master.Fd()), false); err != nil {
+		master.Close()
+		slave.Close()
+		return nil, nil, fmt.Errorf("pty: clear O_NONBLOCK on master: %w", err)
+	}
 	return &PTY{master: master}, slave, nil
 }
 

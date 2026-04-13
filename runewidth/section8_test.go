@@ -51,28 +51,28 @@ func TestSection8_DisagreementsWithGoRunewidth(t *testing.T) {
 		// Indic cluster widths — wonton and uniseg both compute cluster
 		// width by summing the first rune's width rather than every rune,
 		// matching how terminals render these clusters.
-		{"indic tamil", "\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD", 4}, // தமிழ்
+		{"indic tamil", "\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD", 4},   // தமிழ்
 		{"indic bengali", "\u09AC\u09BE\u0982\u09B2\u09BE", 3}, // বাংলা
 
 		// Emoji with VS16 — the variation selector promotes the
 		// text-default glyph to emoji width.
-		{"heart VS16", "\u2764\uFE0F", 2},    // ❤️
-		{"warning VS16", "\u26A0\uFE0F", 2},  // ⚠️
+		{"heart VS16", "\u2764\uFE0F", 2},   // ❤️
+		{"warning VS16", "\u26A0\uFE0F", 2}, // ⚠️
 
 		// ZWJ rainbow flag: base + VS16 + ZWJ + rainbow.
 		{"rainbow flag", "\U0001F3F3\uFE0F\u200D\U0001F308", 2}, // 🏳️‍🌈
 
 		// Regional indicator flags: each pair is one grapheme cluster of
 		// width 2.
-		{"US flag", "\U0001F1FA\U0001F1F8", 2},                                 // 🇺🇸
-		{"JP flag", "\U0001F1EF\U0001F1F5", 2},                                 // 🇯🇵
-		{"two flags", "\U0001F1FA\U0001F1F8\U0001F1EF\U0001F1F5", 4},           // 🇺🇸🇯🇵
+		{"US flag", "\U0001F1FA\U0001F1F8", 2},                       // 🇺🇸
+		{"JP flag", "\U0001F1EF\U0001F1F5", 2},                       // 🇯🇵
+		{"two flags", "\U0001F1FA\U0001F1F8\U0001F1EF\U0001F1F5", 4}, // 🇺🇸🇯🇵
 
 		// Wide punctuation — U+2E3A and U+2E3B are handled as explicit rune
 		// special cases in runeWidthFromPacked (U+2E3A → 3, U+2E3B → 4) to
 		// match terminal rendering, not via East Asian Width alone.
 		{"a two-em-dash b", "a\u2E3Ab", 5}, // a⸺b = 1 + 3 + 1
-		{"three-em dash", "\u2E3B", 4},      // ⸻
+		{"three-em dash", "\u2E3B", 4},     // ⸻
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

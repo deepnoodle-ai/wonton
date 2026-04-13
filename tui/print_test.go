@@ -81,6 +81,34 @@ func TestFprint(t *testing.T) {
 	assert.True(t, strings.Contains(buf.String(), "Fprint test"), "output should contain text")
 }
 
+// TestSprint_PreservesGraphemeClusters verifies that Sprint emits the full
+// bytes of multi-rune grapheme clusters. A Cell stores the leading rune in
+// Char and any continuation bytes (VS16 selectors, ZWJ tails, the second
+// half of a regional-indicator flag, skin-tone modifiers) in Trailing; the
+// cell→ANSI rendering path must emit both or the cluster gets truncated to
+// its first rune and the terminal sees a broken half-emoji.
+func TestSprint_PreservesGraphemeClusters(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"VS16 heart", "\u2764\uFE0F"},
+		{"hash keycap", "#\uFE0F\u20E3"},
+		{"JP flag", "\U0001F1EF\U0001F1F5"},
+		{"rainbow flag", "\U0001F3F3\uFE0F\u200D\U0001F308"},
+		{"family of four", "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466"},
+		{"skin-toned wave", "\U0001F44B\U0001F3FD"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := Sprint(Text("%s", tc.input), PrintConfig{Width: 20})
+			assert.True(t, strings.Contains(out, tc.input),
+				"Sprint output should contain full cluster %q, got %q",
+				tc.input, out)
+		})
+	}
+}
+
 func TestPrint_WithHeight(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Fixed height")

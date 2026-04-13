@@ -52,11 +52,11 @@ func TestRuneWidth_Latin(t *testing.T) {
 func TestRuneWidth_CJK(t *testing.T) {
 	tests := []rune{
 		'中', '文', '字', // CJK Unified Ideographs
-		'가', '나',       // Hangul Syllables
-		'ア', 'カ',       // Katakana (fullwidth)
-		'あ', 'い',       // Hiragana
-		'Ａ', 'Ｚ',       // Fullwidth Latin
-		'０', '９',       // Fullwidth Digits
+		'가', '나', // Hangul Syllables
+		'ア', 'カ', // Katakana (fullwidth)
+		'あ', 'い', // Hiragana
+		'Ａ', 'Ｚ', // Fullwidth Latin
+		'０', '９', // Fullwidth Digits
 	}
 	for _, r := range tests {
 		if w := RuneWidth(r); w != 2 {
@@ -72,8 +72,8 @@ func TestRuneWidth_Emoji(t *testing.T) {
 	}{
 		{'😀', 2},
 		{'🎉', 2},
-		{'❤', 1},  // U+2764 text presentation by default
-		{'⭐', 2},  // U+2B50 has Emoji_Presentation=Yes
+		{'❤', 1}, // U+2764 text presentation by default
+		{'⭐', 2}, // U+2B50 has Emoji_Presentation=Yes
 		{'👍', 2},
 		{'🔥', 2},
 	}
@@ -234,9 +234,9 @@ func TestStringWidth_Combining(t *testing.T) {
 		s    string
 		want int
 	}{
-		{"e\u0301", 1},           // é (e + combining acute accent)
-		{"e\u0301e\u0301", 2},   // éé
-		{"noe\u0308l", 4},       // noël
+		{"e\u0301", 1},             // é (e + combining acute accent)
+		{"e\u0301e\u0301", 2},      // éé
+		{"noe\u0308l", 4},          // noël
 		{"a\u0300\u0301\u0302", 1}, // a with three combining marks
 	}
 	for _, tt := range tests {
@@ -584,10 +584,10 @@ func TestIsASCII(t *testing.T) {
 	}{
 		{"Hello", true},
 		{"Hello 世界", false},
-		{"abc\ndef", false},      // newline < 0x20
-		{"abc\tdef", false},      // tab < 0x20
-		{"", true},               // empty is trivially ASCII
-		{"\x7F", false},          // DEL
+		{"abc\ndef", false},       // newline < 0x20
+		{"abc\tdef", false},       // tab < 0x20
+		{"", true},                // empty is trivially ASCII
+		{"\x7F", false},           // DEL
 		{"Hello\x80World", false}, // 0x80
 	}
 	for _, tt := range tests {

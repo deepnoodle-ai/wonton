@@ -41,23 +41,41 @@ var (
 // --- StringWidth benchmarks ---
 
 func BenchmarkStringWidth_ASCIIShort_Wonton(b *testing.B) { benchStringWidth(b, asciiShort, wontonSW) }
-func BenchmarkStringWidth_ASCIIShort_GoRW(b *testing.B)   { benchStringWidth(b, asciiShort, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_ASCIIShort_Uniseg(b *testing.B) { benchStringWidth(b, asciiShort, uniseg.StringWidth) }
+func BenchmarkStringWidth_ASCIIShort_GoRW(b *testing.B) {
+	benchStringWidth(b, asciiShort, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_ASCIIShort_Uniseg(b *testing.B) {
+	benchStringWidth(b, asciiShort, uniseg.StringWidth)
+}
 
 func BenchmarkStringWidth_ASCIILong_Wonton(b *testing.B) { benchStringWidth(b, asciiLong, wontonSW) }
-func BenchmarkStringWidth_ASCIILong_GoRW(b *testing.B)   { benchStringWidth(b, asciiLong, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_ASCIILong_Uniseg(b *testing.B) { benchStringWidth(b, asciiLong, uniseg.StringWidth) }
+func BenchmarkStringWidth_ASCIILong_GoRW(b *testing.B) {
+	benchStringWidth(b, asciiLong, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_ASCIILong_Uniseg(b *testing.B) {
+	benchStringWidth(b, asciiLong, uniseg.StringWidth)
+}
 
 func BenchmarkStringWidth_CJKShort_Wonton(b *testing.B) { benchStringWidth(b, cjkShort, wontonSW) }
-func BenchmarkStringWidth_CJKShort_GoRW(b *testing.B)   { benchStringWidth(b, cjkShort, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_CJKShort_Uniseg(b *testing.B) { benchStringWidth(b, cjkShort, uniseg.StringWidth) }
+func BenchmarkStringWidth_CJKShort_GoRW(b *testing.B) {
+	benchStringWidth(b, cjkShort, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_CJKShort_Uniseg(b *testing.B) {
+	benchStringWidth(b, cjkShort, uniseg.StringWidth)
+}
 
 func BenchmarkStringWidth_CJKLong_Wonton(b *testing.B) { benchStringWidth(b, cjkLong, wontonSW) }
-func BenchmarkStringWidth_CJKLong_GoRW(b *testing.B)   { benchStringWidth(b, cjkLong, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_CJKLong_Uniseg(b *testing.B) { benchStringWidth(b, cjkLong, uniseg.StringWidth) }
+func BenchmarkStringWidth_CJKLong_GoRW(b *testing.B) {
+	benchStringWidth(b, cjkLong, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_CJKLong_Uniseg(b *testing.B) {
+	benchStringWidth(b, cjkLong, uniseg.StringWidth)
+}
 
 func BenchmarkStringWidth_Emoji_Wonton(b *testing.B) { benchStringWidth(b, emoji, wontonSW) }
-func BenchmarkStringWidth_Emoji_GoRW(b *testing.B)   { benchStringWidth(b, emoji, gorunewidth.StringWidth) }
+func BenchmarkStringWidth_Emoji_GoRW(b *testing.B) {
+	benchStringWidth(b, emoji, gorunewidth.StringWidth)
+}
 func BenchmarkStringWidth_Emoji_Uniseg(b *testing.B) { benchStringWidth(b, emoji, uniseg.StringWidth) }
 
 func BenchmarkStringWidth_ZWJ_Wonton(b *testing.B) { benchStringWidth(b, zwj, wontonSW) }
@@ -65,16 +83,26 @@ func BenchmarkStringWidth_ZWJ_GoRW(b *testing.B)   { benchStringWidth(b, zwj, go
 func BenchmarkStringWidth_ZWJ_Uniseg(b *testing.B) { benchStringWidth(b, zwj, uniseg.StringWidth) }
 
 func BenchmarkStringWidth_Flags_Wonton(b *testing.B) { benchStringWidth(b, flags, wontonSW) }
-func BenchmarkStringWidth_Flags_GoRW(b *testing.B)   { benchStringWidth(b, flags, gorunewidth.StringWidth) }
+func BenchmarkStringWidth_Flags_GoRW(b *testing.B) {
+	benchStringWidth(b, flags, gorunewidth.StringWidth)
+}
 func BenchmarkStringWidth_Flags_Uniseg(b *testing.B) { benchStringWidth(b, flags, uniseg.StringWidth) }
 
 func BenchmarkStringWidth_Combining_Wonton(b *testing.B) { benchStringWidth(b, combining, wontonSW) }
-func BenchmarkStringWidth_Combining_GoRW(b *testing.B)   { benchStringWidth(b, combining, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_Combining_Uniseg(b *testing.B) { benchStringWidth(b, combining, uniseg.StringWidth) }
+func BenchmarkStringWidth_Combining_GoRW(b *testing.B) {
+	benchStringWidth(b, combining, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_Combining_Uniseg(b *testing.B) {
+	benchStringWidth(b, combining, uniseg.StringWidth)
+}
 
 func BenchmarkStringWidth_Mixed10KB_Wonton(b *testing.B) { benchStringWidth(b, mixed10KB, wontonSW) }
-func BenchmarkStringWidth_Mixed10KB_GoRW(b *testing.B)   { benchStringWidth(b, mixed10KB, gorunewidth.StringWidth) }
-func BenchmarkStringWidth_Mixed10KB_Uniseg(b *testing.B) { benchStringWidth(b, mixed10KB, uniseg.StringWidth) }
+func BenchmarkStringWidth_Mixed10KB_GoRW(b *testing.B) {
+	benchStringWidth(b, mixed10KB, gorunewidth.StringWidth)
+}
+func BenchmarkStringWidth_Mixed10KB_Uniseg(b *testing.B) {
+	benchStringWidth(b, mixed10KB, uniseg.StringWidth)
+}
 
 func wontonSW(s string) int { return wonton.StringWidth(s) }
 

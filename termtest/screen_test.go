@@ -464,6 +464,142 @@ func TestScreenEmojiBasic(t *testing.T) {
 	assert.Contains(t, row, "!")
 }
 
+func TestScreenWriteStringPreservesGraphemeClusters(t *testing.T) {
+	cases := []struct {
+		name         string
+		input        string
+		wantChar     rune
+		wantTrailing string
+		wantWidth    int
+	}{
+		{
+			name:         "VS16 heart",
+			input:        "\u2764\uFE0F",
+			wantChar:     '\u2764',
+			wantTrailing: "\uFE0F",
+			wantWidth:    2,
+		},
+		{
+			name:         "hash keycap",
+			input:        "#\uFE0F\u20E3",
+			wantChar:     '#',
+			wantTrailing: "\uFE0F\u20E3",
+			wantWidth:    2,
+		},
+		{
+			name:         "JP flag",
+			input:        "\U0001F1EF\U0001F1F5",
+			wantChar:     '\U0001F1EF',
+			wantTrailing: "\U0001F1F5",
+			wantWidth:    2,
+		},
+		{
+			name:         "rainbow flag",
+			input:        "\U0001F3F3\uFE0F\u200D\U0001F308",
+			wantChar:     '\U0001F3F3',
+			wantTrailing: "\uFE0F\u200D\U0001F308",
+			wantWidth:    2,
+		},
+		{
+			name:         "family of four",
+			input:        "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466",
+			wantChar:     '\U0001F468',
+			wantTrailing: "\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466",
+			wantWidth:    2,
+		},
+		{
+			name:         "skin toned wave",
+			input:        "\U0001F44B\U0001F3FD",
+			wantChar:     '\U0001F44B',
+			wantTrailing: "\U0001F3FD",
+			wantWidth:    2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewScreen(20, 5)
+			s.WriteString(tc.input + " x")
+
+			assert.Equal(t, tc.input+" x", s.Row(0))
+
+			cell := s.Cell(0, 0)
+			assert.Equal(t, tc.wantChar, cell.Char)
+			assert.Equal(t, tc.wantTrailing, cell.Trailing)
+			assert.Equal(t, tc.wantWidth, cell.Width)
+
+			cont := s.Cell(1, 0)
+			assert.Equal(t, rune(0), cont.Char)
+			assert.Equal(t, 0, cont.Width)
+			assert.True(t, cont.Continuation)
+
+			trailingCell := s.Cell(tc.wantWidth, 0)
+			assert.Equal(t, ' ', trailingCell.Char)
+		})
+	}
+}
+
+func TestScreenANSIWritePreservesGraphemeClusters(t *testing.T) {
+	s := NewScreen(20, 5)
+	_, err := s.Write([]byte("\x1b[1m#\uFE0F\u20E3\x1b[0m \x1b[32m\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466\x1b[0m"))
+	assert.NoError(t, err)
+
+	assert.Equal(t, "#\uFE0F\u20E3 \U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466", s.Row(0))
+
+	keycap := s.Cell(0, 0)
+	assert.Equal(t, '#', keycap.Char)
+	assert.Equal(t, "\uFE0F\u20E3", keycap.Trailing)
+	assert.True(t, keycap.Style.Bold)
+
+	family := s.Cell(3, 0)
+	assert.Equal(t, '\U0001F468', family.Char)
+	assert.Equal(t, "\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466", family.Trailing)
+	assert.Equal(t, Color{Type: ColorBasic, Value: 2}, family.Style.Foreground)
+}
+
+func TestScreenCellGlyph(t *testing.T) {
+	s := NewScreen(20, 5)
+	s.WriteString("A#\uFE0F\u20E3")
+
+	assert.Equal(t, "A", s.CellGlyph(0, 0))
+	assert.Equal(t, "#\uFE0F\u20E3", s.CellGlyph(1, 0))
+	assert.Equal(t, "", s.CellGlyph(2, 0))
+}
+
+func TestScreenDeleteCharsAvoidsBrokenWideGlyphs(t *testing.T) {
+	s := NewScreen(10, 5)
+	s.WriteString("日B")
+	_, err := s.Write([]byte("\x1b[2G\x1b[P"))
+	assert.NoError(t, err)
+
+	assert.Equal(t, " B", s.Row(0))
+	assert.Equal(t, ' ', s.Cell(0, 0).Char)
+	assert.Equal(t, 'B', s.Cell(1, 0).Char)
+	assert.False(t, s.Cell(0, 0).Continuation)
+}
+
+func TestScreenInsertCharsAvoidsBrokenWideGlyphs(t *testing.T) {
+	s := NewScreen(10, 5)
+	s.WriteString("日B")
+	_, err := s.Write([]byte("\x1b[2G\x1b[@"))
+	assert.NoError(t, err)
+
+	assert.Equal(t, "   B", s.Row(0))
+	assert.Equal(t, 'B', s.Cell(3, 0).Char)
+	assert.False(t, s.Cell(1, 0).Continuation)
+}
+
+func TestScreenEraseCharsAvoidsBrokenWideGlyphs(t *testing.T) {
+	s := NewScreen(10, 5)
+	s.WriteString("日B")
+	_, err := s.Write([]byte("\x1b[2G\x1b[X"))
+	assert.NoError(t, err)
+
+	assert.Equal(t, "  B", s.Row(0))
+	assert.Equal(t, 'B', s.Cell(2, 0).Char)
+	assert.False(t, s.Cell(1, 0).Continuation)
+}
+
 func TestScreenMixedWidthCharacters(t *testing.T) {
 	s := NewScreen(30, 5)
 	s.WriteString("Hello世界ABC")

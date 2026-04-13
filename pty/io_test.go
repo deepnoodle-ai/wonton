@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/deepnoodle-ai/wonton/pty"
 )
 
@@ -26,6 +28,33 @@ import (
 // termios defaults would first surface through paths like these.
 
 const readUnblockBudget = time.Second
+
+// TestOpen_MasterIsBlocking pins the invariant that Open returns a master fd
+// in blocking mode. Go 1.26 flipped os.OpenFile to set O_NONBLOCK on
+// /dev/ptmx on Darwin, where the runtime poller does not drive ptmx — that
+// combination makes master Reads return EAGAIN immediately and every io.Copy
+// loop in the package exits with zero bytes. pty.Open clears O_NONBLOCK to
+// restore the historical semantics; this test fails fast if that clear is
+// ever removed or a future runtime change sets the flag again after Open
+// returns.
+func TestOpen_MasterIsBlocking(t *testing.T) {
+	skipIfUnsupported(t)
+
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+
+	flags, err := unix.FcntlInt(master.Fd(), syscall.F_GETFL, 0)
+	if err != nil {
+		t.Fatalf("F_GETFL on master: %v", err)
+	}
+	if flags&syscall.O_NONBLOCK != 0 {
+		t.Fatalf("master fd flags = 0x%x, O_NONBLOCK set; want blocking", flags)
+	}
+}
 
 // skipIfBlockingPTY skips on platforms whose /dev/ptmx is intentionally
 // blocking. On Darwin the Go runtime keeps ptmx in blocking mode (see

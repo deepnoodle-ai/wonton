@@ -35,11 +35,11 @@ func TestCompatCorpus(t *testing.T) {
 	t.Logf("corpus size: %d strings", len(corpus))
 
 	type disagreement struct {
-		kind       string
-		input      string
-		wontonW    int
-		gorwW      int
-		unisegW    int
+		kind           string
+		input          string
+		wontonW        int
+		gorwW          int
+		unisegW        int
 		classification string
 	}
 	var disagreements []disagreement
@@ -113,9 +113,9 @@ func buildCorpus() []corpusEntry {
 	add("ascii", "The quick brown fox jumps over the lazy dog.")
 
 	// Latin with combining marks.
-	add("combining", "e\u0301")                     // é
-	add("combining", "noe\u0308l")                  // noël
-	add("combining", "a\u0300\u0301\u0302")         // a with three diacritics
+	add("combining", "e\u0301")                      // é
+	add("combining", "noe\u0308l")                   // noël
+	add("combining", "a\u0300\u0301\u0302")          // a with three diacritics
 	add("combining", "e\u0301e\u0301e\u0301e\u0301") // multiple
 	// Precomposed equivalent:
 	add("latin_precomp", "é")
@@ -128,30 +128,30 @@ func buildCorpus() []corpusEntry {
 	add("cjk", "繁體中文")
 
 	// RTL scripts.
-	add("rtl", "مرحبا")       // Arabic
-	add("rtl", "שלום")        // Hebrew
-	add("rtl", "بلند")        // Persian
+	add("rtl", "مرحبا") // Arabic
+	add("rtl", "שלום")  // Hebrew
+	add("rtl", "بلند")  // Persian
 
 	// Indic (exercises GB9c).
-	add("indic", "क\u094dत")                    // Devanagari KA + VIRAMA + TA
-	add("indic", "क\u094d\u200dत")              // With ZWJ
+	add("indic", "क\u094dत")                       // Devanagari KA + VIRAMA + TA
+	add("indic", "क\u094d\u200dत")                 // With ZWJ
 	add("indic", "\u0915\u094D\u0915\u094D\u0924") // KA VIRAMA KA VIRAMA TA
 	add("indic_tamil", "தமிழ்")
 	add("indic_bengali", "বাংলা")
 
 	// Plain emoji.
 	add("emoji", "😀")
-	add("emoji", "❤")         // text-default
-	add("emoji", "❤\uFE0F")    // emoji with VS16
-	add("emoji", "⭐")         // emoji default
-	add("emoji", "⚠")         // text default
-	add("emoji", "⚠\uFE0F")    // warning with VS16
+	add("emoji", "❤")       // text-default
+	add("emoji", "❤\uFE0F") // emoji with VS16
+	add("emoji", "⭐")       // emoji default
+	add("emoji", "⚠")       // text default
+	add("emoji", "⚠\uFE0F") // warning with VS16
 
 	// ZWJ sequences.
 	add("zwj", "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466") // family
-	add("zwj", "\U0001F469\u200D\U0001F4BB")                                  // woman technologist
-	add("zwj", "\U0001F3F3\uFE0F\u200D\U0001F308")                            // rainbow flag
-	add("zwj", "\U0001F3F4\u200D\u2620\uFE0F")                                // pirate flag
+	add("zwj", "\U0001F469\u200D\U0001F4BB")                                 // woman technologist
+	add("zwj", "\U0001F3F3\uFE0F\u200D\U0001F308")                           // rainbow flag
+	add("zwj", "\U0001F3F4\u200D\u2620\uFE0F")                               // pirate flag
 
 	// Skin tone modifiers.
 	add("skin_tone", "\U0001F44B\U0001F3FD")
@@ -159,9 +159,9 @@ func buildCorpus() []corpusEntry {
 	add("skin_tone", "\U0001F469\U0001F3FB\u200D\U0001F4BB")
 
 	// Regional indicators (flags).
-	add("flag", "\U0001F1FA\U0001F1F8")                                     // US
-	add("flag", "\U0001F1EF\U0001F1F5")                                     // JP
-	add("flag", "\U0001F1FA\U0001F1F8\U0001F1EF\U0001F1F5")                 // two flags
+	add("flag", "\U0001F1FA\U0001F1F8")                                                          // US
+	add("flag", "\U0001F1EF\U0001F1F5")                                                          // JP
+	add("flag", "\U0001F1FA\U0001F1F8\U0001F1EF\U0001F1F5")                                      // two flags
 	add("flag_tagged", "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F") // England tag
 
 	// Keycap sequences.

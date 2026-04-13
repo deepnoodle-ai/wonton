@@ -100,6 +100,16 @@ func AssertCell(t *testing.T, screen *Screen, x, y int, expected rune) {
 	}
 }
 
+// AssertCellGlyph asserts that the lead cell at (x, y) contains the expected
+// full glyph, including any trailing runes of a grapheme cluster.
+func AssertCellGlyph(t *testing.T, screen *Screen, x, y int, expected string) {
+	t.Helper()
+	actual := screen.CellGlyph(x, y)
+	if actual != expected {
+		t.Errorf("cell glyph (%d, %d) mismatch:\nexpected: %q\nactual:   %q", x, y, expected, actual)
+	}
+}
+
 // AssertCellStyle asserts that the cell at (x, y) has exactly the expected style.
 // All style fields must match (foreground, background, bold, italic, etc.).
 func AssertCellStyle(t *testing.T, screen *Screen, x, y int, style Style) {

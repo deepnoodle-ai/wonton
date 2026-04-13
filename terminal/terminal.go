@@ -103,6 +103,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/runewidth"
 	"golang.org/x/term"
@@ -117,11 +118,19 @@ var (
 	ErrAlreadyActive = errors.New("component is already active")
 )
 
-// Cell represents a single character cell on the terminal
+// Cell represents a single character cell on the terminal.
+//
+// For simple ASCII or BMP characters, Char holds the entire cell content and
+// Trailing is empty. For multi-rune grapheme clusters (VS16 emoji, keycaps,
+// ZWJ sequences, regional indicator flag pairs, skin-toned emoji, combining
+// marks), Char is the first rune of the cluster and Trailing holds the
+// remaining bytes of the cluster so they can be emitted together on render.
+// Width is the display width of the whole cluster.
 type Cell struct {
 	Char         rune
+	Trailing     string // remaining runes of a multi-rune grapheme cluster; usually empty
 	Style        Style
-	Width        int  // Display width of the character (0 for continuation cells, 1-2 for actual chars)
+	Width        int  // Display width of the cluster (0 for continuation cells, 1-2 for actual chars)
 	Continuation bool // True if this cell is a continuation of a wide character
 }
 
@@ -987,6 +996,26 @@ func (t *Terminal) DisableBracketedPaste() {
 	t.bracketedPaste = false
 }
 
+// shouldSkipTerminalQuery reports whether interactive OSC/CSI probe queries
+// should be skipped based on the environment. Queries are unsafe under
+// multiplexers that don't forward replies reliably (tmux, screen) and
+// meaningless on dumb terminals or under Apple Terminal, which does not
+// implement the kitty keyboard protocol.
+func shouldSkipTerminalQuery() bool {
+	switch os.Getenv("TERM_PROGRAM") {
+	case "Apple_Terminal":
+		return true
+	}
+	termVar := os.Getenv("TERM")
+	if termVar == "" || termVar == "dumb" {
+		return true
+	}
+	if strings.HasPrefix(termVar, "screen") || strings.HasPrefix(termVar, "tmux") {
+		return true
+	}
+	return false
+}
+
 // DetectKittyProtocol probes the terminal to detect Kitty keyboard protocol support.
 // This should be called once at startup before enabling raw mode.
 // Returns true if the terminal supports the protocol.
@@ -996,6 +1025,12 @@ func (t *Terminal) DisableBracketedPaste() {
 // 2. Sending a query for progressive enhancement support (\x1b[?u)
 // 3. Sending a device attributes query (\x1b[c)
 // 4. Reading responses with a 200ms timeout
+//
+// Detection is skipped when TERM indicates a multiplexer (tmux/screen) or
+// dumb terminal, or when TERM_PROGRAM identifies a terminal known not to
+// support the protocol (e.g. Apple Terminal). In those cases the reply
+// would be unreliable or absent and the probe bytes could leak to the
+// user's shell.
 //
 // Caveats:
 //   - Detection relies on SetReadDeadline which may not work on all platforms
@@ -1007,6 +1042,11 @@ func (t *Terminal) DisableBracketedPaste() {
 func (t *Terminal) DetectKittyProtocol() bool {
 	if t.fd == -1 {
 		return false // Test mode
+	}
+
+	if shouldSkipTerminalQuery() {
+		t.kittySupported = false
+		return false
 	}
 
 	// Need raw mode for detection
@@ -1278,17 +1318,20 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	currentX := startX
 	currentY := startY
 
-	for _, r := range text {
-		if r == '\n' {
+	// Iterate the input by grapheme cluster so multi-rune clusters — VS16
+	// emoji, keycaps, ZWJ sequences, regional indicator flag pairs, skin-toned
+	// emoji, and combining marks — land in a single Cell instead of having
+	// their trailing runes stomped by whichever character comes next.
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if cluster == "\n" {
 			currentX = clipRect.Min.X // New line starts at the beginning of the clipRect
 			currentY++
 			continue
 		}
 
-		// Get the display width of the rune
-		charWidth := runewidth.RuneWidth(r)
+		charWidth := clusterWidth
 
-		// Check if character would wrap or overflow current line in clipRect
+		// Check if the cluster would wrap or overflow the current line.
 		if currentX+charWidth > clipRect.Max.X {
 			if wrap {
 				// Auto-wrap: move to next line
@@ -1304,6 +1347,11 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 		if currentY >= clipRect.Max.Y {
 			break
 		}
+
+		// Split the cluster into its leading rune and any trailing runes.
+		// Single-rune clusters (the common case) keep Trailing empty.
+		first, firstSize := utf8.DecodeRuneInString(cluster)
+		trailing := cluster[firstSize:]
 
 		// Only draw if within the clipRect and terminal bounds
 		if currentX >= clipRect.Min.X && currentX < clipRect.Max.X &&
@@ -1325,7 +1373,8 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 
 			// Set the main character cell
 			t.backBuffer[currentY][currentX] = Cell{
-				Char:         r,
+				Char:         first,
+				Trailing:     trailing,
 				Style:        style,
 				Width:        charWidth,
 				Continuation: false,
@@ -1554,8 +1603,17 @@ func (t *Terminal) BypassInput(text string) {
 		return
 	}
 
-	for _, r := range text {
-		if r == '\n' {
+	clearArtifacts := func(buffer [][]Cell, x, y int) {
+		oldCell := buffer[y][x]
+		if oldCell.Width == 2 && x+1 < t.width {
+			buffer[y][x+1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+		} else if oldCell.Continuation && x > 0 {
+			buffer[y][x-1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+		}
+	}
+
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if cluster == "\r\n" || cluster == "\n" {
 			t.virtualX = 0
 			t.virtualY++
 			if t.virtualY >= t.height {
@@ -1564,26 +1622,49 @@ func (t *Terminal) BypassInput(text string) {
 			}
 			continue
 		}
+		if cluster == "\r" {
+			t.virtualX = 0
+			continue
+		}
 
 		if t.virtualY >= t.height {
 			t.scrollBothBuffers()
 			t.virtualY = t.height - 1
 		}
 
+		if clusterWidth > 0 && t.virtualX+clusterWidth > t.width {
+			t.virtualX = 0
+			t.virtualY++
+			if t.virtualY >= t.height {
+				t.scrollBothBuffers()
+				t.virtualY = t.height - 1
+			}
+		}
+
 		if t.virtualX >= 0 && t.virtualX < t.width && t.virtualY >= 0 && t.virtualY < t.height {
-			charWidth := runewidth.RuneWidth(r)
-			cell := Cell{Char: r, Style: NewStyle(), Width: charWidth, Continuation: false}
+			first, firstSize := utf8.DecodeRuneInString(cluster)
+			trailing := cluster[firstSize:]
+			cell := Cell{
+				Char:         first,
+				Trailing:     trailing,
+				Style:        NewStyle(),
+				Width:        clusterWidth,
+				Continuation: false,
+			}
+
+			clearArtifacts(t.backBuffer, t.virtualX, t.virtualY)
+			clearArtifacts(t.frontBuffer, t.virtualX, t.virtualY)
 			t.backBuffer[t.virtualY][t.virtualX] = cell
 			t.frontBuffer[t.virtualY][t.virtualX] = cell
 
 			// Handle wide characters
-			if charWidth == 2 && t.virtualX+1 < t.width {
+			if clusterWidth == 2 && t.virtualX+1 < t.width {
 				contCell := Cell{Char: 0, Style: NewStyle(), Width: 0, Continuation: true}
 				t.backBuffer[t.virtualY][t.virtualX+1] = contCell
 				t.frontBuffer[t.virtualY][t.virtualX+1] = contCell
 			}
 		}
-		t.virtualX++
+		t.virtualX += clusterWidth
 		if t.virtualX >= t.width {
 			t.virtualX = 0
 			t.virtualY++
@@ -1729,8 +1810,13 @@ func (t *Terminal) flushInternal() error {
 					}
 				}
 
-				// Write char
+				// Write char, plus any trailing runes that belong to the same
+				// grapheme cluster (VS16, combining marks, ZWJ extensions, the
+				// second regional indicator of a flag, etc).
 				output.WriteRune(cell.Char)
+				if cell.Trailing != "" {
+					output.WriteString(cell.Trailing)
+				}
 
 				// Update cursor position tracking.
 				//

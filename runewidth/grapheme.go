@@ -199,7 +199,10 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 			// Emoji keycap sequence override — applied before the return so
 			// that clusters embedded in larger strings get the correct width.
 			// See the matching block after the loop for the EOS case.
-			if isKeycapBase && sawVS16 && sawKeycap && width < 2 {
+			//
+			// In terminal-compat mode the override is skipped: real terminals
+			// draw the bare base rune at width 1, so keycaps stay narrow.
+			if isKeycapBase && sawVS16 && sawKeycap && width < 2 && !terminalCompat.Load() {
 				width = 2
 			}
 			return s[:length], s[length:], width
@@ -239,7 +242,9 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 	}
 
 	// Emoji keycap sequence: base {#, *, 0-9} + VS16 + U+20E3 → width 2.
-	if isKeycapBase && sawVS16 && sawKeycap && width < 2 {
+	// Terminal-compat mode leaves the base width untouched (width 1) to
+	// match how real terminals render these clusters.
+	if isKeycapBase && sawVS16 && sawKeycap && width < 2 && !terminalCompat.Load() {
 		width = 2
 	}
 
@@ -369,8 +374,18 @@ func runeWidthFromPacked(r rune, packed byte) int {
 	}
 	switch r {
 	case 0x2E3A:
+		// Two-em dash. Unicode assigns a visual width of 3; every terminal
+		// emulator draws it as one cell. Terminal-compat mode downgrades
+		// this to 1 so TUI layout math matches the rendering.
+		if terminalCompat.Load() {
+			return 1
+		}
 		return 3
 	case 0x2E3B:
+		// Three-em dash. Same story as U+2E3A: Unicode 4, terminals 1.
+		if terminalCompat.Load() {
+			return 1
+		}
 		return 4
 	}
 	if packed&packedDoubleWidth != 0 {

@@ -158,11 +158,7 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 				styleSet = true
 			}
 
-			char := cell.Char
-			if char == 0 {
-				char = ' '
-			}
-			output.WriteRune(char)
+			writeCellGlyph(&output, cell)
 			lineHasContent = true
 
 			// Stop if we've passed the last content
@@ -557,11 +553,7 @@ func renderToANSILive(t *Terminal, width, height int) string {
 				styleSet = true
 			}
 
-			char := cell.Char
-			if char == 0 {
-				char = ' '
-			}
-			output.WriteRune(char)
+			writeCellGlyph(&output, cell)
 			lineHasContent = true
 
 			if x >= lastContentX && lastContentX >= 0 {
@@ -633,11 +625,7 @@ func renderToLines(t *Terminal, width, height int) []string {
 				styleSet = true
 			}
 
-			char := cell.Char
-			if char == 0 {
-				char = ' '
-			}
-			line.WriteRune(char)
+			writeCellGlyph(&line, cell)
 			lineHasContent = true
 
 			if x >= lastContentX && lastContentX >= 0 {
@@ -654,6 +642,22 @@ func renderToLines(t *Terminal, width, height int) []string {
 	}
 
 	return lines
+}
+
+// writeCellGlyph writes a cell's glyph to w, emitting the leading rune plus
+// any trailing runes that belong to the same grapheme cluster (VS16
+// selectors, combining marks, ZWJ tails, the second half of a regional
+// indicator flag, skin-tone modifiers, and so on). Empty cells (Char == 0)
+// are written as a single space.
+func writeCellGlyph(w *strings.Builder, cell Cell) {
+	if cell.Char == 0 {
+		w.WriteByte(' ')
+		return
+	}
+	w.WriteRune(cell.Char)
+	if cell.Trailing != "" {
+		w.WriteString(cell.Trailing)
+	}
 }
 
 // Live is a convenience function for simple live updates with a callback.
