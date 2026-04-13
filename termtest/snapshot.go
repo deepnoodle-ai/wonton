@@ -82,7 +82,7 @@ func assertSnapshot(t *testing.T, name, actual string) {
 		return
 	}
 
-	expected, err := os.ReadFile(snapshotPath)
+	raw, err := os.ReadFile(snapshotPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			t.Fatalf("snapshot not found: %s\nRun with -update to create it.\n\nActual output:\n%s", snapshotPath, actual)
@@ -90,8 +90,12 @@ func assertSnapshot(t *testing.T, name, actual string) {
 		t.Fatalf("failed to read snapshot: %v", err)
 	}
 
-	if actual != string(expected) {
-		diff := Diff(string(expected), actual)
+	// Normalize CRLF → LF so snapshots survive Windows git checkouts
+	// (core.autocrlf converts LF to CRLF on checkout by default).
+	expected := strings.ReplaceAll(string(raw), "\r\n", "\n")
+
+	if actual != expected {
+		diff := Diff(expected, actual)
 		t.Errorf("snapshot mismatch: %s\n%s\nRun with -update to update the snapshot.", snapshotPath, diff)
 	}
 }
