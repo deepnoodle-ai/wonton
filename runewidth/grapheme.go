@@ -165,11 +165,14 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 	sawVS16 := false
 	sawKeycap := false
 
-	// Indic_Conjunct_Break sub-state for rule GB9c. The sub-state stays at
-	// incbStateNone until we enter a cluster whose first rune is an InCB
-	// Consonant — the vast majority of clusters. Once incbStateNone, no
-	// subsequent runes need the incb lookup, so we skip it entirely.
-	incbSub := incbInitial(r)
+	// Indic_Conjunct_Break sub-state for rule GB9c. Gate the incbInitial call
+	// on the single range check r >= 0x0915 — anything below that (ASCII,
+	// Latin, Greek, Cyrillic, Arabic, ...) can't be an InCB Consonant, so we
+	// skip the four-band comparison + potential binary search entirely.
+	var incbSub uint8 = incbStateNone
+	if r >= 0x0915 {
+		incbSub = incbInitial(r)
+	}
 
 	length := size
 

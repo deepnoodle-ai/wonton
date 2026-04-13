@@ -53,14 +53,56 @@ func RuneWidth(r rune) int {
 // with zero allocations.
 func StringWidth(s string) int {
 	// ASCII fast path: if every byte is printable ASCII, width == len.
+	// Kept small so StringWidth itself inlines into callers.
 	if isASCII(s) {
 		return len(s)
 	}
+	return stringWidthMixed(s)
+}
 
+// stringWidthMixed is the slow-path body of StringWidth for strings that
+// contain at least one non-printable-ASCII byte. It is split out so the
+// fast-path wrapper stays inlineable.
+//
+// Every printable-ASCII byte is a standalone width-1 cluster (Extend, ZWJ,
+// SpacingMark, and Prepend are all non-ASCII), so contiguous ASCII runs at
+// cluster boundaries can be bulk-counted without decoding. This avoids the
+// per-rune utf8.DecodeRuneInString + runeProps + graphemeTransition chain for
+// the ASCII portion of mixed strings. The bulk scan is gated on the first
+// byte being printable ASCII so pure non-ASCII input (CJK, emoji) pays
+// nothing extra.
+func stringWidthMixed(s string) int {
 	w := 0
-	graphemeIter(s, func(_ string, gw int) {
-		w += gw
-	})
+	for len(s) > 0 {
+		if b0 := s[0]; b0 >= 0x20 && b0 < 0x7F {
+			i := 1
+			for i < len(s) {
+				b := s[i]
+				if b < 0x20 || b >= 0x7F {
+					break
+				}
+				i++
+			}
+			// Keycap bases (#, *, 0-9) can form a width-2 cluster with a
+			// following VS16 + U+20E3. If the ASCII run ends at a keycap base
+			// that is immediately followed by a non-ASCII byte (where a VS16
+			// prefix would live), leave the base for firstGraphemeCluster so
+			// the sequence reassembles correctly.
+			if i < len(s) && s[i] >= 0x80 {
+				if last := s[i-1]; last == '#' || last == '*' || (last >= '0' && last <= '9') {
+					i--
+				}
+			}
+			w += i
+			s = s[i:]
+			if len(s) == 0 {
+				break
+			}
+		}
+		_, rest, cw := firstGraphemeCluster(s)
+		w += cw
+		s = rest
+	}
 	return w
 }
 
