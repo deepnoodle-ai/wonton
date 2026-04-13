@@ -41,6 +41,9 @@ func (p *PTY) InheritSize(tty *os.File) error {
 	if p == nil || p.master == nil {
 		return os.ErrClosed
 	}
+	if tty == nil {
+		return os.ErrClosed
+	}
 	ws, err := unix.IoctlGetWinsize(int(tty.Fd()), unix.TIOCGWINSZ)
 	if err != nil {
 		return fmt.Errorf("pty: get size from source: %w", err)

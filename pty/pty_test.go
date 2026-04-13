@@ -65,7 +65,9 @@ func TestStart(t *testing.T) {
 
 	var buf bytes.Buffer
 	io.Copy(&buf, p)
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("child exit: %v (output=%q)", err, buf.String())
+	}
 
 	got := buf.String()
 	if !strings.Contains(got, "hello world") {
@@ -91,7 +93,9 @@ func TestStart_WithSize(t *testing.T) {
 	if got.Rows != 40 || got.Cols != 120 {
 		t.Errorf("size = %+v, want {Rows:40 Cols:120}", got)
 	}
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("child exit: %v", err)
+	}
 }
 
 func TestResize(t *testing.T) {
@@ -217,7 +221,9 @@ func TestStartWithAttrs(t *testing.T) {
 
 	var buf bytes.Buffer
 	io.Copy(&buf, p)
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("child exit: %v (output=%q)", err, buf.String())
+	}
 
 	got := buf.String()
 	if !strings.Contains(got, "attrs test") {
@@ -273,7 +279,9 @@ func TestOpen_SlaveCloseDoesNotBreakMaster(t *testing.T) {
 	// Start closes the slave internally. The master should still be readable.
 	var buf bytes.Buffer
 	io.Copy(&buf, p)
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("child exit: %v (output=%q)", err, buf.String())
+	}
 
 	if !strings.Contains(buf.String(), "slave close test") {
 		t.Errorf("output = %q, want to contain %q", buf.String(), "slave close test")

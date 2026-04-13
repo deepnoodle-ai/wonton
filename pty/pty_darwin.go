@@ -17,7 +17,7 @@ func open() (*os.File, *os.File, error) {
 
 	// Get the slave device name via TIOCPTYGNAME.
 	var buf [128]byte
-	if err := ioctl(master.Fd(), unix.TIOCPTYGNAME, uintptr(unsafe.Pointer(&buf[0]))); err != nil {
+	if err := ioctlPtr(master.Fd(), unix.TIOCPTYGNAME, unsafe.Pointer(&buf[0])); err != nil {
 		master.Close()
 		return nil, nil, fmt.Errorf("pty: TIOCPTYGNAME: %w", err)
 	}

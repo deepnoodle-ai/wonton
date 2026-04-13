@@ -205,7 +205,9 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 		// Width accumulation rules matching uniseg v0.4.7:
 		//   - Extended_Pictographic clusters take their width from the base rune
 		//     plus VS15/VS16 overrides.
-		//   - Regional indicator and Hangul L clusters ignore subsequent runes.
+		//   - Regional indicator and Hangul syllable clusters (L/V/T/LV/LVT)
+		//     take their width from the base rune; trailing Jamo do not add
+		//     additional width to the syllable block.
 		//   - All other clusters accumulate runeWidthFromPacked of subsequent runes.
 		if firstProp == gbExtendedPictographic {
 			switch r2 {
@@ -214,7 +216,12 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 			case 0xFE0F:
 				width = 2
 			}
-		} else if firstProp != gbRegionalIndicator && firstProp != gbL {
+		} else if firstProp != gbRegionalIndicator &&
+			firstProp != gbL &&
+			firstProp != gbV &&
+			firstProp != gbT &&
+			firstProp != gbLV &&
+			firstProp != gbLVT {
 			width += runeWidthFromPacked(r2, packed)
 		}
 
@@ -342,6 +349,9 @@ func Graphemes(s string) iter.Seq2[string, int] {
 // for U+2E3A (TWO-EM DASH) and U+2E3B (THREE-EM DASH); all other wide
 // characters are 2, and control/extend/ZWJ are 0.
 func runeWidthFromPacked(r rune, packed byte) int {
+	if r == 0xAD {
+		return 0 // Soft hyphen — shared by all APIs (see RuneWidth).
+	}
 	prop := packed & packedGBMask
 	switch prop {
 	case gbControl, gbCR, gbLF, gbExtend, gbZWJ:

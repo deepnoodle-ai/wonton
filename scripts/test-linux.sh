@@ -20,10 +20,14 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
 	docker build -f scripts/Dockerfile.linux -t "$IMAGE" .
 fi
 
+if [ "$#" -eq 0 ]; then
+	set -- ./...
+fi
+
 exec docker run \
 	--rm \
 	-t \
 	-v "$PWD:/src" \
 	-w /src \
 	"$IMAGE" \
-	go test "$@" ./...
+	go test "$@"

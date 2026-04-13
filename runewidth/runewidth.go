@@ -9,10 +9,11 @@
 // [UnicodeVersion].
 //
 // The ASCII fast path in [StringWidth] returns len(s) for pure-ASCII strings
-// with zero allocations and no table lookups. [StringWidth], [FitLeft],
-// [FitRight], and [Truncate] allocate zero bytes on any input (ASCII or
-// Unicode). [Graphemes] is an allocation-free iterator. [WidthIndex] is the
-// only core operation that allocates — one []int the length of its input.
+// with zero allocations and no table lookups. [StringWidth], [FitLeft], and
+// [FitRight] allocate zero bytes on any input (ASCII or Unicode), and
+// [Graphemes] is an allocation-free iterator. [Truncate] and [Fit] may
+// allocate one string when they must append the tail to a truncated input.
+// [WidthIndex] allocates one []int the length of its input.
 package runewidth
 
 // RuneWidth returns the number of terminal cells needed to display rune r.
@@ -162,12 +163,16 @@ func FitLeft(s string, w int) (result string, width int) {
 	accumulated := 0
 	lastEnd := 0
 
-	graphemeIter(s, func(cluster string, gw int) {
-		if accumulated+gw <= w {
-			accumulated += gw
-			lastEnd += len(cluster)
+	rest := s
+	for len(rest) > 0 {
+		cluster, next, gw := firstGraphemeCluster(rest)
+		if accumulated+gw > w {
+			break
 		}
-	})
+		accumulated += gw
+		lastEnd += len(cluster)
+		rest = next
+	}
 
 	return s[:lastEnd], accumulated
 }

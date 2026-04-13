@@ -68,7 +68,9 @@ func TestSection8_DisagreementsWithGoRunewidth(t *testing.T) {
 		{"JP flag", "\U0001F1EF\U0001F1F5", 2},                                 // 🇯🇵
 		{"two flags", "\U0001F1FA\U0001F1F8\U0001F1EF\U0001F1F5", 4},           // 🇺🇸🇯🇵
 
-		// Wide punctuation — assigned width > 2 by Unicode East Asian Width.
+		// Wide punctuation — U+2E3A and U+2E3B are handled as explicit rune
+		// special cases in runeWidthFromPacked (U+2E3A → 3, U+2E3B → 4) to
+		// match terminal rendering, not via East Asian Width alone.
 		{"a two-em-dash b", "a\u2E3Ab", 5}, // a⸺b = 1 + 3 + 1
 		{"three-em dash", "\u2E3B", 4},      // ⸻
 	}

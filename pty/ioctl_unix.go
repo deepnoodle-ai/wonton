@@ -15,8 +15,14 @@ func ioctl(fd uintptr, req uint, arg uintptr) error {
 	return nil
 }
 
-// ioctlPtr is a variant for ioctls that take a pointer argument, used on
-// platforms where the argument must be passed indirectly.
+// ioctlPtr is a variant for ioctls that take a pointer argument. The
+// unsafe.Pointer to uintptr conversion must happen in the same expression as
+// the syscall (see unsafe.Pointer rule 4), so we call syscall.Syscall directly
+// rather than delegating to ioctl.
 func ioctlPtr(fd uintptr, req uint, arg unsafe.Pointer) error {
-	return ioctl(fd, req, uintptr(arg))
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(req), uintptr(arg))
+	if errno != 0 {
+		return errno
+	}
+	return nil
 }

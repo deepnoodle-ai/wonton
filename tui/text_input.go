@@ -352,16 +352,25 @@ func (t *TextInput) Draw(frame RenderFrame) {
 
 					charUnderCursor := " "
 					if showingPlaceholder {
-						// Show first char of placeholder under cursor
-						r, _ := utf8.DecodeRuneInString(t.Placeholder)
-						charUnderCursor = string(r)
+						// Show first grapheme cluster of placeholder under cursor
+						for cluster := range runewidth.Graphemes(t.Placeholder) {
+							charUnderCursor = cluster
+							break
+						}
 					} else if t.CursorPos < len(displayText) {
-						r, _ := utf8.DecodeRuneInString(displayText[t.CursorPos:])
-						if r != '\n' {
+						// Pull the full grapheme cluster at the cursor so ZWJ
+						// sequences, keycaps, and combining marks draw as a
+						// single visual unit rather than just the first rune.
+						var cluster string
+						for c := range runewidth.Graphemes(displayText[t.CursorPos:]) {
+							cluster = c
+							break
+						}
+						if cluster != "\n" && cluster != "" {
 							if t.MaskChar != 0 {
 								charUnderCursor = string(t.MaskChar)
 							} else {
-								charUnderCursor = string(r)
+								charUnderCursor = cluster
 							}
 						}
 					}
@@ -816,6 +825,13 @@ func (t *TextInput) deleteForward() bool {
 	}
 
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
+	// At a segment boundary, findSegmentAtPos returns the previous segment
+	// with offset == len(seg.display). Hop forward so Delete can remove the
+	// next segment (or cluster), mirroring deleteBackward's boundary handling.
+	if segIdx < len(t.segments)-1 && offset == len(t.segments[segIdx].display) {
+		segIdx++
+		offset = 0
+	}
 	seg := t.segments[segIdx]
 
 	if seg.isSpecial() {

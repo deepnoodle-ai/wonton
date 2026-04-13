@@ -318,7 +318,9 @@ func (i *inputView) FocusStyle(s Style) *inputView {
 	return i
 }
 
-// calcWrappedHeight calculates how many lines text will take when wrapped at width
+// calcWrappedHeight calculates how many lines text will take when wrapped at width.
+// Iterates grapheme clusters (not runes) so multi-rune clusters like emoji ZWJ
+// sequences, keycaps, and base+combining marks don't get miscounted.
 func calcWrappedHeight(text string, width int) int {
 	if width <= 0 || text == "" {
 		return 1
@@ -326,13 +328,12 @@ func calcWrappedHeight(text string, width int) int {
 
 	lines := 1
 	x := 0
-	for _, r := range text {
-		if r == '\n' {
+	for cluster, charWidth := range runewidth.Graphemes(text) {
+		if cluster == "\n" {
 			lines++
 			x = 0
 			continue
 		}
-		charWidth := runewidth.RuneWidth(r)
 		if x+charWidth > width {
 			lines++
 			x = charWidth

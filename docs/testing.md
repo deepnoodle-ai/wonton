@@ -60,18 +60,19 @@ You don't need a Linux box to catch many Linux-only build errors. From
 macOS or anywhere else, you can cross-compile:
 
 ```bash
-GOOS=linux   GOARCH=amd64 go vet ./...
 GOOS=linux   GOARCH=386   go build ./...   # 32-bit pointer sanity
 GOOS=linux   GOARCH=arm64 go build ./...
 GOOS=windows GOARCH=amd64 go vet ./...
-GOOS=darwin  GOARCH=amd64 go build ./...
 ```
 
-The `cross-compile` job in `.github/workflows/go-test.yml` runs the same
-matrix in CI. The `linux/386` entry exists specifically to catch any
-`int`/`uintptr` size assumptions that would only surface on a 32-bit build
-— in particular, anything in `pty/` that touches raw ioctl argument layouts
-or anything in `runewidth/` that indexes the 2-stage BMP+SMP lookup tables.
+These three entries match the `cross-compile` job in
+`.github/workflows/go-test.yml`. The native builds (`linux/amd64`,
+`darwin/amd64`) are covered by the `test` matrix on their respective
+runners, so they aren't repeated here. The `linux/386` entry exists
+specifically to catch any `int`/`uintptr` size assumptions that would
+only surface on a 32-bit build — in particular, anything in `pty/` that
+touches raw ioctl argument layouts or anything in `runewidth/` that
+indexes the 2-stage BMP+SMP lookup tables.
 
 ## What's OS-gated and why
 

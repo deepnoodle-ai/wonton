@@ -69,10 +69,14 @@ func TestChildSeesRequestedSize(t *testing.T) {
 func TestResizeDeliversSIGWINCH(t *testing.T) {
 	skipIfUnsupported(t)
 
-	// Shell loops briefly waiting for SIGWINCH. When the trap fires, it
-	// prints WINCH:<rows>x<cols> and exits.
+	// Shell installs the SIGWINCH trap, prints READY, then loops briefly
+	// waiting for the signal. When the trap fires, it prints WINCH:<rows>x<cols>
+	// and exits. The READY sentinel is the explicit handshake that the test
+	// waits for before calling Resize — no timing dependence on how long the
+	// shell takes to install the trap.
 	script := `
 trap 'set -- $(stty size); echo "WINCH:${1}x${2}"; exit 0' WINCH
+echo "READY"
 i=0
 while [ $i -lt 40 ]; do
 	sleep 0.1
@@ -108,8 +112,21 @@ exit 1
 		}
 	}()
 
-	// Give the child a moment to install the trap before firing SIGWINCH.
-	time.Sleep(200 * time.Millisecond)
+	// Wait for the READY sentinel — the child confirming the SIGWINCH trap
+	// is installed — before firing Resize.
+	readyDeadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		ready := strings.Contains(buf.String(), "READY")
+		mu.Unlock()
+		if ready {
+			break
+		}
+		if time.Now().After(readyDeadline) {
+			t.Fatal("timed out waiting for child READY sentinel")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := p.Resize(pty.Size{Rows: 42, Cols: 132}); err != nil {
 		t.Fatal("Resize:", err)
 	}

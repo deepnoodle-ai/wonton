@@ -294,8 +294,8 @@ const UnicodeVersion = %q
 
 	// Emit BMP stage1/stage2 tables as string literals for compact source and
 	// fast compilation. Each byte is a packed property byte.
-	fmt.Fprintf(&buf, "// bmpStage1 maps (rune >> 8) to an index into bmpStage2. For any rune r in the\n")
-	fmt.Fprintf(&buf, "// Basic Multilingual Plane (r < 0x10000), its packed property byte is\n")
+	fmt.Fprintf(&buf, "// bmpStage1 maps (rune >> 8) to an index into bmpStage2. For any rune r in\n")
+	fmt.Fprintf(&buf, "// the BMP or SMP (r < 0x20000), its packed property byte is\n")
 	fmt.Fprintf(&buf, "//   bmpStage2[int(bmpStage1[r>>8])*256 + int(r&0xFF)]\n")
 	fmt.Fprintf(&buf, "var bmpStage1 = %q\n\n", string(stage1))
 	fmt.Fprintf(&buf, "// bmpStage2 holds %d deduplicated 256-byte blocks, %d bytes total.\n", len(stage2)/256, len(stage2))

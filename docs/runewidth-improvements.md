@@ -57,7 +57,7 @@ The conformance test is `TestGraphemeBreakConformance` in
 `GraphemeBreakTest-17.0.0.txt` line by line and compares our cluster
 boundaries against the expected output.
 
-```
+```text
 $ go test ./runewidth/ -run TestGraphemeBreakConformance -v
 === RUN   TestGraphemeBreakConformance
     conformance_test.go:103: GraphemeBreakTest: 766/766 cases passed
@@ -126,7 +126,7 @@ will not be a breaking change.
 
 ## 5. Zero-allocation every core operation
 
-```
+```text
 $ go test -bench . -benchmem -run=^$ ./runewidth/
 BenchmarkFitRight_ASCII-16    29496235    40.58 ns/op   0 B/op   0 allocs/op
 BenchmarkFitRight_CJK-16         156012  7672   ns/op   0 B/op   0 allocs/op

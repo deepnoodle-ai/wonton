@@ -76,13 +76,27 @@ func TestCompatCorpus(t *testing.T) {
 			d.kind, toHex(d.input), d.wontonW, d.gorwW, d.unisegW, d.classification)
 	}
 
-	if err := os.MkdirAll("../../testdata", 0755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	const reportPath = "../../testdata/compat-report.md"
+	want := []byte(sb.String())
+
+	if os.Getenv("UPDATE_COMPAT_REPORT") == "1" {
+		if err := os.MkdirAll("../../testdata", 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(reportPath, want, 0644); err != nil {
+			t.Fatalf("write report: %v", err)
+		}
+		t.Logf("wrote %s (%d bytes)", reportPath, len(want))
+		return
 	}
-	if err := os.WriteFile("../../testdata/compat-report.md", []byte(sb.String()), 0644); err != nil {
-		t.Fatalf("write report: %v", err)
+
+	got, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("read report: %v (rerun with UPDATE_COMPAT_REPORT=1 to regenerate)", err)
 	}
-	t.Logf("wrote ../../testdata/compat-report.md (%d bytes)", sb.Len())
+	if string(got) != string(want) {
+		t.Fatalf("%s is stale; rerun with UPDATE_COMPAT_REPORT=1", reportPath)
+	}
 }
 
 type corpusEntry struct {

@@ -316,6 +316,10 @@ func (s *Session) Close() error {
 // automatic resize detection isn't available (non-TTY scenarios).
 // The recorder is also updated if recording is active.
 func (s *Session) Resize(width, height int) error {
+	if width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF {
+		return fmt.Errorf("termsession: invalid terminal size %dx%d", width, height)
+	}
+
 	s.mu.Lock()
 	ptmx := s.pty
 	recorder := s.recorder
@@ -404,6 +408,9 @@ func (s *Session) syncSize() error {
 	width, height, err := term.GetSize(fd)
 	if err != nil {
 		return err
+	}
+	if width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF {
+		return fmt.Errorf("termsession: invalid terminal size %dx%d from term.GetSize", width, height)
 	}
 
 	s.mu.Lock()
