@@ -917,7 +917,7 @@ func TestMarkdownRenderer_TruncateSegments(t *testing.T) {
 func TestMarkdownRenderer_TableMaxWidthSeparateFromMaxWidth(t *testing.T) {
 	// TableMaxWidth should control table constraining independently of MaxWidth
 	renderer := NewMarkdownRenderer()
-	renderer.MaxWidth = 40   // narrow text wrapping
+	renderer.MaxWidth = 40      // narrow text wrapping
 	renderer.TableMaxWidth = 80 // wide tables allowed
 
 	md := `| Package | Description | Status |

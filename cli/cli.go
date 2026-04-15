@@ -197,6 +197,11 @@ type App struct {
 
 	// Help styling
 	helpTheme *HelpTheme
+
+	// expandGroups controls whether command groups show their subcommands
+	// inline in the main help output. Defaults to false (collapsed).
+	// Individual groups can override this via Group.Expand.
+	expandGroups bool
 }
 
 // Example represents a usage example for help output.
@@ -819,6 +824,19 @@ func (a *App) showHelp() error {
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+			if group.isExpanded() {
+				subOrder := group.commandOrder
+				if len(subOrder) == 0 {
+					subOrder = sortedKeys(group.commands)
+				}
+				for _, subName := range subOrder {
+					cmd := group.commands[subName]
+					if cmd == nil || cmd.hidden {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("    %-13s %s\n", subName, cmd.description))
+				}
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -879,6 +897,9 @@ type Group struct {
 	// a "resize" command, users can type "app resize" instead of "app transform resize".
 	// The group name is still used for visual grouping in help output.
 	flatRouting bool
+
+	// expand overrides App.expandGroups for this group. nil means inherit.
+	expand *bool
 }
 
 // Description sets the group description.
@@ -956,6 +977,26 @@ func (g *Group) Validate(v func(*Context) error) *Group {
 func (g *Group) FlatRouting(enabled bool) *Group {
 	g.flatRouting = enabled
 	return g
+}
+
+// Expand overrides App.ExpandGroups for this group. When true, the group's
+// subcommands are shown inline in the main help output; when false, only the
+// group name and description are shown. If not set, the app-level default
+// applies.
+func (g *Group) Expand(enabled bool) *Group {
+	g.expand = &enabled
+	return g
+}
+
+// isExpanded reports whether this group should be rendered expanded in help.
+func (g *Group) isExpanded() bool {
+	if g.expand != nil {
+		return *g.expand
+	}
+	if g.app != nil {
+		return g.app.expandGroups
+	}
+	return false
 }
 
 // asCommand returns a Command that wraps the group for execution.
@@ -1050,6 +1091,15 @@ func (a *App) SetColorEnabled(enabled bool) *App {
 //	app.HelpTheme(theme)
 func (a *App) HelpTheme(theme HelpTheme) *App {
 	a.helpTheme = &theme
+	return a
+}
+
+// ExpandGroups controls whether command groups show their subcommands inline
+// in the main help output. Defaults to false (groups are collapsed, showing
+// only the group name and description). Individual groups can override this
+// via Group.Expand.
+func (a *App) ExpandGroups(enabled bool) *App {
+	a.expandGroups = enabled
 	return a
 }
 

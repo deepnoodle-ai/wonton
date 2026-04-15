@@ -371,6 +371,7 @@ func renderOrderedCommands(commands map[string]*Command, order []string, theme H
 
 // renderCommandList renders commands in the given name order.
 func renderCommandList(commands map[string]*Command, names []string, theme HelpTheme) tui.View {
+	width := maxVisibleCommandNameLen(commands, names)
 	views := make([]tui.View, 0, len(names))
 	for _, name := range names {
 		cmd := commands[name]
@@ -378,11 +379,27 @@ func renderCommandList(commands map[string]*Command, names []string, theme HelpT
 			continue
 		}
 		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
+			tui.Text("  %-*s  ", width, name).Style(theme.Command),
 			tui.Text("%s", cmd.description),
 		))
 	}
 	return tui.Stack(views...).Gap(0)
+}
+
+// maxVisibleCommandNameLen returns the longest non-hidden command name length,
+// with a sensible minimum to avoid overly narrow columns.
+func maxVisibleCommandNameLen(commands map[string]*Command, names []string) int {
+	max := 14
+	for _, name := range names {
+		cmd := commands[name]
+		if cmd == nil || cmd.hidden || name == "" {
+			continue
+		}
+		if len(name) > max {
+			max = len(name)
+		}
+	}
+	return max
 }
 
 // renderGroups renders the command groups list as a Stack (alphabetical order).
@@ -405,66 +422,113 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 	if len(order) == 0 {
 		order = sortedGroupKeys(groups)
 	}
-	views := make([]tui.View, 0, len(order)*2)
+	groupWidth := maxVisibleGroupNameLen(groups, order, flat)
+	groupBlocks := make([]tui.View, 0, len(order))
+	anyExpanded := false
 	for _, name := range order {
 		group := groups[name]
 		if group == nil || group.flatRouting != flat {
 			continue
 		}
-		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
-			tui.Text("%s", group.description),
-		))
-		subOrder := group.commandOrder
-		if len(subOrder) == 0 {
-			subOrder = sortedKeys(group.commands)
+		block := []tui.View{
+			tui.Group(
+				tui.Text("  %-*s  ", groupWidth, name).Style(theme.Command),
+				tui.Text("%s", group.description),
+			),
 		}
-		for _, subName := range subOrder {
-			subCmd := group.commands[subName]
-			if subCmd == nil || subCmd.hidden {
-				continue
+		if group.isExpanded() {
+			anyExpanded = true
+			subOrder := group.commandOrder
+			if len(subOrder) == 0 {
+				subOrder = sortedKeys(group.commands)
 			}
-			views = append(views, tui.Group(
-				tui.Text("    %-14s", subName).Style(theme.Flag),
-				tui.Text("%s", subCmd.description).Style(theme.Hint),
-			))
+			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
+			for _, subName := range subOrder {
+				subCmd := group.commands[subName]
+				if subCmd == nil || subCmd.hidden {
+					continue
+				}
+				block = append(block, tui.Group(
+					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
+					tui.Text("%s", subCmd.description).Style(theme.Hint),
+				))
+			}
+		}
+		groupBlocks = append(groupBlocks, tui.Stack(block...).Gap(0))
+	}
+	gap := 0
+	if anyExpanded {
+		gap = 1
+	}
+	return tui.Stack(groupBlocks...).Gap(gap)
+}
+
+// maxVisibleGroupNameLen returns the longest group name length among groups
+// matching the requested flat-routing mode.
+func maxVisibleGroupNameLen(groups map[string]*Group, order []string, flat bool) int {
+	max := 14
+	for _, name := range order {
+		g := groups[name]
+		if g == nil || g.flatRouting != flat {
+			continue
+		}
+		if len(name) > max {
+			max = len(name)
 		}
 	}
-	return tui.Stack(views...).Gap(0)
+	return max
 }
 
 // renderGroupList renders groups in the given name order.
 func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) tui.View {
-	views := make([]tui.View, 0, len(names)*2)
+	groupWidth := 14
+	for _, name := range names {
+		if g := groups[name]; g != nil && len(name) > groupWidth {
+			groupWidth = len(name)
+		}
+	}
 
+	groupBlocks := make([]tui.View, 0, len(names))
+	anyExpanded := false
 	for _, name := range names {
 		group := groups[name]
 		if group == nil {
 			continue
 		}
-		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
-			tui.Text("%s", group.description),
-		))
+		block := []tui.View{
+			tui.Group(
+				tui.Text("  %-*s  ", groupWidth, name).Style(theme.Command),
+				tui.Text("%s", group.description),
+			),
+		}
 
-		// Subcommands in insertion order
-		subOrder := group.commandOrder
-		if len(subOrder) == 0 {
-			subOrder = sortedKeys(group.commands)
-		}
-		for _, subName := range subOrder {
-			subCmd := group.commands[subName]
-			if subCmd == nil || subCmd.hidden {
-				continue
+		if group.isExpanded() {
+			anyExpanded = true
+			// Subcommands in insertion order
+			subOrder := group.commandOrder
+			if len(subOrder) == 0 {
+				subOrder = sortedKeys(group.commands)
 			}
-			views = append(views, tui.Group(
-				tui.Text("    %-14s", subName).Style(theme.Flag),
-				tui.Text("%s", subCmd.description).Style(theme.Hint),
-			))
+			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
+			for _, subName := range subOrder {
+				subCmd := group.commands[subName]
+				if subCmd == nil || subCmd.hidden {
+					continue
+				}
+				block = append(block, tui.Group(
+					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
+					tui.Text("%s", subCmd.description).Style(theme.Hint),
+				))
+			}
 		}
+		groupBlocks = append(groupBlocks, tui.Stack(block...).Gap(0))
 	}
 
-	return tui.Stack(views...).Gap(0)
+	gap := 0
+	if anyExpanded {
+		gap = 1
+	}
+	return tui.Stack(groupBlocks...).Gap(gap)
 }
 
 // renderExamples renders the examples section as a Stack.
