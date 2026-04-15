@@ -1221,6 +1221,41 @@ func TestColorCommandLineOverrides(t *testing.T) {
 	})
 }
 
+func TestHelpBypassesRequiredFlags(t *testing.T) {
+	newApp := func() *App {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+		app.SetStdout(&bytes.Buffer{})
+		app.Command("run").
+			Flags(&StringFlag{Name: "config", Required: true}).
+			Run(func(ctx *Context) error { return nil })
+		g := app.Group("users").Description("users")
+		g.Command("create").
+			Flags(&StringFlag{Name: "name", Required: true}).
+			Run(func(ctx *Context) error { return nil })
+		return app
+	}
+
+	cases := [][]string{
+		{"--help"},
+		{"-h"},
+		{"run", "--help"},
+		{"run", "-h"},
+		{"users", "--help"},
+		{"users", "-h"},
+		{"users", "create", "--help"},
+		{"users", "create", "-h"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			app := newApp()
+			err := app.ExecuteArgs(args)
+			// Help should be returned; required-flag errors must NOT surface.
+			assert.True(t, IsHelpRequested(err))
+		})
+	}
+}
+
 func TestOmitGlobalFlag(t *testing.T) {
 	t.Run("skips required check for omitted global", func(t *testing.T) {
 		app := New("test").
