@@ -1164,6 +1164,48 @@ func TestSetColorEnabled(t *testing.T) {
 	assert.True(t, app.colorEnabled)
 }
 
+func TestColorCommandLineOverrides(t *testing.T) {
+	t.Run("--no-color disables colors", func(t *testing.T) {
+		app := New("test")
+		app.SetColorEnabled(true)
+		var called bool
+		app.Command("run").Run(func(ctx *Context) error {
+			called = true
+			return nil
+		})
+		err := app.ExecuteArgs([]string{"--no-color", "run"})
+		assert.NoError(t, err)
+		assert.True(t, called)
+		assert.False(t, app.colorEnabled)
+	})
+
+	t.Run("--color forces colors on", func(t *testing.T) {
+		app := New("test")
+		app.SetColorEnabled(false)
+		var called bool
+		app.Command("run").Run(func(ctx *Context) error {
+			called = true
+			return nil
+		})
+		err := app.ExecuteArgs([]string{"--color", "run"})
+		assert.NoError(t, err)
+		assert.True(t, called)
+		assert.True(t, app.colorEnabled)
+	})
+
+	t.Run("flags are stripped before parsing", func(t *testing.T) {
+		app := New("test")
+		var gotArg string
+		app.Command("echo").Args("msg").Run(func(ctx *Context) error {
+			gotArg = ctx.Arg(0)
+			return nil
+		})
+		err := app.ExecuteArgs([]string{"--no-color", "echo", "hello"})
+		assert.NoError(t, err)
+		assert.Equal(t, "hello", gotArg)
+	})
+}
+
 func TestCommandAliases(t *testing.T) {
 	var executed bool
 

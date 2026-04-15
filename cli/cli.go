@@ -433,6 +433,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		a.isInteractive = isTerminal(os.Stdin) && isTerminal(os.Stdout)
 	}
 
+	// Apply --no-color / --color / --force-color command-line overrides.
+	// These take precedence over env vars and TTY detection, matching the
+	// common CLI precedence convention.
+	args = a.applyColorOverrides(args)
+
 	// Parse command and arguments using definition-driven parser
 	p := newParser(a)
 	result, err := p.parse(args)
@@ -624,6 +629,27 @@ func (a *App) findGlobalFlagByShort(short string) Flag {
 // Returns false if a global flag has explicitly claimed -h as its short name.
 func (a *App) isHelpShort() bool {
 	return a.findGlobalFlagByShort("h") == nil
+}
+
+// applyColorOverrides scans args for --no-color, --color, and --force-color
+// flags and updates the app's color setting accordingly. The recognized
+// flags are stripped from the returned args so downstream parsing is not
+// affected. Command-line flags take precedence over env vars and TTY
+// detection.
+func (a *App) applyColorOverrides(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		switch arg {
+		case "--no-color", "--no-colour":
+			a.colorEnabled = false
+			continue
+		case "--color", "--colour", "--force-color":
+			a.colorEnabled = true
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
 }
 
 // findCommand looks up a command by name, including group commands and aliases.

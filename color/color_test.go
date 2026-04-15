@@ -249,13 +249,16 @@ func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
 	// Save original state
 	originalValue, hadValue := os.LookupEnv("NO_COLOR")
 
-	// Test with NO_COLOR set
+	// Test with NO_COLOR set to a non-empty value (disables color per
+	// https://no-color.org/)
 	os.Setenv("NO_COLOR", "1")
 	assert.False(t, color.ShouldColorize(os.Stdout))
 
-	// Test with NO_COLOR set to empty string (still counts as set)
+	// Test with NO_COLOR set to empty string (does NOT disable color;
+	// empty is treated as unset per the updated NO_COLOR spec)
 	os.Setenv("NO_COLOR", "")
-	assert.False(t, color.ShouldColorize(os.Stdout))
+	// Behavior depends on TTY — just verify no panic
+	_ = color.ShouldColorize(os.Stdout)
 
 	// Test with NO_COLOR unset (behavior depends on whether stdout is a TTY)
 	os.Unsetenv("NO_COLOR")
@@ -269,6 +272,49 @@ func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
 	} else {
 		os.Unsetenv("NO_COLOR")
 	}
+}
+
+func TestShouldColorize_Precedence(t *testing.T) {
+	// Save and restore env
+	save := func(k string) (string, bool) { return os.LookupEnv(k) }
+	restore := func(k, v string, ok bool) {
+		if ok {
+			os.Setenv(k, v)
+		} else {
+			os.Unsetenv(k)
+		}
+	}
+	ncV, ncOK := save("NO_COLOR")
+	fcV, fcOK := save("FORCE_COLOR")
+	ccV, ccOK := save("CLICOLOR")
+	ccfV, ccfOK := save("CLICOLOR_FORCE")
+	defer restore("NO_COLOR", ncV, ncOK)
+	defer restore("FORCE_COLOR", fcV, fcOK)
+	defer restore("CLICOLOR", ccV, ccOK)
+	defer restore("CLICOLOR_FORCE", ccfV, ccfOK)
+
+	// FORCE_COLOR beats NO_COLOR
+	os.Setenv("NO_COLOR", "1")
+	os.Setenv("FORCE_COLOR", "1")
+	os.Unsetenv("CLICOLOR")
+	os.Unsetenv("CLICOLOR_FORCE")
+	assert.True(t, color.ShouldColorize(os.Stdout))
+
+	// CLICOLOR_FORCE also forces on
+	os.Unsetenv("FORCE_COLOR")
+	os.Setenv("CLICOLOR_FORCE", "1")
+	assert.True(t, color.ShouldColorize(os.Stdout))
+
+	// FORCE_COLOR=0 does NOT force on
+	os.Unsetenv("CLICOLOR_FORCE")
+	os.Setenv("FORCE_COLOR", "0")
+	assert.False(t, color.ShouldColorize(os.Stdout)) // NO_COLOR still set
+
+	// CLICOLOR=0 disables
+	os.Unsetenv("NO_COLOR")
+	os.Unsetenv("FORCE_COLOR")
+	os.Setenv("CLICOLOR", "0")
+	assert.False(t, color.ShouldColorize(os.Stdout))
 }
 
 func TestColorize_RespectsEnabled(t *testing.T) {
