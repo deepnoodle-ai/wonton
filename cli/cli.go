@@ -638,7 +638,13 @@ func (a *App) isHelpShort() bool {
 // detection.
 func (a *App) applyColorOverrides(args []string) []string {
 	out := make([]string, 0, len(args))
-	for _, arg := range args {
+	for i, arg := range args {
+		// Stop interpreting flags once we hit the end-of-flags marker so
+		// positional arguments like "--no-color" can be passed verbatim.
+		if arg == "--" {
+			out = append(out, args[i:]...)
+			return out
+		}
 		switch arg {
 		case "--no-color", "--no-colour":
 			a.colorEnabled = false
@@ -854,7 +860,11 @@ func (a *App) showHelp() error {
 				sb.WriteString("\n")
 			}
 			first = false
-			sb.WriteString(fmt.Sprintf("  %s - %s\n", name, group.description))
+			if group.description != "" {
+				sb.WriteString(fmt.Sprintf("  %s - %s\n", name, group.description))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s\n", name))
+			}
 			if group.isExpanded() {
 				subOrder := group.commandOrder
 				if len(subOrder) == 0 {

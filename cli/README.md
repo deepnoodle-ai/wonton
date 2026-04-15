@@ -57,7 +57,7 @@ func main() {
         })
 
     if err := app.Execute(); err != nil {
-        app.PrintError(err) // Colorizes "Error: ..." in red when stderr supports it.
+        app.PrintError(err) // Colorizes "Error: ..." in red when app.colorEnabled is true.
         os.Exit(cli.GetExitCode(err))
     }
 }

@@ -1204,6 +1204,21 @@ func TestColorCommandLineOverrides(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "hello", gotArg)
 	})
+
+	t.Run("end-of-flags marker stops interpretation", func(t *testing.T) {
+		app := New("test")
+		app.SetColorEnabled(true)
+		var gotArgs []string
+		app.Command("echo").Args("msg", "extra?").Run(func(ctx *Context) error {
+			gotArgs = ctx.Args()
+			return nil
+		})
+		// "--no-color" after "--" should be a positional arg, not a flag.
+		err := app.ExecuteArgs([]string{"echo", "--", "--no-color"})
+		assert.NoError(t, err)
+		assert.True(t, app.colorEnabled) // still true, flag was not interpreted
+		assert.Equal(t, []string{"--no-color"}, gotArgs)
+	})
 }
 
 func TestOmitGlobalFlag(t *testing.T) {

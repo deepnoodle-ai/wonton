@@ -279,46 +279,30 @@ func clearEnvForTest(t *testing.T, keys ...string) {
 }
 
 func TestShouldColorize_Precedence(t *testing.T) {
-	// Save and restore env
-	save := func(k string) (string, bool) { return os.LookupEnv(k) }
-	restore := func(k, v string, ok bool) {
-		if ok {
-			os.Setenv(k, v)
-		} else {
-			os.Unsetenv(k)
-		}
-	}
-	ncV, ncOK := save("NO_COLOR")
-	fcV, fcOK := save("FORCE_COLOR")
-	ccV, ccOK := save("CLICOLOR")
-	ccfV, ccfOK := save("CLICOLOR_FORCE")
-	defer restore("NO_COLOR", ncV, ncOK)
-	defer restore("FORCE_COLOR", fcV, fcOK)
-	defer restore("CLICOLOR", ccV, ccOK)
-	defer restore("CLICOLOR_FORCE", ccfV, ccfOK)
+	clearEnvForTest(t, "NO_COLOR", "FORCE_COLOR", "CLICOLOR", "CLICOLOR_FORCE")
 
-	// FORCE_COLOR beats NO_COLOR
-	os.Setenv("NO_COLOR", "1")
-	os.Setenv("FORCE_COLOR", "1")
-	os.Unsetenv("CLICOLOR")
-	os.Unsetenv("CLICOLOR_FORCE")
-	assert.True(t, color.ShouldColorize(os.Stdout))
+	t.Run("FORCE_COLOR beats NO_COLOR", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("FORCE_COLOR", "1")
+		assert.True(t, color.ShouldColorize(os.Stdout))
+	})
 
-	// CLICOLOR_FORCE also forces on
-	os.Unsetenv("FORCE_COLOR")
-	os.Setenv("CLICOLOR_FORCE", "1")
-	assert.True(t, color.ShouldColorize(os.Stdout))
+	t.Run("CLICOLOR_FORCE forces on", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("CLICOLOR_FORCE", "1")
+		assert.True(t, color.ShouldColorize(os.Stdout))
+	})
 
-	// FORCE_COLOR=0 does NOT force on
-	os.Unsetenv("CLICOLOR_FORCE")
-	os.Setenv("FORCE_COLOR", "0")
-	assert.False(t, color.ShouldColorize(os.Stdout)) // NO_COLOR still set
+	t.Run("FORCE_COLOR=0 does not force on", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("FORCE_COLOR", "0")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
 
-	// CLICOLOR=0 disables
-	os.Unsetenv("NO_COLOR")
-	os.Unsetenv("FORCE_COLOR")
-	os.Setenv("CLICOLOR", "0")
-	assert.False(t, color.ShouldColorize(os.Stdout))
+	t.Run("CLICOLOR=0 disables", func(t *testing.T) {
+		t.Setenv("CLICOLOR", "0")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
 }
 
 func TestColorize_RespectsEnabled(t *testing.T) {
