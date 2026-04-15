@@ -1423,6 +1423,33 @@ func TestPrintError(t *testing.T) {
 		assert.Contains(t, out, "\033[") // has an escape
 		assert.Contains(t, out, "Error: boom")
 	})
+
+	t.Run("only head is red when color enabled", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(errors.New("unknown command: lsit\n\nDid you mean 'list'?\n\nRun 'test --help'"))
+		out := buf.String()
+		// Head should be wrapped in red + reset.
+		redReset := "\033[0m"
+		assert.Contains(t, out, "Error: unknown command: lsit")
+		assert.Contains(t, out, redReset)
+		// The tail should not be wrapped in red — it appears after the reset.
+		idx := strings.Index(out, redReset)
+		assert.True(t, idx > 0)
+		tail := out[idx+len(redReset):]
+		assert.Contains(t, tail, "Did you mean 'list'?")
+		assert.Contains(t, tail, "Run 'test --help'")
+		assert.False(t, strings.Contains(tail, "\033[31m"), "tail should not contain a red ANSI code")
+	})
+
+	t.Run("tail preserved without color", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(false)
+		app.PrintError(errors.New("unknown command: lsit\n\nDid you mean 'list'?"))
+		out := buf.String()
+		assert.Contains(t, out, "Error: unknown command: lsit")
+		assert.Contains(t, out, "Did you mean 'list'?")
+	})
 }
 
 func TestCommandAliases(t *testing.T) {

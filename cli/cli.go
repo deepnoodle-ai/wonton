@@ -1284,11 +1284,22 @@ func (a *App) PrintError(err error) {
 	}
 	prefix := "Error: "
 	msg := err.Error()
+
+	// Split off any trailing "tail" — did-you-mean suggestions and help
+	// hints — so we can color only the primary error message red and
+	// leave the rest in the default style. The convention used by this
+	// package is to separate the tail with a blank line.
+	head, tail, _ := strings.Cut(msg, "\n\n")
+
 	if a.colorEnabled {
-		fmt.Fprintln(a.stderr, color.Red.Apply(prefix+msg))
-		return
+		fmt.Fprintln(a.stderr, color.Red.Apply(prefix+head))
+	} else {
+		fmt.Fprintln(a.stderr, prefix+head)
 	}
-	fmt.Fprintln(a.stderr, prefix+msg)
+	if tail != "" {
+		fmt.Fprintln(a.stderr)
+		fmt.Fprintln(a.stderr, tail)
+	}
 }
 
 // HelpTheme sets a custom theme for help output styling.
