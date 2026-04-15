@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1202,6 +1203,39 @@ func TestColorCommandLineOverrides(t *testing.T) {
 		err := app.ExecuteArgs([]string{"--no-color", "echo", "hello"})
 		assert.NoError(t, err)
 		assert.Equal(t, "hello", gotArg)
+	})
+}
+
+func TestPrintError(t *testing.T) {
+	t.Run("nil is ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(nil)
+		assert.Equal(t, "", buf.String())
+	})
+
+	t.Run("HelpRequested is ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(&HelpRequested{})
+		assert.Equal(t, "", buf.String())
+	})
+
+	t.Run("plain output without color", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(false)
+		app.PrintError(errors.New("boom"))
+		assert.Equal(t, "Error: boom\n", buf.String())
+	})
+
+	t.Run("red output when color enabled", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(errors.New("boom"))
+		// Should contain the red ANSI prefix and the message.
+		out := buf.String()
+		assert.Contains(t, out, "\033[") // has an escape
+		assert.Contains(t, out, "Error: boom")
 	})
 }
 

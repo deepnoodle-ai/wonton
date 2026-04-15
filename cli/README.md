@@ -57,10 +57,7 @@ func main() {
         })
 
     if err := app.Execute(); err != nil {
-        if cli.IsHelpRequested(err) {
-            os.Exit(0)
-        }
-        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        app.PrintError(err) // Colorizes "Error: ..." in red when stderr supports it.
         os.Exit(cli.GetExitCode(err))
     }
 }

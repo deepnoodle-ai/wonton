@@ -401,8 +401,8 @@ func (a *App) rootCommand() *Command {
 //	func main() {
 //	    app := setupApp()
 //	    if err := app.Execute(); err != nil {
-//	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-//	        os.Exit(1)
+//	        app.PrintError(err)
+//	        os.Exit(cli.GetExitCode(err))
 //	    }
 //	}
 //
@@ -1130,6 +1130,30 @@ func (g *Group) showHelp() error {
 func (a *App) SetColorEnabled(enabled bool) *App {
 	a.colorEnabled = enabled
 	return a
+}
+
+// PrintError writes a formatted error message to the app's stderr. The
+// message is prefixed with "Error: " and colorized red when color is
+// enabled (respecting NO_COLOR, --no-color, and TTY detection).
+//
+// Nil errors and HelpRequested errors are ignored so callers can use the
+// typical pattern:
+//
+//	if err := app.Execute(); err != nil {
+//	    app.PrintError(err)
+//	    os.Exit(cli.GetExitCode(err))
+//	}
+func (a *App) PrintError(err error) {
+	if err == nil || IsHelpRequested(err) {
+		return
+	}
+	prefix := "Error: "
+	msg := err.Error()
+	if a.colorEnabled {
+		fmt.Fprintln(a.stderr, color.Red.Apply(prefix+msg))
+		return
+	}
+	fmt.Fprintln(a.stderr, prefix+msg)
 }
 
 // HelpTheme sets a custom theme for help output styling.
