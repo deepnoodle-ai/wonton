@@ -36,6 +36,9 @@ func RequireFlags(names ...string) Middleware {
 		return func(ctx *Context) error {
 			for _, name := range names {
 				if !ctx.IsSet(name) {
+					if f := ctx.command.findFlag(name); f != nil {
+						return missingFlagError("required flag not set", ctx.command, f)
+					}
 					return fmt.Errorf("required flag not set: --%s", name)
 				}
 			}

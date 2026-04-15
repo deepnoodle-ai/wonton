@@ -761,7 +761,7 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
+	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
 	r.live.Clear()

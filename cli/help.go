@@ -235,13 +235,13 @@ func (a *App) buildRootUsageString() string {
 func (c *Command) renderCommandHelp() tui.View {
 	theme := c.app.getHelpTheme()
 
-	cmdName := c.name
+	subPath := c.name
 	if c.group != nil {
-		cmdName = c.group.name + " " + c.name
+		subPath = c.group.name + " " + c.name
 	}
 
 	return tui.Stack(
-		renderCommandHeader(cmdName, c.description, theme),
+		renderCommandHeader(c.app.name, subPath, c.description, theme),
 		tui.If(c.deprecated != "", tui.Group(
 			tui.Text("  DEPRECATED: ").Style(theme.Deprecated),
 			tui.Text("%s", c.deprecated).Style(theme.Deprecated),
@@ -263,11 +263,58 @@ func (c *Command) renderCommandHelp() tui.View {
 			renderSection("FLAGS", theme),
 			renderFlags(c.flags, theme),
 		)),
-		tui.If(c.app != nil && len(c.app.globalFlags) > 0, tui.Stack(
+		tui.If(len(c.visibleGlobalFlags()) > 0, tui.Stack(
 			renderSection("GLOBAL FLAGS", theme),
-			renderFlags(c.app.globalFlags, theme),
+			renderFlags(c.visibleGlobalFlags(), theme),
 		)),
 	).Gap(1)
+}
+
+// renderGroupHelp renders styled help for a command group, matching the
+// look of the root app help and individual command help.
+func (g *Group) renderGroupHelp() tui.View {
+	theme := g.app.getHelpTheme()
+
+	views := []tui.View{
+		renderCommandHeader(g.app.name, g.name, g.description, theme),
+		tui.Stack(
+			renderSection("USAGE", theme),
+			tui.Text("  %s %s <command> [flags] [args]", g.app.name, g.name),
+		),
+	}
+
+	if len(g.commands) > 0 {
+		order := g.commandOrder
+		if len(order) == 0 {
+			order = sortedKeys(g.commands)
+		}
+		views = append(views, tui.Stack(
+			renderSection("COMMANDS", theme),
+			renderCommandList(g.commands, order, theme),
+		))
+	}
+
+	if len(g.flags) > 0 {
+		views = append(views, tui.Stack(
+			renderSection("FLAGS", theme),
+			renderFlags(g.flags, theme),
+		))
+	}
+
+	if g.app != nil && len(g.app.globalFlags) > 0 {
+		views = append(views, tui.Stack(
+			renderSection("GLOBAL FLAGS", theme),
+			renderFlags(g.app.globalFlags, theme),
+		))
+	}
+
+	views = append(views, tui.Group(
+		tui.Text("Run '"),
+		tui.Text("%s %s <command> --help", g.app.name, g.name).Style(theme.Flag),
+		tui.Text("' for more information on a command."),
+	))
+
+	return tui.Stack(views...).Gap(1)
 }
 
 // buildUsageString constructs the usage string for a command.
@@ -275,7 +322,7 @@ func (c *Command) renderCommandHelp() tui.View {
 // (e.g., "app resize") and the grouped form (e.g., "app transform resize").
 func buildUsageString(c *Command) string {
 	suffix := ""
-	if len(c.flags) > 0 || len(c.app.globalFlags) > 0 {
+	if len(c.flags) > 0 || len(c.visibleGlobalFlags()) > 0 {
 		suffix += " [flags]"
 	}
 	for _, arg := range c.args {
@@ -320,16 +367,26 @@ func renderHeader(name, description, version string, theme HelpTheme) tui.View {
 	return titleLine
 }
 
-// renderCommandHeader creates the styled command header
-func renderCommandHeader(name, description string, theme HelpTheme) tui.View {
+// renderCommandHeader creates the styled command header with a gradient app
+// name (matching the root help) followed by the subcommand path in the
+// command style, then an optional description.
+func renderCommandHeader(appName, subPath, description string, theme HelpTheme) tui.View {
+	parts := []tui.View{
+		renderGradientText(appName, theme.TitleStart, theme.TitleEnd),
+	}
+	if subPath != "" {
+		parts = append(parts,
+			tui.Text(" "),
+			tui.Text("%s", subPath).Style(theme.Command),
+		)
+	}
 	if description != "" {
-		return tui.Group(
-			tui.Text("%s", name).Style(theme.Command),
+		parts = append(parts,
 			tui.Text(" - "),
 			tui.Text("%s", description),
 		)
 	}
-	return tui.Text("%s", name).Style(theme.Command)
+	return tui.Group(parts...)
 }
 
 // renderSection creates a styled section header
@@ -371,6 +428,7 @@ func renderOrderedCommands(commands map[string]*Command, order []string, theme H
 
 // renderCommandList renders commands in the given name order.
 func renderCommandList(commands map[string]*Command, names []string, theme HelpTheme) tui.View {
+	width := maxVisibleCommandNameLen(commands, names)
 	views := make([]tui.View, 0, len(names))
 	for _, name := range names {
 		cmd := commands[name]
@@ -378,11 +436,28 @@ func renderCommandList(commands map[string]*Command, names []string, theme HelpT
 			continue
 		}
 		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
+			tui.Text("  %-*s  ", width, name).Style(theme.Command),
 			tui.Text("%s", cmd.description),
 		))
 	}
 	return tui.Stack(views...).Gap(0)
+}
+
+// maxVisibleCommandNameLen returns the longest non-hidden command name length.
+// Each section sizes its name column to its own content so unrelated sections
+// don't inflate each other's width.
+func maxVisibleCommandNameLen(commands map[string]*Command, names []string) int {
+	max := 0
+	for _, name := range names {
+		cmd := commands[name]
+		if cmd == nil || cmd.hidden || name == "" {
+			continue
+		}
+		if len(name) > max {
+			max = len(name)
+		}
+	}
+	return max
 }
 
 // renderGroups renders the command groups list as a Stack (alphabetical order).
@@ -405,66 +480,96 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 	if len(order) == 0 {
 		order = sortedGroupKeys(groups)
 	}
-	views := make([]tui.View, 0, len(order)*2)
+	groupBlocks := make([]tui.View, 0, len(order))
+	anyExpanded := false
 	for _, name := range order {
 		group := groups[name]
 		if group == nil || group.flatRouting != flat {
 			continue
 		}
-		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
-			tui.Text("%s", group.description),
-		))
-		subOrder := group.commandOrder
-		if len(subOrder) == 0 {
-			subOrder = sortedKeys(group.commands)
-		}
-		for _, subName := range subOrder {
-			subCmd := group.commands[subName]
-			if subCmd == nil || subCmd.hidden {
-				continue
+		block := []tui.View{renderGroupHeaderRow(name, group.description, theme)}
+		if group.isExpanded() {
+			anyExpanded = true
+			subOrder := group.commandOrder
+			if len(subOrder) == 0 {
+				subOrder = sortedKeys(group.commands)
 			}
-			views = append(views, tui.Group(
-				tui.Text("    %-14s", subName).Style(theme.Flag),
-				tui.Text("%s", subCmd.description).Style(theme.Hint),
-			))
+			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
+			for _, subName := range subOrder {
+				subCmd := group.commands[subName]
+				if subCmd == nil || subCmd.hidden {
+					continue
+				}
+				block = append(block, tui.Group(
+					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
+					tui.Text("%s", subCmd.description),
+				))
+			}
 		}
+		groupBlocks = append(groupBlocks, tui.Stack(block...).Gap(0))
 	}
-	return tui.Stack(views...).Gap(0)
+	gap := 0
+	if anyExpanded {
+		gap = 1
+	}
+	return tui.Stack(groupBlocks...).Gap(gap)
+}
+
+// renderGroupHeaderRow renders a group's header row as "name - description",
+// or just the name if there's no description.
+func renderGroupHeaderRow(name, description string, theme HelpTheme) tui.View {
+	if description == "" {
+		return tui.Group(
+			tui.Text("  "),
+			tui.Text("%s", name).Style(theme.Command),
+		)
+	}
+	return tui.Group(
+		tui.Text("  "),
+		tui.Text("%s", name).Style(theme.Command),
+		tui.Text(" - "),
+		tui.Text("%s", description),
+	)
 }
 
 // renderGroupList renders groups in the given name order.
 func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) tui.View {
-	views := make([]tui.View, 0, len(names)*2)
-
+	groupBlocks := make([]tui.View, 0, len(names))
+	anyExpanded := false
 	for _, name := range names {
 		group := groups[name]
 		if group == nil {
 			continue
 		}
-		views = append(views, tui.Group(
-			tui.Text("  %-16s", name).Style(theme.Command),
-			tui.Text("%s", group.description),
-		))
+		block := []tui.View{renderGroupHeaderRow(name, group.description, theme)}
 
-		// Subcommands in insertion order
-		subOrder := group.commandOrder
-		if len(subOrder) == 0 {
-			subOrder = sortedKeys(group.commands)
-		}
-		for _, subName := range subOrder {
-			subCmd := group.commands[subName]
-			if subCmd == nil || subCmd.hidden {
-				continue
+		if group.isExpanded() {
+			anyExpanded = true
+			// Subcommands in insertion order
+			subOrder := group.commandOrder
+			if len(subOrder) == 0 {
+				subOrder = sortedKeys(group.commands)
 			}
-			views = append(views, tui.Group(
-				tui.Text("    %-14s", subName).Style(theme.Flag),
-				tui.Text("%s", subCmd.description).Style(theme.Hint),
-			))
+			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
+			for _, subName := range subOrder {
+				subCmd := group.commands[subName]
+				if subCmd == nil || subCmd.hidden {
+					continue
+				}
+				block = append(block, tui.Group(
+					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
+					tui.Text("%s", subCmd.description),
+				))
+			}
 		}
+		groupBlocks = append(groupBlocks, tui.Stack(block...).Gap(0))
 	}
 
-	return tui.Stack(views...).Gap(0)
+	gap := 0
+	if anyExpanded {
+		gap = 1
+	}
+	return tui.Stack(groupBlocks...).Gap(gap)
 }
 
 // renderExamples renders the examples section as a Stack.

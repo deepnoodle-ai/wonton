@@ -16,11 +16,48 @@ const (
 )
 
 func init() {
-	// Respect NO_COLOR environment variable (https://no-color.org/)
-	// If NO_COLOR is set (to any value), disable colors by default
-	if _, exists := os.LookupEnv("NO_COLOR"); exists {
+	// Seed the global Enabled flag from the environment. Command-line flags
+	// take precedence and are handled by callers (e.g., the cli package).
+	//
+	// Precedence (highest first):
+	//   1. FORCE_COLOR / CLICOLOR_FORCE (force on)
+	//   2. NO_COLOR / CLICOLOR=0        (force off)
+	//   3. Default (on; TTY detection is applied by ShouldColorize)
+	if envForceColor() {
+		Enabled = true
+		return
+	}
+	if envNoColor() {
 		Enabled = false
 	}
+}
+
+// envNoColor reports whether NO_COLOR or CLICOLOR=0 is set in a way that
+// disables colored output.
+//
+// NO_COLOR spec (https://no-color.org/): any non-empty value disables color.
+// CLICOLOR spec (https://bixense.com/clicolors/): CLICOLOR=0 disables color.
+func envNoColor() bool {
+	if v, ok := os.LookupEnv("NO_COLOR"); ok && v != "" {
+		return true
+	}
+	if v, ok := os.LookupEnv("CLICOLOR"); ok && v == "0" {
+		return true
+	}
+	return false
+}
+
+// envForceColor reports whether FORCE_COLOR or CLICOLOR_FORCE is set in a
+// way that forces colored output, per common cross-tool conventions.
+// An empty value or "0" does not force.
+func envForceColor() bool {
+	if v, ok := os.LookupEnv("FORCE_COLOR"); ok && v != "" && v != "0" {
+		return true
+	}
+	if v, ok := os.LookupEnv("CLICOLOR_FORCE"); ok && v != "" && v != "0" {
+		return true
+	}
+	return false
 }
 
 // Apply applies the ANSI color to text as a foreground color and automatically
@@ -116,11 +153,16 @@ func IsTerminal(f *os.File) bool {
 	return tty.IsTerminal(f)
 }
 
-// ShouldColorize returns true if colors should be used for the given output file.
-// It checks both that the output is a terminal AND that the NO_COLOR environment
-// variable is not set. This follows the NO_COLOR standard (https://no-color.org/).
+// ShouldColorize reports whether colors should be used for the given output
+// file, following the common precedence:
 //
-// This is the recommended way to determine if colors should be enabled for output.
+//  1. FORCE_COLOR / CLICOLOR_FORCE (non-empty, non-"0"): force on
+//  2. NO_COLOR (non-empty) or CLICOLOR=0: force off
+//  3. Auto-detect: true iff f is a terminal
+//
+// Command-line flags should take precedence over this function; callers
+// typically set their own flag and only consult ShouldColorize when the user
+// didn't pass an explicit override.
 //
 // Example:
 //
@@ -130,7 +172,10 @@ func IsTerminal(f *os.File) bool {
 //	    fmt.Println("Plain output")
 //	}
 func ShouldColorize(f *os.File) bool {
-	if _, exists := os.LookupEnv("NO_COLOR"); exists {
+	if envForceColor() {
+		return true
+	}
+	if envNoColor() {
 		return false
 	}
 	return tty.IsTerminal(f)

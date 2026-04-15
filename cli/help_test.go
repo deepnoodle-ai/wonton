@@ -301,13 +301,18 @@ func TestRenderHeader(t *testing.T) {
 func TestRenderCommandHeader(t *testing.T) {
 	theme := DefaultHelpTheme()
 
-	t.Run("renders header with name only", func(t *testing.T) {
-		view := renderCommandHeader("build", "", theme)
+	t.Run("renders header with app name only", func(t *testing.T) {
+		view := renderCommandHeader("myapp", "", "", theme)
+		assert.NotNil(t, view)
+	})
+
+	t.Run("renders header with subPath", func(t *testing.T) {
+		view := renderCommandHeader("myapp", "build", "", theme)
 		assert.NotNil(t, view)
 	})
 
 	t.Run("renders header with description", func(t *testing.T) {
-		view := renderCommandHeader("build", "Build the project", theme)
+		view := renderCommandHeader("myapp", "build", "Build the project", theme)
 		assert.NotNil(t, view)
 	})
 }

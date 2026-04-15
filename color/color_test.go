@@ -246,29 +246,63 @@ func TestColor_ForegroundSeqDim(t *testing.T) {
 }
 
 func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
-	// Save original state
-	originalValue, hadValue := os.LookupEnv("NO_COLOR")
+	// Isolate forcing env vars so this test is deterministic regardless of
+	// the host environment. t.Setenv restores the original value on exit,
+	// even on failure.
+	clearEnvForTest(t, "FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR")
 
-	// Test with NO_COLOR set
-	os.Setenv("NO_COLOR", "1")
-	assert.False(t, color.ShouldColorize(os.Stdout))
+	t.Run("non-empty disables", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
 
-	// Test with NO_COLOR set to empty string (still counts as set)
-	os.Setenv("NO_COLOR", "")
-	assert.False(t, color.ShouldColorize(os.Stdout))
+	t.Run("empty does not disable", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "")
+		// Result depends on TTY; just verify no panic.
+		_ = color.ShouldColorize(os.Stdout)
+	})
 
-	// Test with NO_COLOR unset (behavior depends on whether stdout is a TTY)
-	os.Unsetenv("NO_COLOR")
-	// Can't easily test the true case without a real TTY, but we can verify
-	// the function doesn't panic and returns a boolean
-	_ = color.ShouldColorize(os.Stdout)
+	t.Run("unset leaves TTY detection", func(t *testing.T) {
+		clearEnvForTest(t, "NO_COLOR")
+		_ = color.ShouldColorize(os.Stdout)
+	})
+}
 
-	// Restore original state
-	if hadValue {
-		os.Setenv("NO_COLOR", originalValue)
-	} else {
-		os.Unsetenv("NO_COLOR")
+// clearEnvForTest unsets each env var for the duration of the test, using
+// t.Setenv to capture the original value so it is restored on exit.
+func clearEnvForTest(t *testing.T, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
 	}
+}
+
+func TestShouldColorize_Precedence(t *testing.T) {
+	clearEnvForTest(t, "NO_COLOR", "FORCE_COLOR", "CLICOLOR", "CLICOLOR_FORCE")
+
+	t.Run("FORCE_COLOR beats NO_COLOR", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("FORCE_COLOR", "1")
+		assert.True(t, color.ShouldColorize(os.Stdout))
+	})
+
+	t.Run("CLICOLOR_FORCE forces on", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("CLICOLOR_FORCE", "1")
+		assert.True(t, color.ShouldColorize(os.Stdout))
+	})
+
+	t.Run("FORCE_COLOR=0 does not force on", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		t.Setenv("FORCE_COLOR", "0")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
+
+	t.Run("CLICOLOR=0 disables", func(t *testing.T) {
+		t.Setenv("CLICOLOR", "0")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
 }
 
 func TestColorize_RespectsEnabled(t *testing.T) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1162,6 +1163,366 @@ func TestSetColorEnabled(t *testing.T) {
 
 	app.SetColorEnabled(true)
 	assert.True(t, app.colorEnabled)
+}
+
+func TestColorCommandLineOverrides(t *testing.T) {
+	cases := []struct {
+		flag    string
+		initial bool
+		want    bool
+	}{
+		{"--no-color", true, false},
+		{"--no-colour", true, false},
+		{"--color", false, true},
+		{"--colour", false, true},
+		{"--force-color", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.flag, func(t *testing.T) {
+			app := New("test")
+			app.SetColorEnabled(tc.initial)
+			var called bool
+			app.Command("run").Run(func(ctx *Context) error {
+				called = true
+				return nil
+			})
+			err := app.ExecuteArgs([]string{tc.flag, "run"})
+			assert.NoError(t, err)
+			assert.True(t, called)
+			assert.Equal(t, tc.want, app.colorEnabled)
+		})
+	}
+
+	t.Run("flags are stripped before parsing", func(t *testing.T) {
+		app := New("test")
+		var gotArg string
+		app.Command("echo").Args("msg").Run(func(ctx *Context) error {
+			gotArg = ctx.Arg(0)
+			return nil
+		})
+		err := app.ExecuteArgs([]string{"--no-color", "echo", "hello"})
+		assert.NoError(t, err)
+		assert.Equal(t, "hello", gotArg)
+	})
+
+	t.Run("end-of-flags marker stops interpretation", func(t *testing.T) {
+		app := New("test")
+		app.SetColorEnabled(true)
+		var gotArgs []string
+		app.Command("echo").Args("msg", "extra?").Run(func(ctx *Context) error {
+			gotArgs = ctx.Args()
+			return nil
+		})
+		// "--no-color" after "--" should be a positional arg, not a flag.
+		err := app.ExecuteArgs([]string{"echo", "--", "--no-color"})
+		assert.NoError(t, err)
+		assert.True(t, app.colorEnabled) // still true, flag was not interpreted
+		assert.Equal(t, []string{"--no-color"}, gotArgs)
+	})
+}
+
+func TestUnknownCommandSuggestion(t *testing.T) {
+	t.Run("close match suggests did-you-mean", func(t *testing.T) {
+		app := New("test")
+		app.Command("list").Run(func(ctx *Context) error { return nil })
+		app.Command("create").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"lsit"}) // typo of "list"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: lsit")
+		assert.Contains(t, err.Error(), "Did you mean 'list'?")
+		assert.Contains(t, err.Error(), "test --help")
+	})
+
+	t.Run("no close match omits suggestion", func(t *testing.T) {
+		app := New("test")
+		app.Command("list").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"xyzzy"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: xyzzy")
+		assert.False(t, strings.Contains(err.Error(), "Did you mean"))
+		assert.Contains(t, err.Error(), "test --help")
+	})
+
+	t.Run("group name typo suggests group", func(t *testing.T) {
+		app := New("test")
+		app.Group("actions").Description("actions").Command("create").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"actons"}) // typo of "actions"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "Did you mean 'actions'?")
+	})
+
+	t.Run("unknown subcommand suggests within group", func(t *testing.T) {
+		app := New("test")
+		g := app.Group("users")
+		g.Command("create").Run(func(ctx *Context) error { return nil })
+		g.Command("delete").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"users", "creat"}) // typo of "create"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown subcommand 'creat'")
+		assert.Contains(t, err.Error(), "Did you mean 'users create'?")
+		assert.Contains(t, err.Error(), "test users --help")
+	})
+}
+
+func TestParseErrorsIncludeHelpHint(t *testing.T) {
+	newApp := func() *App {
+		app := New("test")
+		g := app.Group("triggers")
+		g.Command("list").
+			Args("ns").
+			Flags(&StringFlag{Name: "format", Enum: []string{"json", "yaml"}}).
+			Run(func(ctx *Context) error { return nil })
+		app.Command("run").Run(func(ctx *Context) error { return nil })
+		return app
+	}
+
+	cases := []struct {
+		name     string
+		args     []string
+		contains []string
+	}{
+		{
+			name:     "missing required argument",
+			args:     []string{"triggers", "list"},
+			contains: []string{"missing required argument: ns", "test triggers list --help"},
+		},
+		{
+			name:     "unknown long flag",
+			args:     []string{"triggers", "list", "ns1", "--bogus"},
+			contains: []string{"unknown flag: --bogus", "test triggers list --help"},
+		},
+		{
+			name:     "invalid enum value",
+			args:     []string{"triggers", "list", "ns1", "--format", "xml"},
+			contains: []string{"invalid value for --format", "test triggers list --help"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newApp()
+			err := app.ExecuteArgs(tc.args)
+			assert.Error(t, err)
+			for _, want := range tc.contains {
+				assert.Contains(t, err.Error(), want)
+			}
+		})
+	}
+}
+
+func TestGroupRequiresSubcommandMessagePointsAtHelp(t *testing.T) {
+	app := New("test")
+	g := app.Group("tools")
+	g.Command("list").Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"tools"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "group 'tools' requires a subcommand")
+	assert.Contains(t, msg, "test tools --help")
+}
+
+func TestLevenshtein(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"", "", 0},
+		{"abc", "", 3},
+		{"", "abc", 3},
+		{"kitten", "sitting", 3},
+		{"list", "lsit", 2},
+		{"same", "same", 0},
+	}
+	for _, tc := range cases {
+		got := levenshtein(tc.a, tc.b)
+		assert.Equal(t, tc.want, got)
+	}
+}
+
+func TestHelpBypassesRequiredFlags(t *testing.T) {
+	newApp := func() *App {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+		app.SetStdout(&bytes.Buffer{})
+		app.Command("run").
+			Flags(&StringFlag{Name: "config", Required: true}).
+			Run(func(ctx *Context) error { return nil })
+		g := app.Group("users").Description("users")
+		g.Command("create").
+			Flags(&StringFlag{Name: "name", Required: true}).
+			Run(func(ctx *Context) error { return nil })
+		return app
+	}
+
+	cases := [][]string{
+		{"--help"},
+		{"-h"},
+		{"run", "--help"},
+		{"run", "-h"},
+		{"users", "--help"},
+		{"users", "-h"},
+		{"users", "create", "--help"},
+		{"users", "create", "-h"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			app := newApp()
+			err := app.ExecuteArgs(args)
+			// Help should be returned; required-flag errors must NOT surface.
+			assert.True(t, IsHelpRequested(err))
+		})
+	}
+}
+
+func TestOmitGlobalFlag(t *testing.T) {
+	t.Run("skips required check for omitted global", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+
+		var called bool
+		app.Command("health").
+			OmitGlobalFlag("api-key").
+			Run(func(ctx *Context) error {
+				called = true
+				return nil
+			})
+
+		err := app.ExecuteArgs([]string{"health"})
+		assert.NoError(t, err)
+		assert.True(t, called)
+	})
+
+	t.Run("omitted global is not parseable on that command", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key"})
+
+		app.Command("health").
+			OmitGlobalFlag("api-key").
+			Run(func(ctx *Context) error { return nil })
+
+		// Passing --api-key to a command that omits it should fail.
+		err := app.ExecuteArgs([]string{"health", "--api-key", "foo"})
+		assert.Error(t, err)
+	})
+
+	t.Run("other commands still see the global", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+
+		app.Command("health").OmitGlobalFlag("api-key").Run(func(ctx *Context) error { return nil })
+		app.Command("run").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"run"})
+		assert.Error(t, err) // still required for "run"
+		assert.Contains(t, err.Error(), "--api-key")
+	})
+}
+
+func TestMissingRequiredFlagMessageMentionsEnvVar(t *testing.T) {
+	app := New("test")
+	app.Command("run").
+		Flags(&StringFlag{Name: "api-key", EnvVar: "TEST_API_KEY", Required: true}).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"run"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "TEST_API_KEY")
+	assert.Contains(t, msg, "test run --help")
+}
+
+func TestMissingRequiredFlagMessageForGroupSubcommand(t *testing.T) {
+	app := New("test")
+	g := app.Group("tools")
+	g.Command("list").
+		Flags(&StringFlag{Name: "api-key", Required: true}).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"tools", "list"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "test tools list --help")
+}
+
+func TestRequireFlagsMiddlewareMentionsEnvVar(t *testing.T) {
+	app := New("test")
+	app.Command("run").
+		Flags(&StringFlag{Name: "api-key", EnvVar: "TEST_API_KEY"}).
+		Use(RequireFlags("api-key")).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"run"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "TEST_API_KEY")
+	assert.Contains(t, msg, "test run --help")
+}
+
+func TestPrintError(t *testing.T) {
+	t.Run("nil is ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(nil)
+		assert.Equal(t, "", buf.String())
+	})
+
+	t.Run("HelpRequested is ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(&HelpRequested{})
+		assert.Equal(t, "", buf.String())
+	})
+
+	t.Run("plain output without color", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(false)
+		app.PrintError(errors.New("boom"))
+		assert.Equal(t, "Error: boom\n", buf.String())
+	})
+
+	t.Run("red output when color enabled", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(errors.New("boom"))
+		// Should contain the red ANSI prefix and the message.
+		out := buf.String()
+		assert.Contains(t, out, "\033[") // has an escape
+		assert.Contains(t, out, "Error: boom")
+	})
+
+	t.Run("only head is red when color enabled", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(true)
+		app.PrintError(errors.New("unknown command: lsit\n\nDid you mean 'list'?\n\nRun 'test --help'"))
+		out := buf.String()
+		// Head should be wrapped in red + reset.
+		redReset := "\033[0m"
+		assert.Contains(t, out, "Error: unknown command: lsit")
+		assert.Contains(t, out, redReset)
+		// The tail should not be wrapped in red — it appears after the reset.
+		idx := strings.Index(out, redReset)
+		assert.True(t, idx > 0)
+		tail := out[idx+len(redReset):]
+		assert.Contains(t, tail, "Did you mean 'list'?")
+		assert.Contains(t, tail, "Run 'test --help'")
+		assert.False(t, strings.Contains(tail, "\033[31m"), "tail should not contain a red ANSI code")
+	})
+
+	t.Run("tail preserved without color", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(false)
+		app.PrintError(errors.New("unknown command: lsit\n\nDid you mean 'list'?"))
+		out := buf.String()
+		assert.Contains(t, out, "Error: unknown command: lsit")
+		assert.Contains(t, out, "Did you mean 'list'?")
+	})
 }
 
 func TestCommandAliases(t *testing.T) {

@@ -122,7 +122,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			} else {
 				// Non-boolean flag - needs a value
 				if i+1 >= len(args) {
-					return nil, fmt.Errorf("flag --%s requires a value", name)
+					return nil, fmt.Errorf("flag --%s requires a value\n\nRun '%s --help' to see available flags.", name, p.app.name)
 				}
 				result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
 				i += 2
@@ -168,7 +168,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 				i++
 			} else {
 				if i+1 >= len(args) {
-					return nil, fmt.Errorf("flag -%s requires a value", lastShort)
+					return nil, fmt.Errorf("flag -%s requires a value\n\nRun '%s --help' to see available flags.", lastShort, p.app.name)
 				}
 				result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
 				i += 2

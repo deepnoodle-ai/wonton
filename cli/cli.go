@@ -197,6 +197,11 @@ type App struct {
 
 	// Help styling
 	helpTheme *HelpTheme
+
+	// expandGroups controls whether command groups show their subcommands
+	// inline in the main help output. Defaults to false (collapsed).
+	// Individual groups can override this via Group.Expand.
+	expandGroups bool
 }
 
 // Example represents a usage example for help output.
@@ -396,8 +401,8 @@ func (a *App) rootCommand() *Command {
 //	func main() {
 //	    app := setupApp()
 //	    if err := app.Execute(); err != nil {
-//	        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-//	        os.Exit(1)
+//	        app.PrintError(err)
+//	        os.Exit(cli.GetExitCode(err))
 //	    }
 //	}
 //
@@ -427,6 +432,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	} else {
 		a.isInteractive = isTerminal(os.Stdin) && isTerminal(os.Stdout)
 	}
+
+	// Apply --no-color / --color / --force-color command-line overrides.
+	// These take precedence over env vars and TTY detection, matching the
+	// common CLI precedence convention.
+	args = a.applyColorOverrides(args)
 
 	// Parse command and arguments using definition-driven parser
 	p := newParser(a)
@@ -480,7 +490,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		// Group command
 		group := a.groups[result.Group]
 		if group == nil {
-			return fmt.Errorf("unknown group: %s", result.Group)
+			return a.unknownCommandError(result.Group)
 		}
 		if result.Command == "" {
 			// Check if there are remaining args that might be an unknown subcommand
@@ -493,16 +503,16 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 				// Not a flag - could be an unknown subcommand
 				if !looksLikeFlag(firstArg) {
 					if group.handler == nil {
-						return fmt.Errorf("unknown subcommand '%s' for group '%s'", firstArg, result.Group)
+						return a.unknownSubcommandError(result.Group, firstArg)
 					}
 					// Group has a handler, treat as positional arg
 				} else if group.handler == nil {
 					// First arg is a flag but group has no handler - requires a subcommand
-					return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+					return a.groupRequiresSubcommandError(result.Group)
 				}
 			} else if group.handler == nil {
 				// No args and no handler - requires a subcommand
-				return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+				return a.groupRequiresSubcommandError(result.Group)
 			}
 			// Group with handler
 			cmd = &Command{
@@ -518,7 +528,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 			// Group with subcommand
 			cmd = group.commands[result.Command]
 			if cmd == nil {
-				return fmt.Errorf("unknown command: %s %s", result.Group, result.Command)
+				return a.unknownSubcommandError(result.Group, result.Command)
 			}
 		}
 	} else {
@@ -547,7 +557,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 				cmd = a.rootCommand()
 				cmdArgs = append([]string{result.Command}, cmdArgs...)
 			} else {
-				return fmt.Errorf("unknown command: %s", result.Command)
+				return a.unknownCommandError(result.Command)
 			}
 		}
 	}
@@ -619,6 +629,167 @@ func (a *App) findGlobalFlagByShort(short string) Flag {
 // Returns false if a global flag has explicitly claimed -h as its short name.
 func (a *App) isHelpShort() bool {
 	return a.findGlobalFlagByShort("h") == nil
+}
+
+// applyColorOverrides scans args for --no-color, --color, and --force-color
+// flags and updates the app's color setting accordingly. The recognized
+// flags are stripped from the returned args so downstream parsing is not
+// affected. Command-line flags take precedence over env vars and TTY
+// detection.
+func (a *App) applyColorOverrides(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i, arg := range args {
+		// Stop interpreting flags once we hit the end-of-flags marker so
+		// positional arguments like "--no-color" can be passed verbatim.
+		if arg == "--" {
+			out = append(out, args[i:]...)
+			return out
+		}
+		switch arg {
+		case "--no-color", "--no-colour":
+			a.colorEnabled = false
+			continue
+		case "--color", "--colour", "--force-color":
+			a.colorEnabled = true
+			continue
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+// suggestName returns the closest match to `attempted` from `candidates`
+// using Levenshtein distance, or "" if no candidate is close enough. The
+// threshold is max(2, len(attempted)/3) so short typos are tolerated
+// while unrelated strings don't get matched.
+func suggestName(attempted string, candidates []string) string {
+	if len(candidates) == 0 || attempted == "" {
+		return ""
+	}
+	threshold := len(attempted) / 3
+	if threshold < 2 {
+		threshold = 2
+	}
+	best := ""
+	bestDist := threshold + 1
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		d := levenshtein(attempted, c)
+		if d < bestDist {
+			bestDist = d
+			best = c
+		}
+	}
+	if bestDist > threshold {
+		return ""
+	}
+	return best
+}
+
+// levenshtein returns the edit distance between two strings.
+func levenshtein(a, b string) int {
+	ar := []rune(a)
+	br := []rune(b)
+	la, lb := len(ar), len(br)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	prev := make([]int, lb+1)
+	curr := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if ar[i-1] == br[j-1] {
+				cost = 0
+			}
+			del := prev[j] + 1
+			ins := curr[j-1] + 1
+			sub := prev[j-1] + cost
+			m := del
+			if ins < m {
+				m = ins
+			}
+			if sub < m {
+				m = sub
+			}
+			curr[j] = m
+		}
+		prev, curr = curr, prev
+	}
+	return prev[lb]
+}
+
+// topLevelCommandNames returns visible, invokable top-level names: direct
+// commands (excluding the empty root name), their aliases, and group names.
+func (a *App) topLevelCommandNames() []string {
+	out := make([]string, 0, len(a.commands)+len(a.groups))
+	for name, cmd := range a.commands {
+		if name == "" || cmd == nil || cmd.hidden {
+			continue
+		}
+		out = append(out, name)
+		out = append(out, cmd.aliases...)
+	}
+	for name := range a.groups {
+		out = append(out, name)
+	}
+	return out
+}
+
+// groupSubcommandNames returns visible subcommand names and aliases for a group.
+func groupSubcommandNames(g *Group) []string {
+	out := make([]string, 0, len(g.commands))
+	for name, cmd := range g.commands {
+		if cmd == nil || cmd.hidden {
+			continue
+		}
+		out = append(out, name)
+		out = append(out, cmd.aliases...)
+	}
+	return out
+}
+
+// unknownCommandError builds an error for an unknown top-level command,
+// including a did-you-mean suggestion when one is available and a footer
+// pointing to --help.
+func (a *App) unknownCommandError(name string) error {
+	msg := fmt.Sprintf("unknown command: %s", name)
+	if suggestion := suggestName(name, a.topLevelCommandNames()); suggestion != "" {
+		msg += fmt.Sprintf("\n\nDid you mean '%s'?", suggestion)
+	}
+	msg += fmt.Sprintf("\n\nRun '%s --help' to see available commands.", a.name)
+	return fmt.Errorf("%s", msg)
+}
+
+// unknownSubcommandError builds an error for an unknown subcommand of a
+// group, with a did-you-mean suggestion and a pointer to the group's help.
+func (a *App) unknownSubcommandError(groupName, subName string) error {
+	msg := fmt.Sprintf("unknown subcommand '%s' for group '%s'", subName, groupName)
+	if g := a.groups[groupName]; g != nil {
+		if suggestion := suggestName(subName, groupSubcommandNames(g)); suggestion != "" {
+			msg += fmt.Sprintf("\n\nDid you mean '%s %s'?", groupName, suggestion)
+		}
+	}
+	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
+	return fmt.Errorf("%s", msg)
+}
+
+// groupRequiresSubcommandError builds an error for the case where a user
+// invoked a group that has no handler and provided no subcommand. Points
+// the user at the group's --help for the list of available subcommands.
+func (a *App) groupRequiresSubcommandError(groupName string) error {
+	msg := fmt.Sprintf("group '%s' requires a subcommand", groupName)
+	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
+	return fmt.Errorf("%s", msg)
 }
 
 // findCommand looks up a command by name, including group commands and aliases.
@@ -813,12 +984,44 @@ func (a *App) showHelp() error {
 		if len(order) == 0 {
 			order = sortedGroupKeys(a.groups)
 		}
+		first := true
 		for _, name := range order {
 			group := a.groups[name]
 			if group == nil || group.flatRouting {
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+			if !first && group.isExpanded() {
+				sb.WriteString("\n")
+			}
+			first = false
+			if group.description != "" {
+				sb.WriteString(fmt.Sprintf("  %s - %s\n", name, group.description))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s\n", name))
+			}
+			if group.isExpanded() {
+				subOrder := group.commandOrder
+				if len(subOrder) == 0 {
+					subOrder = sortedKeys(group.commands)
+				}
+				subWidth := 0
+				for _, subName := range subOrder {
+					cmd := group.commands[subName]
+					if cmd == nil || cmd.hidden {
+						continue
+					}
+					if len(subName) > subWidth {
+						subWidth = len(subName)
+					}
+				}
+				for _, subName := range subOrder {
+					cmd := group.commands[subName]
+					if cmd == nil || cmd.hidden {
+						continue
+					}
+					sb.WriteString(fmt.Sprintf("    %-*s  %s\n", subWidth, subName, cmd.description))
+				}
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -879,6 +1082,9 @@ type Group struct {
 	// a "resize" command, users can type "app resize" instead of "app transform resize".
 	// The group name is still used for visual grouping in help output.
 	flatRouting bool
+
+	// expand overrides App.expandGroups for this group. nil means inherit.
+	expand *bool
 }
 
 // Description sets the group description.
@@ -958,6 +1164,26 @@ func (g *Group) FlatRouting(enabled bool) *Group {
 	return g
 }
 
+// Expand overrides App.ExpandGroups for this group. When true, the group's
+// subcommands are shown inline in the main help output; when false, only the
+// group name and description are shown. If not set, the app-level default
+// applies.
+func (g *Group) Expand(enabled bool) *Group {
+	g.expand = &enabled
+	return g
+}
+
+// isExpanded reports whether this group should be rendered expanded in help.
+func (g *Group) isExpanded() bool {
+	if g.expand != nil {
+		return *g.expand
+	}
+	if g.app != nil {
+		return g.app.expandGroups
+	}
+	return false
+}
+
 // asCommand returns a Command that wraps the group for execution.
 func (g *Group) asCommand() *Command {
 	return &Command{
@@ -986,6 +1212,17 @@ func (g *Group) commandList() string {
 
 // showHelp displays help for the group.
 func (g *Group) showHelp() error {
+	if g.app.colorEnabled {
+		view := g.renderGroupHelp()
+		if err := tui.Fprint(g.app.stdout, view); err != nil {
+			return err
+		}
+		if err := writeHelpNewline(g.app.stdout); err != nil {
+			return err
+		}
+		return &HelpRequested{}
+	}
+
 	var sb strings.Builder
 
 	// Group name and description
@@ -1039,6 +1276,41 @@ func (a *App) SetColorEnabled(enabled bool) *App {
 	return a
 }
 
+// PrintError writes a formatted error message to the app's stderr. The
+// message is prefixed with "Error: " and colorized red when color is
+// enabled (respecting NO_COLOR, --no-color, and TTY detection).
+//
+// Nil errors and HelpRequested errors are ignored so callers can use the
+// typical pattern:
+//
+//	if err := app.Execute(); err != nil {
+//	    app.PrintError(err)
+//	    os.Exit(cli.GetExitCode(err))
+//	}
+func (a *App) PrintError(err error) {
+	if err == nil || IsHelpRequested(err) {
+		return
+	}
+	prefix := "Error: "
+	msg := err.Error()
+
+	// Split off any trailing "tail" — did-you-mean suggestions and help
+	// hints — so we can color only the primary error message red and
+	// leave the rest in the default style. The convention used by this
+	// package is to separate the tail with a blank line.
+	head, tail, _ := strings.Cut(msg, "\n\n")
+
+	if a.colorEnabled {
+		fmt.Fprintln(a.stderr, color.Red.Apply(prefix+head))
+	} else {
+		fmt.Fprintln(a.stderr, prefix+head)
+	}
+	if tail != "" {
+		fmt.Fprintln(a.stderr)
+		fmt.Fprintln(a.stderr, tail)
+	}
+}
+
 // HelpTheme sets a custom theme for help output styling.
 // Use DefaultHelpTheme() to get the default theme and modify it.
 //
@@ -1050,6 +1322,15 @@ func (a *App) SetColorEnabled(enabled bool) *App {
 //	app.HelpTheme(theme)
 func (a *App) HelpTheme(theme HelpTheme) *App {
 	a.helpTheme = &theme
+	return a
+}
+
+// ExpandGroups controls whether command groups show their subcommands inline
+// in the main help output. Defaults to false (groups are collapsed, showing
+// only the group name and description). Individual groups can override this
+// via Group.Expand.
+func (a *App) ExpandGroups(enabled bool) *App {
+	a.expandGroups = enabled
 	return a
 }
 
