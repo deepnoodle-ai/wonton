@@ -7,6 +7,33 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
+func TestShouldSkipTerminalQuery(t *testing.T) {
+	cases := []struct {
+		name        string
+		termProgram string
+		termVar     string
+		want        bool
+	}{
+		{"modern xterm", "", "xterm-256color", false},
+		{"kitty", "", "xterm-kitty", false},
+		{"wezterm", "WezTerm", "xterm-256color", false},
+		{"iterm2", "iTerm.app", "xterm-256color", false},
+		{"ghostty", "ghostty", "xterm-ghostty", false},
+		{"apple terminal", "Apple_Terminal", "xterm-256color", true},
+		{"empty TERM", "", "", true},
+		{"dumb TERM", "", "dumb", true},
+		{"tmux", "tmux", "tmux-256color", true},
+		{"screen", "", "screen-256color", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TERM_PROGRAM", tc.termProgram)
+			t.Setenv("TERM", tc.termVar)
+			assert.Equal(t, tc.want, shouldSkipTerminalQuery())
+		})
+	}
+}
+
 func TestNewTestTerminal(t *testing.T) {
 	buf := &bytes.Buffer{}
 	term := NewTestTerminal(80, 24, buf)
@@ -307,6 +334,75 @@ func TestTerminal_PrintStyled(t *testing.T) {
 	assert.Equal(t, ColorGreen, term.backBuffer[0][0].Style.Foreground)
 	assert.Equal(t, 't', term.backBuffer[0][1].Char)
 	assert.Equal(t, ColorGreen, term.backBuffer[0][1].Style.Foreground)
+}
+
+// TestTerminal_PrintGraphemeClusters pins the behavior that multi-rune
+// grapheme clusters land in a single Cell — base rune in Char, remaining
+// cluster runes in Trailing — rather than having their trailing runes
+// stomped by whichever character comes next. Before this fix, printing
+// "#\uFE0F\u20E3 x" would leave cell[0]='#' and cell[1]=' ' with the VS16
+// and enclosing-keycap combining marks silently dropped, so a keycap
+// rendered as bare '#' on screen.
+func TestTerminal_PrintGraphemeClusters(t *testing.T) {
+	cases := []struct {
+		name         string
+		input        string
+		wantChar     rune
+		wantTrailing string
+		wantWidth    int
+	}{
+		{
+			name:         "hash keycap",
+			input:        "#\uFE0F\u20E3",
+			wantChar:     '#',
+			wantTrailing: "\uFE0F\u20E3",
+			wantWidth:    2,
+		},
+		{
+			name:         "heart VS16",
+			input:        "\u2764\uFE0F",
+			wantChar:     '\u2764',
+			wantTrailing: "\uFE0F",
+			wantWidth:    2,
+		},
+		{
+			name:         "US flag (regional indicator pair)",
+			input:        "\U0001F1FA\U0001F1F8",
+			wantChar:     '\U0001F1FA',
+			wantTrailing: "\U0001F1F8",
+			wantWidth:    2,
+		},
+		{
+			name:         "family ZWJ sequence",
+			input:        "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466",
+			wantChar:     '\U0001F468',
+			wantTrailing: "\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466",
+			wantWidth:    2,
+		},
+		{
+			name:         "plain ASCII stays single-rune",
+			input:        "A",
+			wantChar:     'A',
+			wantTrailing: "",
+			wantWidth:    1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			term := NewTestTerminal(80, 24, &bytes.Buffer{})
+			term.PrintStyled(tc.input+" x", NewStyle())
+
+			got := term.backBuffer[0][0]
+			assert.Equal(t, tc.wantChar, got.Char)
+			assert.Equal(t, tc.wantTrailing, got.Trailing)
+			assert.Equal(t, tc.wantWidth, got.Width)
+
+			// The trailing space must not overwrite the cluster. Its cell
+			// sits at the cluster's width offset.
+			trailingCell := term.backBuffer[0][tc.wantWidth]
+			assert.Equal(t, ' ', trailingCell.Char, "space after cluster")
+		})
+	}
 }
 
 func TestTerminal_FillStyled(t *testing.T) {

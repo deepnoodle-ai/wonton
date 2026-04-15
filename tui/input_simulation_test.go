@@ -82,7 +82,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	// We expect ONE KeyEvent: Enter with Shift=true
 	// We might also see ResizeEvents etc., so filter for KeyEvents
 	var keyEvents []KeyEvent
-	for _, e := range app.events {
+	for _, e := range app.snapshot() {
 		if ke, ok := e.(KeyEvent); ok {
 			keyEvents = append(keyEvents, ke)
 		}
@@ -133,7 +133,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	var keyEvents []KeyEvent
-	for _, e := range app.events {
+	for _, e := range app.snapshot() {
 		if ke, ok := e.(KeyEvent); ok {
 			keyEvents = append(keyEvents, ke)
 		}

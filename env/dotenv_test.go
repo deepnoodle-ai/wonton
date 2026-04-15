@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -211,10 +212,14 @@ func TestWriteEnvFileWithPerm(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "secret123", env["API_KEY"])
 
-	// Verify permissions
+	// Verify permissions. Windows does not implement Unix mode bits —
+	// os.Stat always reports 0666/0444 based on the read-only attribute —
+	// so the permission check only runs on POSIX platforms.
 	info, err := os.Stat(outFile)
 	assert.NoError(t, err)
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
 }
 
 func TestParseEnvWithEscapes(t *testing.T) {

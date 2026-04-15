@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // diffView displays a file diff with syntax highlighting.

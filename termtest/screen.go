@@ -70,8 +70,9 @@ package termtest
 
 import (
 	"strings"
+	"unicode/utf8"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // Style represents terminal text styling attributes.
@@ -110,11 +111,17 @@ const (
 )
 
 // Cell represents a single character cell on the virtual terminal screen.
-// Each cell contains a character, its display width, and styling information.
+//
+// For single-rune glyphs, Char holds the entire cell content and Trailing is
+// empty. For multi-rune grapheme clusters, Char holds the first rune and
+// Trailing holds the remaining bytes so Row/Text can reconstruct the full
+// cluster from a single lead cell.
 type Cell struct {
-	Char  rune  // The Unicode character (or 0 for continuation cells)
-	Width int   // Display width: 1 for normal, 2 for wide characters, 0 for continuation
-	Style Style // Text styling applied to this cell
+	Char         rune   // The Unicode character (or 0 for continuation cells)
+	Trailing     string // Remaining runes of a multi-rune grapheme cluster; usually empty
+	Width        int    // Display width: 1 for normal, 2 for wide characters, 0 for zero-width/continuation
+	Style        Style  // Text styling applied to this cell
+	Continuation bool   // True if this cell is the continuation half of a wide glyph
 }
 
 // Screen represents a virtual terminal screen buffer that processes ANSI sequences.
@@ -150,10 +157,35 @@ func NewScreen(width, height int) *Screen {
 	for y := 0; y < height; y++ {
 		s.cells[y] = make([]Cell, width)
 		for x := 0; x < width; x++ {
-			s.cells[y][x] = Cell{Char: ' ', Width: 1}
+			s.cells[y][x] = blankCell()
 		}
 	}
 	return s
+}
+
+func blankCell() Cell {
+	return Cell{Char: ' ', Width: 1}
+}
+
+func continuationCell(style Style) Cell {
+	return Cell{Char: 0, Width: 0, Style: style, Continuation: true}
+}
+
+func cellGlyph(cell Cell) string {
+	if cell.Continuation {
+		return ""
+	}
+	if cell.Char == 0 {
+		return " "
+	}
+	if cell.Trailing == "" {
+		return string(cell.Char)
+	}
+	return string(cell.Char) + cell.Trailing
+}
+
+func writeCellGlyph(w *strings.Builder, cell Cell) {
+	w.WriteString(cellGlyph(cell))
 }
 
 // Size returns the screen dimensions.
@@ -177,26 +209,100 @@ func (s *Screen) SetCursor(x, y int) {
 // Coordinates are 0-based, with (0, 0) at the top-left corner.
 func (s *Screen) Cell(x, y int) Cell {
 	if x < 0 || x >= s.width || y < 0 || y >= s.height {
-		return Cell{Char: ' ', Width: 1}
+		return blankCell()
 	}
 	return s.cells[y][x]
+}
+
+// CellGlyph returns the full glyph at position (x, y).
+// Lead cells return the complete grapheme cluster, continuation cells return
+// an empty string, and blank cells return a single space.
+func (s *Screen) CellGlyph(x, y int) string {
+	return cellGlyph(s.Cell(x, y))
 }
 
 // SetCell sets the character and style at position (x, y).
 // For wide characters (width 2), this also marks the next cell as a continuation.
 // Does nothing if the position is out of bounds.
 func (s *Screen) SetCell(x, y int, char rune, style Style) {
+	charWidth := runewidth.RuneWidth(char)
+	s.setCellGlyph(x, y, char, "", charWidth, style)
+}
+
+func (s *Screen) setCellGlyph(x, y int, char rune, trailing string, charWidth int, style Style) {
 	if x < 0 || x >= s.width || y < 0 || y >= s.height {
 		return
 	}
 
-	charWidth := runewidth.RuneWidth(char)
-	s.cells[y][x] = Cell{Char: char, Width: charWidth, Style: style}
+	// Clear artifacts if we're overwriting the lead or continuation half of
+	// an existing wide glyph.
+	oldCell := s.cells[y][x]
+	if oldCell.Width == 2 && x+1 < s.width {
+		s.cells[y][x+1] = blankCell()
+	} else if oldCell.Continuation && x > 0 {
+		s.cells[y][x-1] = blankCell()
+	}
+
+	s.cells[y][x] = Cell{
+		Char:         char,
+		Trailing:     trailing,
+		Width:        charWidth,
+		Style:        style,
+		Continuation: false,
+	}
 
 	// For wide characters, mark the next cell as continuation
 	if charWidth == 2 && x+1 < s.width {
-		s.cells[y][x+1] = Cell{Char: 0, Width: 0, Style: style}
+		nextCell := s.cells[y][x+1]
+		if nextCell.Width == 2 && x+2 < s.width {
+			s.cells[y][x+2] = blankCell()
+		}
+		s.cells[y][x+1] = continuationCell(style)
 	}
+}
+
+func (s *Screen) writeCluster(cluster string, clusterWidth int) {
+	switch cluster {
+	case "":
+		return
+	case "\r\n":
+		s.cursorX = 0
+		s.cursorY++
+		if s.cursorY >= s.height {
+			s.scrollUp()
+			s.cursorY = s.height - 1
+		}
+		return
+	case "\n":
+		s.cursorX = 0
+		s.cursorY++
+		if s.cursorY >= s.height {
+			s.scrollUp()
+			s.cursorY = s.height - 1
+		}
+		return
+	case "\r":
+		s.cursorX = 0
+		return
+	case "\t":
+		nextTab := ((s.cursorX / 8) + 1) * 8
+		s.cursorX = min(nextTab, s.width-1)
+		return
+	}
+
+	// Wrap if needed
+	if s.cursorX+clusterWidth > s.width {
+		s.cursorX = 0
+		s.cursorY++
+		if s.cursorY >= s.height {
+			s.scrollUp()
+			s.cursorY = s.height - 1
+		}
+	}
+
+	first, firstSize := utf8.DecodeRuneInString(cluster)
+	s.setCellGlyph(s.cursorX, s.cursorY, first, cluster[firstSize:], clusterWidth, s.style)
+	s.cursorX += clusterWidth
 }
 
 // WriteRune writes a single rune at the cursor position with the current style.
@@ -208,46 +314,13 @@ func (s *Screen) SetCell(x, y int, char rune, style Style) {
 //
 // The screen scrolls up automatically when writing past the bottom.
 func (s *Screen) WriteRune(r rune) {
-	if r == '\n' {
-		s.cursorX = 0
-		s.cursorY++
-		if s.cursorY >= s.height {
-			s.scrollUp()
-			s.cursorY = s.height - 1
-		}
-		return
-	}
-	if r == '\r' {
-		s.cursorX = 0
-		return
-	}
-	if r == '\t' {
-		// Move to next tab stop (every 8 columns)
-		nextTab := ((s.cursorX / 8) + 1) * 8
-		s.cursorX = min(nextTab, s.width-1)
-		return
-	}
-
-	charWidth := runewidth.RuneWidth(r)
-
-	// Wrap if needed
-	if s.cursorX+charWidth > s.width {
-		s.cursorX = 0
-		s.cursorY++
-		if s.cursorY >= s.height {
-			s.scrollUp()
-			s.cursorY = s.height - 1
-		}
-	}
-
-	s.SetCell(s.cursorX, s.cursorY, r, s.style)
-	s.cursorX += charWidth
+	s.writeCluster(string(r), runewidth.RuneWidth(r))
 }
 
 // WriteString writes a string at the cursor position.
 func (s *Screen) WriteString(str string) {
-	for _, r := range str {
-		s.WriteRune(r)
+	for cluster, clusterWidth := range runewidth.Graphemes(str) {
+		s.writeCluster(cluster, clusterWidth)
 	}
 }
 
@@ -270,7 +343,7 @@ func (s *Screen) Write(p []byte) (n int, err error) {
 func (s *Screen) Clear() {
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = Cell{Char: ' ', Width: 1}
+			s.cells[y][x] = blankCell()
 		}
 	}
 	s.cursorX = 0
@@ -280,21 +353,21 @@ func (s *Screen) Clear() {
 // ClearLine clears the current line.
 func (s *Screen) ClearLine() {
 	for x := 0; x < s.width; x++ {
-		s.cells[s.cursorY][x] = Cell{Char: ' ', Width: 1}
+		s.cells[s.cursorY][x] = blankCell()
 	}
 }
 
 // ClearToEndOfLine clears from cursor to end of line.
 func (s *Screen) ClearToEndOfLine() {
 	for x := s.cursorX; x < s.width; x++ {
-		s.cells[s.cursorY][x] = Cell{Char: ' ', Width: 1}
+		s.cells[s.cursorY][x] = blankCell()
 	}
 }
 
 // ClearToStartOfLine clears from start of line to cursor.
 func (s *Screen) ClearToStartOfLine() {
 	for x := 0; x <= s.cursorX && x < s.width; x++ {
-		s.cells[s.cursorY][x] = Cell{Char: ' ', Width: 1}
+		s.cells[s.cursorY][x] = blankCell()
 	}
 }
 
@@ -303,7 +376,7 @@ func (s *Screen) ClearToEndOfScreen() {
 	s.ClearToEndOfLine()
 	for y := s.cursorY + 1; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = Cell{Char: ' ', Width: 1}
+			s.cells[y][x] = blankCell()
 		}
 	}
 }
@@ -312,7 +385,7 @@ func (s *Screen) ClearToEndOfScreen() {
 func (s *Screen) ClearToStartOfScreen() {
 	for y := 0; y < s.cursorY; y++ {
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = Cell{Char: ' ', Width: 1}
+			s.cells[y][x] = blankCell()
 		}
 	}
 	s.ClearToStartOfLine()
@@ -335,15 +408,11 @@ func (s *Screen) Text() string {
 		lastNonSpace := -1
 		for x := 0; x < s.width; x++ {
 			cell := s.cells[y][x]
-			if cell.Width == 0 {
+			if cell.Continuation {
 				continue // Skip continuation cells
 			}
-			r := cell.Char
-			if r == 0 {
-				r = ' '
-			}
-			line.WriteRune(r)
-			if r != ' ' {
+			writeCellGlyph(&line, cell)
+			if cell.Char != ' ' && cell.Char != 0 || cell.Trailing != "" {
 				lastNonSpace = line.Len()
 			}
 		}
@@ -368,14 +437,10 @@ func (s *Screen) Row(y int) string {
 	var line strings.Builder
 	for x := 0; x < s.width; x++ {
 		cell := s.cells[y][x]
-		if cell.Width == 0 {
+		if cell.Continuation {
 			continue
 		}
-		r := cell.Char
-		if r == 0 {
-			r = ' '
-		}
-		line.WriteRune(r)
+		writeCellGlyph(&line, cell)
 	}
 	return strings.TrimRight(line.String(), " ")
 }
@@ -395,7 +460,7 @@ func (s *Screen) scrollUp() {
 	// Clear the last line
 	s.cells[s.height-1] = make([]Cell, s.width)
 	for x := 0; x < s.width; x++ {
-		s.cells[s.height-1][x] = Cell{Char: ' ', Width: 1}
+		s.cells[s.height-1][x] = blankCell()
 	}
 }
 

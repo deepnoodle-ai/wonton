@@ -3,7 +3,7 @@ package terminal
 import (
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // BorderStyle defines the characters used for drawing borders

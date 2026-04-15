@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -41,17 +42,26 @@ func TestRuntimeKeyboardInput(t *testing.T) {
 }
 
 type testKeyboardApp struct {
+	mu     sync.Mutex
 	events []Event
 }
 
 func (app *testKeyboardApp) HandleEvent(event Event) []Cmd {
+	app.mu.Lock()
 	app.events = append(app.events, event)
+	app.mu.Unlock()
 	if ke, ok := event.(KeyEvent); ok {
 		if ke.Rune == 'q' {
 			return []Cmd{Quit()}
 		}
 	}
 	return nil
+}
+
+func (app *testKeyboardApp) snapshot() []Event {
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	return append([]Event(nil), app.events...)
 }
 
 func (app *testKeyboardApp) Render(frame RenderFrame) {

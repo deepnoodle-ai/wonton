@@ -65,6 +65,13 @@ func TestAssertCell(t *testing.T) {
 	AssertCell(t, s, 2, 0, 'C')
 }
 
+func TestAssertCellGlyph(t *testing.T) {
+	s := NewScreen(20, 5)
+	s.WriteString("#\uFE0F\u20E3")
+
+	AssertCellGlyph(t, s, 0, 0, "#\uFE0F\u20E3")
+}
+
 func TestAssertCellBold(t *testing.T) {
 	s := NewScreen(20, 5)
 	s.Write([]byte("\x1b[1mBold\x1b[0mNormal"))

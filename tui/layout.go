@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // Layout manages the overall terminal layout with header, footer, and content area

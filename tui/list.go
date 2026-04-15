@@ -4,7 +4,7 @@ import (
 	"image"
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // ListItem represents an item in a list
@@ -109,14 +109,10 @@ func (l *List) Draw(frame RenderFrame) {
 			text = item.Icon + " " + text
 		}
 
-		// Truncate
-		if runewidth.StringWidth(text) > width {
-			text = runewidth.Truncate(text, width, "…")
-		}
-
-		// Pad to full width
-		padding := width - runewidth.StringWidth(text)
-		if padding > 0 {
+		// Truncate and compute padding in one pass.
+		var textW int
+		text, textW = runewidth.Fit(text, width, "…")
+		if padding := width - textW; padding > 0 {
 			text += strings.Repeat(" ", padding)
 		}
 

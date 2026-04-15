@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 func TestMarkdownRenderer_BasicFormatting(t *testing.T) {

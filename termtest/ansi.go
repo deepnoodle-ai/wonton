@@ -3,7 +3,6 @@ package termtest
 import (
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // processANSI parses ANSI escape sequences and updates the screen state.
@@ -83,10 +82,15 @@ func (s *Screen) processANSI(data string) {
 			// Unknown escape, skip the ESC
 			i++
 		} else {
-			// Regular character - properly decode UTF-8
-			r, size := utf8.DecodeRuneInString(data[i:])
-			s.WriteRune(r)
-			i += size
+			// Parse a contiguous run of plain text so grapheme clusters are
+			// segmented as whole display cells rather than rune-by-rune.
+			nextEscape := strings.IndexByte(data[i:], '\x1b')
+			if nextEscape < 0 {
+				s.WriteString(data[i:])
+				break
+			}
+			s.WriteString(data[i : i+nextEscape])
+			i += nextEscape
 		}
 	}
 }
@@ -180,9 +184,7 @@ func (s *Screen) parseCSI(data string) int {
 		s.insertChars(n)
 	case 'X': // Erase Characters
 		n := getParam(args, 0, 1)
-		for i := 0; i < n && s.cursorX+i < s.width; i++ {
-			s.cells[s.cursorY][s.cursorX+i] = Cell{Char: ' ', Width: 1}
-		}
+		s.eraseChars(n)
 	case 'd': // Line Position Absolute
 		n := getParam(args, 0, 1)
 		s.cursorY = clamp(n-1, 0, s.height-1)
@@ -368,6 +370,55 @@ func max(a, b int) int {
 	return b
 }
 
+type rowGlyph struct {
+	start int
+	width int
+	cell  Cell
+}
+
+func (s *Screen) rowGlyphs(y int) []rowGlyph {
+	if y < 0 || y >= s.height {
+		return nil
+	}
+
+	var glyphs []rowGlyph
+	for x := 0; x < s.width; x++ {
+		cell := s.cells[y][x]
+		if cell.Continuation {
+			continue
+		}
+		if cell == blankCell() {
+			continue
+		}
+		glyphs = append(glyphs, rowGlyph{
+			start: x,
+			width: max(cell.Width, 0),
+			cell:  cell,
+		})
+	}
+	return glyphs
+}
+
+func (s *Screen) rewriteRow(y int, glyphs []rowGlyph) {
+	if y < 0 || y >= s.height {
+		return
+	}
+
+	for x := 0; x < s.width; x++ {
+		s.cells[y][x] = blankCell()
+	}
+
+	for _, g := range glyphs {
+		if g.start < 0 || g.start >= s.width {
+			continue
+		}
+		if g.width > 1 && g.start+g.width > s.width {
+			continue
+		}
+		s.setCellGlyph(g.start, y, g.cell.Char, g.cell.Trailing, g.cell.Width, g.cell.Style)
+	}
+}
+
 // scrollDown scrolls the screen content down by one line.
 func (s *Screen) scrollDown() {
 	for y := s.height - 1; y > 0; y-- {
@@ -375,7 +426,7 @@ func (s *Screen) scrollDown() {
 	}
 	s.cells[0] = make([]Cell, s.width)
 	for x := 0; x < s.width; x++ {
-		s.cells[0][x] = Cell{Char: ' ', Width: 1}
+		s.cells[0][x] = blankCell()
 	}
 }
 
@@ -387,7 +438,7 @@ func (s *Screen) insertLines(n int) {
 		}
 		s.cells[s.cursorY] = make([]Cell, s.width)
 		for x := 0; x < s.width; x++ {
-			s.cells[s.cursorY][x] = Cell{Char: ' ', Width: 1}
+			s.cells[s.cursorY][x] = blankCell()
 		}
 	}
 }
@@ -400,29 +451,77 @@ func (s *Screen) deleteLines(n int) {
 		}
 		s.cells[s.height-1] = make([]Cell, s.width)
 		for x := 0; x < s.width; x++ {
-			s.cells[s.height-1][x] = Cell{Char: ' ', Width: 1}
+			s.cells[s.height-1][x] = blankCell()
 		}
 	}
 }
 
 // deleteChars deletes n characters at the cursor position.
 func (s *Screen) deleteChars(n int) {
+	if n <= 0 {
+		return
+	}
 	y := s.cursorY
-	for i := s.cursorX; i < s.width-n; i++ {
-		s.cells[y][i] = s.cells[y][i+n]
+	start := clamp(s.cursorX, 0, s.width)
+	end := min(s.width, start+n)
+	prefixLimit := min(start, max(s.width-n, 0))
+
+	var rewritten []rowGlyph
+	for _, g := range s.rowGlyphs(y) {
+		glyphEnd := g.start + g.width
+		switch {
+		case glyphEnd <= prefixLimit:
+			rewritten = append(rewritten, g)
+		case g.start >= end:
+			g.start -= n
+			rewritten = append(rewritten, g)
+		default:
+			// Drop glyphs that overlap the deleted column range so we never
+			// leave behind a dangling continuation or split grapheme.
+		}
 	}
-	for i := s.width - n; i < s.width; i++ {
-		s.cells[y][i] = Cell{Char: ' ', Width: 1}
-	}
+	s.rewriteRow(y, rewritten)
 }
 
 // insertChars inserts n blank characters at the cursor position.
 func (s *Screen) insertChars(n int) {
+	if n <= 0 {
+		return
+	}
 	y := s.cursorY
-	for i := s.width - 1; i >= s.cursorX+n; i-- {
-		s.cells[y][i] = s.cells[y][i-n]
+	start := clamp(s.cursorX, 0, s.width)
+
+	var rewritten []rowGlyph
+	for _, g := range s.rowGlyphs(y) {
+		glyphEnd := g.start + g.width
+		switch {
+		case glyphEnd <= start:
+			rewritten = append(rewritten, g)
+		case g.start >= start:
+			g.start += n
+			rewritten = append(rewritten, g)
+		default:
+			// Inserting into the middle of a wide glyph invalidates that glyph
+			// at the target columns; drop it rather than preserve a broken half.
+		}
 	}
-	for i := s.cursorX; i < s.cursorX+n && i < s.width; i++ {
-		s.cells[y][i] = Cell{Char: ' ', Width: 1}
+	s.rewriteRow(y, rewritten)
+}
+
+func (s *Screen) eraseChars(n int) {
+	if n <= 0 {
+		return
 	}
+	y := s.cursorY
+	start := clamp(s.cursorX, 0, s.width)
+	end := min(s.width, start+n)
+
+	var rewritten []rowGlyph
+	for _, g := range s.rowGlyphs(y) {
+		glyphEnd := g.start + g.width
+		if glyphEnd <= start || g.start >= end {
+			rewritten = append(rewritten, g)
+		}
+	}
+	s.rewriteRow(y, rewritten)
 }

@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -294,17 +295,16 @@ func safeFilenameFromResponse(resp *http.Response) (string, error) {
 // sanitizeFilename removes path traversal attempts and invalid characters from
 // a filename. Returns an empty string if the filename is invalid.
 func sanitizeFilename(filename string) string {
-	// Remove any path components - only keep the base name
-	filename = filepath.Base(filename)
+	// Normalize separators so the logic is OS-independent. path.Base treats
+	// only "/" as a separator, so filepath.Base("/") returning "\" on Windows
+	// would otherwise leak through.
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filename = path.Base(filename)
 
 	// Reject if it's a directory reference or empty
 	if filename == "." || filename == ".." || filename == "/" || filename == "" {
 		return ""
 	}
-
-	// Remove any remaining path separators (shouldn't happen after Base, but defensive)
-	filename = strings.ReplaceAll(filename, "/", "_")
-	filename = strings.ReplaceAll(filename, "\\", "_")
 
 	// Remove null bytes and other control characters
 	var clean strings.Builder

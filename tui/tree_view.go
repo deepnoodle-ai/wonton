@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"image"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // TreeNode represents a node in a tree view.

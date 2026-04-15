@@ -1,0 +1,20 @@
+# Minimal image for running `go test ./...` against the Linux build of
+# wonton from a non-Linux dev box. Matches the Go version used by CI.
+#
+# Build:   docker build -f scripts/Dockerfile.linux -t wonton-test .
+# Run:     docker run --rm -t -v "$PWD:/src" -w /src wonton-test
+#
+# The `-t` flag is important: wonton's pty and termsession tests allocate
+# real PTYs and need the container to be attached to a TTY.
+FROM golang:1.25-alpine
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+
+# Pre-warm the module cache in the image layer so interactive re-runs are
+# fast. The bind mount at run time will shadow /src with the working copy.
+COPY go.mod go.sum ./
+RUN go mod download
+
+CMD ["go", "test", "./..."]

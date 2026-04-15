@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	"github.com/mattn/go-runewidth"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // WrapText wraps the given text to fit within the specified width.
