@@ -21,8 +21,10 @@ Dependencies are minimal: mostly the standard library and `golang.org/x/...`.
 The packages follow Go idioms, ship with thorough documentation, and include
 examples throughout.
 
-Pick the packages you need. Wonton provides 20+ packages that you can adopt
-incrementally or all at once.
+Pick the packages you need. Wonton provides 20+ packages — including an
+in-tree `runewidth` for Unicode-aware terminal measurement and a `pty`
+package for pseudo-terminal allocation — that you can adopt incrementally
+or all at once.
 
 ## Who This Is For
 
@@ -64,7 +66,9 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [htmlparse](./htmlparse/README.md)     | HTML parsing, metadata, links          |
 | [htmltomd](./htmltomd/README.md)       | HTML to Markdown conversion            |
 | [humanize](./humanize/README.md)       | Human-readable formatting              |
+| [pty](./pty/README.md)                 | Pseudo-terminal allocation (Unix)      |
 | [retry](./retry/README.md)             | Retry with backoff and jitter          |
+| [runewidth](./runewidth/README.md)     | Unicode width and grapheme clusters    |
 | [schema](./schema/README.md)           | JSON Schema types for LLM tools        |
 | [sse](./sse/README.md)                 | Server-Sent Events client              |
 | [terminal](./terminal/README.md)       | Terminal control and input decoding    |

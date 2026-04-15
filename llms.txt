@@ -26,7 +26,9 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 - `htmltomd` - HTML to Markdown conversion
 - `unidiff` - Unified diff parsing
 - `clipboard` - System clipboard read/write
+- `runewidth` - Unicode-aware display width, UAX#29 grapheme cluster segmentation, and terminal-compat helpers (in-tree replacement for `go-runewidth`/`uniseg`)
 - `terminal` - Terminal control, raw mode, input decoding
+- `pty` - Pseudo-terminal allocation and process management (Linux/Darwin)
 - `termsession` - Terminal session recording in asciinema v2 format
 - `termtest` - Golden-file testing for terminal output
 - `gif` - Animated GIF creation, including rendering terminal recordings to GIF
