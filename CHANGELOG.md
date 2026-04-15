@@ -6,11 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.30] - 2026-04-15
+
 ### Added
 
 - `runewidth` package: Unicode 17.0.0, UAX#29 grapheme segmentation, correct widths for ZWJ emoji, keycaps, VS16, and em dashes. See [docs/runewidth-improvements.md](docs/runewidth-improvements.md).
 - `pty` package: in-tree pseudo-terminal allocation for Linux and macOS.
-- READMEs for `pty` and `runewidth`.
+- READMEs for `pty` and `runewidth`, plus a top-level `CHANGELOG.md`.
 - Examples: `tui/grapheme_input`, `tui/grapheme_table`, `tui/reflow`, `termprobe`, `gif/grapheme_eval`.
 - CI test matrix across Linux, macOS, and Windows plus cross-compile coverage.
 
