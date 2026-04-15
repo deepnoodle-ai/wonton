@@ -627,7 +627,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	// Check required flags
 	for _, f := range allFlags {
 		if f.IsRequired() && !ctx.setFlags[f.GetName()] {
-			return fmt.Errorf("missing required flag: --%s", f.GetName())
+			return missingFlagError("missing required flag", f)
 		}
 	}
 
@@ -868,6 +868,16 @@ func writeFlagsHelp(sb *strings.Builder, flags []Flag) {
 		}
 		writeFlagHelp(sb, f, maxNameLen)
 	}
+}
+
+// missingFlagError builds a user-facing error for a missing required flag,
+// mentioning the backing environment variable if one is configured. This
+// lets users know they can satisfy the requirement either way.
+func missingFlagError(prefix string, f Flag) error {
+	if env := f.GetEnvVar(); env != "" {
+		return fmt.Errorf("%s: --%s (or set %s environment variable)", prefix, f.GetName(), env)
+	}
+	return fmt.Errorf("%s: --%s", prefix, f.GetName())
 }
 
 // writeFlagHelp writes help text for a single flag with the given name width.

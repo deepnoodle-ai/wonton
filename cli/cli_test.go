@@ -1206,6 +1206,33 @@ func TestColorCommandLineOverrides(t *testing.T) {
 	})
 }
 
+func TestMissingRequiredFlagMessageMentionsEnvVar(t *testing.T) {
+	app := New("test")
+	app.Command("run").
+		Flags(&StringFlag{Name: "api-key", EnvVar: "TEST_API_KEY", Required: true}).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"run"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "TEST_API_KEY")
+}
+
+func TestRequireFlagsMiddlewareMentionsEnvVar(t *testing.T) {
+	app := New("test")
+	app.Command("run").
+		Flags(&StringFlag{Name: "api-key", EnvVar: "TEST_API_KEY"}).
+		Use(RequireFlags("api-key")).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"run"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "TEST_API_KEY")
+}
+
 func TestPrintError(t *testing.T) {
 	t.Run("nil is ignored", func(t *testing.T) {
 		var buf bytes.Buffer
