@@ -1221,6 +1221,71 @@ func TestColorCommandLineOverrides(t *testing.T) {
 	})
 }
 
+func TestUnknownCommandSuggestion(t *testing.T) {
+	t.Run("close match suggests did-you-mean", func(t *testing.T) {
+		app := New("test")
+		app.Command("list").Run(func(ctx *Context) error { return nil })
+		app.Command("create").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"lsit"}) // typo of "list"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: lsit")
+		assert.Contains(t, err.Error(), "Did you mean 'list'?")
+		assert.Contains(t, err.Error(), "test --help")
+	})
+
+	t.Run("no close match omits suggestion", func(t *testing.T) {
+		app := New("test")
+		app.Command("list").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"xyzzy"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: xyzzy")
+		assert.False(t, strings.Contains(err.Error(), "Did you mean"))
+		assert.Contains(t, err.Error(), "test --help")
+	})
+
+	t.Run("group name typo suggests group", func(t *testing.T) {
+		app := New("test")
+		app.Group("actions").Description("actions").Command("create").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"actons"}) // typo of "actions"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "Did you mean 'actions'?")
+	})
+
+	t.Run("unknown subcommand suggests within group", func(t *testing.T) {
+		app := New("test")
+		g := app.Group("users")
+		g.Command("create").Run(func(ctx *Context) error { return nil })
+		g.Command("delete").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"users", "creat"}) // typo of "create"
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown subcommand 'creat'")
+		assert.Contains(t, err.Error(), "Did you mean 'users create'?")
+		assert.Contains(t, err.Error(), "test users --help")
+	})
+}
+
+func TestLevenshtein(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"", "", 0},
+		{"abc", "", 3},
+		{"", "abc", 3},
+		{"kitten", "sitting", 3},
+		{"list", "lsit", 2},
+		{"same", "same", 0},
+	}
+	for _, tc := range cases {
+		got := levenshtein(tc.a, tc.b)
+		assert.Equal(t, tc.want, got)
+	}
+}
+
 func TestHelpBypassesRequiredFlags(t *testing.T) {
 	newApp := func() *App {
 		app := New("test").

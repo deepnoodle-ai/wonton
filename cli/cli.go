@@ -490,7 +490,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		// Group command
 		group := a.groups[result.Group]
 		if group == nil {
-			return fmt.Errorf("unknown group: %s", result.Group)
+			return a.unknownCommandError(result.Group)
 		}
 		if result.Command == "" {
 			// Check if there are remaining args that might be an unknown subcommand
@@ -503,7 +503,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 				// Not a flag - could be an unknown subcommand
 				if !looksLikeFlag(firstArg) {
 					if group.handler == nil {
-						return fmt.Errorf("unknown subcommand '%s' for group '%s'", firstArg, result.Group)
+						return a.unknownSubcommandError(result.Group, firstArg)
 					}
 					// Group has a handler, treat as positional arg
 				} else if group.handler == nil {
@@ -528,7 +528,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 			// Group with subcommand
 			cmd = group.commands[result.Command]
 			if cmd == nil {
-				return fmt.Errorf("unknown command: %s %s", result.Group, result.Command)
+				return a.unknownSubcommandError(result.Group, result.Command)
 			}
 		}
 	} else {
@@ -557,7 +557,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 				cmd = a.rootCommand()
 				cmdArgs = append([]string{result.Command}, cmdArgs...)
 			} else {
-				return fmt.Errorf("unknown command: %s", result.Command)
+				return a.unknownCommandError(result.Command)
 			}
 		}
 	}
@@ -656,6 +656,131 @@ func (a *App) applyColorOverrides(args []string) []string {
 		out = append(out, arg)
 	}
 	return out
+}
+
+// suggestName returns the closest match to `attempted` from `candidates`
+// using Levenshtein distance, or "" if no candidate is close enough. The
+// threshold is max(2, len(attempted)/3) so short typos are tolerated
+// while unrelated strings don't get matched.
+func suggestName(attempted string, candidates []string) string {
+	if len(candidates) == 0 || attempted == "" {
+		return ""
+	}
+	threshold := len(attempted) / 3
+	if threshold < 2 {
+		threshold = 2
+	}
+	best := ""
+	bestDist := threshold + 1
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		d := levenshtein(attempted, c)
+		if d < bestDist {
+			bestDist = d
+			best = c
+		}
+	}
+	if bestDist > threshold {
+		return ""
+	}
+	return best
+}
+
+// levenshtein returns the edit distance between two strings.
+func levenshtein(a, b string) int {
+	ar := []rune(a)
+	br := []rune(b)
+	la, lb := len(ar), len(br)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	prev := make([]int, lb+1)
+	curr := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if ar[i-1] == br[j-1] {
+				cost = 0
+			}
+			del := prev[j] + 1
+			ins := curr[j-1] + 1
+			sub := prev[j-1] + cost
+			m := del
+			if ins < m {
+				m = ins
+			}
+			if sub < m {
+				m = sub
+			}
+			curr[j] = m
+		}
+		prev, curr = curr, prev
+	}
+	return prev[lb]
+}
+
+// topLevelCommandNames returns visible, invokable top-level names: direct
+// commands (excluding the empty root name), their aliases, and group names.
+func (a *App) topLevelCommandNames() []string {
+	out := make([]string, 0, len(a.commands)+len(a.groups))
+	for name, cmd := range a.commands {
+		if name == "" || cmd == nil || cmd.hidden {
+			continue
+		}
+		out = append(out, name)
+		out = append(out, cmd.aliases...)
+	}
+	for name := range a.groups {
+		out = append(out, name)
+	}
+	return out
+}
+
+// groupSubcommandNames returns visible subcommand names and aliases for a group.
+func groupSubcommandNames(g *Group) []string {
+	out := make([]string, 0, len(g.commands))
+	for name, cmd := range g.commands {
+		if cmd == nil || cmd.hidden {
+			continue
+		}
+		out = append(out, name)
+		out = append(out, cmd.aliases...)
+	}
+	return out
+}
+
+// unknownCommandError builds an error for an unknown top-level command,
+// including a did-you-mean suggestion when one is available and a footer
+// pointing to --help.
+func (a *App) unknownCommandError(name string) error {
+	msg := fmt.Sprintf("unknown command: %s", name)
+	if suggestion := suggestName(name, a.topLevelCommandNames()); suggestion != "" {
+		msg += fmt.Sprintf("\n\nDid you mean '%s'?", suggestion)
+	}
+	msg += fmt.Sprintf("\n\nRun '%s --help' to see available commands.", a.name)
+	return fmt.Errorf("%s", msg)
+}
+
+// unknownSubcommandError builds an error for an unknown subcommand of a
+// group, with a did-you-mean suggestion and a pointer to the group's help.
+func (a *App) unknownSubcommandError(groupName, subName string) error {
+	msg := fmt.Sprintf("unknown subcommand '%s' for group '%s'", subName, groupName)
+	if g := a.groups[groupName]; g != nil {
+		if suggestion := suggestName(subName, groupSubcommandNames(g)); suggestion != "" {
+			msg += fmt.Sprintf("\n\nDid you mean '%s %s'?", groupName, suggestion)
+		}
+	}
+	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
+	return fmt.Errorf("%s", msg)
 }
 
 // findCommand looks up a command by name, including group commands and aliases.
