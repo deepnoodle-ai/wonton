@@ -396,10 +396,11 @@ func renderCommandList(commands map[string]*Command, names []string, theme HelpT
 	return tui.Stack(views...).Gap(0)
 }
 
-// maxVisibleCommandNameLen returns the longest non-hidden command name length,
-// with a sensible minimum to avoid overly narrow columns.
+// maxVisibleCommandNameLen returns the longest non-hidden command name length.
+// Each section sizes its name column to its own content so unrelated sections
+// don't inflate each other's width.
 func maxVisibleCommandNameLen(commands map[string]*Command, names []string) int {
-	max := 14
+	max := 0
 	for _, name := range names {
 		cmd := commands[name]
 		if cmd == nil || cmd.hidden || name == "" {
@@ -432,7 +433,6 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 	if len(order) == 0 {
 		order = sortedGroupKeys(groups)
 	}
-	groupWidth := maxVisibleGroupNameLen(groups, order, flat)
 	groupBlocks := make([]tui.View, 0, len(order))
 	anyExpanded := false
 	for _, name := range order {
@@ -440,12 +440,7 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 		if group == nil || group.flatRouting != flat {
 			continue
 		}
-		block := []tui.View{
-			tui.Group(
-				tui.Text("  %-*s  ", groupWidth, name).Style(theme.Command),
-				tui.Text("%s", group.description),
-			),
-		}
+		block := []tui.View{renderGroupHeaderRow(name, group.description, theme)}
 		if group.isExpanded() {
 			anyExpanded = true
 			subOrder := group.commandOrder
@@ -473,31 +468,25 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 	return tui.Stack(groupBlocks...).Gap(gap)
 }
 
-// maxVisibleGroupNameLen returns the longest group name length among groups
-// matching the requested flat-routing mode.
-func maxVisibleGroupNameLen(groups map[string]*Group, order []string, flat bool) int {
-	max := 14
-	for _, name := range order {
-		g := groups[name]
-		if g == nil || g.flatRouting != flat {
-			continue
-		}
-		if len(name) > max {
-			max = len(name)
-		}
+// renderGroupHeaderRow renders a group's header row as "name - description",
+// or just the name if there's no description.
+func renderGroupHeaderRow(name, description string, theme HelpTheme) tui.View {
+	if description == "" {
+		return tui.Group(
+			tui.Text("  "),
+			tui.Text("%s", name).Style(theme.Command),
+		)
 	}
-	return max
+	return tui.Group(
+		tui.Text("  "),
+		tui.Text("%s", name).Style(theme.Command),
+		tui.Text(" - "),
+		tui.Text("%s", description),
+	)
 }
 
 // renderGroupList renders groups in the given name order.
 func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) tui.View {
-	groupWidth := 14
-	for _, name := range names {
-		if g := groups[name]; g != nil && len(name) > groupWidth {
-			groupWidth = len(name)
-		}
-	}
-
 	groupBlocks := make([]tui.View, 0, len(names))
 	anyExpanded := false
 	for _, name := range names {
@@ -505,12 +494,7 @@ func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) 
 		if group == nil {
 			continue
 		}
-		block := []tui.View{
-			tui.Group(
-				tui.Text("  %-*s  ", groupWidth, name).Style(theme.Command),
-				tui.Text("%s", group.description),
-			),
-		}
+		block := []tui.View{renderGroupHeaderRow(name, group.description, theme)}
 
 		if group.isExpanded() {
 			anyExpanded = true
