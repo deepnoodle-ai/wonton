@@ -1268,6 +1268,18 @@ func TestUnknownCommandSuggestion(t *testing.T) {
 	})
 }
 
+func TestGroupRequiresSubcommandMessagePointsAtHelp(t *testing.T) {
+	app := New("test")
+	g := app.Group("tools")
+	g.Command("list").Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"tools"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "group 'tools' requires a subcommand")
+	assert.Contains(t, msg, "test tools --help")
+}
+
 func TestLevenshtein(t *testing.T) {
 	cases := []struct {
 		a, b string

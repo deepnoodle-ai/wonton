@@ -508,11 +508,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 					// Group has a handler, treat as positional arg
 				} else if group.handler == nil {
 					// First arg is a flag but group has no handler - requires a subcommand
-					return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+					return a.groupRequiresSubcommandError(result.Group)
 				}
 			} else if group.handler == nil {
 				// No args and no handler - requires a subcommand
-				return fmt.Errorf("group '%s' requires a subcommand", result.Group)
+				return a.groupRequiresSubcommandError(result.Group)
 			}
 			// Group with handler
 			cmd = &Command{
@@ -779,6 +779,15 @@ func (a *App) unknownSubcommandError(groupName, subName string) error {
 			msg += fmt.Sprintf("\n\nDid you mean '%s %s'?", groupName, suggestion)
 		}
 	}
+	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
+	return fmt.Errorf("%s", msg)
+}
+
+// groupRequiresSubcommandError builds an error for the case where a user
+// invoked a group that has no handler and provided no subcommand. Points
+// the user at the group's --help for the list of available subcommands.
+func (a *App) groupRequiresSubcommandError(groupName string) error {
+	msg := fmt.Sprintf("group '%s' requires a subcommand", groupName)
 	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
 	return fmt.Errorf("%s", msg)
 }
