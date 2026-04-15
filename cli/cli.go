@@ -1068,6 +1068,17 @@ func (g *Group) commandList() string {
 
 // showHelp displays help for the group.
 func (g *Group) showHelp() error {
+	if g.app.colorEnabled {
+		view := g.renderGroupHelp()
+		if err := tui.Fprint(g.app.stdout, view); err != nil {
+			return err
+		}
+		if err := writeHelpNewline(g.app.stdout); err != nil {
+			return err
+		}
+		return &HelpRequested{}
+	}
+
 	var sb strings.Builder
 
 	// Group name and description

@@ -270,6 +270,53 @@ func (c *Command) renderCommandHelp() tui.View {
 	).Gap(1)
 }
 
+// renderGroupHelp renders styled help for a command group, matching the
+// look of the root app help and individual command help.
+func (g *Group) renderGroupHelp() tui.View {
+	theme := g.app.getHelpTheme()
+
+	views := []tui.View{
+		renderCommandHeader(g.app.name, g.name, g.description, theme),
+		tui.Stack(
+			renderSection("USAGE", theme),
+			tui.Text("  %s %s <command> [flags] [args]", g.app.name, g.name),
+		),
+	}
+
+	if len(g.commands) > 0 {
+		order := g.commandOrder
+		if len(order) == 0 {
+			order = sortedKeys(g.commands)
+		}
+		views = append(views, tui.Stack(
+			renderSection("COMMANDS", theme),
+			renderCommandList(g.commands, order, theme),
+		))
+	}
+
+	if len(g.flags) > 0 {
+		views = append(views, tui.Stack(
+			renderSection("FLAGS", theme),
+			renderFlags(g.flags, theme),
+		))
+	}
+
+	if g.app != nil && len(g.app.globalFlags) > 0 {
+		views = append(views, tui.Stack(
+			renderSection("GLOBAL FLAGS", theme),
+			renderFlags(g.app.globalFlags, theme),
+		))
+	}
+
+	views = append(views, tui.Group(
+		tui.Text("Run '"),
+		tui.Text("%s %s <command> --help", g.app.name, g.name).Style(theme.Flag),
+		tui.Text("' for more information on a command."),
+	))
+
+	return tui.Stack(views...).Gap(1)
+}
+
 // buildUsageString constructs the usage string for a command.
 // For commands in flat-routed groups, it returns both the flat form
 // (e.g., "app resize") and the grouped form (e.g., "app transform resize").
