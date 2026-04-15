@@ -1268,6 +1268,51 @@ func TestUnknownCommandSuggestion(t *testing.T) {
 	})
 }
 
+func TestParseErrorsIncludeHelpHint(t *testing.T) {
+	newApp := func() *App {
+		app := New("test")
+		g := app.Group("triggers")
+		g.Command("list").
+			Args("ns").
+			Flags(&StringFlag{Name: "format", Enum: []string{"json", "yaml"}}).
+			Run(func(ctx *Context) error { return nil })
+		app.Command("run").Run(func(ctx *Context) error { return nil })
+		return app
+	}
+
+	cases := []struct {
+		name     string
+		args     []string
+		contains []string
+	}{
+		{
+			name:     "missing required argument",
+			args:     []string{"triggers", "list"},
+			contains: []string{"missing required argument: ns", "test triggers list --help"},
+		},
+		{
+			name:     "unknown long flag",
+			args:     []string{"triggers", "list", "ns1", "--bogus"},
+			contains: []string{"unknown flag: --bogus", "test triggers list --help"},
+		},
+		{
+			name:     "invalid enum value",
+			args:     []string{"triggers", "list", "ns1", "--format", "xml"},
+			contains: []string{"invalid value for --format", "test triggers list --help"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newApp()
+			err := app.ExecuteArgs(tc.args)
+			assert.Error(t, err)
+			for _, want := range tc.contains {
+				assert.Contains(t, err.Error(), want)
+			}
+		})
+	}
+}
+
 func TestGroupRequiresSubcommandMessagePointsAtHelp(t *testing.T) {
 	app := New("test")
 	g := app.Group("tools")

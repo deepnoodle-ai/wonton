@@ -608,7 +608,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				// Check if it's a boolean flag or needs a value
 				flag := c.findFlag(name)
 				if flag == nil {
-					return fmt.Errorf("unknown flag: --%s", name)
+					return c.errorWithHelpHint(fmt.Sprintf("unknown flag: --%s", name))
 				}
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
@@ -620,7 +620,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					}
 					ctx.setFlags[name] = true
 				} else {
-					return fmt.Errorf("flag --%s requires a value", name)
+					return c.errorWithHelpHint(fmt.Sprintf("flag --%s requires a value", name))
 				}
 			}
 		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
@@ -633,7 +633,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				}
 				flag := c.findFlagByShort(string(r))
 				if flag == nil {
-					return fmt.Errorf("unknown flag: -%c", r)
+					return c.errorWithHelpHint(fmt.Sprintf("unknown flag: -%c", r))
 				}
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
@@ -645,7 +645,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					}
 					ctx.setFlags[flag.GetName()] = true
 				} else {
-					return fmt.Errorf("flag -%c requires a value", r)
+					return c.errorWithHelpHint(fmt.Sprintf("flag -%c requires a value", r))
 				}
 			}
 		} else {
@@ -658,7 +658,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 		if i < len(positional) {
 			ctx.positional = append(ctx.positional, positional[i])
 		} else if arg.Required {
-			return fmt.Errorf("missing required argument: %s", arg.Name)
+			return c.errorWithHelpHint(fmt.Sprintf("missing required argument: %s", arg.Name))
 		} else if arg.Default != nil {
 			ctx.positional = append(ctx.positional, fmt.Sprint(arg.Default))
 		}
@@ -752,7 +752,7 @@ func (c *Command) looksLikeFlag(s string) bool {
 func (c *Command) setFlag(ctx *Context, name, value string) error {
 	flag := c.findFlag(name)
 	if flag == nil {
-		return fmt.Errorf("unknown flag: %s", name)
+		return c.errorWithHelpHint(fmt.Sprintf("unknown flag: %s", name))
 	}
 
 	// Validate enum
@@ -765,14 +765,14 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 			}
 		}
 		if !valid {
-			return fmt.Errorf("invalid value for --%s: %s (allowed: %s)",
-				name, value, strings.Join(enum, ", "))
+			return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s (allowed: %s)",
+				name, value, strings.Join(enum, ", ")))
 		}
 	}
 
 	// Run custom validator
 	if err := flag.Validate(value); err != nil {
-		return fmt.Errorf("invalid value for --%s: %w", name, err)
+		return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s", name, err))
 	}
 
 	// Handle slice flags by accumulating values
@@ -919,11 +919,17 @@ func missingFlagError(prefix string, c *Command, f Flag) error {
 	if env := f.GetEnvVar(); env != "" {
 		head += fmt.Sprintf(" (or set %s environment variable)", env)
 	}
-	hint := ""
-	if c != nil {
-		hint = fmt.Sprintf("\n\nRun '%s --help' to see available flags.", c.helpInvocation())
+	return c.errorWithHelpHint(head)
+}
+
+// errorWithHelpHint wraps a head message with a trailing "Run 'X --help'"
+// pointer to this command's help. Used for errors produced during flag
+// and argument parsing so users can discover valid options.
+func (c *Command) errorWithHelpHint(head string) error {
+	if c == nil {
+		return fmt.Errorf("%s", head)
 	}
-	return fmt.Errorf("%s%s", head, hint)
+	return fmt.Errorf("%s\n\nRun '%s --help' to see available flags.", head, c.helpInvocation())
 }
 
 // helpInvocation returns the "app [group] name" prefix used when pointing
