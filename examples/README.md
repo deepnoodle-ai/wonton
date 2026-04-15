@@ -43,6 +43,11 @@ Run `go run ./examples/<name> --help` to inspect per-command usage.
 - `mouse` and `mouse_grid`: Pointer interaction patterns.
 - `file_picker`, `input_forms`, `checkbox`, and `password`:
   Ready-made widgets (pickers, forms, toggle inputs).
+- `tui/grapheme_input` and `tui/grapheme_table`: Exercise the in-tree
+  `runewidth` package — ZWJ emoji, VS16 sequences, keycaps, and CJK —
+  through a live input and an alignment-critical table layout.
+- `tui/reflow`: Compares naive and `runewidth`-aware reflow so you can see
+  where grapheme-aware width math matters.
 
 ## Terminal techniques
 
@@ -50,5 +55,10 @@ Run `go run ./examples/<name> --help` to inspect per-command usage.
 - `runtime_animation` and `runtime_counter`: Show how to drive the TUI runtime
   without the CLI framework.
 - `slog`: Uses the colorized `slog` handler to inspect structured logs.
+- `termprobe`: Writes grapheme clusters to the host terminal and compares the
+  reported cursor column against `runewidth.StringWidth` to surface renderer
+  disagreements.
+- `gif/grapheme_eval`: Renders a corpus of grapheme clusters to GIF so you can
+  eyeball how the `gif` package draws them.
 
 Feel free to copy these examples as starting points for your own applications.
