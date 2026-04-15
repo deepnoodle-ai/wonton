@@ -234,8 +234,10 @@ func (t *TextInput) Draw(frame RenderFrame) {
 		placeholderText := runewidth.Truncate(t.Placeholder, width, "…")
 		frame.PrintStyled(drawX, drawY, placeholderText, t.PlaceholderStyle)
 	} else if t.MaskChar != 0 && displayText != "" {
-		// Mask the text for password input (single line only)
-		masked := make([]rune, utf8.RuneCountInString(displayText))
+		// Mask the text for password input (single line only). Size by display
+		// cell width so mask cells align with the cursor/width math used
+		// elsewhere (which is grapheme/column based, not rune based).
+		masked := make([]rune, runewidth.StringWidth(displayText))
 		for i := range masked {
 			masked[i] = t.MaskChar
 		}

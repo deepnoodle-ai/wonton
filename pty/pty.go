@@ -29,6 +29,7 @@ package pty
 import (
 	"errors"
 	"os"
+	"sync/atomic"
 )
 
 // ErrUnsupported is returned when PTY operations are not supported on the
@@ -49,44 +50,61 @@ type Size struct {
 // Always call [PTY.Close] when finished to release the underlying file
 // descriptor.
 type PTY struct {
-	master *os.File
+	// master is stored atomically so Close is safe to call concurrently with
+	// itself and with Read/Write/Fd/File/Resize on another goroutine.
+	master atomic.Pointer[os.File]
 }
 
 // Read reads from the PTY master. Returns output produced by the child process.
 func (p *PTY) Read(b []byte) (int, error) {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return 0, os.ErrClosed
 	}
-	return p.master.Read(b)
+	f := p.master.Load()
+	if f == nil {
+		return 0, os.ErrClosed
+	}
+	return f.Read(b)
 }
 
 // Write writes to the PTY master. Sends input to the child process.
 func (p *PTY) Write(b []byte) (int, error) {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return 0, os.ErrClosed
 	}
-	return p.master.Write(b)
+	f := p.master.Load()
+	if f == nil {
+		return 0, os.ErrClosed
+	}
+	return f.Write(b)
 }
 
 // Close closes the PTY master file descriptor. Signals EOF to any process
-// reading from the slave side. Safe to call multiple times; subsequent calls
+// reading from the slave side. Safe to call multiple times and from multiple
+// goroutines; only the first call closes the descriptor, subsequent calls
 // return nil.
 func (p *PTY) Close() error {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return nil
 	}
-	err := p.master.Close()
-	p.master = nil
-	return err
+	f := p.master.Swap(nil)
+	if f == nil {
+		return nil
+	}
+	return f.Close()
 }
 
 // Fd returns the file descriptor of the master side. Returns ^0 if the PTY
 // is nil or closed.
 func (p *PTY) Fd() uintptr {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return ^uintptr(0)
 	}
-	return p.master.Fd()
+	f := p.master.Load()
+	if f == nil {
+		return ^uintptr(0)
+	}
+	return f.Fd()
 }
 
 // File returns the underlying [*os.File] for the master side. This is useful
@@ -96,5 +114,5 @@ func (p *PTY) File() *os.File {
 	if p == nil {
 		return nil
 	}
-	return p.master
+	return p.master.Load()
 }

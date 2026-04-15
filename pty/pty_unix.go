@@ -14,10 +14,14 @@ import (
 // Resize sets the terminal size of the PTY. Any process on the slave side
 // receives a SIGWINCH signal.
 func (p *PTY) Resize(size Size) error {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return os.ErrClosed
 	}
-	return unix.IoctlSetWinsize(int(p.master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
+	f := p.master.Load()
+	if f == nil {
+		return os.ErrClosed
+	}
+	return unix.IoctlSetWinsize(int(f.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
 		Row: size.Rows,
 		Col: size.Cols,
 	})
@@ -25,10 +29,14 @@ func (p *PTY) Resize(size Size) error {
 
 // GetSize returns the current terminal size of the PTY.
 func (p *PTY) GetSize() (Size, error) {
-	if p == nil || p.master == nil {
+	if p == nil {
 		return Size{}, os.ErrClosed
 	}
-	ws, err := unix.IoctlGetWinsize(int(p.master.Fd()), unix.TIOCGWINSZ)
+	f := p.master.Load()
+	if f == nil {
+		return Size{}, os.ErrClosed
+	}
+	ws, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
 	if err != nil {
 		return Size{}, err
 	}
@@ -38,7 +46,11 @@ func (p *PTY) GetSize() (Size, error) {
 // InheritSize copies the terminal size from tty to the PTY. This is typically
 // used to synchronize the PTY size with the controlling terminal.
 func (p *PTY) InheritSize(tty *os.File) error {
-	if p == nil || p.master == nil {
+	if p == nil {
+		return os.ErrClosed
+	}
+	f := p.master.Load()
+	if f == nil {
 		return os.ErrClosed
 	}
 	if tty == nil {
@@ -48,7 +60,7 @@ func (p *PTY) InheritSize(tty *os.File) error {
 	if err != nil {
 		return fmt.Errorf("pty: get size from source: %w", err)
 	}
-	return unix.IoctlSetWinsize(int(p.master.Fd()), unix.TIOCSWINSZ, ws)
+	return unix.IoctlSetWinsize(int(f.Fd()), unix.TIOCSWINSZ, ws)
 }
 
 // Open allocates a new PTY pair without starting a command. Returns the master
@@ -73,7 +85,9 @@ func Open() (*PTY, *os.File, error) {
 		slave.Close()
 		return nil, nil, fmt.Errorf("pty: clear O_NONBLOCK on master: %w", err)
 	}
-	return &PTY{master: master}, slave, nil
+	p := &PTY{}
+	p.master.Store(master)
+	return p, slave, nil
 }
 
 // Start allocates a PTY and starts the command with its stdin, stdout, and

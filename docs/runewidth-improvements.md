@@ -35,7 +35,8 @@ Net outcome: fewer dependencies than either competitor, equal or newer
 Unicode data, full UAX#29 conformance including Indic conjuncts (the only
 widely-available Go grapheme segmenter that handles them), better correctness
 on keycap sequences, and performance that beats both competitors on the
-majority of workloads with zero allocations throughout.
+majority of workloads with zero or near-zero allocations in most cases
+(`WidthIndex` allocates a single result slice sized to the input; see section 6).
 
 ## 1. Full UAX#29 grapheme cluster conformance
 
