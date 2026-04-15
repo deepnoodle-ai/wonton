@@ -1165,33 +1165,32 @@ func TestSetColorEnabled(t *testing.T) {
 }
 
 func TestColorCommandLineOverrides(t *testing.T) {
-	t.Run("--no-color disables colors", func(t *testing.T) {
-		app := New("test")
-		app.SetColorEnabled(true)
-		var called bool
-		app.Command("run").Run(func(ctx *Context) error {
-			called = true
-			return nil
+	cases := []struct {
+		flag    string
+		initial bool
+		want    bool
+	}{
+		{"--no-color", true, false},
+		{"--no-colour", true, false},
+		{"--color", false, true},
+		{"--colour", false, true},
+		{"--force-color", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.flag, func(t *testing.T) {
+			app := New("test")
+			app.SetColorEnabled(tc.initial)
+			var called bool
+			app.Command("run").Run(func(ctx *Context) error {
+				called = true
+				return nil
+			})
+			err := app.ExecuteArgs([]string{tc.flag, "run"})
+			assert.NoError(t, err)
+			assert.True(t, called)
+			assert.Equal(t, tc.want, app.colorEnabled)
 		})
-		err := app.ExecuteArgs([]string{"--no-color", "run"})
-		assert.NoError(t, err)
-		assert.True(t, called)
-		assert.False(t, app.colorEnabled)
-	})
-
-	t.Run("--color forces colors on", func(t *testing.T) {
-		app := New("test")
-		app.SetColorEnabled(false)
-		var called bool
-		app.Command("run").Run(func(ctx *Context) error {
-			called = true
-			return nil
-		})
-		err := app.ExecuteArgs([]string{"--color", "run"})
-		assert.NoError(t, err)
-		assert.True(t, called)
-		assert.True(t, app.colorEnabled)
-	})
+	}
 
 	t.Run("flags are stripped before parsing", func(t *testing.T) {
 		app := New("test")

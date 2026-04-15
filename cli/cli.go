@@ -844,23 +844,38 @@ func (a *App) showHelp() error {
 		if len(order) == 0 {
 			order = sortedGroupKeys(a.groups)
 		}
+		first := true
 		for _, name := range order {
 			group := a.groups[name]
 			if group == nil || group.flatRouting {
 				continue
 			}
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, group.description))
+			if !first && group.isExpanded() {
+				sb.WriteString("\n")
+			}
+			first = false
+			sb.WriteString(fmt.Sprintf("  %s - %s\n", name, group.description))
 			if group.isExpanded() {
 				subOrder := group.commandOrder
 				if len(subOrder) == 0 {
 					subOrder = sortedKeys(group.commands)
+				}
+				subWidth := 0
+				for _, subName := range subOrder {
+					cmd := group.commands[subName]
+					if cmd == nil || cmd.hidden {
+						continue
+					}
+					if len(subName) > subWidth {
+						subWidth = len(subName)
+					}
 				}
 				for _, subName := range subOrder {
 					cmd := group.commands[subName]
 					if cmd == nil || cmd.hidden {
 						continue
 					}
-					sb.WriteString(fmt.Sprintf("    %-13s %s\n", subName, cmd.description))
+					sb.WriteString(fmt.Sprintf("    %-*s  %s\n", subWidth, subName, cmd.description))
 				}
 			}
 		}

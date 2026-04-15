@@ -246,31 +246,35 @@ func TestColor_ForegroundSeqDim(t *testing.T) {
 }
 
 func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
-	// Save original state
-	originalValue, hadValue := os.LookupEnv("NO_COLOR")
+	// Isolate forcing env vars so this test is deterministic regardless of
+	// the host environment. t.Setenv restores the original value on exit,
+	// even on failure.
+	clearEnvForTest(t, "FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR")
 
-	// Test with NO_COLOR set to a non-empty value (disables color per
-	// https://no-color.org/)
-	os.Setenv("NO_COLOR", "1")
-	assert.False(t, color.ShouldColorize(os.Stdout))
+	t.Run("non-empty disables", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		assert.False(t, color.ShouldColorize(os.Stdout))
+	})
 
-	// Test with NO_COLOR set to empty string (does NOT disable color;
-	// empty is treated as unset per the updated NO_COLOR spec)
-	os.Setenv("NO_COLOR", "")
-	// Behavior depends on TTY — just verify no panic
-	_ = color.ShouldColorize(os.Stdout)
+	t.Run("empty does not disable", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "")
+		// Result depends on TTY; just verify no panic.
+		_ = color.ShouldColorize(os.Stdout)
+	})
 
-	// Test with NO_COLOR unset (behavior depends on whether stdout is a TTY)
-	os.Unsetenv("NO_COLOR")
-	// Can't easily test the true case without a real TTY, but we can verify
-	// the function doesn't panic and returns a boolean
-	_ = color.ShouldColorize(os.Stdout)
+	t.Run("unset leaves TTY detection", func(t *testing.T) {
+		clearEnvForTest(t, "NO_COLOR")
+		_ = color.ShouldColorize(os.Stdout)
+	})
+}
 
-	// Restore original state
-	if hadValue {
-		os.Setenv("NO_COLOR", originalValue)
-	} else {
-		os.Unsetenv("NO_COLOR")
+// clearEnvForTest unsets each env var for the duration of the test, using
+// t.Setenv to capture the original value so it is restored on exit.
+func clearEnvForTest(t *testing.T, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
 	}
 }
 
