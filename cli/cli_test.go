@@ -1206,6 +1206,50 @@ func TestColorCommandLineOverrides(t *testing.T) {
 	})
 }
 
+func TestOmitGlobalFlag(t *testing.T) {
+	t.Run("skips required check for omitted global", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+
+		var called bool
+		app.Command("health").
+			OmitGlobalFlag("api-key").
+			Run(func(ctx *Context) error {
+				called = true
+				return nil
+			})
+
+		err := app.ExecuteArgs([]string{"health"})
+		assert.NoError(t, err)
+		assert.True(t, called)
+	})
+
+	t.Run("omitted global is not parseable on that command", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key"})
+
+		app.Command("health").
+			OmitGlobalFlag("api-key").
+			Run(func(ctx *Context) error { return nil })
+
+		// Passing --api-key to a command that omits it should fail.
+		err := app.ExecuteArgs([]string{"health", "--api-key", "foo"})
+		assert.Error(t, err)
+	})
+
+	t.Run("other commands still see the global", func(t *testing.T) {
+		app := New("test").
+			GlobalFlags(&StringFlag{Name: "api-key", Required: true})
+
+		app.Command("health").OmitGlobalFlag("api-key").Run(func(ctx *Context) error { return nil })
+		app.Command("run").Run(func(ctx *Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"run"})
+		assert.Error(t, err) // still required for "run"
+		assert.Contains(t, err.Error(), "--api-key")
+	})
+}
+
 func TestMissingRequiredFlagMessageMentionsEnvVar(t *testing.T) {
 	app := New("test")
 	app.Command("run").

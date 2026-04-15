@@ -67,8 +67,9 @@ type Command struct {
 	handler Handler
 
 	// Flags and args
-	flags []Flag
-	args  []*Arg
+	flags              []Flag
+	args               []*Arg
+	omittedGlobalFlags map[string]bool
 
 	// Options
 	middleware  []Middleware
@@ -501,14 +502,58 @@ func (f *IntSliceFlag) IsHidden() bool        { return f.Hidden }
 func (f *IntSliceFlag) GetEnum() []string     { return nil }
 func (f *IntSliceFlag) Validate(string) error { return nil }
 
-// allFlags returns all flags including global flags from the app.
+// allFlags returns all flags including global flags from the app,
+// minus any global flags omitted for this command via OmitGlobalFlag.
 func (c *Command) allFlags() []Flag {
 	var all []Flag
 	if c.app != nil {
-		all = append(all, c.app.globalFlags...)
+		for _, f := range c.app.globalFlags {
+			if c.omittedGlobalFlags[f.GetName()] {
+				continue
+			}
+			all = append(all, f)
+		}
 	}
 	all = append(all, c.flags...)
 	return all
+}
+
+// visibleGlobalFlags returns the app's global flags minus any omitted by
+// this command. Used for help rendering.
+func (c *Command) visibleGlobalFlags() []Flag {
+	if c.app == nil {
+		return nil
+	}
+	if len(c.omittedGlobalFlags) == 0 {
+		return c.app.globalFlags
+	}
+	out := make([]Flag, 0, len(c.app.globalFlags))
+	for _, f := range c.app.globalFlags {
+		if c.omittedGlobalFlags[f.GetName()] {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// OmitGlobalFlag hides one or more app-level global flags from this
+// command. Omitted flags are not parsed, not validated (so their
+// Required() constraint is skipped), and not shown in the command's help.
+//
+// Useful when a global flag is required for most commands but a handful
+// of commands shouldn't need it:
+//
+//	app.GlobalFlags(cli.String("api-key", "k").Env("API_KEY").Required())
+//	app.Command("health").OmitGlobalFlag("api-key").Run(...)
+func (c *Command) OmitGlobalFlag(names ...string) *Command {
+	if c.omittedGlobalFlags == nil {
+		c.omittedGlobalFlags = make(map[string]bool, len(names))
+	}
+	for _, n := range names {
+		c.omittedGlobalFlags[n] = true
+	}
+	return c
 }
 
 // parseFlags parses flags from arguments into the context.
@@ -642,12 +687,10 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 }
 
 func (c *Command) findFlag(name string) Flag {
-	// Check global flags first
-	if c.app != nil {
-		for _, f := range c.app.globalFlags {
-			if f.GetName() == name {
-				return f
-			}
+	// Check global flags first (skipping omitted ones)
+	for _, f := range c.visibleGlobalFlags() {
+		if f.GetName() == name {
+			return f
 		}
 	}
 	// Then check command flags
@@ -660,12 +703,10 @@ func (c *Command) findFlag(name string) Flag {
 }
 
 func (c *Command) findFlagByShort(short string) Flag {
-	// Check global flags first
-	if c.app != nil {
-		for _, f := range c.app.globalFlags {
-			if f.GetShort() == short {
-				return f
-			}
+	// Check global flags first (skipping omitted ones)
+	for _, f := range c.visibleGlobalFlags() {
+		if f.GetShort() == short {
+			return f
 		}
 	}
 	// Then check command flags
@@ -837,10 +878,10 @@ func (c *Command) showHelp() error {
 		sb.WriteString("\n")
 	}
 
-	// Global Flags
-	if c.app != nil && len(c.app.globalFlags) > 0 {
+	// Global Flags (minus any omitted for this command)
+	if globals := c.visibleGlobalFlags(); len(globals) > 0 {
 		sb.WriteString("Global Flags:\n")
-		writeFlagsHelp(&sb, c.app.globalFlags)
+		writeFlagsHelp(&sb, globals)
 	}
 
 	if err := writeHelpOutput(c.app.stdout, sb.String()); err != nil {

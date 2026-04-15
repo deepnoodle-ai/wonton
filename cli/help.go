@@ -263,9 +263,9 @@ func (c *Command) renderCommandHelp() tui.View {
 			renderSection("FLAGS", theme),
 			renderFlags(c.flags, theme),
 		)),
-		tui.If(c.app != nil && len(c.app.globalFlags) > 0, tui.Stack(
+		tui.If(len(c.visibleGlobalFlags()) > 0, tui.Stack(
 			renderSection("GLOBAL FLAGS", theme),
-			renderFlags(c.app.globalFlags, theme),
+			renderFlags(c.visibleGlobalFlags(), theme),
 		)),
 	).Gap(1)
 }
@@ -322,7 +322,7 @@ func (g *Group) renderGroupHelp() tui.View {
 // (e.g., "app resize") and the grouped form (e.g., "app transform resize").
 func buildUsageString(c *Command) string {
 	suffix := ""
-	if len(c.flags) > 0 || len(c.app.globalFlags) > 0 {
+	if len(c.flags) > 0 || len(c.visibleGlobalFlags()) > 0 {
 		suffix += " [flags]"
 	}
 	for _, arg := range c.args {
