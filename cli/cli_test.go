@@ -1388,6 +1388,21 @@ func TestMissingRequiredFlagMessageMentionsEnvVar(t *testing.T) {
 	msg := err.Error()
 	assert.Contains(t, msg, "--api-key")
 	assert.Contains(t, msg, "TEST_API_KEY")
+	assert.Contains(t, msg, "test run --help")
+}
+
+func TestMissingRequiredFlagMessageForGroupSubcommand(t *testing.T) {
+	app := New("test")
+	g := app.Group("tools")
+	g.Command("list").
+		Flags(&StringFlag{Name: "api-key", Required: true}).
+		Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"tools", "list"})
+	assert.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, "--api-key")
+	assert.Contains(t, msg, "test tools list --help")
 }
 
 func TestRequireFlagsMiddlewareMentionsEnvVar(t *testing.T) {
@@ -1402,6 +1417,7 @@ func TestRequireFlagsMiddlewareMentionsEnvVar(t *testing.T) {
 	msg := err.Error()
 	assert.Contains(t, msg, "--api-key")
 	assert.Contains(t, msg, "TEST_API_KEY")
+	assert.Contains(t, msg, "test run --help")
 }
 
 func TestPrintError(t *testing.T) {

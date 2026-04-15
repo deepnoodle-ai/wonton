@@ -672,7 +672,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	// Check required flags
 	for _, f := range allFlags {
 		if f.IsRequired() && !ctx.setFlags[f.GetName()] {
-			return missingFlagError("missing required flag", f)
+			return missingFlagError("missing required flag", c, f)
 		}
 	}
 
@@ -912,13 +912,34 @@ func writeFlagsHelp(sb *strings.Builder, flags []Flag) {
 }
 
 // missingFlagError builds a user-facing error for a missing required flag,
-// mentioning the backing environment variable if one is configured. This
-// lets users know they can satisfy the requirement either way.
-func missingFlagError(prefix string, f Flag) error {
+// mentioning the backing environment variable if one is configured and
+// pointing the user at the command's --help for the full flag list.
+func missingFlagError(prefix string, c *Command, f Flag) error {
+	head := fmt.Sprintf("%s: --%s", prefix, f.GetName())
 	if env := f.GetEnvVar(); env != "" {
-		return fmt.Errorf("%s: --%s (or set %s environment variable)", prefix, f.GetName(), env)
+		head += fmt.Sprintf(" (or set %s environment variable)", env)
 	}
-	return fmt.Errorf("%s: --%s", prefix, f.GetName())
+	hint := ""
+	if c != nil {
+		hint = fmt.Sprintf("\n\nRun '%s --help' to see available flags.", c.helpInvocation())
+	}
+	return fmt.Errorf("%s%s", head, hint)
+}
+
+// helpInvocation returns the "app [group] name" prefix used when pointing
+// the user at this command's --help.
+func (c *Command) helpInvocation() string {
+	parts := []string{}
+	if c.app != nil {
+		parts = append(parts, c.app.name)
+	}
+	if c.group != nil {
+		parts = append(parts, c.group.name)
+	}
+	if c.name != "" {
+		parts = append(parts, c.name)
+	}
+	return strings.Join(parts, " ")
 }
 
 // writeFlagHelp writes help text for a single flag with the given name width.
