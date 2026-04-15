@@ -455,7 +455,7 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 				}
 				block = append(block, tui.Group(
 					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
-					tui.Text("%s", subCmd.description).Style(theme.Hint),
+					tui.Text("%s", subCmd.description),
 				))
 			}
 		}
@@ -511,7 +511,7 @@ func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) 
 				}
 				block = append(block, tui.Group(
 					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
-					tui.Text("%s", subCmd.description).Style(theme.Hint),
+					tui.Text("%s", subCmd.description),
 				))
 			}
 		}
