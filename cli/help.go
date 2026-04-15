@@ -235,13 +235,13 @@ func (a *App) buildRootUsageString() string {
 func (c *Command) renderCommandHelp() tui.View {
 	theme := c.app.getHelpTheme()
 
-	cmdName := c.name
+	subPath := c.name
 	if c.group != nil {
-		cmdName = c.group.name + " " + c.name
+		subPath = c.group.name + " " + c.name
 	}
 
 	return tui.Stack(
-		renderCommandHeader(cmdName, c.description, theme),
+		renderCommandHeader(c.app.name, subPath, c.description, theme),
 		tui.If(c.deprecated != "", tui.Group(
 			tui.Text("  DEPRECATED: ").Style(theme.Deprecated),
 			tui.Text("%s", c.deprecated).Style(theme.Deprecated),
@@ -320,16 +320,26 @@ func renderHeader(name, description, version string, theme HelpTheme) tui.View {
 	return titleLine
 }
 
-// renderCommandHeader creates the styled command header
-func renderCommandHeader(name, description string, theme HelpTheme) tui.View {
+// renderCommandHeader creates the styled command header with a gradient app
+// name (matching the root help) followed by the subcommand path in the
+// command style, then an optional description.
+func renderCommandHeader(appName, subPath, description string, theme HelpTheme) tui.View {
+	parts := []tui.View{
+		renderGradientText(appName, theme.TitleStart, theme.TitleEnd),
+	}
+	if subPath != "" {
+		parts = append(parts,
+			tui.Text(" "),
+			tui.Text("%s", subPath).Style(theme.Command),
+		)
+	}
 	if description != "" {
-		return tui.Group(
-			tui.Text("%s", name).Style(theme.Command),
+		parts = append(parts,
 			tui.Text(" - "),
 			tui.Text("%s", description),
 		)
 	}
-	return tui.Text("%s", name).Style(theme.Command)
+	return tui.Group(parts...)
 }
 
 // renderSection creates a styled section header

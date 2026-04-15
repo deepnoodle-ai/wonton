@@ -302,12 +302,12 @@ func TestRenderCommandHeader(t *testing.T) {
 	theme := DefaultHelpTheme()
 
 	t.Run("renders header with name only", func(t *testing.T) {
-		view := renderCommandHeader("build", "", theme)
+		view := renderCommandHeader("myapp", "build", "", theme)
 		assert.NotNil(t, view)
 	})
 
 	t.Run("renders header with description", func(t *testing.T) {
-		view := renderCommandHeader("build", "Build the project", theme)
+		view := renderCommandHeader("myapp", "build", "Build the project", theme)
 		assert.NotNil(t, view)
 	})
 }
