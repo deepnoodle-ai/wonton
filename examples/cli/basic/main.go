@@ -13,6 +13,8 @@
 //	go run examples/cli_basic/main.go greet --loud World
 //	go run examples/cli_basic/main.go users:list
 //	go run examples/cli_basic/main.go users:create alice
+//	go run examples/cli_basic/main.go user list       # singular alias
+//	go run examples/cli_basic/main.go user:create bob # singular alias, colon form
 package main
 
 import (
@@ -67,8 +69,10 @@ func main() {
 			return nil
 		})
 
-	// Command group for organizing related commands
+	// Command group for organizing related commands. The group has a
+	// singular alias, so "users list" and "user list" both resolve here.
 	users := app.Group("users").
+		Alias("user").
 		Description("User management commands")
 
 	users.Command("list").
