@@ -739,8 +739,11 @@ func (a *App) topLevelCommandNames() []string {
 		out = append(out, name)
 		out = append(out, cmd.aliases...)
 	}
-	for name := range a.groups {
+	for name, g := range a.groups {
 		out = append(out, name)
+		if g != nil {
+			out = append(out, g.aliases...)
+		}
 	}
 	return out
 }
@@ -792,6 +795,23 @@ func (a *App) groupRequiresSubcommandError(groupName string) error {
 	return fmt.Errorf("%s", msg)
 }
 
+// findGroup looks up a group by its canonical name or any of its aliases.
+// It returns the group and its canonical name. The canonical name is the
+// name the group was registered under with App.Group.
+func (a *App) findGroup(name string) (*Group, string, bool) {
+	if g, ok := a.groups[name]; ok {
+		return g, name, true
+	}
+	for canonical, g := range a.groups {
+		for _, alias := range g.aliases {
+			if alias == name {
+				return g, canonical, true
+			}
+		}
+	}
+	return nil, "", false
+}
+
 // findCommand looks up a command by name, including group commands and aliases.
 // It returns the command, the remaining args (after consuming subcommand name if applicable), and any error.
 func (a *App) findCommand(name string, args []string) (*Command, []string, error) {
@@ -812,7 +832,7 @@ func (a *App) findCommand(name string, args []string) (*Command, []string, error
 	// Check for group:command pattern
 	parts := strings.SplitN(name, ":", 2)
 	if len(parts) == 2 {
-		if g, ok := a.groups[parts[0]]; ok {
+		if g, _, ok := a.findGroup(parts[0]); ok {
 			if cmd, ok := g.commands[parts[1]]; ok {
 				return cmd, args, nil
 			}
@@ -828,7 +848,7 @@ func (a *App) findCommand(name string, args []string) (*Command, []string, error
 	}
 
 	// Check groups with space-separated subcommand (e.g., "users list" as args ["users", "list"])
-	if group, ok := a.groups[name]; ok {
+	if group, _, ok := a.findGroup(name); ok {
 		if len(args) > 0 {
 			subName := args[0]
 			// Handle help flags for the group
@@ -1077,6 +1097,9 @@ type Group struct {
 	middleware []Middleware
 	validators []func(*Context) error
 
+	// aliases are alternate names the group can be invoked by.
+	aliases []string
+
 	// flatRouting makes group subcommands invocable without the group prefix.
 	// For example, with FlatRouting enabled on a "transform" group containing
 	// a "resize" command, users can type "app resize" instead of "app transform resize".
@@ -1085,6 +1108,20 @@ type Group struct {
 
 	// expand overrides App.expandGroups for this group. nil means inherit.
 	expand *bool
+}
+
+// Alias adds group aliases. Aliases can be used interchangeably with the
+// group name, including in the "group subcommand" and "group:subcommand"
+// forms (e.g., if "workflows" has alias "workflow", both "app workflows run"
+// and "app workflow run" resolve to the same command).
+func (g *Group) Alias(names ...string) *Group {
+	g.aliases = append(g.aliases, names...)
+	return g
+}
+
+// Aliases sets group aliases (alias for Alias).
+func (g *Group) Aliases(names ...string) *Group {
+	return g.Alias(names...)
 }
 
 // Description sets the group description.
@@ -1239,6 +1276,13 @@ func (g *Group) showHelp() error {
 	sb.WriteString(" ")
 	sb.WriteString(g.name)
 	sb.WriteString(" <command> [flags] [args]\n\n")
+
+	// Aliases
+	if len(g.aliases) > 0 {
+		sb.WriteString("Aliases:\n  ")
+		sb.WriteString(strings.Join(g.aliases, ", "))
+		sb.WriteString("\n\n")
+	}
 
 	// Commands
 	sb.WriteString("Commands:\n")

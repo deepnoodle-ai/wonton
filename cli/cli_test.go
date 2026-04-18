@@ -1546,6 +1546,92 @@ func TestCommandAliases(t *testing.T) {
 	}
 }
 
+func TestGroupAliases(t *testing.T) {
+	t.Run("group resolves by alias without subcommand", func(t *testing.T) {
+		var executed bool
+		app := New("test").Description("Test")
+		app.Group("workflows").
+			Alias("workflow", "wf").
+			Run(func(ctx *Context) error {
+				executed = true
+				return nil
+			})
+
+		for _, name := range []string{"workflows", "workflow", "wf"} {
+			executed = false
+			err := app.ExecuteArgs([]string{name})
+			assert.NoError(t, err)
+			assert.True(t, executed, "alias %s should execute group handler", name)
+		}
+	})
+
+	t.Run("subcommand resolves via group alias", func(t *testing.T) {
+		var executed bool
+		app := New("test").Description("Test")
+		wf := app.Group("workflows").Alias("workflow")
+		wf.Command("run").Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+		for _, invocation := range [][]string{
+			{"workflows", "run"},
+			{"workflow", "run"},
+			{"workflows:run"},
+			{"workflow:run"},
+		} {
+			executed = false
+			err := app.ExecuteArgs(invocation)
+			assert.NoError(t, err)
+			assert.True(t, executed, "invocation %v should execute", invocation)
+		}
+	})
+
+	t.Run("flat-routed group resolves when accessed via alias", func(t *testing.T) {
+		var executed bool
+		app := New("test").Description("Test")
+		g := app.Group("transform").Alias("transforms").FlatRouting(true)
+		g.Command("resize").Run(func(ctx *Context) error {
+			executed = true
+			return nil
+		})
+
+		for _, invocation := range [][]string{
+			{"resize"},
+			{"transform", "resize"},
+			{"transforms", "resize"},
+			{"transform:resize"},
+			{"transforms:resize"},
+		} {
+			executed = false
+			err := app.ExecuteArgs(invocation)
+			assert.NoError(t, err)
+			assert.True(t, executed, "invocation %v should execute", invocation)
+		}
+	})
+
+	t.Run("did-you-mean suggests group aliases", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("test").SetStderr(&buf).SetColorEnabled(false)
+		app.Group("workflows").Alias("workflow")
+
+		err := app.ExecuteArgs([]string{"workflw"})
+		assert.Error(t, err)
+		// Either the canonical name or the alias is acceptable — both are valid suggestions.
+		msg := err.Error()
+		assert.True(t,
+			strings.Contains(msg, "workflow") || strings.Contains(msg, "workflows"),
+			"expected a did-you-mean suggestion, got: %s", msg,
+		)
+	})
+
+	t.Run("Aliases setter is equivalent to Alias", func(t *testing.T) {
+		app := New("test")
+		g := app.Group("users").Aliases("user", "u")
+		assert.Equal(t, []string{"user", "u"}, g.aliases)
+	})
+}
+
 func TestCommandName(t *testing.T) {
 	app := New("test").Description("Test")
 	cmd := app.Command("mycommand").Description("My command")

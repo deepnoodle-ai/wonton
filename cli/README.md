@@ -77,6 +77,7 @@ func main() {
 
     // Create a command group
     users := app.Group("users").
+        Alias("user").
         Description("User management commands")
 
     users.Command("list").
@@ -110,6 +111,8 @@ func main() {
 ```
 
 Groups support help flags: `myapp users --help` or `myapp users -h` displays help for the group, listing all available subcommands.
+
+Groups also support aliases via `Alias(names...)`, so `myapp user list` and `myapp users list` resolve to the same command. This is useful for singular/plural variants (e.g., `workflow` / `workflows`).
 
 ### Struct-Based Flags
 
