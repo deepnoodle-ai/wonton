@@ -262,10 +262,10 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 		}
 	}
 
-	// Check if it's a group name (before flat routing, so that a group name
-	// is never stolen by a flat-routed subcommand with the same name).
-	if _, ok := p.app.groups[arg]; ok {
-		return "", arg
+	// Check if it's a group name or alias (before flat routing, so that a
+	// group name is never stolen by a flat-routed subcommand with the same name).
+	if _, canonical, ok := p.app.findGroup(arg); ok {
+		return "", canonical
 	}
 
 	// Check flat-routed group subcommands (group prefix not required).
@@ -290,15 +290,15 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 
 	// Check for group:command pattern
 	if parts := strings.SplitN(arg, ":", 2); len(parts) == 2 {
-		if g, ok := p.app.groups[parts[0]]; ok {
+		if g, canonical, ok := p.app.findGroup(parts[0]); ok {
 			if _, ok := g.commands[parts[1]]; ok {
-				return parts[1], parts[0]
+				return parts[1], canonical
 			}
 			// Check aliases within the group
 			for cmdName, cmd := range g.commands {
 				for _, alias := range cmd.aliases {
 					if alias == parts[1] {
-						return cmdName, parts[0]
+						return cmdName, canonical
 					}
 				}
 			}

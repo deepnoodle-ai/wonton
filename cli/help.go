@@ -283,6 +283,13 @@ func (g *Group) renderGroupHelp() tui.View {
 		),
 	}
 
+	if len(g.aliases) > 0 {
+		views = append(views, tui.Stack(
+			renderSection("ALIASES", theme),
+			tui.Text("  %s", strings.Join(g.aliases, ", ")).Style(theme.Command),
+		))
+	}
+
 	if len(g.commands) > 0 {
 		order := g.commandOrder
 		if len(order) == 0 {
