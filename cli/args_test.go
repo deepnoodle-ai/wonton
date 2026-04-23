@@ -285,6 +285,18 @@ func TestAddArg_ValidatesLayout(t *testing.T) {
 	})
 }
 
+// AddArg cannot bypass the name-character rule that parseArgSpec enforces.
+func TestAddArg_ValidatesName(t *testing.T) {
+	cases := []string{"bad name", "weird!", "has$", "a/b"}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Panics(t, func() {
+				New("test").Command("c").AddArg(&Arg{Name: name, Required: true})
+			})
+		})
+	}
+}
+
 // --- Help / usage rendering --------------------------------------------
 
 func TestUsage_VariadicRequired(t *testing.T) {
@@ -315,6 +327,36 @@ func TestUsage_RootVariadic(t *testing.T) {
 	app.Main().Args("paths?...").Run(func(ctx *Context) error { return nil })
 	usage := app.buildRootUsageString()
 	assert.Contains(t, usage, "[paths...]")
+}
+
+// Positional-arg errors should point the user at the ARGUMENTS section of
+// help, not the flag list. Flag-parsing errors keep their flag-oriented hint.
+func TestPositionalErrors_UseArgumentsHint(t *testing.T) {
+	app := New("test")
+	app.Command("pair").
+		Args("left", "right").
+		Run(func(ctx *Context) error { return nil })
+
+	// Missing required
+	err := app.ExecuteArgs([]string{"pair", "a"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "available arguments")
+	assert.NotContains(t, err.Error(), "available flags")
+
+	// Unexpected extra
+	err = app.ExecuteArgs([]string{"pair", "a", "b", "c"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "available arguments")
+	assert.NotContains(t, err.Error(), "available flags")
+}
+
+func TestFlagErrors_UseFlagsHint(t *testing.T) {
+	app := New("test")
+	app.Command("run").Run(func(ctx *Context) error { return nil })
+
+	err := app.ExecuteArgs([]string{"run", "--nope"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "available flags")
 }
 
 func TestArgHintLabel(t *testing.T) {

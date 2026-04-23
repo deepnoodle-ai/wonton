@@ -87,7 +87,7 @@ func main() {
 			return nil
 		})
 
-	// Command with variadic args: one to three items.
+	// Command with one required and up to two optional positional args.
 	app.Command("add").
 		Description("Add items (1-3 items)").
 		Args("first", "second?", "third?").

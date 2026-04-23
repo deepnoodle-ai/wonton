@@ -375,6 +375,9 @@ func validateArgSlots(args []*Arg) {
 		if a.Name == "" {
 			panic(fmt.Sprintf("cli: arg slot %d has empty name", i))
 		}
+		if !isValidArgName(a.Name) {
+			panic(fmt.Sprintf("cli: invalid arg name %q (use letters, digits, _ or -)", a.Name))
+		}
 		if seen[a.Name] {
 			panic(fmt.Sprintf("cli: duplicate arg name %q", a.Name))
 		}
@@ -730,7 +733,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 		if i < len(positional) {
 			ctx.positional = append(ctx.positional, positional[i])
 		} else if arg.Required {
-			return c.errorWithHelpHint(fmt.Sprintf("missing required argument: %s", arg.Name))
+			return c.errorWithUsageHint(fmt.Sprintf("missing required argument: %s", arg.Name))
 		} else if arg.Default != nil {
 			ctx.positional = append(ctx.positional, fmt.Sprint(arg.Default))
 		}
@@ -743,11 +746,11 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			remaining = positional[fixedLen:]
 		}
 		if len(remaining) == 0 && vararg.Required {
-			return c.errorWithHelpHint(fmt.Sprintf("missing required argument: %s", vararg.Name))
+			return c.errorWithUsageHint(fmt.Sprintf("missing required argument: %s", vararg.Name))
 		}
 		ctx.positional = append(ctx.positional, remaining...)
 	} else if len(positional) > fixedLen {
-		return c.errorWithHelpHint(fmt.Sprintf("unexpected argument: %s", positional[fixedLen]))
+		return c.errorWithUsageHint(fmt.Sprintf("unexpected argument: %s", positional[fixedLen]))
 	}
 
 	// Check required flags
@@ -1004,13 +1007,24 @@ func missingFlagError(prefix string, c *Command, f Flag) error {
 }
 
 // errorWithHelpHint wraps a head message with a trailing "Run 'X --help'"
-// pointer to this command's help. Used for errors produced during flag
-// and argument parsing so users can discover valid options.
+// pointer to this command's help. Used for flag-parsing errors where the
+// relevant reference material is the flag list.
 func (c *Command) errorWithHelpHint(head string) error {
 	if c == nil {
 		return fmt.Errorf("%s", head)
 	}
 	return fmt.Errorf("%s\n\nRun '%s --help' to see available flags.", head, c.helpInvocation())
+}
+
+// errorWithUsageHint is the positional-argument counterpart to
+// errorWithHelpHint. Used when the error is about positional args, so the
+// hint points the user at the usage and ARGUMENTS sections rather than
+// the flag list.
+func (c *Command) errorWithUsageHint(head string) error {
+	if c == nil {
+		return fmt.Errorf("%s", head)
+	}
+	return fmt.Errorf("%s\n\nRun '%s --help' to see available arguments.", head, c.helpInvocation())
 }
 
 // helpInvocation returns the "app [group] name" prefix used when pointing
