@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.32] - 2026-04-23
+
 ### Changed
 
 - `cli` positional args are now strict. Extras beyond declared slots are
@@ -28,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   - `ExactArgs(n)` → `Args("a", "b", ...)` with `n` required names.
   - `ArgsRange(min, max)` → required names up to `min`, optional names up
     to `max`, or a trailing variadic for unbounded.
+
+## [0.0.31] - 2026-04-18
+
+- Added `cli.Group.Alias` for alternate group names (singular/plural variants).
 
 ## [0.0.30] - 2026-04-15
 
