@@ -210,23 +210,12 @@ func (a *App) buildRootUsageString() string {
 	if hasFlags {
 		usage += " [flags]"
 	}
-	// Check for root command args
+	args := a.args
 	if rootCmd != nil {
-		for _, arg := range rootCmd.args {
-			if arg.Required {
-				usage += " <" + arg.Name + ">"
-			} else {
-				usage += " [" + arg.Name + "]"
-			}
-		}
-	} else {
-		for _, arg := range a.args {
-			if arg.Required {
-				usage += " <" + arg.Name + ">"
-			} else {
-				usage += " [" + arg.Name + "]"
-			}
-		}
+		args = rootCmd.args
+	}
+	for _, arg := range args {
+		usage += " " + argUsageToken(arg)
 	}
 	return usage
 }
@@ -333,11 +322,7 @@ func buildUsageString(c *Command) string {
 		suffix += " [flags]"
 	}
 	for _, arg := range c.args {
-		if arg.Required {
-			suffix += " <" + arg.Name + ">"
-		} else {
-			suffix += " [" + arg.Name + "]"
-		}
+		suffix += " " + argUsageToken(arg)
 	}
 
 	if c.group != nil && c.group.flatRouting {
@@ -653,15 +638,47 @@ func buildFlagMeta(f Flag) string {
 	return strings.Join(parts, ", ")
 }
 
+// argUsageToken returns the usage-line representation of an arg slot:
+//
+//	required   -> <name>
+//	optional   -> [name]
+//	variadic   -> <name...>   (required, one or more)
+//	opt-var    -> [name...]   (optional, zero or more)
+func argUsageToken(arg *Arg) string {
+	name := arg.Name
+	if arg.Variadic {
+		name += "..."
+	}
+	if arg.Required {
+		return "<" + name + ">"
+	}
+	return "[" + name + "]"
+}
+
+// argHintLabel returns the trailing " (optional)" / " (variadic)" hint shown
+// in the ARGUMENTS section, or empty string if the slot is plain required.
+func argHintLabel(arg *Arg) string {
+	switch {
+	case arg.Variadic && arg.Required:
+		return " (one or more)"
+	case arg.Variadic:
+		return " (zero or more)"
+	case !arg.Required:
+		return " (optional)"
+	}
+	return ""
+}
+
 // renderArgs renders the arguments list as a Stack
 func renderArgs(args []*Arg, theme HelpTheme) tui.View {
 	views := make([]tui.View, len(args))
 
 	for i, arg := range args {
+		hint := argHintLabel(arg)
 		views[i] = tui.Group(
 			tui.Text("  %-16s", arg.Name).Style(theme.Command),
 			tui.If(arg.Description != "", tui.Text("%s", arg.Description)),
-			tui.If(!arg.Required, tui.Text(" (optional)").Style(theme.Hint)),
+			tui.If(hint != "", tui.Text("%s", hint).Style(theme.Hint)),
 		)
 	}
 

@@ -335,6 +335,7 @@ func TestDoubleDash(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("run").
 		Description("Run").
+		Args("rest?...").
 		Run(func(ctx *Context) error {
 			args = ctx.Args()
 			return nil
@@ -605,7 +606,7 @@ func TestContextNArg(t *testing.T) {
 	var args []string
 
 	app := New("test").Description("Test")
-	app.Command("run").Description("Run").Run(func(ctx *Context) error {
+	app.Command("run").Description("Run").Args("rest?...").Run(func(ctx *Context) error {
 		narg = ctx.NArg()
 		args = ctx.Args()
 		return nil
@@ -898,42 +899,19 @@ func TestFallbackToDefaultHandler(t *testing.T) {
 	assert.Equal(t, "default", handlerCalled)
 }
 
-// Test ArgsRange validation
-func TestArgsRange(t *testing.T) {
-	app := New("test").Description("Test")
-	app.Command("add").
-		Description("Add items").
-		ArgsRange(1, 3).
-		Run(func(ctx *Context) error { return nil })
-
-	// Too few args
-	err := app.ExecuteArgs([]string{"add"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "at least 1 argument")
-
-	// Correct number
-	err = app.ExecuteArgs([]string{"add", "a"})
-	assert.NoError(t, err)
-
-	err = app.ExecuteArgs([]string{"add", "a", "b", "c"})
-	assert.NoError(t, err)
-
-	// Too many args
-	err = app.ExecuteArgs([]string{"add", "a", "b", "c", "d"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "at most 3 argument")
-}
-
-func TestExactArgs(t *testing.T) {
+// Exact-arity behavior is expressed via the Args DSL: the declared slots
+// themselves define the required cardinality.
+func TestArgs_ExactArity(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("pair").
 		Description("Pair two items").
-		ExactArgs(2).
+		Args("left", "right").
 		Run(func(ctx *Context) error { return nil })
 
 	// Too few
 	err := app.ExecuteArgs([]string{"pair", "a"})
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required argument: right")
 
 	// Exact
 	err = app.ExecuteArgs([]string{"pair", "a", "b"})
@@ -942,23 +920,23 @@ func TestExactArgs(t *testing.T) {
 	// Too many
 	err = app.ExecuteArgs([]string{"pair", "a", "b", "c"})
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected argument: c")
 }
 
-func TestNoArgs(t *testing.T) {
+// Commands that take no positional arguments simply don't declare any —
+// extras are rejected by the default parser behavior.
+func TestArgs_NoneByDefault(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("status").
 		Description("Show status").
-		NoArgs().
 		Run(func(ctx *Context) error { return nil })
 
-	// No args - ok
 	err := app.ExecuteArgs([]string{"status"})
 	assert.NoError(t, err)
 
-	// With args - error
 	err = app.ExecuteArgs([]string{"status", "extra"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "accepts no arguments")
+	assert.Contains(t, err.Error(), "unexpected argument: extra")
 }
 
 func TestWithValidation(t *testing.T) {
@@ -3921,6 +3899,7 @@ func TestGroupActionWithValidation(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Group("files").
 		Description("File operations").
+		Args("path?").
 		Validate(func(ctx *Context) error {
 			if ctx.NArg() == 0 {
 				return Errorf("path argument required")
@@ -4120,6 +4099,7 @@ func TestEndOfFlagsPreservesUnknownToken(t *testing.T) {
 	var args []string
 
 	app := New("test").Description("Test").
+		Args("rest?...").
 		Run(func(ctx *Context) error {
 			executed = true
 			args = ctx.Args()
@@ -4138,6 +4118,7 @@ func TestEndOfFlagsWithMultiplePositionals(t *testing.T) {
 	var args []string
 
 	app := New("test").Description("Test").
+		Args("rest?...").
 		Run(func(ctx *Context) error {
 			executed = true
 			args = ctx.Args()
@@ -4325,6 +4306,7 @@ func TestBareDashHandling(t *testing.T) {
 
 	// Root handler to catch "-"
 	app.Main().
+		Args("rest?...").
 		Run(func(ctx *Context) error {
 			executed = true
 			args = ctx.Args()

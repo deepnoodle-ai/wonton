@@ -87,28 +87,27 @@ func main() {
 			return nil
 		})
 
-	// Command with argument range validation (1-3 args)
+	// Command with one required and up to two optional positional args.
 	app.Command("add").
 		Description("Add items (1-3 items)").
-		ArgsRange(1, 3).
+		Args("first", "second?", "third?").
 		Run(func(ctx *cli.Context) error {
 			ctx.Printf("Adding %d items: %v\n", ctx.NArg(), ctx.Args())
 			return nil
 		})
 
-	// Command with exact args validation
+	// Command requiring exactly two args.
 	app.Command("pair").
 		Description("Pair two items").
-		ExactArgs(2).
+		Args("left", "right").
 		Run(func(ctx *cli.Context) error {
 			ctx.Printf("Pairing: %s <-> %s\n", ctx.Arg(0), ctx.Arg(1))
 			return nil
 		})
 
-	// Command with no args validation
+	// Command that accepts no positional args (default when Args is not called).
 	app.Command("status").
 		Description("Show status (no arguments)").
-		NoArgs().
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Status: OK")
 			ctx.Println("Version: 1.0.0")

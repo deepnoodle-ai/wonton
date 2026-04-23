@@ -101,23 +101,30 @@ func (c *Command) Description(desc string) *Command {
 
 // Args sets the positional argument names for the command.
 //
-// Arguments are processed in order. Append "?" to make an argument optional:
+// Each name is a small DSL describing the slot's cardinality:
 //
-//	cmd.Args("source", "dest?")  // source required, dest optional
+//	"name"     required, exactly one
+//	"name?"    optional, zero or one
+//	"name..."  variadic, one or more (trailing)
+//	"name?..." variadic, zero or more (trailing)
+//
+// Example:
+//
+//	cmd.Args("source", "dest?")        // source required, dest optional
+//	cmd.Args("src", "dsts...")         // src required, one or more dsts
+//	cmd.Args("paths?...")              // zero or more paths
+//
+// Extra positional arguments beyond the declared slots are rejected at
+// parse time unless the last slot is variadic.
+//
+// Invalid declarations (duplicate names, variadic not last, required
+// slot following an optional one) panic at registration — these are
+// programmer errors, not user errors.
 //
 // Access arguments in the handler using ctx.Arg(index) or ctx.Args().
 func (c *Command) Args(names ...string) *Command {
-	for _, name := range names {
-		required := true
-		if strings.HasSuffix(name, "?") {
-			name = strings.TrimSuffix(name, "?")
-			required = false
-		}
-		c.args = append(c.args, &Arg{
-			Name:     name,
-			Required: required,
-		})
-	}
+	c.args = append(c.args, parseArgSpecs(names)...)
+	validateArgSlots(c.args)
 	return c
 }
 
@@ -256,54 +263,6 @@ func (c *Command) Validate(v func(*Context) error) *Command {
 	return c
 }
 
-// ArgsRange validates that the number of arguments is between min and max.
-//
-// Pass -1 for max to allow unlimited arguments above min:
-//
-//	cmd.ArgsRange(1, 3)   // Require 1-3 arguments
-//	cmd.ArgsRange(2, -1)  // Require at least 2 arguments
-func (c *Command) ArgsRange(min, max int) *Command {
-	c.validators = append(c.validators, func(ctx *Context) error {
-		n := ctx.NArg()
-		if n < min {
-			return Errorf("requires at least %d argument(s), got %d", min, n)
-		}
-		if max >= 0 && n > max {
-			return Errorf("accepts at most %d argument(s), got %d", max, n)
-		}
-		return nil
-	})
-	return c
-}
-
-// ExactArgs validates that exactly n arguments are provided.
-//
-//	cmd.ExactArgs(2)  // Require exactly 2 arguments
-func (c *Command) ExactArgs(n int) *Command {
-	c.validators = append(c.validators, func(ctx *Context) error {
-		if ctx.NArg() != n {
-			return Errorf("requires exactly %d argument(s), got %d", n, ctx.NArg())
-		}
-		return nil
-	})
-	return c
-}
-
-// NoArgs validates that no arguments are provided.
-//
-// Useful for commands that only accept flags:
-//
-//	cmd.NoArgs()  // Reject any positional arguments
-func (c *Command) NoArgs() *Command {
-	c.validators = append(c.validators, func(ctx *Context) error {
-		if ctx.NArg() > 0 {
-			return Errorf("accepts no arguments, got %d", ctx.NArg())
-		}
-		return nil
-	})
-	return c
-}
-
 // Flag is the interface implemented by all typed flag types.
 //
 // The cli package provides concrete implementations like BoolFlag, StringFlag,
@@ -328,17 +287,125 @@ type Flag interface {
 //	cmd.Args("source", "destination")
 //
 // For more control, use AddArg with an explicit Arg struct.
+//
+// Variadic arguments (collecting all remaining positionals) must be the
+// last arg in the list. A variadic arg that is also Required means the
+// slot must receive at least one value.
 type Arg struct {
 	Name        string
 	Description string
 	Required    bool
+	Variadic    bool
 	Default     any
 }
 
 // AddArg adds a positional argument to the command.
+//
+// Panics if the resulting arg slot layout is invalid (duplicate name,
+// variadic not last, required slot following an optional one).
 func (c *Command) AddArg(a *Arg) *Command {
 	c.args = append(c.args, a)
+	validateArgSlots(c.args)
 	return c
+}
+
+// parseArgSpec parses a single arg spec string like "name", "name?",
+// "name...", or "name?..." / "name...?" into an *Arg. Panics on malformed
+// input — these are programmer errors caught at registration.
+func parseArgSpec(spec string) *Arg {
+	if spec == "" {
+		panic("cli: empty arg name")
+	}
+	name := spec
+	variadic := false
+	required := true
+
+	// Strip trailing "..." and "?" in either order; both may appear.
+	for {
+		switch {
+		case strings.HasSuffix(name, "..."):
+			if variadic {
+				panic(fmt.Sprintf("cli: arg %q has multiple variadic markers", spec))
+			}
+			name = strings.TrimSuffix(name, "...")
+			variadic = true
+		case strings.HasSuffix(name, "?"):
+			if !required {
+				panic(fmt.Sprintf("cli: arg %q has multiple optional markers", spec))
+			}
+			name = strings.TrimSuffix(name, "?")
+			required = false
+		default:
+			goto done
+		}
+	}
+done:
+	if name == "" {
+		panic(fmt.Sprintf("cli: arg %q has no name", spec))
+	}
+	if !isValidArgName(name) {
+		panic(fmt.Sprintf("cli: arg %q has invalid name %q (use letters, digits, _ or -)", spec, name))
+	}
+	// A variadic arg without a "?" means "one or more" — the slot is
+	// required even though it accepts multiple values.
+	return &Arg{
+		Name:     name,
+		Required: required,
+		Variadic: variadic,
+	}
+}
+
+func parseArgSpecs(specs []string) []*Arg {
+	out := make([]*Arg, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, parseArgSpec(s))
+	}
+	return out
+}
+
+// validateArgSlots enforces the layout invariants for a command's arg list.
+// Runs on every Args/AddArg call so bad declarations fail fast at startup.
+func validateArgSlots(args []*Arg) {
+	seen := make(map[string]bool, len(args))
+	sawOptional := false
+	for i, a := range args {
+		if a == nil {
+			panic(fmt.Sprintf("cli: arg slot %d is nil", i))
+		}
+		if a.Name == "" {
+			panic(fmt.Sprintf("cli: arg slot %d has empty name", i))
+		}
+		if !isValidArgName(a.Name) {
+			panic(fmt.Sprintf("cli: invalid arg name %q (use letters, digits, _ or -)", a.Name))
+		}
+		if seen[a.Name] {
+			panic(fmt.Sprintf("cli: duplicate arg name %q", a.Name))
+		}
+		seen[a.Name] = true
+		if a.Variadic && i != len(args)-1 {
+			panic(fmt.Sprintf("cli: variadic arg %q must be the last slot", a.Name))
+		}
+		if sawOptional && a.Required {
+			panic(fmt.Sprintf("cli: required arg %q cannot follow an optional arg", a.Name))
+		}
+		if !a.Required {
+			sawOptional = true
+		}
+	}
+}
+
+func isValidArgName(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Typed flag implementations
@@ -653,20 +720,37 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 		}
 	}
 
-	// Set positional arguments
-	for i, arg := range c.args {
+	// Assign positionals to declared slots. If the last slot is variadic,
+	// it absorbs all remaining positionals; otherwise extras are an error.
+	hasVariadic := len(c.args) > 0 && c.args[len(c.args)-1].Variadic
+	fixedLen := len(c.args)
+	if hasVariadic {
+		fixedLen--
+	}
+
+	for i := 0; i < fixedLen; i++ {
+		arg := c.args[i]
 		if i < len(positional) {
 			ctx.positional = append(ctx.positional, positional[i])
 		} else if arg.Required {
-			return c.errorWithHelpHint(fmt.Sprintf("missing required argument: %s", arg.Name))
+			return c.errorWithUsageHint(fmt.Sprintf("missing required argument: %s", arg.Name))
 		} else if arg.Default != nil {
 			ctx.positional = append(ctx.positional, fmt.Sprint(arg.Default))
 		}
 	}
 
-	// Extra positional args beyond defined ones
-	if len(positional) > len(c.args) {
-		ctx.positional = positional
+	if hasVariadic {
+		vararg := c.args[len(c.args)-1]
+		var remaining []string
+		if len(positional) > fixedLen {
+			remaining = positional[fixedLen:]
+		}
+		if len(remaining) == 0 && vararg.Required {
+			return c.errorWithUsageHint(fmt.Sprintf("missing required argument: %s", vararg.Name))
+		}
+		ctx.positional = append(ctx.positional, remaining...)
+	} else if len(positional) > fixedLen {
+		return c.errorWithUsageHint(fmt.Sprintf("unexpected argument: %s", positional[fixedLen]))
 	}
 
 	// Check required flags
@@ -923,13 +1007,24 @@ func missingFlagError(prefix string, c *Command, f Flag) error {
 }
 
 // errorWithHelpHint wraps a head message with a trailing "Run 'X --help'"
-// pointer to this command's help. Used for errors produced during flag
-// and argument parsing so users can discover valid options.
+// pointer to this command's help. Used for flag-parsing errors where the
+// relevant reference material is the flag list.
 func (c *Command) errorWithHelpHint(head string) error {
 	if c == nil {
 		return fmt.Errorf("%s", head)
 	}
 	return fmt.Errorf("%s\n\nRun '%s --help' to see available flags.", head, c.helpInvocation())
+}
+
+// errorWithUsageHint is the positional-argument counterpart to
+// errorWithHelpHint. Used when the error is about positional args, so the
+// hint points the user at the usage and ARGUMENTS sections rather than
+// the flag list.
+func (c *Command) errorWithUsageHint(head string) error {
+	if c == nil {
+		return fmt.Errorf("%s", head)
+	}
+	return fmt.Errorf("%s\n\nRun '%s --help' to see available arguments.", head, c.helpInvocation())
 }
 
 // helpInvocation returns the "app [group] name" prefix used when pointing

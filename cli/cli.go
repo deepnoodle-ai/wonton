@@ -359,19 +359,19 @@ func (a *App) Run(h Handler) *App {
 }
 
 // Args sets the positional argument names for the root command.
-// Append "?" to make an argument optional (e.g., "name?").
+//
+// Each name is a small DSL describing the slot's cardinality:
+//
+//	"name"     required, exactly one
+//	"name?"    optional, zero or one
+//	"name..."  variadic, one or more (trailing)
+//	"name?..." variadic, zero or more (trailing)
+//
+// Extra positionals beyond declared slots are rejected at parse time
+// unless the last slot is variadic. See Command.Args for details.
 func (a *App) Args(names ...string) *App {
-	for _, name := range names {
-		required := true
-		if strings.HasSuffix(name, "?") {
-			name = strings.TrimSuffix(name, "?")
-			required = false
-		}
-		a.args = append(a.args, &Arg{
-			Name:     name,
-			Required: required,
-		})
-	}
+	a.args = append(a.args, parseArgSpecs(names)...)
+	validateArgSlots(a.args)
 	return a
 }
 
@@ -1156,19 +1156,12 @@ func (g *Group) Flags(flags ...Flag) *Group {
 }
 
 // Args sets the positional argument names for the group.
-// Append "?" to make an argument optional (e.g., "name?").
+//
+// See Command.Args for the full DSL. Extra positionals beyond declared
+// slots are rejected at parse time unless the last slot is variadic.
 func (g *Group) Args(names ...string) *Group {
-	for _, name := range names {
-		required := true
-		if strings.HasSuffix(name, "?") {
-			name = strings.TrimSuffix(name, "?")
-			required = false
-		}
-		g.args = append(g.args, &Arg{
-			Name:     name,
-			Required: required,
-		})
-	}
+	g.args = append(g.args, parseArgSpecs(names)...)
+	validateArgSlots(g.args)
 	return g
 }
 
