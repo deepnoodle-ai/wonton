@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Changed
+
+- `cli` positional args are now strict. Extras beyond declared slots are
+  rejected at parse time with `unexpected argument: <name>`, matching the
+  default behavior of Cobra, urfave, clap, and click. Commands that want to
+  accept arbitrary trailing positionals must opt in with the variadic DSL.
+
+### Added
+
+- `cli.Command.Args` DSL grew two variadic forms: `"name..."` (one or
+  more) and `"name?..."` / `"name...?"` (zero or more). The last slot
+  may be variadic. Invalid layouts — variadic not last, required slot
+  following an optional one, duplicate names — panic at registration.
+
+### Removed
+
+- `cli.Command.ArgsRange`, `ExactArgs`, and `NoArgs`. All three are now
+  derivable from the `Args` DSL:
+  - `NoArgs()` → don't call `Args()`.
+  - `ExactArgs(n)` → `Args("a", "b", ...)` with `n` required names.
+  - `ArgsRange(min, max)` → required names up to `min`, optional names up
+    to `max`, or a trailing variadic for unbounded.
+
 ## [0.0.30] - 2026-04-15
 
 ### Added

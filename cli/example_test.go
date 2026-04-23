@@ -206,20 +206,33 @@ func ExampleCommand_Validate() {
 	// Output: Validation configured
 }
 
-// ExampleCommand_ExactArgs demonstrates exact argument count validation.
-func ExampleCommand_ExactArgs() {
-	app := cli.New("add")
+// ExampleCommand_Args demonstrates declaring positional arguments.
+//
+// Cardinality is expressed in the name itself: "name" is required,
+// "name?" is optional, "name..." is variadic (one or more), and
+// "name?..." is variadic-optional (zero or more). The declared slots
+// define the exact cardinality the command accepts — extras are
+// rejected automatically.
+func ExampleCommand_Args() {
+	app := cli.New("example")
 
-	app.Command("numbers").
-		ExactArgs(2).
+	app.Command("pair").
+		Args("left", "right"). // exactly two
 		Run(func(ctx *cli.Context) error {
-			// This handler will only run if exactly 2 arguments are provided
-			ctx.Println("Processing exactly 2 numbers")
+			ctx.Printf("pair: %s + %s\n", ctx.Arg(0), ctx.Arg(1))
 			return nil
 		})
 
-	fmt.Println("Exact args validation configured")
-	// Output: Exact args validation configured
+	app.Command("copy").
+		Args("src", "dst?"). // one or two
+		Run(func(ctx *cli.Context) error { return nil })
+
+	app.Command("crawl").
+		Args("urls..."). // one or more
+		Run(func(ctx *cli.Context) error { return nil })
+
+	fmt.Println("Args DSL configured")
+	// Output: Args DSL configured
 }
 
 // ExampleRecover demonstrates panic recovery middleware.
