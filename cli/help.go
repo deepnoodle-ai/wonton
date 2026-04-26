@@ -95,7 +95,7 @@ func (a *App) renderAppHelp() tui.View {
 		renderHeader(a.name, a.description, a.version, theme),
 	}
 	if a.longDesc != "" {
-		views = append(views, tui.Text("%s", a.longDesc))
+		views = append(views, tui.Text("%s", a.longDesc).Wrap())
 	}
 	views = append(views, tui.Stack(
 		renderSection("USAGE", theme),
@@ -167,14 +167,14 @@ func (a *App) hasNonFlatGroups() bool {
 // the app has both a root command with args and subcommands.
 func (a *App) buildUsageView(hasSubcmds bool, theme HelpTheme) tui.View {
 	if !hasSubcmds {
-		return tui.Text("%s", a.buildRootUsageString())
+		return tui.Text("%s", a.buildRootUsageString()).Wrap()
 	}
 
 	rootCmd := a.commands[""]
 	hasRootWithArgs := rootCmd != nil && (len(rootCmd.args) > 0 || rootCmd.handler != nil)
 
 	if !hasRootWithArgs {
-		return tui.Text("  %s <command> [flags] [args]", a.name)
+		return tui.Text("  %s <command> [flags] [args]", a.name).Wrap()
 	}
 
 	// Show both usage lines: root command and subcommand
@@ -189,14 +189,14 @@ func (a *App) buildUsageView(hasSubcmds bool, theme HelpTheme) tui.View {
 	if rootSummary != "" {
 		views = append(views, tui.Group(
 			tui.Text("%s", rootUsage),
-			tui.Text("  %s", rootSummary).Style(theme.Hint),
+			tui.Text("  %s", rootSummary).Style(theme.Hint).Wrap().Flex(1),
 		))
 	} else {
-		views = append(views, tui.Text("%s", rootUsage))
+		views = append(views, tui.Text("%s", rootUsage).Wrap())
 	}
 	views = append(views, tui.Group(
 		tui.Text("%s", subcmdUsage),
-		tui.Text("  Run a subcommand").Style(theme.Hint),
+		tui.Text("  Run a subcommand").Style(theme.Hint).Wrap().Flex(1),
 	))
 
 	return tui.Stack(views...).Gap(0)
@@ -235,10 +235,10 @@ func (c *Command) renderCommandHelp() tui.View {
 			tui.Text("  DEPRECATED: ").Style(theme.Deprecated),
 			tui.Text("%s", c.deprecated).Style(theme.Deprecated),
 		)),
-		tui.If(c.longDesc != "", tui.Text("  %s", c.longDesc).Style(theme.Hint)),
+		tui.If(c.longDesc != "", tui.Text("  %s", c.longDesc).Style(theme.Hint).Wrap()),
 		tui.Stack(
 			renderSection("USAGE", theme),
-			tui.Text("%s", buildUsageString(c)),
+			tui.Text("%s", buildUsageString(c)).Wrap(),
 		),
 		tui.If(len(c.aliases) > 0, tui.Stack(
 			renderSection("ALIASES", theme),
@@ -268,7 +268,7 @@ func (g *Group) renderGroupHelp() tui.View {
 		renderCommandHeader(g.app.name, g.name, g.description, theme),
 		tui.Stack(
 			renderSection("USAGE", theme),
-			tui.Text("  %s %s <command> [flags] [args]", g.app.name, g.name),
+			tui.Text("  %s %s <command> [flags] [args]", g.app.name, g.name).Wrap(),
 		),
 	}
 
@@ -346,7 +346,7 @@ func renderHeader(name, description, version string, theme HelpTheme) tui.View {
 		parts := []tui.View{
 			titleLine,
 			tui.Text(" - "),
-			tui.Text("%s", description),
+			tui.Text("%s", description).Wrap().Flex(1),
 		}
 		if version != "" {
 			parts = append(parts, tui.Text(" (v%s)", version).Style(theme.Hint))
@@ -375,7 +375,7 @@ func renderCommandHeader(appName, subPath, description string, theme HelpTheme) 
 	if description != "" {
 		parts = append(parts,
 			tui.Text(" - "),
-			tui.Text("%s", description),
+			tui.Text("%s", description).Wrap().Flex(1),
 		)
 	}
 	return tui.Group(parts...)
@@ -429,7 +429,7 @@ func renderCommandList(commands map[string]*Command, names []string, theme HelpT
 		}
 		views = append(views, tui.Group(
 			tui.Text("  %-*s  ", width, name).Style(theme.Command),
-			tui.Text("%s", cmd.description),
+			tui.Text("%s", cmd.description).Wrap().Flex(1),
 		))
 	}
 	return tui.Stack(views...).Gap(0)
@@ -494,7 +494,7 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 				}
 				block = append(block, tui.Group(
 					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
-					tui.Text("%s", subCmd.description),
+					tui.Text("%s", subCmd.description).Wrap().Flex(1),
 				))
 			}
 		}
@@ -520,7 +520,7 @@ func renderGroupHeaderRow(name, description string, theme HelpTheme) tui.View {
 		tui.Text("  "),
 		tui.Text("%s", name).Style(theme.Command),
 		tui.Text(" - "),
-		tui.Text("%s", description),
+		tui.Text("%s", description).Wrap().Flex(1),
 	)
 }
 
@@ -550,7 +550,7 @@ func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) 
 				}
 				block = append(block, tui.Group(
 					tui.Text("    %-*s  ", subWidth, subName).Style(theme.Flag),
-					tui.Text("%s", subCmd.description),
+					tui.Text("%s", subCmd.description).Wrap().Flex(1),
 				))
 			}
 		}
@@ -569,8 +569,8 @@ func renderExamples(examples []Example, theme HelpTheme) tui.View {
 	views := make([]tui.View, len(examples))
 	for i, ex := range examples {
 		views[i] = tui.Stack(
-			tui.Text("  %s", ex.Description).Style(theme.Hint),
-			tui.Text("  $ %s", ex.Command).Style(theme.Command),
+			tui.Text("  %s", ex.Description).Style(theme.Hint).Wrap(),
+			tui.Text("  $ %s", ex.Command).Style(theme.Command).Wrap(),
 		).Gap(0)
 	}
 	return tui.Stack(views...).Gap(1)
@@ -614,12 +614,15 @@ func renderFlag(f Flag, theme HelpTheme, maxNameLen int) tui.View {
 
 	// Build metadata
 	meta := buildFlagMeta(f)
+	help := f.GetHelp()
+	if meta != "" {
+		help += fmt.Sprintf(" (%s)", meta)
+	}
 
 	return tui.Group(
 		tui.Text("%s", prefix).Style(theme.Flag),
 		tui.Text(" "),
-		tui.Text("%s", f.GetHelp()),
-		tui.If(meta != "", tui.Text(" (%s)", meta).Style(theme.Hint)),
+		tui.Text("%s", help).Wrap().Flex(1),
 	)
 }
 
@@ -675,10 +678,13 @@ func renderArgs(args []*Arg, theme HelpTheme) tui.View {
 
 	for i, arg := range args {
 		hint := argHintLabel(arg)
+		description := arg.Description
+		if hint != "" {
+			description += hint
+		}
 		views[i] = tui.Group(
 			tui.Text("  %-16s", arg.Name).Style(theme.Command),
-			tui.If(arg.Description != "", tui.Text("%s", arg.Description)),
-			tui.If(hint != "", tui.Text("%s", hint).Style(theme.Hint)),
+			tui.If(description != "", tui.Text("%s", description).Wrap().Flex(1)),
 		)
 	}
 

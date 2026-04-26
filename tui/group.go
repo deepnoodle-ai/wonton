@@ -133,6 +133,9 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 		totalMinWidth := 0
 		for i, idx := range flexChildren {
 			minW, _ := g.children[idx].size(0, maxHeight)
+			if canShrinkInFlexRow(g.children[idx]) {
+				minW = 0
+			}
 			minWidths[i] = minW
 			totalMinWidth += minW
 		}
@@ -191,6 +194,15 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 	}
 
 	return totalWidth, maxChildHeight
+}
+
+func canShrinkInFlexRow(child View) bool {
+	// Wrapped text can reflow to the row's remaining width; treating its
+	// natural width as a minimum would make it clip before it gets to wrap.
+	if text, ok := child.(*textView); ok {
+		return text.wrap
+	}
+	return false
 }
 
 func (g *group) render(ctx *RenderContext) {
