@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -168,4 +171,48 @@ func TestTableExplicitColumnWidthNotAffectedByMax(t *testing.T) {
 
 	// Explicit width should be respected, then limited by max
 	assert.Equal(t, 20, table.columnWidths[0])
+}
+
+func TestTablePrintCompletesWhenColumnsNeedShrinking(t *testing.T) {
+	columns := []TableColumn{
+		{Title: "id"},
+		{Title: "status"},
+		{Title: "queue"},
+		{Title: "created_at"},
+		{Title: "updated_at"},
+		{Title: "actor_id"},
+	}
+	rows := [][]string{{
+		"run_01kqawy7f8fsjtyctj7kdp91ts",
+		"completed",
+		"default",
+		"2026-04-28T16:36:53.864878-04:00",
+		"2026-04-28T16:36:54.488712-04:00",
+		"user_3D08Ntv0MGl8gAqBLlJriuXwivw",
+	}}
+	widths := []int{60, 80, 100, 120, 150, 200}
+
+	for _, width := range widths {
+		width := width
+		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+			selected := -1
+			var buf strings.Builder
+			done := make(chan error, 1)
+
+			go func() {
+				done <- Print(Table(columns, &selected).Rows(rows), PrintConfig{
+					Width:  width,
+					Output: &buf,
+				})
+			}()
+
+			select {
+			case err := <-done:
+				assert.NoError(t, err)
+				assert.NotEmpty(t, buf.String())
+			case <-time.After(time.Second):
+				assert.True(t, false, "table render timed out at width %d", width)
+			}
+		})
+	}
 }
