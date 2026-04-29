@@ -416,7 +416,16 @@ func TestRenderFlag(t *testing.T) {
 		screen := tui.SprintScreen(view, tui.PrintConfig{Width: 46})
 
 		assert.Contains(t, screen.Text(), "generated events")
-		assert.True(t, strings.TrimSpace(screen.Row(1)) != "", "expected wrapped continuation row")
+		assert.Contains(t, strings.TrimSpace(screen.Row(1)), "configured destination")
+	})
+
+	t.Run("renders metadata without leading help space", func(t *testing.T) {
+		flag := String("output", "o").Default("out.txt")
+		view := renderFlag(flag, theme, len(flag.GetName()))
+		screen := tui.SprintScreen(view, tui.PrintConfig{Width: 46})
+
+		assert.Contains(t, screen.Row(0), "--output default: out.txt")
+		assert.NotContains(t, screen.Row(0), "--output  default: out.txt")
 	})
 }
 
@@ -430,7 +439,7 @@ func TestRenderCommandListWrapsLongDescriptions(t *testing.T) {
 	screen := tui.SprintScreen(view, tui.PrintConfig{Width: 48})
 
 	assert.Contains(t, screen.Text(), "generated change")
-	assert.True(t, strings.TrimSpace(screen.Row(1)) != "", "expected wrapped continuation row")
+	assert.Contains(t, strings.TrimSpace(screen.Row(1)), "explain every")
 }
 
 func TestBuildFlagMeta(t *testing.T) {

@@ -616,7 +616,11 @@ func renderFlag(f Flag, theme HelpTheme, maxNameLen int) tui.View {
 	meta := buildFlagMeta(f)
 	help := f.GetHelp()
 	if meta != "" {
-		help += fmt.Sprintf(" (%s)", meta)
+		if help != "" {
+			help += fmt.Sprintf(" (%s)", meta)
+		} else {
+			help = meta
+		}
 	}
 
 	return tui.Group(
