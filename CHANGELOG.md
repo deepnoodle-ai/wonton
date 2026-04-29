@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
-## [0.0.33] - 2026-04-29
+## [0.0.33] - 2026-04-28
 
 ### Fixed
 
