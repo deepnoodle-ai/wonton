@@ -15,7 +15,7 @@ import (
 )
 
 // Integration tests - these actually spawn processes via PTY.
-// Gated to darwin/linux because wonton/pty has no Windows support.
+// Gated to darwin/linux because creack/pty has no Windows support.
 
 func TestSession_Integration_SimpleCommand(t *testing.T) {
 	s, err := NewSession(SessionOptions{

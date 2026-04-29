@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Removed
+
+- `pty` package. `termsession` now depends on `github.com/creack/pty` directly.
+
 ## [0.0.32] - 2026-04-23
 
 ### Changed
