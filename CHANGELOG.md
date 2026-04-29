@@ -6,9 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.33] - 2026-04-28
+
+### Fixed
+
+- `tui.Table` rendering no longer hangs when proportional column shrinking
+  rounds all shrink shares to zero at constrained widths.
+- CLI help now wraps long usage, description, flag, argument, example, and group
+  text instead of clipping, including clean metadata-only flag rendering.
+
 ### Removed
 
-- `pty` package. `termsession` now depends on `github.com/creack/pty` directly.
+- `pty` package. `termsession` depends on `github.com/creack/pty` directly.
 
 ## [0.0.32] - 2026-04-23
 

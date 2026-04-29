@@ -36,8 +36,9 @@ jobs:
       - name: Test
         run: go test ./...
 
-      # The race detector is slow and amplifies PTY I/O timing, so we only
-      # run it on the POSIX hosts. Windows has no PTY tests to race on.
+      # The race detector is slow and amplifies termsession's PTY-process I/O
+      # timing, so we only run it on the POSIX hosts where those integration
+      # tests run.
       - name: Test (race)
         if: matrix.os != 'windows-latest'
         run: go test -race ./...
@@ -50,12 +51,12 @@ jobs:
       matrix:
         target:
           # 32-bit pointer-size sanity check. Catches any uintptr-vs-int
-          # assumptions in pty/runewidth/terminal that would only show up
-          # on a 32-bit build.
+          # assumptions in runewidth/terminal that would only show up on
+          # a 32-bit build.
           - { goos: linux, goarch: '386' }
           # arm64 is what most cloud Linux runs on now.
           - { goos: linux, goarch: arm64 }
-          # Smoke test that the windows stub still compiles.
+          # Smoke test that the windows-tagged files still compile.
           - { goos: windows, goarch: amd64 }
 
     steps:
