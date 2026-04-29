@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 func TestDefaultHelpTheme(t *testing.T) {
@@ -407,6 +409,37 @@ func TestRenderFlag(t *testing.T) {
 		view := renderFlag(flag, theme, 10)
 		assert.NotNil(t, view)
 	})
+
+	t.Run("wraps long help text", func(t *testing.T) {
+		flag := String("output", "o").Help("Creates records using the configured destination and includes audit details for generated events")
+		view := renderFlag(flag, theme, len(flag.GetName()))
+		screen := tui.SprintScreen(view, tui.PrintConfig{Width: 46})
+
+		assert.Contains(t, screen.Text(), "generated events")
+		assert.Contains(t, strings.TrimSpace(screen.Row(1)), "configured destination")
+	})
+
+	t.Run("renders metadata without leading help space", func(t *testing.T) {
+		flag := String("output", "o").Default("out.txt")
+		view := renderFlag(flag, theme, len(flag.GetName()))
+		screen := tui.SprintScreen(view, tui.PrintConfig{Width: 46})
+
+		assert.Contains(t, screen.Row(0), "--output default: out.txt")
+		assert.NotContains(t, screen.Row(0), "--output  default: out.txt")
+	})
+}
+
+func TestRenderCommandListWrapsLongDescriptions(t *testing.T) {
+	theme := DefaultHelpTheme()
+	commands := map[string]*Command{
+		"sync": {name: "sync", description: "Runs an incremental sync and keeps enough audit context to explain every generated change"},
+	}
+
+	view := renderCommandList(commands, []string{"sync"}, theme)
+	screen := tui.SprintScreen(view, tui.PrintConfig{Width: 48})
+
+	assert.Contains(t, screen.Text(), "generated change")
+	assert.Contains(t, strings.TrimSpace(screen.Row(1)), "explain every")
 }
 
 func TestBuildFlagMeta(t *testing.T) {

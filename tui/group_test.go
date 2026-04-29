@@ -556,6 +556,18 @@ func TestGroup_Render_WithSpacer(t *testing.T) {
 	assert.True(t, len(strings.TrimRight(row, " ")) >= 9, "should span width")
 }
 
+func TestGroup_Render_WrappedFlexTextUsesRemainingWidth(t *testing.T) {
+	g := Group(
+		Text("prefix: "),
+		Text("alpha beta gamma delta epsilon").Wrap().Flex(1),
+	)
+	screen := SprintScreen(g, PrintConfig{Width: 20})
+
+	termtest.AssertRowContains(t, screen, 0, "prefix: alpha beta")
+	termtest.AssertRowContains(t, screen, 1, "gamma delta")
+	termtest.AssertRowContains(t, screen, 2, "epsilon")
+}
+
 func TestGroup_Render_VaryingHeights(t *testing.T) {
 	g := Group(
 		Text("Short"),
