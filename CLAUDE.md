@@ -37,7 +37,6 @@ and CLI building blocks that work well together.
 | **htmlparse**   | HTML parsing, metadata, links                  |
 | **htmltomd**    | HTML to Markdown conversion                    |
 | **humanize**    | Human-readable formatting                      |
-| **pty**         | Pseudo-terminal allocation (Linux/Darwin)      |
 | **retry**       | Retry with backoff and jitter                  |
 | **runewidth**   | Unicode display width and grapheme clusters    |
 | **schema**      | JSON Schema types and generation for LLM tools |
