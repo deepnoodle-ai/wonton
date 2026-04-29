@@ -437,6 +437,7 @@ func (t *tableView) fitColumnWidths(availableWidth int) {
 			shrinkAmount = shrinkableWidth
 		}
 
+		progressed := false
 		for i := range t.columnWidths {
 			minW := t.effectiveMinWidth(i)
 			canShrink := t.columnWidths[i] - minW
@@ -446,8 +447,23 @@ func (t *tableView) fitColumnWidths(availableWidth int) {
 				if share > canShrink {
 					share = canShrink
 				}
-				t.columnWidths[i] -= share
-				excess -= share
+				if share > 0 {
+					t.columnWidths[i] -= share
+					excess -= share
+					progressed = true
+				}
+			}
+		}
+
+		if !progressed {
+			for i := range t.columnWidths {
+				if excess <= 0 {
+					break
+				}
+				if t.columnWidths[i] > t.effectiveMinWidth(i) {
+					t.columnWidths[i]--
+					excess--
+				}
 			}
 		}
 	}
