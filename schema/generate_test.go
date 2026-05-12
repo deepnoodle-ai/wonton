@@ -929,3 +929,132 @@ func TestSchema_UnmarshalClearsSchemaWhenBool(t *testing.T) {
 	assert.NotNil(t, s.AdditionalProperties)
 	assert.False(t, *s.AdditionalProperties)
 }
+
+// Self-referential types used by the recursive-schema tests below.
+type recursiveNode struct {
+	Value string         `json:"value"`
+	Next  *recursiveNode `json:"next,omitempty"`
+}
+
+type mutualPolicy struct {
+	Type   string       `json:"type"`
+	Humans *mutualRule  `json:"humans,omitempty"`
+}
+
+type mutualRule struct {
+	Name      string        `json:"name"`
+	SubPolicy *mutualPolicy `json:"sub_policy,omitempty"`
+}
+
+type recursiveTree struct {
+	Name     string           `json:"name"`
+	Children []*recursiveTree `json:"children,omitempty"`
+}
+
+type recursiveMap struct {
+	Key      string                   `json:"key"`
+	Branches map[string]*recursiveMap `json:"branches,omitempty"`
+}
+
+// TestGenerate_DirectSelfReference verifies that a struct referencing itself
+// through a pointer field terminates and emits a placeholder schema at the
+// recurrence point instead of overflowing the stack.
+func TestGenerate_DirectSelfReference(t *testing.T) {
+	s, err := schema.Generate(recursiveNode{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.Object, s.Type)
+
+	next, ok := s.Properties["next"]
+	assert.True(t, ok)
+	assert.Equal(t, schema.Object, next.Type)
+	// Recurrence point should be a permissive placeholder.
+	assert.NotNil(t, next.AdditionalProperties)
+	assert.True(t, *next.AdditionalProperties)
+	// Pointer field is still nullable.
+	assert.NotNil(t, next.Nullable)
+	assert.True(t, *next.Nullable)
+	// And it should be empty (no further recursion).
+	assert.Len(t, next.Properties, 0)
+}
+
+// TestGenerate_MutualRecursion verifies that mutually recursive struct types
+// (A -> B -> A) terminate with a placeholder at the recurrence point.
+func TestGenerate_MutualRecursion(t *testing.T) {
+	s, err := schema.Generate(mutualPolicy{})
+	assert.NoError(t, err)
+
+	humans, ok := s.Properties["humans"]
+	assert.True(t, ok)
+	assert.Equal(t, schema.Object, humans.Type)
+
+	subPolicy, ok := humans.Properties["sub_policy"]
+	assert.True(t, ok)
+	assert.Equal(t, schema.Object, subPolicy.Type)
+	assert.NotNil(t, subPolicy.AdditionalProperties)
+	assert.True(t, *subPolicy.AdditionalProperties)
+	assert.Len(t, subPolicy.Properties, 0)
+}
+
+// TestGenerate_RecursiveThroughSlice verifies cycle detection works when the
+// back-reference is reached through a slice element type.
+func TestGenerate_RecursiveThroughSlice(t *testing.T) {
+	s, err := schema.Generate(recursiveTree{})
+	assert.NoError(t, err)
+
+	children, ok := s.Properties["children"]
+	assert.True(t, ok)
+	assert.Equal(t, schema.Array, children.Type)
+	assert.NotNil(t, children.Items)
+	assert.Equal(t, schema.Object, children.Items.Type)
+	assert.NotNil(t, children.Items.AdditionalProperties)
+	assert.True(t, *children.Items.AdditionalProperties)
+	assert.Len(t, children.Items.Properties, 0)
+}
+
+// TestGenerate_RecursiveThroughMap verifies cycle detection works when the
+// back-reference is reached through a map value type.
+func TestGenerate_RecursiveThroughMap(t *testing.T) {
+	s, err := schema.Generate(recursiveMap{})
+	assert.NoError(t, err)
+
+	branches, ok := s.Properties["branches"]
+	assert.True(t, ok)
+	assert.Equal(t, schema.Object, branches.Type)
+	assert.NotNil(t, branches.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Object, branches.AdditionalPropertiesSchema.Type)
+	assert.NotNil(t, branches.AdditionalPropertiesSchema.AdditionalProperties)
+	assert.True(t, *branches.AdditionalPropertiesSchema.AdditionalProperties)
+	assert.Len(t, branches.AdditionalPropertiesSchema.Properties, 0)
+}
+
+// TestGenerate_NonCyclicSharedType verifies that a non-cyclic struct used in
+// multiple sibling fields still produces a full schema at each occurrence —
+// the seen set must be path-scoped, not visit-once.
+func TestGenerate_NonCyclicSharedType(t *testing.T) {
+	type leaf struct {
+		X string `json:"x"`
+	}
+	type holder struct {
+		A leaf `json:"a"`
+		B leaf `json:"b"`
+	}
+
+	s, err := schema.Generate(holder{})
+	assert.NoError(t, err)
+
+	a, ok := s.Properties["a"]
+	assert.True(t, ok)
+	b, ok := s.Properties["b"]
+	assert.True(t, ok)
+
+	// Both occurrences should be full object schemas with the "x" field,
+	// not placeholders.
+	assert.Equal(t, schema.Object, a.Type)
+	assert.Equal(t, schema.Object, b.Type)
+	_, hasX := a.Properties["x"]
+	assert.True(t, hasX)
+	_, hasX = b.Properties["x"]
+	assert.True(t, hasX)
+	assert.Nil(t, a.AdditionalProperties)
+	assert.Nil(t, b.AdditionalProperties)
+}

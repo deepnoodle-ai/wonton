@@ -44,9 +44,11 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 		return nil, fmt.Errorf("cannot generate schema for nil value")
 	}
 
+	seen := map[reflect.Type]bool{}
+
 	// For non-struct types, create a schema preserving all property details
 	if t.Kind() != reflect.Struct && (t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Struct) {
-		prop, err := reflectType(t, opt)
+		prop, err := reflectType(t, opt, seen)
 		if err != nil {
 			return nil, err
 		}
@@ -55,7 +57,7 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 	}
 
 	// For struct types, generate a full object schema
-	prop, err := reflectType(t, opt)
+	prop, err := reflectType(t, opt, seen)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,13 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 
 // reflectType recursively analyzes a reflect.Type and returns a Property
 // that describes its JSON Schema representation.
-func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
+//
+// seen tracks struct types currently in the recursion path so that
+// self-referential types (e.g. linked-list nodes, tree nodes) terminate
+// with a placeholder schema instead of overflowing the stack. The map is
+// keyed by reflect.Type and entries are removed as the recursion unwinds,
+// so non-cyclic shared types still produce full schemas at each occurrence.
+func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool) (*Property, error) {
 	// Check for time.Time first (before struct handling)
 	if t == reflect.TypeOf(time.Time{}) {
 		format := "date-time"
@@ -101,7 +109,7 @@ func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
 		return &Property{Type: Boolean}, nil
 
 	case reflect.Slice, reflect.Array:
-		items, err := reflectType(t.Elem(), opt)
+		items, err := reflectType(t.Elem(), opt, seen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reflect array/slice element type: %w", err)
 		}
@@ -115,7 +123,7 @@ func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
 		if t.Key().Kind() != reflect.String {
 			return nil, fmt.Errorf("map key type must be string, got %s", t.Key().Kind())
 		}
-		valueType, err := reflectType(t.Elem(), opt)
+		valueType, err := reflectType(t.Elem(), opt, seen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reflect map value type: %w", err)
 		}
@@ -126,7 +134,7 @@ func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
 		}, nil
 
 	case reflect.Struct:
-		return reflectStruct(t, opt)
+		return reflectStruct(t, opt, seen)
 
 	case reflect.Ptr:
 		// Check for *time.Time
@@ -136,7 +144,7 @@ func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
 			return &Property{Type: String, Format: &format, Nullable: &nullable}, nil
 		}
 		// For pointer types, reflect the underlying type and mark as nullable
-		underlying, err := reflectType(t.Elem(), opt)
+		underlying, err := reflectType(t.Elem(), opt, seen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reflect pointer underlying type: %w", err)
 		}
@@ -155,7 +163,24 @@ func reflectType(t reflect.Type, opt GenerateOptions) (*Property, error) {
 
 // reflectStruct analyzes a struct type and returns a Property representing
 // an object schema with properties, required fields, and other constraints.
-func reflectStruct(t reflect.Type, opt GenerateOptions) (*Property, error) {
+//
+// If t is already present in seen, the type is part of the current
+// recursion path (a self-referential or mutually recursive type). In that
+// case reflectStruct returns a permissive placeholder rather than
+// recursing further; without this guard the recursion would overflow the
+// stack on types like linked-list nodes or tree nodes.
+func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool) (*Property, error) {
+	if seen[t] {
+		additionalProps := true
+		return &Property{
+			Type:                 Object,
+			AdditionalProperties: &additionalProps,
+			Description:          fmt.Sprintf("recursive reference to %s; schema truncated to break cycle", t.String()),
+		}, nil
+	}
+	seen[t] = true
+	defer delete(seen, t)
+
 	properties := make(map[string]*Property)
 	var required []string
 
@@ -169,7 +194,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions) (*Property, error) {
 
 		// Handle embedded structs
 		if field.Anonymous {
-			embedded, err := reflectType(field.Type, opt)
+			embedded, err := reflectType(field.Type, opt, seen)
 			if err != nil {
 				return nil, fmt.Errorf("failed to reflect embedded field %s: %w", field.Name, err)
 			}
@@ -192,7 +217,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions) (*Property, error) {
 		}
 
 		// Generate property schema for the field type
-		prop, err := reflectType(field.Type, opt)
+		prop, err := reflectType(field.Type, opt, seen)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reflect field %s: %w", field.Name, err)
 		}
