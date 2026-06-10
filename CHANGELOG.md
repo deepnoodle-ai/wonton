@@ -6,8 +6,171 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.35] - 2026-06-10
+
+A large correctness and API-hardening release spanning nearly every package:
+a multi-package bug-hunting pass (#28–#32) plus a `tui` runtime/refactor
+overhaul (#33–#37), the `color` rework (#38), and the `web`/`fetch`/`crawler`
+refactor (#39) and `cli` review (#40). It includes **breaking** API changes in
+`color`, `web`/`fetch`, `cli`, and `tui` — see **Changed** and **Removed**.
+
+### Added
+
+- `cli` gained `Context.Duration` (a typed getter for `Duration` flags), an
+  `Int64Flag` type and `Int64()` builder, and `CommandError.Wrap(err)` /
+  `Unwrap()` for standard error wrapping.
+- `color`: `Hex`, `MustHex`, and `RGB.Hex` for parsing/formatting `#rrggbb` /
+  `#rgb`; `RGB.HSL()` (the inverse of `HSLToRGB`); `RGB.Lerp`; `Color.ApplyBold`
+  / `ForegroundSeqBold` (parity with `ApplyDim`); and `ApplyGradient(text,
+  stops...)`, which colors a string per grapheme cluster (emoji-safe via
+  `runewidth`).
+- `fetch.Download` downloads a URL to a file (replacing `web`'s binary
+  fetcher), with a unified `fetch.Error{StatusCode, URL, Err}` and
+  `fetch.IsRetryable()` for use with `retry.WithRetryIf`.
+- `web.NormalizeURL` gained `KeepQuery()` / `KeepHTTP()` options, and the media
+  helpers expose `BinaryExtensions` (an `ExtensionSet`).
+- `tui`: shared list navigation across all list-shaped views (`SelectList`,
+  `FilterableList`, `CheckboxList`, `RadioList`, `Table`, `Tree`) — arrows,
+  PageUp/PageDown, Home/End, and vi-style `j`/`k`/`g`/`G`. Tagged timer events
+  via `After(d, tag)` → `TimerEvent{Tag}`, handled on the event loop.
+  Opt-in backslash+Enter → Shift+Enter synthesis via `WithBackslashEnter(true)`
+  / `InlineAppConfig.BackslashEnter`.
+- `unidiff.File` gained `IsNew`, `IsDelete`, and `IsRename` fields, detected
+  from git metadata lines (`new file mode`, `deleted file mode`,
+  `rename from`/`rename to`) and `/dev/null` paths. Pure renames without
+  hunks now parse with both paths populated. `GIT binary patch` sections are
+  detected as binary.
+- `sse.HTTPError` gained a `Body` field with up to 8KB of the error response
+  body, which is included in `Error()` when present.
+- `htmltomd` honors the ordered-list `start` attribute and preserves image
+  `title` attributes (`[alt](src "title")`).
+- `terminal` now decodes modified Home/End, modifiers on tilde-keys (Ctrl+Delete,
+  Ctrl+F5), xterm modifyOtherKeys, and Kitty sub-parameters / high-bitfield
+  modifiers.
+- `termtest.Screen.Reset()` performs a full RIS reset (backs `ESC c` and
+  `Recorder.Reset`).
+- `termsession` records and emits asciicast v2 `"r"` resize events on
+  `UpdateSize` (previously dropped).
+
+### Changed
+
+- **`color` (breaking):** the high-level helpers (`Apply`, `ApplyBg`,
+  `ApplyDim`, `ApplyBold`, `Sprint`, `Sprintf`, `ApplyGradient`) now respect
+  `color.Enabled` — auto-initialized at startup from `FORCE_COLOR` /
+  `CLICOLOR_FORCE` (force on), `NO_COLOR` / `CLICOLOR=0` (force off), then stdout
+  TTY detection — so output is plain text when piped or redirected. Low-level
+  `*Seq` functions stay unconditional for `terminal`/`tui` frame rendering.
+  `RGB.Apply(text, bool)` is split into `Apply(text)` / `ApplyBg(text)` to
+  mirror `Color`; `NoColor` is renamed to `Default`; and all gradient functions
+  uniformly return an empty slice for `steps <= 0`.
+- **`web` (breaking):** now a pure, I/O-free utilities package. `ResolveLink` is
+  redesigned per RFC 3986 and returns `*url.URL`; `NormalizeURL` fixes bare
+  `host:port` inputs and lowercases the host; media helpers are renamed
+  `IsMediaURL` / `IsBinaryURL`; and `SearchOutput.Items` is now `[]SearchItem`
+  (was `[]*SearchItem`).
+- **`cli` (breaking):** flag-builder constructors (`String`, `Bool`, `Int`,
+  `Float64`, `Float`, `Duration`, `Strings`, `Ints`) take the `short` name as a
+  variadic — callers no longer pass `""` when there is no short form.
+  `ParseFlags[T]` now returns `*Command` (for chaining) instead of a `*T` zero
+  value; `middleware.Confirm` is renamed to `ConfirmBefore` (avoiding the
+  collision with `ctx.Confirm`). Env-var flag values are converted to the flag's
+  type at parse time, so typed getters like `ctx.Ints` work for env-provided
+  values and invalid values error instead of silently becoming zero. The `After`
+  middleware returns both the handler and after-fn errors via `errors.Join`, and
+  `--color`/`--no-color`/`SetColorEnabled` mirror into `color.Enabled`.
+- **`env` (breaking):** acronym runs in field names now map to a single segment
+  (`APIKey` → `API_KEY`, `DB` → `DB`, `HTTPServer` → `HTTP_SERVER`), affecting
+  `WithUseFieldName()` and default nested-struct prefixes. `.env` parsing splits
+  on whichever of `=` / `:` appears first, strips `export` followed by any
+  whitespace, skips lines with unclosed quotes, and passes the raw value bytes
+  to `[]byte` fields.
+- **`tui` (breaking):** keys consumed by a focused widget no longer reach the
+  app's `HandleEvent` — **Ctrl+C is always delivered** so apps keep a reliable
+  quit shortcut. The five package-global view registries are now per-`Runtime` /
+  per-`InlineApp`, so two apps in one process no longer share input/click state.
+  `After(d, func())` is replaced by `After(d, tag)`, and the `Tick(d)` command is
+  removed (use `After`; frame ticks are unchanged).
+- `crawler` de-forks its private `normalizeURL`/`resolveLink` onto
+  `web.NormalizeURL`/`web.ResolveLink`; honors robots.txt `Crawl-delay` (per
+  worker, when larger than `RequestDelay`); skips robots.txt checks on cache
+  hits; defaults `Workers` to 1; counts parse failures as failed (not
+  succeeded); and `Stop` is now safe to call concurrently with `Crawl`.
+- `sse.Client` validates the response Content-Type with `mime.ParseMediaType`
+  instead of a prefix check.
+- `clipboard` errors now include stderr output from the underlying clipboard
+  utility.
+- `assert` colored diff output now respects `NO_COLOR`/`FORCE_COLOR`
+  (via `color.ShouldColorize`) instead of only checking for a terminal.
+- `termtest` (behavior): the cursor now reports `width-1` after filling a line
+  (deferred wrap, matching xterm); `CSI 2J`/`3J` no longer home the cursor; DCH
+  never erases left of the cursor; SGR colon sub-parameters are scoped to their
+  parameter per ECMA-48/T.416; and `Diff` is rewritten with LCS line alignment
+  (real context lines, no cascade of false changes after an inserted line).
+
+### Removed
+
+- `tui`: the imperative `Widget`/`ComposableWidget` and
+  `Layout`/`Header`/`Footer`/`StatusItem` systems, plus the standalone
+  `FlexLayout`, size-constraint, and `List` widgets (−3,125 lines; nothing in
+  the live View system or examples used them). The internal `TextInput` engine
+  is unexported to `textInput`. The `Tick(d)` command (use `After`).
+- `color`: `Colorize`, `ColorizeIf`, and `ColorizeRGB` (use `Apply`); the
+  deprecated `RGB.Foreground`/`Background`; `IsTerminal` (use `tty.IsTerminal`
+  or `ShouldColorize`); and the `Escape` constant is unexported.
+- `cli`: `Command.Aliases`/`Group.Aliases` (the variadic `Alias` already covers
+  them), plus dead internals (`App.findCommand`, `Command.looksLikeFlag`).
+- `web`: `SortURLs`, `EndsWithPunctuation`, `BinaryFetcher`, and `FetchError`
+  (use `fetch.Download` / `fetch.Error`).
+
 ### Fixed
 
+- `retry.ExponentialBackoff` applied `MaxBackoff` only after casting to
+  `time.Duration`, so around attempt 40 the float product overflowed negative
+  and, with infinite retries, degraded into a hot loop hammering the failing
+  service; the cap is now applied in float space. `LinearBackoff` gains an
+  equivalent overflow guard, and nil `Config.Timer`/`DelayFunc` now use the
+  documented fallbacks instead of panicking.
+- `schema.Generate` now matches `encoding/json`: `[]byte` generates a base64
+  string (not an int array), `json.RawMessage` an unconstrained schema, tagged
+  embeds nest instead of flattening, and embedded non-structs are named after
+  the type.
+- `htmlparse.Transform` escapes text nodes, closing an injection vector where
+  source like `&lt;script&gt;` round-tripped into a live `<script>` tag.
+  `Metadata` also reads `property="twitter:*"` cards, legacy `http-equiv`
+  charset declarations, and space-separated `rel` token lists.
+- `htmltomd`: inline code spans and code fences now pick backtick runs that
+  don't collide with the content, table cells escape literal `|`, and language
+  detection handles multi-class / `lang-` prefixes.
+- `cli`: typed flag validators actually run (`Validate` previously always
+  returned nil); `parseInt` rejects `12abc` (was accepted as `12`); and help no
+  longer prints `(default: [])` / `(default: 0s)` / `(default: 0)` for
+  zero-valued slice/duration/float defaults.
+- `env` sentinel parse errors now carry real messages instead of printing
+  "parse error: parse error".
+- `tui`: a panic in `View`/`HandleEvent`/a `Cmd` now restores the terminal and
+  re-panics with the original stack (previously it left the terminal in raw mode
+  on the alternate screen and ate the trace). `FlexLayout` wrapping (`FlexWrapOn`
+  did nothing) and grow/shrink remainder loss are fixed; the
+  `PlaybackController` recursive `RLock` deadlock, `PasswordInput` non-ASCII
+  corruption, and `listView.ItemHeight(0)` panic are fixed. Tab is no longer
+  swallowed when there are no focusables; list views scroll-follow on
+  End/`G`/PageDown so the cursor stays visible; vi keys ignore Alt/Ctrl chords;
+  and PageUp/PageDown uses the real viewport height.
+- `terminal`: the CSI input decoder now reads full multi-parameter sequences, so
+  cursor-position reports, modifyOtherKeys, and Kitty modifiers no longer leak
+  phantom keystrokes into the app; SGR/X10 mouse release events carry the
+  released button; `Style`/`Cell` compare RGB by value (truecolor cells no longer
+  defeat double-buffering); `EndFrame` no longer deadlocks on an invalid frame;
+  and the resize-watcher data race is fixed.
+- `termsession`: `LoadCast` no longer infinite-loops at 100% CPU on a truncated
+  or corrupt cast file; `Wait` returns an error instead of deadlocking when
+  `Start` failed or was never called; pause gaps are removed from the timeline;
+  and `RecordInput` honors `RedactSecrets`.
+- `termtest`: C0 controls (backspace, etc.) are no longer rendered as glyphs;
+  escape sequences and UTF-8 runes split across `Write` calls are buffered; and
+  erasing a straddled wide glyph clears both halves.
+- `crawler` no longer rewrites `mailto:` (and other non-http) links into
+  crawlable `https://` URLs.
 - `unidiff.Parse` now uses hunk line counts from `@@` headers, so changed
   lines that resemble file headers (e.g., a removed line starting with `--`,
   which appears as `--- ...` in the diff) are no longer misparsed as file
@@ -60,31 +223,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `clipboard` on Windows uses `Get-Clipboard -Raw`, preserving line endings
   in multiline content.
 
-### Added
+## [0.0.34] - 2026-05-12
 
-- `unidiff.File` gained `IsNew`, `IsDelete`, and `IsRename` fields, detected
-  from git metadata lines (`new file mode`, `deleted file mode`,
-  `rename from`/`rename to`) and `/dev/null` paths. Pure renames without
-  hunks now parse with both paths populated. `GIT binary patch` sections are
-  detected as binary.
-- `sse.HTTPError` gained a `Body` field with up to 8KB of the error response
-  body, which is included in `Error()` when present.
+### Fixed
 
-### Changed
-
-- `web.NormalizeURL` lowercases the host for stable comparisons and
-  deduplication.
-- `sse.Client` validates the response Content-Type with `mime.ParseMediaType`
-  instead of a prefix check.
-- `crawler` honors robots.txt `Crawl-delay` (per worker, when larger than
-  `RequestDelay`), skips robots.txt checks for cache hits, `Workers`
-  defaults to 1, and parse failures are now counted as failed (not
-  succeeded) in crawl stats.
-- `crawler.Crawler.Stop` is now safe to call concurrently with `Crawl`.
-- `clipboard` errors now include stderr output from the underlying
-  clipboard utility.
-- `assert` colored diff output now respects `NO_COLOR`/`FORCE_COLOR`
-  (via `color.ShouldColorize`) instead of only checking for a terminal.
+- `schema.Generate` detects recursive and mutually recursive struct types
+  instead of overflowing the goroutine stack at schema-construction time;
+  a cyclic type now yields a permissive placeholder schema where it recurses.
 
 ## [0.0.33] - 2026-04-28
 
