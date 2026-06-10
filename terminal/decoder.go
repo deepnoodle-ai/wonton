@@ -217,110 +217,153 @@ func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
 // decodeCSIEvent decodes ANSI CSI sequences (ESC [ ...), including mouse events
 // We've already consumed ESC and '['
 func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
-	// Read the next character
-	ch, err := kd.reader.ReadByte()
+	first, err := kd.reader.ReadByte()
 	if err != nil {
 		return KeyEvent{Key: KeyUnknown}, err
 	}
 
-	// Check for SGR mouse event: ESC [ <
-	if ch == '<' {
-		return kd.decodeMouseEvent()
-	}
-
-	// Simple sequences: ESC [ A/B/C/D/H/F/Z
-	switch ch {
-	case 'A':
-		return KeyEvent{Key: KeyArrowUp}, nil
-	case 'B':
-		return KeyEvent{Key: KeyArrowDown}, nil
-	case 'C':
-		return KeyEvent{Key: KeyArrowRight}, nil
-	case 'D':
-		return KeyEvent{Key: KeyArrowLeft}, nil
-	case 'H':
-		return KeyEvent{Key: KeyHome}, nil
-	case 'F':
-		return KeyEvent{Key: KeyEnd}, nil
-	case 'Z':
-		// Shift+Tab (also known as BackTab)
-		return KeyEvent{Key: KeyTab, Shift: true}, nil
-	case 'M':
-		// Legacy mouse format: ESC [ M followed by 3 bytes
+	// Legacy mouse format: ESC [ M followed by 3 raw bytes (the payload
+	// bytes are not CSI parameter bytes, so handle this before the
+	// generic sequence reader).
+	if first == 'M' {
 		return kd.decodeLegacyMouseEvent()
 	}
 
-	// Numeric sequences: ESC [ <number> ~  or  ESC [ <number> ; <modifier> <key>
-	if ch >= '0' && ch <= '9' {
-		// Read the full numeric sequence
-		num := []byte{ch}
-		for {
-			b, err := kd.reader.ReadByte()
-			if err != nil {
-				return KeyEvent{Key: KeyUnknown}, err
-			}
-			if b == '~' {
-				// Sequence ends with ~
-				// Check for bracketed paste
-				numStr := string(num)
-				if numStr == "200" {
-					// Bracketed paste start
-					keyEvent, err := kd.decodeBracketedPaste()
-					return keyEvent, err
-				}
-				keyEvent, err := kd.decodeCSINumber(numStr)
-				return keyEvent, err
-			}
-			if b == ';' {
-				// Modified key sequence
-				keyEvent, err := kd.decodeCSIModified(string(num))
-				return keyEvent, err
-			}
-			if b == 'u' {
-				// CSI u sequence without modifiers (e.g., ESC[13u for Enter)
-				// This is the Kitty keyboard protocol format
-				keyEvent, err := kd.decodeCSIu(string(num))
-				return keyEvent, err
-			}
-			if b >= '0' && b <= '9' {
-				num = append(num, b)
-			} else {
-				// Unexpected character
-				return KeyEvent{Key: KeyUnknown}, nil
-			}
-		}
-	}
-
-	return KeyEvent{Key: KeyUnknown}, nil
-}
-
-// decodeMouseEvent decodes SGR mouse events: ESC [ < button ; x ; y [Mm]
-// We've already consumed ESC [ <
-func (kd *KeyDecoder) decodeMouseEvent() (Event, error) {
-	// Read until we find M or m
-	buf := make([]byte, 0, 20)
-	for {
-		b, err := kd.reader.ReadByte()
-		if err != nil {
-			return KeyEvent{Key: KeyUnknown}, err
-		}
-		buf = append(buf, b)
-		if b == 'M' || b == 'm' {
-			break
-		}
-		if len(buf) >= 20 {
-			// Sequence too long, probably malformed
-			return KeyEvent{Key: KeyUnknown}, nil
-		}
-	}
-
-	// Prepend '<' for ParseMouseEvent
-	fullBuf := append([]byte{'<'}, buf...)
-	event, err := ParseMouseEvent(fullBuf)
+	params, final, err := kd.readCSISequence(first)
 	if err != nil {
 		return KeyEvent{Key: KeyUnknown}, err
 	}
-	return *event, nil
+
+	// SGR mouse event: ESC [ < button ; x ; y [Mm]
+	if len(params) > 0 && params[0] == '<' && (final == 'M' || final == 'm') {
+		event, err := ParseMouseEvent(append([]byte(params), final))
+		if err != nil {
+			return KeyEvent{Key: KeyUnknown}, err
+		}
+		return *event, nil
+	}
+
+	return kd.decodeCSIKey(params, final)
+}
+
+// readCSISequence reads the remainder of a CSI sequence through its final
+// byte (0x40-0x7E), starting from the already-consumed byte first. It
+// returns the parameter/intermediate bytes and the final byte. Per ECMA-48
+// every byte in 0x20-0x3F before the final byte belongs to the sequence, so
+// multi-digit and multi-part parameters are consumed without leaving stray
+// bytes in the stream to be misread as typed keys.
+//
+// A final byte of 0 indicates a malformed sequence (embedded control byte
+// or runaway length).
+func (kd *KeyDecoder) readCSISequence(first byte) (string, byte, error) {
+	const maxCSILength = 64 // generous bound; real sequences are much shorter
+	var params []byte
+	b := first
+	for {
+		if b >= 0x40 && b <= 0x7E {
+			return string(params), b, nil
+		}
+		if b < 0x20 {
+			// Control byte inside a CSI sequence: malformed. Put it back so
+			// it can be processed as the start of fresh input.
+			kd.reader.UnreadByte()
+			return string(params), 0, nil
+		}
+		if len(params) >= maxCSILength {
+			return string(params), 0, nil
+		}
+		params = append(params, b)
+		var err error
+		b, err = kd.reader.ReadByte()
+		if err != nil {
+			return string(params), 0, err
+		}
+	}
+}
+
+// decodeCSIKey interprets a fully-read CSI sequence as a key event.
+func (kd *KeyDecoder) decodeCSIKey(params string, final byte) (KeyEvent, error) {
+	parts := strings.Split(params, ";")
+	num := csiPrimary(parts[0])
+	modifier := 1
+	if len(parts) >= 2 {
+		if m, err := strconv.Atoi(csiPrimary(parts[1])); err == nil && m > 0 {
+			modifier = m
+		}
+	}
+
+	switch final {
+	case 'A':
+		return applyKeyModifiers(KeyEvent{Key: KeyArrowUp}, modifier), nil
+	case 'B':
+		return applyKeyModifiers(KeyEvent{Key: KeyArrowDown}, modifier), nil
+	case 'C':
+		return applyKeyModifiers(KeyEvent{Key: KeyArrowRight}, modifier), nil
+	case 'D':
+		return applyKeyModifiers(KeyEvent{Key: KeyArrowLeft}, modifier), nil
+	case 'H':
+		return applyKeyModifiers(KeyEvent{Key: KeyHome}, modifier), nil
+	case 'F':
+		return applyKeyModifiers(KeyEvent{Key: KeyEnd}, modifier), nil
+	case 'Z':
+		// Shift+Tab (also known as BackTab), optionally with modifiers
+		if params == "" || num == "" || num == "1" {
+			event := applyKeyModifiers(KeyEvent{Key: KeyTab}, modifier)
+			event.Shift = true
+			return event, nil
+		}
+		return KeyEvent{Key: KeyUnknown}, nil
+	case 'u':
+		// Kitty keyboard protocol: ESC [ codepoint ; modifier u
+		return kd.decodeCSIu(num, modifier)
+	case '~':
+		if num == "200" {
+			// Bracketed paste start
+			return kd.decodeBracketedPaste()
+		}
+		if num == "27" && len(parts) >= 3 {
+			// xterm modifyOtherKeys: ESC [ 27 ; modifier ; codepoint ~
+			return kd.decodeCSIu(csiPrimary(parts[2]), modifier)
+		}
+		event, err := kd.decodeCSINumber(num)
+		if err != nil || event.Key == KeyUnknown {
+			return event, err
+		}
+		return applyKeyModifiers(event, modifier), nil
+	}
+
+	// Anything else (cursor position reports, device attributes, ...) is not
+	// a key; the sequence has been fully consumed so the stream stays in sync.
+	return KeyEvent{Key: KeyUnknown}, nil
+}
+
+// csiPrimary returns the primary value of a CSI parameter, stripping any
+// colon-separated sub-parameters (e.g. Kitty's "shifted:base" key codes or
+// "modifier:event_type" fields).
+func csiPrimary(part string) string {
+	if idx := strings.IndexByte(part, ':'); idx >= 0 {
+		return part[:idx]
+	}
+	return part
+}
+
+// applyKeyModifiers applies an xterm/kitty modifier parameter to a key event.
+// The encoding is modifier = 1 + bitfield (1=Shift, 2=Alt, 4=Ctrl; higher
+// bits such as Super or CapsLock are ignored).
+func applyKeyModifiers(event KeyEvent, modifier int) KeyEvent {
+	if modifier <= 1 {
+		return event
+	}
+	bits := modifier - 1
+	event.Shift = event.Shift || bits&1 != 0
+	event.Alt = event.Alt || bits&2 != 0
+	event.Ctrl = event.Ctrl || bits&4 != 0
+	// Normalize Ctrl+Enter and Alt+Enter to also set Shift, so apps can just
+	// check Shift for "soft newline".
+	if event.Key == KeyEnter && (event.Ctrl || event.Alt) {
+		event.Shift = true
+	}
+	return event
 }
 
 // decodeLegacyMouseEvent decodes legacy mouse format: ESC [ M followed by 3 bytes
@@ -476,64 +519,33 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 // decodeCSI decodes ANSI CSI sequences (ESC [ ...)
 // We've already consumed ESC and '['
 func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
-	// Read the next character
-	ch, err := kd.reader.ReadByte()
+	first, err := kd.reader.ReadByte()
 	if err != nil {
 		return KeyEvent{Key: KeyUnknown}, err
 	}
 
-	// Simple sequences: ESC [ A/B/C/D/H/F/Z
-	switch ch {
-	case 'A':
-		return KeyEvent{Key: KeyArrowUp}, nil
-	case 'B':
-		return KeyEvent{Key: KeyArrowDown}, nil
-	case 'C':
-		return KeyEvent{Key: KeyArrowRight}, nil
-	case 'D':
-		return KeyEvent{Key: KeyArrowLeft}, nil
-	case 'H':
-		return KeyEvent{Key: KeyHome}, nil
-	case 'F':
-		return KeyEvent{Key: KeyEnd}, nil
-	case 'Z':
-		// Shift+Tab (also known as BackTab)
-		return KeyEvent{Key: KeyTab, Shift: true}, nil
-	}
-
-	// Numeric sequences: ESC [ <number> ~  or  ESC [ <number> ; <modifier> <key>
-	if ch >= '0' && ch <= '9' {
-		// Read the full numeric sequence
-		num := []byte{ch}
-		for {
-			b, err := kd.reader.ReadByte()
-			if err != nil {
+	// Legacy mouse report on the key-only API: consume the 3 raw payload
+	// bytes to keep the stream in sync, then report unknown.
+	if first == 'M' {
+		for i := 0; i < 3; i++ {
+			if _, err := kd.reader.ReadByte(); err != nil {
 				return KeyEvent{Key: KeyUnknown}, err
 			}
-			if b == '~' {
-				// Sequence ends with ~
-				// Check for bracketed paste
-				numStr := string(num)
-				if numStr == "200" {
-					// Bracketed paste start
-					return kd.decodeBracketedPaste()
-				}
-				return kd.decodeCSINumber(numStr)
-			}
-			if b == ';' {
-				// Modified key sequence
-				return kd.decodeCSIModified(string(num))
-			}
-			if b >= '0' && b <= '9' {
-				num = append(num, b)
-			} else {
-				// Unexpected character
-				return KeyEvent{Key: KeyUnknown}, nil
-			}
 		}
+		return KeyEvent{Key: KeyUnknown}, nil
 	}
 
-	return KeyEvent{Key: KeyUnknown}, nil
+	params, final, err := kd.readCSISequence(first)
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+
+	// SGR mouse report on the key-only API: fully consumed, report unknown.
+	if len(params) > 0 && params[0] == '<' && (final == 'M' || final == 'm') {
+		return KeyEvent{Key: KeyUnknown}, nil
+	}
+
+	return kd.decodeCSIKey(params, final)
 }
 
 // decodeCSINumber decodes CSI sequences ending with ~ (e.g., ESC [ 3 ~)
@@ -580,27 +592,19 @@ func (kd *KeyDecoder) decodeCSINumber(num string) (KeyEvent, error) {
 	}
 }
 
-// decodeCSIu decodes CSI u sequences without modifiers (Kitty keyboard protocol)
-// Format: ESC [ codepoint u
-func (kd *KeyDecoder) decodeCSIu(codepoint string) (KeyEvent, error) {
-	return kd.decodeCSIuWithModifier(codepoint, '1') // modifier 1 = no modifiers
-}
-
-// decodeCSIuWithModifier decodes CSI u sequences with modifiers (Kitty keyboard protocol)
-// Format: ESC [ codepoint ; modifier u
-// Codepoint is the Unicode code point of the key
-// Modifier: 1=none, 2=Shift, 3=Alt, 4=Shift+Alt, 5=Ctrl, 6=Shift+Ctrl, 7=Alt+Ctrl, 8=Shift+Alt+Ctrl
-func (kd *KeyDecoder) decodeCSIuWithModifier(codepoint string, modByte byte) (KeyEvent, error) {
+// decodeCSIu decodes CSI u sequences (Kitty keyboard protocol) and
+// xterm modifyOtherKeys codepoints.
+// Format: ESC [ codepoint [; modifier] u
+// Codepoint is the Unicode code point of the key.
+// Modifier is 1 + bitfield: 1=Shift, 2=Alt, 4=Ctrl (higher bits ignored).
+func (kd *KeyDecoder) decodeCSIu(codepoint string, modifier int) (KeyEvent, error) {
 	// Decode modifiers
 	var shift, alt, ctrl bool
-	if modByte == '2' || modByte == '4' || modByte == '6' || modByte == '8' {
-		shift = true
-	}
-	if modByte == '3' || modByte == '4' || modByte == '7' || modByte == '8' {
-		alt = true
-	}
-	if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
-		ctrl = true
+	if modifier > 1 {
+		bits := modifier - 1
+		shift = bits&1 != 0
+		alt = bits&2 != 0
+		ctrl = bits&4 != 0
 	}
 
 	// Handle special keys by codepoint
@@ -747,72 +751,6 @@ func (kd *KeyDecoder) ctrlLetterEvent(letter rune, shift, alt bool) (KeyEvent, e
 		return KeyEvent{Rune: letter, Ctrl: true, Shift: shift, Alt: alt}, nil
 	}
 	return KeyEvent{Key: key, Ctrl: true, Shift: shift, Alt: alt}, nil
-}
-
-// decodeCSIModified decodes CSI sequences with modifiers (e.g., ESC [ 1 ; 5 A for Ctrl+Up)
-func (kd *KeyDecoder) decodeCSIModified(num string) (KeyEvent, error) {
-	// Read modifier number
-	modByte, err := kd.reader.ReadByte()
-	if err != nil {
-		return KeyEvent{Key: KeyUnknown}, err
-	}
-
-	// Read the key code
-	keyByte, err := kd.reader.ReadByte()
-	if err != nil {
-		return KeyEvent{Key: KeyUnknown}, err
-	}
-
-	// Decode the key
-	var key Key
-	switch keyByte {
-	case 'A':
-		key = KeyArrowUp
-	case 'B':
-		key = KeyArrowDown
-	case 'C':
-		key = KeyArrowRight
-	case 'D':
-		key = KeyArrowLeft
-	case 'u':
-		// CSI u sequence (Kitty keyboard protocol)
-		// num contains the Unicode codepoint
-		return kd.decodeCSIuWithModifier(num, modByte)
-	case '~':
-		// Modified key ending with ~ (e.g., ESC[3;5~ for Ctrl+Delete)
-		switch num {
-		case "3":
-			key = KeyDelete
-		case "5":
-			key = KeyPageUp
-		case "6":
-			key = KeyPageDown
-		default:
-			return KeyEvent{Key: KeyUnknown}, nil
-		}
-	default:
-		return KeyEvent{Key: KeyUnknown}, nil
-	}
-
-	event := KeyEvent{Key: key}
-
-	// Decode modifiers (2=Shift, 3=Alt, 4=Shift+Alt, 5=Ctrl, 6=Shift+Ctrl, 7=Alt+Ctrl, 8=Shift+Alt+Ctrl)
-	if modByte == '2' || modByte == '4' || modByte == '6' || modByte == '8' {
-		event.Shift = true
-	}
-	if modByte == '3' || modByte == '4' || modByte == '7' || modByte == '8' {
-		event.Alt = true
-	}
-	if modByte == '5' || modByte == '6' || modByte == '7' || modByte == '8' {
-		event.Ctrl = true
-	}
-
-	// Normalize Ctrl+Enter and Alt+Enter to also set Shift, so apps can just check Shift for "soft newline".
-	if key == KeyEnter && (event.Ctrl || event.Alt) {
-		event.Shift = true
-	}
-
-	return event, nil
 }
 
 // decodeSS3 decodes ANSI SS3 sequences (ESC O ...)

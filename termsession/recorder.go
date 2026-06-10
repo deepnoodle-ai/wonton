@@ -94,12 +94,12 @@ type RecordingHeader struct {
 // RecordingEvent represents a single terminal I/O event in asciinema v2 format.
 //
 // Events are encoded as JSON arrays: [time, type, data]
-// where time is seconds elapsed, type is "o" (output) or "i" (input),
-// and data is the actual terminal content.
+// where time is seconds elapsed, type is "o" (output), "i" (input), or
+// "r" (resize), and data is the event payload.
 type RecordingEvent struct {
 	Time float64 // Seconds since recording start
-	Type string  // "o" for terminal output, "i" for user input
-	Data string  // The actual terminal content (may contain ANSI codes)
+	Type string  // "o" for terminal output, "i" for user input, "r" for resize
+	Data string  // The event payload (output may contain ANSI codes; resize is "COLSxROWS")
 }
 
 // MarshalJSON implements custom JSON encoding for asciinema array format
@@ -142,7 +142,8 @@ type Recorder struct {
 	gzipWriter    *gzip.Writer
 	startTime     time.Time
 	lastEventTime time.Time
-	timeAdjust    float64 // cumulative time adjustment for idle clamping
+	pauseStart    time.Time
+	timeAdjust    float64 // cumulative time adjustment for idle clamping and pauses
 	mu            sync.Mutex
 	compress      bool
 	redactSecrets bool
@@ -254,7 +255,21 @@ func (r *Recorder) RecordOutput(data string) {
 		return
 	}
 
-	now := time.Now()
+	if r.redactSecrets {
+		data = terminal.RedactCredentials(data)
+	}
+
+	r.writeEvent(RecordingEvent{
+		Time: r.eventTimeLocked(time.Now()),
+		Type: "o",
+		Data: data,
+	})
+}
+
+// eventTimeLocked computes the timestamp for an event occurring at now,
+// applying the idle time limit and accumulated pause adjustments.
+// Caller must hold r.mu.
+func (r *Recorder) eventTimeLocked(now time.Time) float64 {
 	elapsed := now.Sub(r.startTime).Seconds()
 
 	// Apply idle time limit if configured
@@ -268,17 +283,7 @@ func (r *Recorder) RecordOutput(data string) {
 
 	r.lastEventTime = now
 
-	event := RecordingEvent{
-		Time: elapsed - r.timeAdjust,
-		Type: "o",
-		Data: data,
-	}
-
-	if r.redactSecrets {
-		event.Data = terminal.RedactCredentials(event.Data)
-	}
-
-	r.writeEvent(event)
+	return elapsed - r.timeAdjust
 }
 
 // RecordInput records user input data.
@@ -286,6 +291,11 @@ func (r *Recorder) RecordOutput(data string) {
 // Input events are recorded but typically not displayed during playback
 // (most players only render output events). They're useful for analysis
 // and understanding user interactions with the terminal.
+//
+// If RedactSecrets is enabled, the same redaction applied to output is
+// applied to input. Note that input often arrives keystroke by keystroke,
+// which can defeat pattern-based redaction; pause recording around
+// sensitive prompts for stronger guarantees.
 //
 // This method is safe to call from multiple goroutines.
 func (r *Recorder) RecordInput(data string) {
@@ -304,27 +314,15 @@ func (r *Recorder) RecordInput(data string) {
 		return
 	}
 
-	now := time.Now()
-	elapsed := now.Sub(r.startTime).Seconds()
-
-	// Apply idle time limit
-	if r.idleTimeLimit > 0 {
-		timeSinceLastEvent := now.Sub(r.lastEventTime).Seconds()
-		if timeSinceLastEvent > r.idleTimeLimit {
-			// Accumulate the excess time so subsequent events stay consistent
-			r.timeAdjust += timeSinceLastEvent - r.idleTimeLimit
-		}
+	if r.redactSecrets {
+		data = terminal.RedactCredentials(data)
 	}
 
-	r.lastEventTime = now
-
-	event := RecordingEvent{
-		Time: elapsed - r.timeAdjust,
+	r.writeEvent(RecordingEvent{
+		Time: r.eventTimeLocked(time.Now()),
 		Type: "i",
 		Data: data,
-	}
-
-	r.writeEvent(event)
+	})
 }
 
 // Pause temporarily suspends recording.
@@ -338,7 +336,10 @@ func (r *Recorder) Pause() {
 	}
 
 	r.mu.Lock()
-	r.paused = true
+	if !r.paused {
+		r.paused = true
+		r.pauseStart = time.Now()
+	}
 	r.mu.Unlock()
 }
 
@@ -352,8 +353,13 @@ func (r *Recorder) Resume() {
 	}
 
 	r.mu.Lock()
-	r.paused = false
-	r.lastEventTime = time.Now() // Reset to avoid huge time jump
+	if r.paused {
+		r.paused = false
+		// Remove the paused duration from the timeline so the recording
+		// resumes from the point where Pause was called.
+		r.timeAdjust += time.Since(r.pauseStart).Seconds()
+		r.lastEventTime = time.Now()
+	}
 	r.mu.Unlock()
 }
 
@@ -370,18 +376,32 @@ func (r *Recorder) IsPaused() bool {
 
 // UpdateSize updates the recorded terminal dimensions.
 //
-// This should be called when the terminal is resized to keep the
-// metadata accurate. Note: asciinema v2 doesn't have explicit resize
-// events, so this only updates internal tracking.
+// This should be called when the terminal is resized. If the size actually
+// changed, an asciicast v2 resize event ([time, "r", "COLSxROWS"]) is
+// written so players can reproduce the resize during playback.
 func (r *Recorder) UpdateSize(width, height int) {
 	if r == nil {
 		return
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if width == r.width && height == r.height {
+		return
+	}
 	r.width = width
 	r.height = height
-	r.mu.Unlock()
+
+	if r.paused || r.closed {
+		return
+	}
+
+	r.writeEvent(RecordingEvent{
+		Time: r.eventTimeLocked(time.Now()),
+		Type: "r",
+		Data: fmt.Sprintf("%dx%d", width, height),
+	})
 }
 
 // writeEvent writes a single event to the recording file

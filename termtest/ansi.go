@@ -3,96 +3,151 @@ package termtest
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // processANSI parses ANSI escape sequences and updates the screen state.
-func (s *Screen) processANSI(data string) {
+// It returns the number of bytes consumed; a trailing incomplete escape
+// sequence or UTF-8 rune is left unconsumed so Write can buffer it until
+// the remaining bytes arrive.
+func (s *Screen) processANSI(data string) int {
 	i := 0
 	for i < len(data) {
 		if data[i] == '\x1b' {
 			// Start of escape sequence
-			if i+1 < len(data) {
-				switch data[i+1] {
-				case '[':
-					// CSI sequence
-					end := s.parseCSI(data[i+2:])
-					if end >= 0 {
-						i += 2 + end
-						continue
-					}
-				case ']':
-					// OSC sequence (Operating System Command)
-					end := s.parseOSC(data[i+2:])
-					if end >= 0 {
-						i += 2 + end
-						continue
-					}
-				case '(':
-					// Character set designation, skip
-					if i+2 < len(data) {
-						i += 3
-						continue
-					}
-				case '7':
-					// Save cursor
-					s.savedX = s.cursorX
-					s.savedY = s.cursorY
-					i += 2
-					continue
-				case '8':
-					// Restore cursor
-					s.cursorX = s.savedX
-					s.cursorY = s.savedY
-					i += 2
-					continue
-				case 'c':
-					// Reset terminal
-					s.Clear()
-					s.style = Style{}
-					i += 2
-					continue
-				case 'M':
-					// Reverse index (scroll down)
-					if s.cursorY == 0 {
-						s.scrollDown()
-					} else {
-						s.cursorY--
-					}
-					i += 2
-					continue
-				case 'D':
-					// Index (scroll up)
-					if s.cursorY == s.height-1 {
-						s.scrollUp()
-					} else {
-						s.cursorY++
-					}
-					i += 2
-					continue
-				case 'E':
-					// Next line
-					s.cursorX = 0
-					if s.cursorY < s.height-1 {
-						s.cursorY++
-					}
-					i += 2
+			if i+1 >= len(data) {
+				return i // Lone ESC at end of data: wait for more bytes
+			}
+			switch data[i+1] {
+			case '\x1b':
+				// ESC ESC (e.g. Alt-prefixed sequence): consume the first
+				// ESC and reprocess from the second.
+				i++
+				continue
+			case '[':
+				// CSI sequence
+				end := s.parseCSI(data[i+2:])
+				if end >= 0 {
+					i += 2 + end
 					continue
 				}
+				return i // Incomplete sequence
+			case ']':
+				// OSC sequence (Operating System Command)
+				end := s.parseOSC(data[i+2:])
+				if end >= 0 {
+					i += 2 + end
+					continue
+				}
+				return i // Incomplete sequence
+			case 'P', 'X', '^', '_':
+				// DCS/SOS/PM/APC: string sequence, consume payload through ST
+				end := parseStringTerminator(data[i+2:])
+				if end >= 0 {
+					i += 2 + end
+					continue
+				}
+				return i // Incomplete sequence
+			case '(', ')', '*', '+':
+				// Character set designation, skip
+				if i+2 < len(data) {
+					i += 3
+					continue
+				}
+				return i // Incomplete sequence
+			case '7':
+				// Save cursor and attributes (DECSC)
+				s.savedX = s.cursorX
+				s.savedY = s.cursorY
+				s.savedStyle = s.style
+				i += 2
+				continue
+			case '8':
+				// Restore cursor and attributes (DECRC)
+				s.wrapPending = false
+				s.cursorX = s.savedX
+				s.cursorY = s.savedY
+				s.style = s.savedStyle
+				i += 2
+				continue
+			case 'c':
+				// Reset terminal (RIS)
+				s.Reset()
+				i += 2
+				continue
+			case 'M':
+				// Reverse index (scroll down)
+				s.wrapPending = false
+				if s.cursorY == 0 {
+					s.scrollDown()
+				} else {
+					s.cursorY--
+				}
+				i += 2
+				continue
+			case 'D':
+				// Index (scroll up)
+				s.wrapPending = false
+				if s.cursorY == s.height-1 {
+					s.scrollUp()
+				} else {
+					s.cursorY++
+				}
+				i += 2
+				continue
+			case 'E':
+				// Next line (NEL): carriage return + index, scrolls at bottom
+				s.wrapPending = false
+				s.cursorX = 0
+				s.lineFeed()
+				i += 2
+				continue
 			}
-			// Unknown escape, skip the ESC
-			i++
+			// Unknown escape (ESC =, ESC >, ...): skip the ESC and its final byte
+			i += 2
 		} else {
 			// Parse a contiguous run of plain text so grapheme clusters are
 			// segmented as whole display cells rather than rune-by-rune.
 			nextEscape := strings.IndexByte(data[i:], '\x1b')
 			if nextEscape < 0 {
-				s.WriteString(data[i:])
-				break
+				run := data[i:]
+				tail := incompleteRuneTail(run)
+				s.WriteString(run[:len(run)-tail])
+				return len(data) - tail
 			}
 			s.WriteString(data[i : i+nextEscape])
 			i += nextEscape
 		}
 	}
+	return len(data)
+}
+
+// incompleteRuneTail returns the number of trailing bytes in str that form
+// the prefix of an incomplete multi-byte UTF-8 rune, or 0 if the string ends
+// on a rune boundary (or with bytes that can never become a valid rune).
+func incompleteRuneTail(str string) int {
+	for back := 1; back <= utf8.UTFMax && back <= len(str); back++ {
+		b := str[len(str)-back]
+		if utf8.RuneStart(b) {
+			if b >= 0xC0 && !utf8.FullRuneInString(str[len(str)-back:]) {
+				return back
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+// parseStringTerminator scans for the ST (ESC \) terminator of a DCS, SOS,
+// PM, or APC string sequence. Returns the number of bytes consumed including
+// the terminator, or -1 if the sequence is incomplete.
+func parseStringTerminator(data string) int {
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\x1b' && i+1 < len(data) && data[i+1] == '\\' {
+			return i + 2
+		}
+	}
+	return -1
 }
 
 // parseCSI parses a CSI (Control Sequence Introducer) sequence.
@@ -118,8 +173,23 @@ func (s *Screen) parseCSI(data string) int {
 	params := data[:end]
 	cmd := data[end]
 
+	// Private-parameter sequences (CSI ?, CSI >, CSI =) such as DEC private
+	// modes or xterm modifyOtherKeys don't affect screen content; consume
+	// and ignore them so e.g. "CSI >4;2m" isn't misread as SGR.
+	if len(params) > 0 && (params[0] == '?' || params[0] == '>' || params[0] == '=') {
+		return end + 1
+	}
+
 	// Parse parameters
 	args := parseParams(params)
+
+	// Commands that move the cursor or edit the line cancel a deferred wrap.
+	switch cmd {
+	case 'm', 'n', 'c', 't', 'h', 'l', 'r':
+		// No cursor effect; keep deferred-wrap state.
+	default:
+		s.wrapPending = false
+	}
 
 	switch cmd {
 	case 'A': // Cursor Up
@@ -158,7 +228,8 @@ func (s *Screen) parseCSI(data string) int {
 		case 1:
 			s.ClearToStartOfScreen()
 		case 2, 3:
-			s.Clear()
+			// ED never moves the cursor (apps send ESC[2J ESC[H as a pair)
+			s.clearCells()
 		}
 	case 'K': // Erase in Line
 		n := getParam(args, 0, 0)
@@ -189,7 +260,7 @@ func (s *Screen) parseCSI(data string) int {
 		n := getParam(args, 0, 1)
 		s.cursorY = clamp(n-1, 0, s.height-1)
 	case 'm': // SGR - Select Graphic Rendition
-		s.processSGR(args)
+		s.processSGR(parseSGRParams(params))
 	case 's': // Save Cursor Position
 		s.savedX = s.cursorX
 		s.savedY = s.cursorY
@@ -224,14 +295,24 @@ func (s *Screen) parseOSC(data string) int {
 	return -1 // Incomplete
 }
 
+// sgrParam is a single SGR parameter with optional colon-separated
+// sub-parameters (e.g. "38:2::r:g:b" or "4:3"). Sub-parameters are scoped to
+// their parameter per ECMA-48 / ITU T.416, unlike semicolon-separated
+// parameters which form independent top-level entries.
+type sgrParam struct {
+	value int
+	sub   []int
+}
+
 // processSGR processes SGR (Select Graphic Rendition) parameters.
-func (s *Screen) processSGR(args []int) {
-	if len(args) == 0 {
-		args = []int{0}
+func (s *Screen) processSGR(params []sgrParam) {
+	if len(params) == 0 {
+		params = []sgrParam{{value: 0}}
 	}
 
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
+	for i := 0; i < len(params); i++ {
+		p := params[i]
+		switch p.value {
 		case 0: // Reset
 			s.style = Style{}
 		case 1: // Bold
@@ -240,8 +321,12 @@ func (s *Screen) processSGR(args []int) {
 			s.style.Dim = true
 		case 3: // Italic
 			s.style.Italic = true
-		case 4: // Underline
-			s.style.Underline = true
+		case 4: // Underline; "4:0" disables, "4:n" selects an underline style
+			if len(p.sub) > 0 && p.sub[0] == 0 {
+				s.style.Underline = false
+			} else {
+				s.style.Underline = true
+			}
 		case 5: // Blink
 			s.style.Blink = true
 		case 7: // Reverse
@@ -268,88 +353,123 @@ func (s *Screen) processSGR(args []int) {
 		case 29: // Not struck
 			s.style.Strike = false
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Standard foreground colors
-			s.style.Foreground = Color{Type: ColorBasic, Value: uint8(args[i] - 30)}
+			s.style.Foreground = Color{Type: ColorBasic, Value: uint8(p.value - 30)}
 		case 38: // Extended foreground color
-			if i+1 < len(args) {
-				switch args[i+1] {
-				case 5: // 256-color
-					if i+2 < len(args) {
-						s.style.Foreground = Color{Type: Color256, Value: uint8(args[i+2])}
-						i += 2
-					}
-				case 2: // RGB
-					if i+4 < len(args) {
-						s.style.Foreground = Color{
-							Type: ColorRGB,
-							R:    uint8(args[i+2]),
-							G:    uint8(args[i+3]),
-							B:    uint8(args[i+4]),
-						}
-						i += 4
-					}
-				}
+			if color, consumed, ok := parseExtendedColor(params, i); ok {
+				s.style.Foreground = color
+				i += consumed
 			}
 		case 39: // Default foreground
 			s.style.Foreground = Color{}
 		case 40, 41, 42, 43, 44, 45, 46, 47: // Standard background colors
-			s.style.Background = Color{Type: ColorBasic, Value: uint8(args[i] - 40)}
+			s.style.Background = Color{Type: ColorBasic, Value: uint8(p.value - 40)}
 		case 48: // Extended background color
-			if i+1 < len(args) {
-				switch args[i+1] {
-				case 5: // 256-color
-					if i+2 < len(args) {
-						s.style.Background = Color{Type: Color256, Value: uint8(args[i+2])}
-						i += 2
-					}
-				case 2: // RGB
-					if i+4 < len(args) {
-						s.style.Background = Color{
-							Type: ColorRGB,
-							R:    uint8(args[i+2]),
-							G:    uint8(args[i+3]),
-							B:    uint8(args[i+4]),
-						}
-						i += 4
-					}
-				}
+			if color, consumed, ok := parseExtendedColor(params, i); ok {
+				s.style.Background = color
+				i += consumed
 			}
 		case 49: // Default background
 			s.style.Background = Color{}
 		case 90, 91, 92, 93, 94, 95, 96, 97: // Bright foreground colors
-			s.style.Foreground = Color{Type: ColorBasic, Value: uint8(args[i] - 90 + 8)}
+			s.style.Foreground = Color{Type: ColorBasic, Value: uint8(p.value - 90 + 8)}
 		case 100, 101, 102, 103, 104, 105, 106, 107: // Bright background colors
-			s.style.Background = Color{Type: ColorBasic, Value: uint8(args[i] - 100 + 8)}
+			s.style.Background = Color{Type: ColorBasic, Value: uint8(p.value - 100 + 8)}
 		}
 	}
 }
 
+// parseExtendedColor parses an extended color (SGR 38/48) starting at
+// params[i]. It supports the semicolon form (38;5;n and 38;2;r;g;b), which
+// consumes following top-level parameters, and the colon sub-parameter forms
+// (38:5:n, 38:2:r:g:b, and ITU T.416 38:2:colorspace:r:g:b), which are
+// self-contained. Returns the color, the number of extra top-level
+// parameters consumed, and whether parsing succeeded.
+func parseExtendedColor(params []sgrParam, i int) (Color, int, bool) {
+	if sub := params[i].sub; len(sub) > 0 {
+		switch sub[0] {
+		case 5: // 256-color
+			if len(sub) >= 2 {
+				return Color{Type: Color256, Value: uint8(sub[1])}, 0, true
+			}
+		case 2: // RGB
+			if len(sub) >= 5 {
+				// 2:colorspace:r:g:b (colorspace ID ignored)
+				return Color{Type: ColorRGB, R: uint8(sub[2]), G: uint8(sub[3]), B: uint8(sub[4])}, 0, true
+			}
+			if len(sub) == 4 {
+				// 2:r:g:b
+				return Color{Type: ColorRGB, R: uint8(sub[1]), G: uint8(sub[2]), B: uint8(sub[3])}, 0, true
+			}
+		}
+		return Color{}, 0, false
+	}
+
+	// Semicolon form: color components are independent parameters
+	if i+1 < len(params) {
+		switch params[i+1].value {
+		case 5: // 256-color
+			if i+2 < len(params) {
+				return Color{Type: Color256, Value: uint8(params[i+2].value)}, 2, true
+			}
+		case 2: // RGB
+			if i+4 < len(params) {
+				return Color{
+					Type: ColorRGB,
+					R:    uint8(params[i+2].value),
+					G:    uint8(params[i+3].value),
+					B:    uint8(params[i+4].value),
+				}, 4, true
+			}
+		}
+	}
+	return Color{}, 0, false
+}
+
 // parseParams parses semicolon-separated parameters.
+// Colon-separated sub-parameters are only meaningful for SGR, which uses
+// parseSGRParams; here only each parameter's primary value is kept.
 func parseParams(s string) []int {
 	if s == "" {
 		return nil
 	}
 
-	// Handle private mode prefix
-	if len(s) > 0 && s[0] == '?' {
+	// Strip a private-parameter prefix for robustness; parseCSI normally
+	// filters private sequences out before they get here.
+	if s[0] == '?' || s[0] == '>' || s[0] == '=' {
 		s = s[1:]
+		if s == "" {
+			return nil
+		}
 	}
 
 	parts := strings.Split(s, ";")
 	result := make([]int, len(parts))
 	for i, p := range parts {
-		// Handle colon-separated subparameters (e.g., "38:2:r:g:b")
-		if strings.Contains(p, ":") {
-			subparts := strings.Split(p, ":")
-			for j, sp := range subparts {
-				if j == 0 {
-					result[i], _ = strconv.Atoi(sp)
-				} else {
-					n, _ := strconv.Atoi(sp)
-					result = append(result, n)
-				}
+		if idx := strings.IndexByte(p, ':'); idx >= 0 {
+			p = p[:idx]
+		}
+		result[i], _ = strconv.Atoi(p)
+	}
+	return result
+}
+
+// parseSGRParams parses SGR parameters, preserving the grouping of
+// colon-separated sub-parameters within each semicolon-separated parameter.
+func parseSGRParams(s string) []sgrParam {
+	if s == "" {
+		return nil
+	}
+
+	parts := strings.Split(s, ";")
+	result := make([]sgrParam, len(parts))
+	for i, p := range parts {
+		subparts := strings.Split(p, ":")
+		result[i].value, _ = strconv.Atoi(subparts[0])
+		if len(subparts) > 1 {
+			result[i].sub = make([]int, len(subparts)-1)
+			for j, sp := range subparts[1:] {
+				result[i].sub[j], _ = strconv.Atoi(sp)
 			}
-		} else {
-			result[i], _ = strconv.Atoi(p)
 		}
 	}
 	return result
@@ -456,7 +576,9 @@ func (s *Screen) deleteLines(n int) {
 	}
 }
 
-// deleteChars deletes n characters at the cursor position.
+// deleteChars deletes n characters at the cursor position (DCH).
+// Characters left of the cursor are unaffected; characters right of the
+// deleted range shift left and the line is blank-filled at the end.
 func (s *Screen) deleteChars(n int) {
 	if n <= 0 {
 		return
@@ -464,16 +586,16 @@ func (s *Screen) deleteChars(n int) {
 	y := s.cursorY
 	start := clamp(s.cursorX, 0, s.width)
 	end := min(s.width, start+n)
-	prefixLimit := min(start, max(s.width-n, 0))
+	shift := end - start
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
 		glyphEnd := g.start + g.width
 		switch {
-		case glyphEnd <= prefixLimit:
+		case glyphEnd <= start:
 			rewritten = append(rewritten, g)
 		case g.start >= end:
-			g.start -= n
+			g.start -= shift
 			rewritten = append(rewritten, g)
 		default:
 			// Drop glyphs that overlap the deleted column range so we never

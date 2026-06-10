@@ -159,8 +159,19 @@ func ParseMouseEvent(seq []byte) (*MouseEvent, error) {
 
 	// Determine button and type
 	if action == 'm' {
-		event.Button = MouseButtonNone
+		// SGR release: unlike legacy X10, the released button is encoded
+		// in the parameter, so report it.
 		event.Type = MouseRelease
+		switch button & 3 {
+		case 0:
+			event.Button = MouseButtonLeft
+		case 1:
+			event.Button = MouseButtonMiddle
+		case 2:
+			event.Button = MouseButtonRight
+		case 3:
+			event.Button = MouseButtonNone
+		}
 	} else {
 		baseButton := button & 3
 
@@ -216,7 +227,10 @@ func ParseMouseEvent(seq []byte) (*MouseEvent, error) {
 			case 2:
 				event.Button = MouseButtonRight
 			case 3:
+				// Button code 3 with 'M' is the legacy X10 release event
+				// (X10 doesn't encode which button was released).
 				event.Button = MouseButtonNone
+				event.Type = MouseRelease
 			}
 		}
 	}

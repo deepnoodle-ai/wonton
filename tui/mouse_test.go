@@ -44,13 +44,13 @@ func TestParseMouseEvent_SGR_MiddleClick(t *testing.T) {
 }
 
 func TestParseMouseEvent_SGR_Release(t *testing.T) {
-	// Lowercase 'm' indicates release
+	// Lowercase 'm' indicates release; SGR encodes which button was released
 	seq := []byte("<0;10;5m")
 	event, err := ParseMouseEvent(seq)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, event)
-	assert.Equal(t, MouseButtonNone, event.Button)
+	assert.Equal(t, MouseButtonLeft, event.Button)
 	assert.Equal(t, MouseRelease, event.Type)
 }
 

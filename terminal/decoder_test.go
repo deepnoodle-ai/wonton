@@ -376,7 +376,7 @@ func TestKeyDecoder_ReadEvent_MouseEvent(t *testing.T) {
 			input:          []byte{0x1B, '[', '<', '0', ';', '5', ';', '5', 'm'},
 			expectedX:      4,
 			expectedY:      4,
-			expectedButton: MouseButtonNone,
+			expectedButton: MouseButtonLeft,
 			expectedType:   MouseRelease,
 		},
 		{
