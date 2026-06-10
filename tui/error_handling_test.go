@@ -247,15 +247,13 @@ func TestGradient_EdgeCases(t *testing.T) {
 	start := NewRGB(255, 0, 0)
 	end := NewRGB(0, 0, 255)
 
-	// Zero steps - returns start color
+	// Zero steps - returns empty
 	colors := Gradient(start, end, 0)
-	assert.Len(t, colors, 1)
-	assert.Equal(t, start, colors[0])
+	assert.Len(t, colors, 0)
 
-	// Negative steps - returns start color (steps <= 1)
+	// Negative steps - returns empty
 	colors = Gradient(start, end, -5)
-	assert.Len(t, colors, 1)
-	assert.Equal(t, start, colors[0])
+	assert.Len(t, colors, 0)
 
 	// One step - returns start color
 	colors = Gradient(start, end, 1)
