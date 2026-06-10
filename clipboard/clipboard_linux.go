@@ -6,7 +6,6 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 // read implements clipboard reading for Linux.
@@ -25,22 +24,24 @@ func read(ctx context.Context) (string, error) {
 		}
 	}
 
-	// Try xclip first
+	// Try xclip first. xclip outputs the clipboard contents verbatim, so no
+	// trimming is needed; trimming would corrupt content that legitimately
+	// ends with a newline.
 	if _, err := exec.LookPath("xclip"); err == nil {
 		out, err := runCommand(ctx, "xclip", "-selection", "clipboard", "-o")
 		if err != nil {
 			return "", err
 		}
-		return strings.TrimSuffix(string(out), "\n"), nil
+		return string(out), nil
 	}
 
-	// Try xsel
+	// Try xsel, which also outputs the clipboard contents verbatim.
 	if _, err := exec.LookPath("xsel"); err == nil {
 		out, err := runCommand(ctx, "xsel", "--clipboard", "--output")
 		if err != nil {
 			return "", err
 		}
-		return strings.TrimSuffix(string(out), "\n"), nil
+		return string(out), nil
 	}
 
 	return "", ErrUnavailable

@@ -42,6 +42,9 @@
 //   - Windows: Uses PowerShell Get-Clipboard and clip.exe commands
 //   - Other platforms: Returns ErrUnavailable
 //
+// Read returns the clipboard contents verbatim, including any trailing
+// newline, so Write followed by Read round-trips text exactly.
+//
 // Use the Available function to check if clipboard functionality is supported:
 //
 //	if !clipboard.Available() {
@@ -63,6 +66,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -215,15 +219,16 @@ func Clear() error {
 // runCommand executes a command with context and returns stdout.
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, ErrTimeout
 	}
 	if err != nil {
-		return nil, err
+		return nil, commandError(name, err, stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
 }
@@ -232,10 +237,23 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 func runCommandWithStdin(ctx context.Context, input string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(input)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return ErrTimeout
 	}
-	return err
+	if err != nil {
+		return commandError(name, err, stderr.Bytes())
+	}
+	return nil
+}
+
+// commandError wraps a command failure, including any stderr output for context.
+func commandError(name string, err error, stderr []byte) error {
+	if msg := strings.TrimSpace(string(stderr)); msg != "" {
+		return fmt.Errorf("clipboard: %s: %w: %s", name, err, msg)
+	}
+	return fmt.Errorf("clipboard: %s: %w", name, err)
 }

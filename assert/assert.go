@@ -85,6 +85,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -96,7 +97,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-var colorEnabled = color.IsTerminal(os.Stderr)
+var colorEnabled = color.ShouldColorize(os.Stderr)
 
 // SetColorEnabled enables or disables colored output in diff messages.
 //
@@ -130,14 +131,22 @@ var defaultOpts = []gocmp.Option{
 //	assert.Equal(t, user, want, "fetching user %d", userID)
 func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		diff := gocmp.Diff(want, got, defaultOpts...)
-		msg := formatMsg(msgAndArgs...)
-		if msg != "" {
-			t.Fatalf("\n%s\n%s", formatDiff(diff), msg)
-		} else {
-			t.Fatalf("\n%s", formatDiff(diff))
-		}
+	if reflect.DeepEqual(got, want) {
+		return
+	}
+	// reflect.DeepEqual and go-cmp can disagree (e.g. for types with an Equal
+	// method such as time.Time, where go-cmp is more lenient). Treat the values
+	// as equal if either comparison passes, so a failure always comes with a
+	// non-empty diff.
+	diff := gocmp.Diff(want, got, defaultOpts...)
+	if diff == "" {
+		return
+	}
+	msg := formatMsg(msgAndArgs...)
+	if msg != "" {
+		t.Fatalf("\n%s\n%s", formatDiff(diff), msg)
+	} else {
+		t.Fatalf("\n%s", formatDiff(diff))
 	}
 }
 
@@ -163,7 +172,9 @@ func EqualOpts(t testing.TB, got, want any, opts ...gocmp.Option) {
 // NotEqual asserts that got and want are not deeply equal.
 func NotEqual(t testing.TB, got, want any, msgAndArgs ...any) {
 	t.Helper()
-	if gocmp.Equal(got, want) {
+	// Use the same options as Equal so unexported fields are supported
+	// (gocmp.Equal without an Exporter panics on unexported fields).
+	if reflect.DeepEqual(got, want) || gocmp.Equal(got, want, defaultOpts...) {
 		msg := formatMsg(msgAndArgs...)
 		if msg != "" {
 			t.Fatalf("expected values to differ, but both are:\n%#v\n%s", got, msg)
@@ -372,7 +383,19 @@ func NotContains(t testing.TB, haystack, needle any, msgAndArgs ...any) {
 //	assert.Len(t, map[string]int{"a": 1, "b": 2}, 2)
 func Len(t testing.TB, v any, want int, msgAndArgs ...any) {
 	t.Helper()
-	got := reflect.ValueOf(v).Len()
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
+	default:
+		msg := formatMsg(msgAndArgs...)
+		if msg != "" {
+			t.Fatalf("cannot get length of %T value\n%s", v, msg)
+		} else {
+			t.Fatalf("cannot get length of %T value", v)
+		}
+		return
+	}
+	got := rv.Len()
 	if got != want {
 		msg := formatMsg(msgAndArgs...)
 		if msg != "" {
@@ -516,6 +539,15 @@ func LessOrEqual[T cmp.Ordered](t testing.TB, a, b T, msgAndArgs ...any) {
 //	assert.InDelta(t, result, 6.283, 0.001)
 func InDelta(t testing.TB, expected, actual, delta float64, msgAndArgs ...any) {
 	t.Helper()
+	if math.IsNaN(expected) || math.IsNaN(actual) || math.IsNaN(delta) {
+		msg := formatMsg(msgAndArgs...)
+		if msg != "" {
+			t.Fatalf("InDelta does not support NaN arguments (expected=%v, actual=%v, delta=%v)\n%s", expected, actual, delta, msg)
+		} else {
+			t.Fatalf("InDelta does not support NaN arguments (expected=%v, actual=%v, delta=%v)", expected, actual, delta)
+		}
+		return
+	}
 	diff := expected - actual
 	if diff < 0 {
 		diff = -diff
@@ -546,7 +578,12 @@ func Regexp(t testing.TB, pattern any, str string, msgAndArgs ...any) {
 	case *regexp.Regexp:
 		re = p
 	case string:
-		re = regexp.MustCompile(p)
+		var err error
+		re, err = regexp.Compile(p)
+		if err != nil {
+			t.Fatalf("invalid regexp pattern %q: %v", p, err)
+			return
+		}
 	default:
 		t.Fatalf("pattern must be string or *regexp.Regexp, got %T", pattern)
 		return
@@ -621,7 +658,7 @@ func isNil(v any) bool {
 	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
 		return rv.IsNil()
 	}
 	return false
@@ -660,7 +697,13 @@ func contains(haystack, needle any) bool {
 	hv := reflect.ValueOf(haystack)
 	switch hv.Kind() {
 	case reflect.String:
-		return strings.Contains(hv.String(), reflect.ValueOf(needle).String())
+		// Only a string-kind needle can be a substring; reflect's String()
+		// returns placeholder text like "<int Value>" for other kinds.
+		nv := reflect.ValueOf(needle)
+		if nv.Kind() != reflect.String {
+			return false
+		}
+		return strings.Contains(hv.String(), nv.String())
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < hv.Len(); i++ {
 			if gocmp.Equal(hv.Index(i).Interface(), needle) {
