@@ -80,6 +80,16 @@ func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
 		opt(cfg)
 	}
 
+	// Force non-interactive, no-color for deterministic test output
+	origForceInteractive := a.forceInteractive
+	origColorEnabled := a.colorEnabled
+	a.ForceInteractive(false)
+	a.colorEnabled = false
+	defer func() {
+		a.forceInteractive = origForceInteractive
+		a.colorEnabled = origColorEnabled
+	}()
+
 	// Set up I/O capture
 	var stdout, stderr bytes.Buffer
 	origStdout, origStderr := a.stdout, a.stderr
@@ -141,6 +151,7 @@ func (r *TestResult) Failed() bool {
 func TestApp(name string) *App {
 	app := New(name)
 	app.isInteractive = false
+	app.colorEnabled = false
 	app.SetStdin(strings.NewReader(""))
 	app.SetStdout(&bytes.Buffer{})
 	app.SetStderr(&bytes.Buffer{})

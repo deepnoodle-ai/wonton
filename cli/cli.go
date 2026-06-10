@@ -816,81 +816,6 @@ func (a *App) findGroup(name string) (*Group, string, bool) {
 	return nil, "", false
 }
 
-// findCommand looks up a command by name, including group commands and aliases.
-// It returns the command, the remaining args (after consuming subcommand name if applicable), and any error.
-func (a *App) findCommand(name string, args []string) (*Command, []string, error) {
-	// Check direct commands first
-	if cmd, ok := a.commands[name]; ok {
-		return cmd, args, nil
-	}
-
-	// Check aliases for direct commands
-	for _, cmd := range a.commands {
-		for _, alias := range cmd.aliases {
-			if alias == name {
-				return cmd, args, nil
-			}
-		}
-	}
-
-	// Check for group:command pattern
-	parts := strings.SplitN(name, ":", 2)
-	if len(parts) == 2 {
-		if g, _, ok := a.findGroup(parts[0]); ok {
-			if cmd, ok := g.commands[parts[1]]; ok {
-				return cmd, args, nil
-			}
-			// Check aliases within the group
-			for _, cmd := range g.commands {
-				for _, alias := range cmd.aliases {
-					if alias == parts[1] {
-						return cmd, args, nil
-					}
-				}
-			}
-		}
-	}
-
-	// Check groups with space-separated subcommand (e.g., "users list" as args ["users", "list"])
-	if group, _, ok := a.findGroup(name); ok {
-		if len(args) > 0 {
-			subName := args[0]
-			// Handle help flags for the group
-			if subName == "--help" || subName == "-h" {
-				return nil, nil, group.showHelp()
-			}
-			// Check direct subcommand
-			if cmd, ok := group.commands[subName]; ok {
-				return cmd, args[1:], nil
-			}
-			// Check aliases within the group
-			for _, cmd := range group.commands {
-				for _, alias := range cmd.aliases {
-					if alias == subName {
-						return cmd, args[1:], nil
-					}
-				}
-			}
-			// Not a subcommand - if group has handler, treat as positional args
-			if group.handler != nil {
-				return group.asCommand(), args, nil
-			}
-			// No handler - unknown subcommand
-			return nil, nil, fmt.Errorf("unknown subcommand '%s' for group '%s'\n\nAvailable commands:\n%s",
-				subName, name, group.commandList())
-		}
-		// No args provided
-		if group.handler != nil {
-			return group.asCommand(), args, nil
-		}
-		// No handler - requires a subcommand
-		return nil, nil, fmt.Errorf("group '%s' requires a subcommand\n\nAvailable commands:\n%s",
-			name, group.commandList())
-	}
-
-	return nil, nil, fmt.Errorf("unknown command: %s\n\nRun '%s help' for usage", name, a.name)
-}
-
 // showHelp displays the application help.
 func (a *App) showHelp() error {
 	if a.colorEnabled {
@@ -967,9 +892,6 @@ func (a *App) showHelp() error {
 	if len(a.commands) > 0 && hasSubcmds {
 		sb.WriteString("Commands:\n")
 		order := a.commandOrder
-		if len(order) == 0 {
-			order = sortedKeys(a.commands)
-		}
 		for _, name := range order {
 			cmd := a.commands[name]
 			if cmd == nil || cmd.hidden || name == "" {
@@ -988,9 +910,6 @@ func (a *App) showHelp() error {
 		}
 		sb.WriteString(fmt.Sprintf("%s:\n", strings.ToUpper(name)))
 		subOrder := group.commandOrder
-		if len(subOrder) == 0 {
-			subOrder = sortedKeys(group.commands)
-		}
 		for _, subName := range subOrder {
 			cmd := group.commands[subName]
 			if cmd == nil || cmd.hidden {
@@ -1005,9 +924,6 @@ func (a *App) showHelp() error {
 	if a.hasNonFlatGroups() {
 		sb.WriteString("Command Groups:\n")
 		order := a.groupOrder
-		if len(order) == 0 {
-			order = sortedGroupKeys(a.groups)
-		}
 		first := true
 		for _, name := range order {
 			group := a.groups[name]
@@ -1025,9 +941,6 @@ func (a *App) showHelp() error {
 			}
 			if group.isExpanded() {
 				subOrder := group.commandOrder
-				if len(subOrder) == 0 {
-					subOrder = sortedKeys(group.commands)
-				}
 				subWidth := 0
 				for _, subName := range subOrder {
 					cmd := group.commands[subName]
@@ -1121,11 +1034,6 @@ type Group struct {
 func (g *Group) Alias(names ...string) *Group {
 	g.aliases = append(g.aliases, names...)
 	return g
-}
-
-// Aliases sets group aliases (alias for Alias).
-func (g *Group) Aliases(names ...string) *Group {
-	return g.Alias(names...)
 }
 
 // Description sets the group description.
@@ -1234,7 +1142,11 @@ func (g *Group) asCommand() *Command {
 
 func (g *Group) commandList() string {
 	var sb strings.Builder
-	for name, cmd := range g.commands {
+	for _, name := range g.commandOrder {
+		cmd := g.commands[name]
+		if cmd == nil {
+			continue
+		}
 		if g.app.colorEnabled {
 			sb.WriteString(fmt.Sprintf("  %s %s - %s\n", color.Green.Apply(g.name), color.Green.Apply(name), cmd.description))
 		} else {

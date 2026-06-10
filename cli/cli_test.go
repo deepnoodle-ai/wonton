@@ -1509,7 +1509,7 @@ func TestCommandAliases(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("generate").
 		Description("Generate").
-		Aliases("gen", "g", "create").
+		Alias("gen", "g", "create").
 		Run(func(ctx *Context) error {
 			executed = true
 			return nil
@@ -1605,7 +1605,7 @@ func TestGroupAliases(t *testing.T) {
 
 	t.Run("Aliases setter is equivalent to Alias", func(t *testing.T) {
 		app := New("test")
-		g := app.Group("users").Aliases("user", "u")
+		g := app.Group("users").Alias("user", "u")
 		assert.Equal(t, []string{"user", "u"}, g.aliases)
 	})
 }
@@ -2465,22 +2465,17 @@ func TestCommandWithContext(t *testing.T) {
 	assert.NotNil(t, receivedCtx)
 }
 
-func TestInvalidIntFlagFallsBackToZero(t *testing.T) {
-	var count int
+func TestInvalidIntFlagReturnsError(t *testing.T) {
 	app := New("test").Description("Test")
 
 	app.Command("run").
 		Description("Run").
 		Flags(&IntFlag{Name: "count"}).
-		Run(func(ctx *Context) error {
-			count = ctx.Int("count")
-			return nil
-		})
+		Run(func(ctx *Context) error { return nil })
 
-	// Invalid int values are stored as strings, and ctx.Int returns 0
+	// Invalid int values now return an error rather than silently falling back to zero
 	err := app.ExecuteArgs([]string{"run", "--count=notanumber"})
-	assert.NoError(t, err)
-	assert.Equal(t, 0, count)
+	assert.Error(t, err)
 }
 
 func TestCommandShowHelpFlag(t *testing.T) {
@@ -3110,7 +3105,7 @@ func TestConfirmMiddlewareRequiresInteractive(t *testing.T) {
 
 	app.Command("delete").
 		Description("Delete").
-		Use(Confirm("Are you sure?")).
+		Use(ConfirmBefore("Are you sure?")).
 		Run(func(ctx *Context) error { return nil })
 
 	err := app.ExecuteArgs([]string{"delete"})
@@ -3127,7 +3122,7 @@ func TestConfirmMiddlewareWithConfirmation(t *testing.T) {
 
 	app.Command("delete").
 		Description("Delete").
-		Use(Confirm("Are you sure?")).
+		Use(ConfirmBefore("Are you sure?")).
 		Run(func(ctx *Context) error {
 			executed = true
 			return nil
@@ -3147,7 +3142,7 @@ func TestConfirmMiddlewareWithYes(t *testing.T) {
 
 	app.Command("delete").
 		Description("Delete").
-		Use(Confirm("Are you sure?")).
+		Use(ConfirmBefore("Are you sure?")).
 		Run(func(ctx *Context) error {
 			executed = true
 			return nil
@@ -3167,7 +3162,7 @@ func TestConfirmMiddlewareWithDenial(t *testing.T) {
 
 	app.Command("delete").
 		Description("Delete").
-		Use(Confirm("Are you sure?")).
+		Use(ConfirmBefore("Are you sure?")).
 		Run(func(ctx *Context) error {
 			executed = true
 			return nil
