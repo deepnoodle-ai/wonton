@@ -1,7 +1,7 @@
 package tui
 
-// linkListView displays a vertical list of hyperlinks.
-type linkListView struct {
+// LinkListView displays a vertical list of hyperlinks.
+type LinkListView struct {
 	links []Hyperlink
 	style Style
 	gap   int
@@ -15,8 +15,8 @@ type linkListView struct {
 //		NewHyperlink("https://go.dev", "Go"),
 //		NewHyperlink("https://github.com", "GitHub"),
 //	)
-func LinkList(links ...Hyperlink) *linkListView {
-	return &linkListView{
+func LinkList(links ...Hyperlink) *LinkListView {
+	return &LinkListView{
 		links: links,
 		style: NewStyle().WithUnderline().WithForeground(ColorBlue),
 		gap:   0,
@@ -24,25 +24,25 @@ func LinkList(links ...Hyperlink) *linkListView {
 }
 
 // Style sets the style for all links.
-func (l *linkListView) Style(s Style) *linkListView {
+func (l *LinkListView) Style(s Style) *LinkListView {
 	l.style = s
 	return l
 }
 
 // Gap sets vertical spacing between links.
-func (l *linkListView) Gap(g int) *linkListView {
+func (l *LinkListView) Gap(g int) *LinkListView {
 	l.gap = g
 	return l
 }
 
 // Spacing sets vertical spacing between links.
 // Deprecated: Use Gap instead for consistency with other layout components.
-func (l *linkListView) Spacing(s int) *linkListView {
+func (l *LinkListView) Spacing(s int) *LinkListView {
 	l.gap = s
 	return l
 }
 
-func (l *linkListView) size(maxWidth, maxHeight int) (int, int) {
+func (l *LinkListView) size(maxWidth, maxHeight int) (int, int) {
 	w := 0
 	for _, link := range l.links {
 		linkW, _ := MeasureText(link.Text)
@@ -64,7 +64,7 @@ func (l *linkListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (l *linkListView) render(ctx *RenderContext) {
+func (l *LinkListView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(l.links) == 0 {
 		return
@@ -83,4 +83,4 @@ func (l *linkListView) render(ctx *RenderContext) {
 	}
 }
 
-// inlineLinkView displays multiple links on a single line with separators
+// InlineLinkView displays multiple links on a single line with separators

@@ -36,7 +36,7 @@ func TestAnimation(t *testing.T) {
 	})
 
 	t.Run("Looping", func(t *testing.T) {
-		anim := NewAnimation(10).WithLoop(true)
+		anim := NewAnimation(10).Loop(true)
 		anim.Start(0)
 
 		// Frame 15 -> progress 0.5 (second loop)
@@ -46,7 +46,7 @@ func TestAnimation(t *testing.T) {
 	})
 
 	t.Run("PingPong", func(t *testing.T) {
-		anim := NewAnimation(10).WithPingPong(true)
+		anim := NewAnimation(10).PingPong(true)
 		anim.Start(0)
 
 		// Frame 5 -> 0.5 (forward)

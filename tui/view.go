@@ -38,8 +38,8 @@ func Empty() View {
 func (e emptyView) render(ctx *RenderContext)               {}
 func (e emptyView) size(maxWidth, maxHeight int) (int, int) { return 0, 0 }
 
-// spacerView expands to fill available space
-type spacerView struct {
+// SpacerView expands to fill available space
+type SpacerView struct {
 	flexFactor int
 	minWidth   int
 	minHeight  int
@@ -61,8 +61,8 @@ type spacerView struct {
 //	    Spacer(),        // Pushes right content to edge
 //	    Text("Right"),
 //	)
-func Spacer() *spacerView {
-	return &spacerView{flexFactor: 1}
+func Spacer() *SpacerView {
+	return &SpacerView{flexFactor: 1}
 }
 
 // Flex sets the flex factor for this spacer, controlling space distribution.
@@ -77,32 +77,32 @@ func Spacer() *spacerView {
 //	    Spacer().Flex(2),  // Gets 2/3 of remaining space
 //	    Text("Footer"),
 //	)
-func (s *spacerView) Flex(factor int) *spacerView {
+func (s *SpacerView) Flex(factor int) *SpacerView {
 	s.flexFactor = factor
 	return s
 }
 
 // MinWidth sets the minimum width for the spacer.
-func (s *spacerView) MinWidth(w int) *spacerView {
+func (s *SpacerView) MinWidth(w int) *SpacerView {
 	s.minWidth = w
 	return s
 }
 
 // MinHeight sets the minimum height for the spacer.
-func (s *spacerView) MinHeight(h int) *spacerView {
+func (s *SpacerView) MinHeight(h int) *SpacerView {
 	s.minHeight = h
 	return s
 }
 
-func (s *spacerView) flex() int {
+func (s *SpacerView) flex() int {
 	return s.flexFactor
 }
 
-func (s *spacerView) render(ctx *RenderContext) {
+func (s *SpacerView) render(ctx *RenderContext) {
 	// Spacer renders nothing - it just takes up space
 }
 
-func (s *spacerView) size(maxWidth, maxHeight int) (int, int) {
+func (s *SpacerView) size(maxWidth, maxHeight int) (int, int) {
 	// Return minimum size - the layout will expand this
 	return s.minWidth, s.minHeight
 }

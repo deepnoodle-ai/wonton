@@ -47,7 +47,7 @@ func main() {
 				tui.Text("without taking over the terminal."),
 			).Padding(1),
 		).Border(&tui.RoundedBorder).BorderFg(tui.ColorCyan),
-		tui.PrintConfig{Width: 45},
+		tui.WithWidth(45),
 	)
 	fmt.Println()
 
@@ -61,13 +61,13 @@ func main() {
 			tui.Spacer(),
 			tui.Text("Right").Fg(tui.ColorBlue),
 		),
-		tui.PrintConfig{Width: 50},
+		tui.WithWidth(50),
 	)
 	fmt.Println()
 
 	// Live updating progress bar
 	fmt.Println("=== Live Progress Bar ===")
-	live := tui.NewLivePrinter(tui.PrintConfig{Width: 60})
+	live := tui.NewLivePrinter(tui.WithWidth(60))
 
 	for i := 0; i <= 100; i += 5 {
 		filled := i / 5
@@ -140,7 +140,7 @@ func main() {
 		lines = append(lines, tui.Text(""))
 		lines = append(lines, tui.Text("  Build complete!").Bold().Fg(tui.ColorGreen))
 		update(tui.Stack(lines...))
-	}, tui.PrintConfig{Width: 40})
+	}, tui.WithWidth(40))
 	fmt.Println()
 
 	// Error message example
@@ -154,7 +154,7 @@ func main() {
 				tui.Text("Please check if the database is running.").Dim(),
 			).Padding(1),
 		).Border(&tui.SingleBorder).BorderFg(tui.ColorRed),
-		tui.PrintConfig{Width: 50},
+		tui.WithWidth(50),
 	)
 	fmt.Println()
 

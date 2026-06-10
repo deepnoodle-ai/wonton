@@ -126,10 +126,7 @@ func main() {
 	fmt.Println()
 
 	app := &ChatApp{}
-	app.runner = tui.NewInlineApp(tui.InlineAppConfig{
-		Width:          80,
-		BracketedPaste: true,
-	})
+	app.runner = tui.NewInlineApp(tui.WithInlineWidth(80), tui.WithInlineBracketedPaste(true))
 
 	if err := app.runner.Run(app); err != nil {
 		log.Fatal(err)

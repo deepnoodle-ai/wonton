@@ -4,8 +4,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// markdownView displays rendered markdown content.
-type markdownView struct {
+// MarkdownView displays rendered markdown content.
+type MarkdownView struct {
 	content   string
 	scrollY   *int
 	theme     MarkdownTheme
@@ -22,8 +22,8 @@ type markdownView struct {
 // Example:
 //
 //	Markdown(content, &app.scrollY).Theme(tui.DefaultMarkdownTheme())
-func Markdown(content string, scrollY *int) *markdownView {
-	return &markdownView{
+func Markdown(content string, scrollY *int) *MarkdownView {
+	return &MarkdownView{
 		content:  content,
 		scrollY:  scrollY,
 		theme:    DefaultMarkdownTheme(),
@@ -33,7 +33,7 @@ func Markdown(content string, scrollY *int) *markdownView {
 }
 
 // Theme sets the markdown theme.
-func (m *markdownView) Theme(theme MarkdownTheme) *markdownView {
+func (m *MarkdownView) Theme(theme MarkdownTheme) *MarkdownView {
 	m.theme = theme
 	m.renderer.Theme = theme
 	m.rendered = nil // invalidate cache
@@ -41,7 +41,7 @@ func (m *markdownView) Theme(theme MarkdownTheme) *markdownView {
 }
 
 // MaxWidth sets the maximum width for text wrapping.
-func (m *markdownView) MaxWidth(w int) *markdownView {
+func (m *MarkdownView) MaxWidth(w int) *MarkdownView {
 	m.maxWidth = w
 	m.renderer.MaxWidth = w
 	m.rendered = nil // invalidate cache
@@ -49,13 +49,13 @@ func (m *markdownView) MaxWidth(w int) *markdownView {
 }
 
 // Height sets a fixed height for the view.
-func (m *markdownView) Height(h int) *markdownView {
+func (m *MarkdownView) Height(h int) *MarkdownView {
 	m.height = h
 	return m
 }
 
 // renderContent renders the markdown if needed.
-func (m *markdownView) renderContent(width int) {
+func (m *MarkdownView) renderContent(width int) {
 	if m.rendered != nil && m.lastWidth == width {
 		return // use cached render
 	}
@@ -88,7 +88,7 @@ func (m *markdownView) renderContent(width int) {
 	m.lastWidth = width
 }
 
-func (m *markdownView) size(maxWidth, maxHeight int) (int, int) {
+func (m *MarkdownView) size(maxWidth, maxHeight int) (int, int) {
 	w := maxWidth
 	if w <= 0 {
 		w = m.maxWidth
@@ -121,7 +121,7 @@ func (m *markdownView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (m *markdownView) render(ctx *RenderContext) {
+func (m *MarkdownView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -197,7 +197,7 @@ func (m *markdownView) render(ctx *RenderContext) {
 
 // GetLineCount returns the total number of rendered lines.
 // This is useful for scroll calculations in HandleEvent.
-func (m *markdownView) GetLineCount() int {
+func (m *MarkdownView) GetLineCount() int {
 	if m.rendered == nil {
 		return 0
 	}

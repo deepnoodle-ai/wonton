@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// group arranges children horizontally
-type group struct {
+// GroupView arranges children horizontally. Construct it with Group.
+type GroupView struct {
 	children   []View
 	gap        int
 	alignment  Alignment
@@ -23,8 +23,8 @@ type group struct {
 //	    Spacer(),
 //	    Text("Right"),
 //	).Gap(2).Align(AlignCenter)
-func Group(children ...View) *group {
-	return &group{
+func Group(children ...View) *GroupView {
+	return &GroupView{
 		children:   children,
 		gap:        0,
 		alignment:  AlignLeft,
@@ -34,7 +34,7 @@ func Group(children ...View) *group {
 
 // Flex sets the flex factor for this group.
 // Used when this group is a child of another flex container.
-func (g *group) Flex(factor int) *group {
+func (g *GroupView) Flex(factor int) *GroupView {
 	g.flexFactor = factor
 	return g
 }
@@ -43,7 +43,7 @@ func (g *group) Flex(factor int) *group {
 // If no explicit flex factor is set, the group inherits flexibility from
 // its flexible children (like Canvas or Fill), but NOT from Spacers.
 // Spacers are layout utilities that shouldn't make their container flexible.
-func (g *group) flex() int {
+func (g *GroupView) flex() int {
 	if g.flexFactor != 0 {
 		return g.flexFactor
 	}
@@ -52,7 +52,7 @@ func (g *group) flex() int {
 	// won't become flexible just because it contains a Spacer
 	for _, child := range g.children {
 		// Skip spacers - they're layout utilities, not content
-		if _, isSpacer := child.(*spacerView); isSpacer {
+		if _, isSpacer := child.(*SpacerView); isSpacer {
 			continue
 		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
@@ -64,19 +64,19 @@ func (g *group) flex() int {
 
 // Gap sets the spacing between children in number of columns.
 // Only visible children (non-zero size) contribute to spacing.
-func (g *group) Gap(n int) *group {
+func (g *GroupView) Gap(n int) *GroupView {
 	g.gap = n
 	return g
 }
 
 // Align sets the vertical alignment of children within the group.
-// Options: AlignLeft (top), AlignCenter (middle), AlignRight (bottom).
-func (g *group) Align(a Alignment) *group {
+// Options: AlignTop, AlignCenter (middle), AlignBottom.
+func (g *GroupView) Align(a Alignment) *GroupView {
 	g.alignment = a
 	return g
 }
 
-func (g *group) size(maxWidth, maxHeight int) (int, int) {
+func (g *GroupView) size(maxWidth, maxHeight int) (int, int) {
 	if len(g.children) == 0 {
 		return 0, 0
 	}
@@ -199,13 +199,13 @@ func (g *group) size(maxWidth, maxHeight int) (int, int) {
 func canShrinkInFlexRow(child View) bool {
 	// Wrapped text can reflow to the row's remaining width; treating its
 	// natural width as a minimum would make it clip before it gets to wrap.
-	if text, ok := child.(*textView); ok {
+	if text, ok := child.(*TextView); ok {
 		return text.wrap
 	}
 	return false
 }
 
-func (g *group) render(ctx *RenderContext) {
+func (g *GroupView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(g.children) == 0 {
 		return

@@ -109,7 +109,7 @@ func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 
 func main() {
 	app := &App{state: "prompt"}
-	app.runner = tui.NewInlineApp(tui.InlineAppConfig{Width: 60})
+	app.runner = tui.NewInlineApp(tui.WithInlineWidth(60))
 
 	fmt.Println()
 	fmt.Println("  PromptChoice Demo - Claude Code Style Confirmation")

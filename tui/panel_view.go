@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// panelView displays a filled rectangle with optional border
-type panelView struct {
+// PanelView displays a filled rectangle with optional border
+type PanelView struct {
 	content     View
 	width       int
 	height      int
@@ -30,8 +30,8 @@ const (
 //
 //	Panel(nil).Width(20).Height(5).Bg(ColorBlue)
 //	Panel(Text("Hello")).Border(BorderSingle)
-func Panel(content View) *panelView {
-	return &panelView{
+func Panel(content View) *PanelView {
+	return &PanelView{
 		content:     content,
 		fillChar:    ' ',
 		borderStyle: BorderNone,
@@ -41,67 +41,67 @@ func Panel(content View) *panelView {
 }
 
 // Width sets the box width.
-func (b *panelView) Width(w int) *panelView {
+func (b *PanelView) Width(w int) *PanelView {
 	b.width = w
 	return b
 }
 
 // Height sets the box height.
-func (b *panelView) Height(h int) *panelView {
+func (b *PanelView) Height(h int) *PanelView {
 	b.height = h
 	return b
 }
 
 // Size sets both width and height at once.
-func (b *panelView) Size(w, h int) *panelView {
+func (b *PanelView) Size(w, h int) *PanelView {
 	b.width = w
 	b.height = h
 	return b
 }
 
 // FillChar sets the character used to fill the box.
-func (b *panelView) FillChar(c rune) *panelView {
+func (b *PanelView) FillChar(c rune) *PanelView {
 	b.fillChar = c
 	return b
 }
 
 // Border sets the border style.
-func (b *panelView) Border(style borderStyleType) *panelView {
+func (b *PanelView) Border(style borderStyleType) *PanelView {
 	b.borderStyle = style
 	return b
 }
 
 // BorderColor sets the border color.
-func (b *panelView) BorderColor(c Color) *panelView {
+func (b *PanelView) BorderColor(c Color) *PanelView {
 	b.borderColor = c
 	return b
 }
 
 // Bg sets the background color.
-func (b *panelView) Bg(c Color) *panelView {
+func (b *PanelView) Bg(c Color) *PanelView {
 	b.bgStyle = b.bgStyle.WithBackground(c)
 	return b
 }
 
 // Fg sets the foreground color (for fill character).
-func (b *panelView) Fg(c Color) *panelView {
+func (b *PanelView) Fg(c Color) *PanelView {
 	b.bgStyle = b.bgStyle.WithForeground(c)
 	return b
 }
 
 // Style sets the complete background style.
-func (b *panelView) Style(s Style) *panelView {
+func (b *PanelView) Style(s Style) *PanelView {
 	b.bgStyle = s
 	return b
 }
 
 // Title sets a title for the box (displayed in top border).
-func (b *panelView) Title(title string) *panelView {
+func (b *PanelView) Title(title string) *PanelView {
 	b.title = title
 	return b
 }
 
-func (b *panelView) getBorderChars() (tl, tr, bl, br, h, v rune) {
+func (b *PanelView) getBorderChars() (tl, tr, bl, br, h, v rune) {
 	switch b.borderStyle {
 	case BorderSingle:
 		return '┌', '┐', '└', '┘', '─', '│'
@@ -116,7 +116,7 @@ func (b *panelView) getBorderChars() (tl, tr, bl, br, h, v rune) {
 	}
 }
 
-func (b *panelView) size(maxWidth, maxHeight int) (int, int) {
+func (b *PanelView) size(maxWidth, maxHeight int) (int, int) {
 	w := b.width
 	h := b.height
 
@@ -155,7 +155,7 @@ func (b *panelView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (b *panelView) render(ctx *RenderContext) {
+func (b *PanelView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return

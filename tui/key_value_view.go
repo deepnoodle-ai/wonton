@@ -1,7 +1,7 @@
 package tui
 
-// keyValueView displays a label: value pair
-type keyValueView struct {
+// KeyValueView displays a label: value pair
+type KeyValueView struct {
 	label      string
 	value      string
 	labelStyle Style
@@ -16,8 +16,8 @@ type keyValueView struct {
 //
 //	KeyValue("Name", "John Doe")
 //	KeyValue("Status", "Active").LabelFg(ColorYellow).ValueFg(ColorGreen)
-func KeyValue(label, value string) *keyValueView {
-	return &keyValueView{
+func KeyValue(label, value string) *KeyValueView {
+	return &KeyValueView{
 		label:      label,
 		value:      value,
 		labelStyle: NewStyle().WithBold(),
@@ -27,48 +27,48 @@ func KeyValue(label, value string) *keyValueView {
 }
 
 // LabelFg sets the label foreground color.
-func (k *keyValueView) LabelFg(c Color) *keyValueView {
+func (k *KeyValueView) LabelFg(c Color) *KeyValueView {
 	k.labelStyle = k.labelStyle.WithForeground(c)
 	return k
 }
 
 // ValueFg sets the value foreground color.
-func (k *keyValueView) ValueFg(c Color) *keyValueView {
+func (k *KeyValueView) ValueFg(c Color) *KeyValueView {
 	k.valueStyle = k.valueStyle.WithForeground(c)
 	return k
 }
 
 // LabelStyle sets the complete label style.
-func (k *keyValueView) LabelStyle(s Style) *keyValueView {
+func (k *KeyValueView) LabelStyle(s Style) *KeyValueView {
 	k.labelStyle = s
 	return k
 }
 
 // ValueStyle sets the complete value style.
-func (k *keyValueView) ValueStyle(s Style) *keyValueView {
+func (k *KeyValueView) ValueStyle(s Style) *KeyValueView {
 	k.valueStyle = s
 	return k
 }
 
 // Separator sets the separator string (default ": ").
-func (k *keyValueView) Separator(sep string) *keyValueView {
+func (k *KeyValueView) Separator(sep string) *KeyValueView {
 	k.separator = sep
 	return k
 }
 
 // Width sets a fixed width.
-func (k *keyValueView) Width(w int) *keyValueView {
+func (k *KeyValueView) Width(w int) *KeyValueView {
 	k.width = w
 	return k
 }
 
 // Dim makes the value dimmed.
-func (k *keyValueView) Dim() *keyValueView {
+func (k *KeyValueView) Dim() *KeyValueView {
 	k.valueStyle = k.valueStyle.WithDim()
 	return k
 }
 
-func (k *keyValueView) size(maxWidth, maxHeight int) (int, int) {
+func (k *KeyValueView) size(maxWidth, maxHeight int) (int, int) {
 	labelW, _ := MeasureText(k.label)
 	sepW, _ := MeasureText(k.separator)
 	valueW, _ := MeasureText(k.value)
@@ -82,7 +82,7 @@ func (k *keyValueView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (k *keyValueView) render(ctx *RenderContext) {
+func (k *KeyValueView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

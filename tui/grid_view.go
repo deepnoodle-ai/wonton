@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// gridView displays a grid of clickable cells
-type gridView struct {
+// GridView displays a grid of clickable cells
+type GridView struct {
 	cols       int
 	rows       int
 	cellWidth  int
@@ -23,7 +23,7 @@ type gridCell struct {
 // Example:
 //
 //	CellGrid(5, 5).CellSize(6, 3).Gap(1).OnClick(func(c, r int) { ... })
-func CellGrid(cols, rows int) *gridView {
+func CellGrid(cols, rows int) *GridView {
 	// Initialize cells with default values
 	cells := make([][]gridCell, rows)
 	for r := range cells {
@@ -36,7 +36,7 @@ func CellGrid(cols, rows int) *gridView {
 		}
 	}
 
-	return &gridView{
+	return &GridView{
 		cols:       cols,
 		rows:       rows,
 		cellWidth:  4,
@@ -47,26 +47,26 @@ func CellGrid(cols, rows int) *gridView {
 }
 
 // CellSize sets the size of each cell.
-func (g *gridView) CellSize(width, height int) *gridView {
+func (g *GridView) CellSize(width, height int) *GridView {
 	g.cellWidth = width
 	g.cellHeight = height
 	return g
 }
 
 // Gap sets the gap between cells.
-func (g *gridView) Gap(gap int) *gridView {
+func (g *GridView) Gap(gap int) *GridView {
 	g.gap = gap
 	return g
 }
 
 // OnClick sets the callback when a cell is clicked.
-func (g *gridView) OnClick(fn func(col, row int)) *gridView {
+func (g *GridView) OnClick(fn func(col, row int)) *GridView {
 	g.onClick = fn
 	return g
 }
 
 // SetCell sets the style for a specific cell.
-func (g *gridView) SetCell(col, row int, style Style) *gridView {
+func (g *GridView) SetCell(col, row int, style Style) *GridView {
 	if row >= 0 && row < g.rows && col >= 0 && col < g.cols {
 		g.cells[row][col].style = style
 	}
@@ -74,7 +74,7 @@ func (g *gridView) SetCell(col, row int, style Style) *gridView {
 }
 
 // SetCellChar sets the character and style for a specific cell.
-func (g *gridView) SetCellChar(col, row int, char rune, style Style) *gridView {
+func (g *GridView) SetCellChar(col, row int, char rune, style Style) *GridView {
 	if row >= 0 && row < g.rows && col >= 0 && col < g.cols {
 		g.cells[row][col].char = char
 		g.cells[row][col].style = style
@@ -83,7 +83,7 @@ func (g *gridView) SetCellChar(col, row int, char rune, style Style) *gridView {
 }
 
 // SetAllCells sets all cells using a callback.
-func (g *gridView) SetAllCells(fn func(col, row int) Style) *gridView {
+func (g *GridView) SetAllCells(fn func(col, row int) Style) *GridView {
 	for r := 0; r < g.rows; r++ {
 		for c := 0; c < g.cols; c++ {
 			g.cells[r][c].style = fn(c, r)
@@ -92,7 +92,7 @@ func (g *gridView) SetAllCells(fn func(col, row int) Style) *gridView {
 	return g
 }
 
-func (g *gridView) size(maxWidth, maxHeight int) (int, int) {
+func (g *GridView) size(maxWidth, maxHeight int) (int, int) {
 	w := g.cols*g.cellWidth + (g.cols-1)*g.gap
 	h := g.rows*g.cellHeight + (g.rows-1)*g.gap
 
@@ -105,7 +105,7 @@ func (g *gridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *gridView) render(ctx *RenderContext) {
+func (g *GridView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -147,8 +147,8 @@ func (g *gridView) render(ctx *RenderContext) {
 	}
 }
 
-// colorGridView displays a grid that cycles through colors on click
-type colorGridView struct {
+// ColorGridView displays a grid that cycles through colors on click
+type ColorGridView struct {
 	cols          int
 	rows          int
 	cellWidth     int
@@ -165,11 +165,11 @@ type colorGridView struct {
 // Example:
 //
 //	ColorGrid(5, 5, app.gridState, []Color{ColorBlack, ColorRed, ColorGreen, ColorBlue})
-func ColorGrid(cols, rows int, state [][]int, colors []Color) *colorGridView {
+func ColorGrid(cols, rows int, state [][]int, colors []Color) *ColorGridView {
 	if len(colors) == 0 {
 		colors = []Color{ColorBrightBlack, ColorRed, ColorGreen, ColorBlue, ColorYellow}
 	}
-	return &colorGridView{
+	return &ColorGridView{
 		cols:       cols,
 		rows:       rows,
 		cellWidth:  4,
@@ -181,25 +181,25 @@ func ColorGrid(cols, rows int, state [][]int, colors []Color) *colorGridView {
 }
 
 // CellSize sets the size of each cell.
-func (g *colorGridView) CellSize(width, height int) *colorGridView {
+func (g *ColorGridView) CellSize(width, height int) *ColorGridView {
 	g.cellWidth = width
 	g.cellHeight = height
 	return g
 }
 
 // Gap sets the gap between cells.
-func (g *colorGridView) Gap(gap int) *colorGridView {
+func (g *ColorGridView) Gap(gap int) *ColorGridView {
 	g.gap = gap
 	return g
 }
 
 // OnStateChange sets a callback when a cell's color changes.
-func (g *colorGridView) OnStateChange(fn func(col, row, colorIndex int)) *colorGridView {
+func (g *ColorGridView) OnStateChange(fn func(col, row, colorIndex int)) *ColorGridView {
 	g.onStateChange = fn
 	return g
 }
 
-func (g *colorGridView) size(maxWidth, maxHeight int) (int, int) {
+func (g *ColorGridView) size(maxWidth, maxHeight int) (int, int) {
 	w := g.cols*g.cellWidth + (g.cols-1)*g.gap
 	h := g.rows*g.cellHeight + (g.rows-1)*g.gap
 
@@ -212,7 +212,7 @@ func (g *colorGridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *colorGridView) render(ctx *RenderContext) {
+func (g *ColorGridView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -264,8 +264,8 @@ func (g *colorGridView) render(ctx *RenderContext) {
 	}
 }
 
-// charGridView displays a grid of characters
-type charGridView struct {
+// CharGridView displays a grid of characters
+type CharGridView struct {
 	data      [][]rune
 	style     Style
 	cellWidth int
@@ -280,8 +280,8 @@ type charGridView struct {
 //		{'O', 'X', 'O'},
 //		{'X', 'O', 'X'},
 //	})
-func CharGrid(data [][]rune) *charGridView {
-	return &charGridView{
+func CharGrid(data [][]rune) *CharGridView {
+	return &CharGridView{
 		data:      data,
 		style:     NewStyle(),
 		cellWidth: 1,
@@ -289,24 +289,24 @@ func CharGrid(data [][]rune) *charGridView {
 }
 
 // Style sets the style for all characters.
-func (g *charGridView) Style(s Style) *charGridView {
+func (g *CharGridView) Style(s Style) *CharGridView {
 	g.style = s
 	return g
 }
 
 // Fg sets the foreground color.
-func (g *charGridView) Fg(c Color) *charGridView {
+func (g *CharGridView) Fg(c Color) *CharGridView {
 	g.style = g.style.WithForeground(c)
 	return g
 }
 
 // CellWidth sets the width per character cell (for spacing).
-func (g *charGridView) CellWidth(w int) *charGridView {
+func (g *CharGridView) CellWidth(w int) *CharGridView {
 	g.cellWidth = w
 	return g
 }
 
-func (g *charGridView) size(maxWidth, maxHeight int) (int, int) {
+func (g *CharGridView) size(maxWidth, maxHeight int) (int, int) {
 	h := len(g.data)
 	w := 0
 	for _, row := range g.data {
@@ -325,7 +325,7 @@ func (g *charGridView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (g *charGridView) render(ctx *RenderContext) {
+func (g *CharGridView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(g.data) == 0 {
 		return

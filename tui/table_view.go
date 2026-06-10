@@ -15,8 +15,8 @@ type TableColumn struct {
 	MinWidth int // Minimum width (won't shrink below this)
 }
 
-// tableView displays a scrollable data table as a declarative view.
-type tableView struct {
+// TableView displays a scrollable data table as a declarative view.
+type TableView struct {
 	id                   string
 	columns              []TableColumn
 	rows                 [][]string
@@ -50,10 +50,10 @@ type tableView struct {
 //
 //	Table([]TableColumn{{Title: "Name"}, {Title: "Age"}}, &app.selected).
 //	    Rows([][]string{{"Alice", "30"}, {"Bob", "25"}})
-func Table(columns []TableColumn, selected *int) *tableView {
+func Table(columns []TableColumn, selected *int) *TableView {
 	// Generate ID from selected pointer address
 	id := fmt.Sprintf("table_%p", selected)
-	return &tableView{
+	return &TableView{
 		id:                 id,
 		columns:            columns,
 		selected:           selected,
@@ -67,41 +67,41 @@ func Table(columns []TableColumn, selected *int) *tableView {
 }
 
 // Rows sets the table data.
-func (t *tableView) Rows(rows [][]string) *tableView {
+func (t *TableView) Rows(rows [][]string) *TableView {
 	t.rows = rows
 	return t
 }
 
 // OnSelect sets a callback when a row is clicked.
-func (t *tableView) OnSelect(fn func(row int)) *tableView {
+func (t *TableView) OnSelect(fn func(row int)) *TableView {
 	t.onSelect = fn
 	return t
 }
 
 // ID sets a custom ID for this table (for focus management).
-func (t *tableView) ID(id string) *tableView {
+func (t *TableView) ID(id string) *TableView {
 	t.id = id
 	return t
 }
 
 // Focusable interface implementation
-func (t *tableView) FocusID() string {
+func (t *TableView) FocusID() string {
 	return t.id
 }
 
-func (t *tableView) IsFocused() bool {
+func (t *TableView) IsFocused() bool {
 	return t.focused
 }
 
-func (t *tableView) SetFocused(focused bool) {
+func (t *TableView) SetFocused(focused bool) {
 	t.focused = focused
 }
 
-func (t *tableView) FocusBounds() image.Rectangle {
+func (t *TableView) FocusBounds() image.Rectangle {
 	return t.bounds
 }
 
-func (t *tableView) HandleKeyEvent(event KeyEvent) bool {
+func (t *TableView) HandleKeyEvent(event KeyEvent) bool {
 	if len(t.rows) == 0 {
 		return false
 	}
@@ -152,80 +152,80 @@ func (t *tableView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // ShowHeader enables or disables the header row.
-func (t *tableView) ShowHeader(show bool) *tableView {
+func (t *TableView) ShowHeader(show bool) *TableView {
 	t.showHeader = show
 	return t
 }
 
 // Fg sets the foreground color for normal rows.
-func (t *tableView) Fg(c Color) *tableView {
+func (t *TableView) Fg(c Color) *TableView {
 	t.style = t.style.WithForeground(c)
 	return t
 }
 
 // Bg sets the background color for normal rows.
-func (t *tableView) Bg(c Color) *tableView {
+func (t *TableView) Bg(c Color) *TableView {
 	t.style = t.style.WithBackground(c)
 	return t
 }
 
 // Style sets the style for normal rows.
-func (t *tableView) Style(s Style) *tableView {
+func (t *TableView) Style(s Style) *TableView {
 	t.style = s
 	return t
 }
 
 // HeaderStyle sets the style for the header row.
-func (t *tableView) HeaderStyle(s Style) *tableView {
+func (t *TableView) HeaderStyle(s Style) *TableView {
 	t.headerStyle = s
 	return t
 }
 
 // HeaderFg sets the foreground color for the header.
-func (t *tableView) HeaderFg(c Color) *tableView {
+func (t *TableView) HeaderFg(c Color) *TableView {
 	t.headerStyle = t.headerStyle.WithForeground(c)
 	return t
 }
 
 // SelectedStyle sets the style for the selected row.
-func (t *tableView) SelectedStyle(s Style) *tableView {
+func (t *TableView) SelectedStyle(s Style) *TableView {
 	t.selectedStyle = s
 	return t
 }
 
 // SelectedFg sets the foreground color for the selected row.
-func (t *tableView) SelectedFg(c Color) *tableView {
+func (t *TableView) SelectedFg(c Color) *TableView {
 	t.selectedStyle = t.selectedStyle.WithForeground(c)
 	return t
 }
 
 // SelectedBg sets the background color for the selected row.
-func (t *tableView) SelectedBg(c Color) *tableView {
+func (t *TableView) SelectedBg(c Color) *TableView {
 	t.selectedStyle = t.selectedStyle.WithBackground(c)
 	return t
 }
 
 // Width sets a fixed width for the table.
-func (t *tableView) Width(w int) *tableView {
+func (t *TableView) Width(w int) *TableView {
 	t.width = w
 	return t
 }
 
 // Height sets a fixed height for the table.
-func (t *tableView) Height(h int) *tableView {
+func (t *TableView) Height(h int) *TableView {
 	t.height = h
 	return t
 }
 
 // Size sets both width and height at once.
-func (t *tableView) Size(w, h int) *tableView {
+func (t *TableView) Size(w, h int) *TableView {
 	t.width = w
 	t.height = h
 	return t
 }
 
 // UppercaseHeaders enables or disables automatic uppercasing of header text.
-func (t *tableView) UppercaseHeaders(uppercase bool) *tableView {
+func (t *TableView) UppercaseHeaders(uppercase bool) *TableView {
 	t.uppercaseHeaders = uppercase
 	return t
 }
@@ -233,26 +233,26 @@ func (t *tableView) UppercaseHeaders(uppercase bool) *tableView {
 // MaxColumnWidth sets the maximum width for any column.
 // If a column's calculated width exceeds this value, it will be truncated.
 // Set to 0 for no limit (default).
-func (t *tableView) MaxColumnWidth(maxWidth int) *tableView {
+func (t *TableView) MaxColumnWidth(maxWidth int) *TableView {
 	t.maxColumnWidth = maxWidth
 	return t
 }
 
 // InvertSelectedColors enables or disables color inversion on the selected row.
 // When enabled, foreground and background colors are swapped for better visibility.
-func (t *tableView) InvertSelectedColors(invert bool) *tableView {
+func (t *TableView) InvertSelectedColors(invert bool) *TableView {
 	t.invertSelectedColors = invert
 	return t
 }
 
 // HeaderBottomBorder enables or disables a bottom border line under the header row.
-func (t *tableView) HeaderBottomBorder(show bool) *tableView {
+func (t *TableView) HeaderBottomBorder(show bool) *TableView {
 	t.headerBottomBorder = show
 	return t
 }
 
 // ColumnGap sets the gap (in spaces) between columns. Default is 2.
-func (t *tableView) ColumnGap(gap int) *tableView {
+func (t *TableView) ColumnGap(gap int) *TableView {
 	t.columnGap = gap
 	return t
 }
@@ -260,13 +260,13 @@ func (t *tableView) ColumnGap(gap int) *tableView {
 // FillWidth causes the table to expand to fill its container width.
 // Extra space is distributed to auto-sized columns (those without explicit Width).
 // If all columns have explicit widths, extra space goes to the largest column.
-func (t *tableView) FillWidth() *tableView {
+func (t *TableView) FillWidth() *TableView {
 	t.fillWidth = true
 	return t
 }
 
 // calculateColumnWidths computes the actual width for each column.
-func (t *tableView) calculateColumnWidths() {
+func (t *TableView) calculateColumnWidths() {
 	if len(t.columns) == 0 {
 		return
 	}
@@ -299,7 +299,7 @@ func (t *tableView) calculateColumnWidths() {
 
 // expandColumns distributes extra space to columns.
 // Prefers auto-sized columns (Width=0), falls back to largest column.
-func (t *tableView) expandColumns(extraSpace int) {
+func (t *TableView) expandColumns(extraSpace int) {
 	if extraSpace <= 0 || len(t.columnWidths) == 0 {
 		return
 	}
@@ -339,7 +339,7 @@ func (t *tableView) expandColumns(extraSpace int) {
 // 1. Explicit MinWidth if set
 // 2. Explicit Width if set (you specified a size, you want it)
 // 3. Header title width (never narrower than header)
-func (t *tableView) effectiveMinWidth(colIdx int) int {
+func (t *TableView) effectiveMinWidth(colIdx int) int {
 	if colIdx >= len(t.columns) {
 		return 1
 	}
@@ -362,7 +362,7 @@ func (t *tableView) effectiveMinWidth(colIdx int) int {
 // fitColumnWidths adjusts column widths to fit within availableWidth.
 // It shrinks columns proportionally when total width exceeds available space,
 // but respects MinWidth constraints on columns.
-func (t *tableView) fitColumnWidths(availableWidth int) {
+func (t *TableView) fitColumnWidths(availableWidth int) {
 	if len(t.columnWidths) == 0 || availableWidth <= 0 {
 		return
 	}
@@ -484,7 +484,7 @@ func (t *tableView) fitColumnWidths(availableWidth int) {
 	}
 }
 
-func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
+func (t *TableView) size(maxWidth, maxHeight int) (int, int) {
 	t.calculateColumnWidths()
 
 	// Calculate total width including gaps
@@ -520,7 +520,7 @@ func (t *tableView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (t *tableView) render(ctx *RenderContext) {
+func (t *TableView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(t.columns) == 0 {
 		return

@@ -5,8 +5,8 @@ import (
 	"math"
 )
 
-// progressView displays a progress bar (declarative view)
-type progressView struct {
+// ProgressView displays a progress bar (declarative view)
+type ProgressView struct {
 	current      int
 	total        int
 	width        int
@@ -27,8 +27,8 @@ type progressView struct {
 // Example:
 //
 //	Progress(50, 100).Width(30).ShowPercent()
-func Progress(current, total int) *progressView {
-	return &progressView{
+func Progress(current, total int) *ProgressView {
+	return &ProgressView{
 		current:     current,
 		total:       total,
 		width:       20,
@@ -41,19 +41,19 @@ func Progress(current, total int) *progressView {
 }
 
 // Width sets the width of the progress bar (not including label/percentage).
-func (p *progressView) Width(w int) *progressView {
+func (p *ProgressView) Width(w int) *ProgressView {
 	p.width = w
 	return p
 }
 
 // FilledChar sets the character used for the filled portion.
-func (p *progressView) FilledChar(c rune) *progressView {
+func (p *ProgressView) FilledChar(c rune) *ProgressView {
 	p.filledChar = c
 	return p
 }
 
 // EmptyChar sets the character used for the empty portion.
-func (p *progressView) EmptyChar(c rune) *progressView {
+func (p *ProgressView) EmptyChar(c rune) *ProgressView {
 	p.emptyChar = c
 	p.emptyPattern = "" // clear pattern if set
 	return p
@@ -66,7 +66,7 @@ func (p *progressView) EmptyChar(c rune) *progressView {
 //
 //	Progress(50, 100).EmptyPattern("·-")  // Repeats "·-·-·-..."
 //	Progress(30, 100).EmptyPattern("░▒")   // Repeats "░▒░▒░▒..."
-func (p *progressView) EmptyPattern(pattern string) *progressView {
+func (p *ProgressView) EmptyPattern(pattern string) *ProgressView {
 	if pattern != "" {
 		p.emptyPattern = pattern
 	}
@@ -74,50 +74,50 @@ func (p *progressView) EmptyPattern(pattern string) *progressView {
 }
 
 // Fg sets the foreground color for the filled portion.
-func (p *progressView) Fg(c Color) *progressView {
+func (p *ProgressView) Fg(c Color) *ProgressView {
 	p.style = p.style.WithForeground(c)
 	return p
 }
 
 // EmptyFg sets the foreground color for the empty portion of the bar.
-func (p *progressView) EmptyFg(c Color) *progressView {
+func (p *ProgressView) EmptyFg(c Color) *ProgressView {
 	p.emptyStyle = p.emptyStyle.WithForeground(c)
 	return p
 }
 
 // EmptyStyle sets the complete style for the empty portion of the bar.
-func (p *progressView) EmptyStyle(s Style) *progressView {
+func (p *ProgressView) EmptyStyle(s Style) *ProgressView {
 	p.emptyStyle = s
 	return p
 }
 
 // Style sets the complete style for the filled portion.
-func (p *progressView) Style(s Style) *progressView {
+func (p *ProgressView) Style(s Style) *ProgressView {
 	p.style = s
 	return p
 }
 
 // ShowPercent enables percentage display after the bar.
-func (p *progressView) ShowPercent() *progressView {
+func (p *ProgressView) ShowPercent() *ProgressView {
 	p.showPercent = true
 	return p
 }
 
 // HidePercent disables percentage display.
-func (p *progressView) HidePercent() *progressView {
+func (p *ProgressView) HidePercent() *ProgressView {
 	p.showPercent = false
 	return p
 }
 
 // PercentStyle sets the style for the percentage text.
 // If not set, the filled portion style is used.
-func (p *progressView) PercentStyle(s Style) *progressView {
+func (p *ProgressView) PercentStyle(s Style) *ProgressView {
 	p.percentStyle = &s
 	return p
 }
 
 // PercentFg sets the foreground color for the percentage text.
-func (p *progressView) PercentFg(c Color) *progressView {
+func (p *ProgressView) PercentFg(c Color) *ProgressView {
 	if p.percentStyle == nil {
 		s := NewStyle()
 		p.percentStyle = &s
@@ -127,14 +127,14 @@ func (p *progressView) PercentFg(c Color) *progressView {
 }
 
 // ShowFraction shows current/total instead of percentage.
-func (p *progressView) ShowFraction() *progressView {
+func (p *ProgressView) ShowFraction() *ProgressView {
 	p.showFraction = true
 	p.showPercent = false
 	return p
 }
 
 // Label sets a label to display before the bar.
-func (p *progressView) Label(label string) *progressView {
+func (p *ProgressView) Label(label string) *ProgressView {
 	p.label = label
 	return p
 }
@@ -142,8 +142,8 @@ func (p *progressView) Label(label string) *progressView {
 // Shimmer returns an animated progress bar with a shimmer highlight effect.
 // Speed controls how fast the shimmer moves (lower = faster).
 // HighlightColor is the color of the shimmer highlight.
-func (p *progressView) Shimmer(highlightColor RGB, speed int) *animatedProgressView {
-	return &animatedProgressView{
+func (p *ProgressView) Shimmer(highlightColor RGB, speed int) *AnimatedProgressView {
+	return &AnimatedProgressView{
 		base:           p,
 		shimmer:        true,
 		shimmerSpeed:   speed,
@@ -153,8 +153,8 @@ func (p *progressView) Shimmer(highlightColor RGB, speed int) *animatedProgressV
 
 // Pulse returns an animated progress bar with a pulsing brightness effect.
 // Color is the base color, speed controls the pulse rate (lower = faster).
-func (p *progressView) Pulse(color RGB, speed int) *animatedProgressView {
-	return &animatedProgressView{
+func (p *ProgressView) Pulse(color RGB, speed int) *AnimatedProgressView {
+	return &AnimatedProgressView{
 		base:       p,
 		pulse:      true,
 		pulseSpeed: speed,
@@ -162,9 +162,9 @@ func (p *progressView) Pulse(color RGB, speed int) *animatedProgressView {
 	}
 }
 
-// animatedProgressView displays an animated progress bar
-type animatedProgressView struct {
-	base           *progressView
+// AnimatedProgressView displays an animated progress bar
+type AnimatedProgressView struct {
+	base           *ProgressView
 	shimmer        bool
 	shimmerSpeed   int
 	highlightColor RGB
@@ -173,11 +173,11 @@ type animatedProgressView struct {
 	pulseColor     RGB
 }
 
-func (a *animatedProgressView) size(maxWidth, maxHeight int) (int, int) {
+func (a *AnimatedProgressView) size(maxWidth, maxHeight int) (int, int) {
 	return a.base.size(maxWidth, maxHeight)
 }
 
-func (a *animatedProgressView) render(ctx *RenderContext) {
+func (a *AnimatedProgressView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -295,7 +295,7 @@ func (a *animatedProgressView) render(ctx *RenderContext) {
 	}
 }
 
-func (p *progressView) size(maxWidth, maxHeight int) (int, int) {
+func (p *ProgressView) size(maxWidth, maxHeight int) (int, int) {
 	w := p.width
 	if p.label != "" {
 		labelW, _ := MeasureText(p.label)
@@ -314,7 +314,7 @@ func (p *progressView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (p *progressView) render(ctx *RenderContext) {
+func (p *ProgressView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -397,8 +397,8 @@ func (p *progressView) render(ctx *RenderContext) {
 	}
 }
 
-// loadingView displays an animated spinner (declarative view)
-type loadingView struct {
+// LoadingView displays an animated spinner (declarative view)
+type LoadingView struct {
 	frame   uint64
 	charset []string
 	speed   int // frames per character change
@@ -413,8 +413,8 @@ type loadingView struct {
 //
 //	Loading(app.frame).Label("Loading...")
 //	Loading(app.frame).CharSet(SpinnerDots.Frames)
-func Loading(frame uint64) *loadingView {
-	return &loadingView{
+func Loading(frame uint64) *LoadingView {
+	return &LoadingView{
 		frame:   frame,
 		charset: SpinnerDots.Frames,
 		speed:   4,
@@ -423,7 +423,7 @@ func Loading(frame uint64) *loadingView {
 }
 
 // CharSet sets the character set for the spinner animation.
-func (s *loadingView) CharSet(chars []string) *loadingView {
+func (s *LoadingView) CharSet(chars []string) *LoadingView {
 	if len(chars) > 0 {
 		s.charset = chars
 	}
@@ -431,7 +431,7 @@ func (s *loadingView) CharSet(chars []string) *loadingView {
 }
 
 // Speed sets how many frames per character change (higher = slower).
-func (s *loadingView) Speed(frames int) *loadingView {
+func (s *LoadingView) Speed(frames int) *LoadingView {
 	if frames > 0 {
 		s.speed = frames
 	}
@@ -439,30 +439,30 @@ func (s *loadingView) Speed(frames int) *loadingView {
 }
 
 // Fg sets the foreground color.
-func (s *loadingView) Fg(c Color) *loadingView {
+func (s *LoadingView) Fg(c Color) *LoadingView {
 	s.style = s.style.WithForeground(c)
 	return s
 }
 
 // Bg sets the background color.
-func (s *loadingView) Bg(c Color) *loadingView {
+func (s *LoadingView) Bg(c Color) *LoadingView {
 	s.style = s.style.WithBackground(c)
 	return s
 }
 
 // Style sets the complete style.
-func (s *loadingView) Style(st Style) *loadingView {
+func (s *LoadingView) Style(st Style) *LoadingView {
 	s.style = st
 	return s
 }
 
 // Label sets a label to display after the spinner.
-func (s *loadingView) Label(label string) *loadingView {
+func (s *LoadingView) Label(label string) *LoadingView {
 	s.label = label
 	return s
 }
 
-func (s *loadingView) size(maxWidth, maxHeight int) (int, int) {
+func (s *LoadingView) size(maxWidth, maxHeight int) (int, int) {
 	w := 1 // spinner character
 	if s.label != "" {
 		labelW, _ := MeasureText(s.label)
@@ -474,7 +474,7 @@ func (s *loadingView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (s *loadingView) render(ctx *RenderContext) {
+func (s *LoadingView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(s.charset) == 0 {
 		return

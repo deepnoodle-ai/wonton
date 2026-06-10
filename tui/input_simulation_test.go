@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	// Setup runtime with mock input
 	// We pass a nil terminal because we aren't testing rendering here, just input loop logic.
 	// However, Runtime requires a terminal. We can use NewTestTerminal.
-	terminal := NewTestTerminal(80, 24, nil)
+	terminal := NewTestTerminal(80, 24, io.Discard)
 	runtime := NewRuntime(terminal, app, 30)
 	runtime.SetBackslashEnter(true)
 
@@ -106,7 +107,7 @@ func TestRuntime_BackslashEnterDisabledByDefault(t *testing.T) {
 		events: make([]Event, 0),
 	}
 
-	terminal := NewTestTerminal(80, 24, nil)
+	terminal := NewTestTerminal(80, 24, io.Discard)
 	runtime := NewRuntime(terminal, app, 30)
 
 	inputSource := NewMockInputSource()
@@ -143,7 +144,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 		events: make([]Event, 0),
 	}
 
-	terminal := NewTestTerminal(80, 24, nil)
+	terminal := NewTestTerminal(80, 24, io.Discard)
 	runtime := NewRuntime(terminal, app, 30)
 
 	inputSource := NewMockInputSource()

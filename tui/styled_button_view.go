@@ -1,7 +1,7 @@
 package tui
 
-// styledButtonView displays a button with dimensions and styling
-type styledButtonView struct {
+// StyledButtonView displays a button with dimensions and styling
+type StyledButtonView struct {
 	label       string
 	callback    func()
 	width       int
@@ -18,8 +18,8 @@ type styledButtonView struct {
 // Example:
 //
 //	StyledButton("Submit", func() { app.submit() }).Width(20).Height(3).Bg(ColorBlue)
-func StyledButton(label string, callback func()) *styledButtonView {
-	return &styledButtonView{
+func StyledButton(label string, callback func()) *StyledButtonView {
+	return &StyledButtonView{
 		label:       label,
 		callback:    callback,
 		width:       0,
@@ -32,67 +32,67 @@ func StyledButton(label string, callback func()) *styledButtonView {
 }
 
 // Width sets the button width.
-func (s *styledButtonView) Width(w int) *styledButtonView {
+func (s *StyledButtonView) Width(w int) *StyledButtonView {
 	s.width = w
 	return s
 }
 
 // Height sets the button height.
-func (s *styledButtonView) Height(h int) *styledButtonView {
+func (s *StyledButtonView) Height(h int) *StyledButtonView {
 	s.height = h
 	return s
 }
 
 // Size sets both width and height at once.
-func (s *styledButtonView) Size(w, h int) *styledButtonView {
+func (s *StyledButtonView) Size(w, h int) *StyledButtonView {
 	s.width = w
 	s.height = h
 	return s
 }
 
 // Bg sets the background color.
-func (s *styledButtonView) Bg(c Color) *styledButtonView {
+func (s *StyledButtonView) Bg(c Color) *StyledButtonView {
 	s.style = s.style.WithBackground(c)
 	return s
 }
 
 // Fg sets the foreground color.
-func (s *styledButtonView) Fg(c Color) *styledButtonView {
+func (s *StyledButtonView) Fg(c Color) *StyledButtonView {
 	s.style = s.style.WithForeground(c)
 	return s
 }
 
 // Style sets the complete style.
-func (s *styledButtonView) Style(st Style) *styledButtonView {
+func (s *StyledButtonView) Style(st Style) *StyledButtonView {
 	s.style = st
 	return s
 }
 
 // HoverStyle sets the style when hovered (if hover tracking is enabled).
-func (s *styledButtonView) HoverStyle(st Style) *styledButtonView {
+func (s *StyledButtonView) HoverStyle(st Style) *StyledButtonView {
 	s.hoverStyle = st
 	return s
 }
 
 // Bold makes the label bold.
-func (s *styledButtonView) Bold() *styledButtonView {
+func (s *StyledButtonView) Bold() *StyledButtonView {
 	s.style = s.style.WithBold()
 	return s
 }
 
 // Border sets the border style.
-func (s *styledButtonView) Border(style borderStyleType) *styledButtonView {
+func (s *StyledButtonView) Border(style borderStyleType) *StyledButtonView {
 	s.borderStyle = style
 	return s
 }
 
 // Centered sets whether the label is centered (default true).
-func (s *styledButtonView) Centered(centered bool) *styledButtonView {
+func (s *StyledButtonView) Centered(centered bool) *StyledButtonView {
 	s.centered = centered
 	return s
 }
 
-func (s *styledButtonView) size(maxWidth, maxHeight int) (int, int) {
+func (s *StyledButtonView) size(maxWidth, maxHeight int) (int, int) {
 	labelW, _ := MeasureText(s.label)
 	w := s.width
 	if w == 0 {
@@ -112,7 +112,7 @@ func (s *styledButtonView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *styledButtonView) render(ctx *RenderContext) {
+func (s *StyledButtonView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
