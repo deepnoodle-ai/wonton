@@ -95,6 +95,7 @@ type readmeBlock struct {
 }
 
 func extractGoBlocks(readme string) []readmeBlock {
+	readme = strings.ReplaceAll(readme, "\r\n", "\n")
 	var blocks []readmeBlock
 	lines := strings.Split(readme, "\n")
 	for i := 0; i < len(lines); i++ {

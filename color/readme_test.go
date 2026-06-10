@@ -97,6 +97,7 @@ var goFenceRe = regexp.MustCompile("(?ms)^```go\n(.*?)^```$")
 // extractGoBlocks returns each ```go fenced block in the markdown source
 // along with the 1-based line number where its code begins.
 func extractGoBlocks(source string) []goBlock {
+	source = strings.ReplaceAll(source, "\r\n", "\n")
 	var blocks []goBlock
 	for _, m := range goFenceRe.FindAllStringSubmatchIndex(source, -1) {
 		code := source[m[2]:m[3]]
