@@ -118,10 +118,11 @@ func (r *Recorder) Events() []RecordedEvent {
 	return r.events
 }
 
-// Reset clears all recorded events and resets the screen.
+// Reset clears all recorded events and fully resets the screen,
+// including the current style and saved cursor state.
 func (r *Recorder) Reset() {
 	r.events = nil
-	r.screen.Clear()
+	r.screen.Reset()
 }
 
 // Replay creates a new screen with the given dimensions and replays all

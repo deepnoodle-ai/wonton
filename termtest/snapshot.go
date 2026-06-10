@@ -121,145 +121,128 @@ func sanitizeName(name string) string {
 // Returns an empty string if the strings are identical.
 // The output follows unified diff format with context lines.
 func Diff(expected, actual string) string {
-	expectedLines := strings.Split(expected, "\n")
-	actualLines := strings.Split(actual, "\n")
+	if expected == actual {
+		return ""
+	}
+
+	expectedLines := diffSplit(expected)
+	actualLines := diffSplit(actual)
+	ops := diffLines(expectedLines, actualLines)
+
+	// Line offsets: ePos[k]/aPos[k] = expected/actual lines consumed before ops[k]
+	ePos := make([]int, len(ops)+1)
+	aPos := make([]int, len(ops)+1)
+	for k, op := range ops {
+		ePos[k+1] = ePos[k]
+		aPos[k+1] = aPos[k]
+		switch op.kind {
+		case ' ':
+			ePos[k+1]++
+			aPos[k+1]++
+		case '-':
+			ePos[k+1]++
+		case '+':
+			aPos[k+1]++
+		}
+	}
+
+	// Group changed ops into hunks padded with context lines
+	const contextLines = 2
+	var hunks [][2]int
+	for k, op := range ops {
+		if op.kind == ' ' {
+			continue
+		}
+		start := max(0, k-contextLines)
+		end := min(len(ops), k+contextLines+1)
+		if len(hunks) > 0 && start <= hunks[len(hunks)-1][1] {
+			hunks[len(hunks)-1][1] = end
+		} else {
+			hunks = append(hunks, [2]int{start, end})
+		}
+	}
 
 	var diff bytes.Buffer
 	diff.WriteString("--- Expected\n")
 	diff.WriteString("+++ Actual\n")
-
-	maxLines := len(expectedLines)
-	if len(actualLines) > maxLines {
-		maxLines = len(actualLines)
-	}
-
-	// Track context for unified diff style
-	const contextLines = 2
-	changes := findChanges(expectedLines, actualLines)
-
-	if len(changes) == 0 {
-		return "" // No differences
-	}
-
-	// Group changes into hunks
-	hunks := groupChanges(changes, contextLines, maxLines)
-
-	for _, hunk := range hunks {
+	for _, h := range hunks {
+		start, end := h[0], h[1]
 		diff.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n",
-			hunk.expectedStart+1, hunk.expectedCount,
-			hunk.actualStart+1, hunk.actualCount))
-
-		for _, line := range hunk.lines {
-			diff.WriteString(line)
-			diff.WriteString("\n")
+			ePos[start]+1, ePos[end]-ePos[start],
+			aPos[start]+1, aPos[end]-aPos[start]))
+		for k := start; k < end; k++ {
+			diff.WriteByte(ops[k].kind)
+			diff.WriteByte(' ')
+			diff.WriteString(ops[k].text)
+			diff.WriteByte('\n')
 		}
 	}
 
 	return diff.String()
 }
 
-type change struct {
-	lineNum  int
-	expected string
-	actual   string
-}
-
-type hunk struct {
-	expectedStart int
-	expectedCount int
-	actualStart   int
-	actualCount   int
-	lines         []string
-}
-
-func findChanges(expected, actual []string) []change {
-	var changes []change
-	maxLines := len(expected)
-	if len(actual) > maxLines {
-		maxLines = len(actual)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		var expLine, actLine string
-		if i < len(expected) {
-			expLine = expected[i]
-		}
-		if i < len(actual) {
-			actLine = actual[i]
-		}
-
-		if expLine != actLine {
-			changes = append(changes, change{
-				lineNum:  i,
-				expected: expLine,
-				actual:   actLine,
-			})
-		}
-	}
-	return changes
-}
-
-func groupChanges(changes []change, context, maxLines int) []hunk {
-	if len(changes) == 0 {
+// diffSplit splits s into lines for diffing. A missing trailing newline is
+// represented as an explicit marker line so that "a\n" and "a" differ.
+func diffSplit(s string) []string {
+	if s == "" {
 		return nil
 	}
-
-	var hunks []hunk
-	start := max(0, changes[0].lineNum-context)
-	end := min(maxLines, changes[0].lineNum+context+1)
-
-	for i := 1; i < len(changes); i++ {
-		// Check if this change should be in the same hunk
-		if changes[i].lineNum-context <= end {
-			end = min(maxLines, changes[i].lineNum+context+1)
-		} else {
-			// Start a new hunk
-			hunks = append(hunks, buildHunk(changes, start, end, context))
-			start = max(0, changes[i].lineNum-context)
-			end = min(maxLines, changes[i].lineNum+context+1)
-		}
+	lines := strings.Split(s, "\n")
+	if lines[len(lines)-1] == "" {
+		return lines[:len(lines)-1]
 	}
-
-	// Add the last hunk
-	hunks = append(hunks, buildHunk(changes, start, end, context))
-
-	return hunks
+	return append(lines, `\ No newline at end of file`)
 }
 
-func buildHunk(changes []change, start, end, context int) hunk {
-	h := hunk{
-		expectedStart: start,
-		actualStart:   start,
-	}
+// diffOp is a single line of a diff: kind is ' ' (unchanged), '-' (only in
+// expected), or '+' (only in actual).
+type diffOp struct {
+	kind byte
+	text string
+}
 
-	changeMap := make(map[int]change)
-	for _, c := range changes {
-		if c.lineNum >= start && c.lineNum < end {
-			changeMap[c.lineNum] = c
+// diffLines computes a line-level diff of a and b using a longest-common-
+// subsequence alignment, so an inserted or deleted line doesn't cascade into
+// marking every following line as changed.
+func diffLines(a, b []string) []diffOp {
+	n, m := len(a), len(b)
+	lcs := make([][]int, n+1)
+	for i := range lcs {
+		lcs[i] = make([]int, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if a[i] == b[j] {
+				lcs[i][j] = lcs[i+1][j+1] + 1
+			} else {
+				lcs[i][j] = max(lcs[i+1][j], lcs[i][j+1])
+			}
 		}
 	}
 
-	for i := start; i < end; i++ {
-		if c, ok := changeMap[i]; ok {
-			if c.expected != "" || i < end-context {
-				h.lines = append(h.lines, "- "+c.expected)
-				h.expectedCount++
-			}
-			if c.actual != "" || i < end-context {
-				h.lines = append(h.lines, "+ "+c.actual)
-				h.actualCount++
-			}
-		} else {
-			// Context line (unchanged)
-			// We need to get the line from somewhere - use expected
-			// This is a simplification; proper diff would track this
-			h.lines = append(h.lines, "  (context)")
-			h.expectedCount++
-			h.actualCount++
+	ops := make([]diffOp, 0, n+m)
+	i, j := 0, 0
+	for i < n && j < m {
+		switch {
+		case a[i] == b[j]:
+			ops = append(ops, diffOp{' ', a[i]})
+			i++
+			j++
+		case lcs[i+1][j] >= lcs[i][j+1]:
+			ops = append(ops, diffOp{'-', a[i]})
+			i++
+		default:
+			ops = append(ops, diffOp{'+', b[j]})
+			j++
 		}
 	}
-
-	return h
+	for ; i < n; i++ {
+		ops = append(ops, diffOp{'-', a[i]})
+	}
+	for ; j < m; j++ {
+		ops = append(ops, diffOp{'+', b[j]})
+	}
+	return ops
 }
 
 // Equal checks if two screens have identical text content.

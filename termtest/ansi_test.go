@@ -402,10 +402,9 @@ func TestANSIUnknownSequences(t *testing.T) {
 	t.Run("unknown ESC sequence", func(t *testing.T) {
 		s := NewScreen(20, 5)
 		s.Write([]byte("\x1bZHello"))
-		// Unknown ESC sequences: ESC is skipped, but following char is written
-		// This matches the behavior - only known ESC sequences are consumed
-		assert.Contains(t, s.Row(0), "Hello")
-		assert.Contains(t, s.Row(0), "Z")
+		// Unknown ESC sequences are consumed (ESC plus final byte) so the
+		// final byte never leaks onto the screen as text
+		assert.Equal(t, "Hello", s.Row(0))
 	})
 }
 
@@ -795,10 +794,10 @@ func TestANSIDeleteCharsAtEnd(t *testing.T) {
 	s.SetCursor(8, 0)
 	s.Write([]byte("\x1b[5P")) // Delete 5 chars (more than remaining)
 
-	// When deleting more chars than available at cursor position,
-	// the blanks fill from width-n position, clearing more content
+	// DCH only affects the cursor position through the end of the line;
+	// characters left of the cursor are untouched (matches ECH behavior)
 	row := s.Row(0)
-	assert.Equal(t, "ABCDE", row)
+	assert.Equal(t, "ABCDEFGH", row)
 }
 
 func TestANSIEraseCharsAtEnd(t *testing.T) {

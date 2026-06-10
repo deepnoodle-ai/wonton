@@ -131,14 +131,17 @@ type Cell struct {
 // Screen implements io.Writer, so it can be used anywhere an io.Writer is expected.
 // Written bytes are interpreted as ANSI-formatted terminal output.
 type Screen struct {
-	width   int      // Screen width in columns
-	height  int      // Screen height in rows
-	cells   [][]Cell // 2D grid of character cells [y][x]
-	cursorX int      // Current cursor column (0-based)
-	cursorY int      // Current cursor row (0-based)
-	style   Style    // Current text style for new writes
-	savedX  int      // Saved cursor X position (ESC 7/8, CSI s/u)
-	savedY  int      // Saved cursor Y position (ESC 7/8, CSI s/u)
+	width       int      // Screen width in columns
+	height      int      // Screen height in rows
+	cells       [][]Cell // 2D grid of character cells [y][x]
+	cursorX     int      // Current cursor column (0-based)
+	cursorY     int      // Current cursor row (0-based)
+	style       Style    // Current text style for new writes
+	savedX      int      // Saved cursor X position (ESC 7/8, CSI s/u)
+	savedY      int      // Saved cursor Y position (ESC 7/8, CSI s/u)
+	savedStyle  Style    // Saved style (ESC 7/8)
+	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
+	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
 }
 
 // NewScreen creates a new virtual terminal screen with the specified dimensions.
@@ -200,6 +203,7 @@ func (s *Screen) Cursor() (x, y int) {
 
 // SetCursor moves the cursor to the specified position.
 func (s *Screen) SetCursor(x, y int) {
+	s.wrapPending = false
 	s.cursorX = clamp(x, 0, s.width-1)
 	s.cursorY = clamp(y, 0, s.height-1)
 }
@@ -265,44 +269,66 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 	switch cluster {
 	case "":
 		return
-	case "\r\n":
+	case "\r\n", "\n":
+		s.wrapPending = false
 		s.cursorX = 0
-		s.cursorY++
-		if s.cursorY >= s.height {
-			s.scrollUp()
-			s.cursorY = s.height - 1
-		}
-		return
-	case "\n":
-		s.cursorX = 0
-		s.cursorY++
-		if s.cursorY >= s.height {
-			s.scrollUp()
-			s.cursorY = s.height - 1
-		}
+		s.lineFeed()
 		return
 	case "\r":
+		s.wrapPending = false
 		s.cursorX = 0
 		return
 	case "\t":
+		s.wrapPending = false
 		nextTab := ((s.cursorX / 8) + 1) * 8
 		s.cursorX = min(nextTab, s.width-1)
 		return
 	}
 
-	// Wrap if needed
-	if s.cursorX+clusterWidth > s.width {
-		s.cursorX = 0
-		s.cursorY++
-		if s.cursorY >= s.height {
-			s.scrollUp()
-			s.cursorY = s.height - 1
+	// Remaining C0/C1 control characters occupy no cells and must never be
+	// written into the grid.
+	if first, _ := utf8.DecodeRuneInString(cluster); first < 0x20 || (first >= 0x7f && first < 0xa0) {
+		switch first {
+		case '\b': // Backspace moves the cursor left, stopping at the margin
+			s.wrapPending = false
+			if s.cursorX > 0 {
+				s.cursorX--
+			}
+		case '\v', '\f': // Vertical tab and form feed move down like line feed
+			s.wrapPending = false
+			s.lineFeed()
 		}
+		// All other controls (BEL, NUL, ...) are ignored
+		return
+	}
+
+	// Wrap if needed (deferred from filling the last column, or because the
+	// cluster doesn't fit on the current line)
+	if s.wrapPending || s.cursorX+clusterWidth > s.width {
+		s.wrapPending = false
+		s.cursorX = 0
+		s.lineFeed()
 	}
 
 	first, firstSize := utf8.DecodeRuneInString(cluster)
 	s.setCellGlyph(s.cursorX, s.cursorY, first, cluster[firstSize:], clusterWidth, s.style)
 	s.cursorX += clusterWidth
+
+	// Deferred wrap: after filling the last column the cursor stays on it
+	// until the next printable cluster arrives (standard terminal behavior).
+	if s.cursorX >= s.width {
+		s.cursorX = s.width - 1
+		s.wrapPending = true
+	}
+}
+
+// lineFeed moves the cursor down one row, scrolling at the bottom.
+func (s *Screen) lineFeed() {
+	s.cursorY++
+	if s.cursorY >= s.height {
+		s.scrollUp()
+		s.cursorY = s.height - 1
+	}
 }
 
 // WriteRune writes a single rune at the cursor position with the current style.
@@ -324,30 +350,64 @@ func (s *Screen) WriteString(str string) {
 	}
 }
 
+// maxPendingBytes bounds how many bytes of an incomplete escape sequence are
+// buffered between Write calls before being dropped.
+const maxPendingBytes = 1 << 20
+
 // Write implements io.Writer by parsing ANSI escape sequences and updating the screen.
 // It processes cursor movement, text styling, screen clearing, and other terminal
 // control sequences. Plain text is written to the screen at the cursor position.
 //
 // Supported ANSI sequences include:
 //   - CSI sequences (ESC[...): cursor movement, SGR, erase, insert/delete
-//   - OSC sequences (ESC]...): parsed and ignored
+//   - OSC/DCS/SOS/PM/APC sequences: parsed and ignored
 //   - Simple escapes: save/restore cursor, reset, scroll
+//
+// An escape sequence or multi-byte UTF-8 rune split across Write calls is
+// buffered and processed once the remaining bytes arrive, so chunk boundaries
+// chosen by the writer never corrupt the screen.
 //
 // Returns the number of bytes consumed (always len(p)) and no error.
 func (s *Screen) Write(p []byte) (n int, err error) {
-	s.processANSI(string(p))
+	data := string(p)
+	if len(s.pending) > 0 {
+		data = string(s.pending) + data
+		s.pending = s.pending[:0]
+	}
+	consumed := s.processANSI(data)
+	if consumed < len(data) && len(data)-consumed <= maxPendingBytes {
+		s.pending = append(s.pending, data[consumed:]...)
+	}
 	return len(p), nil
 }
 
-// Clear clears the entire screen.
+// Clear clears the entire screen and moves the cursor to the top-left.
 func (s *Screen) Clear() {
+	s.clearCells()
+	s.cursorX = 0
+	s.cursorY = 0
+	s.wrapPending = false
+}
+
+// clearCells blanks every cell without moving the cursor (CSI 2J/3J).
+func (s *Screen) clearCells() {
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
 			s.cells[y][x] = blankCell()
 		}
 	}
-	s.cursorX = 0
-	s.cursorY = 0
+}
+
+// Reset restores the screen to its initial state: all cells blank, cursor at
+// the top-left, default style, and no saved cursor state. This is equivalent
+// to a terminal hard reset (ESC c / RIS).
+func (s *Screen) Reset() {
+	s.Clear()
+	s.style = Style{}
+	s.savedX = 0
+	s.savedY = 0
+	s.savedStyle = Style{}
+	s.pending = nil
 }
 
 // ClearLine clears the current line.
@@ -359,6 +419,11 @@ func (s *Screen) ClearLine() {
 
 // ClearToEndOfLine clears from cursor to end of line.
 func (s *Screen) ClearToEndOfLine() {
+	// If the cursor sits on the continuation half of a wide glyph, clear the
+	// lead cell too so no dangling half remains (xterm behavior).
+	if s.cursorX > 0 && s.cursorX < s.width && s.cells[s.cursorY][s.cursorX].Continuation {
+		s.cells[s.cursorY][s.cursorX-1] = blankCell()
+	}
 	for x := s.cursorX; x < s.width; x++ {
 		s.cells[s.cursorY][x] = blankCell()
 	}
@@ -366,6 +431,11 @@ func (s *Screen) ClearToEndOfLine() {
 
 // ClearToStartOfLine clears from start of line to cursor.
 func (s *Screen) ClearToStartOfLine() {
+	// If the cursor sits on the lead half of a wide glyph, clear its
+	// continuation cell too so no dangling half remains (xterm behavior).
+	if s.cursorX >= 0 && s.cursorX < s.width-1 && s.cells[s.cursorY][s.cursorX].Width == 2 {
+		s.cells[s.cursorY][s.cursorX+1] = blankCell()
+	}
 	for x := 0; x <= s.cursorX && x < s.width; x++ {
 		s.cells[s.cursorY][x] = blankCell()
 	}
