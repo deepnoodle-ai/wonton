@@ -343,9 +343,12 @@ func (l *listView) Size(w, h int) *listView {
 	return l
 }
 
-// ItemHeight sets the height of each item in rows.
+// ItemHeight sets the height of each item in rows. Values less than 1 are
+// ignored, since layout math divides by the item height.
 func (l *listView) ItemHeight(h int) *listView {
-	l.itemHeight = h
+	if h >= 1 {
+		l.itemHeight = h
+	}
 	return l
 }
 

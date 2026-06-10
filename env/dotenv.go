@@ -4,6 +4,7 @@ package env
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -149,22 +150,20 @@ func ParseEnvString(s string) (map[string]string, error) {
 
 // parseLine parses a single line from a .env file.
 func parseLine(line string) (string, string, error) {
-	// Remove 'export ' prefix if present
-	line = strings.TrimPrefix(line, "export ")
-	line = strings.TrimSpace(line)
+	// Remove 'export' prefix if present (followed by whitespace)
+	if rest, ok := strings.CutPrefix(line, "export"); ok &&
+		len(rest) > 0 && (rest[0] == ' ' || rest[0] == '\t') {
+		line = strings.TrimSpace(rest)
+	}
 
-	// Find the key-value separator (= or :)
-	var key, value string
-	if idx := strings.Index(line, "="); idx != -1 {
-		key = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+1:])
-	} else if idx := strings.Index(line, ":"); idx != -1 {
-		// YAML-style
-		key = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+1:])
-	} else {
+	// Find the key-value separator: whichever of = or : appears first,
+	// so "KEY: a=b" splits on the colon, not the equals inside the value.
+	sepIdx := strings.IndexAny(line, "=:")
+	if sepIdx == -1 {
 		return "", "", &ParseError{Err: errInvalidFormat}
 	}
+	key := strings.TrimSpace(line[:sepIdx])
+	value := strings.TrimSpace(line[sepIdx+1:])
 
 	// Validate key
 	if key == "" {
@@ -177,11 +176,12 @@ func parseLine(line string) (string, string, error) {
 		quote := value[0]
 		// Find the closing quote, accounting for escapes in double-quoted strings
 		endIdx := findClosingQuote(value, quote)
-		if endIdx != -1 {
-			// Extract just the quoted portion and unquote it
-			value = unquote(value[:endIdx+1])
+		if endIdx == -1 {
+			// Unclosed quote: treat the line as malformed
+			return "", "", &ParseError{Err: errUnclosedQuote}
 		}
-		// If no closing quote found, unquote will handle it (returns as-is)
+		// Extract just the quoted portion and unquote it
+		value = unquote(value[:endIdx+1])
 	} else {
 		// Unquoted value: strip inline comments
 		if idx := strings.Index(value, " #"); idx != -1 {
@@ -336,6 +336,7 @@ func formatEnvLine(key, value string) string {
 
 // sentinel errors
 var (
-	errInvalidFormat = &ParseError{Err: nil}
-	errEmptyKey      = &ParseError{Err: nil}
+	errInvalidFormat = errors.New("invalid format: missing = or : separator")
+	errEmptyKey      = errors.New("empty key")
+	errUnclosedQuote = errors.New("unclosed quote in value")
 )

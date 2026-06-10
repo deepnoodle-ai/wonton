@@ -814,13 +814,16 @@ func (r *InlineApp) ClearScrollback() {
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.
-// You can configure it by passing a configuration function that receives the app.
+// The optional cfg callback receives the runner before it starts, which is
+// useful for storing a reference so the app can call Print/Printf:
 //
-// Example:
-//
-//	err := tui.RunInline(&MyApp{}, func(app *tui.InlineApp) {
-//	    app.Width(80).BracketedPaste(true)
+//	app := &MyApp{}
+//	err := tui.RunInline(app, func(r *tui.InlineApp) {
+//	    app.runner = r
 //	})
+//
+// For configuration (width, mouse tracking, etc.), use NewInlineApp with an
+// InlineAppConfig instead.
 func RunInline(app any, cfg func(*InlineApp)) error {
 	runner := NewInlineApp()
 	if cfg != nil {

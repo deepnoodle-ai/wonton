@@ -388,8 +388,8 @@ func TestParse_WithUseFieldName(t *testing.T) {
 	}
 
 	envVars := map[string]string{
-		"A_P_I_KEY": "secret",
-		"TIMEOUT":   "45s",
+		"API_KEY": "secret",
+		"TIMEOUT": "45s",
 	}
 
 	cfg, err := Parse[Config](
@@ -707,10 +707,12 @@ func TestToUpperSnakeCase(t *testing.T) {
 	}{
 		{"Host", "HOST"},
 		{"ServerHost", "SERVER_HOST"},
-		{"HTTPServer", "H_T_T_P_SERVER"},
-		{"DB", "D_B"},
-		{"APIKey", "A_P_I_KEY"},
+		{"HTTPServer", "HTTP_SERVER"},
+		{"DB", "DB"},
+		{"APIKey", "API_KEY"},
 		{"MaxConnections", "MAX_CONNECTIONS"},
+		{"Port8080", "PORT8080"},
+		{"MyAPI", "MY_API"},
 	}
 
 	for _, tt := range tests {
@@ -1556,4 +1558,20 @@ func TestParse_UnsetWithStage_FallbackToBase(t *testing.T) {
 	// The base variable should be unset (it was the one used)
 	_, hasSecret := env["SECRET"]
 	assert.False(t, hasSecret, "SECRET should be unset")
+}
+
+func TestParse_ByteSliceField(t *testing.T) {
+	type Config struct {
+		Secret []byte  `env:"SECRET"`
+		Ptr    *[]byte `env:"PTR"`
+	}
+
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{
+		"SECRET": "hello, world",
+		"PTR":    "pointed",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("hello, world"), cfg.Secret)
+	assert.NotNil(t, cfg.Ptr)
+	assert.Equal(t, []byte("pointed"), *cfg.Ptr)
 }

@@ -721,6 +721,12 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 }
 
 func (p *structParser) setSliceValue(fv reflect.Value, value string, sf reflect.StructField) error {
+	// []byte fields receive the raw value, not a comma-separated list of numbers
+	if fv.Type() == reflect.TypeOf([]byte(nil)) {
+		fv.SetBytes([]byte(value))
+		return nil
+	}
+
 	if value == "" {
 		return nil
 	}
@@ -804,11 +810,19 @@ func isSpecialType(t reflect.Type) bool {
 }
 
 // toUpperSnakeCase converts CamelCase to UPPER_SNAKE_CASE.
+// Acronym runs are kept together: "APIKey" becomes "API_KEY", not "A_P_I_KEY".
 func toUpperSnakeCase(s string) string {
+	runes := []rune(s)
 	var result strings.Builder
-	for i, r := range s {
+	for i, r := range runes {
 		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteByte('_')
+			prev := runes[i-1]
+			prevLowerOrDigit := (prev >= 'a' && prev <= 'z') || (prev >= '0' && prev <= '9')
+			nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+			prevUpper := prev >= 'A' && prev <= 'Z'
+			if prevLowerOrDigit || (prevUpper && nextLower) {
+				result.WriteByte('_')
+			}
 		}
 		if r >= 'a' && r <= 'z' {
 			result.WriteByte(byte(r - 'a' + 'A'))
