@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -47,12 +48,12 @@ func RequireFlags(names ...string) Middleware {
 	}
 }
 
-// Confirm returns middleware that prompts for user confirmation before proceeding.
+// ConfirmBefore returns middleware that prompts for user confirmation before proceeding.
 //
 // Only works in interactive mode. In non-interactive mode, returns an error:
 //
-//	cmd.Use(cli.Confirm("Are you sure you want to delete everything?"))
-func Confirm(message string) Middleware {
+//	cmd.Use(cli.ConfirmBefore("Are you sure you want to delete everything?"))
+func ConfirmBefore(message string) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {
 			if !ctx.Interactive() {
@@ -104,11 +105,7 @@ func Before(fn func(*Context) error) Middleware {
 func After(fn func(*Context) error) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx *Context) error {
-			err := next(ctx)
-			if afterErr := fn(ctx); afterErr != nil && err == nil {
-				return afterErr
-			}
-			return err
+			return errors.Join(next(ctx), fn(ctx))
 		}
 	}
 }

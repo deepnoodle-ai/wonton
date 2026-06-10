@@ -62,7 +62,7 @@ func main() {
 	// Command with multiple aliases
 	app.Command("generate").
 		Description("Generate something").
-		Aliases("gen", "g").
+		Alias("gen", "g").
 		Long("Generate various outputs. This command has aliases 'gen' and 'g'.").
 		Run(func(ctx *cli.Context) error {
 			ctx.Println("Generating... (use 'gen' or 'g' as shortcuts)")

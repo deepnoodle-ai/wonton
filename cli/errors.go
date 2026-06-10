@@ -54,6 +54,7 @@ type CommandError struct {
 	hint    string
 	code    string
 	details []string
+	cause   error
 }
 
 // Error creates a new command error with the given message.
@@ -103,6 +104,15 @@ func (e *CommandError) Detail(format string, args ...any) *CommandError {
 	e.details = append(e.details, fmt.Sprintf(format, args...))
 	return e
 }
+
+// Wrap attaches an underlying error to this CommandError.
+func (e *CommandError) Wrap(err error) *CommandError {
+	e.cause = err
+	return e
+}
+
+// Unwrap returns the underlying error, implementing the errors.Unwrap interface.
+func (e *CommandError) Unwrap() error { return e.cause }
 
 // ErrorCode returns the error code if set.
 func (e *CommandError) ErrorCode() string {

@@ -182,7 +182,7 @@ func TestRenderCommandHelp(t *testing.T) {
 	t.Run("renders help for command with aliases", func(t *testing.T) {
 		app := New("myapp")
 		cmd := app.Command("build").Description("Build the project")
-		cmd.Aliases("b", "compile")
+		cmd.Alias("b", "compile")
 		cmd.Run(func(ctx *Context) error {
 			return nil
 		})

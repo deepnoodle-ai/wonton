@@ -25,7 +25,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      stdout,
 		}
 
-		middleware := Confirm("Are you sure?")
+		middleware := ConfirmBefore("Are you sure?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)
@@ -50,7 +50,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      stdout,
 		}
 
-		middleware := Confirm("Continue?")
+		middleware := ConfirmBefore("Continue?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)
@@ -74,7 +74,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      stdout,
 		}
 
-		middleware := Confirm("Delete all?")
+		middleware := ConfirmBefore("Delete all?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)
@@ -99,7 +99,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      stdout,
 		}
 
-		middleware := Confirm("Proceed?")
+		middleware := ConfirmBefore("Proceed?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)
@@ -123,7 +123,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      stdout,
 		}
 
-		middleware := Confirm("Dangerous operation?")
+		middleware := ConfirmBefore("Dangerous operation?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)
@@ -144,7 +144,7 @@ func TestConfirmMiddleware(t *testing.T) {
 			stdout:      &bytes.Buffer{},
 		}
 
-		middleware := Confirm("Continue?")
+		middleware := ConfirmBefore("Continue?")
 		wrappedHandler := middleware(handler)
 
 		err := wrappedHandler(ctx)

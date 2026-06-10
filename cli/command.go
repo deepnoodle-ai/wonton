@@ -205,11 +205,6 @@ func (c *Command) Alias(names ...string) *Command {
 	return c
 }
 
-// Aliases sets command aliases (alias for Alias).
-func (c *Command) Aliases(names ...string) *Command {
-	return c.Alias(names...)
-}
-
 // Use adds middleware to the command.
 func (c *Command) Use(mw ...Middleware) *Command {
 	c.middleware = append(c.middleware, mw...)
@@ -481,8 +476,45 @@ func (f *IntFlag) IsRequired() bool  { return f.Required }
 func (f *IntFlag) IsHidden() bool    { return f.Hidden }
 func (f *IntFlag) GetEnum() []string { return nil }
 func (f *IntFlag) Validate(value string) error {
-	// Validation happens after parsing in parseFlags
-	return nil
+	if f.Validator == nil {
+		return nil
+	}
+	n, err := parseInt(value)
+	if err != nil {
+		return err
+	}
+	return f.Validator(n)
+}
+
+// Int64Flag represents an int64 flag.
+type Int64Flag struct {
+	Name      string
+	Short     string
+	Help      string
+	Value     int64 // default value
+	EnvVar    string
+	Required  bool
+	Hidden    bool
+	Validator func(int64) error
+}
+
+func (f *Int64Flag) GetName() string   { return f.Name }
+func (f *Int64Flag) GetShort() string  { return f.Short }
+func (f *Int64Flag) GetHelp() string   { return f.Help }
+func (f *Int64Flag) GetEnvVar() string { return f.EnvVar }
+func (f *Int64Flag) GetDefault() any   { return f.Value }
+func (f *Int64Flag) IsRequired() bool  { return f.Required }
+func (f *Int64Flag) IsHidden() bool    { return f.Hidden }
+func (f *Int64Flag) GetEnum() []string { return nil }
+func (f *Int64Flag) Validate(value string) error {
+	if f.Validator == nil {
+		return nil
+	}
+	v, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return err
+	}
+	return f.Validator(v)
 }
 
 // Float64Flag represents a float64 flag.
@@ -505,7 +537,16 @@ func (f *Float64Flag) GetDefault() any       { return f.Value }
 func (f *Float64Flag) IsRequired() bool      { return f.Required }
 func (f *Float64Flag) IsHidden() bool        { return f.Hidden }
 func (f *Float64Flag) GetEnum() []string     { return nil }
-func (f *Float64Flag) Validate(string) error { return nil }
+func (f *Float64Flag) Validate(value string) error {
+	if f.Validator == nil {
+		return nil
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return err
+	}
+	return f.Validator(v)
+}
 
 // DurationFlag represents a time.Duration flag.
 type DurationFlag struct {
@@ -686,7 +727,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
-				} else if i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
+				} else if i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
 						return err
@@ -711,7 +752,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
-				} else if j == len(shorts)-1 && i+1 < len(args) && !c.looksLikeFlag(args[i+1]) {
+				} else if j == len(shorts)-1 && i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
 						return err
@@ -815,30 +856,6 @@ func (c *Command) isHelpShort() bool {
 	return c.findFlagByShort("h") == nil
 }
 
-// looksLikeFlag returns true if the string looks like a flag rather than a value.
-// This allows values like "-1" (negative numbers) while still treating "-v" as a flag.
-func (c *Command) looksLikeFlag(s string) bool {
-	if !strings.HasPrefix(s, "-") {
-		return false
-	}
-	if len(s) == 1 {
-		return false // just "-"
-	}
-	// Check if it could be a negative number
-	if len(s) >= 2 {
-		// -N or -.N where N is a digit
-		second := s[1]
-		if second >= '0' && second <= '9' {
-			return false // looks like negative number
-		}
-		if second == '.' && len(s) > 2 {
-			return false // looks like negative decimal
-		}
-	}
-	// Otherwise it's probably a flag
-	return true
-}
-
 func (c *Command) setFlag(ctx *Context, name, value string) error {
 	flag := c.findFlag(name)
 	if flag == nil {
@@ -889,7 +906,11 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		}
 		ctx.flags[name] = append(existing, intVal)
 	default:
-		ctx.flags[name] = value
+		typed, err := convertFlagValue(flag, value)
+		if err != nil {
+			return fmt.Errorf("invalid value for --%s: %s", name, err)
+		}
+		ctx.flags[name] = typed
 	}
 	return nil
 }
@@ -914,6 +935,8 @@ func convertFlagValue(f Flag, val string) (any, error) {
 		}
 	case int:
 		return parseInt(val)
+	case int64:
+		return strconv.ParseInt(strings.TrimSpace(val), 10, 64)
 	case float64:
 		return strconv.ParseFloat(strings.TrimSpace(val), 64)
 	case time.Duration:
@@ -1131,6 +1154,8 @@ func isZeroDefault(def any) bool {
 	case bool:
 		return !v
 	case int:
+		return v == 0
+	case int64:
 		return v == 0
 	case float64:
 		return v == 0

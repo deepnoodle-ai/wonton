@@ -10,6 +10,7 @@ import (
 )
 
 // ParseFlags parses a struct with flag tags and adds flags to a command.
+// It returns the command for chaining.
 //
 // This provides a declarative way to define flags using struct tags.
 // Supports tags: flag, default, help, env, enum, required, hidden
@@ -27,10 +28,10 @@ import (
 //	ParseFlags[Flags](cmd)
 //
 // Use BindFlags in the handler to populate the struct with parsed values.
-func ParseFlags[T any](c *Command) *T {
-	var result T
-	parseStructFlags(c, reflect.TypeOf(result))
-	return &result
+func ParseFlags[T any](c *Command) *Command {
+	var zero T
+	parseStructFlags(c, reflect.TypeOf(zero))
+	return c
 }
 
 // BindFlags binds parsed flag values to a struct.
@@ -141,7 +142,7 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				Hidden:   hidden,
 				Enum:     enum,
 			})
-		case reflect.Int, reflect.Int64:
+		case reflect.Int:
 			defVal := 0
 			if def := field.Tag.Get("default"); def != "" {
 				if v, err := strconv.Atoi(def); err == nil {
@@ -149,6 +150,22 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				}
 			}
 			c.flags = append(c.flags, &IntFlag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+			})
+		case reflect.Int64:
+			defVal := int64(0)
+			if def := field.Tag.Get("default"); def != "" {
+				if v, err := strconv.ParseInt(def, 10, 64); err == nil {
+					defVal = v
+				}
+			}
+			c.flags = append(c.flags, &Int64Flag{
 				Name:     name,
 				Short:    short,
 				Help:     help,
@@ -284,8 +301,12 @@ func lookupEnv(key string) (string, bool) {
 // The first parameter is the long flag name, the second is the optional short name:
 //
 //	cli.String("output", "o").Default("output.txt").Help("Output file")
-func String(name, short string) *stringBuilder {
-	return &stringBuilder{name: name, short: short}
+func String(name string, short ...string) *stringBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &stringBuilder{name: name, short: s}
 }
 
 type stringBuilder struct {
@@ -325,8 +346,12 @@ func (b *stringBuilder) Validate(value string) error {
 // Bool creates a new boolean flag builder.
 //
 //	cli.Bool("verbose", "v").Help("Enable verbose output")
-func Bool(name, short string) *boolBuilder {
-	return &boolBuilder{name: name, short: short}
+func Bool(name string, short ...string) *boolBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &boolBuilder{name: name, short: s}
 }
 
 type boolBuilder struct {
@@ -354,8 +379,12 @@ func (b *boolBuilder) Validate(string) error { return nil }
 // Int creates a new integer flag builder.
 //
 //	cli.Int("port", "p").Default(8080).Help("Server port")
-func Int(name, short string) *intBuilder {
-	return &intBuilder{name: name, short: short}
+func Int(name string, short ...string) *intBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &intBuilder{name: name, short: s}
 }
 
 type intBuilder struct {
@@ -382,21 +411,34 @@ func (b *intBuilder) GetEnvVar() string     { return b.envVar }
 func (b *intBuilder) GetDefault() any       { return b.value }
 func (b *intBuilder) IsRequired() bool      { return b.required }
 func (b *intBuilder) IsHidden() bool        { return b.hidden }
-func (b *intBuilder) GetEnum() []string     { return nil }
-func (b *intBuilder) Validate(string) error { return nil }
+func (b *intBuilder) GetEnum() []string { return nil }
+func (b *intBuilder) Validate(value string) error {
+	if b.validator == nil {
+		return nil
+	}
+	n, err := parseInt(value)
+	if err != nil {
+		return err
+	}
+	return b.validator(n)
+}
 
 // Float64 creates a new float64 flag builder.
 //
 //	cli.Float64("ratio", "r").Default(0.5).Help("Compression ratio")
-func Float64(name, short string) *float64Builder {
-	return &float64Builder{name: name, short: short}
+func Float64(name string, short ...string) *float64Builder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &float64Builder{name: name, short: s}
 }
 
 // Float is an alias for Float64.
 //
 //	cli.Float("ratio", "r").Default(0.5).Help("Compression ratio")
-func Float(name, short string) *float64Builder {
-	return Float64(name, short)
+func Float(name string, short ...string) *float64Builder {
+	return Float64(name, short...)
 }
 
 type float64Builder struct {
@@ -423,14 +465,27 @@ func (b *float64Builder) GetEnvVar() string     { return b.envVar }
 func (b *float64Builder) GetDefault() any       { return b.value }
 func (b *float64Builder) IsRequired() bool      { return b.required }
 func (b *float64Builder) IsHidden() bool        { return b.hidden }
-func (b *float64Builder) GetEnum() []string     { return nil }
-func (b *float64Builder) Validate(string) error { return nil }
+func (b *float64Builder) GetEnum() []string { return nil }
+func (b *float64Builder) Validate(value string) error {
+	if b.validator == nil {
+		return nil
+	}
+	v, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return err
+	}
+	return b.validator(v)
+}
 
 // Duration creates a new duration flag builder.
 //
 //	cli.Duration("timeout", "t").Default(30*time.Second).Help("Request timeout")
-func Duration(name, short string) *durationBuilder {
-	return &durationBuilder{name: name, short: short}
+func Duration(name string, short ...string) *durationBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &durationBuilder{name: name, short: s}
 }
 
 type durationBuilder struct {
@@ -461,8 +516,12 @@ func (b *durationBuilder) Validate(string) error { return nil }
 //
 //	cli.Strings("include", "i").Help("Paths to include")
 //	// Usage: --include /foo --include /bar
-func Strings(name, short string) *stringsBuilder {
-	return &stringsBuilder{name: name, short: short}
+func Strings(name string, short ...string) *stringsBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &stringsBuilder{name: name, short: s}
 }
 
 type stringsBuilder struct {
@@ -493,8 +552,12 @@ func (b *stringsBuilder) Validate(string) error { return nil }
 //
 //	cli.Ints("port", "p").Help("Ports to listen on")
 //	// Usage: --port 8080 --port 8081
-func Ints(name, short string) *intsBuilder {
-	return &intsBuilder{name: name, short: short}
+func Ints(name string, short ...string) *intsBuilder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &intsBuilder{name: name, short: s}
 }
 
 type intsBuilder struct {
@@ -518,3 +581,50 @@ func (b *intsBuilder) IsRequired() bool      { return b.required }
 func (b *intsBuilder) IsHidden() bool        { return b.hidden }
 func (b *intsBuilder) GetEnum() []string     { return nil }
 func (b *intsBuilder) Validate(string) error { return nil }
+
+// Int64 creates a new int64 flag builder.
+//
+//	cli.Int64("size", "s").Default(int64(1024)).Help("Size in bytes")
+func Int64(name string, short ...string) *int64Builder {
+	s := ""
+	if len(short) > 0 {
+		s = short[0]
+	}
+	return &int64Builder{name: name, short: s}
+}
+
+type int64Builder struct {
+	name, short, help, envVar string
+	value                     int64
+	required, hidden          bool
+	validator                 func(int64) error
+}
+
+func (b *int64Builder) Default(v int64) *int64Builder { b.value = v; return b }
+func (b *int64Builder) Help(v string) *int64Builder   { b.help = v; return b }
+func (b *int64Builder) Env(v string) *int64Builder    { b.envVar = v; return b }
+func (b *int64Builder) Required() *int64Builder       { b.required = true; return b }
+func (b *int64Builder) Hidden() *int64Builder         { b.hidden = true; return b }
+func (b *int64Builder) ValidateWith(f func(int64) error) *int64Builder {
+	b.validator = f
+	return b
+}
+
+func (b *int64Builder) GetName() string   { return b.name }
+func (b *int64Builder) GetShort() string  { return b.short }
+func (b *int64Builder) GetHelp() string   { return b.help }
+func (b *int64Builder) GetEnvVar() string { return b.envVar }
+func (b *int64Builder) GetDefault() any   { return b.value }
+func (b *int64Builder) IsRequired() bool  { return b.required }
+func (b *int64Builder) IsHidden() bool    { return b.hidden }
+func (b *int64Builder) GetEnum() []string { return nil }
+func (b *int64Builder) Validate(value string) error {
+	if b.validator == nil {
+		return nil
+	}
+	v, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return err
+	}
+	return b.validator(v)
+}
