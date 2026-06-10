@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -254,17 +255,28 @@ func (app *SiteCheckApp) formatResult(status LinkStatus) tui.View {
 	)
 }
 
-// checkLink checks a single link and returns its status
-func checkLink(ctx context.Context, url string) LinkStatus {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Don't follow redirects, just record them
-			return http.ErrUseLastResponse
-		},
-	}
+// linkClient is shared by all link checks. Redirects are recorded, not followed.
+var linkClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		// Don't follow redirects, just record them
+		return http.ErrUseLastResponse
+	},
+}
 
-	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
+// checkLink checks a single link and returns its status. It uses a HEAD
+// request, falling back to GET when the server rejects HEAD.
+func checkLink(ctx context.Context, url string) LinkStatus {
+	status := doRequest(ctx, http.MethodHead, url)
+	if status.Error == nil &&
+		(status.StatusCode == http.StatusMethodNotAllowed || status.StatusCode == http.StatusNotImplemented) {
+		status = doRequest(ctx, http.MethodGet, url)
+	}
+	return status
+}
+
+func doRequest(ctx context.Context, method, url string) LinkStatus {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return LinkStatus{
 			URL:       url,
@@ -276,7 +288,7 @@ func checkLink(ctx context.Context, url string) LinkStatus {
 	// Set a reasonable user agent
 	req.Header.Set("User-Agent", "SiteCheck/1.0")
 
-	resp, err := client.Do(req)
+	resp, err := linkClient.Do(req)
 	if err != nil {
 		return LinkStatus{
 			URL:       url,
@@ -385,7 +397,7 @@ func runCrawler(ctx context.Context, app *SiteCheckApp, startURL string, maxURLs
 			}
 		})
 
-		if err != nil && err != context.Canceled {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			app.SetError(fmt.Errorf("crawl error: %w", err))
 			return
 		}

@@ -87,6 +87,11 @@ func monitorURL(url string, config Config) error {
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Build a cancellable context so in-flight fetches are aborted on signal.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	printHeader(url, interval, config.Once)
 
@@ -95,7 +100,7 @@ func monitorURL(url string, config Config) error {
 		lastCheck = time.Now()
 
 		// Fetch and convert to markdown with retry
-		content, err := fetchWithRetry(fetcher, url)
+		content, err := fetchWithRetry(ctx, fetcher, url)
 		if err != nil {
 			printError(checkCount, err)
 			if config.Once {
@@ -137,6 +142,7 @@ func monitorURL(url string, config Config) error {
 			// Continue to next check
 		case <-sigChan:
 			// Graceful shutdown
+			cancel()
 			fmt.Printf("\n%s Stopping monitoring...\n",
 				color.Yellow.Apply("⚠"))
 			printSummary(checkCount, lastCheck)
@@ -151,9 +157,7 @@ func monitorURL(url string, config Config) error {
 	return nil
 }
 
-func fetchWithRetry(fetcher fetch.Fetcher, url string) (string, error) {
-	ctx := context.Background()
-
+func fetchWithRetry(ctx context.Context, fetcher fetch.Fetcher, url string) (string, error) {
 	result, err := retry.Do(ctx, func() (string, error) {
 		req := &fetch.Request{
 			URL:             url,
@@ -292,10 +296,6 @@ func generateDiff(oldContent, newContent string) string {
 	oldLines := strings.Split(oldContent, "\n")
 	newLines := strings.Split(newContent, "\n")
 
-	// Simple line-by-line comparison
-	// This is a basic implementation - a real diff would use LCS algorithm
-	diff.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines)))
-
 	// Find common prefix
 	commonPrefix := 0
 	for i := 0; i < len(oldLines) && i < len(newLines); i++ {
@@ -316,8 +316,21 @@ func generateDiff(oldContent, newContent string) string {
 		}
 	}
 
-	// Print context lines before changes
+	// Single hunk: up to 3 context lines around the changed region.
+	// This is a basic implementation - a real diff would use an LCS algorithm.
 	contextStart := max(0, commonPrefix-3)
+	contextEnd := min(len(oldLines), len(oldLines)-commonSuffix+3)
+
+	contextBefore := commonPrefix - contextStart
+	contextAfter := contextEnd - (len(oldLines) - commonSuffix)
+	removed := len(oldLines) - commonPrefix - commonSuffix
+	added := len(newLines) - commonPrefix - commonSuffix
+
+	diff.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n",
+		contextStart+1, contextBefore+removed+contextAfter,
+		contextStart+1, contextBefore+added+contextAfter))
+
+	// Print context lines before changes
 	for i := contextStart; i < commonPrefix; i++ {
 		diff.WriteString(" " + oldLines[i] + "\n")
 	}
@@ -333,7 +346,6 @@ func generateDiff(oldContent, newContent string) string {
 	}
 
 	// Print context lines after changes
-	contextEnd := min(len(oldLines), len(oldLines)-commonSuffix+3)
 	for i := len(oldLines) - commonSuffix; i < contextEnd; i++ {
 		diff.WriteString(" " + oldLines[i] + "\n")
 	}
@@ -365,18 +377,4 @@ func printColorizedDiff(diff *unidiff.Diff) {
 			}
 		}
 	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

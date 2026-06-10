@@ -1,3 +1,7 @@
+// Package main demonstrates the built-in text animations: Rainbow, Pulse,
+// Sparkle, Typewriter, Glitch, Slide, and Wave.
+//
+// Run with: go run ./examples/tui/text_animation
 package main
 
 import (

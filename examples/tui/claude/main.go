@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -124,9 +125,10 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 		}
 
 	case event.Key == tui.KeyBackspace:
-		// Delete character
+		// Delete the last character (rune-aware, not byte-aware)
 		if len(d.input) > 0 {
-			d.input = d.input[:len(d.input)-1]
+			_, size := utf8.DecodeLastRuneInString(d.input)
+			d.input = d.input[:len(d.input)-size]
 		}
 		// Reset history browsing when editing
 		d.historyIndex = -1
@@ -258,8 +260,10 @@ func (d *ClaudeStyleDemo) renderInputArea() tui.View {
 		)
 	}
 
-	// Help text at the bottom, right-aligned
-	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
+	// Help text at the bottom, right-aligned.
+	// Shift+Enter works in terminals with the Kitty keyboard protocol;
+	// \+Enter is the fallback the runtime provides everywhere else.
+	helpText := "Ctrl+C: exit | Enter: send | Shift+Enter or \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
 
 	return tui.Stack(
 		tui.Stack(inputViews...),
@@ -305,7 +309,7 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 	}
 
 	if strings.Contains(input, "example") {
-		return "Here are some examples you can run:\n\ngo run examples/all/main.go\ngo run examples/interactive/main.go\ngo run examples/composition_demo/main.go\n\nEach demonstrates different library features!"
+		return "Here are some examples you can run:\n\ngo run ./examples/tui/counter\ngo run ./examples/tui/composition\ngo run ./examples/tui/animation_showcase\n\nEach demonstrates different library features!"
 	}
 
 	// Default response

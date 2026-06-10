@@ -1,8 +1,8 @@
 // Example: Session Viewer
 //
 // A TUI application for browsing and replaying asciinema-format terminal
-// recordings. Navigate sessions, search commands, and replay at variable
-// speed with proper styling.
+// recordings. Browse and filter recordings in a directory, preview their
+// metadata, and replay them at variable speed.
 //
 // Run with:
 //
@@ -14,8 +14,10 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -139,8 +141,8 @@ func showInfo(filename string) error {
 
 	if len(header.Env) > 0 {
 		fmt.Printf("\nEnvironment:\n")
-		for k, v := range header.Env {
-			fmt.Printf("  %s=%s\n", k, v)
+		for _, k := range slices.Sorted(maps.Keys(header.Env)) {
+			fmt.Printf("  %s=%s\n", k, header.Env[k])
 		}
 	}
 
@@ -164,7 +166,17 @@ func browseRecordings(dir string) error {
 		files:     files,
 	}
 
-	return tui.Run(app)
+	if err := tui.Run(app); err != nil {
+		return err
+	}
+
+	// If the user pressed Enter on a recording, play it now that the TUI
+	// has exited and the terminal has been restored.
+	if app.playFile != "" {
+		return playRecording(app.playFile, 1.0, false, 0.0)
+	}
+
+	return nil
 }
 
 // findCastFiles searches for .cast files in a directory
@@ -199,6 +211,7 @@ type BrowserApp struct {
 	width        int
 	height       int
 	statusMsg    string
+	playFile     string // recording to play after the TUI exits
 }
 
 // RecordingPreview holds preview information about a recording
@@ -379,32 +392,17 @@ func (app *BrowserApp) loadPreview(filename string) {
 	app.statusMsg = fmt.Sprintf("Loaded preview for %s", filepath.Base(filename))
 }
 
-// playSelected plays the currently selected recording
+// playSelected records the selected file and quits the TUI; playback happens
+// in browseRecordings after the TUI has restored the terminal. (Playing from
+// a tui.Cmd would race with process exit, since commands run in goroutines
+// that are not awaited after quit.)
 func (app *BrowserApp) playSelected() []tui.Cmd {
 	if app.selected >= len(app.files) {
 		return nil
 	}
 
-	filename := app.files[app.selected]
-
-	// Quit the TUI and then play
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			// Small delay to ensure terminal is restored
-			time.Sleep(100 * time.Millisecond)
-
-			// Clear screen before playing
-			fmt.Printf("\033[2J\033[H")
-
-			if err := playRecording(filename, 1.0, false, 0.0); err != nil {
-				fmt.Fprintf(os.Stderr, "Error playing recording: %v\n", err)
-			}
-
-			// Return a dummy event (we're quitting anyway)
-			return tui.QuitEvent{Time: time.Now()}
-		},
-	}
+	app.playFile = app.files[app.selected]
+	return []tui.Cmd{tui.Quit()}
 }
 
 // showInfoSelected shows detailed info for the selected recording

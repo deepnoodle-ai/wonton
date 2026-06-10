@@ -88,11 +88,14 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 
 	frame := ctx.Frame()
 
-	// Calculate total perimeter for border animation
-	perimeter := (w-2)*2 + (h-2)*2 + 4 // Include corners
+	// Positions run clockwise around the full perimeter, corners included,
+	// so position-based animations flow smoothly through the corners:
+	// TL=0, top edge 1..w-2, TR=w-1, right edge w..w+h-3, BR=w+h-2,
+	// bottom edge w+h-1..2w+h-4, BL=2w+h-3, left edge 2w+h-2..perimeter-1.
+	perimeter := (w-2)*2 + (h-2)*2 + 4
 
 	// Draw top border
-	position := 0
+	position := 1 // position 0 is the top-left corner
 	for x := 1; x < w-1; x++ {
 		style := f.staticBorderStyle
 		if f.borderAnimation != nil {
@@ -101,6 +104,7 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 		ctx.PrintTruncated(x, 0, f.border.Horizontal, style)
 		position++
 	}
+	position++ // top-right corner
 
 	// Draw right border
 	for y := 1; y < h-1; y++ {
@@ -113,6 +117,7 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 		}
 		position++
 	}
+	position++ // bottom-right corner
 
 	// Draw bottom border
 	for x := w - 2; x > 0; x-- {
@@ -125,6 +130,7 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 		}
 		position++
 	}
+	position++ // bottom-left corner
 
 	// Draw left border
 	for y := h - 2; y > 0; y-- {
@@ -136,7 +142,7 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 		position++
 	}
 
-	// Draw corners
+	// Draw corners at their perimeter positions
 	tlStyle := f.staticBorderStyle
 	trStyle := f.staticBorderStyle
 	blStyle := f.staticBorderStyle
@@ -144,12 +150,12 @@ func (f *animatedBorderedView) render(ctx *RenderContext) {
 
 	if f.borderAnimation != nil {
 		tlStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartTopLeft, 0, perimeter)
-		trStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartTopRight, 0, perimeter)
+		trStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartTopRight, w-1, perimeter)
 		if h > 1 {
-			blStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomLeft, 0, perimeter)
+			blStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomLeft, 2*w+h-3, perimeter)
 		}
 		if w > 1 && h > 1 {
-			brStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomRight, 0, perimeter)
+			brStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomRight, w+h-2, perimeter)
 		}
 	}
 

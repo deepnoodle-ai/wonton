@@ -1,3 +1,7 @@
+// Package main demonstrates a multi-field form: name, email, and password
+// inputs with Tab/Shift+Tab navigation, validation, and a submit button.
+//
+// Run with: go run ./examples/tui/input_forms
 package main
 
 import (

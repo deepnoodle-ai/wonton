@@ -1,7 +1,24 @@
+// Example: inline_dive_like
+//
+// Stress-tests InlineApp live-region layout with a Dive/Claude Code style
+// interface: a pinned multiline input, spinner and tool-call status rows,
+// a todo list, a dialog, and footer variants that change the live region
+// height from frame to frame.
+//
+// Hotkeys (these letters are reserved and stripped from the input field):
+//
+//	q quit | p processing | d dialog | t todos | a autocomplete footer
+//	c compaction footer | e exit-hint footer | +/- tool calls | x expand
+//
+// Ctrl+C also quits. Type other text and press Enter to submit it.
+//
+// Run with: go run ./examples/tui/inline_dive_like
 package main
 
 import (
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -59,6 +76,9 @@ func (a *diveLikeApp) LiveView() tui.View {
 			Multiline(true).
 			MaxHeight(10).
 			OnSubmit(func(value string) {
+				// Clear the input before printing: state that affects
+				// LiveView must be set before Print re-renders it.
+				a.inputText = ""
 				if a.runner != nil {
 					a.runner.Printf("You entered: %s", value)
 				}
@@ -97,16 +117,21 @@ func (a *diveLikeApp) LiveView() tui.View {
 
 	views = append(views, footerViews...)
 
-	if len(views) == 0 {
-		return tui.Text("")
-	}
-
 	return tui.Stack(views...).Gap(0)
 }
 
 func (a *diveLikeApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
+		if e.Key == tui.KeyCtrlC {
+			return []tui.Cmd{tui.Quit()}
+		}
+		switch e.Rune {
+		case 'q', 'p', 'd', 't', 'a', 'c', 'e', '+', '-', 'x':
+			// The focused input field consumed this rune before HandleEvent
+			// ran; strip it so hotkeys don't pollute the input text.
+			a.inputText = strings.TrimSuffix(a.inputText, string(e.Rune))
+		}
 		switch e.Rune {
 		case 'q':
 			return []tui.Cmd{tui.Quit()}
@@ -175,10 +200,6 @@ func (a *diveLikeApp) buildLiveView() tui.View {
 		views = append(views, a.todoListView())
 	}
 
-	if len(views) == 0 {
-		return tui.Text("")
-	}
-
 	return tui.PaddingLTRB(1, 0, 1, 0, tui.Stack(views...).Gap(1))
 }
 
@@ -212,6 +233,6 @@ func main() {
 		FPS: 20,
 	})
 	if err := app.runner.Run(app); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

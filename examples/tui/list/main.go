@@ -1,3 +1,7 @@
+// Package main demonstrates FilterableList: a scrollable, filterable list with
+// multi-select, custom markers, and an info panel showing the current selection.
+//
+// Run with: go run ./examples/tui/list
 package main
 
 import (

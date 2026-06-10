@@ -1,12 +1,15 @@
 // Example: shapes demonstrates basic GIF creation with geometric shapes.
 //
 // Run with: go run ./examples/gif/shapes
+//
+// Writes shapes.gif to the current directory.
 package main
 
 import (
 	"fmt"
 	"image/color"
 	"math"
+	"os"
 
 	"github.com/deepnoodle-ai/wonton/gif"
 )
@@ -56,8 +59,8 @@ func main() {
 
 	// Save the GIF
 	if err := g.Save("shapes.gif"); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("Created shapes.gif")

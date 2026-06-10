@@ -1,3 +1,7 @@
+// Package main demonstrates InputField border styles and cursor options:
+// bordered, horizontal-bar, prompt-style, and blinking bar cursors.
+//
+// Run with: go run ./examples/tui/input_styles
 package main
 
 import (
@@ -6,17 +10,13 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// InputStylesApp demonstrates the new InputField styles and cursor options
+// InputStylesApp demonstrates InputField styles and cursor options.
 type InputStylesApp struct {
 	input1 string
 	input2 string
 	input3 string
 	input4 string
 	input5 string
-}
-
-func (app *InputStylesApp) Init() error {
-	return nil
 }
 
 func (app *InputStylesApp) HandleEvent(event tui.Event) []tui.Cmd {

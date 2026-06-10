@@ -13,7 +13,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -73,7 +75,7 @@ func main() {
 	app.Main().
 		Args("url").
 		Flags(
-			cli.String("header", "H").
+			cli.Strings("header", "H").
 				Help("Add header (format: 'Name: Value') - use multiple times for multiple headers"),
 			cli.Bool("json", "j").
 				Default(true).
@@ -97,14 +99,15 @@ func main() {
 					Hint("Usage: sseview https://example.com/events")
 			}
 
-			// Parse header (single header for simplicity)
+			// Parse headers (--header may be repeated)
 			headers := make(map[string]string)
-			headerStr := ctx.String("header")
-			if headerStr != "" {
-				parts := strings.SplitN(headerStr, ":", 2)
-				if len(parts) == 2 {
-					headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			for _, headerStr := range ctx.Strings("header") {
+				name, value, ok := strings.Cut(headerStr, ":")
+				if !ok {
+					return cli.Error(fmt.Sprintf("invalid header %q", headerStr)).
+						Hint("Use the format 'Name: Value'")
 				}
+				headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
 			}
 
 			tuiApp := &SSEViewApp{
@@ -142,14 +145,25 @@ func main() {
 	}
 }
 
+// errStreamClosed signals that the server ended the stream cleanly, so the
+// reconnect loop should establish a new connection.
+var errStreamClosed = errors.New("stream closed by server")
+
 func (app *SSEViewApp) connect(ctx context.Context, reconnect bool, timeout int) {
 	app.mu.Lock()
 	app.connecting = true
 	app.mu.Unlock()
 
 	client := sse.NewClient(app.url)
+	// Bound connection establishment, but not the stream itself: an overall
+	// http.Client.Timeout would kill a healthy long-lived SSE stream.
 	client.HTTPClient = &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: time.Duration(timeout) * time.Second,
+			}).DialContext,
+			ResponseHeaderTimeout: time.Duration(timeout) * time.Second,
+		},
 	}
 
 	// Set headers
@@ -205,17 +219,21 @@ func (app *SSEViewApp) connect(ctx context.Context, reconnect bool, timeout int)
 			return err
 		}
 
-		return nil
+		// Server closed the stream cleanly (EOF).
+		app.mu.Lock()
+		app.connected = false
+		app.mu.Unlock()
+		return errStreamClosed
 	}
 
 	if reconnect {
-		// Retry with backoff
+		// Retry with backoff (also reconnects after clean server close)
 		_ = retry.DoSimple(ctx, connectFn,
 			retry.WithMaxAttempts(0), // Unlimited retries
 			retry.WithBackoff(time.Second, 30*time.Second),
 		)
 	} else {
-		if err := connectFn(); err != nil {
+		if err := connectFn(); err != nil && !errors.Is(err, errStreamClosed) {
 			app.mu.Lock()
 			app.error = err
 			app.mu.Unlock()
@@ -281,21 +299,25 @@ func (app *SSEViewApp) HandleEvent(event tui.Event) []tui.Cmd {
 			}
 			app.autoScroll = false
 		case tui.KeyPageDown, tui.KeyCtrlF:
-			app.selected += listHeight
-			if app.selected >= len(app.events) {
-				app.selected = len(app.events) - 1
-			}
-			if app.selected == len(app.events)-1 {
-				app.autoScroll = true
+			if len(app.events) > 0 {
+				app.selected += listHeight
+				if app.selected >= len(app.events) {
+					app.selected = len(app.events) - 1
+				}
+				if app.selected == len(app.events)-1 {
+					app.autoScroll = true
+				}
 			}
 		case tui.KeyCtrlD:
 			// Half page down
-			app.selected += listHeight / 2
-			if app.selected >= len(app.events) {
-				app.selected = len(app.events) - 1
-			}
-			if app.selected == len(app.events)-1 {
-				app.autoScroll = true
+			if len(app.events) > 0 {
+				app.selected += listHeight / 2
+				if app.selected >= len(app.events) {
+					app.selected = len(app.events) - 1
+				}
+				if app.selected == len(app.events)-1 {
+					app.autoScroll = true
+				}
 			}
 		case tui.KeyCtrlU:
 			// Half page up
@@ -316,12 +338,14 @@ func (app *SSEViewApp) HandleEvent(event tui.Event) []tui.Cmd {
 			}
 		case ' ', 'f':
 			// Page down
-			app.selected += listHeight
-			if app.selected >= len(app.events) {
-				app.selected = len(app.events) - 1
-			}
-			if app.selected == len(app.events)-1 {
-				app.autoScroll = true
+			if len(app.events) > 0 {
+				app.selected += listHeight
+				if app.selected >= len(app.events) {
+					app.selected = len(app.events) - 1
+				}
+				if app.selected == len(app.events)-1 {
+					app.autoScroll = true
+				}
 			}
 		case 'b':
 			// Page up
@@ -332,12 +356,14 @@ func (app *SSEViewApp) HandleEvent(event tui.Event) []tui.Cmd {
 			app.autoScroll = false
 		case 'd':
 			// Half page down
-			app.selected += listHeight / 2
-			if app.selected >= len(app.events) {
-				app.selected = len(app.events) - 1
-			}
-			if app.selected == len(app.events)-1 {
-				app.autoScroll = true
+			if len(app.events) > 0 {
+				app.selected += listHeight / 2
+				if app.selected >= len(app.events) {
+					app.selected = len(app.events) - 1
+				}
+				if app.selected == len(app.events)-1 {
+					app.autoScroll = true
+				}
 			}
 		case 'u':
 			// Half page up

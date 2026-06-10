@@ -1,3 +1,7 @@
+// Package main demonstrates multiple concurrent progress indicators and
+// spinners driven by TickEvents, with an auto-quit once all tasks finish.
+//
+// Run with: go run ./examples/tui/progress_spinners
 package main
 
 import (
@@ -23,6 +27,7 @@ type ProgressItem struct {
 type ProgressDemoApp struct {
 	items     []*ProgressItem
 	frame     uint64
+	doneFrame uint64 // frame at which all tasks completed (0 = not yet)
 	startTime time.Time
 }
 
@@ -99,7 +104,7 @@ func (app *ProgressDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 			}
 		}
 
-		// Auto-quit after all tasks complete and 2 seconds have passed
+		// Auto-quit two seconds after all tasks complete
 		allComplete := true
 		for _, item := range app.items {
 			if !item.Complete {
@@ -107,9 +112,11 @@ func (app *ProgressDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 				break
 			}
 		}
-		if allComplete && app.frame > 120 { // 120 frames = 4 seconds at 30 FPS
-			// Give user a moment to see completion
-			if app.frame == 240 { // 8 seconds total
+		if allComplete {
+			if app.doneFrame == 0 {
+				app.doneFrame = app.frame
+			}
+			if app.frame >= app.doneFrame+60 { // 60 frames = 2 seconds at 30 FPS
 				return []tui.Cmd{tui.Quit()}
 			}
 		}
@@ -169,5 +176,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("\n✨ All tasks finished!")
+	fmt.Println("✨ All tasks finished!")
 }

@@ -6,7 +6,7 @@
 // - Live status updates during processing
 // - Keyboard input handling
 //
-// Run with: go run ./examples/inline_chat
+// Run with: go run ./examples/tui/inline_chat
 package main
 
 import (

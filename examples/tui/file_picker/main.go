@@ -1,3 +1,7 @@
+// Package main demonstrates the declarative FilePicker view: directory
+// navigation, type-to-filter, and hidden-file toggling.
+//
+// Run with: go run ./examples/tui/file_picker
 package main
 
 import (
@@ -115,13 +119,9 @@ func (app *FilePickerDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	return nil
 }
 
-// handleSelect handles item selection.
-func (app *FilePickerDemoApp) handleSelect() {
-	if app.selected >= len(app.files) {
-		return
-	}
-
-	item := app.files[app.selected]
+// handleSelect handles selection of an item. The item comes from the
+// FilePicker's OnSelect callback, which reports the filtered list entry.
+func (app *FilePickerDemoApp) handleSelect(item tui.ListItem) {
 	path, ok := item.Value.(string)
 	if !ok {
 		return
@@ -165,7 +165,7 @@ func (app *FilePickerDemoApp) View() tui.View {
 			CurrentPath(app.currentDir).
 			Height(pickerHeight).
 			OnSelect(func(item tui.ListItem, index int) {
-				app.handleSelect()
+				app.handleSelect(item)
 			}),
 		tui.Spacer().MinHeight(1),
 		tui.Text("%s", app.statusMsg).Fg(tui.ColorGreen),
@@ -173,11 +173,8 @@ func (app *FilePickerDemoApp) View() tui.View {
 }
 
 func main() {
-	app := &FilePickerDemoApp{}
-	if err := app.Init(); err != nil {
-		log.Fatal(err)
-	}
-	if err := tui.Run(app, tui.WithMouseTracking(true)); err != nil {
+	// tui.Run calls Init automatically (FilePickerDemoApp implements Initializable).
+	if err := tui.Run(&FilePickerDemoApp{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +103,7 @@ type BrowserApp struct {
 
 	// Fetcher
 	fetcher *fetch.HTTPFetcher
+	timeout time.Duration
 }
 
 func main() {
@@ -130,13 +130,19 @@ func main() {
 				initialURL = "https://" + initialURL
 			}
 
+			timeout := time.Duration(ctx.Int("timeout")) * time.Second
+			if timeout <= 0 {
+				timeout = 30 * time.Second
+			}
+
 			tuiApp := &BrowserApp{
 				fetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{
-					Timeout: time.Duration(ctx.Int("timeout")) * time.Second,
+					Timeout: timeout,
 					Headers: map[string]string{
 						"User-Agent": "WontonBrowser/1.0 (terminal)",
 					},
 				}),
+				timeout:      timeout,
 				historyIndex: -1,
 				selectedLink: -1,
 				focus:        FocusContent,
@@ -167,7 +173,7 @@ func (app *BrowserApp) loadPage(pageURL string) {
 	app.statusMsg = "Loading..."
 	app.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), app.timeout)
 	defer cancel()
 
 	resp, err := app.fetcher.Fetch(ctx, &fetch.Request{
@@ -245,23 +251,23 @@ func (app *BrowserApp) loadPage(pageURL string) {
 	app.statusMsg = fmt.Sprintf("Loaded in %dms", elapsed.Milliseconds())
 }
 
-// extractLinks extracts links from the markdown for the links panel
+// extractLinks builds the links panel from the links reported by the fetcher
+// (the "links" format requested in loadPage).
 func (app *BrowserApp) extractLinks(resp *fetch.Response) {
 	baseURL, _ := url.Parse(resp.URL)
 	app.links = nil
 
-	// Regex to find markdown links
-	linkRegex := regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
 	linkIndex := 1
+	for _, link := range resp.Links {
+		linkURL := link.URL
 
-	matches := linkRegex.FindAllStringSubmatch(app.markdown, -1)
-	for _, match := range matches {
-		if len(match) < 3 {
+		// Skip non-navigable links
+		if linkURL == "" ||
+			strings.HasPrefix(linkURL, "javascript:") ||
+			strings.HasPrefix(linkURL, "mailto:") ||
+			strings.HasPrefix(linkURL, "#") {
 			continue
 		}
-
-		linkText := match[1]
-		linkURL := match[2]
 
 		// Resolve relative URL
 		if baseURL != nil {
@@ -270,16 +276,9 @@ func (app *BrowserApp) extractLinks(resp *fetch.Response) {
 			}
 		}
 
-		// Skip non-navigable links
-		if strings.HasPrefix(linkURL, "javascript:") ||
-			strings.HasPrefix(linkURL, "mailto:") ||
-			strings.HasPrefix(linkURL, "#") {
-			continue
-		}
-
 		app.links = append(app.links, PageLink{
 			URL:   linkURL,
-			Text:  linkText,
+			Text:  strings.TrimSpace(link.Text),
 			Index: linkIndex,
 		})
 		linkIndex++
@@ -399,12 +398,18 @@ func (app *BrowserApp) handleContentInput(e tui.KeyEvent) []tui.Cmd {
 			go app.loadPage(app.currentURL)
 		}
 	case 'c':
-		clipboard.Write(app.currentURL)
-		app.statusMsg = "URL copied"
+		if err := clipboard.Write(app.currentURL); err != nil {
+			app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+		} else {
+			app.statusMsg = "URL copied"
+		}
 	case 'C':
 		if app.selectedLink >= 0 && app.selectedLink < len(app.links) {
-			clipboard.Write(app.links[app.selectedLink].URL)
-			app.statusMsg = "Link URL copied"
+			if err := clipboard.Write(app.links[app.selectedLink].URL); err != nil {
+				app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+			} else {
+				app.statusMsg = "Link URL copied"
+			}
 		}
 	case 'l':
 		// Quick switch to links panel
@@ -568,8 +573,11 @@ func (app *BrowserApp) handleLinksInput(e tui.KeyEvent) []tui.Cmd {
 		return []tui.Cmd{tui.Quit()}
 	case 'c':
 		if app.selectedLink >= 0 && app.selectedLink < len(app.links) {
-			clipboard.Write(app.links[app.selectedLink].URL)
-			app.statusMsg = "Link URL copied"
+			if err := clipboard.Write(app.links[app.selectedLink].URL); err != nil {
+				app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+			} else {
+				app.statusMsg = "Link URL copied"
+			}
 		}
 	}
 

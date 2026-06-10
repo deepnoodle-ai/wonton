@@ -5,7 +5,8 @@
 //
 //	go run ./examples/gif/grapheme_eval
 //
-// Optional output directory:
+// GIFs are written to the current directory unless an output directory is
+// given as the first argument:
 //
 //	go run ./examples/gif/grapheme_eval /tmp/gif-graphemes
 package main
@@ -29,7 +30,7 @@ func main() {
 		outDir = os.Args[1]
 	}
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		fmt.Printf("create output dir: %v\n", err)
+		fmt.Fprintf(os.Stderr, "create output dir: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -44,11 +45,11 @@ func main() {
 
 	for _, s := range samples {
 		if err := renderDirect(outDir, s); err != nil {
-			fmt.Printf("direct %s: %v\n", s.label, err)
+			fmt.Fprintf(os.Stderr, "direct %s: %v\n", s.label, err)
 			os.Exit(1)
 		}
 		if err := renderEmulated(outDir, s); err != nil {
-			fmt.Printf("emulated %s: %v\n", s.label, err)
+			fmt.Fprintf(os.Stderr, "emulated %s: %v\n", s.label, err)
 			os.Exit(1)
 		}
 	}

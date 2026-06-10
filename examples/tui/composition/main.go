@@ -1,3 +1,9 @@
+// Package main demonstrates nested Stack/Group layout composition with
+// clickable buttons and keyboard shortcuts.
+//
+// Run with:
+//
+//	go run ./examples/tui/composition
 package main
 
 import (
@@ -6,7 +12,6 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// Simple composition demo showing nested layouts with buttons and labels.
 type App struct {
 	counter int
 }
@@ -14,8 +19,15 @@ type App struct {
 func (app *App) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+		switch {
+		case e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC:
 			return []tui.Cmd{tui.Quit()}
+		case e.Rune == '+' || e.Rune == '=':
+			app.counter++
+		case e.Rune == '-':
+			app.counter--
+		case e.Rune == 'r' || e.Rune == 'R':
+			app.counter = 0
 		}
 	}
 	return nil
@@ -40,7 +52,7 @@ func (app *App) View() tui.View {
 		tui.Spacer().MinHeight(1),
 
 		tui.Stack(
-			tui.Text("Nested VBox").Fg(tui.ColorMagenta),
+			tui.Text("Nested Stack").Fg(tui.ColorMagenta),
 			tui.Text("Item 1"),
 			tui.Text("Item 2"),
 			tui.Text("Item 3"),
@@ -48,7 +60,7 @@ func (app *App) View() tui.View {
 
 		tui.Spacer().MinHeight(1),
 
-		tui.Text("Click buttons or press 'q' to quit").Dim(),
+		tui.Text("Click buttons or +/-/r keys • q to quit").Dim(),
 	).Bordered().Border(&tui.RoundedBorder)
 }
 

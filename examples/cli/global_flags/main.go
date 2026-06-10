@@ -1,22 +1,21 @@
-// Example: Global Flags and Configuration
+// Example: Global Flags and Middleware
 //
-// Demonstrates global flags and config management:
+// Demonstrates global flags and middleware:
 // - Global flags available to all commands
-// - Config file loading (YAML)
-// - Environment variable fallbacks
-// - Middleware for common operations
+// - Environment variable fallbacks (--config falls back to MYAPP_CONFIG)
+// - Enum validation on global flags (--output)
+// - Middleware for common operations like verbose logging
 //
 // Run with:
 //
-//	go run examples/cli_global_flags/main.go --help
-//	go run examples/cli_global_flags/main.go run
-//	go run examples/cli_global_flags/main.go -v --config myconfig.yaml run
-//	go run examples/cli_global_flags/main.go --output json list
-//	go run examples/cli_global_flags/main.go -v users list
+//	go run ./examples/cli/global_flags --help
+//	go run ./examples/cli/global_flags run
+//	go run ./examples/cli/global_flags -v --config myconfig.yaml run
+//	go run ./examples/cli/global_flags --output json list
+//	go run ./examples/cli/global_flags -v users list
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -63,7 +62,7 @@ func main() {
 			}
 		},
 
-		// Config loading middleware
+		// Config middleware (a real app would load the file here)
 		cli.Before(func(ctx *cli.Context) error {
 			configPath := ctx.String("config")
 			if configPath != "" && ctx.Bool("verbose") {
@@ -208,10 +207,7 @@ func main() {
 		})
 
 	if err := app.Execute(); err != nil {
-		if cli.IsHelpRequested(err) {
-			os.Exit(0)
-		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		app.PrintError(err)
 		os.Exit(cli.GetExitCode(err))
 	}
 }

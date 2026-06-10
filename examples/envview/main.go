@@ -1,7 +1,8 @@
 // Example: envview - Interactive environment variable browser
 //
-// A TUI for browsing and editing environment variables and .env files.
-// Perfect for debugging configuration issues and managing environment settings.
+// A TUI for browsing and inspecting environment variables and .env files.
+// Perfect for debugging configuration issues. Supports search, value
+// masking, and copying keys/values to the clipboard.
 //
 // Run with:
 //
@@ -47,8 +48,10 @@ type EnvViewApp struct {
 	height       int
 
 	// Filter options
-	prefix     string
-	sourceFile string
+	prefix string
+
+	// Status feedback (copy results, errors)
+	statusMsg string
 }
 
 func main() {
@@ -174,13 +177,8 @@ func (app *EnvViewApp) applyFilter() {
 		app.filteredVars = append(app.filteredVars, v)
 	}
 
-	// Reset selection if out of bounds
-	if app.selected >= len(app.filteredVars) {
-		app.selected = len(app.filteredVars) - 1
-	}
-	if app.selected < 0 {
-		app.selected = 0
-	}
+	// Keep selection and scroll within bounds
+	app.adjustScroll()
 }
 
 func (app *EnvViewApp) HandleEvent(event tui.Event) []tui.Cmd {
@@ -331,23 +329,33 @@ func (app *EnvViewApp) HandleEvent(event tui.Event) []tui.Cmd {
 		case 'c':
 			// Copy selected key to clipboard
 			if app.selected >= 0 && app.selected < len(app.filteredVars) {
-				clipboard.Write(app.filteredVars[app.selected].Key)
+				app.copyToClipboard(app.filteredVars[app.selected].Key, "key")
 			}
 		case 'C':
 			// Copy selected value to clipboard
 			if app.selected >= 0 && app.selected < len(app.filteredVars) {
-				clipboard.Write(app.filteredVars[app.selected].Value)
+				app.copyToClipboard(app.filteredVars[app.selected].Value, "value")
 			}
 		case 'e':
 			// Export selected as KEY=VALUE
 			if app.selected >= 0 && app.selected < len(app.filteredVars) {
 				v := app.filteredVars[app.selected]
-				clipboard.Write(fmt.Sprintf("%s=%s", v.Key, v.Value))
+				app.copyToClipboard(fmt.Sprintf("%s=%s", v.Key, v.Value), "KEY=VALUE")
 			}
 		}
 	}
 
 	return nil
+}
+
+// copyToClipboard writes text to the clipboard and records the result in the
+// status bar.
+func (app *EnvViewApp) copyToClipboard(text, what string) {
+	if err := clipboard.Write(text); err != nil {
+		app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+	} else {
+		app.statusMsg = fmt.Sprintf("Copied %s to clipboard", what)
+	}
 }
 
 func (app *EnvViewApp) adjustScroll() {
@@ -356,11 +364,22 @@ func (app *EnvViewApp) adjustScroll() {
 		listHeight = 5
 	}
 
+	// Clamp selection (navigation can overshoot, e.g. on an empty list)
+	if app.selected >= len(app.filteredVars) {
+		app.selected = len(app.filteredVars) - 1
+	}
+	if app.selected < 0 {
+		app.selected = 0
+	}
+
 	// Adjust scroll to keep selected visible
 	if app.selected < app.scrollOffset {
 		app.scrollOffset = app.selected
 	} else if app.selected >= app.scrollOffset+listHeight {
 		app.scrollOffset = app.selected - listHeight + 1
+	}
+	if app.scrollOffset < 0 {
+		app.scrollOffset = 0
 	}
 }
 
@@ -438,8 +457,11 @@ func (app *EnvViewApp) View() tui.View {
 		len(app.filteredVars)-app.countBySource("environment")).
 		Fg(tui.ColorBrightBlack)
 
-	// Help
+	// Help (replaced by the most recent status message, if any)
 	helpText := "jk/↑↓ nav | Space/b page | / search | v values | c/C copy | e export | q quit"
+	if app.statusMsg != "" {
+		helpText = app.statusMsg
+	}
 
 	return tui.Stack(
 		header,
@@ -550,11 +572,4 @@ func (app *EnvViewApp) countBySource(source string) int {
 		}
 	}
 	return count
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

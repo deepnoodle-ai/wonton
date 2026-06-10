@@ -1,5 +1,11 @@
 // Command gif converts terminal recordings (.cast files) to animated GIFs
 // and provides utilities for creating animated GIFs.
+//
+// Run with:
+//
+//	go run ./examples/gif demo demo.gif
+//	go run ./examples/gif cast recording.cast out.gif
+//	go run ./examples/gif info recording.cast
 package main
 
 import (
@@ -44,17 +50,16 @@ func main() {
 		Description("Create a demo bouncing ball animation").
 		Args("output").
 		Flags(
+			// No short for height: -h is reserved for help.
 			&cli.IntFlag{Name: "width", Short: "w", Help: "GIF width in pixels", Value: 200},
-			&cli.IntFlag{Name: "height", Short: "h", Help: "GIF height in pixels", Value: 150},
+			&cli.IntFlag{Name: "height", Help: "GIF height in pixels", Value: 150},
 			&cli.IntFlag{Name: "frames", Short: "f", Help: "Number of frames", Value: 60},
 		).
 		Run(demoCmd)
 
 	if err := app.Execute(); err != nil {
-		if !cli.IsHelpRequested(err) {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
+		app.PrintError(err)
+		os.Exit(cli.GetExitCode(err))
 	}
 }
 

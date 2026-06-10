@@ -1,6 +1,11 @@
+// Package main demonstrates customizing the Progress view: empty-region
+// patterns, percentage/fraction labels, and per-element colors.
+//
+// Run with: go run ./examples/tui/progress_enhanced
 package main
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -163,5 +168,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("\n✨ Demo complete!")
+	fmt.Println("✨ Demo complete!")
 }

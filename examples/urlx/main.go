@@ -14,9 +14,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -68,19 +68,14 @@ func runWatch(ctx *cli.Context) error {
 		return fmt.Errorf("clipboard not available on this system")
 	}
 
-	// Parse duration flags from string representation
-	interval := time.Second
-	if s := ctx.String("interval"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			interval = d
-		}
+	interval := ctx.Duration("interval")
+	if interval <= 0 {
+		return cli.Error("invalid --interval: expected a positive duration like 2s")
 	}
 
-	timeout := 30 * time.Second
-	if s := ctx.String("timeout"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			timeout = d
-		}
+	timeout := ctx.Duration("timeout")
+	if timeout <= 0 {
+		return cli.Error("invalid --timeout: expected a positive duration like 30s")
 	}
 
 	maxRetries := ctx.Int("retries")
@@ -153,20 +148,22 @@ func runWatch(ctx *cli.Context) error {
 
 // isURL checks if the string looks like a URL
 func isURL(s string) bool {
-	// Try parsing with web.NormalizeURL which handles common cases
-	_, err := web.NormalizeURL(s)
-	if err == nil {
-		return true
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, " \t\n") {
+		return false
 	}
 
-	// Fallback to standard URL parsing
-	u, err := url.Parse(s)
+	// web.NormalizeURL handles bare hostnames, missing schemes, etc.
+	u, err := web.NormalizeURL(s)
 	if err != nil {
 		return false
 	}
 
-	// Must have a scheme and host
-	return u.Scheme != "" && u.Host != ""
+	// Require an explicit scheme or a dotted hostname so ordinary words
+	// copied to the clipboard (e.g. "hello") aren't treated as URLs.
+	return strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "https://") ||
+		strings.Contains(u.Hostname(), ".")
 }
 
 // fetchAndConvert fetches a URL and converts it to markdown with retries
@@ -210,7 +207,11 @@ func fetchAndConvert(ctx context.Context, fetcher fetch.Fetcher, urlStr string, 
 	markdown := htmltomd.Convert(resp.HTML)
 
 	// Add metadata header
-	header := fmt.Sprintf("# %s\n\nSource: %s\n\n---\n\n", resp.Metadata.Title, urlStr)
+	title := resp.Metadata.Title
+	if title == "" {
+		title = normalizedURL.Hostname()
+	}
+	header := fmt.Sprintf("# %s\n\nSource: %s\n\n---\n\n", title, urlStr)
 	if resp.Metadata.Description != "" {
 		header += fmt.Sprintf("*%s*\n\n---\n\n", resp.Metadata.Description)
 	}

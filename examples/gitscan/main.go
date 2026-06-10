@@ -35,15 +35,18 @@ const (
 	ViewFiles
 )
 
+// emptyTreeHash is git's well-known empty tree object, used to diff a root
+// commit (which has no parent) against nothing.
+const emptyTreeHash = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 // GitScanApp is the TUI application
 type GitScanApp struct {
 	mu sync.Mutex
 
 	// Repository
-	repo     *git.Repository
-	repoPath string
-	branch   string
-	status   *git.Status
+	repo   *git.Repository
+	branch string
+	status *git.Status
 
 	// Commits
 	commits        []git.Commit
@@ -107,7 +110,6 @@ func main() {
 
 			tuiApp := &GitScanApp{
 				repo:      repo,
-				repoPath:  repo.Path,
 				statusMsg: "↑↓/jk navigate | Space/b page | Enter diff | f files | c copy | q quit",
 			}
 
@@ -273,6 +275,8 @@ func (app *GitScanApp) handleCommitsKey(e tui.KeyEvent) []tui.Cmd {
 			hash := app.commits[app.selectedCommit].ShortHash
 			if err := clipboard.Write(hash); err == nil {
 				app.statusMsg = fmt.Sprintf("✓ Copied %s", hash)
+			} else {
+				app.statusMsg = fmt.Sprintf("Error: %v", err)
 			}
 		}
 	}
@@ -368,6 +372,8 @@ func (app *GitScanApp) handleDiffKey(e tui.KeyEvent) []tui.Cmd {
 			line := app.diffLines[app.selectedLine]
 			if err := clipboard.Write(line.Text); err == nil {
 				app.statusMsg = "✓ Copied line"
+			} else {
+				app.statusMsg = fmt.Sprintf("Error: %v", err)
 			}
 		}
 	}
@@ -472,6 +478,8 @@ func (app *GitScanApp) handleFilesKey(e tui.KeyEvent) []tui.Cmd {
 			path := app.files[app.selectedFile].Path
 			if err := clipboard.Write(path); err == nil {
 				app.statusMsg = fmt.Sprintf("✓ Copied %s", path)
+			} else {
+				app.statusMsg = fmt.Sprintf("Error: %v", err)
 			}
 		}
 	case 'd', 'D':
@@ -489,23 +497,18 @@ func (app *GitScanApp) loadDiff() {
 	commit := app.commits[app.selectedCommit]
 	ctx := context.Background()
 
-	// Determine the comparison range
-	var opts git.DiffOptions
+	// Determine the comparison range. A root commit has no parent, so
+	// compare it against git's empty tree object.
+	parent := emptyTreeHash
 	if len(commit.ParentHashes) > 0 {
-		opts = git.DiffOptions{
-			From:         commit.ParentHashes[0],
-			To:           commit.Hash,
-			IncludePatch: true,
-		}
-	} else {
-		// Root commit - compare against empty tree
-		opts = git.DiffOptions{
-			Ref:          commit.Hash,
-			IncludePatch: true,
-		}
+		parent = commit.ParentHashes[0]
 	}
 
-	diff, err := app.repo.Diff(ctx, opts)
+	diff, err := app.repo.Diff(ctx, git.DiffOptions{
+		From:         parent,
+		To:           commit.Hash,
+		IncludePatch: true,
+	})
 	if err != nil {
 		app.statusMsg = fmt.Sprintf("Error loading diff: %v", err)
 		return

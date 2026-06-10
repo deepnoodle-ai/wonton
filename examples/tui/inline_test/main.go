@@ -6,7 +6,7 @@
 // - Verifies no extra newlines are printed
 // - Tests different view types and compositions
 //
-// Run with: go run ./examples/inline_test
+// Run with: go run ./examples/tui/inline_test
 package main
 
 import (
@@ -134,15 +134,17 @@ func (app *TestApp) HandleEvent(event tui.Event) []tui.Cmd {
 			tui.Text("%s", e.Message),
 		))
 
-		// Continue batch if more messages
+		// Continue batch if more messages. Capture the next message here in
+		// the event loop so the Cmd goroutine doesn't read app state.
 		if e.Index+1 < len(app.messages) {
+			next := BatchPrintEvent{
+				Index:   e.Index + 1,
+				Message: app.messages[e.Index+1],
+			}
 			return []tui.Cmd{func() tui.Event {
 				time.Sleep(300 * time.Millisecond)
-				return BatchPrintEvent{
-					Index:   e.Index + 1,
-					Message: app.messages[e.Index+1],
-					Time:    time.Now(),
-				}
+				next.Time = time.Now()
+				return next
 			}}
 		} else {
 			app.runner.Print(tui.Stack(
@@ -232,18 +234,15 @@ func (app *TestApp) autoProgressCmd() tui.Cmd {
 	}
 }
 
-// multiPrintCmd prints multiple items to scrollback in sequence
+// multiPrintCmd prints multiple items to scrollback in sequence.
+// The first message is captured here, in the event loop, so the Cmd
+// goroutine doesn't read app state.
 func (app *TestApp) multiPrintCmd() tui.Cmd {
+	first := BatchPrintEvent{Index: 0, Message: app.messages[0]}
 	return func() tui.Event {
 		time.Sleep(300 * time.Millisecond)
-		if len(app.messages) > 0 {
-			return BatchPrintEvent{
-				Index:   0,
-				Message: app.messages[0],
-				Time:    time.Now(),
-			}
-		}
-		return nil
+		first.Time = time.Now()
+		return first
 	}
 }
 

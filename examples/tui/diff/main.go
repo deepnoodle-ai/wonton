@@ -1,3 +1,7 @@
+// Package main demonstrates the declarative DiffView: a unified diff is
+// parsed and rendered with syntax highlighting, line numbers, and scrolling.
+//
+// Run with: go run ./examples/tui/diff
 package main
 
 import (
@@ -61,12 +65,33 @@ func (app *DiffDemoApp) Init() error {
 func (app *DiffDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+		switch {
+		case e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC:
 			return []tui.Cmd{tui.Quit()}
+		case e.Key == tui.KeyArrowUp:
+			app.scrollBy(-1)
+		case e.Key == tui.KeyArrowDown:
+			app.scrollBy(1)
+		case e.Key == tui.KeyPageUp:
+			app.scrollBy(-10)
+		case e.Key == tui.KeyPageDown:
+			app.scrollBy(10)
+		case e.Key == tui.KeyHome:
+			app.scrollY = 0
+		case e.Key == tui.KeyEnd:
+			app.scrollY = 1 << 30 // Clamped to the bottom by the scroll view
 		}
 	}
 
 	return nil
+}
+
+// scrollBy adjusts the scroll offset; the scroll view clamps the maximum.
+func (app *DiffDemoApp) scrollBy(delta int) {
+	app.scrollY += delta
+	if app.scrollY < 0 {
+		app.scrollY = 0
+	}
 }
 
 // View returns the declarative view structure.
@@ -88,11 +113,8 @@ func (app *DiffDemoApp) View() tui.View {
 }
 
 func main() {
-	app := &DiffDemoApp{}
-	if err := app.Init(); err != nil {
-		log.Fatal(err)
-	}
-	if err := tui.Run(app); err != nil {
+	// tui.Run calls Init automatically (DiffDemoApp implements Initializable).
+	if err := tui.Run(&DiffDemoApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

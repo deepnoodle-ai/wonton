@@ -1,10 +1,13 @@
 // Example: terminal demonstrates terminal-style GIF creation with typed text.
 //
 // Run with: go run ./examples/gif/terminal
+//
+// Writes terminal.gif to the current directory.
 package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/deepnoodle-ai/wonton/gif"
 )
@@ -39,15 +42,15 @@ func main() {
 		renderer.RenderFrame(20) // 200ms pause between lines
 	}
 
-	// Add a few frames showing the final state with blinking cursor
+	// Hold the final state for a few seconds before the loop restarts
 	for i := 0; i < 10; i++ {
 		renderer.RenderFrame(30) // 300ms per frame
 	}
 
 	// Save the GIF
 	if err := renderer.Save("terminal.gif"); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("Created terminal.gif (%d frames)\n", renderer.GIF().FrameCount())

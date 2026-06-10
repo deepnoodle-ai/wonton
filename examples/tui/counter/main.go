@@ -1,5 +1,7 @@
-// Package main demonstrates a declarative counter app.
-// Compare with examples/runtime_counter which uses the imperative API.
+// Package main demonstrates a declarative counter app with both keyboard
+// shortcuts and clickable mouse controls.
+//
+// Run with: go run ./examples/tui/counter
 package main
 
 import (

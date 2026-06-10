@@ -9,7 +9,7 @@
 // This pattern is ideal for chat interfaces, REPL-style tools, and CLIs
 // where you want persistent history with a live status/input area.
 //
-// Run with: go run ./examples/scrollback_demo
+// Run with: go run ./examples/tui/scrollback_demo
 package main
 
 import (
@@ -26,9 +26,6 @@ import (
 
 // AppState holds the runtime state of the demo application.
 type AppState struct {
-	// Messages in the scrollback history
-	messages []Message
-
 	// Current input buffer
 	input []rune
 
@@ -38,23 +35,14 @@ type AppState struct {
 	// Status text shown in the live region
 	status string
 
-	// Counter for async activity simulation
-	activityCounter int
-
 	// Whether the app is running
 	running bool
 }
 
-// Message represents a message in the scrollback history.
-type Message struct {
-	Text   string
-	IsUser bool
-	Time   time.Time
-}
-
 func main() {
-	// Print welcome header (becomes scrollback history)
-	printHeader()
+	// Print welcome header (becomes scrollback history).
+	// Raw mode is not enabled yet, so plain \n line endings are fine.
+	printHeader(false)
 
 	// Check if stdin is a terminal
 	fd := int(os.Stdin.Fd())
@@ -77,12 +65,12 @@ func main() {
 
 	// Initialize app state
 	state := &AppState{
-		messages: []Message{
-			{Text: "Welcome! Type a message and press Enter.", IsUser: false, Time: time.Now()},
-		},
 		status:  "Ready",
 		running: true,
 	}
+
+	// Print a welcome message to scrollback (we're in raw mode now)
+	state.printMessageToScrollback("Welcome! Type a message and press Enter.", false)
 
 	// Create the live printer for the dynamic bottom region
 	live := tui.NewLivePrinter(tui.PrintConfig{Width: 80})
@@ -91,31 +79,11 @@ func main() {
 	// Render initial state
 	live.Update(state.buildLiveView())
 
-	// Start async activity simulation in background
-	activityChan := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				activityChan <- struct{}{}
-			case <-activityChan:
-				return
-			}
-		}
-	}()
-
-	// Main input loop
+	// Main input loop. This demo uses simple blocking reads; see
+	// examples/tui/scrollback_simple for combining input with async updates.
 	decoder := terminal.NewKeyDecoder(os.Stdin)
 
 	for state.running {
-		// Use a timeout-based approach to handle both input and async updates
-		// In a real app, you'd use a select with channels
-
-		// Check for keyboard input (non-blocking would be ideal, but we'll use ReadKeyEvent)
-		// For demo purposes, we'll just do blocking reads
-
 		event, err := decoder.ReadKeyEvent()
 		if err != nil {
 			if err == io.EOF {
@@ -133,12 +101,13 @@ func main() {
 		}
 	}
 
-	// Print final message to scrollback
-	fmt.Println("\nGoodbye!")
+	// Print final message to scrollback (still in raw mode, so use \r\n)
+	fmt.Print("\r\nGoodbye!\r\n")
 }
 
 // printHeader prints the initial header that becomes part of scrollback history.
-func printHeader() {
+// Pass raw=true when the terminal is in raw mode so lines end with \r\n.
+func printHeader(raw bool) {
 	tui.Print(
 		tui.Bordered(
 			tui.Stack(
@@ -155,9 +124,13 @@ func printHeader() {
 				tui.Text("  Ctrl+L   - Clear scrollback"),
 			).Padding(1),
 		).Border(&tui.RoundedBorder).BorderFg(tui.ColorBrightBlack),
-		tui.PrintConfig{Width: 60},
+		tui.PrintConfig{Width: 60, RawMode: raw},
 	)
-	fmt.Println()
+	if raw {
+		fmt.Print("\r\n")
+	} else {
+		fmt.Println()
+	}
 }
 
 // handleKeyEvent processes a keyboard event.
@@ -202,7 +175,7 @@ func (s *AppState) handleKeyEvent(event terminal.KeyEvent, live *tui.LivePrinter
 		// Clear scrollback (print escape sequence)
 		live.Clear()
 		fmt.Print("\033[2J\033[H") // Clear screen and move cursor to home
-		printHeader()
+		printHeader(true)
 		live.Update(s.buildLiveView())
 
 	case terminal.KeyBackspace:
@@ -278,7 +251,9 @@ func (s *AppState) updateStatus() {
 }
 
 // printMessageToScrollback prints a message to the scrollback history.
-// This uses tui.Print which outputs to the terminal and becomes permanent history.
+// This uses tui.Print which outputs to the terminal and becomes permanent
+// history. RawMode is set because the terminal is in raw mode, where plain
+// \n moves down without returning the cursor to column 0.
 func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 	timestamp := time.Now().Format("15:04:05")
 
@@ -297,8 +272,8 @@ func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 		)
 	}
 
-	tui.Print(view, tui.PrintConfig{Width: 80})
-	fmt.Println() // Newline after each message
+	tui.Print(view, tui.PrintConfig{Width: 80, RawMode: true})
+	fmt.Print("\r\n") // Newline after each message
 }
 
 // generateResponse creates a simple response based on the input.

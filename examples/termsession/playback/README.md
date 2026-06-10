@@ -5,19 +5,17 @@ This example demonstrates playing back asciinema v2 recordings created with Wont
 ## Usage
 
 ```bash
-go run main.go <recording.cast>
+go run ./examples/termsession/playback <recording.cast>
 ```
 
-For example, after creating a recording with the recording demo:
+For example, after creating a recording with the `termrec` example:
 
 ```bash
 # First, create a recording
-cd ../recording_demo
-go run main.go
+go run ./examples/termrec record demo.cast
 
 # Then play it back
-cd ../playback_demo
-go run main.go ../recording_demo/demo.cast
+go run ./examples/termsession/playback demo.cast
 ```
 
 ## What It Does
@@ -31,12 +29,16 @@ go run main.go ../recording_demo/demo.cast
 ## Playback Features
 
 The `PlaybackController` provides:
-- ✅ Accurate timing playback
-- ✅ Speed control (1.0x, 2.0x, etc.)
-- ✅ Pause/Resume
-- ✅ Seeking to timestamps
-- ✅ Loop mode
-- ✅ Stop playback
+
+- Accurate timing playback
+- Speed control (1.0x, 2.0x, etc.)
+- Pause/Resume
+- Seeking to timestamps
+- Loop mode
+- Stop playback
+
+This demo plays a recording straight through; the speed, pause, seek, and
+loop controls are available programmatically from another goroutine.
 
 ## API Example
 
@@ -48,7 +50,7 @@ controller, _ := tui.LoadRecording("demo.cast")
 header := controller.GetHeader()
 duration := controller.GetDuration()
 
-// Control playback
+// Control playback (from another goroutine while Play is running)
 controller.SetSpeed(2.0)   // 2x speed
 controller.Pause()
 controller.Resume()
@@ -59,17 +61,10 @@ terminal, _ := tui.NewTerminal()
 controller.Play(terminal)
 ```
 
-## Advanced Playback
-
-For interactive playback with keyboard controls, see the full implementation in `main.go` which demonstrates:
-- Real-time speed adjustment
-- Pause/resume toggle
-- Progress display
-- Looping
-
 ## Compatible Files
 
 This player works with:
+
 - Wonton recordings (`.cast`)
 - Any asciinema v2 format files
 - Compressed (gzip) or uncompressed
@@ -77,6 +72,6 @@ This player works with:
 
 ## See Also
 
-- [Recording Demo](../recording_demo/) - Create recordings
-- [Recording Documentation](../../documentation/recording.md) - Complete guide
+- [termrec](../../termrec/) - Record sessions and export to GIF
+- [sessview](../../sessview/) - Browse and replay recordings in a TUI
 - [asciinema Format Spec](https://github.com/asciinema/asciinema/blob/develop/doc/asciicast-v2.md)

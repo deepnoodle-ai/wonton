@@ -1,3 +1,7 @@
+// Package main demonstrates Text wrapping, truncation, and alignment in a
+// 2x2 grid of flexed cells.
+//
+// Run with: go run ./examples/tui/text
 package main
 
 import (

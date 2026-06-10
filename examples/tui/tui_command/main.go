@@ -1,3 +1,8 @@
+// Package main demonstrates async commands: HTTP requests run in tui.Cmd
+// functions and deliver results back to HandleEvent as custom events, so
+// the UI never blocks.
+//
+// Run with: go run ./examples/tui/tui_command
 package main
 
 import (
@@ -25,17 +30,17 @@ type GitHubUser struct {
 
 // DataResponse is a custom event that carries HTTP response data
 type DataResponse struct {
-	User     *GitHubUser
-	Username string
+	Time time.Time
+	User *GitHubUser
 }
 
-func (d DataResponse) Timestamp() time.Time { return time.Now() }
+func (d DataResponse) Timestamp() time.Time { return d.Time }
 
 // HTTPApp demonstrates async HTTP requests that don't block the UI
 type HTTPApp struct {
 	loading bool
 	data    *GitHubUser
-	error   error
+	err     error
 }
 
 func (app *HTTPApp) HandleEvent(event tui.Event) []tui.Cmd {
@@ -47,19 +52,19 @@ func (app *HTTPApp) HandleEvent(event tui.Event) []tui.Cmd {
 		switch e.Rune {
 		case '1':
 			app.loading = true
-			app.error = nil
+			app.err = nil
 			return []tui.Cmd{FetchGitHubUser("golang")}
 		case '2':
 			app.loading = true
-			app.error = nil
+			app.err = nil
 			return []tui.Cmd{FetchGitHubUser("torvalds")}
 		case '3':
 			app.loading = true
-			app.error = nil
+			app.err = nil
 			return []tui.Cmd{FetchGitHubUser("antirez")}
 		case 'c', 'C':
 			app.data = nil
-			app.error = nil
+			app.err = nil
 		case 'q', 'Q':
 			return []tui.Cmd{tui.Quit()}
 		}
@@ -70,7 +75,7 @@ func (app *HTTPApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 	case tui.ErrorEvent:
 		app.loading = false
-		app.error = e.Err
+		app.err = e.Err
 	}
 
 	return nil
@@ -116,8 +121,8 @@ func (app *HTTPApp) contentView() tui.View {
 		return tui.Text("Loading...").Fg(tui.ColorBrightBlack)
 	}
 
-	if app.error != nil {
-		return tui.Text("Error: %v", app.error).Fg(tui.ColorRed)
+	if app.err != nil {
+		return tui.Text("Error: %v", app.err).Fg(tui.ColorRed)
 	}
 
 	if app.data != nil {
@@ -169,11 +174,15 @@ func (app *HTTPApp) contentView() tui.View {
 	return tui.Text("Press 1, 2, or 3 to fetch a user").Fg(tui.ColorBrightBlack)
 }
 
+// httpClient is used for all requests; the timeout ensures a stalled request
+// eventually produces an ErrorEvent instead of loading forever.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 // FetchGitHubUser fetches a GitHub user profile asynchronously
 func FetchGitHubUser(username string) tui.Cmd {
 	return func() tui.Event {
 		url := fmt.Sprintf("https://api.github.com/users/%s", username)
-		resp, err := http.Get(url)
+		resp, err := httpClient.Get(url)
 		if err != nil {
 			return tui.ErrorEvent{Time: time.Now(), Err: err}
 		}
@@ -196,7 +205,7 @@ func FetchGitHubUser(username string) tui.Cmd {
 			return tui.ErrorEvent{Time: time.Now(), Err: err}
 		}
 
-		return DataResponse{User: &user, Username: username}
+		return DataResponse{Time: time.Now(), User: &user}
 	}
 }
 

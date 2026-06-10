@@ -1,5 +1,7 @@
-// Package main demonstrates animation with the declarative API.
-// Compare with examples/runtime_animation which uses the imperative API.
+// Package main demonstrates 60 FPS animation with the declarative API,
+// using CanvasContext to draw directly from the animation frame counter.
+//
+// Run with: go run ./examples/tui/animation
 package main
 
 import (
@@ -29,6 +31,9 @@ func (app *App) View() tui.View {
 
 func (app *App) drawBlocks(ctx *tui.RenderContext) {
 	width, height := ctx.Size()
+	if width <= 0 || height <= 0 {
+		return // Nothing to draw (avoids modulo by zero below)
+	}
 	frame := ctx.Frame() // Animation frame counter from RenderContext
 	numBlocks := 5
 	blockHeight := height / numBlocks
@@ -43,10 +48,6 @@ func (app *App) drawBlocks(ctx *tui.RenderContext) {
 		speed := uint64(i+1) * 2
 		offset := uint64(i * 15)
 		x := int((frame*speed + offset) % uint64(width))
-
-		if x < 0 || x >= width {
-			continue
-		}
 
 		// Draw block with rainbow color
 		style := rainbowStyle(frame, i)

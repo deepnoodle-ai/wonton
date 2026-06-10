@@ -1,3 +1,7 @@
+// Package main demonstrates the Markdown view: a rich-text renderer with
+// syntax-highlighted code blocks, tables, lists, and keyboard-driven scrolling.
+//
+// Run with: go run ./examples/tui/markdown
 package main
 
 import (

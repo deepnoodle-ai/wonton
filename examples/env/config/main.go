@@ -1,9 +1,14 @@
 // Example demonstrating the env package for configuration loading.
+//
+// MYAPP_DB_NAME is required, so run with:
+//
+//	MYAPP_DB_NAME=appdb MYAPP_DB_PASSWORD=secret go run ./examples/env/config
 package main
 
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/env"
@@ -11,19 +16,19 @@ import (
 
 // Database holds database configuration.
 type Database struct {
-	Host     string `env:"HOST" default:"localhost"`
-	Port     int    `env:"PORT" default:"5432"`
+	Host     string `env:"HOST" envDefault:"localhost"`
+	Port     int    `env:"PORT" envDefault:"5432"`
 	Name     string `env:"NAME,required"`
-	User     string `env:"USER" default:"postgres"`
+	User     string `env:"USER" envDefault:"postgres"`
 	Password string `env:"PASSWORD,notEmpty"`
 }
 
 // Server holds server configuration.
 type Server struct {
-	Host         string        `env:"HOST" default:"0.0.0.0"`
-	Port         int           `env:"PORT" default:"8080"`
-	ReadTimeout  time.Duration `env:"READ_TIMEOUT" default:"30s"`
-	WriteTimeout time.Duration `env:"WRITE_TIMEOUT" default:"30s"`
+	Host         string        `env:"HOST" envDefault:"0.0.0.0"`
+	Port         int           `env:"PORT" envDefault:"8080"`
+	ReadTimeout  time.Duration `env:"READ_TIMEOUT" envDefault:"30s"`
+	WriteTimeout time.Duration `env:"WRITE_TIMEOUT" envDefault:"30s"`
 }
 
 // Config is the main application configuration.
@@ -33,12 +38,12 @@ type Config struct {
 	Server   Server   `envPrefix:"SERVER_"`
 
 	// Simple fields
-	Debug   bool     `env:"DEBUG" default:"false"`
+	Debug   bool     `env:"DEBUG" envDefault:"false"`
 	LogFile string   `env:"LOG_FILE,file"` // Load file content from path
 	Hosts   []string `env:"ALLOWED_HOSTS"` // Comma-separated list
 
 	// Using variable expansion
-	DataDir string `env:"DATA_DIR,expand" default:"$HOME/data"`
+	DataDir string `env:"DATA_DIR,expand" envDefault:"$HOME/data"`
 }
 
 func main() {
@@ -73,10 +78,9 @@ func main() {
 			for _, e := range aggErr.Errors {
 				log.Printf("  - %v", e)
 			}
-		} else {
-			log.Fatal(err)
+			os.Exit(1)
 		}
-		return
+		log.Fatal(err)
 	}
 
 	fmt.Println("\nConfiguration loaded successfully:")

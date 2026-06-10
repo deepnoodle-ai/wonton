@@ -1,4 +1,7 @@
-// Package main demonstrates the declarative UI API for Wonton.
+// Package main demonstrates a minimal declarative input: a single text field
+// that greets the user as they type, showcasing tui.Input and tui.IfElse.
+//
+// Run with: go run ./examples/tui/input_display
 package main
 
 import (

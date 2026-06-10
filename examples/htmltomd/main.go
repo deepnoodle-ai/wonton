@@ -74,11 +74,9 @@ func runConvert(ctx *cli.Context) error {
 		opts.SkipTags = strings.Split(skip, ",")
 	}
 
-	timeout := 30 * time.Second
-	if t := ctx.String("timeout"); t != "" {
-		if d, err := time.ParseDuration(t); err == nil {
-			timeout = d
-		}
+	timeout := ctx.Duration("timeout")
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
 
 	// Read input
@@ -136,13 +134,17 @@ func fetchURL(ctx *cli.Context, url string, timeout time.Duration) ([]byte, erro
 	}
 
 	// Non-interactive: just fetch
-	return fetchSimple(url, timeout)
+	return fetchSimple(ctx.Context(), url, timeout)
 }
 
 // fetchSimple does a basic HTTP fetch without UI.
-func fetchSimple(url string, timeout time.Duration) ([]byte, error) {
+func fetchSimple(ctx context.Context, url string, timeout time.Duration) ([]byte, error) {
 	client := &http.Client{Timeout: timeout}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching URL: %w", err)
 	}
@@ -164,9 +166,9 @@ func fetchWithSpinner(ctx context.Context, url string, timeout time.Duration) ([
 	}
 	done := make(chan result, 1)
 
-	// Start fetch in background
+	// Start fetch in background; the request is canceled if ctx is done
 	go func() {
-		body, err := fetchSimple(url, timeout)
+		body, err := fetchSimple(ctx, url, timeout)
 		done <- result{body, err}
 	}()
 

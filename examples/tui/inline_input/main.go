@@ -1,6 +1,14 @@
+// Example: inline_input
+//
+// Demonstrates tui.Prompt, a readline-style inline input with history
+// navigation, @file autocomplete, and multi-line entry, plus LivePrinter
+// for streaming a simulated assistant response above the prompt.
+//
+// Run with: go run ./examples/tui/inline_input
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,16 +46,13 @@ func main() {
 		)
 
 		if err != nil {
-			if err == tui.ErrInterrupted {
-				fmt.Println("\nGoodbye!")
-				return
-			}
-			if err == tui.ErrEOF {
+			// Ctrl+C or Ctrl+D on empty input both end the session
+			if errors.Is(err, tui.ErrInterrupted) || errors.Is(err, tui.ErrEOF) {
 				fmt.Println("\nGoodbye!")
 				return
 			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return
+			os.Exit(1)
 		}
 
 		if input == "" {

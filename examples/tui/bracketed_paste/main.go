@@ -1,3 +1,8 @@
+// Package main demonstrates bracketed paste mode: pasted text arrives as a
+// single KeyEvent with the Paste field set, so multi-line pastes can be
+// handled atomically instead of as a stream of keystrokes.
+//
+// Run with: go run ./examples/tui/bracketed_paste
 package main
 
 import (
@@ -8,13 +13,12 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// BracketedPasteDemoApp demonstrates bracketed paste mode using Runtime.
+// BracketedPasteDemoApp demonstrates bracketed paste mode.
 type BracketedPasteDemoApp struct {
-	terminal *tui.Terminal
-	buffer   []rune
-	cursor   int
-	pastes   []PasteRecord // History of pastes
-	message  string        // Status message
+	buffer  []rune
+	cursor  int
+	pastes  []PasteRecord // History of pastes
+	message string        // Status message
 }
 
 // PasteRecord stores information about a paste event
@@ -22,16 +26,6 @@ type PasteRecord struct {
 	Content   string
 	LineCount int
 	CharCount int
-}
-
-func (app *BracketedPasteDemoApp) Init() error {
-	// Enable bracketed paste mode
-	app.terminal.EnableBracketedPaste()
-	return nil
-}
-
-func (app *BracketedPasteDemoApp) Destroy() {
-	app.terminal.DisableBracketedPaste()
 }
 
 func (app *BracketedPasteDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
@@ -229,8 +223,9 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		var lineContent string
 		if i < len(displayLines) {
 			lineContent = displayLines[i]
-			if len(lineContent) > 64 {
-				lineContent = lineContent[:61] + "..."
+			// Truncate by runes, not bytes, so multibyte characters survive
+			if runes := []rune(lineContent); len(runes) > 64 {
+				lineContent = string(runes[:61]) + "..."
 			}
 		}
 		// Pad to consistent width
@@ -265,8 +260,8 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		for i := startIdx; i < len(app.pastes); i++ {
 			p := app.pastes[i]
 			preview := p.Content
-			if len(preview) > 40 {
-				preview = preview[:37] + "..."
+			if runes := []rune(preview); len(runes) > 40 {
+				preview = string(runes[:37]) + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", "↵")
 			preview = strings.ReplaceAll(preview, "\t", "→")
@@ -354,31 +349,17 @@ func splitLines(text string) []string {
 }
 
 func main() {
-	// Note: This example uses bracketed paste mode which requires direct terminal access.
-	// It cannot use the simplified tui.Run() API until WithBracketedPaste option is added.
-	terminal, err := tui.NewTerminal()
-	if err != nil {
-		log.Fatalf("Failed to create terminal: %v\n", err)
-	}
-	defer terminal.Close()
-
-	// Create the application
 	app := &BracketedPasteDemoApp{
-		terminal: terminal,
-		buffer:   []rune{},
-		cursor:   0,
-		pastes:   nil,
-		message:  "Ready! Paste something to see bracketed paste in action.",
+		message: "Ready! Paste something to see bracketed paste in action.",
 	}
 
-	// Create and run the runtime
-	runtime := tui.NewRuntime(terminal, app, 30)
-
-	// Convert tabs to 2 spaces in pasted content
-	runtime.SetPasteTabWidth(2)
-
-	// Run blocks until the application quits
-	if err := runtime.Run(); err != nil {
-		log.Fatalf("Runtime error: %v\n", err)
+	// WithBracketedPaste enables paste detection; WithPasteTabWidth converts
+	// tabs in pasted content to 2 spaces.
+	if err := tui.Run(app,
+		tui.WithBracketedPaste(true),
+		tui.WithPasteTabWidth(2),
+		tui.WithBackslashEnter(true), // \+Enter inserts a newline (Shift+Enter fallback)
+	); err != nil {
+		log.Fatal(err)
 	}
 }

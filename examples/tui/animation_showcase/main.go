@@ -1,3 +1,8 @@
+// Package main showcases border and text animations: rainbow, pulse,
+// marquee, fire, sparkle, glitch, wave, and combinations. Use the arrow
+// keys to step through the effects.
+//
+// Run with: go run ./examples/tui/animation_showcase
 package main
 
 import (
@@ -18,7 +23,9 @@ type Effect struct {
 	view        func() tui.View
 }
 
-func (app *AnimationShowcaseApp) Init() []tui.Cmd {
+// Init implements tui.Initializable; the runtime calls it before the
+// event loop starts.
+func (app *AnimationShowcaseApp) Init() error {
 	app.currentEffect = 0
 
 	// Define all effects to showcase
@@ -211,6 +218,8 @@ func (app *AnimationShowcaseApp) Init() []tui.Cmd {
 	return nil
 }
 
+var _ tui.Initializable = (*AnimationShowcaseApp)(nil)
+
 func (app *AnimationShowcaseApp) demoPanel(content string) tui.View {
 	return tui.Stack(
 		tui.Text("%s", content).FgRGB(255, 255, 255),
@@ -254,15 +263,15 @@ func (app *AnimationShowcaseApp) View() tui.View {
 
 		// Navigation
 		tui.Stack(
-			tui.Text("─────────────────────────────────────────────────────────────────").Fg(tui.ColorBrightBlack),
+			tui.Divider(),
 			tui.Group(
-				tui.Text("[←] Previous").Fg(tui.ColorGreen),
+				tui.Text("[←/p] Previous").Fg(tui.ColorGreen),
 				tui.Spacer(),
-				tui.Text("[→] Next").Fg(tui.ColorGreen),
+				tui.Text("[→/n] Next").Fg(tui.ColorGreen),
 				tui.Spacer(),
 				tui.Text("[q] Quit").Fg(tui.ColorRed),
 			),
-			tui.Text("─────────────────────────────────────────────────────────────────").Fg(tui.ColorBrightBlack),
+			tui.Divider(),
 
 			tui.Spacer().MinHeight(1),
 
@@ -296,10 +305,7 @@ func (app *AnimationShowcaseApp) HandleEvent(event tui.Event) []tui.Cmd {
 }
 
 func main() {
-	app := &AnimationShowcaseApp{}
-	app.Init()
-
-	if err := tui.Run(app, tui.WithFPS(30)); err != nil {
+	if err := tui.Run(&AnimationShowcaseApp{}, tui.WithFPS(30)); err != nil {
 		log.Fatal(err)
 	}
 }

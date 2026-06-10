@@ -1,3 +1,7 @@
+// Package main demonstrates TextArea display features: line numbers,
+// left-border-only styling, and current line highlighting.
+//
+// Run with: go run ./examples/tui/textarea_features
 package main
 
 import (
@@ -7,7 +11,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-// TextAreaFeaturesApp demonstrates the new TextArea features:
+// TextAreaFeaturesApp demonstrates TextArea features:
 // 1. Left border only
 // 2. Line numbers
 // 3. Current line highlighting

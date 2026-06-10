@@ -1,3 +1,7 @@
+// Package main demonstrates mouse support using TUI components: clickable buttons
+// and a scrollable content area navigable by mouse wheel and arrow keys.
+//
+// Run with: go run ./examples/tui/mouse
 package main
 
 import (
@@ -21,11 +25,29 @@ type MouseDemoApp struct {
 func (app *MouseDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		// Handle keyboard input
 		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyCtrlC || e.Key == tui.KeyEscape {
 			return []tui.Cmd{tui.Quit()}
 		}
-		return nil
+		switch e.Key {
+		case tui.KeyArrowUp:
+			if app.scrollOffset > 0 {
+				app.scrollOffset--
+			}
+		case tui.KeyArrowDown:
+			app.scrollOffset++
+		}
+
+	case tui.MouseEvent:
+		if e.Type == tui.MouseScroll {
+			switch e.Button {
+			case tui.MouseButtonWheelUp:
+				if app.scrollOffset > 0 {
+					app.scrollOffset--
+				}
+			case tui.MouseButtonWheelDown:
+				app.scrollOffset++
+			}
+		}
 	}
 
 	return nil
@@ -56,7 +78,7 @@ func (app *MouseDemoApp) View() tui.View {
 
 	// Scrollable content area using Scroll component
 	scrollContent := []string{
-		"Use your mouse wheel or arrow keys to scroll through this area.",
+		"Scroll with mouse wheel or arrow keys (Up/Down).",
 		"",
 		"Line 1: The quick brown fox jumps over the lazy dog",
 		"Line 2: Lorem ipsum dolor sit amet, consectetur adipiscing elit",

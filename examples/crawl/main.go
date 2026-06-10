@@ -10,8 +10,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -75,7 +77,13 @@ func main() {
 		).
 		Run(runMeta)
 
-	app.Execute()
+	if err := app.Execute(); err != nil {
+		if cli.IsHelpRequested(err) {
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cli.GetExitCode(err))
+	}
 }
 
 // runCrawl handles the crawl command
@@ -167,6 +175,7 @@ type CrawlApp struct {
 	results    []crawlResult
 	mu         sync.Mutex
 	done       bool
+	crawlErr   error
 	startTime  time.Time
 	cancelFunc context.CancelFunc
 }
@@ -189,7 +198,10 @@ func (app *CrawlApp) View() tui.View {
 
 	var statusText string
 	var statusColor tui.Color
-	if app.done {
+	if app.done && app.crawlErr != nil {
+		statusText = fmt.Sprintf("Error: %v", app.crawlErr)
+		statusColor = tui.ColorRed
+	} else if app.done {
 		statusText = "Complete"
 		statusColor = tui.ColorGreen
 	} else {
@@ -240,11 +252,11 @@ func (app *CrawlApp) View() tui.View {
 
 func (app *CrawlApp) HandleEvent(event tui.Event) []tui.Cmd {
 	if key, ok := event.(tui.KeyEvent); ok {
-		switch key.Rune {
-		case 'q':
+		switch {
+		case key.Rune == 'q' || key.Key == tui.KeyCtrlC:
 			app.cancelFunc()
 			return []tui.Cmd{tui.Quit()}
-		case 's':
+		case key.Rune == 's':
 			app.crawler.Stop()
 		}
 	}
@@ -253,6 +265,7 @@ func (app *CrawlApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 func runCrawlTUI(ctx context.Context, c *crawler.Crawler, urls []string) error {
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	app := &CrawlApp{
 		crawler:    c,
@@ -263,7 +276,7 @@ func runCrawlTUI(ctx context.Context, c *crawler.Crawler, urls []string) error {
 
 	// Run crawler in background
 	go func() {
-		c.Crawl(ctx, urls, func(_ context.Context, result *crawler.Result) {
+		err := c.Crawl(ctx, urls, func(_ context.Context, result *crawler.Result) {
 			app.mu.Lock()
 			defer app.mu.Unlock()
 
@@ -285,6 +298,7 @@ func runCrawlTUI(ctx context.Context, c *crawler.Crawler, urls []string) error {
 		})
 		app.mu.Lock()
 		app.done = true
+		app.crawlErr = err
 		app.mu.Unlock()
 	}()
 
@@ -548,32 +562,14 @@ func runMeta(ctx *cli.Context) error {
 	meta := resp.Metadata
 
 	if outputJSON {
-		// Simple JSON-like output
-		fmt.Printf("{\n")
-		fmt.Printf("  \"url\": %q,\n", rawURL)
-		fmt.Printf("  \"title\": %q,\n", meta.Title)
-		fmt.Printf("  \"description\": %q,\n", meta.Description)
-		fmt.Printf("  \"author\": %q,\n", meta.Author)
-		fmt.Printf("  \"canonical\": %q,\n", meta.Canonical)
-		fmt.Printf("  \"charset\": %q,\n", meta.Charset)
-		fmt.Printf("  \"robots\": %q", meta.Robots)
-		if meta.OpenGraph != nil {
-			fmt.Printf(",\n  \"opengraph\": {\n")
-			fmt.Printf("    \"title\": %q,\n", meta.OpenGraph.Title)
-			fmt.Printf("    \"description\": %q,\n", meta.OpenGraph.Description)
-			fmt.Printf("    \"image\": %q,\n", meta.OpenGraph.Image)
-			fmt.Printf("    \"type\": %q\n", meta.OpenGraph.Type)
-			fmt.Printf("  }")
+		out, err := json.MarshalIndent(struct {
+			URL string `json:"url"`
+			fetch.Metadata
+		}{URL: rawURL, Metadata: meta}, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to encode metadata: %w", err)
 		}
-		if meta.Twitter != nil {
-			fmt.Printf(",\n  \"twitter\": {\n")
-			fmt.Printf("    \"card\": %q,\n", meta.Twitter.Card)
-			fmt.Printf("    \"title\": %q,\n", meta.Twitter.Title)
-			fmt.Printf("    \"description\": %q,\n", meta.Twitter.Description)
-			fmt.Printf("    \"image\": %q\n", meta.Twitter.Image)
-			fmt.Printf("  }")
-		}
-		fmt.Printf("\n}\n")
+		fmt.Println(string(out))
 		return nil
 	}
 

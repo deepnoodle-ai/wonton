@@ -12,11 +12,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -196,6 +197,7 @@ func recordSession(output, title, shell string, maxIdle float64, compress bool) 
 	// Handle interrupt gracefully
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
 		<-sigCh
 		session.Close()
@@ -213,9 +215,14 @@ func recordSession(output, title, shell string, maxIdle float64, compress bool) 
 		return fmt.Errorf("failed to start recording: %w", err)
 	}
 
-	// Wait for session to complete
-	if err := session.Wait(); err != nil {
-		// Session ended (possibly by user)
+	// Wait for the shell to exit; its exit status is not a recording error.
+	_ = session.Wait()
+
+	// Close now to finalize the recording and restore the terminal before
+	// printing the summary. (The deferred Close covers error paths; calling
+	// Close twice is safe.)
+	if err := session.Close(); err != nil {
+		return fmt.Errorf("failed to finalize recording: %w", err)
 	}
 
 	duration := time.Since(startTime)
@@ -298,8 +305,8 @@ func showInfo(file string) error {
 
 	if len(header.Env) > 0 {
 		fmt.Printf("\n  Environment:\n")
-		for k, v := range header.Env {
-			fmt.Printf("    %s=%s\n", k, v)
+		for _, k := range slices.Sorted(maps.Keys(header.Env)) {
+			fmt.Printf("    %s=%s\n", k, header.Env[k])
 		}
 	}
 
@@ -346,6 +353,8 @@ type InteractiveApp struct {
 	width        int
 	height       int
 	scrollOffset int
+	playFile     string // recording to play after the TUI exits
+	exportFile   string // recording to export after the TUI exits
 }
 
 func runInteractiveTUI(initialFile string) error {
@@ -379,7 +388,22 @@ func runInteractiveTUI(initialFile string) error {
 
 	app.statusMsg = "↑↓ select | Enter play | e export | q quit"
 
-	return tui.Run(app)
+	if err := tui.Run(app); err != nil {
+		return err
+	}
+
+	// Run the chosen action now that the TUI has exited and the terminal
+	// has been restored.
+	switch {
+	case app.playFile != "":
+		return playRecording(app.playFile, 1.0, false, 0.0)
+	case app.exportFile != "":
+		output := strings.TrimSuffix(app.exportFile, filepath.Ext(app.exportFile))
+		output = strings.TrimSuffix(output, ".cast") + ".gif"
+		return exportToGIF(app.exportFile, output, app.exportOpts)
+	}
+
+	return nil
 }
 
 func (app *InteractiveApp) loadInfo(file string) {
@@ -516,55 +540,26 @@ func (app *InteractiveApp) View() tui.View {
 	)
 }
 
+// playSelected records the selected file and quits the TUI; playback happens
+// in runInteractiveTUI after the TUI has restored the terminal. (Running it
+// from a tui.Cmd would race with process exit, since commands run in
+// goroutines that are not awaited after quit.)
 func (app *InteractiveApp) playSelected() []tui.Cmd {
 	if app.selected >= len(app.files) {
 		return nil
 	}
 
-	file := app.files[app.selected]
-
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			time.Sleep(100 * time.Millisecond)
-			fmt.Print("\033[2J\033[H")
-
-			if err := playRecording(file, 1.0, false, 0.0); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			}
-
-			return tui.QuitEvent{Time: time.Now()}
-		},
-	}
+	app.playFile = app.files[app.selected]
+	return []tui.Cmd{tui.Quit()}
 }
 
+// exportSelected records the selected file and quits the TUI; the export
+// happens in runInteractiveTUI after the TUI has restored the terminal.
 func (app *InteractiveApp) exportSelected() []tui.Cmd {
 	if app.selected >= len(app.files) {
 		return nil
 	}
 
-	file := app.files[app.selected]
-	output := strings.TrimSuffix(file, filepath.Ext(file))
-	output = strings.TrimSuffix(output, ".cast") + ".gif"
-
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			time.Sleep(100 * time.Millisecond)
-			fmt.Print("\033[2J\033[H")
-
-			if err := exportToGIF(file, output, app.exportOpts); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			}
-
-			fmt.Println("\nPress Enter to continue...")
-			var input string
-			fmt.Scanln(&input)
-
-			return tui.QuitEvent{Time: time.Now()}
-		},
-	}
+	app.exportFile = app.files[app.selected]
+	return []tui.Cmd{tui.Quit()}
 }
-
-// Background context for signal handling
-var _ context.Context = context.Background()

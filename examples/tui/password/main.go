@@ -1,3 +1,7 @@
+// Package main demonstrates password input using tui.Input with a mask character,
+// showing how to handle secure text entry in a declarative TUI form.
+//
+// Run with: go run ./examples/tui/password
 package main
 
 import (

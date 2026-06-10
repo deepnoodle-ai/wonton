@@ -1,3 +1,8 @@
+// Package main demonstrates OSC 8 hyperlink support: styled links, inline
+// link groups, fallback rendering, and label/URL rows. Links are clickable
+// in terminals that support OSC 8 (iTerm2, WezTerm, kitty, foot, ...).
+//
+// Run with: go run ./examples/tui/hyperlink
 package main
 
 import (
@@ -59,7 +64,7 @@ func (app *HyperlinkApp) View() tui.View {
 		// Example 1: Default styled hyperlink
 		tui.Group(
 			tui.Text("1. Default styled link: "),
-			tui.Link("https://github.com/myzie/wonton", "Wonton on GitHub"),
+			tui.Link("https://github.com/deepnoodle-ai/wonton", "Wonton on GitHub"),
 		).Gap(0),
 		tui.Spacer().MinHeight(1),
 

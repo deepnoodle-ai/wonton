@@ -3,14 +3,17 @@
 // This minimal example shows:
 //   - Static content printed with tui.Print (scrollback history)
 //   - Dynamic content updated with tui.LivePrinter (live region)
-//   - Multiple async processes updating different parts of the live region
+//   - Two simulated background tasks updating different parts of the live region
 //   - Raw keyboard input for interactive control
 //
-// Run with: go run ./examples/scrollback_simple
+// All state mutation and rendering happens on the main goroutine (LivePrinter
+// is not thread-safe); tickers and a key-reader goroutine feed a single select
+// loop.
+//
+// Run with: go run ./examples/tui/scrollback_simple
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math/rand"
@@ -32,15 +35,13 @@ type AsyncState struct {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	// === SCROLLBACK SECTION ===
 	fmt.Println("=== Scrollback + Live Region Demo ===")
 	fmt.Println()
 
 	tui.Print(tui.Text("Press keys to add various views to scrollback:").Fg(tui.ColorCyan))
 	fmt.Println()
-	printKeyHelp()
+	tui.Print(keyHelpView())
 	fmt.Println()
 
 	// Enter raw mode for keyboard input
@@ -75,46 +76,13 @@ func main() {
 		items:  []string{},
 	}
 
-	// Channels for async updates
-	update1 := make(chan struct{}, 1)
-	update2 := make(chan struct{}, 1)
-	done := make(chan struct{})
-
-	// Async process 1: simulates downloads
-	go func() {
-		ticker := time.NewTicker(150 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				updateProcess1(process1)
-				select {
-				case update1 <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
-
-	// Async process 2: simulates data processing
-	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				updateProcess2(process2)
-				select {
-				case update2 <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
+	// Tickers drive the two simulated processes. State is mutated and rendered
+	// only on this goroutine, so no locking is needed and LivePrinter's
+	// single-goroutine requirement is satisfied.
+	ticker1 := time.NewTicker(150 * time.Millisecond)
+	defer ticker1.Stop()
+	ticker2 := time.NewTicker(200 * time.Millisecond)
+	defer ticker2.Stop()
 
 	// Render initial state
 	live.Update(buildLiveView(process1, process2))
@@ -141,10 +109,12 @@ func main() {
 
 	for running {
 		select {
-		case <-update1:
+		case <-ticker1.C:
+			updateProcess1(process1)
 			live.Update(buildLiveView(process1, process2))
 
-		case <-update2:
+		case <-ticker2.C:
+			updateProcess2(process2)
 			live.Update(buildLiveView(process1, process2))
 
 		case event, ok := <-keyChan:
@@ -206,8 +176,7 @@ func main() {
 
 					case 'h': // Help
 						live.Clear()
-						printKeyHelp()
-						fmt.Println()
+						printRaw(keyHelpView())
 						live.Update(buildLiveView(process1, process2))
 					}
 				}
@@ -215,13 +184,13 @@ func main() {
 		}
 	}
 
-	close(done)
 	live.Clear()
-	fmt.Println("Goodbye!")
+	fmt.Print("Goodbye!\r\n") // Still in raw mode, so use \r\n
 }
 
-func printKeyHelp() {
-	tui.Print(tui.Stack(
+// keyHelpView builds the key reference shown in scrollback.
+func keyHelpView() tui.View {
+	return tui.Stack(
 		tui.Group(tui.Text("  1").Fg(tui.ColorYellow), tui.Text(" - Simple text")),
 		tui.Group(tui.Text("  2").Fg(tui.ColorYellow), tui.Text(" - Styled text")),
 		tui.Group(tui.Text("  3").Fg(tui.ColorYellow), tui.Text(" - Bordered box")),
@@ -231,7 +200,7 @@ func printKeyHelp() {
 		tui.Group(tui.Text("  r").Fg(tui.ColorYellow), tui.Text(" - Random view")),
 		tui.Group(tui.Text("  h").Fg(tui.ColorYellow), tui.Text(" - Show help")),
 		tui.Group(tui.Text("  q").Fg(tui.ColorYellow), tui.Text(" - Quit")),
-	))
+	)
 }
 
 // === Scrollback view generators ===
@@ -522,16 +491,16 @@ func repeatChar(ch rune, count int) string {
 	return string(result)
 }
 
-// printRaw prints a view in raw mode, converting \n to \r\n for proper display.
-// In raw mode, \n only moves down without returning to column 0.
-func printRaw(view tui.View, opts ...tui.PrintConfig) {
-	var buf bytes.Buffer
-	opts = append(opts, tui.PrintConfig{Output: &buf})
-	tui.Print(view, opts...)
-
-	// Convert \n to \r\n for raw mode
-	output := bytes.ReplaceAll(buf.Bytes(), []byte("\n"), []byte("\r\n"))
+// printRaw prints a view while the terminal is in raw mode. It sets RawMode
+// in the PrintConfig so lines end with \r\n (in raw mode, \n only moves down
+// without returning to column 0).
+func printRaw(view tui.View, cfgs ...tui.PrintConfig) {
+	cfg := tui.PrintConfig{}
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
+	cfg.RawMode = true
 	fmt.Print("\r") // Ensure we start at column 0
-	os.Stdout.Write(output)
+	tui.Print(view, cfg)
 	fmt.Print("\r\n") // End with proper line termination
 }

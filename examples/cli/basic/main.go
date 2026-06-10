@@ -8,13 +8,13 @@
 //
 // Run with:
 //
-//	go run examples/cli_basic/main.go --help
-//	go run examples/cli_basic/main.go greet World
-//	go run examples/cli_basic/main.go greet --loud World
-//	go run examples/cli_basic/main.go users:list
-//	go run examples/cli_basic/main.go users:create alice
-//	go run examples/cli_basic/main.go user list       # singular alias
-//	go run examples/cli_basic/main.go user:create bob # singular alias, colon form
+//	go run ./examples/cli/basic --help
+//	go run ./examples/cli/basic greet World
+//	go run ./examples/cli/basic greet --loud World
+//	go run ./examples/cli/basic users:list
+//	go run ./examples/cli/basic users:create alice
+//	go run ./examples/cli/basic user list       # singular alias
+//	go run ./examples/cli/basic user:create bob # singular alias, colon form
 package main
 
 import (
@@ -129,12 +129,10 @@ func main() {
 			return nil
 		})
 
-	// Run the application
+	// Run the application. PrintError ignores nil and help-requested errors,
+	// and GetExitCode maps them to exit code 0.
 	if err := app.Execute(); err != nil {
-		if cli.IsHelpRequested(err) {
-			os.Exit(0)
-		}
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		app.PrintError(err)
 		os.Exit(cli.GetExitCode(err))
 	}
 }

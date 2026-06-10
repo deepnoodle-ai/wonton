@@ -267,6 +267,8 @@ func (app *PaletteerApp) handlePaletteKey(e tui.KeyEvent) []tui.Cmd {
 		hex := app.colors[app.selected].Hex()
 		if err := clipboard.Write(hex); err == nil {
 			app.statusMsg = fmt.Sprintf("✓ Copied %s", hex)
+		} else {
+			app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
 		}
 	case '1':
 		app.colors = append([]PaletteColor{}, presets["rainbow"]...)
@@ -327,6 +329,8 @@ func (app *PaletteerApp) handleGradientKey(e tui.KeyEvent) []tui.Cmd {
 		css := app.gradientToCSS()
 		if err := clipboard.Write(css); err == nil {
 			app.statusMsg = "✓ Copied CSS gradient"
+		} else {
+			app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
 		}
 	}
 
@@ -384,6 +388,8 @@ func (app *PaletteerApp) handleExportKey(e tui.KeyEvent) []tui.Cmd {
 
 		if err := clipboard.Write(output); err == nil {
 			app.statusMsg = "✓ Copied to clipboard"
+		} else {
+			app.statusMsg = fmt.Sprintf("Copy failed: %v", err)
 		}
 	}
 
@@ -695,8 +701,9 @@ func (app *PaletteerApp) viewPreview() tui.View {
 	if len(app.gradientColors) == 0 {
 		gradientSegments = append(gradientSegments, tui.Text("%s", sampleText))
 	} else {
+		// Spread the full gradient across the sample text
 		for i, ch := range sampleText {
-			c := app.gradientColors[i%len(app.gradientColors)]
+			c := app.gradientColors[i*len(app.gradientColors)/len(sampleText)]
 			gradientSegments = append(gradientSegments, tui.Text("%c", ch).FgRGB(c.R, c.G, c.B))
 		}
 	}

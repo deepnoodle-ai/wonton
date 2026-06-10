@@ -1,3 +1,8 @@
+// Package main demonstrates the tui performance metrics system: frame counts,
+// rendering efficiency, cell updates, and timing statistics via Terminal.GetMetrics().
+// Uses manual Terminal/Runtime setup (instead of tui.Run) to access GetMetrics directly.
+//
+// Run with: go run ./examples/tui/metrics
 package main
 
 import (

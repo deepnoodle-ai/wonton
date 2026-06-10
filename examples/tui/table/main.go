@@ -1,3 +1,7 @@
+// Package main demonstrates the declarative Table view: column definitions,
+// keyboard navigation, selection styling, and the OnSelect callback.
+//
+// Run with: go run ./examples/tui/table
 package main
 
 import (
@@ -9,17 +13,19 @@ import (
 
 // TableDemoApp demonstrates the declarative Table view.
 type TableDemoApp struct {
-	columns  []tui.TableColumn
-	rows     [][]string
-	selected int
-	width    int
-	height   int
+	columns   []tui.TableColumn
+	rows      [][]string
+	selected  int
+	activated int // 1-based row confirmed with Enter (0 = none yet)
+	height    int
 }
 
 // View returns the declarative UI for this app.
 func (app *TableDemoApp) View() tui.View {
-	// Calculate table height based on terminal size
-	tableHeight := app.height - 8
+	// Calculate table height based on terminal size, leaving room for the
+	// header, footer, and status lines (including the conditional
+	// "last activated" line)
+	tableHeight := app.height - 9
 	if tableHeight < 5 {
 		tableHeight = 5
 	}
@@ -37,12 +43,15 @@ func (app *TableDemoApp) View() tui.View {
 			SelectedBg(tui.ColorBlue).
 			SelectedFg(tui.ColorWhite).
 			OnSelect(func(row int) {
-				// Handle row click
+				// Called when a row is confirmed with Enter (or clicked,
+				// if mouse tracking is enabled)
+				app.activated = row + 1
 			}),
 		tui.Spacer().MinHeight(1),
 		tui.Text("Selected Row: %d", app.selected+1).Fg(tui.ColorGreen),
+		tui.If(app.activated > 0, tui.Text("Last activated row: %d", app.activated).Fg(tui.ColorYellow)),
 		tui.Text("Features: Uppercase headers, max column width, color inversion, header border").Dim(),
-		tui.Text("Press Arrows to move, q to quit.").Dim(),
+		tui.Text("Press Arrows to move, Enter to activate a row, q to quit.").Dim(),
 		tui.Spacer(),
 		tui.Text(" Press 'q' to quit ").Bg(tui.ColorBrightBlack).Fg(tui.ColorWhite),
 	)
@@ -58,7 +67,6 @@ func (app *TableDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 		// Table component handles navigation internally
 
 	case tui.ResizeEvent:
-		app.width = e.Width
 		app.height = e.Height
 	}
 

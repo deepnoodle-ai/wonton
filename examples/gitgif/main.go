@@ -13,7 +13,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"image/color"
 	"os"
@@ -27,6 +26,10 @@ import (
 const (
 	width  = 800
 	height = 600
+
+	// emptyTreeHash is git's well-known empty tree object, used to diff a
+	// root commit (which has no parent) against nothing.
+	emptyTreeHash = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 )
 
 func main() {
@@ -56,7 +59,7 @@ func main() {
 			os.Exit(0)
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		os.Exit(cli.GetExitCode(err))
 	}
 }
 
@@ -80,7 +83,7 @@ func generateGIF(ctx *cli.Context) error {
 	}
 
 	ctx.Printf("Fetching last %d commits...\n", numCommits)
-	commits, err := repo.Log(context.Background(), git.LogOptions{
+	commits, err := repo.Log(ctx.Context(), git.LogOptions{
 		Limit:       numCommits,
 		IncludeBody: false,
 	})
@@ -99,25 +102,21 @@ func generateGIF(ctx *cli.Context) error {
 	g.SetLoopCount(0) // Loop forever
 
 	// Generate frames for each commit
+	frames := 0
 	for i, commit := range commits {
 		ctx.Printf("  [%d/%d] %s: %s\n", i+1, len(commits), commit.ShortHash, commit.Subject)
 
-		// Get diff for this commit
-		var diff *git.Diff
+		// Get the changes introduced by this commit. Only stats are
+		// rendered, so the patch content is not requested. A root commit
+		// has no parent, so diff it against git's empty tree instead.
+		parent := emptyTreeHash
 		if len(commit.ParentHashes) > 0 {
-			diff, err = repo.Diff(context.Background(), git.DiffOptions{
-				From:         commit.ParentHashes[0],
-				To:           commit.Hash,
-				IncludePatch: true,
-			})
-		} else {
-			// First commit - show all files as added
-			diff, err = repo.Diff(context.Background(), git.DiffOptions{
-				From:         "",
-				To:           commit.Hash,
-				IncludePatch: false,
-			})
+			parent = commit.ParentHashes[0]
 		}
+		diff, err := repo.Diff(ctx.Context(), git.DiffOptions{
+			From: parent,
+			To:   commit.Hash,
+		})
 		if err != nil {
 			// If diff fails, just skip this commit
 			ctx.Printf("    Warning: failed to get diff: %v\n", err)
@@ -128,6 +127,11 @@ func generateGIF(ctx *cli.Context) error {
 		g.AddFrameWithDelay(func(f *gif.Frame) {
 			renderCommitFrame(f, font, commit, diff, i+1, len(commits))
 		}, delay)
+		frames++
+	}
+
+	if frames == 0 {
+		return fmt.Errorf("no frames generated")
 	}
 
 	ctx.Printf("Saving to %s...\n", output)
@@ -135,7 +139,7 @@ func generateGIF(ctx *cli.Context) error {
 		return fmt.Errorf("failed to save GIF: %w", err)
 	}
 
-	ctx.Printf("Successfully created %s with %d frames\n", output, len(commits))
+	ctx.Printf("Successfully created %s with %d frames\n", output, frames)
 	return nil
 }
 
@@ -231,11 +235,4 @@ func renderCommitFrame(f *gif.Frame, font *gif.FontFace, commit git.Commit, diff
 	// Draw footer
 	f.FillRect(0, height-30, width, 30, color.RGBA{20, 30, 45, 255})
 	font.DrawString(img, width-210, height-22, "Generated with gitgif", dimFg)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
