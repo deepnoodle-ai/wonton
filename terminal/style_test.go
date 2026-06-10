@@ -195,32 +195,16 @@ func TestColor_BackgroundCode_AllColors(t *testing.T) {
 	}
 }
 
-func TestRGB_Foreground(t *testing.T) {
+func TestRGB_ForegroundSeq(t *testing.T) {
 	rgb := NewRGB(255, 0, 127)
-	output := rgb.Foreground()
+	output := rgb.ForegroundSeq()
 	assert.Equal(t, "\033[38;2;255;0;127m", output)
 }
 
-func TestRGB_Background(t *testing.T) {
+func TestRGB_BackgroundSeq(t *testing.T) {
 	rgb := NewRGB(127, 0, 255)
-	output := rgb.Background()
+	output := rgb.BackgroundSeq()
 	assert.Equal(t, "\033[48;2;127;0;255m", output)
-}
-
-func TestRGB_Apply_Foreground(t *testing.T) {
-	rgb := NewRGB(255, 128, 0)
-	text := rgb.Apply("Test", false)
-	assert.Contains(t, text, "Test")
-	assert.Contains(t, text, "38;2;255;128;0")
-	assert.Contains(t, text, "\033[0m")
-}
-
-func TestRGB_Apply_Background(t *testing.T) {
-	rgb := NewRGB(0, 128, 255)
-	text := rgb.Apply("Test", true)
-	assert.Contains(t, text, "Test")
-	assert.Contains(t, text, "48;2;0;128;255")
-	assert.Contains(t, text, "\033[0m")
 }
 
 func TestGradient_SingleStep(t *testing.T) {

@@ -13,7 +13,7 @@ type RGB = color.RGB
 
 // Re-export color constants for backward compatibility
 const (
-	ColorDefault       = color.NoColor
+	ColorDefault       = color.Default
 	ColorBlack         = color.Black
 	ColorRed           = color.Red
 	ColorGreen         = color.Green

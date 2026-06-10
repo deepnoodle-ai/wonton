@@ -607,14 +607,17 @@ func formatDiff(diff string) string {
 	if !colorEnabled {
 		return "mismatch (-want +got):\n" + diff
 	}
+	// Build sequences directly rather than via color.Apply: colorEnabled is
+	// this package's own per-stream decision (stderr), independent of the
+	// process-global color.Enabled (stdout-based).
 	var b strings.Builder
 	b.WriteString("mismatch (-want +got):\n")
 	for _, line := range strings.Split(diff, "\n") {
 		switch {
 		case strings.HasPrefix(line, "-"):
-			b.WriteString(color.Red.Apply(line))
+			b.WriteString(color.Red.ForegroundSeq() + line + color.Reset)
 		case strings.HasPrefix(line, "+"):
-			b.WriteString(color.Green.Apply(line))
+			b.WriteString(color.Green.ForegroundSeq() + line + color.Reset)
 		default:
 			b.WriteString(line)
 		}

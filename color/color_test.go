@@ -1,13 +1,29 @@
 package color_test
 
 import (
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
 )
+
+// forceColor enables color output for the duration of the test, restoring
+// the prior state on exit. Tests run with piped output, so Enabled would
+// otherwise default to false.
+func forceColor(t *testing.T) {
+	t.Helper()
+	original := color.Enabled
+	color.Enabled = true
+	t.Cleanup(func() { color.Enabled = original })
+}
+
+// disableColor disables color output for the duration of the test.
+func disableColor(t *testing.T) {
+	t.Helper()
+	original := color.Enabled
+	color.Enabled = false
+	t.Cleanup(func() { color.Enabled = original })
+}
 
 func TestColor_ForegroundCode_AllColors(t *testing.T) {
 	tests := []struct {
@@ -30,7 +46,7 @@ func TestColor_ForegroundCode_AllColors(t *testing.T) {
 		{color.BrightMagenta, "95"},
 		{color.BrightCyan, "96"},
 		{color.BrightWhite, "97"},
-		{color.NoColor, "39"},
+		{color.Default, "39"},
 	}
 
 	for _, tt := range tests {
@@ -61,7 +77,7 @@ func TestColor_BackgroundCode_AllColors(t *testing.T) {
 		{color.BrightMagenta, "105"},
 		{color.BrightCyan, "106"},
 		{color.BrightWhite, "107"},
-		{color.NoColor, "49"},
+		{color.Default, "49"},
 	}
 
 	for _, tt := range tests {
@@ -72,7 +88,6 @@ func TestColor_BackgroundCode_AllColors(t *testing.T) {
 }
 
 func TestColor_ExtendedPalette(t *testing.T) {
-	// Test 256-color palette
 	tests := []struct {
 		n          uint8
 		expectedFg string
@@ -91,416 +106,90 @@ func TestColor_ExtendedPalette(t *testing.T) {
 	}
 }
 
-func TestRGB_Foreground(t *testing.T) {
-	rgb := color.NewRGB(255, 0, 127)
-	output := rgb.Foreground()
-	assert.Equal(t, "\033[38;2;255;0;127m", output)
-}
-
-func TestRGB_Background(t *testing.T) {
-	rgb := color.NewRGB(127, 0, 255)
-	output := rgb.Background()
-	assert.Equal(t, "\033[48;2;127;0;255m", output)
-}
-
-func TestRGB_Apply_Foreground(t *testing.T) {
-	rgb := color.NewRGB(255, 128, 0)
-	text := rgb.Apply("Test", false)
-	assert.Contains(t, text, "Test")
-	assert.Contains(t, text, "38;2;255;128;0")
-	assert.Contains(t, text, "\033[0m")
-}
-
-func TestRGB_Apply_Background(t *testing.T) {
-	rgb := color.NewRGB(0, 128, 255)
-	text := rgb.Apply("Test", true)
-	assert.Contains(t, text, "Test")
-	assert.Contains(t, text, "48;2;0;128;255")
-	assert.Contains(t, text, "\033[0m")
-}
-
-func TestGradient_SingleStep(t *testing.T) {
-	start := color.NewRGB(255, 0, 0)
-	end := color.NewRGB(0, 255, 0)
-	colors := color.Gradient(start, end, 1)
-	assert.Len(t, colors, 1)
-	assert.Equal(t, start, colors[0])
-}
-
-func TestGradient_TwoSteps(t *testing.T) {
-	start := color.NewRGB(0, 0, 0)
-	end := color.NewRGB(255, 255, 255)
-	colors := color.Gradient(start, end, 2)
-	assert.Len(t, colors, 2)
-	assert.Equal(t, start, colors[0])
-	assert.Equal(t, end, colors[1])
-}
-
-func TestGradient_MultipleSteps(t *testing.T) {
-	start := color.NewRGB(255, 0, 0)
-	end := color.NewRGB(0, 0, 255)
-	colors := color.Gradient(start, end, 5)
-	assert.Len(t, colors, 5)
-	assert.Equal(t, start, colors[0])
-	assert.Equal(t, end, colors[4])
-	// Middle color should be a blend
-	assert.NotEqual(t, start, colors[2])
-	assert.NotEqual(t, end, colors[2])
-}
-
-func TestRainbowGradient_SingleStep(t *testing.T) {
-	colors := color.RainbowGradient(1)
-	assert.Len(t, colors, 1)
-	assert.Equal(t, color.NewRGB(255, 0, 0), colors[0])
-}
-
-func TestRainbowGradient_MultipleSteps(t *testing.T) {
-	colors := color.RainbowGradient(10)
-	assert.Len(t, colors, 10)
-	// First should be red
-	assert.Equal(t, color.NewRGB(255, 0, 0), colors[0])
-	// Should have variation in colors
-	assert.NotEqual(t, colors[0], colors[5])
-}
-
-func TestSmoothRainbow(t *testing.T) {
-	colors := color.SmoothRainbow(10)
-	assert.Len(t, colors, 10)
-	// Should have distinct colors
-	uniqueColors := make(map[color.RGB]bool)
-	for _, c := range colors {
-		uniqueColors[c] = true
-	}
-	assert.Greater(t, len(uniqueColors), 5, "Should have variety of colors")
-}
-
-func TestMultiGradient_EmptyStops(t *testing.T) {
-	colors := color.MultiGradient([]color.RGB{}, 5)
-	assert.Len(t, colors, 0)
-}
-
-func TestMultiGradient_SingleStop(t *testing.T) {
-	stop := color.NewRGB(128, 128, 128)
-	colors := color.MultiGradient([]color.RGB{stop}, 5)
-	assert.Len(t, colors, 5)
-	for _, c := range colors {
-		assert.Equal(t, stop, c)
-	}
-}
-
-func TestMultiGradient_MultipleStops(t *testing.T) {
-	stops := []color.RGB{
-		color.NewRGB(255, 0, 0), // Red
-		color.NewRGB(0, 255, 0), // Green
-		color.NewRGB(0, 0, 255), // Blue
-	}
-	colors := color.MultiGradient(stops, 5)
-	assert.Len(t, colors, 5)
-	assert.Equal(t, stops[0], colors[0])
-	assert.Equal(t, stops[2], colors[4])
-}
-
-func TestHSLToRGB_Red(t *testing.T) {
-	rgb := color.HSLToRGB(0, 1.0, 0.5)
-	assert.Equal(t, uint8(255), rgb.R)
-	assert.Equal(t, uint8(0), rgb.G)
-	assert.Equal(t, uint8(0), rgb.B)
-}
-
-func TestHSLToRGB_Green(t *testing.T) {
-	rgb := color.HSLToRGB(120, 1.0, 0.5)
-	assert.Equal(t, uint8(0), rgb.R)
-	assert.Equal(t, uint8(255), rgb.G)
-	assert.Equal(t, uint8(0), rgb.B)
-}
-
-func TestHSLToRGB_Blue(t *testing.T) {
-	rgb := color.HSLToRGB(240, 1.0, 0.5)
-	assert.Equal(t, uint8(0), rgb.R)
-	assert.Equal(t, uint8(0), rgb.G)
-	assert.Equal(t, uint8(255), rgb.B)
-}
-
-func TestHSLToRGB_Grayscale(t *testing.T) {
-	// Saturation 0 should produce grayscale
-	rgb := color.HSLToRGB(0, 0, 0.5)
-	assert.Equal(t, rgb.R, rgb.G)
-	assert.Equal(t, rgb.G, rgb.B)
-}
-
 func TestColor_ForegroundSeq(t *testing.T) {
 	assert.Equal(t, "\033[31m", color.Red.ForegroundSeq())
 	assert.Equal(t, "\033[92m", color.BrightGreen.ForegroundSeq())
-	assert.Equal(t, "", color.NoColor.ForegroundSeq())
+	assert.Equal(t, "", color.Default.ForegroundSeq())
 }
 
 func TestColor_BackgroundSeq(t *testing.T) {
 	assert.Equal(t, "\033[41m", color.Red.BackgroundSeq())
 	assert.Equal(t, "\033[102m", color.BrightGreen.BackgroundSeq())
-	assert.Equal(t, "", color.NoColor.BackgroundSeq())
+	assert.Equal(t, "", color.Default.BackgroundSeq())
 }
 
 func TestColor_ForegroundSeqDim(t *testing.T) {
 	assert.Equal(t, "\033[2;31m", color.Red.ForegroundSeqDim())
-	assert.Equal(t, "\033[2m", color.NoColor.ForegroundSeqDim())
+	assert.Equal(t, "\033[2m", color.Default.ForegroundSeqDim())
 }
 
-func TestShouldColorize_RespectsNO_COLOR(t *testing.T) {
-	// Isolate forcing env vars so this test is deterministic regardless of
-	// the host environment. t.Setenv restores the original value on exit,
-	// even on failure.
-	clearEnvForTest(t, "FORCE_COLOR", "CLICOLOR_FORCE", "CLICOLOR")
-
-	t.Run("non-empty disables", func(t *testing.T) {
-		t.Setenv("NO_COLOR", "1")
-		assert.False(t, color.ShouldColorize(os.Stdout))
-	})
-
-	t.Run("empty does not disable", func(t *testing.T) {
-		t.Setenv("NO_COLOR", "")
-		// Result depends on TTY; just verify no panic.
-		_ = color.ShouldColorize(os.Stdout)
-	})
-
-	t.Run("unset leaves TTY detection", func(t *testing.T) {
-		clearEnvForTest(t, "NO_COLOR")
-		_ = color.ShouldColorize(os.Stdout)
-	})
+func TestColor_ForegroundSeqBold(t *testing.T) {
+	assert.Equal(t, "\033[1;31m", color.Red.ForegroundSeqBold())
+	assert.Equal(t, "\033[1m", color.Default.ForegroundSeqBold())
 }
 
-// clearEnvForTest unsets each env var for the duration of the test, using
-// t.Setenv to capture the original value so it is restored on exit.
-func clearEnvForTest(t *testing.T, keys ...string) {
-	t.Helper()
-	for _, k := range keys {
-		t.Setenv(k, "")
-		os.Unsetenv(k)
-	}
+func TestColor_SeqsIgnoreEnabled(t *testing.T) {
+	disableColor(t)
+	assert.Equal(t, "\033[31m", color.Red.ForegroundSeq())
+	assert.Equal(t, "\033[41m", color.Red.BackgroundSeq())
 }
 
-func TestShouldColorize_Precedence(t *testing.T) {
-	clearEnvForTest(t, "NO_COLOR", "FORCE_COLOR", "CLICOLOR", "CLICOLOR_FORCE")
-
-	t.Run("FORCE_COLOR beats NO_COLOR", func(t *testing.T) {
-		t.Setenv("NO_COLOR", "1")
-		t.Setenv("FORCE_COLOR", "1")
-		assert.True(t, color.ShouldColorize(os.Stdout))
-	})
-
-	t.Run("CLICOLOR_FORCE forces on", func(t *testing.T) {
-		t.Setenv("NO_COLOR", "1")
-		t.Setenv("CLICOLOR_FORCE", "1")
-		assert.True(t, color.ShouldColorize(os.Stdout))
-	})
-
-	t.Run("FORCE_COLOR=0 does not force on", func(t *testing.T) {
-		t.Setenv("NO_COLOR", "1")
-		t.Setenv("FORCE_COLOR", "0")
-		assert.False(t, color.ShouldColorize(os.Stdout))
-	})
-
-	t.Run("CLICOLOR=0 disables", func(t *testing.T) {
-		t.Setenv("CLICOLOR", "0")
-		assert.False(t, color.ShouldColorize(os.Stdout))
-	})
+func TestColor_Apply(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[31mError\033[0m", color.Red.Apply("Error"))
+	assert.Equal(t, "plain", color.Default.Apply("plain"))
 }
 
-func TestColorize_RespectsEnabled(t *testing.T) {
-	// Save original state
-	originalEnabled := color.Enabled
-
-	// Test with Enabled = true
-	color.Enabled = true
-	result := color.Colorize(color.Red, "test")
-	assert.Contains(t, result, "\033[")
-	assert.Contains(t, result, "test")
-
-	// Test with Enabled = false
-	color.Enabled = false
-	result = color.Colorize(color.Red, "test")
-	assert.Equal(t, "test", result)
-
-	// Restore original state
-	color.Enabled = originalEnabled
+func TestColor_ApplyBg(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[41m ERROR \033[0m", color.Red.ApplyBg(" ERROR "))
+	assert.Equal(t, "plain", color.Default.ApplyBg("plain"))
 }
 
-// Example_basicColors demonstrates using standard ANSI colors.
-func Example_basicColors() {
-	fmt.Println(color.Red.Apply("Error: something went wrong"))
-	fmt.Println(color.Green.Apply("Success: operation completed"))
-	fmt.Println(color.Yellow.Apply("Warning: proceed with caution"))
-	fmt.Println(color.Blue.Apply("Info: processing data"))
+func TestColor_ApplyDim(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[2;37mfaint\033[0m", color.White.ApplyDim("faint"))
+	assert.Equal(t, "\033[2mfaint\033[0m", color.Default.ApplyDim("faint"))
 }
 
-// Example_rgbColors demonstrates using true color RGB values.
-func Example_rgbColors() {
-	orange := color.NewRGB(255, 128, 0)
-	purple := color.NewRGB(128, 0, 255)
-
-	fmt.Println(orange.Apply("Orange text", false))
-	fmt.Println(purple.Apply("Purple background", true))
+func TestColor_ApplyBold(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[1;31mFAILED\033[0m", color.Red.ApplyBold("FAILED"))
+	assert.Equal(t, "\033[1mloud\033[0m", color.Default.ApplyBold("loud"))
 }
 
-// Example_gradient demonstrates creating a color gradient.
-func Example_gradient() {
-	// Create a gradient from red to blue
-	gradient := color.Gradient(
-		color.NewRGB(255, 0, 0),
-		color.NewRGB(0, 0, 255),
-		10,
-	)
-
-	for _, c := range gradient {
-		fmt.Print(c.Apply("█", false))
-	}
-	fmt.Println()
+func TestColor_Apply_RespectsEnabled(t *testing.T) {
+	disableColor(t)
+	assert.Equal(t, "Error", color.Red.Apply("Error"))
+	assert.Equal(t, " ERROR ", color.Red.ApplyBg(" ERROR "))
+	assert.Equal(t, "faint", color.White.ApplyDim("faint"))
+	assert.Equal(t, "FAILED", color.Red.ApplyBold("FAILED"))
+	assert.Equal(t, "x: 1", color.Red.Sprintf("x: %d", 1))
+	assert.Equal(t, "ab", color.Red.Sprint("a", "b"))
 }
 
-// Example_rainbowGradient demonstrates creating a rainbow gradient.
-func Example_rainbowGradient() {
-	rainbow := color.RainbowGradient(20)
-
-	for _, c := range rainbow {
-		fmt.Print(c.Apply("█", false))
-	}
-	fmt.Println()
+func TestColor_Sprintf(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[31mFound 3 errors\033[0m", color.Red.Sprintf("Found %d errors", 3))
 }
 
-// Example_hslColors demonstrates using HSL color space.
-func Example_hslColors() {
-	// Create colors by varying hue while keeping saturation and lightness constant
-	for i := 0; i < 12; i++ {
-		hue := float64(i) * 30.0 // Every 30 degrees
-		c := color.HSLToRGB(hue, 1.0, 0.5)
-		fmt.Print(c.Apply("█", false))
-	}
-	fmt.Println()
-
-	// Create shades of red by varying lightness
-	for i := 0; i < 5; i++ {
-		lightness := 0.2 + float64(i)*0.15
-		c := color.HSLToRGB(0, 1.0, lightness)
-		fmt.Print(c.Apply("█", false))
-	}
-	fmt.Println()
+func TestColor_Sprint(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[32mok: 2 items\033[0m", color.Green.Sprint("ok: ", 2, " items"))
 }
 
-// Example_conditionalColor demonstrates respecting terminal capabilities.
-func Example_conditionalColor() {
-	// Check if we should colorize output
-	if color.ShouldColorize(os.Stdout) {
-		fmt.Println(color.Green.Apply("Terminal supports colors"))
-	} else {
-		fmt.Println("Plain text output")
-	}
+func TestApplyBold(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[1mImportant\033[0m", color.ApplyBold("Important"))
 
-	// Use the global Enabled variable
-	originalEnabled := color.Enabled
-	color.Enabled = true
-	fmt.Println(color.Colorize(color.Blue, "This will be blue"))
-
-	color.Enabled = false
-	fmt.Println(color.Colorize(color.Blue, "This will be plain"))
-
-	color.Enabled = originalEnabled
+	disableColor(t)
+	assert.Equal(t, "Important", color.ApplyBold("Important"))
 }
 
-// ExampleColor_Apply demonstrates applying foreground colors.
-func ExampleColor_Apply() {
-	fmt.Println(color.Red.Apply("Error message"))
-	fmt.Println(color.Green.Apply("Success message"))
-	fmt.Println(color.BrightYellow.Apply("Bright warning"))
-}
+func TestApplyDim(t *testing.T) {
+	forceColor(t)
+	assert.Equal(t, "\033[2maside\033[0m", color.ApplyDim("aside"))
 
-// ExampleColor_ApplyBg demonstrates applying background colors.
-func ExampleColor_ApplyBg() {
-	fmt.Println(color.Red.ApplyBg(" ERROR "))
-	fmt.Println(color.Green.ApplyBg(" OK "))
-}
-
-// ExampleColor_ApplyDim demonstrates using dim colors for de-emphasis.
-func ExampleColor_ApplyDim() {
-	fmt.Println(color.White.Apply("Normal text"))
-	fmt.Println(color.White.ApplyDim("Dimmed text (less important)"))
-}
-
-// ExampleColor_Sprintf demonstrates formatted color output.
-func ExampleColor_Sprintf() {
-	count := 5
-	fmt.Println(color.Red.Sprintf("Found %d errors", count))
-	fmt.Println(color.Green.Sprintf("Processed %d items successfully", count))
-}
-
-// ExampleNewRGB demonstrates creating custom RGB colors.
-func ExampleNewRGB() {
-	orange := color.NewRGB(255, 128, 0)
-	teal := color.NewRGB(0, 128, 128)
-
-	fmt.Println(orange.Apply("Orange text", false))
-	fmt.Println(teal.Apply("Teal background", true))
-}
-
-// ExampleGradient demonstrates creating a linear gradient.
-func ExampleGradient() {
-	// Create a red-to-blue gradient
-	gradient := color.Gradient(
-		color.NewRGB(255, 0, 0),
-		color.NewRGB(0, 0, 255),
-		5,
-	)
-
-	for i, c := range gradient {
-		fmt.Printf("Step %d: %s\n", i, c.Apply("█████", false))
-	}
-}
-
-// ExampleMultiGradient demonstrates creating gradients with multiple stops.
-func ExampleMultiGradient() {
-	// Create a sunset gradient
-	sunset := color.MultiGradient([]color.RGB{
-		color.NewRGB(255, 0, 0),   // Red
-		color.NewRGB(255, 128, 0), // Orange
-		color.NewRGB(128, 0, 128), // Purple
-	}, 10)
-
-	for _, c := range sunset {
-		fmt.Print(c.Apply("█", false))
-	}
-	fmt.Println()
-}
-
-// ExampleHSLToRGB demonstrates HSL to RGB conversion.
-func ExampleHSLToRGB() {
-	// Pure red
-	red := color.HSLToRGB(0, 1.0, 0.5)
-	fmt.Println(red.Apply("Red", false))
-
-	// Dark red (low lightness)
-	darkRed := color.HSLToRGB(0, 1.0, 0.3)
-	fmt.Println(darkRed.Apply("Dark Red", false))
-
-	// Desaturated red (brownish)
-	brown := color.HSLToRGB(0, 0.5, 0.3)
-	fmt.Println(brown.Apply("Brown", false))
-}
-
-// ExampleShouldColorize demonstrates checking for color support.
-func ExampleShouldColorize() {
-	if color.ShouldColorize(os.Stdout) {
-		fmt.Println(color.Green.Apply("Colors are enabled"))
-	} else {
-		fmt.Println("Colors are disabled")
-	}
-}
-
-// ExampleApplyBold demonstrates bold text formatting.
-func ExampleApplyBold() {
-	fmt.Println(color.ApplyBold("Important:"), "This is a message")
-	fmt.Println("Normal text without bold")
-}
-
-// ExampleApplyDim demonstrates dim text formatting.
-func ExampleApplyDim() {
-	fmt.Println("Normal text")
-	fmt.Println(color.ApplyDim("(This is less important)"))
+	disableColor(t)
+	assert.Equal(t, "aside", color.ApplyDim("aside"))
 }

@@ -648,9 +648,13 @@ func (a *App) applyColorOverrides(args []string) []string {
 		switch arg {
 		case "--no-color", "--no-colour":
 			a.colorEnabled = false
+			// Mirror into the color package so direct color.Apply calls in
+			// command handlers follow the user's explicit choice too.
+			color.Enabled = false
 			continue
 		case "--color", "--colour", "--force-color":
 			a.colorEnabled = true
+			color.Enabled = true
 			continue
 		}
 		out = append(out, arg)
@@ -1307,9 +1311,12 @@ func (g *Group) showHelp() error {
 	return &HelpRequested{}
 }
 
-// SetColorEnabled enables or disables colored output.
+// SetColorEnabled enables or disables colored output. The setting is also
+// mirrored into color.Enabled so that direct color.Apply calls in command
+// handlers follow the same choice.
 func (a *App) SetColorEnabled(enabled bool) *App {
 	a.colorEnabled = enabled
+	color.Enabled = enabled
 	return a
 }
 

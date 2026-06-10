@@ -2102,6 +2102,11 @@ func TestSemanticOutputWithColors(t *testing.T) {
 
 	app := New("test")
 	app.colorEnabled = true // Enable colors
+	// color.Apply is also gated by the package-global Enabled, which is
+	// false under `go test` (stdout is piped); force it for this test.
+	originalEnabled := color.Enabled
+	color.Enabled = true
+	t.Cleanup(func() { color.Enabled = originalEnabled })
 
 	ctx := &Context{
 		app:    app,
