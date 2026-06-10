@@ -47,6 +47,7 @@ package humanize
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -96,7 +97,9 @@ func formatBytes(b int64, base float64, units []string) string {
 
 	bf := float64(b)
 	for _, unit := range units[:len(units)-1] {
-		if bf < base {
+		// Compare against base-0.05 so values that would display as the base
+		// (e.g., "1024.0 KiB" after %.1f rounding) move to the next unit.
+		if bf < base-0.05 {
 			if unit == "B" {
 				return fmt.Sprintf("%d %s", b, unit)
 			}
@@ -122,6 +125,7 @@ func formatBytes(b int64, base float64, units []string) string {
 //	Duration(3665 * time.Second)      // "1h 1m"
 //	Duration(25 * time.Hour)          // "1d 1h"
 //	Duration(500 * time.Millisecond)  // "500ms"
+//	Duration(750 * time.Microsecond)  // "750µs"
 //	Duration(-30 * time.Second)       // "-30s"
 func Duration(d time.Duration) string {
 	if d == 0 {
@@ -133,52 +137,55 @@ func Duration(d time.Duration) string {
 		d = -d
 	}
 
-	var parts []string
+	var result string
+	switch {
+	case d < time.Microsecond:
+		result = fmt.Sprintf("%dns", d.Nanoseconds())
+	case d < time.Millisecond:
+		result = fmt.Sprintf("%dµs", d.Microseconds())
+	default:
+		// Round to milliseconds so sub-millisecond remainders carry into the
+		// displayed units (e.g., 999.6ms becomes "1s", not "1000ms").
+		d = d.Round(time.Millisecond)
 
-	days := d / (24 * time.Hour)
-	if days > 0 {
-		parts = append(parts, fmt.Sprintf("%dd", days))
-		d -= days * 24 * time.Hour
-	}
+		var parts []string
 
-	hours := d / time.Hour
-	if hours > 0 {
-		parts = append(parts, fmt.Sprintf("%dh", hours))
-		d -= hours * time.Hour
-	}
-
-	mins := d / time.Minute
-	if mins > 0 {
-		parts = append(parts, fmt.Sprintf("%dm", mins))
-		d -= mins * time.Minute
-	}
-
-	secs := d / time.Second
-	if secs > 0 {
-		parts = append(parts, fmt.Sprintf("%ds", secs))
-		d -= secs * time.Second
-	}
-
-	if d > 0 && len(parts) < 2 {
-		// Show milliseconds for sub-second precision
-		ms := math.Round(float64(d) / float64(time.Millisecond))
-		if ms == 1000 && len(parts) == 1 {
-			// If we rounded up to 1000ms and already have seconds,
-			// it's better to just increment the seconds if they were the only part,
-			// but Duration is meant to be simple. For "1s 1000ms", we just
-			// show "1s" or we could have incremented secs earlier.
-			// Actually, the simplest fix is to not append 1000ms.
-		} else if ms > 0 {
-			parts = append(parts, fmt.Sprintf("%.0fms", ms))
+		days := d / (24 * time.Hour)
+		if days > 0 {
+			parts = append(parts, fmt.Sprintf("%dd", days))
+			d -= days * 24 * time.Hour
 		}
+
+		hours := d / time.Hour
+		if hours > 0 {
+			parts = append(parts, fmt.Sprintf("%dh", hours))
+			d -= hours * time.Hour
+		}
+
+		mins := d / time.Minute
+		if mins > 0 {
+			parts = append(parts, fmt.Sprintf("%dm", mins))
+			d -= mins * time.Minute
+		}
+
+		secs := d / time.Second
+		if secs > 0 {
+			parts = append(parts, fmt.Sprintf("%ds", secs))
+			d -= secs * time.Second
+		}
+
+		if ms := d / time.Millisecond; ms > 0 && len(parts) < 2 {
+			parts = append(parts, fmt.Sprintf("%dms", ms))
+		}
+
+		// Show at most 2 significant units
+		if len(parts) > 2 {
+			parts = parts[:2]
+		}
+
+		result = strings.Join(parts, " ")
 	}
 
-	// Show at most 2 significant units
-	if len(parts) > 2 {
-		parts = parts[:2]
-	}
-
-	result := strings.Join(parts, " ")
 	if neg {
 		result = "-" + result
 	}
@@ -222,8 +229,10 @@ func DurationShort(d time.Duration) string {
 		result = fmt.Sprintf("%ds", d/time.Second)
 	case d >= time.Millisecond:
 		result = fmt.Sprintf("%dms", d/time.Millisecond)
-	default:
+	case d >= time.Microsecond:
 		result = fmt.Sprintf("%dµs", d/time.Microsecond)
+	default:
+		result = fmt.Sprintf("%dns", d.Nanoseconds())
 	}
 
 	if neg {
@@ -341,17 +350,17 @@ func Number(n int64) string {
 //	NumberWithSeparator(1234567, " ")  // "1 234 567"
 //	NumberWithSeparator(1234567, "_")  // "1_234_567"
 func NumberWithSeparator(n int64, sep string) string {
-	neg := n < 0
-	if neg {
-		n = -n
+	// Format first and strip the sign rather than negating n, which would
+	// overflow for math.MinInt64.
+	s := strconv.FormatInt(n, 10)
+	var sign string
+	if strings.HasPrefix(s, "-") {
+		sign = "-"
+		s = s[1:]
 	}
 
-	s := fmt.Sprintf("%d", n)
 	if len(s) <= 3 {
-		if neg {
-			return "-" + s
-		}
-		return s
+		return sign + s
 	}
 
 	// Insert separators from right to left
@@ -363,10 +372,7 @@ func NumberWithSeparator(n int64, sep string) string {
 		result.WriteRune(c)
 	}
 
-	if neg {
-		return "-" + result.String()
-	}
-	return result.String()
+	return sign + result.String()
 }
 
 // Float formats a floating-point number with the specified number of decimal
@@ -507,8 +513,9 @@ func Truncate(s string, maxLen int) string {
 // a custom suffix. This allows for localization or different visual styles.
 //
 // If maxLen is less than or equal to the suffix length, only the suffix
-// (truncated to maxLen) is returned. The suffix can be any string, such as
-// "...", "…", "~", or " [more]".
+// (truncated to maxLen) is returned. If maxLen is zero or negative, an empty
+// string is returned. The suffix can be any string, such as "...", "…", "~",
+// or " [more]".
 //
 // This function is UTF-8 safe and counts characters (runes), not bytes.
 //
@@ -520,6 +527,10 @@ func Truncate(s string, maxLen int) string {
 //	TruncateWithSuffix("lengthy", 3, "..")        // "l.."
 //	TruncateWithSuffix("こんにちは", 4, "...")      // "こ..."
 func TruncateWithSuffix(s string, maxLen int, suffix string) string {
+	if maxLen <= 0 {
+		return ""
+	}
+
 	runes := []rune(s)
 	suffixRunes := []rune(suffix)
 

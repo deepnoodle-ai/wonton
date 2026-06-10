@@ -2,6 +2,7 @@ package unidiff
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -337,6 +338,182 @@ func TestParse_NoNewlineAtEndOfFile(t *testing.T) {
 	assert.Len(t, lines, 2)
 	assert.Equal(t, "old", lines[0].Content)
 	assert.Equal(t, "new", lines[1].Content)
+}
+
+func TestParse_PlainUnifiedDiff(t *testing.T) {
+	// Plain "diff -u" output: no "diff --git" lines, headers include
+	// tab-separated timestamps.
+	diffText := "--- old.txt\t2024-01-01 12:00:00.000000000 +0000\n" +
+		"+++ new.txt\t2024-01-02 12:00:00.000000000 +0000\n" +
+		"@@ -1,2 +1,2 @@\n" +
+		" context\n" +
+		"-old\n" +
+		"+new\n" +
+		"--- second-old.txt\t2024-01-01 12:00:00.000000000 +0000\n" +
+		"+++ second-new.txt\t2024-01-02 12:00:00.000000000 +0000\n" +
+		"@@ -1 +1 @@\n" +
+		"-a\n" +
+		"+b\n"
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 2)
+
+	assert.Equal(t, "old.txt", diff.Files[0].OldPath)
+	assert.Equal(t, "new.txt", diff.Files[0].NewPath)
+	assert.Len(t, diff.Files[0].Hunks, 1)
+	assert.Len(t, diff.Files[0].Hunks[0].Lines, 3)
+
+	assert.Equal(t, "second-old.txt", diff.Files[1].OldPath)
+	assert.Equal(t, "second-new.txt", diff.Files[1].NewPath)
+	assert.Len(t, diff.Files[1].Hunks, 1)
+}
+
+func TestParse_ContentResemblingHeaders(t *testing.T) {
+	// Removed lines whose content starts with "--" (e.g., SQL comments) look
+	// like "--- ..." in the diff and must not be misparsed as file headers.
+	// Likewise for added lines starting with "++".
+	diffText := `diff --git a/query.sql b/query.sql
+--- a/query.sql
++++ b/query.sql
+@@ -1,3 +1,3 @@
+ SELECT 1;
+--- old comment
++++ new comment
+`
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.Equal(t, "query.sql", file.OldPath)
+	assert.Equal(t, "query.sql", file.NewPath)
+
+	lines := file.Hunks[0].Lines
+	assert.Len(t, lines, 3)
+	assert.Equal(t, LineContext, lines[0].Type)
+	assert.Equal(t, LineRemoved, lines[1].Type)
+	assert.Equal(t, "-- old comment", lines[1].Content)
+	assert.Equal(t, LineAdded, lines[2].Type)
+	assert.Equal(t, "++ new comment", lines[2].Content)
+}
+
+func TestParse_NewFile(t *testing.T) {
+	diffText := `diff --git a/created.txt b/created.txt
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/created.txt
+@@ -0,0 +1,2 @@
++hello
++world
+`
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.True(t, file.IsNew)
+	assert.False(t, file.IsDelete)
+	assert.Equal(t, "/dev/null", file.OldPath)
+	assert.Equal(t, "created.txt", file.NewPath)
+	assert.Len(t, file.Hunks[0].Lines, 2)
+}
+
+func TestParse_DeletedFile(t *testing.T) {
+	diffText := `diff --git a/removed.txt b/removed.txt
+deleted file mode 100644
+index e69de29..0000000
+--- a/removed.txt
++++ /dev/null
+@@ -1,2 +0,0 @@
+-hello
+-world
+`
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.True(t, file.IsDelete)
+	assert.False(t, file.IsNew)
+	assert.Equal(t, "removed.txt", file.OldPath)
+	assert.Equal(t, "/dev/null", file.NewPath)
+}
+
+func TestParse_RenamedFile(t *testing.T) {
+	// Pure rename: no ---/+++ lines or hunks.
+	diffText := `diff --git a/old name.txt b/new name.txt
+similarity index 100%
+rename from old name.txt
+rename to new name.txt
+`
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+
+	file := diff.Files[0]
+	assert.True(t, file.IsRename)
+	assert.Equal(t, "old name.txt", file.OldPath)
+	assert.Equal(t, "new name.txt", file.NewPath)
+	assert.Empty(t, file.Hunks)
+}
+
+func TestParse_StrayHeaderLine(t *testing.T) {
+	// A "--- " line in surrounding prose (e.g., a format-patch commit
+	// message) with no matching "+++" must not produce a spurious file.
+	diffText := `Subject: example patch
+
+--- this line is prose, not a header
+
+diff --git a/real.txt b/real.txt
+--- a/real.txt
++++ b/real.txt
+@@ -1 +1 @@
+-old
++new
+`
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+	assert.Equal(t, "real.txt", diff.Files[0].OldPath)
+}
+
+func TestParse_GitBinaryPatch(t *testing.T) {
+	diffText := `diff --git a/data.bin b/data.bin
+index 8e59273..1910281 100644
+GIT binary patch
+delta 100
+zcmV-q0Gj{u
+`
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+	assert.True(t, diff.Files[0].IsBinary)
+}
+
+func TestParse_LongLines(t *testing.T) {
+	// Lines longer than bufio.Scanner's 64KB default must not fail
+	// (e.g., diffs of minified code).
+	long := strings.Repeat("x", 256*1024)
+	diffText := "diff --git a/min.js b/min.js\n" +
+		"--- a/min.js\n" +
+		"+++ b/min.js\n" +
+		"@@ -1 +1 @@\n" +
+		"-old\n" +
+		"+" + long + "\n"
+
+	diff, err := Parse(diffText)
+	assert.NoError(t, err)
+	assert.Len(t, diff.Files, 1)
+	lines := diff.Files[0].Hunks[0].Lines
+	assert.Len(t, lines, 2)
+	assert.Equal(t, long, lines[1].Content)
 }
 
 func TestParse_MalformedHunkHeader(t *testing.T) {

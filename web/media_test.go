@@ -54,6 +54,16 @@ func TestIsMediaURL(t *testing.T) {
 			url:      "https://example.com/path.with.dots/page",
 			expected: false,
 		},
+		{
+			name:     "media extension in directory not file",
+			url:      "https://example.com/images.zip/index.html",
+			expected: false,
+		},
+		{
+			name:     "media file inside dotted directory",
+			url:      "https://example.com/v1.2/archive.tar.gz",
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {

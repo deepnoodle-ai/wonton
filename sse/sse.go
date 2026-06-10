@@ -76,6 +76,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -140,6 +141,7 @@ type Reader struct {
 	scanner     *bufio.Scanner
 	event       Event
 	lastEventID string // Persists across events per SSE spec
+	started     bool   // True once the first line has been read (for BOM stripping)
 }
 
 // NewReader creates a new SSE reader that parses events from r.
@@ -192,6 +194,12 @@ func (r *Reader) Read() (Event, error) {
 	for r.scanner.Scan() {
 		line := r.scanner.Text()
 
+		// Per SSE spec: strip a single leading U+FEFF BOM from the stream
+		if !r.started {
+			r.started = true
+			line = strings.TrimPrefix(line, "\uFEFF")
+		}
+
 		// Strip trailing \r to handle both \n and \r\n line endings
 		line = strings.TrimSuffix(line, "\r")
 
@@ -235,9 +243,11 @@ func (r *Reader) Read() (Event, error) {
 				r.lastEventID = value
 			}
 		case "retry":
-			// Parse retry as integer milliseconds
-			if retry, err := strconv.Atoi(value); err == nil && retry >= 0 {
-				r.event.Retry = retry
+			// Per SSE spec: the value must consist of ASCII digits only
+			if isASCIIDigits(value) {
+				if retry, err := strconv.Atoi(value); err == nil {
+					r.event.Retry = retry
+				}
 			}
 		}
 	}
@@ -259,6 +269,20 @@ func (r *Reader) Read() (Event, error) {
 	}
 
 	return Event{}, io.EOF
+}
+
+// isASCIIDigits reports whether s is non-empty and consists only of ASCII
+// digits, as required for the retry field by the SSE specification.
+func isASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Stream reads all events from r and calls fn for each event.
@@ -414,15 +438,25 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		errs <- &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
+		// Read a snippet of the body to aid debugging; error responses from
+		// SSE endpoints (e.g., LLM APIs) typically include a JSON description.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		errs <- &HTTPError{
+			StatusCode: resp.StatusCode,
+			Status:     resp.Status,
+			Body:       strings.TrimSpace(string(body)),
+		}
 		return
 	}
 
 	// Validate Content-Type (should be text/event-stream, possibly with charset)
 	ct := resp.Header.Get("Content-Type")
-	if ct != "" && !strings.HasPrefix(ct, "text/event-stream") {
-		errs <- &HTTPError{StatusCode: resp.StatusCode, Status: "unexpected content-type: " + ct}
-		return
+	if ct != "" {
+		mediaType, _, err := mime.ParseMediaType(ct)
+		if err != nil || mediaType != "text/event-stream" {
+			errs <- &HTTPError{StatusCode: resp.StatusCode, Status: "unexpected content-type: " + ct}
+			return
+		}
 	}
 
 	reader := NewReader(resp.Body)
@@ -471,9 +505,17 @@ type HTTPError struct {
 	// Status is a human-readable error message, typically the HTTP status text
 	// or a description of the validation error.
 	Status string
+
+	// Body contains up to 8KB of the response body for non-200 responses.
+	// Error responses from SSE endpoints often include a useful description
+	// (e.g., a JSON error object from an LLM API).
+	Body string
 }
 
 func (e *HTTPError) Error() string {
+	if e.Body != "" {
+		return "sse: " + e.Status + ": " + e.Body
+	}
 	return "sse: " + e.Status
 }
 

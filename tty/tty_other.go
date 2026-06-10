@@ -7,6 +7,9 @@ import "os"
 // IsTerminal reports whether f appears to be a terminal.
 // On unsupported platforms, this uses a heuristic based on file mode.
 func IsTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
 	fi, err := f.Stat()
 	if err != nil {
 		return false

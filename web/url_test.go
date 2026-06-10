@@ -51,6 +51,16 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "https://example.com",
 		},
 		{
+			name:     "uppercase host lowercased",
+			input:    "https://EXAMPLE.com/Path",
+			expected: "https://example.com/Path",
+		},
+		{
+			name:     "mixed case host with port lowercased",
+			input:    "https://Example.COM:8080/page",
+			expected: "https://example.com:8080/page",
+		},
+		{
 			name:        "empty URL",
 			input:       "",
 			expectError: true,
