@@ -6,18 +6,18 @@ import (
 )
 
 // promptChoiceRegistryImpl manages text input state for prompt choices.
-// It persists TextInput widgets across renders, maintaining cursor position
+// It persists textInput widgets across renders, maintaining cursor position
 // and input state. Owned per-runtime via the registries struct.
 
 type promptChoiceRegistryImpl struct {
-	inputs map[string]*TextInput
+	inputs map[string]*textInput
 }
 
-func (r *promptChoiceRegistryImpl) Get(id string) *TextInput {
+func (r *promptChoiceRegistryImpl) Get(id string) *textInput {
 	if ti, ok := r.inputs[id]; ok {
 		return ti
 	}
-	ti := NewTextInput()
+	ti := newTextInput()
 	ti.SubmitOnEnter = false // We handle Enter ourselves
 	r.inputs[id] = ti
 	return ti
@@ -407,7 +407,7 @@ func (p *promptChoiceView) IsFocused() bool {
 
 func (p *promptChoiceView) SetFocused(focused bool) {
 	p.focused = focused
-	// Update TextInput focus state
+	// Update textInput focus state
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(focused && p.isInputSelected())
 	}
@@ -471,7 +471,7 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		}
 	}
 
-	// If input option is selected, route character input to TextInput
+	// If input option is selected, route character input to textInput
 	if p.isInputSelected() {
 		ti := p.reg.promptChoices.Get(p.id)
 		if ti != nil {
@@ -483,7 +483,7 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 				}
 				return true
 			}
-			// Route to TextInput for character input and editing
+			// Route to textInput for character input and editing
 			if ti.HandleKey(event) {
 				if p.inputText != nil {
 					*p.inputText = ti.Value()
@@ -496,7 +496,7 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	return false
 }
 
-// updateInputFocus updates the TextInput focus based on current selection
+// updateInputFocus updates the textInput focus based on current selection
 func (p *promptChoiceView) updateInputFocus() {
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())
@@ -559,7 +559,7 @@ func (p *promptChoiceView) render(ctx *RenderContext) {
 		selected = *p.selected
 	}
 
-	// Sync input text to TextInput
+	// Sync input text to textInput
 	ti := p.reg.promptChoices.Get(p.id)
 	if p.inputText != nil && ti.Value() != *p.inputText {
 		ti.SetValue(*p.inputText)
@@ -613,7 +613,7 @@ func (p *promptChoiceView) renderOption(ctx *RenderContext, y, idx int, label st
 	ctx.PrintTruncated(x, y, label, style)
 }
 
-func (p *promptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isSelected bool, width int, ti *TextInput) {
+func (p *promptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isSelected bool, width int, ti *textInput) {
 	x := 0
 
 	// Draw cursor

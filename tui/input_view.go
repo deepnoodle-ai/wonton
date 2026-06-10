@@ -19,7 +19,7 @@ type inputRegistryImpl struct {
 
 type inputState struct {
 	id               string
-	input            *TextInput
+	input            *textInput
 	binding          *string
 	bounds           image.Rectangle
 	onChange         func(string)
@@ -73,7 +73,7 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	}
 
-	// Route to TextInput
+	// Route to textInput
 	handled := s.input.HandleKey(event)
 
 	// Sync value back to binding
@@ -109,8 +109,8 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 
 	state, exists := r.inputs[id]
 	if !exists {
-		// Create new TextInput widget
-		ti := NewTextInput()
+		// Create new textInput widget
+		ti := newTextInput()
 		if mask != 0 {
 			ti.WithMask(mask)
 		}
@@ -201,7 +201,7 @@ func (r *inputRegistryImpl) GetFocused(fm *FocusManager) *inputState {
 	return nil
 }
 
-// inputView wraps a TextInput for declarative use
+// inputView wraps a textInput for declarative use
 type inputView struct {
 	reg *registries // captured at construction; refreshed from ctx during render
 	id               string
@@ -392,16 +392,16 @@ func (i *inputView) render(ctx *RenderContext) {
 	i.reg = ctx.registries()
 	state := i.reg.inputs.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit, fm)
 
-	// Apply focus-aware styling to the TextInput
+	// Apply focus-aware styling to the textInput
 	if isFocused && i.focusStyle != nil {
 		state.input.Style = *i.focusStyle
 	} else if i.style != nil {
 		state.input.Style = *i.style
 	}
 
-	// Update TextInput bounds
+	// Update textInput bounds
 	state.input.SetBounds(inputBounds)
 
-	// Draw the TextInput - pass the underlying frame
+	// Draw the textInput - pass the underlying frame
 	state.input.Draw(ctx.frame)
 }

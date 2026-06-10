@@ -27,7 +27,7 @@ func newRegistries() *registries {
 		buttons:       &buttonRegistryImpl{buttons: make(map[string]*buttonState)},
 		interactive:   &interactiveRegistryImpl{regions: make([]interactiveRegion, 0)},
 		inputs:        &inputRegistryImpl{inputs: make(map[string]*inputState)},
-		promptChoices: &promptChoiceRegistryImpl{inputs: make(map[string]*TextInput)},
+		promptChoices: &promptChoiceRegistryImpl{inputs: make(map[string]*textInput)},
 		textAreas: &textAreaRegistryImpl{
 			states: make(map[string]*textAreaState),
 			active: make(map[string]bool),

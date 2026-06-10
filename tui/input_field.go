@@ -558,9 +558,9 @@ func (f *inputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 		state.input.CursorColor = f.cursorColor
 	}
 
-	// Update TextInput bounds
+	// Update textInput bounds
 	state.input.SetBounds(inputBounds)
 
-	// Draw the TextInput
+	// Draw the textInput
 	state.input.Draw(ctx.frame)
 }

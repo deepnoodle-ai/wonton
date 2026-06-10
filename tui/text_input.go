@@ -29,9 +29,9 @@ type inputSegment struct {
 	isPaste bool   // True if this is a paste placeholder
 }
 
-// TextInput is a simple single-line text input widget
-type TextInput struct {
-	BaseWidget
+// textInput is a simple single-line text input widget
+type textInput struct {
+	bounds      image.Rectangle
 	Placeholder string
 	CursorPos   int // Cursor position in display text
 
@@ -72,10 +72,9 @@ type TextInput struct {
 	segments []inputSegment // Segments of typed text and paste placeholders
 }
 
-// NewTextInput creates a new text input widget
-func NewTextInput() *TextInput {
-	t := &TextInput{
-		BaseWidget:       NewBaseWidget(),
+// newTextInput creates a new text input widget
+func newTextInput() *textInput {
+	t := &textInput{
 		CursorPos:        0,
 		Style:            NewStyle().WithForeground(ColorWhite),
 		PlaceholderStyle: NewStyle().WithForeground(ColorBrightBlack),
@@ -85,12 +84,21 @@ func NewTextInput() *TextInput {
 		segments:         []inputSegment{},
 		SubmitOnEnter:    true,
 	}
-	t.SetMinSize(image.Point{X: 10, Y: 1})
 	return t
 }
 
+// SetBounds sets the input's position and size for drawing and hit-testing.
+func (t *textInput) SetBounds(bounds image.Rectangle) {
+	t.bounds = bounds
+}
+
+// GetBounds returns the input's current bounds.
+func (t *textInput) GetBounds() image.Rectangle {
+	return t.bounds
+}
+
 // Value returns the actual value (with full paste content, not placeholders)
-func (t *TextInput) Value() string {
+func (t *textInput) Value() string {
 	var result string
 	for _, seg := range t.segments {
 		result += seg.actual
@@ -99,18 +107,17 @@ func (t *TextInput) Value() string {
 }
 
 // SetValue sets the input value, clearing any segments
-func (t *TextInput) SetValue(value string) {
+func (t *textInput) SetValue(value string) {
 	if value == "" {
 		t.segments = []inputSegment{}
 	} else {
 		t.segments = []inputSegment{{display: value, actual: value, isPaste: false}}
 	}
 	t.CursorPos = len(value)
-	t.MarkDirty()
 }
 
 // DisplayText returns the text shown to the user (with placeholders for pastes)
-func (t *TextInput) DisplayText() string {
+func (t *textInput) DisplayText() string {
 	var result string
 	for _, seg := range t.segments {
 		result += seg.display
@@ -119,7 +126,7 @@ func (t *TextInput) DisplayText() string {
 }
 
 // displayLen returns the total length of display text
-func (t *TextInput) displayLen() int {
+func (t *textInput) displayLen() int {
 	total := 0
 	for _, seg := range t.segments {
 		total += len(seg.display)
@@ -128,86 +135,86 @@ func (t *TextInput) displayLen() int {
 }
 
 // WithPastePlaceholderMode enables/disables paste placeholder mode
-func (t *TextInput) WithPastePlaceholderMode(enabled bool) *TextInput {
+func (t *textInput) WithPastePlaceholderMode(enabled bool) *textInput {
 	t.PastePlaceholderMode = enabled
 	return t
 }
 
 // WithMultilineMode enables multiline input where Shift+Enter inserts newlines.
 // Newlines are displayed as the NewlineDisplay string (default "↵").
-func (t *TextInput) WithMultilineMode(enabled bool) *TextInput {
+func (t *textInput) WithMultilineMode(enabled bool) *textInput {
 	t.MultilineMode = enabled
 	return t
 }
 
 // WithSubmitOnEnter sets whether Enter triggers OnSubmit.
 // Default is true. Set to false if you want Enter to do nothing (useful with MultilineMode).
-func (t *TextInput) WithSubmitOnEnter(enabled bool) *TextInput {
+func (t *textInput) WithSubmitOnEnter(enabled bool) *textInput {
 	t.SubmitOnEnter = enabled
 	return t
 }
 
 // WithMask sets a mask character for password input.
 // When set, all characters are displayed as this character instead of the actual text.
-func (t *TextInput) WithMask(char rune) *TextInput {
+func (t *textInput) WithMask(char rune) *textInput {
 	t.MaskChar = char
 	return t
 }
 
 // WithMaxLength sets the maximum number of runes allowed in the input.
-func (t *TextInput) WithMaxLength(n int) *TextInput {
+func (t *textInput) WithMaxLength(n int) *textInput {
 	t.MaxLength = n
 	return t
 }
 
 // WithPlaceholder sets the placeholder text shown when input is empty.
-func (t *TextInput) WithPlaceholder(placeholder string) *TextInput {
+func (t *textInput) WithPlaceholder(placeholder string) *textInput {
 	t.Placeholder = placeholder
 	return t
 }
 
 // WithStyle sets the style for the input text.
-func (t *TextInput) WithStyle(style Style) *TextInput {
+func (t *textInput) WithStyle(style Style) *textInput {
 	t.Style = style
 	return t
 }
 
 // WithCursorBlink enables or disables cursor blinking.
-func (t *TextInput) WithCursorBlink(enabled bool) *TextInput {
+func (t *textInput) WithCursorBlink(enabled bool) *textInput {
 	t.CursorBlink = enabled
 	return t
 }
 
 // WithCursorBlinkInterval sets the cursor blink interval.
 // Default is 530ms if not set.
-func (t *TextInput) WithCursorBlinkInterval(interval time.Duration) *TextInput {
+func (t *textInput) WithCursorBlinkInterval(interval time.Duration) *textInput {
 	t.CursorBlinkInterval = interval
 	return t
 }
 
 // WithCursorShape sets the cursor shape/style.
 // Options are: InputCursorBlock (default), InputCursorUnderline, InputCursorBar.
-func (t *TextInput) WithCursorShape(shape InputCursorStyle) *TextInput {
+func (t *textInput) WithCursorShape(shape InputCursorStyle) *textInput {
 	t.CursorShape = shape
 	return t
 }
 
 // WithCursorColor sets a custom cursor color.
 // If not set, uses the CursorStyle colors (default: white background, black foreground).
-func (t *TextInput) WithCursorColor(color Color) *TextInput {
+func (t *textInput) WithCursorColor(color Color) *textInput {
 	t.CursorColor = &color
 	return t
 }
 
 // WithMaxHeight sets the maximum visible height in lines.
 // When content exceeds this, the input becomes scrollable with overflow indicators.
-func (t *TextInput) WithMaxHeight(lines int) *TextInput {
+func (t *textInput) WithMaxHeight(lines int) *textInput {
 	t.MaxHeight = lines
 	return t
 }
 
 // Draw renders the input
-func (t *TextInput) Draw(frame RenderFrame) {
+func (t *textInput) Draw(frame RenderFrame) {
 	bounds := t.GetBounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
@@ -412,7 +419,7 @@ func (t *TextInput) Draw(frame RenderFrame) {
 }
 
 // getCursorXY calculates the visual x,y position of the cursor
-func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
+func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 	displayText := t.DisplayText()
 	x = startX
 	y = startY
@@ -439,7 +446,7 @@ func (t *TextInput) getCursorXY(startX, startY, width int) (x, y int) {
 }
 
 // countVisualLines returns the total number of visual lines (accounting for wrapping)
-func (t *TextInput) countVisualLines(width int) int {
+func (t *textInput) countVisualLines(width int) int {
 	if width <= 0 {
 		return 1
 	}
@@ -467,7 +474,7 @@ func (t *TextInput) countVisualLines(width int) int {
 }
 
 // getCursorLine returns which visual line (0-indexed) the cursor is on
-func (t *TextInput) getCursorLine(width int) int {
+func (t *textInput) getCursorLine(width int) int {
 	if width <= 0 {
 		return 0
 	}
@@ -497,7 +504,7 @@ func (t *TextInput) getCursorLine(width int) int {
 }
 
 // getCursorXInLine returns the x position of the cursor within its current line
-func (t *TextInput) getCursorXInLine(width int) int {
+func (t *textInput) getCursorXInLine(width int) int {
 	if width <= 0 {
 		return 0
 	}
@@ -529,7 +536,7 @@ type lineRange struct {
 }
 
 // getVisualLines builds a list of visual line boundaries accounting for wrapping.
-func (t *TextInput) getVisualLines(displayText string) []lineRange {
+func (t *textInput) getVisualLines(displayText string) []lineRange {
 	bounds := t.GetBounds()
 	width := bounds.Dx()
 	if width <= 0 {
@@ -563,7 +570,7 @@ func (t *TextInput) getVisualLines(displayText string) []lineRange {
 }
 
 // getCurrentLineRange returns the start and end byte positions of the current visual line.
-func (t *TextInput) getCurrentLineRange(displayText string) (start, end int) {
+func (t *textInput) getCurrentLineRange(displayText string) (start, end int) {
 	lines := t.getVisualLines(displayText)
 	for _, line := range lines {
 		if t.CursorPos >= line.start && t.CursorPos <= line.end {
@@ -576,7 +583,7 @@ func (t *TextInput) getCurrentLineRange(displayText string) (start, end int) {
 
 // cursorUp moves cursor to the previous visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
-func (t *TextInput) cursorUp(displayText string) int {
+func (t *textInput) cursorUp(displayText string) int {
 	lines := t.getVisualLines(displayText)
 
 	// Find which line the cursor is on
@@ -613,7 +620,7 @@ func (t *TextInput) cursorUp(displayText string) int {
 
 // cursorDown moves cursor to the next visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
-func (t *TextInput) cursorDown(displayText string) int {
+func (t *textInput) cursorDown(displayText string) int {
 	lines := t.getVisualLines(displayText)
 
 	// Find which line the cursor is on
@@ -688,7 +695,7 @@ func nextClusterBoundary(s string, pos int) int {
 }
 
 // findSegmentAtPos returns the segment index and offset within segment for a display position
-func (t *TextInput) findSegmentAtPos(pos int) (segIndex int, offset int) {
+func (t *textInput) findSegmentAtPos(pos int) (segIndex int, offset int) {
 	remaining := pos
 	for i, seg := range t.segments {
 		if remaining <= len(seg.display) {
@@ -705,17 +712,17 @@ func (t *TextInput) findSegmentAtPos(pos int) (segIndex int, offset int) {
 }
 
 // insertAtCursor inserts text at the current cursor position
-func (t *TextInput) insertAtCursor(text string) {
+func (t *textInput) insertAtCursor(text string) {
 	t.insertSegmentAtCursor(inputSegment{display: text, actual: text, isPaste: false})
 }
 
 // insertNewline inserts a newline at cursor position (for multiline mode)
-func (t *TextInput) insertNewline() {
+func (t *textInput) insertNewline() {
 	t.insertSegmentAtCursor(inputSegment{display: "\n", actual: "\n", isPaste: false})
 }
 
 // insertSegmentAtCursor inserts a segment at the current cursor position
-func (t *TextInput) insertSegmentAtCursor(newSeg inputSegment) {
+func (t *textInput) insertSegmentAtCursor(newSeg inputSegment) {
 	if len(t.segments) == 0 {
 		t.segments = []inputSegment{newSeg}
 		t.CursorPos = len(newSeg.display)
@@ -779,7 +786,7 @@ func (seg *inputSegment) isSpecial() bool {
 }
 
 // deleteBackward deletes the character/segment before cursor
-func (t *TextInput) deleteBackward() bool {
+func (t *textInput) deleteBackward() bool {
 	if t.CursorPos == 0 || len(t.segments) == 0 {
 		return false
 	}
@@ -824,7 +831,7 @@ func (t *TextInput) deleteBackward() bool {
 }
 
 // deleteForward deletes the character/segment at cursor
-func (t *TextInput) deleteForward() bool {
+func (t *textInput) deleteForward() bool {
 	displayLen := t.displayLen()
 	if t.CursorPos >= displayLen || len(t.segments) == 0 {
 		return false
@@ -864,7 +871,7 @@ func (t *TextInput) deleteForward() bool {
 }
 
 // deleteToBeginning deletes everything from cursor to beginning
-func (t *TextInput) deleteToBeginning() {
+func (t *textInput) deleteToBeginning() {
 	if t.CursorPos == 0 {
 		return
 	}
@@ -875,7 +882,7 @@ func (t *TextInput) deleteToBeginning() {
 }
 
 // deleteToEnd deletes everything from cursor to end
-func (t *TextInput) deleteToEnd() {
+func (t *textInput) deleteToEnd() {
 	displayLen := t.displayLen()
 	if t.CursorPos >= displayLen {
 		return
@@ -887,7 +894,7 @@ func (t *TextInput) deleteToEnd() {
 }
 
 // deleteWordBackward deletes the word before the cursor
-func (t *TextInput) deleteWordBackward() {
+func (t *textInput) deleteWordBackward() {
 	if t.CursorPos == 0 {
 		return
 	}
@@ -925,7 +932,7 @@ func isWordChar(r rune) bool {
 
 // mergeAdjacentTextSegments combines adjacent regular text segments
 // (not special segments like pastes or newlines)
-func (t *TextInput) mergeAdjacentTextSegments() {
+func (t *textInput) mergeAdjacentTextSegments() {
 	if len(t.segments) < 2 {
 		return
 	}
@@ -947,7 +954,7 @@ func (t *TextInput) mergeAdjacentTextSegments() {
 }
 
 // HandleKey handles key events
-func (t *TextInput) HandleKey(event KeyEvent) bool {
+func (t *textInput) HandleKey(event KeyEvent) bool {
 	if !t.focused {
 		return false
 	}
@@ -958,13 +965,11 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 	case KeyArrowLeft:
 		if t.CursorPos > 0 {
 			t.CursorPos = prevClusterBoundary(displayText, t.CursorPos)
-			t.MarkDirty()
 		}
 		return true
 	case KeyArrowRight:
 		if t.CursorPos < len(displayText) {
 			t.CursorPos = nextClusterBoundary(displayText, t.CursorPos)
-			t.MarkDirty()
 		}
 		return true
 	case KeyArrowUp:
@@ -972,7 +977,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			newPos := t.cursorUp(displayText)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
-				t.MarkDirty()
 			}
 			return true
 		}
@@ -982,7 +986,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			newPos := t.cursorDown(displayText)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
-				t.MarkDirty()
 			}
 			return true
 		}
@@ -992,7 +995,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 		}
 		return true
 	case KeyDelete:
@@ -1000,7 +1002,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 		}
 		return true
 	case KeyHome, KeyCtrlA:
@@ -1010,7 +1011,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 		} else {
 			t.CursorPos = 0
 		}
-		t.MarkDirty()
 		return true
 	case KeyEnd, KeyCtrlE:
 		if t.MultilineMode {
@@ -1019,7 +1019,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 		} else {
 			t.CursorPos = t.displayLen()
 		}
-		t.MarkDirty()
 		return true
 	case KeyCtrlU:
 		// Delete from cursor to beginning of line
@@ -1047,7 +1046,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 		}
 		return true
 	case KeyCtrlK:
@@ -1072,7 +1070,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 		}
 		return true
 	case KeyCtrlW:
@@ -1082,7 +1079,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 		}
 		return true
 	case KeyEnter:
@@ -1092,7 +1088,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
 			}
-			t.MarkDirty()
 			return true
 		}
 		if t.SubmitOnEnter && t.OnSubmit != nil {
@@ -1110,7 +1105,6 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 		if t.OnChange != nil {
 			t.OnChange(t.Value())
 		}
-		t.MarkDirty()
 		return true
 	}
 
@@ -1118,13 +1112,12 @@ func (t *TextInput) HandleKey(event KeyEvent) bool {
 }
 
 // SetFocused sets focus state
-func (t *TextInput) SetFocused(focused bool) {
+func (t *textInput) SetFocused(focused bool) {
 	t.focused = focused
-	t.MarkDirty()
 }
 
 // HandleMouse handles mouse events
-func (t *TextInput) HandleMouse(event MouseEvent) bool {
+func (t *textInput) HandleMouse(event MouseEvent) bool {
 	bounds := t.GetBounds()
 	if event.X < bounds.Min.X || event.X >= bounds.Max.X ||
 		event.Y < bounds.Min.Y || event.Y >= bounds.Max.Y {
@@ -1142,7 +1135,7 @@ func (t *TextInput) HandleMouse(event MouseEvent) bool {
 
 // HandlePaste handles pasted content, using placeholder mode if enabled for multi-line pastes.
 // Returns true if the paste was handled.
-func (t *TextInput) HandlePaste(content string) bool {
+func (t *textInput) HandlePaste(content string) bool {
 	if content == "" {
 		return false
 	}
@@ -1208,14 +1201,12 @@ func (t *TextInput) HandlePaste(content string) bool {
 	if t.OnChange != nil {
 		t.OnChange(t.Value())
 	}
-	t.MarkDirty()
 
 	return true
 }
 
 // Clear clears all input
-func (t *TextInput) Clear() {
+func (t *textInput) Clear() {
 	t.segments = []inputSegment{}
 	t.CursorPos = 0
-	t.MarkDirty()
 }
