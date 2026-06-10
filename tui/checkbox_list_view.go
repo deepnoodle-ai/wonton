@@ -17,6 +17,8 @@ type CheckboxListView struct {
 	uncheckedChar  string
 	width          int
 	height         int
+	scroll         int
+	lastHeight     int
 	bounds         image.Rectangle
 	focused        bool
 }
@@ -89,9 +91,11 @@ func (c *CheckboxListView) FocusBounds() image.Rectangle {
 
 func (c *CheckboxListView) HandleKeyEvent(event KeyEvent) bool {
 	if nav := listNavForKey(event, true); nav != listNavNone && c.cursor != nil {
-		next, moved := moveListCursor(nav, *c.cursor, len(c.items), c.height)
+		visible := listViewport(c.lastHeight, c.height, 10)
+		next, moved := moveListCursor(nav, *c.cursor, len(c.items), visible)
 		if moved {
 			*c.cursor = next
+			scrollIntoView(&c.scroll, next, visible)
 		}
 		return moved
 	}
@@ -259,17 +263,35 @@ func (c *CheckboxListView) render(ctx *RenderContext) {
 		fm.Register(c)
 	}
 
+	c.lastHeight = height
+
 	cursorIdx := 0
 	if c.cursor != nil {
 		cursorIdx = *c.cursor
+		if cursorIdx > len(c.items)-1 {
+			cursorIdx = len(c.items) - 1
+		}
+		if cursorIdx < 0 {
+			cursorIdx = 0
+		}
 	}
+
+	// Clamp scroll and keep the cursor line visible.
+	if maxScroll := len(c.items) - height; c.scroll > maxScroll {
+		c.scroll = maxScroll
+	}
+	if c.scroll < 0 {
+		c.scroll = 0
+	}
+	scrollIntoView(&c.scroll, cursorIdx, height)
 
 	checkW, _ := MeasureText(c.checkedChar)
 
-	for y := 0; y < height && y < len(c.items); y++ {
-		item := c.items[y]
-		isCursor := y == cursorIdx
-		isChecked := y < len(c.checked) && c.checked[y]
+	for y := 0; y < height && c.scroll+y < len(c.items); y++ {
+		idx := c.scroll + y
+		item := c.items[idx]
+		isCursor := idx == cursorIdx
+		isChecked := idx < len(c.checked) && c.checked[idx]
 
 		// Determine style based on state priority:
 		// 1. Cursor (focused) has highest priority
@@ -305,7 +327,6 @@ func (c *CheckboxListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			idx := y // capture for closure
 			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if c.cursor != nil {
 					*c.cursor = idx

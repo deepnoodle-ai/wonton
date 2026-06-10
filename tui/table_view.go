@@ -29,6 +29,7 @@ type TableView struct {
 	showHeader           bool
 	width                int
 	height               int
+	lastHeight           int   // row-area height observed at the last render
 	columnWidths         []int // calculated column widths
 	uppercaseHeaders     bool
 	maxColumnWidth       int  // 0 = no limit
@@ -106,16 +107,21 @@ func (t *TableView) HandleKeyEvent(event KeyEvent) bool {
 		return false
 	}
 
-	// Calculate visible height (excluding header if shown)
-	visibleHeight := t.height
-	if t.showHeader {
-		visibleHeight--
-		if t.headerBottomBorder {
-			visibleHeight--
-		}
-	}
+	// Visible height for paging: prefer the row-area height observed at the
+	// last render; before the first render, derive it from the configured
+	// height (excluding header if shown).
+	visibleHeight := t.lastHeight
 	if visibleHeight <= 0 {
-		visibleHeight = 10 // default
+		visibleHeight = t.height
+		if t.showHeader {
+			visibleHeight--
+			if t.headerBottomBorder {
+				visibleHeight--
+			}
+		}
+		if visibleHeight <= 0 {
+			visibleHeight = 10 // default
+		}
 	}
 
 	if nav := listNavForKey(event, true); nav != listNavNone && t.selected != nil {
@@ -585,6 +591,8 @@ func (t *TableView) render(ctx *RenderContext) {
 	if availableHeight <= 0 {
 		return
 	}
+
+	t.lastHeight = availableHeight
 
 	// Get selected row
 	selectedRow := 0

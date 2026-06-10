@@ -1,103 +1,69 @@
 # File Picker Demo
 
-This example demonstrates the **FilePicker** widget with a simple, straightforward implementation that's easy to understand and modify.
+This example demonstrates the declarative **FilePicker** view: a filterable,
+keyboard-driven file browser built from a `tui.ListItem` slice bound to the
+application's state.
 
 ## Features Demonstrated
 
-- **Fuzzy Filtering**: Type to filter files and directories in real-time
-- **Directory Navigation**: Press Enter on folders to navigate into them
-- **Keyboard Navigation**: Use arrow keys, Page Up/Down, Home/End to move through files
-- **Mouse Support**: Click to select files and folders
-- **Hidden Files Toggle**: Press `H` to show/hide dotfiles
-- **File Details**: View file size and selection status
+- **Fuzzy filtering**: type to filter files and directories in real-time
+- **Directory navigation**: press Enter on a directory (or `..`) to navigate
+- **Keyboard navigation**: arrows, PageUp/PageDown, Home/End
+- **Mouse support**: click to select files and folders
+- **Hidden files toggle**: press F2 to show/hide dotfiles
+- **File details**: status line shows the selected file's name and size
 
 ## How to Run
 
 ```bash
-go run examples/file_picker_demo/main.go
+go run ./examples/tui/file_picker
 ```
 
 ## Controls
 
-| Key/Action | Description |
-|------------|-------------|
-| Type characters | Filter files by name (fuzzy matching) |
-| Arrow Up/Down | Navigate through the file list |
-| Page Up/Down | Jump through the list quickly |
-| Home | Jump to top of list |
-| End | Jump to bottom of list |
-| Enter | Select a file or open a directory |
-| Mouse Click | Select with mouse |
-| H | Toggle hidden files visibility |
-| Backspace | Delete filter characters |
-| Ctrl+C | Exit the demo |
+| Key/Action      | Description                              |
+| --------------- | ---------------------------------------- |
+| Type characters | Filter entries by name (fuzzy matching)  |
+| Arrow Up/Down   | Navigate through the list                |
+| Page Up/Down    | Jump through the list quickly            |
+| Home / End      | Jump to top / bottom of the list         |
+| Enter           | Select a file or open a directory        |
+| Mouse Click     | Select with the mouse                    |
+| F2              | Toggle hidden files visibility           |
+| Backspace       | Delete filter characters                 |
+| Esc / Ctrl+C    | Exit the demo                            |
 
-## What You'll See
-
-The interface has a simple 4-section layout:
-
-1. **Title Bar** (top) - Shows "FILE PICKER DEMO"
-2. **File List** (middle) - Interactive file browser with:
-   - Filter input at the top
-   - List of files/directories below
-   - Current directory path shown on separator line
-   - `[DIR]` markers for directories
-3. **Status Bar** (bottom) - Shows:
-   - Instructions and current status
-   - File details when a file is selected (name and size)
-   - Directory confirmations when navigating
+Note: because typed letters go to the filter, the hidden-files toggle is a
+function key (F2) rather than a letter.
 
 ## Code Structure
 
-This demo uses a **simplified approach** without the composition system:
-
-- **Direct rendering** - No containers or layout managers
-- **Manual bounds** - Explicitly sets widget bounds before drawing
-- **SubFrame usage** - Shows how to properly create clipped drawing areas
-- **ASCII-only** - Avoids Unicode issues, works on all terminals
-
-### Key Implementation Points
+The app keeps plain Go state (`currentDir`, `files`, `filter`, `selected`)
+and renders a `tui.FilePicker` bound to it:
 
 ```go
-// Set picker bounds (relative to its own coordinate space)
-picker.SetBounds(image.Rect(0, 0, width, pickerHeight))
-
-// Initialize picker
-picker.Init()
-
-// Create SubFrame for the picker at the correct screen position
-pickerFrame := frame.SubFrame(image.Rect(0, 2, width, 2+pickerHeight))
-
-// Draw picker into its SubFrame
-picker.Draw(pickerFrame)
+tui.FilePicker(app.files, &app.filter, &app.selected).
+    CurrentPath(app.currentDir).
+    Height(pickerHeight).
+    OnSelect(func(item tui.ListItem, index int) {
+        app.handleSelect()
+    })
 ```
 
-This pattern shows:
-1. Widget bounds are relative to the widget (0,0 origin)
-2. SubFrame positions the widget on screen (starting at row 2)
-3. The widget draws into its SubFrame at (0,0) within that frame
-
-## Why This Version?
-
-The previous version was confusing because:
-- Used Unicode emoji and symbols that didn't render on all terminals
-- Complex layout with Container/VBox that obscured the basics
-- No clear indication of what features were available
-- Uncertainty in code comments about API usage
-
-This simplified version:
-- ✅ Uses only ASCII characters (works everywhere)
-- ✅ Shows FilePicker without composition system overhead
-- ✅ Clear, commented code showing each step
-- ✅ Demonstrates SubFrame usage correctly
-- ✅ Easy to understand and modify
-- ✅ Shows all FilePicker features (filtering, navigation, hidden files)
+- `refreshFiles()` reads the directory, sorts directories first, prepends a
+  `..` entry, and rebuilds the `ListItem` slice. Each item's `Value` carries
+  the absolute path.
+- `handleSelect()` stats the chosen path: directories update `currentDir`
+  and refresh the listing; files report their size in the status line.
+- `HandleEvent` only needs the keys the picker doesn't consume: F2 to toggle
+  hidden files and Escape/Ctrl+C to quit. Navigation, filtering, and
+  selection are handled by the focused FilePicker itself.
 
 ## Educational Value
 
-This example is great for learning:
-- How to use the FilePicker widget
-- How SubFrame creates clipped drawing areas
-- Simple event loop patterns (goroutines + channels)
-- Keyboard and mouse event handling
-- Building simple TUI layouts without containers
+This example is useful for learning:
+
+- How to bind application state to a declarative view
+- How a focused component's key handling composes with app-level
+  `HandleEvent` (the app sees only unconsumed keys, plus Ctrl+C)
+- Building a small multi-pane layout with `Stack`, `Spacer`, and `Text`

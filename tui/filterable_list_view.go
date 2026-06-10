@@ -45,6 +45,7 @@ type FilterableListView struct {
 	filterStyle   Style
 	width         int
 	height        int
+	lastHeight    int // list-area height observed at the last render
 
 	// Scrolling
 	scrollOffset *int // pointer to scroll offset
@@ -138,13 +139,18 @@ func (l *FilterableListView) FocusBounds() image.Rectangle {
 }
 
 func (l *FilterableListView) HandleKeyEvent(event KeyEvent) bool {
-	// Get visible height for scroll calculations
-	visibleHeight := l.height
-	if visibleHeight == 0 {
-		visibleHeight = 10 // default
-	}
-	if l.showFilter && l.filterText != nil {
-		visibleHeight -= 2 // account for filter input and divider
+	// Get visible height for scroll calculations: prefer the list-area
+	// height observed at the last render; before the first render, fall
+	// back to the configured height.
+	visibleHeight := l.lastHeight
+	if visibleHeight <= 0 {
+		visibleHeight = l.height
+		if visibleHeight == 0 {
+			visibleHeight = 10 // default
+		}
+		if l.showFilter && l.filterText != nil {
+			visibleHeight -= 2 // account for filter input and divider
+		}
 	}
 
 	// Vi-style navigation keys are only active when typing is not being
@@ -539,6 +545,8 @@ func (l *FilterableListView) renderItems(ctx *RenderContext) {
 	if width == 0 || height == 0 {
 		return
 	}
+
+	l.lastHeight = height
 
 	numItems := len(l.filteredIdxs)
 	if numItems == 0 {

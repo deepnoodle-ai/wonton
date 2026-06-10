@@ -47,7 +47,9 @@ func (app *ListDemoApp) Init() error {
 func (app *ListDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
+		// The focused FilterableList consumes printable keys for its filter
+		// (typing 'q' filters, it doesn't quit), so quit on Escape/Ctrl+C.
+		if e.Key == tui.KeyEscape || e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
 		// FilterableList component handles navigation and filtering internally
@@ -67,7 +69,7 @@ func (app *ListDemoApp) View() tui.View {
 
 		// Instructions
 		tui.Stack(
-			tui.Text("Type to filter • Arrows to navigate • Enter to select • q to quit").Dim(),
+			tui.Text("Type to filter • Arrows to navigate • Enter to select • Esc to quit").Dim(),
 			tui.Text("Filter: %s", app.filterText).Fg(tui.ColorCyan),
 		).Padding(1),
 
@@ -119,7 +121,7 @@ func (app *ListDemoApp) View() tui.View {
 		tui.Spacer(),
 
 		// Footer
-		tui.StatusBar("Press 'q' to quit"),
+		tui.StatusBar("Press Esc or Ctrl+C to quit"),
 	).Padding(1)
 }
 

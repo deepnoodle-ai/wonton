@@ -219,6 +219,15 @@ func TestFocusManager_HandleKey_Tab(t *testing.T) {
 	assert.Equal(t, "btn1", fm.GetFocusedID())
 }
 
+func TestFocusManager_HandleKey_TabWithoutFocusables(t *testing.T) {
+	fm := NewFocusManager()
+
+	// With nothing registered there is nothing to cycle through; Tab must
+	// not be consumed so the application can observe it.
+	assert.False(t, fm.HandleKey(KeyEvent{Key: KeyTab}))
+	assert.False(t, fm.HandleKey(KeyEvent{Key: KeyTab, Shift: true}))
+}
+
 func TestFocusManager_HandleKey_DelegatesToFocused(t *testing.T) {
 	fm := NewFocusManager()
 
