@@ -20,6 +20,8 @@ const (
 // key map: arrow keys, PageUp/PageDown, Home/End, and the vi-style j/k and
 // g/G when allowVi is true. Views that route printable characters to a text
 // input (e.g. a filter field) pass allowVi=false so letters reach the input.
+// Vi keys require a plain keypress: Alt/Ctrl chords are not navigation and
+// propagate to the application.
 func listNavForKey(event KeyEvent, allowVi bool) listNav {
 	switch event.Key {
 	case KeyArrowUp:
@@ -35,7 +37,7 @@ func listNavForKey(event KeyEvent, allowVi bool) listNav {
 	case KeyEnd:
 		return listNavEnd
 	}
-	if allowVi {
+	if allowVi && !event.Alt && !event.Ctrl {
 		switch event.Rune {
 		case 'k':
 			return listNavUp
@@ -84,6 +86,19 @@ func moveListCursor(nav listNav, cursor, count, page int) (int, bool) {
 		next = count - 1
 	}
 	return next, next != cursor
+}
+
+// listViewport returns the effective viewport height for paging and
+// scroll-follow: the height observed at the last render when available,
+// otherwise the configured height, otherwise fallback.
+func listViewport(lastHeight, configured, fallback int) int {
+	if lastHeight > 0 {
+		return lastHeight
+	}
+	if configured > 0 {
+		return configured
+	}
+	return fallback
 }
 
 // scrollIntoView adjusts scroll so cursor lies within the visible window

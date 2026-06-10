@@ -78,8 +78,10 @@ type TreeView struct {
 	root         *TreeNode
 	selected     *TreeNode
 	scrollY      *int
+	scroll       int
 	width        int
 	height       int
+	lastHeight   int
 	onSelect     func(*TreeNode)
 	style        Style
 	selectedSty  Style
@@ -212,7 +214,7 @@ func (t *TreeView) HandleKeyEvent(event KeyEvent) bool {
 	}
 
 	if nav := listNavForKey(event, true); nav != listNavNone {
-		next, moved := moveListCursor(nav, currentIdx, len(visibleNodes), t.height)
+		next, moved := moveListCursor(nav, currentIdx, len(visibleNodes), listViewport(t.lastHeight, t.height, 10))
 		if moved {
 			t.selected = visibleNodes[next]
 			t.adjustScroll(next)
@@ -245,26 +247,18 @@ func (t *TreeView) HandleKeyEvent(event KeyEvent) bool {
 	return false
 }
 
+// scrollPos returns the active scroll position: the user-provided ScrollY
+// binding when set, otherwise the tree's internal offset.
+func (t *TreeView) scrollPos() *int {
+	if t.scrollY != nil {
+		return t.scrollY
+	}
+	return &t.scroll
+}
+
 // adjustScroll adjusts scroll position to keep selected item visible
 func (t *TreeView) adjustScroll(selectedIdx int) {
-	if t.scrollY == nil {
-		return
-	}
-
-	visibleHeight := t.height
-	if visibleHeight <= 0 {
-		visibleHeight = 10 // default
-	}
-
-	// Scroll down if needed
-	if selectedIdx-*t.scrollY >= visibleHeight {
-		*t.scrollY = selectedIdx - visibleHeight + 1
-	}
-
-	// Scroll up if needed
-	if selectedIdx < *t.scrollY {
-		*t.scrollY = selectedIdx
-	}
+	scrollIntoView(t.scrollPos(), selectedIdx, listViewport(t.lastHeight, t.height, 10))
 }
 
 // flattenVisibleNodes returns all visible nodes in traversal order
@@ -440,13 +434,13 @@ func (t *TreeView) render(ctx *RenderContext) {
 		fm.Register(t)
 	}
 
+	t.lastHeight = height
+
 	nodes := t.flatten()
 
 	// Get scroll position
-	scrollY := 0
-	if t.scrollY != nil {
-		scrollY = *t.scrollY
-	}
+	scroll := t.scrollPos()
+	scrollY := *scroll
 
 	// Clamp scroll
 	maxScroll := len(nodes) - height
@@ -461,8 +455,8 @@ func (t *TreeView) render(ctx *RenderContext) {
 	}
 
 	// Update scroll pointer
-	if t.scrollY != nil && *t.scrollY != scrollY {
-		*t.scrollY = scrollY
+	if *scroll != scrollY {
+		*scroll = scrollY
 	}
 
 	branchStyle := NewStyle().WithForeground(ColorBrightBlack)

@@ -17,6 +17,8 @@ type SelectListView struct {
 	showCursor    bool
 	width         int
 	height        int
+	scroll        int
+	lastHeight    int
 	bounds        image.Rectangle
 	focused       bool
 }
@@ -89,9 +91,11 @@ func (l *SelectListView) HandleKeyEvent(event KeyEvent) bool {
 	}
 
 	if nav := listNavForKey(event, true); nav != listNavNone {
-		next, moved := moveListCursor(nav, *l.selected, len(l.items), l.height)
+		visible := listViewport(l.lastHeight, l.height, 10)
+		next, moved := moveListCursor(nav, *l.selected, len(l.items), visible)
 		if moved {
 			*l.selected = next
+			scrollIntoView(&l.scroll, next, visible)
 		}
 		return moved
 	}
@@ -219,10 +223,27 @@ func (l *SelectListView) render(ctx *RenderContext) {
 		fm.Register(l)
 	}
 
+	l.lastHeight = height
+
 	selectedIdx := 0
 	if l.selected != nil {
 		selectedIdx = *l.selected
+		if selectedIdx > len(l.items)-1 {
+			selectedIdx = len(l.items) - 1
+		}
+		if selectedIdx < 0 {
+			selectedIdx = 0
+		}
 	}
+
+	// Clamp scroll and keep the selected item visible.
+	if maxScroll := len(l.items) - height; l.scroll > maxScroll {
+		l.scroll = maxScroll
+	}
+	if l.scroll < 0 {
+		l.scroll = 0
+	}
+	scrollIntoView(&l.scroll, selectedIdx, height)
 
 	cursorW := 0
 	if l.showCursor {
@@ -230,9 +251,10 @@ func (l *SelectListView) render(ctx *RenderContext) {
 		cursorW += 1 // space after cursor
 	}
 
-	for y := 0; y < height && y < len(l.items); y++ {
-		item := l.items[y]
-		isSelected := y == selectedIdx
+	for y := 0; y < height && l.scroll+y < len(l.items); y++ {
+		idx := l.scroll + y
+		item := l.items[idx]
+		isSelected := idx == selectedIdx
 		style := l.style
 		if isSelected {
 			style = l.selectedStyle
@@ -260,8 +282,7 @@ func (l *SelectListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			idx := y            // capture for closure
-			clickedItem := item // capture for closure
+			clickedItem := item
 			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if l.selected != nil {
 					*l.selected = idx

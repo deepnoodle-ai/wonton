@@ -14,6 +14,8 @@ type RadioListView struct {
 	unselectedChar string
 	width          int
 	height         int
+	scroll         int
+	lastHeight     int
 	bounds         image.Rectangle
 	focused        bool
 }
@@ -83,9 +85,11 @@ func (r *RadioListView) FocusBounds() image.Rectangle {
 
 func (r *RadioListView) HandleKeyEvent(event KeyEvent) bool {
 	if nav := listNavForKey(event, true); nav != listNavNone && r.selected != nil {
-		next, moved := moveListCursor(nav, *r.selected, len(r.items), r.height)
+		visible := listViewport(r.lastHeight, r.height, 10)
+		next, moved := moveListCursor(nav, *r.selected, len(r.items), visible)
 		if moved {
 			*r.selected = next
+			scrollIntoView(&r.scroll, next, visible)
 		}
 		return moved
 	}
@@ -207,16 +211,34 @@ func (r *RadioListView) render(ctx *RenderContext) {
 		fm.Register(r)
 	}
 
+	r.lastHeight = height
+
 	selectedIdx := 0
 	if r.selected != nil {
 		selectedIdx = *r.selected
+		if selectedIdx > len(r.items)-1 {
+			selectedIdx = len(r.items) - 1
+		}
+		if selectedIdx < 0 {
+			selectedIdx = 0
+		}
 	}
+
+	// Clamp scroll and keep the selected item visible.
+	if maxScroll := len(r.items) - height; r.scroll > maxScroll {
+		r.scroll = maxScroll
+	}
+	if r.scroll < 0 {
+		r.scroll = 0
+	}
+	scrollIntoView(&r.scroll, selectedIdx, height)
 
 	radioW, _ := MeasureText(r.selectedChar)
 
-	for y := 0; y < height && y < len(r.items); y++ {
-		item := r.items[y]
-		isSelected := y == selectedIdx
+	for y := 0; y < height && r.scroll+y < len(r.items); y++ {
+		idx := r.scroll + y
+		item := r.items[idx]
+		isSelected := idx == selectedIdx
 		style := r.style
 		if isSelected {
 			style = r.cursorStyle
@@ -241,7 +263,6 @@ func (r *RadioListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			idx := y // capture for closure
 			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if r.selected != nil {
 					*r.selected = idx

@@ -43,15 +43,27 @@ func TestReadmeSnippetsCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Mirror the parent module's go directive so the snippets build with the
+	// same language version as wonton itself.
+	goDirective := "go 1.21"
+	if data, err := os.ReadFile(filepath.Join(repoRoot, "go.mod")); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "go ") {
+				goDirective = strings.TrimSpace(line)
+				break
+			}
+		}
+	}
+
 	dir := t.TempDir()
 	gomod := fmt.Sprintf(`module readme.test/snippets
 
-go 1.21
+%s
 
 require github.com/deepnoodle-ai/wonton v0.0.0
 
 replace github.com/deepnoodle-ai/wonton => %s
-`, repoRoot)
+`, goDirective, repoRoot)
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}

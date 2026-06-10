@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 func TestListNavForKey(t *testing.T) {
@@ -27,6 +29,9 @@ func TestListNavForKey(t *testing.T) {
 		{"j without vi", KeyEvent{Rune: 'j'}, false, listNavNone},
 		{"unrelated rune", KeyEvent{Rune: 'x'}, true, listNavNone},
 		{"enter", KeyEvent{Key: KeyEnter}, true, listNavNone},
+		{"alt+j is not nav", KeyEvent{Rune: 'j', Alt: true}, true, listNavNone},
+		{"ctrl+k is not nav", KeyEvent{Rune: 'k', Ctrl: true}, true, listNavNone},
+		{"alt+G is not nav", KeyEvent{Rune: 'G', Alt: true}, true, listNavNone},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,10 +121,81 @@ func TestSelectListNavigationKeys(t *testing.T) {
 	assert.Equal(t, 5, selected)
 	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
 	assert.Equal(t, 19, selected)
+	// Scroll follows the cursor so the selected item stays visible.
+	assert.Equal(t, 15, list.scroll)
 	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyHome}))
 	assert.Equal(t, 0, selected)
+	assert.Equal(t, 0, list.scroll)
 	// At the top, up does not move and propagates.
 	assert.False(t, list.HandleKeyEvent(KeyEvent{Key: KeyArrowUp}))
+}
+
+func labeledItems(n int) []ListItem {
+	items := make([]ListItem, n)
+	for i := range items {
+		items[i] = ListItem{Label: fmt.Sprintf("item-%02d", i), Value: i}
+	}
+	return items
+}
+
+func TestSelectListRendersSelectedItemAfterEnd(t *testing.T) {
+	selected := 0
+	list := SelectList(labeledItems(20), &selected).Height(5)
+
+	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
+	assert.Equal(t, 19, selected)
+
+	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	termtest.AssertRowContains(t, screen, 4, "item-19")
+}
+
+func TestSelectListRenderFollowsProgrammaticSelection(t *testing.T) {
+	// The app moves the selection without a key event; render must still
+	// bring it into view.
+	selected := 19
+	list := SelectList(labeledItems(20), &selected).Height(5)
+
+	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	termtest.AssertRowContains(t, screen, 4, "item-19")
+}
+
+func TestCheckboxListRendersCursorAfterEnd(t *testing.T) {
+	cursor := 0
+	checked := make([]bool, 20)
+	list := CheckboxList(labeledItems(20), checked, &cursor).Height(5)
+
+	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
+	assert.Equal(t, 19, cursor)
+
+	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	termtest.AssertRowContains(t, screen, 4, "item-19")
+}
+
+func TestRadioListRendersSelectedAfterEnd(t *testing.T) {
+	selected := 0
+	list := RadioList(labeledItems(20), &selected).Height(5)
+
+	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
+	assert.Equal(t, 19, selected)
+
+	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	termtest.AssertRowContains(t, screen, 4, "item-19")
+}
+
+func TestTreeEndScrollsWithoutScrollYBinding(t *testing.T) {
+	root := &TreeNode{Label: "root", Expanded: true}
+	for i := 0; i < 10; i++ {
+		root.Children = append(root.Children, &TreeNode{Label: fmt.Sprintf("child-%02d", i)})
+	}
+	tree := Tree(root).Height(5)
+
+	assert.True(t, tree.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
+	assert.Equal(t, root.Children[9], tree.selected)
+
+	// With no external ScrollY binding, the internal offset keeps the
+	// selected node visible.
+	screen := SprintScreen(tree, WithWidth(20), WithHeight(5))
+	termtest.AssertRowContains(t, screen, 4, "child-09")
 }
 
 func TestTableNavigationKeysScroll(t *testing.T) {

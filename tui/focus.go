@@ -186,6 +186,13 @@ func (fm *FocusManager) findCurrentIndex() int {
 func (fm *FocusManager) HandleKey(event KeyEvent) bool {
 	// Handle Tab/Shift+Tab for navigation (before delegating to focused element)
 	if event.Key == KeyTab {
+		fm.mu.Lock()
+		hasFocusables := len(fm.order) > 0
+		fm.mu.Unlock()
+		if !hasFocusables {
+			// Nothing to cycle through: let the application observe Tab.
+			return false
+		}
 		if event.Shift {
 			fm.FocusPrev()
 		} else {
