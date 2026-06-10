@@ -53,6 +53,29 @@ func (e TickEvent) Timestamp() time.Time {
 	return e.Time
 }
 
+// TimerEvent is produced by the After command when its duration elapses.
+// The Tag identifies which timer fired, allowing an application to schedule
+// multiple timers and tell them apart in HandleEvent:
+//
+//	func (a *App) HandleEvent(event Event) []Cmd {
+//	    if timer, ok := event.(TimerEvent); ok && timer.Tag == "clear-flash" {
+//	        a.flash = ""
+//	    }
+//	    return nil
+//	}
+//
+// TimerEvent is distinct from TickEvent: TickEvent is the runtime's
+// continuous animation tick (driven by the FPS setting), while TimerEvent
+// fires once per After command.
+type TimerEvent struct {
+	Time time.Time
+	Tag  string // Identifies which timer fired (set via After)
+}
+
+func (e TimerEvent) Timestamp() time.Time {
+	return e.Time
+}
+
 // ResizeEvent is emitted when the terminal window is resized.
 // Applications receive an initial ResizeEvent on startup with the
 // current terminal dimensions.
@@ -126,6 +149,14 @@ type BatchEvent struct {
 
 func (e BatchEvent) Timestamp() time.Time {
 	return e.Time
+}
+
+// isInterruptKey reports whether the key event is Ctrl+C. Ctrl+C is always
+// delivered to the application's HandleEvent, even when a focused element
+// consumed it, so apps can implement a quit shortcut that works regardless
+// of focus state.
+func isInterruptKey(e KeyEvent) bool {
+	return e.Key == KeyCtrlC || (e.Ctrl && (e.Rune == 'c' || e.Rune == 'C'))
 }
 
 // Note: KeyEvent.Timestamp and MouseEvent.Timestamp are defined in input.go and mouse.go respectively

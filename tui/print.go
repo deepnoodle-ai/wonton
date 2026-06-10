@@ -289,7 +289,8 @@ type LivePrinter struct {
 	started      bool
 	frameCount   uint64
 	hiddenCursor bool
-	lastLines    []string // Previous frame's lines for diffing
+	lastLines    []string    // Previous frame's lines for diffing
+	reg          *registries // Set by InlineApp so views register with its stores; nil = process default
 }
 
 // NewLivePrinter creates a new LivePrinter for updating a region in place.
@@ -394,6 +395,9 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	ctx := NewRenderContext(frame, lp.frameCount)
 	if fm != nil {
 		ctx = ctx.WithFocusManager(fm)
+	}
+	if lp.reg != nil {
+		ctx = ctx.withRegistries(lp.reg)
 	}
 	lp.frameCount++
 	view.size(lp.config.Width, renderHeight)

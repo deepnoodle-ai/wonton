@@ -57,6 +57,13 @@ type EventHandler interface {
 	// HandleEvent processes an event and optionally returns commands for async execution.
 	// This is called in a single-threaded event loop, so state can be mutated freely
 	// without locks. Return commands for async operations (HTTP requests, timers, etc.).
+	//
+	// Key routing: KeyEvents are offered to the focused element (InputField,
+	// Table, PromptChoice, etc.) first. If the focused element consumes the
+	// key, it is NOT delivered to HandleEvent — so a plain-letter shortcut
+	// like 'q' won't fire while the user is typing into an input. Ctrl+C is
+	// the exception: it is always delivered, making it the reliable choice
+	// for a global quit shortcut in apps with focusable inputs.
 	HandleEvent(event Event) []Cmd
 }
 

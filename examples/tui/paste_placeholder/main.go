@@ -97,7 +97,10 @@ func (app *PastePlaceholderApp) View() tui.View {
 }
 
 func main() {
-	err := tui.Run(&PastePlaceholderApp{}, tui.WithBracketedPaste(true))
+	err := tui.Run(&PastePlaceholderApp{},
+		tui.WithBracketedPaste(true),
+		tui.WithBackslashEnter(true), // \+Enter inserts a newline (Shift+Enter fallback)
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

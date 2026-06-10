@@ -663,25 +663,31 @@ tui.Text("Alert").Animate(Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
 
 ### Event Types
 
-| Event         | Description     | Fields                                             |
-| ------------- | --------------- | -------------------------------------------------- |
-| `KeyEvent`    | Keyboard input  | `Rune rune, Key Key, Modifiers KeyModifier`        |
-| `MouseEvent`  | Mouse input     | `X, Y int, Button MouseButton, Action MouseAction` |
-| `TickEvent`   | Frame tick      | `Frame uint64`                                     |
-| `ResizeEvent` | Terminal resize | `Width, Height int`                                |
-| `ErrorEvent`  | Error occurred  | `Err error`                                        |
-| `QuitEvent`   | Quit requested  | none                                               |
+| Event         | Description       | Fields                                             |
+| ------------- | ----------------- | -------------------------------------------------- |
+| `KeyEvent`    | Keyboard input    | `Rune rune, Key Key, Alt/Ctrl/Shift bool`          |
+| `MouseEvent`  | Mouse input       | `X, Y int, Button MouseButton, Action MouseAction` |
+| `TickEvent`   | Frame tick        | `Frame uint64`                                     |
+| `TimerEvent`  | After timer fired | `Tag string`                                       |
+| `ResizeEvent` | Terminal resize   | `Width, Height int`                                |
+| `ErrorEvent`  | Error occurred    | `Err error`                                        |
+| `QuitEvent`   | Quit requested    | none                                               |
+
+Note on key routing: KeyEvents are offered to the focused element (input,
+table, etc.) first. Keys consumed by the focused element are NOT delivered to
+`HandleEvent`, so plain-letter shortcuts like `q` won't fire while the user is
+typing. Ctrl+C is always delivered — use it for a reliable quit shortcut in
+apps with focusable inputs.
 
 ### Command Types
 
-| Type         | Description                                  |
-| ------------ | -------------------------------------------- |
-| `Cmd`        | Function returning Event (runs async)        |
-| `Quit()`     | Exits application                            |
-| `Tick(dur)`  | Creates a timer command                      |
-| `After(dur)` | Executes function after duration             |
-| `Batch(...)` | Executes multiple commands                   |
-| `Sequence()` | Executes commands sequentially               |
+| Type              | Description                                          |
+| ----------------- | ---------------------------------------------------- |
+| `Cmd`             | Function returning Event (runs async)                |
+| `Quit()`          | Exits application                                    |
+| `After(dur, tag)` | Delivers a tagged TimerEvent after the duration      |
+| `Batch(...)`      | Executes multiple commands                           |
+| `Sequence()`      | Executes commands sequentially                       |
 
 ## Architecture
 
@@ -703,6 +709,7 @@ tui.Run(app,
 	tui.WithHideCursor(true),           // Hide cursor during rendering (default)
 	tui.WithBracketedPaste(true),       // Enable bracketed paste mode
 	tui.WithPasteTabWidth(4),           // Convert tabs to spaces in paste
+	tui.WithBackslashEnter(true),       // \+Enter => Shift+Enter (for chat-style apps)
 )
 ```
 
@@ -897,14 +904,15 @@ func main() {
 ### InlineApp Options
 
 ```go
-runner := tui.NewInlineApp(
-    tui.WithInlineWidth(80),              // Set rendering width
-    tui.WithInlineFPS(30),                // Enable tick events for animations
-    tui.WithInlineMouseTracking(true),    // Enable mouse events
-    tui.WithInlineBracketedPaste(true),   // Enable bracketed paste mode
-    tui.WithInlineKittyKeyboard(true),    // Enable Kitty keyboard protocol
-    tui.WithInlinePasteTabWidth(4),       // Convert tabs in pasted text
-)
+runner := tui.NewInlineApp(tui.InlineAppConfig{
+    Width:          80,   // Rendering width (0 = auto)
+    FPS:            30,   // Enable tick events for animations (0 = no ticks)
+    MouseTracking:  true, // Enable mouse events
+    BracketedPaste: true, // Enable bracketed paste mode
+    KittyKeyboard:  true, // Enable Kitty keyboard protocol
+    PasteTabWidth:  4,    // Convert tabs in pasted text
+    BackslashEnter: true, // \+Enter => Shift+Enter (for chat-style apps)
+})
 ```
 
 ### InlineApp Architecture

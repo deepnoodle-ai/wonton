@@ -262,7 +262,7 @@ func (l *selectListView) render(ctx *RenderContext) {
 			)
 			idx := y            // capture for closure
 			clickedItem := item // capture for closure
-			interactiveRegistry.RegisterButton(itemBounds, func() {
+			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}

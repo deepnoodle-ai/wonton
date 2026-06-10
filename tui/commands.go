@@ -47,25 +47,26 @@ func Quit() Cmd {
 	}
 }
 
-// Tick returns a command that waits for the specified duration
-// and then returns a TickEvent.
-func Tick(duration time.Duration) Cmd {
+// After returns a command that waits for the specified duration and then
+// delivers a TimerEvent carrying the given tag. Handle the TimerEvent in
+// HandleEvent — which runs on the single-threaded event loop — to mutate
+// application state safely:
+//
+//	// Schedule: clear a flash message after 2 seconds
+//	return []Cmd{After(2*time.Second, "clear-flash")}
+//
+//	// Handle:
+//	if timer, ok := event.(TimerEvent); ok && timer.Tag == "clear-flash" {
+//	    a.flash = ""
+//	}
+//
+// Note: earlier versions of After took a func() that ran on the command
+// goroutine. That invited data races on application state, which the event
+// loop otherwise makes impossible — mutate state in HandleEvent instead.
+func After(duration time.Duration, tag string) Cmd {
 	return func() Event {
 		time.Sleep(duration)
-		return TickEvent{Time: time.Now()}
-	}
-}
-
-// After returns a command that waits for the specified duration,
-// executes the provided function, and returns a TickEvent.
-// If fn is nil, it simply waits and returns a TickEvent.
-func After(duration time.Duration, fn func()) Cmd {
-	return func() Event {
-		time.Sleep(duration)
-		if fn != nil {
-			fn()
-		}
-		return TickEvent{Time: time.Now()}
+		return TimerEvent{Time: time.Now(), Tag: tag}
 	}
 }
 

@@ -15,6 +15,7 @@ type RenderContext struct {
 	frameCount uint64
 	bounds     image.Rectangle
 	focusMgr   *FocusManager
+	reg        *registries
 }
 
 // NewRenderContext creates a new render context.
@@ -35,7 +36,31 @@ func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
 		frameCount: c.frameCount,
 		bounds:     c.bounds,
 		focusMgr:   fm,
+		reg:        c.reg,
 	}
+}
+
+// withRegistries returns a new context carrying the given registries.
+// Set by the Runtime, InlineApp, and LivePrinter so views register
+// interactive state with the runtime that is rendering them.
+func (c *RenderContext) withRegistries(reg *registries) *RenderContext {
+	return &RenderContext{
+		frame:      c.frame,
+		frameCount: c.frameCount,
+		bounds:     c.bounds,
+		focusMgr:   c.focusMgr,
+		reg:        reg,
+	}
+}
+
+// registries returns the registries views should register into during
+// render. Falls back to the process-wide default for contexts created
+// without a runtime (direct render calls in tests, standalone Print).
+func (c *RenderContext) registries() *registries {
+	if c.reg != nil {
+		return c.reg
+	}
+	return defaultRegistries
 }
 
 // FocusManager returns the focus manager for this context, or nil if none.
@@ -79,6 +104,7 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 		frameCount: c.frameCount,
 		bounds:     image.Rect(0, 0, clippedBounds.Dx(), clippedBounds.Dy()),
 		focusMgr:   c.focusMgr,
+		reg:        c.reg,
 	}
 }
 
@@ -136,5 +162,6 @@ func (c *RenderContext) WithFrame(frame RenderFrame) *RenderContext {
 		frameCount: c.frameCount,
 		bounds:     image.Rect(0, 0, w, h),
 		focusMgr:   c.focusMgr,
+		reg:        c.reg,
 	}
 }

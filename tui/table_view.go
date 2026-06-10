@@ -672,7 +672,7 @@ func (t *tableView) render(ctx *RenderContext) {
 			bounds.Min.Y+currentY+i+1,
 		)
 		idx := rowIndex // capture for closure
-		interactiveRegistry.RegisterButton(rowBounds, func() {
+		ctx.registries().interactive.RegisterButton(rowBounds, func() {
 			if t.selected != nil {
 				*t.selected = idx
 			}

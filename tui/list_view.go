@@ -689,7 +689,7 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 		if l.onSelect != nil {
 			bounds := ctx.AbsoluteBounds()
 			idx := index
-			interactiveRegistry.RegisterButton(bounds, func() {
+			ctx.registries().interactive.RegisterButton(bounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}
@@ -762,7 +762,7 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 		bounds := ctx.AbsoluteBounds()
 		idx := index
 		oi := origIdx
-		interactiveRegistry.RegisterButton(bounds, func() {
+		ctx.registries().interactive.RegisterButton(bounds, func() {
 			if l.selected != nil {
 				*l.selected = idx
 			}
@@ -1081,7 +1081,7 @@ func (c *checkboxListView) render(ctx *RenderContext) {
 				bounds.Min.Y+y+1,
 			)
 			idx := y // capture for closure
-			interactiveRegistry.RegisterButton(itemBounds, func() {
+			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if c.cursor != nil {
 					*c.cursor = idx
 				}
@@ -1339,7 +1339,7 @@ func (r *radioListView) render(ctx *RenderContext) {
 				bounds.Min.Y+y+1,
 			)
 			idx := y // capture for closure
-			interactiveRegistry.RegisterButton(itemBounds, func() {
+			ctx.registries().interactive.RegisterButton(itemBounds, func() {
 				if r.selected != nil {
 					*r.selected = idx
 				}

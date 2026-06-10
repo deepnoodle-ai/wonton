@@ -37,7 +37,8 @@ func (m *MockInputSource) Close() {
 	close(m.events)
 }
 
-// TestRuntime_BackslashEnterFallback tests the backslash+enter -> shift+enter conversion
+// TestRuntime_BackslashEnterFallback tests the backslash+enter -> shift+enter
+// conversion when the opt-in WithBackslashEnter behavior is enabled.
 func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	// Create a test app that records keys
 	app := &testKeyboardApp{
@@ -49,6 +50,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	// However, Runtime requires a terminal. We can use NewTestTerminal.
 	terminal := NewTestTerminal(80, 24, nil)
 	runtime := NewRuntime(terminal, app, 30)
+	runtime.SetBackslashEnter(true)
 
 	inputSource := NewMockInputSource()
 	runtime.SetInputSource(inputSource)
@@ -93,6 +95,45 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 		lastEvent := keyEvents[len(keyEvents)-1]
 		assert.Equal(t, KeyEnter, lastEvent.Key)
 		assert.True(t, lastEvent.Shift, "Should have Shift modifier set")
+	}
+}
+
+// TestRuntime_BackslashEnterDisabledByDefault verifies that without the
+// opt-in, backslash followed by Enter arrives as two separate key events
+// (no Shift+Enter synthesis, no backslash swallowing).
+func TestRuntime_BackslashEnterDisabledByDefault(t *testing.T) {
+	app := &testKeyboardApp{
+		events: make([]Event, 0),
+	}
+
+	terminal := NewTestTerminal(80, 24, nil)
+	runtime := NewRuntime(terminal, app, 30)
+
+	inputSource := NewMockInputSource()
+	runtime.SetInputSource(inputSource)
+
+	go func() {
+		runtime.Run()
+	}()
+	defer runtime.Stop()
+
+	inputSource.Send(KeyEvent{Rune: '\\', Key: KeyUnknown, Time: time.Now()})
+	inputSource.Send(KeyEvent{Key: KeyEnter, Time: time.Now()})
+
+	time.Sleep(100 * time.Millisecond)
+
+	var keyEvents []KeyEvent
+	for _, e := range app.snapshot() {
+		if ke, ok := e.(KeyEvent); ok {
+			keyEvents = append(keyEvents, ke)
+		}
+	}
+
+	assert.Len(t, keyEvents, 2, "backslash and Enter should arrive separately")
+	if len(keyEvents) == 2 {
+		assert.Equal(t, '\\', keyEvents[0].Rune, "backslash should not be swallowed")
+		assert.Equal(t, KeyEnter, keyEvents[1].Key)
+		assert.False(t, keyEvents[1].Shift, "Enter should not gain a Shift modifier")
 	}
 }
 

@@ -7,11 +7,8 @@ import (
 	"sync"
 )
 
-// textAreaRegistry manages transient state for TextAreas.
-var textAreaRegistry = &textAreaRegistryImpl{
-	states: make(map[string]*textAreaState),
-	active: make(map[string]bool),
-}
+// textAreaRegistryImpl manages transient state for TextAreas.
+// Owned per-runtime via the registries struct.
 
 type textAreaRegistryImpl struct {
 	mu     sync.Mutex
@@ -65,6 +62,7 @@ func (r *textAreaRegistryImpl) Get(id string) *textAreaState {
 // textAreaView is a high-level component for displaying scrollable text content
 // with automatic focus-aware styling and keyboard scroll handling.
 type textAreaView struct {
+	reg *registries // captured at construction; refreshed from ctx during render
 	// Content configuration
 	id       string
 	binding  *string // pointer to external string (optional)
@@ -122,6 +120,7 @@ func TextArea(binding *string) *textAreaView {
 		id = fmt.Sprintf("textarea_%p", binding)
 	}
 	return &textAreaView{
+		reg: capturedRegistries(),
 		id:               id,
 		binding:          binding,
 		width:            40,
@@ -297,7 +296,7 @@ func (t *textAreaView) getScrollY() int {
 		return *t.scrollY
 	}
 	if t.id != "" {
-		return textAreaRegistry.Get(t.id).scrollY
+		return t.reg.textAreas.Get(t.id).scrollY
 	}
 	return t.internal
 }
@@ -306,7 +305,7 @@ func (t *textAreaView) setScrollY(y int) {
 	if t.scrollY != nil {
 		*t.scrollY = y
 	} else if t.id != "" {
-		textAreaRegistry.Get(t.id).scrollY = y
+		t.reg.textAreas.Get(t.id).scrollY = y
 	} else {
 		t.internal = y
 	}
@@ -317,7 +316,7 @@ func (t *textAreaView) getCursorLine() int {
 		return *t.cursorLine
 	}
 	if t.id != "" {
-		return textAreaRegistry.Get(t.id).cursorLine
+		return t.reg.textAreas.Get(t.id).cursorLine
 	}
 	return t.internalCursorLine
 }
@@ -326,7 +325,7 @@ func (t *textAreaView) setCursorLine(line int) {
 	if t.cursorLine != nil {
 		*t.cursorLine = line
 	} else if t.id != "" {
-		textAreaRegistry.Get(t.id).cursorLine = line
+		t.reg.textAreas.Get(t.id).cursorLine = line
 	} else {
 		t.internalCursorLine = line
 	}
@@ -367,6 +366,7 @@ func (t *textAreaView) render(ctx *RenderContext) {
 	if w == 0 || h == 0 {
 		return
 	}
+	t.reg = ctx.registries()
 
 	// Determine if focused
 	fm := ctx.FocusManager()

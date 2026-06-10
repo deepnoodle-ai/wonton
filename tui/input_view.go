@@ -8,11 +8,9 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// inputRegistry manages text input state (bindings, callbacks, etc.)
-// Focus management is delegated to the FocusManager passed via RenderContext.
-var inputRegistry = &inputRegistryImpl{
-	inputs: make(map[string]*inputState),
-}
+// inputRegistryImpl manages text input state (bindings, callbacks, etc.)
+// Owned per-runtime via the registries struct. Focus management is delegated
+// to the FocusManager passed via RenderContext.
 
 type inputRegistryImpl struct {
 	mu     sync.Mutex
@@ -90,6 +88,14 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // Clear clears input tracking (called before each render).
+// lookup returns the persistent state for id, if any.
+func (r *inputRegistryImpl) lookup(id string) (*inputState, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state, ok := r.inputs[id]
+	return state, ok
+}
+
 func (r *inputRegistryImpl) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -197,6 +203,7 @@ func (r *inputRegistryImpl) GetFocused(fm *FocusManager) *inputState {
 
 // inputView wraps a TextInput for declarative use
 type inputView struct {
+	reg *registries // captured at construction; refreshed from ctx during render
 	id               string
 	binding          *string
 	placeholder      string
@@ -228,6 +235,7 @@ func Input(binding *string) *inputView {
 		id = fmt.Sprintf("input_%p", binding)
 	}
 	return &inputView{
+		reg: capturedRegistries(),
 		id:      id,
 		binding: binding,
 		width:   20,
@@ -355,7 +363,7 @@ func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
 	if i.binding != nil && *i.binding != "" && w > 0 {
 		// Get the display text (need to check registry for paste placeholders)
 		displayText := *i.binding
-		if state, exists := inputRegistry.inputs[i.id]; exists {
+		if state, exists := i.reg.inputs.lookup(i.id); exists {
 			displayText = state.input.DisplayText()
 		}
 		h = calcWrappedHeight(displayText, w)
@@ -381,7 +389,8 @@ func (i *inputView) render(ctx *RenderContext) {
 
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
-	state := inputRegistry.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit, fm)
+	i.reg = ctx.registries()
+	state := i.reg.inputs.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit, fm)
 
 	// Apply focus-aware styling to the TextInput
 	if isFocused && i.focusStyle != nil {

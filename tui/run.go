@@ -12,6 +12,7 @@ type runConfig struct {
 	mouseTracking   bool
 	bracketedPaste  bool
 	pasteTabWidth   int
+	backslashEnter  bool
 	inputSource     InputSource
 }
 
@@ -83,6 +84,22 @@ func WithBracketedPaste(enabled bool) RunOption {
 func WithPasteTabWidth(width int) RunOption {
 	return func(c *runConfig) {
 		c.pasteTabWidth = width
+	}
+}
+
+// WithBackslashEnter enables synthesizing Shift+Enter from a backslash
+// immediately followed by Enter — a fallback for terminals without the
+// Kitty keyboard protocol, useful for chat-style apps where Shift+Enter
+// inserts a newline.
+//
+// Disabled by default: when enabled, every typed backslash is delayed
+// briefly while the runtime waits to see if Enter follows, and a backslash
+// followed quickly by Enter is rewritten to Shift+Enter (losing the
+// backslash). Only enable this for applications that need the Shift+Enter
+// affordance.
+func WithBackslashEnter(enabled bool) RunOption {
+	return func(c *runConfig) {
+		c.backslashEnter = enabled
 	}
 }
 
@@ -160,6 +177,7 @@ func Run(app any, opts ...RunOption) error {
 	// Create and configure runtime
 	runtime := NewRuntime(terminal, app, cfg.fps)
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
+	runtime.SetBackslashEnter(cfg.backslashEnter)
 
 	// Ensure these modes are disabled on cleanup (terminal.Close doesn't handle this)
 	if cfg.mouseTracking {

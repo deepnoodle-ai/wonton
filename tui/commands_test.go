@@ -11,32 +11,11 @@ import (
 
 var errTestQuit = errors.New("test quit error")
 
-// TestTickCommand tests the Tick command returns TickEvent
-func TestTickCommand(t *testing.T) {
-	duration := 10 * time.Millisecond
-	cmd := Tick(duration)
-	assert.NotNil(t, cmd)
-
-	start := time.Now()
-	event := cmd()
-	elapsed := time.Since(start)
-	assert.NotNil(t, event)
-
-	tickEvent, ok := event.(TickEvent)
-	assert.True(t, ok, "expected TickEvent, got %T", event)
-	assert.False(t, tickEvent.Time.IsZero())
-	assert.GreaterOrEqual(t, elapsed, duration)
-}
-
-// TestAfterCommand tests the After command delays and returns a TickEvent
+// TestAfterCommand tests that After delays and returns a tagged TimerEvent
 func TestAfterCommand(t *testing.T) {
 	duration := 50 * time.Millisecond
-	called := false
-	fn := func() {
-		called = true
-	}
 
-	cmd := After(duration, fn)
+	cmd := After(duration, "my-timer")
 	assert.NotNil(t, cmd)
 
 	start := time.Now()
@@ -44,12 +23,11 @@ func TestAfterCommand(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.NotNil(t, event)
-	assert.True(t, called, "callback should have been called")
 
-	// After returns a TickEvent
-	tickEvent, ok := event.(TickEvent)
-	assert.True(t, ok, "expected TickEvent, got %T", event)
-	assert.False(t, tickEvent.Time.IsZero())
+	timerEvent, ok := event.(TimerEvent)
+	assert.True(t, ok, "expected TimerEvent, got %T", event)
+	assert.Equal(t, "my-timer", timerEvent.Tag)
+	assert.False(t, timerEvent.Time.IsZero())
 
 	// Verify it delayed approximately the right amount
 	assert.GreaterOrEqual(t, elapsed, duration, "After should delay at least %v, was %v", duration, elapsed)
@@ -72,8 +50,8 @@ func TestQuitCommand(t *testing.T) {
 // TestBatchCommand tests that Batch returns a slice of commands
 func TestBatchCommand(t *testing.T) {
 	cmd1 := Quit()
-	cmd2 := Tick(10 * time.Millisecond)
-	cmd3 := After(10*time.Millisecond, nil)
+	cmd2 := After(10*time.Millisecond, "a")
+	cmd3 := After(10*time.Millisecond, "b")
 
 	batchCmd := Batch(cmd1, cmd2, cmd3)
 	assert.NotNil(t, batchCmd)
@@ -85,18 +63,20 @@ func TestBatchCommand(t *testing.T) {
 	assert.True(t, ok, "first command should return QuitEvent")
 
 	event2 := batchCmd[1]()
-	_, ok = event2.(TickEvent)
-	assert.True(t, ok, "second command should return TickEvent")
+	timer2, ok := event2.(TimerEvent)
+	assert.True(t, ok, "second command should return TimerEvent")
+	assert.Equal(t, "a", timer2.Tag)
 
 	event3 := batchCmd[2]()
-	_, ok = event3.(TickEvent)
-	assert.True(t, ok, "third command should return TickEvent")
+	timer3, ok := event3.(TimerEvent)
+	assert.True(t, ok, "third command should return TimerEvent")
+	assert.Equal(t, "b", timer3.Tag)
 }
 
 // TestBatchCommandWithNil tests that Batch handles nil commands
 func TestBatchCommandWithNil(t *testing.T) {
 	cmd1 := Quit()
-	cmd2 := Tick(10 * time.Millisecond)
+	cmd2 := After(10*time.Millisecond, "t")
 
 	// Batch with nil commands - Wonton's Batch just returns the slice as-is
 	batchCmd := Batch(nil, cmd1, nil, cmd2, nil)
@@ -235,8 +215,7 @@ func (e chainEvent) Timestamp() time.Time {
 
 // TestAfterWithZeroDuration tests After with zero duration
 func TestAfterWithZeroDuration(t *testing.T) {
-	called := false
-	cmd := After(0, func() { called = true })
+	cmd := After(0, "instant")
 	assert.NotNil(t, cmd)
 
 	start := time.Now()
@@ -244,11 +223,10 @@ func TestAfterWithZeroDuration(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.NotNil(t, event)
-	assert.True(t, called)
 
-	// After returns TickEvent
-	_, ok := event.(TickEvent)
+	timerEvent, ok := event.(TimerEvent)
 	assert.True(t, ok)
+	assert.Equal(t, "instant", timerEvent.Tag)
 
 	// Should execute almost immediately
 	assert.Less(t, elapsed, 10*time.Millisecond)
@@ -256,9 +234,8 @@ func TestAfterWithZeroDuration(t *testing.T) {
 
 // TestAfterWithLongDuration tests After with a longer duration
 func TestAfterWithLongDuration(t *testing.T) {
-	called := false
 	duration := 200 * time.Millisecond
-	cmd := After(duration, func() { called = true })
+	cmd := After(duration, "slow")
 	assert.NotNil(t, cmd)
 
 	start := time.Now()
@@ -266,11 +243,10 @@ func TestAfterWithLongDuration(t *testing.T) {
 	elapsed := time.Since(start)
 
 	assert.NotNil(t, event)
-	assert.True(t, called)
 
-	// After returns TickEvent
-	_, ok := event.(TickEvent)
+	timerEvent, ok := event.(TimerEvent)
 	assert.True(t, ok)
+	assert.Equal(t, "slow", timerEvent.Tag)
 
 	assert.GreaterOrEqual(t, elapsed, duration)
 	assert.Less(t, elapsed, duration+100*time.Millisecond)
@@ -278,23 +254,24 @@ func TestAfterWithLongDuration(t *testing.T) {
 
 // TestMultipleAfterCommands tests multiple After commands in sequence
 func TestMultipleAfterCommands(t *testing.T) {
-	// This test just verifies that After commands work when chained
-	count := 0
-
-	cmd1 := After(10*time.Millisecond, func() { count++ })
-	cmd2 := After(10*time.Millisecond, func() { count++ })
-	cmd3 := After(10*time.Millisecond, func() { count++ })
+	cmd1 := After(10*time.Millisecond, "one")
+	cmd2 := After(10*time.Millisecond, "two")
+	cmd3 := After(10*time.Millisecond, "three")
 
 	start := time.Now()
 
-	// Execute them in sequence
-	cmd1()
-	cmd2()
-	cmd3()
+	// Execute them in sequence and collect tags
+	var tags []string
+	for _, cmd := range []Cmd{cmd1, cmd2, cmd3} {
+		event := cmd()
+		timerEvent, ok := event.(TimerEvent)
+		assert.True(t, ok)
+		tags = append(tags, timerEvent.Tag)
+	}
 
 	elapsed := time.Since(start)
 
-	assert.Equal(t, 3, count)
+	assert.Equal(t, []string{"one", "two", "three"}, tags)
 	assert.GreaterOrEqual(t, elapsed, 30*time.Millisecond)
 }
 

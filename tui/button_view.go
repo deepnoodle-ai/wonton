@@ -6,11 +6,8 @@ import (
 	"sync"
 )
 
-// buttonRegistry manages button state for focus management.
-var buttonRegistry = &buttonRegistryImpl{
-	buttons: make(map[string]*buttonState),
-}
-
+// buttonRegistryImpl manages button state for focus management.
+// Owned per-runtime via the registries struct.
 type buttonRegistryImpl struct {
 	mu      sync.Mutex
 	buttons map[string]*buttonState
@@ -88,13 +85,10 @@ func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callbac
 	return state
 }
 
-// InteractiveRegistry tracks clickable regions for mouse event routing.
+// interactiveRegistryImpl tracks clickable regions for mouse event routing.
 // It is cleared before each render and populated as views are drawn.
 // This is separate from focus management - it handles mouse-only interactions.
-var interactiveRegistry = &interactiveRegistryImpl{
-	regions: make([]interactiveRegion, 0),
-}
-
+// Owned per-runtime via the registries struct.
 type interactiveRegistryImpl struct {
 	mu      sync.Mutex
 	regions []interactiveRegion
@@ -243,7 +237,7 @@ func (b *buttonView) render(ctx *RenderContext) {
 
 	// Register this button for focus management
 	bounds := ctx.AbsoluteBounds()
-	state := buttonRegistry.Register(b.id, bounds, b.callback, b.focusStyle, ctx.FocusManager())
+	state := ctx.registries().buttons.Register(b.id, bounds, b.callback, b.focusStyle, ctx.FocusManager())
 
 	// Choose style based on focus state
 	style := b.style
@@ -336,7 +330,7 @@ func (c *clickableView) render(ctx *RenderContext) {
 
 	// Register this clickable for click handling (mouse only)
 	if c.callback != nil {
-		interactiveRegistry.RegisterRegion(ctx.AbsoluteBounds(), c.callback)
+		ctx.registries().interactive.RegisterRegion(ctx.AbsoluteBounds(), c.callback)
 	}
 
 	// Render the label

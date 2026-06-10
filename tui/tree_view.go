@@ -537,7 +537,7 @@ func (t *treeView) render(ctx *RenderContext) {
 			bounds.Min.Y+y+1,
 		)
 		nodeCopy := node // capture for closure
-		interactiveRegistry.RegisterButton(clickBounds, func() {
+		ctx.registries().interactive.RegisterButton(clickBounds, func() {
 			// Toggle expand/collapse for non-leaf nodes
 			if !nodeCopy.IsLeaf() {
 				nodeCopy.Expanded = !nodeCopy.Expanded
