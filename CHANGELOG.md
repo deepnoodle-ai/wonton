@@ -30,6 +30,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `tty.IsTerminal` returns false for a nil file instead of panicking.
 - `sse.Reader` strips a leading UTF-8 BOM per the SSE specification, and the
   `retry` field now requires ASCII digits only (signed values are ignored).
+- `color.Gradient` no longer produces wrong intermediate colors when a channel
+  decreases from start to end (unsigned underflow). Interpolation now rounds
+  instead of truncating.
+- `color.HSLToRGB` wraps hue values of any magnitude (e.g. 730° ≡ 10°,
+  negative hues) and clamps saturation/lightness to [0, 1].
+- `color.MultiGradient` no longer panics for `steps <= 1`.
+- `assert.Equal` no longer fails with an empty diff when `reflect.DeepEqual`
+  and go-cmp disagree (e.g. `time.Time` values that represent the same
+  instant now compare equal).
+- `assert.NotEqual` no longer panics on structs with unexported fields.
+- `assert.InDelta` now fails on NaN arguments instead of silently passing.
+- `assert.Regexp` reports a test failure for invalid patterns instead of
+  panicking; `assert.Len` does the same for types without a length.
+- `crawler.Crawler` is now reusable: a second `Crawl` call no longer panics
+  on a closed queue, and `KnownURLs` (previously ignored) are now skipped.
+- `crawler` fixed a race where a crawl could terminate before all queued
+  URLs were processed, and a race where the same URL could be enqueued twice.
+- `crawler.Options.MaxURLs` is now enforced strictly against the number of
+  URLs admitted to the queue (previously it could over-admit while pages
+  were in flight).
+- `crawler` robots.txt handling: the most specific (longest) matching rule
+  now wins per the standard (previously any Allow overrode every Disallow),
+  and wildcard rules are anchored at the start of the path.
+- `crawler` pages served from cache now have their links re-extracted, so
+  link following keeps working on cache hits.
+- `clipboard.Read` no longer trims a trailing newline from clipboard
+  contents on macOS and Linux/X11, so `Write` → `Read` round-trips exactly.
+- `clipboard` on Windows uses `Get-Clipboard -Raw`, preserving line endings
+  in multiline content.
 
 ### Added
 
@@ -47,6 +76,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   deduplication.
 - `sse.Client` validates the response Content-Type with `mime.ParseMediaType`
   instead of a prefix check.
+- `crawler` honors robots.txt `Crawl-delay` (per worker, when larger than
+  `RequestDelay`), skips robots.txt checks for cache hits, `Workers`
+  defaults to 1, and parse failures are now counted as failed (not
+  succeeded) in crawl stats.
+- `crawler.Crawler.Stop` is now safe to call concurrently with `Crawl`.
+- `clipboard` errors now include stderr output from the underlying
+  clipboard utility.
+- `assert` colored diff output now respects `NO_COLOR`/`FORCE_COLOR`
+  (via `color.ShouldColorize`) instead of only checking for a terminal.
 
 ## [0.0.33] - 2026-04-28
 

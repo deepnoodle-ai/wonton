@@ -4,16 +4,17 @@ package clipboard
 
 import (
 	"context"
-	"strings"
 )
 
 // read implements clipboard reading for macOS using pbpaste.
+// pbpaste outputs the clipboard contents verbatim, so no trimming is needed;
+// trimming would corrupt content that legitimately ends with a newline.
 func read(ctx context.Context) (string, error) {
 	out, err := runCommand(ctx, "pbpaste")
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(string(out), "\n"), nil
+	return string(out), nil
 }
 
 // write implements clipboard writing for macOS using pbcopy.

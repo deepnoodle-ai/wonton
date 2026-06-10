@@ -1,5 +1,7 @@
 package color
 
+import "math"
+
 // HSLToRGB converts HSL (Hue, Saturation, Lightness) color space to RGB.
 //
 // Parameters:
@@ -26,8 +28,16 @@ package color
 //	    fmt.Print(c.Apply("█", false))
 //	}
 func HSLToRGB(h, s, l float64) RGB {
-	// Normalize hue to 0-1 range
+	// Wrap hue into [0, 360) and normalize to 0-1 range
+	h = math.Mod(h, 360.0)
+	if h < 0 {
+		h += 360.0
+	}
 	h = h / 360.0
+
+	// Clamp saturation and lightness to [0, 1]
+	s = math.Min(math.Max(s, 0), 1)
+	l = math.Min(math.Max(l, 0), 1)
 
 	var r, g, b float64
 
@@ -49,9 +59,9 @@ func HSLToRGB(h, s, l float64) RGB {
 	}
 
 	return RGB{
-		R: uint8(r * 255),
-		G: uint8(g * 255),
-		B: uint8(b * 255),
+		R: uint8(math.Round(r * 255)),
+		G: uint8(math.Round(g * 255)),
+		B: uint8(math.Round(b * 255)),
 	}
 }
 

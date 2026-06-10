@@ -57,6 +57,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/crawler/cache"
 	"github.com/deepnoodle-ai/wonton/fetch"
+	"github.com/deepnoodle-ai/wonton/htmlparse"
 	"github.com/deepnoodle-ai/wonton/retry"
 	"github.com/deepnoodle-ai/wonton/web"
 )
@@ -125,6 +126,7 @@ type Options struct {
 
 	// Workers specifies the number of concurrent worker goroutines.
 	// More workers increase throughput but also increase load on target sites.
+	// Defaults to 1 if not specified.
 	Workers int
 
 	// Cache stores fetched pages to avoid redundant requests. If nil, no caching is used.
@@ -170,6 +172,8 @@ type Options struct {
 
 	// QueueSize sets the buffer size for the URL queue.
 	// Larger queues can improve throughput but use more memory.
+	// If the queue fills up, newly discovered URLs are dropped (and logged);
+	// they may be picked up again if rediscovered later in the crawl.
 	// Defaults to 10000 if not specified.
 	QueueSize int
 
@@ -188,7 +192,9 @@ type Options struct {
 	RetryOptions *RetryOptions
 
 	// RespectRobotsTxt enables robots.txt compliance.
-	// When enabled, the crawler will fetch and respect robots.txt rules.
+	// When enabled, the crawler will fetch and respect robots.txt rules,
+	// including Crawl-delay directives (applied per worker, in place of
+	// RequestDelay when larger).
 	// Defaults to true. Set to false to disable robots.txt checking.
 	RespectRobotsTxt *bool
 
@@ -233,23 +239,32 @@ func BoolPtr(b bool) *bool {
 type Crawler struct {
 	processedURLs        sync.Map
 	queue                chan string
+	queueSize            int
 	maxURLs              int
 	workers              int
 	requestDelay         time.Duration
 	cache                cache.Cache
-	knownURLs            []string
 	parserRules          []*ParserRule
 	defaultParser        Parser
 	fetcherRules         []*FetcherRule
 	defaultFetcher       fetch.Fetcher
 	followBehavior       FollowBehavior
-	activeWorkers        int64
 	stats                *CrawlerStats
 	logger               *slog.Logger
-	running              bool
 	showProgress         bool
 	showProgressInterval time.Duration
-	cancel               context.CancelFunc
+
+	// mu protects running and cancel
+	mu      sync.Mutex
+	running bool
+	cancel  context.CancelFunc
+
+	// pendingURLs counts URLs that have been queued but not fully processed.
+	// The crawl is complete when this reaches zero.
+	pendingURLs int64
+
+	// enqueuedURLs counts URLs admitted to the queue, used to enforce maxURLs.
+	enqueuedURLs int64
 
 	// URL normalization options
 	allowHTTP           bool
@@ -288,6 +303,9 @@ func New(opts Options) (*Crawler, error) {
 	if opts.ShowProgress && opts.ShowProgressInterval == 0 {
 		opts.ShowProgressInterval = 30 * time.Second
 	}
+	if opts.Workers <= 0 {
+		opts.Workers = 1
+	}
 	if opts.QueueSize <= 0 {
 		opts.QueueSize = 10000
 	}
@@ -308,19 +326,25 @@ func New(opts Options) (*Crawler, error) {
 		workers:              opts.Workers,
 		requestDelay:         opts.RequestDelay,
 		defaultFetcher:       opts.DefaultFetcher,
-		knownURLs:            opts.KnownURLs,
 		defaultParser:        opts.DefaultParser,
 		followBehavior:       opts.FollowBehavior,
 		stats:                &CrawlerStats{},
 		logger:               logger,
 		showProgress:         opts.ShowProgress,
 		showProgressInterval: opts.ShowProgressInterval,
-		queue:                make(chan string, opts.QueueSize),
+		queueSize:            opts.QueueSize,
 		allowHTTP:            opts.AllowHTTP,
 		preserveQueryParams:  opts.PreserveQueryParams,
 		retryOptions:         opts.RetryOptions,
 		respectRobotsTxt:     respectRobotsTxt,
 		robotsTxtUserAgent:   opts.RobotsTxtUserAgent,
+	}
+	// Seed the processed set with already-known URLs so they are not
+	// crawled again. This supports resuming interrupted crawls.
+	for _, rawURL := range opts.KnownURLs {
+		if normalized, err := c.normalizeURL(rawURL); err == nil {
+			c.processedURLs.Store(strings.TrimSuffix(normalized.String(), "/"), true)
+		}
 	}
 	if err := c.AddParserRules(opts.ParserRules...); err != nil {
 		return nil, err
@@ -377,21 +401,6 @@ func (c *Crawler) sortFetcherRulesByPriority() {
 	})
 }
 
-// incrementActiveWorkers atomically increments the active workers counter
-func (c *Crawler) incrementActiveWorkers() {
-	atomic.AddInt64(&c.activeWorkers, 1)
-}
-
-// decrementActiveWorkers atomically decrements the active workers counter
-func (c *Crawler) decrementActiveWorkers() {
-	atomic.AddInt64(&c.activeWorkers, -1)
-}
-
-// getActiveWorkers atomically gets the current active workers count
-func (c *Crawler) getActiveWorkers() int64 {
-	return atomic.LoadInt64(&c.activeWorkers)
-}
-
 // Crawl begins crawling from the provided seed URLs, invoking the callback
 // for each page processed. The crawler will follow discovered links according
 // to the configured FollowBehavior.
@@ -407,6 +416,10 @@ func (c *Crawler) getActiveWorkers() int64 {
 // Returns an error if the crawler is already running or if the context is
 // canceled before crawling begins.
 //
+// A Crawler can be reused: once Crawl returns, it may be called again. URLs
+// processed by earlier calls are remembered and will not be crawled again,
+// and statistics continue to accumulate.
+//
 // Example:
 //
 //	err := crawler.Crawl(ctx, []string{"https://example.com"}, func(ctx context.Context, result *crawler.Result) {
@@ -417,17 +430,26 @@ func (c *Crawler) getActiveWorkers() int64 {
 //		fmt.Printf("Crawled %s: found %d links\n", result.URL, len(result.Links))
 //	})
 func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) error {
+	c.mu.Lock()
 	if c.running {
+		c.mu.Unlock()
 		return errors.New("crawler is already running")
 	}
 	c.running = true
+	// Create a fresh queue for each crawl so the Crawler can be reused.
+	c.queue = make(chan string, c.queueSize)
+	atomic.StoreInt64(&c.pendingURLs, 0)
+	// This context is used to stop workers when the work is done
+	ctx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+	c.mu.Unlock()
 
-	// This context will be used to stop workers when the work is done
-	ctx, c.cancel = context.WithCancel(ctx)
 	defer func() {
+		cancel()
+		c.mu.Lock()
 		c.running = false
-		c.cancel()
 		c.cancel = nil
+		c.mu.Unlock()
 	}()
 
 	// Start workers
@@ -436,28 +458,26 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 		wg.Add(1)
 		go c.worker(ctx, &wg, callback)
 	}
-	defer close(c.queue)
 
 	// Optionally start the progress reporter
 	if c.showProgress {
 		go c.progressReporter(ctx)
 	}
 
-	// Start idle monitor to detect when no more work is available
-	go c.idleMonitor(ctx, c.cancel)
-
 	// Queue initial URLs
 	count, err := c.enqueue(ctx, urls)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return nil
+	if err != nil || count == 0 {
+		// Nothing to crawl (or the context was canceled): stop the workers
+		// and wait for them to exit.
+		cancel()
+	} else {
+		// Start idle monitor to detect when all queued work is complete
+		go c.idleMonitor(ctx, cancel)
 	}
 
 	// Wait for workers to complete
 	wg.Wait()
-	return nil
+	return err
 }
 
 // Stop gracefully stops the crawler by canceling its context. This signals
@@ -466,23 +486,15 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 // Stop is safe to call concurrently and can be called multiple times.
 // It does nothing if the crawler is not currently running.
 func (c *Crawler) Stop() {
-	if c.cancel != nil {
-		c.cancel()
+	c.mu.Lock()
+	cancel := c.cancel
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
 func (c *Crawler) enqueue(ctx context.Context, urls []string) (int, error) {
-	// Prevent exceeding the max URLs limit
-	if c.maxURLs > 0 {
-		allowedCount := c.maxURLs - int(c.stats.GetProcessed())
-		if allowedCount <= 0 {
-			return 0, nil
-		}
-		if allowedCount < len(urls) {
-			urls = urls[:allowedCount]
-		}
-	}
-	// Normalize and enqueue the URLs
 	queued := 0
 	for _, rawURL := range urls {
 		normalizedURL, err := c.normalizeURL(rawURL)
@@ -493,48 +505,75 @@ func (c *Crawler) enqueue(ctx context.Context, urls []string) (int, error) {
 			continue
 		}
 		value := strings.TrimSuffix(normalizedURL.String(), "/")
-		// Check if already seen (but don't mark as processed yet)
-		if _, exists := c.processedURLs.Load(value); exists {
+		// Atomically check-and-mark as seen so concurrent workers cannot
+		// enqueue the same URL twice.
+		if _, seen := c.processedURLs.LoadOrStore(value, true); seen {
 			continue
 		}
-		// Try to enqueue - only mark as processed if successful
+		// Reserve a slot against the max URLs limit before queueing.
+		if c.maxURLs > 0 && atomic.AddInt64(&c.enqueuedURLs, 1) > int64(c.maxURLs) {
+			atomic.AddInt64(&c.enqueuedURLs, -1)
+			c.processedURLs.Delete(value)
+			return queued, nil
+		}
 		select {
 		case c.queue <- value:
-			// Successfully queued, now mark as processed to prevent re-queueing
-			c.processedURLs.Store(value, true)
+			atomic.AddInt64(&c.pendingURLs, 1)
 			queued++
 		case <-ctx.Done():
+			c.releaseURL(value)
 			return queued, ctx.Err()
 		default:
-			// Queue is full - DO NOT mark as processed so it can be retried later
-			c.logger.Debug("queue full, skipping url",
+			// Queue is full - unmark the URL so it can be retried if it is
+			// discovered again later.
+			c.releaseURL(value)
+			c.logger.Warn("queue full, dropping url",
 				slog.String("url", value))
 		}
 	}
 	return queued, nil
 }
 
+// releaseURL undoes the bookkeeping performed before a URL is queued, used
+// when queueing fails.
+func (c *Crawler) releaseURL(value string) {
+	c.processedURLs.Delete(value)
+	if c.maxURLs > 0 {
+		atomic.AddInt64(&c.enqueuedURLs, -1)
+	}
+}
+
 func (c *Crawler) worker(ctx context.Context, wg *sync.WaitGroup, callback Callback) {
 	defer wg.Done()
+	queue := c.queue
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case rawURL, ok := <-c.queue:
+		case rawURL, ok := <-queue:
 			if !ok {
 				return
 			}
-			c.incrementActiveWorkers()
-			c.processURL(ctx, rawURL, callback)
-			c.decrementActiveWorkers()
-			if c.requestDelay > 0 {
-				time.Sleep(c.requestDelay)
+			delay := c.processURL(ctx, rawURL, callback)
+			// Decrement pending only after processing completes, so that any
+			// links discovered (and queued) by processURL are counted first
+			// and the idle monitor never observes a false zero.
+			atomic.AddInt64(&c.pendingURLs, -1)
+			if delay > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
 			}
 		}
 	}
 }
 
-func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callback) {
+// processURL fetches, parses, and reports a single URL. It returns the delay
+// the worker should apply before processing its next URL, which is the larger
+// of the configured RequestDelay and any robots.txt Crawl-delay for the host.
+func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callback) time.Duration {
 	c.stats.IncrementProcessed()
 
 	// Parse the url to get its domain
@@ -543,7 +582,7 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		c.logger.Warn("invalid url",
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
-		return
+		return c.requestDelay
 	}
 	domain := parsedURL.Hostname()
 
@@ -556,6 +595,12 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 				URL:  rawURL,
 				HTML: string(cachedHTML),
 			}
+			// The cache stores only HTML, not the links discovered at fetch
+			// time, so re-extract them to keep link following working on
+			// cache hits.
+			if doc, err := htmlparse.Parse(response.HTML); err == nil {
+				response.Links = doc.Links()
+			}
 		}
 	}
 
@@ -567,28 +612,27 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 			slog.String("domain", domain))
 		callback(ctx, &Result{URL: parsedURL, Error: errors.New("no fetcher configured for domain")})
 		c.stats.IncrementFailed()
-		return
-	}
-
-	// Check robots.txt if enabled
-	if c.respectRobotsTxt && !c.isAllowedByRobots(ctx, parsedURL) {
-		c.logger.Debug("blocked by robots.txt",
-			slog.String("url", rawURL))
-		callback(ctx, &Result{URL: parsedURL, Error: errors.New("blocked by robots.txt")})
-		c.stats.IncrementFailed()
-		return
-	}
-
-	// Create fetch request
-	req := &fetch.Request{
-		URL:             rawURL,
-		Prettify:        false,
-		OnlyMainContent: false,
-		Formats:         []string{"html", "links"},
+		return c.requestDelay
 	}
 
 	// Fetch if there was not a cache hit
 	if response == nil {
+		// Check robots.txt if enabled. Cache hits skip this check (and the
+		// robots.txt fetch it may trigger) since no network request is made.
+		if c.respectRobotsTxt && !c.isAllowedByRobots(ctx, parsedURL) {
+			c.logger.Debug("blocked by robots.txt",
+				slog.String("url", rawURL))
+			callback(ctx, &Result{URL: parsedURL, Error: errors.New("blocked by robots.txt")})
+			c.stats.IncrementFailed()
+			return c.delayFor(parsedURL)
+		}
+
+		req := &fetch.Request{
+			URL:             rawURL,
+			Prettify:        false,
+			OnlyMainContent: false,
+			Formats:         []string{"html", "links"},
+		}
 		c.logger.Debug("fetching", slog.String("url", rawURL))
 
 		// Use retry logic if configured
@@ -626,7 +670,7 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		if err != nil {
 			callback(ctx, &Result{URL: parsedURL, Error: err})
 			c.stats.IncrementFailed()
-			return
+			return c.delayFor(parsedURL)
 		}
 		if c.cache != nil && response.HTML != "" {
 			if err := c.cache.Set(ctx, rawURL, []byte(response.HTML)); err != nil {
@@ -665,7 +709,11 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		Response: response,
 		Error:    parseErr,
 	})
-	c.stats.IncrementSucceeded()
+	if parseErr != nil {
+		c.stats.IncrementFailed()
+	} else {
+		c.stats.IncrementSucceeded()
+	}
 
 	filteredURLs := c.filterLinks(parsedURL, discoveredLinks)
 	if _, err := c.enqueue(ctx, filteredURLs); err != nil {
@@ -673,6 +721,21 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
 	}
+	return c.delayFor(parsedURL)
+}
+
+// delayFor returns the delay a worker should apply after processing a URL:
+// the configured RequestDelay, or the host's robots.txt Crawl-delay if that
+// is larger. Only already-cached robots.txt data is consulted; this never
+// triggers a robots.txt fetch.
+func (c *Crawler) delayFor(parsedURL *url.URL) time.Duration {
+	delay := c.requestDelay
+	if c.respectRobotsTxt {
+		if d := c.cachedRobotsCrawlDelay(parsedURL); d > delay {
+			delay = d
+		}
+	}
+	return delay
 }
 
 func (c *Crawler) getParser(domain string) (Parser, bool) {
@@ -772,8 +835,8 @@ func (c *Crawler) GetStats() *CrawlerStats {
 }
 
 func (c *Crawler) idleMonitor(ctx context.Context, cancel context.CancelFunc) {
-	// Check every second for idle state
-	ticker := time.NewTicker(1 * time.Second)
+	// Check periodically for idle state
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -781,9 +844,11 @@ func (c *Crawler) idleMonitor(ctx context.Context, cancel context.CancelFunc) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Check if we're idle: no active workers and queue is empty
-			if c.getActiveWorkers() == 0 && len(c.queue) == 0 {
-				c.logger.Info("no more work available, stopping crawler")
+			// The crawl is complete when no queued URLs remain. The counter
+			// is decremented only after a URL is fully processed (including
+			// enqueueing any discovered links), so a zero reading is final.
+			if atomic.LoadInt64(&c.pendingURLs) == 0 {
+				c.logger.Debug("no more work available, stopping crawler")
 				cancel() // Cancel context to stop all workers
 				return
 			}

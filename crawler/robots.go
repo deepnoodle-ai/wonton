@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,9 +141,7 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 			}
 
 		case "crawl-delay":
-			var seconds float64
-			if _, err := stringToFloat(value); err == nil {
-				seconds, _ = stringToFloat(value)
+			if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds >= 0 {
 				delay := time.Duration(seconds * float64(time.Second))
 				if isSpecificMatch && !isWildcardMatch {
 					specificData.crawlDelay = delay
@@ -158,57 +157,6 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 		return specificData
 	}
 	return wildcardData
-}
-
-// stringToFloat converts a string to float64, returning 0 on error
-func stringToFloat(s string) (float64, error) {
-	var result float64
-	_, err := scanFloat(s, &result)
-	return result, err
-}
-
-// scanFloat is a simple float parser
-func scanFloat(s string, result *float64) (int, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0, nil
-	}
-
-	var val float64
-	var decimal float64 = 0.1
-	var negative bool
-	var seenDot bool
-	var count int
-
-	for i, c := range s {
-		if i == 0 && c == '-' {
-			negative = true
-			continue
-		}
-		if c == '.' {
-			if seenDot {
-				break
-			}
-			seenDot = true
-			continue
-		}
-		if c < '0' || c > '9' {
-			break
-		}
-		count++
-		if seenDot {
-			val += float64(c-'0') * decimal
-			decimal *= 0.1
-		} else {
-			val = val*10 + float64(c-'0')
-		}
-	}
-
-	if negative {
-		val = -val
-	}
-	*result = val
-	return count, nil
 }
 
 // isAllowedByRobots checks if a URL is allowed by robots.txt rules
@@ -231,69 +179,88 @@ func (c *Crawler) isAllowedByRobots(ctx context.Context, targetURL *url.URL) boo
 		path += "?" + targetURL.RawQuery
 	}
 
-	// Check allow rules first (they take precedence for longer matches)
+	// Per the robots.txt standard, the most specific (longest) matching rule
+	// wins. If an Allow and Disallow rule match with equal specificity, the
+	// Allow rule wins.
+	bestAllow, bestDisallow := -1, -1
 	for _, rule := range data.allowRules {
-		if pathMatches(path, rule) {
-			return true
+		if len(rule) > bestAllow && pathMatches(path, rule) {
+			bestAllow = len(rule)
 		}
 	}
-
-	// Check disallow rules
 	for _, rule := range data.disallowRules {
-		if pathMatches(path, rule) {
-			return false
+		if len(rule) > bestDisallow && pathMatches(path, rule) {
+			bestDisallow = len(rule)
 		}
 	}
-
-	// Default: allow
-	return true
+	if bestDisallow == -1 {
+		return true
+	}
+	return bestAllow >= bestDisallow
 }
 
-// pathMatches checks if a path matches a robots.txt rule pattern
+// pathMatches checks if a path matches a robots.txt rule pattern. Rules are
+// anchored at the start of the path, may contain * wildcards, and may end
+// with $ to anchor the match at the end of the path.
 func pathMatches(path, rule string) bool {
 	// Empty rule matches nothing
 	if rule == "" {
 		return false
 	}
 
-	// Handle wildcards
-	if strings.Contains(rule, "*") {
-		// Split by wildcards and check if all parts match in order
-		parts := strings.Split(rule, "*")
-		pos := 0
-		for _, part := range parts {
-			if part == "" {
-				continue
-			}
-			idx := strings.Index(path[pos:], part)
-			if idx == -1 {
-				return false
-			}
-			pos += idx + len(part)
+	endAnchor := strings.HasSuffix(rule, "$")
+	if endAnchor {
+		rule = rule[:len(rule)-1]
+	}
+
+	parts := strings.Split(rule, "*")
+
+	// No wildcards: simple prefix (or exact, with $) matching
+	if len(parts) == 1 {
+		if endAnchor {
+			return path == rule
 		}
-		return true
+		return strings.HasPrefix(path, rule)
 	}
 
-	// Handle end-of-string anchor
-	if strings.HasSuffix(rule, "$") {
-		rule = strings.TrimSuffix(rule, "$")
-		return path == rule
+	// The first segment must match at the start of the path
+	if !strings.HasPrefix(path, parts[0]) {
+		return false
+	}
+	pos := len(parts[0])
+
+	// With an end anchor, the final segment must match at the end of the path
+	end := len(path)
+	if endAnchor {
+		last := parts[len(parts)-1]
+		if len(path)-pos < len(last) || !strings.HasSuffix(path, last) {
+			return false
+		}
+		end = len(path) - len(last)
+		parts = parts[:len(parts)-1]
 	}
 
-	// Standard prefix matching
-	return strings.HasPrefix(path, rule)
+	// Remaining segments must appear in order between pos and end
+	for _, part := range parts[1:] {
+		if part == "" {
+			continue
+		}
+		idx := strings.Index(path[pos:end], part)
+		if idx == -1 {
+			return false
+		}
+		pos += idx + len(part)
+	}
+	return true
 }
 
-// getRobotsCrawlDelay returns the crawl delay from robots.txt, or 0 if not set
-func (c *Crawler) getRobotsCrawlDelay(ctx context.Context, targetURL *url.URL) time.Duration {
-	if !c.respectRobotsTxt {
-		return 0
+// cachedRobotsCrawlDelay returns the Crawl-delay for the URL's host if
+// robots.txt data is already cached, or 0 otherwise. It never triggers a
+// robots.txt fetch.
+func (c *Crawler) cachedRobotsCrawlDelay(targetURL *url.URL) time.Duration {
+	host := targetURL.Scheme + "://" + targetURL.Host
+	if cached, ok := c.robotsCache.Load(host); ok {
+		return cached.(*robotsTxtData).crawlDelay
 	}
-
-	data, err := c.fetchRobotsTxt(ctx, targetURL)
-	if err != nil {
-		return 0
-	}
-
-	return data.crawlDelay
+	return 0
 }

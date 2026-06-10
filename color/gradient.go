@@ -1,5 +1,23 @@
 package color
 
+import "math"
+
+// lerpRGB linearly interpolates between two RGB colors. t is clamped to [0, 1],
+// where 0 returns start and 1 returns end.
+func lerpRGB(start, end RGB, t float64) RGB {
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	return RGB{
+		R: uint8(math.Round(float64(start.R)*(1-t) + float64(end.R)*t)),
+		G: uint8(math.Round(float64(start.G)*(1-t) + float64(end.G)*t)),
+		B: uint8(math.Round(float64(start.B)*(1-t) + float64(end.B)*t)),
+	}
+}
+
 // Gradient creates a linear gradient between two RGB colors with the specified
 // number of steps. Each step is an RGB color interpolated between start and end.
 //
@@ -24,11 +42,7 @@ func Gradient(start, end RGB, steps int) []RGB {
 	colors := make([]RGB, steps)
 	for i := 0; i < steps; i++ {
 		t := float64(i) / float64(steps-1)
-		colors[i] = RGB{
-			R: uint8(float64(start.R) + t*float64(end.R-start.R)),
-			G: uint8(float64(start.G) + t*float64(end.G-start.G)),
-			B: uint8(float64(start.B) + t*float64(end.B-start.B)),
-		}
+		colors[i] = lerpRGB(start, end, t)
 	}
 	return colors
 }
@@ -76,13 +90,7 @@ func RainbowGradient(steps int) []RGB {
 		if segment >= 6 {
 			colors[i] = rainbowStops[6]
 		} else {
-			start := rainbowStops[segment]
-			end := rainbowStops[segment+1]
-			colors[i] = RGB{
-				R: uint8(float64(start.R)*(1-localT) + float64(end.R)*localT),
-				G: uint8(float64(start.G)*(1-localT) + float64(end.G)*localT),
-				B: uint8(float64(start.B)*(1-localT) + float64(end.B)*localT),
-			}
+			colors[i] = lerpRGB(rainbowStops[segment], rainbowStops[segment+1], localT)
 		}
 	}
 
@@ -133,8 +141,11 @@ func SmoothRainbow(steps int) []RGB {
 //	    color.NewRGB(128, 0, 128),   // Purple
 //	}, 20)
 func MultiGradient(stops []RGB, steps int) []RGB {
-	if len(stops) == 0 {
+	if len(stops) == 0 || steps <= 0 {
 		return []RGB{}
+	}
+	if steps == 1 {
+		return []RGB{stops[0]}
 	}
 	if len(stops) == 1 {
 		result := make([]RGB, steps)
@@ -153,13 +164,7 @@ func MultiGradient(stops []RGB, steps int) []RGB {
 			colors[i] = stops[len(stops)-1]
 		} else {
 			localT := position - float64(segment)
-			start := stops[segment]
-			end := stops[segment+1]
-			colors[i] = RGB{
-				R: uint8(float64(start.R)*(1-localT) + float64(end.R)*localT),
-				G: uint8(float64(start.G)*(1-localT) + float64(end.G)*localT),
-				B: uint8(float64(start.B)*(1-localT) + float64(end.B)*localT),
-			}
+			colors[i] = lerpRGB(stops[segment], stops[segment+1], localT)
 		}
 	}
 	return colors
