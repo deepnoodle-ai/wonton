@@ -149,6 +149,11 @@ func (p *Player) Play() error {
 		events = p.adjustedEvents
 	}
 
+	// Nothing to play; avoid busy-spinning when Loop is enabled.
+	if len(events) == 0 {
+		return nil
+	}
+
 	for {
 		p.mu.RLock()
 		if p.stopped {
@@ -184,24 +189,30 @@ func (p *Player) Play() error {
 		event := events[p.currentIndex]
 		speed := p.speed
 		currentIndex := p.currentIndex
-		startTime := p.startTime
-		totalPaused := p.totalPaused
+		elapsed := p.elapsedLocked()
 		p.mu.RUnlock()
 
 		// Calculate when this event should fire
 		targetTime := event.Time / speed
-		elapsed := time.Since(startTime).Seconds() - totalPaused.Seconds()
 
 		if elapsed < targetTime {
 			sleepDuration := time.Duration((targetTime - elapsed) * float64(time.Second))
 			// Only sleep if duration is meaningful (>= 10ms)
 			const minSleepDuration = 10 * time.Millisecond
 			if sleepDuration >= minSleepDuration {
+				// Sleep in bounded slices so Pause, Seek, SetSpeed, and Stop
+				// take effect promptly even during long idle gaps.
+				const maxSleepSlice = 50 * time.Millisecond
+				if sleepDuration > maxSleepSlice {
+					sleepDuration = maxSleepSlice
+				}
 				select {
 				case <-p.stopChan:
 					return nil
 				case <-time.After(sleepDuration):
 				}
+				// Re-evaluate state (pause/seek/speed) before writing
+				continue
 			}
 		}
 
@@ -342,6 +353,17 @@ func (p *Player) activeEvents() []RecordingEvent {
 	return p.events
 }
 
+// elapsedLocked returns the playback-clock seconds elapsed since Play started,
+// excluding paused time (including the in-flight pause, if currently paused).
+// Caller must hold p.mu (read or write).
+func (p *Player) elapsedLocked() float64 {
+	elapsed := time.Since(p.startTime) - p.totalPaused
+	if p.paused {
+		elapsed -= time.Since(p.pauseTime)
+	}
+	return elapsed.Seconds()
+}
+
 // SetSpeed changes the playback speed multiplier.
 //
 // The speed is adjusted smoothly to prevent jumps in playback position.
@@ -357,16 +379,13 @@ func (p *Player) SetSpeed(speed float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	events := p.activeEvents()
-
-	// Adjust timing to prevent jumps when speed changes
-	if !p.paused && p.currentIndex < len(events) {
-		elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
-		currentEventTime := events[p.currentIndex].Time
-
-		// Calculate new start time to maintain position
-		newElapsed := currentEventTime / speed
-		adjustment := elapsed - newElapsed
+	// Adjust the start time so the current position in the recording is
+	// preserved: position (in recording seconds) is elapsed * speed, and it
+	// must be unchanged under the new speed.
+	elapsed := p.elapsedLocked()
+	if elapsed > 0 {
+		position := elapsed * p.speed
+		adjustment := elapsed - position/speed
 		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
 	}
 
@@ -411,7 +430,7 @@ func (p *Player) Seek(seconds float64) {
 
 	p.currentIndex = targetIndex
 	// Adjust start time to account for the seek
-	elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
+	elapsed := p.elapsedLocked()
 	adjustment := elapsed - (seconds / p.speed)
 	p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
 }

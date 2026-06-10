@@ -110,7 +110,7 @@ func NewSession(opts SessionOptions) (*Session, error) {
 //	session.Close()
 func (s *Session) Record(filename string, opts RecordingOptions) error {
 	s.mu.Lock()
-	if s.started {
+	if s.started || s.recorder != nil {
 		s.mu.Unlock()
 		return fmt.Errorf("session already started")
 	}
@@ -148,13 +148,21 @@ func (s *Session) Record(filename string, opts RecordingOptions) error {
 	}
 
 	s.mu.Lock()
+	if s.started || s.recorder != nil {
+		// Lost a race with a concurrent Start/Record
+		s.mu.Unlock()
+		recorder.Close()
+		return fmt.Errorf("session already started")
+	}
 	s.recorder = recorder
 	s.mu.Unlock()
 
 	if err := s.Start(); err != nil {
 		// Clean up recorder on start failure
 		s.mu.Lock()
-		s.recorder = nil
+		if s.recorder == recorder {
+			s.recorder = nil
+		}
 		s.mu.Unlock()
 		recorder.Close()
 		return err
@@ -185,12 +193,14 @@ func (s *Session) Record(filename string, opts RecordingOptions) error {
 //	// Session is now interactive
 //	session.Wait()
 func (s *Session) Start() error {
+	// Hold the lock for the entire setup so concurrent Start calls cannot
+	// both pass the started check (which previously double-started the
+	// command and panicked on a double close of s.done).
 	s.mu.Lock()
 	if s.started {
 		s.mu.Unlock()
 		return fmt.Errorf("session already started")
 	}
-	s.mu.Unlock()
 
 	// Defaults
 	if s.input == nil {
@@ -210,37 +220,50 @@ func (s *Session) Start() error {
 		command = []string{shell}
 	}
 
-	s.cmd = exec.Command(command[0], command[1:]...)
-	s.cmd.Env = append(os.Environ(), s.env...)
+	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Env = append(os.Environ(), s.env...)
 	if s.dir != "" {
-		s.cmd.Dir = s.dir
+		cmd.Dir = s.dir
 	}
 
 	// Start command in PTY
-	p, err := pty.Start(s.cmd)
+	p, err := pty.Start(cmd)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to start PTY: %w", err)
 	}
-	s.pty = p
 
 	// Set raw mode on input (if it's a terminal)
+	inputIsTTY := false
 	if f, ok := s.input.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		inputIsTTY = true
 		oldState, err := term.MakeRaw(int(f.Fd()))
 		if err != nil {
-			s.pty.Close()
-			s.pty = nil
+			s.mu.Unlock()
+			p.Close()
+			// The command is already running; kill and reap it so it
+			// doesn't linger as a zombie.
+			cmd.Process.Kill()
+			cmd.Wait()
 			return fmt.Errorf("failed to enable raw mode: %w", err)
 		}
 		s.oldState = oldState
 	}
 
-	// Mark as started only after all setup succeeds
-	s.mu.Lock()
+	s.cmd = cmd
+	s.pty = p
 	s.started = true
 	s.mu.Unlock()
 
-	// Sync initial terminal size
-	s.syncSize()
+	if inputIsTTY {
+		// Sync initial terminal size
+		s.syncSize()
+	} else {
+		// No controlling terminal to mirror: give the child a sane default
+		// size instead of leaving the PTY at 0x0 (which confuses curses
+		// apps and disagrees with the 80x24 recording header fallback).
+		pty.Setsize(p, &pty.Winsize{Rows: 24, Cols: 80})
+	}
 
 	// Handle SIGWINCH for resize
 	go s.handleResize()
@@ -255,8 +278,16 @@ func (s *Session) Start() error {
 // Wait blocks until the session ends and returns any error.
 //
 // This waits for the command to exit. The exit code can be retrieved
-// with ExitCode() after Wait returns.
+// with ExitCode() after Wait returns. Returns an error immediately if
+// the session was never started.
 func (s *Session) Wait() error {
+	s.mu.Lock()
+	started := s.started
+	s.mu.Unlock()
+	if !started {
+		return fmt.Errorf("session not started")
+	}
+
 	<-s.done
 
 	s.mu.Lock()
@@ -281,11 +312,11 @@ func (s *Session) ExitCode() int {
 //   - Restores the terminal to its original state
 //   - Closes and finalizes any recording
 //   - Closes the PTY
+//   - Kills the command if it is still running
 //
 // It's safe to call Close multiple times or before the session completes.
 func (s *Session) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// Restore terminal state
 	if s.oldState != nil {
@@ -305,6 +336,23 @@ func (s *Session) Close() error {
 	if s.pty != nil {
 		s.pty.Close()
 		s.pty = nil
+	}
+
+	cmd := s.cmd
+	started := s.started
+	s.mu.Unlock()
+
+	// Closing the PTY sends SIGHUP to the child's process group, but some
+	// programs ignore SIGHUP. Kill the process if it hasn't exited yet so
+	// cmd.Wait (and therefore Wait) is guaranteed to return.
+	if started && cmd != nil && cmd.Process != nil {
+		select {
+		case <-s.done:
+			// Already exited and reaped
+		default:
+			// Kill is a no-op (ErrProcessDone) if the process has exited
+			cmd.Process.Kill()
+		}
 	}
 
 	return nil
@@ -434,25 +482,41 @@ func (s *Session) syncSize() error {
 	return nil
 }
 
-// copyInput reads from input and writes to the PTY
+// copyInput reads from input and writes to the PTY.
+//
+// The goroutine may remain blocked in a Read on the session's input after
+// the session ends (a blocking read on an arbitrary io.Reader cannot be
+// cancelled), but it exits on the first read that completes afterward
+// rather than silently consuming the host's input stream forever.
 func (s *Session) copyInput() {
 	buf := make([]byte, 4096)
 	for {
 		n, err := s.input.Read(buf)
+
+		select {
+		case <-s.done:
+			// Session ended; stop consuming the host's input.
+			return
+		default:
+		}
+
 		if n > 0 {
 			s.mu.Lock()
 			ptmx := s.pty
 			recorder := s.recorder
 			s.mu.Unlock()
 
+			if ptmx == nil {
+				// Session closed; stop consuming the host's input.
+				return
+			}
+
 			if recorder != nil {
 				recorder.RecordInput(string(buf[:n]))
 			}
 
-			if ptmx != nil {
-				if _, werr := ptmx.Write(buf[:n]); werr != nil {
-					break
-				}
+			if _, werr := ptmx.Write(buf[:n]); werr != nil {
+				return
 			}
 		}
 
@@ -462,11 +526,14 @@ func (s *Session) copyInput() {
 				ptmx := s.pty
 				s.mu.Unlock()
 				if ptmx != nil {
-					// Send EOT (Ctrl+D) to signal EOF to the PTY slave
+					// Send EOT (Ctrl+D) to signal EOF to the PTY slave.
+					// Note: this only signals EOF when the slave is in
+					// canonical mode with an empty line buffer; raw-mode
+					// programs will see a literal ^D byte.
 					ptmx.Write([]byte{4})
 				}
 			}
-			break
+			return
 		}
 	}
 }
@@ -494,11 +561,15 @@ func (s *Session) copyOutput() {
 		if s.cmd != nil {
 			err := s.cmd.Wait()
 			s.mu.Lock()
-			s.err = err
+			if s.err == nil {
+				s.err = err
+			}
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				s.exitCode = exitErr.ExitCode()
-			} else if err == nil {
-				s.exitCode = 0
+			} else if err != nil {
+				// Wait failed for a reason other than a non-zero exit;
+				// no exit code is available.
+				s.exitCode = -1
 			}
 			s.mu.Unlock()
 		}
@@ -518,23 +589,22 @@ func (s *Session) copyOutput() {
 		}
 
 		n, err := ptmx.Read(buf)
-		if err != nil {
-			if err != io.EOF {
-				s.mu.Lock()
-				s.err = err
-				s.mu.Unlock()
+		if n > 0 {
+			data := buf[:n]
+
+			// Write to output
+			s.output.Write(data)
+
+			// Record if enabled
+			if recorder != nil {
+				recorder.RecordOutput(string(data))
 			}
-			break
 		}
-
-		data := buf[:n]
-
-		// Write to output
-		s.output.Write(data)
-
-		// Record if enabled
-		if recorder != nil {
-			recorder.RecordOutput(string(data))
+		if err != nil {
+			// Reading the PTY master returns EIO (Linux) or EOF when the
+			// child exits; either way the session is over. The child's
+			// real status comes from cmd.Wait in the deferred cleanup.
+			break
 		}
 	}
 }

@@ -2,12 +2,17 @@ package termsession
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 )
+
+// maxCastLineSize is the maximum size of a single line in a .cast file.
+// Individual events are typically small, but full-screen redraws can be large.
+const maxCastLineSize = 16 * 1024 * 1024
 
 // LoadCastFile loads a .cast file from disk and returns its contents.
 //
@@ -90,23 +95,36 @@ func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 		}
 	}
 
-	decoder := json.NewDecoder(reader)
+	// The format is line-delimited JSON. Parse line by line so a corrupt or
+	// truncated line can be skipped without poisoning the rest of the stream
+	// (a json.Decoder sticks on syntax errors, which previously caused an
+	// infinite loop on truncated files).
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxCastLineSize)
 
-	// Read header (first object)
+	// Read header (first line)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, nil, fmt.Errorf("failed to parse header: %w", err)
+		}
+		return nil, nil, fmt.Errorf("failed to parse header: %w", io.ErrUnexpectedEOF)
+	}
 	var header RecordingHeader
-	if err := decoder.Decode(&header); err != nil {
+	if err := json.Unmarshal(scanner.Bytes(), &header); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse header: %w", err)
 	}
 
-	// Read events (remaining objects)
+	// Read events (remaining lines)
 	var events []RecordingEvent
-	for {
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
 		var raw []interface{}
-		if err := decoder.Decode(&raw); err != nil {
-			if err == io.EOF {
-				break
-			}
-			continue // Skip malformed lines/objects
+		if err := json.Unmarshal(line, &raw); err != nil {
+			continue // Skip malformed lines
 		}
 
 		if len(raw) < 3 {
@@ -132,6 +150,9 @@ func LoadCast(r io.Reader) (*RecordingHeader, []RecordingEvent, error) {
 			Type: typeVal,
 			Data: dataVal,
 		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, nil, fmt.Errorf("failed to read events: %w", err)
 	}
 
 	return &header, events, nil
