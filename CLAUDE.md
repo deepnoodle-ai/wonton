@@ -31,7 +31,7 @@ and CLI building blocks that work well together.
 | **color**       | ANSI colors, RGB/HSL, gradients                |
 | **crawler**     | Web crawler with caching                       |
 | **env**         | Config from env vars, .env, JSON               |
-| **fetch**       | HTTP page fetching                             |
+| **fetch**       | HTTP page fetching and file downloads          |
 | **gif**         | Animated GIF creation                          |
 | **git**         | Git read operations                            |
 | **htmlparse**   | HTML parsing, metadata, links                  |
@@ -46,7 +46,7 @@ and CLI building blocks that work well together.
 | **termtest**    | Terminal output testing                        |
 | **tui**         | Declarative TUI with layout engine             |
 | **unidiff**     | Unified diff parsing                           |
-| **web**         | URL utilities, binary fetch, search            |
+| **web**         | URL canonicalization, search abstractions      |
 
 ## Development Commands
 

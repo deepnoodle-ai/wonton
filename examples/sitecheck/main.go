@@ -345,12 +345,12 @@ func runCrawler(ctx context.Context, app *SiteCheckApp, startURL string, maxURLs
 
 			// Check all links on this page (including external links)
 			for _, link := range result.Links {
-				// Skip media files
+				// Skip file downloads and page subresources
 				linkURL, err := web.NormalizeURL(link)
 				if err != nil {
 					continue
 				}
-				if web.IsMediaURL(linkURL) {
+				if web.IsBinaryURL(linkURL) {
 					continue
 				}
 

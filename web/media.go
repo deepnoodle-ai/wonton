@@ -6,98 +6,50 @@ import (
 	"strings"
 )
 
-// mediaExtensions is the set of file extensions considered media files.
-//
-// This includes common file types that web crawlers typically want to skip when
-// extracting text content or following links:
-//   - Images: .jpg, .png, .gif, .svg, .webp, .bmp, .ico, etc.
-//   - Videos: .mp4, .avi, .mov, .mkv, .flv, etc.
-//   - Audio: .mp3, .wav, .aac, .ogg, .flac, etc.
-//   - Documents: .pdf, .doc, .docx, .xls, .xlsx, .ppt, .pptx
-//   - Archives: .zip, .tar, .gz, .rar, .7z, .iso
-//   - Fonts: .ttf, .otf, .woff, .woff2, .eot
-//   - Executables: .exe, .dmg, .apk, .deb, .rpm, .msi, etc.
-//   - Other: .css, .torrent
-//
-// Extensions are stored in lowercase with the leading dot included.
-// Use IsMediaURL to check if a URL points to a media file, or
-// IsMediaExtension to check a file extension directly.
-var mediaExtensions = map[string]struct{}{
-	".7z":      {},
-	".aac":     {},
-	".apk":     {},
-	".avi":     {},
-	".bin":     {},
-	".bmp":     {},
-	".css":     {},
-	".deb":     {},
-	".dmg":     {},
-	".doc":     {},
-	".docx":    {},
-	".eot":     {},
-	".exe":     {},
-	".flac":    {},
-	".flv":     {},
-	".gif":     {},
-	".gz":      {},
-	".ico":     {},
-	".img":     {},
-	".iso":     {},
-	".jpeg":    {},
-	".jpg":     {},
-	".m4a":     {},
-	".m4v":     {},
-	".mkv":     {},
-	".mov":     {},
-	".mp3":     {},
-	".mp4":     {},
-	".msi":     {},
-	".ogg":     {},
-	".otf":     {},
-	".pdf":     {},
-	".pkg":     {},
-	".png":     {},
-	".ppt":     {},
-	".pptx":    {},
-	".rar":     {},
-	".rpm":     {},
-	".svg":     {},
-	".tar":     {},
-	".tif":     {},
-	".tiff":    {},
-	".torrent": {},
-	".ttf":     {},
-	".wav":     {},
-	".webp":    {},
-	".wmv":     {},
-	".woff":    {},
-	".woff2":   {},
-	".xls":     {},
-	".xlsx":    {},
-	".zip":     {},
+// ExtensionSet is a set of file extensions supporting case-insensitive
+// lookups. Extensions are stored lowercase with a leading dot; Add and
+// Contains normalize their inputs, so ".JPG", "jpg", and ".jpg" are all
+// equivalent.
+type ExtensionSet map[string]struct{}
+
+// NewExtensionSet creates an ExtensionSet from the given extensions.
+// Extensions may be given with or without a leading dot.
+func NewExtensionSet(exts ...string) ExtensionSet {
+	s := make(ExtensionSet, len(exts))
+	s.Add(exts...)
+	return s
 }
 
-// IsMediaURL checks if a URL appears to point to a media file based on its
-// file extension.
-//
-// The function extracts the file extension from the URL's path and performs
-// a case-insensitive lookup against the known media extensions. Returns true if
-// the extension is recognized as a media file type.
-//
-// This is useful for filtering out media files when crawling web pages or
-// extracting links that point to HTML content.
-//
-// Example:
-//
-//	url, _ := url.Parse("https://example.com/image.jpg")
-//	web.IsMediaURL(url) // true
-//
-//	url, _ = url.Parse("https://example.com/page.html")
-//	web.IsMediaURL(url) // false
-//
-//	url, _ = url.Parse("https://example.com/VIDEO.MP4")
-//	web.IsMediaURL(url) // true (case-insensitive)
-func IsMediaURL(u *url.URL) bool {
+// Add inserts extensions into the set. Extensions may be given with or
+// without a leading dot.
+func (s ExtensionSet) Add(exts ...string) {
+	for _, ext := range exts {
+		if ext = normalizeExtension(ext); ext != "." {
+			s[ext] = struct{}{}
+		}
+	}
+}
+
+// Remove deletes extensions from the set.
+func (s ExtensionSet) Remove(exts ...string) {
+	for _, ext := range exts {
+		delete(s, normalizeExtension(ext))
+	}
+}
+
+// Contains reports whether the extension is in the set. The check is
+// case-insensitive and accepts extensions with or without a leading dot.
+func (s ExtensionSet) Contains(ext string) bool {
+	if ext == "" {
+		return false
+	}
+	_, ok := s[normalizeExtension(ext)]
+	return ok
+}
+
+// ContainsURL reports whether the URL's path has a file extension that is
+// in the set. Returns false for nil URLs and paths without an extension.
+func (s ExtensionSet) ContainsURL(u *url.URL) bool {
 	if u == nil {
 		return false
 	}
@@ -105,21 +57,91 @@ func IsMediaURL(u *url.URL) bool {
 	if ext == "" {
 		return false
 	}
-	_, ok := mediaExtensions[strings.ToLower(ext)]
+	_, ok := s[strings.ToLower(ext)]
 	return ok
 }
 
-// IsMediaExtension checks if a file extension is considered a media file extension.
-// The extension should include the leading dot (e.g., ".jpg", ".mp4").
-// The check is case-insensitive.
+// Clone returns a copy of the set. Useful for customizing a default set
+// without mutating it:
+//
+//	exts := web.BinaryExtensions.Clone()
+//	exts.Remove(".pdf") // crawl PDFs too
+func (s ExtensionSet) Clone() ExtensionSet {
+	clone := make(ExtensionSet, len(s))
+	for ext := range s {
+		clone[ext] = struct{}{}
+	}
+	return clone
+}
+
+func normalizeExtension(ext string) string {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return ext
+}
+
+// BinaryExtensions is the default set of file extensions for URLs that
+// point to file downloads and subresources rather than web pages — the
+// things a crawler extracting text or following links typically skips:
+//
+//   - Images: .jpg, .png, .gif, .svg, .webp, .avif, .heic, .ico, etc.
+//   - Video: .mp4, .webm, .mkv, .mov, .avi, .mpeg, etc.
+//   - Audio: .mp3, .wav, .aac, .ogg, .opus, .flac, etc.
+//   - Documents: .pdf, .doc(x), .xls(x), .ppt(x), .odt, .ods, .odp, .epub
+//   - Archives: .zip, .tar, .gz, .tgz, .bz2, .xz, .zst, .rar, .7z, .iso
+//   - Fonts: .ttf, .otf, .woff, .woff2, .eot
+//   - Executables: .exe, .dmg, .apk, .deb, .rpm, .msi, .jar, etc.
+//   - Page subresources: .css, .js, .mjs
+//
+// Some of these (.css, .js, .svg) are text rather than binary, but they are
+// not pages, which is the distinction that matters when crawling. Use
+// [IsBinaryURL] and [IsBinaryExtension] to check against this set, or Clone
+// it to customize.
+var BinaryExtensions = NewExtensionSet(
+	".7z", ".aac", ".apk", ".avi", ".avif", ".bin", ".bmp", ".bz2",
+	".css", ".deb", ".dmg", ".doc", ".docx", ".eot", ".epub", ".exe",
+	".flac", ".flv", ".gif", ".gz", ".heic", ".heif", ".ico", ".img",
+	".iso", ".jar", ".jpeg", ".jpg", ".js", ".m4a", ".m4v", ".mid",
+	".midi", ".mjs", ".mkv", ".mov", ".mp3", ".mp4", ".mpeg", ".mpg",
+	".msi", ".odp", ".ods", ".odt", ".ogg", ".ogv", ".opus", ".otf",
+	".pdf", ".pkg", ".png", ".ppt", ".pptx", ".rar", ".rpm", ".svg",
+	".swf", ".tar", ".tgz", ".tif", ".tiff", ".torrent", ".ttf", ".wav",
+	".weba", ".webm", ".webp", ".wmv", ".woff", ".woff2", ".xls", ".xlsx",
+	".xz", ".zip", ".zst",
+)
+
+// IsBinaryURL checks if a URL appears to point to a file download or page
+// subresource rather than a web page, based on its file extension. The
+// lookup is case-insensitive against [BinaryExtensions].
+//
+// This is useful for filtering out non-page resources when crawling or
+// extracting links that point to HTML content.
 //
 // Example:
 //
-//	web.IsMediaExtension(".jpg")  // true
-//	web.IsMediaExtension(".JPG")  // true
-//	web.IsMediaExtension(".html") // false
-//	web.IsMediaExtension("jpg")   // false (missing dot)
-func IsMediaExtension(ext string) bool {
-	_, ok := mediaExtensions[strings.ToLower(ext)]
-	return ok
+//	u, _ := url.Parse("https://example.com/image.jpg")
+//	web.IsBinaryURL(u) // true
+//
+//	u, _ = url.Parse("https://example.com/page.html")
+//	web.IsBinaryURL(u) // false
+//
+//	u, _ = url.Parse("https://example.com/VIDEO.MP4")
+//	web.IsBinaryURL(u) // true (case-insensitive)
+func IsBinaryURL(u *url.URL) bool {
+	return BinaryExtensions.ContainsURL(u)
+}
+
+// IsBinaryExtension checks if a file extension is in [BinaryExtensions].
+// The check is case-insensitive and accepts extensions with or without a
+// leading dot.
+//
+// Example:
+//
+//	web.IsBinaryExtension(".jpg")  // true
+//	web.IsBinaryExtension("JPG")   // true
+//	web.IsBinaryExtension(".html") // false
+func IsBinaryExtension(ext string) bool {
+	return BinaryExtensions.Contains(ext)
 }

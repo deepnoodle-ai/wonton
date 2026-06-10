@@ -12,6 +12,7 @@ func TestNormalizeURL(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       string
+		opts        []NormalizeOption
 		expected    string
 		expectError bool
 	}{
@@ -75,7 +76,6 @@ func TestNormalizeURL(t *testing.T) {
 			input:       "ht tp://example.com",
 			expectError: true,
 		},
-		// Edge cases from feedback
 		{
 			name:     "httpbin.org - starts with http but no scheme",
 			input:    "httpbin.org",
@@ -121,11 +121,90 @@ func TestNormalizeURL(t *testing.T) {
 			input:    "http://example.com:8080/path",
 			expected: "https://example.com:8080/path",
 		},
+		// Bare host:port inputs (parse as scheme:opaque without help)
+		{
+			name:     "bare hostname with port",
+			input:    "example.com:8080/path",
+			expected: "https://example.com:8080/path",
+		},
+		{
+			name:     "localhost with port",
+			input:    "localhost:3000",
+			expected: "https://localhost:3000",
+		},
+		{
+			name:     "IP address with port",
+			input:    "192.168.1.1:8080/admin",
+			expected: "https://192.168.1.1:8080/admin",
+		},
+		// Canonicalization: userinfo, default ports, dot segments
+		{
+			name:     "userinfo removed",
+			input:    "https://user:pass@example.com/secret",
+			expected: "https://example.com/secret",
+		},
+		{
+			name:     "default https port removed",
+			input:    "https://example.com:443/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "default http port removed after upgrade is not assumed",
+			input:    "http://example.com:80/path",
+			expected: "https://example.com:80/path",
+		},
+		{
+			name:     "default http port removed with KeepHTTP",
+			input:    "http://example.com:80/path",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "http://example.com/path",
+		},
+		{
+			name:     "dot segments resolved",
+			input:    "https://example.com/a/../b/./c",
+			expected: "https://example.com/b/c",
+		},
+		{
+			name:     "trailing slash preserved when cleaning",
+			input:    "https://example.com/a/../docs/",
+			expected: "https://example.com/docs/",
+		},
+		// Options
+		{
+			name:     "KeepQuery preserves query parameters",
+			input:    "https://example.com/watch?v=abc123",
+			opts:     []NormalizeOption{KeepQuery()},
+			expected: "https://example.com/watch?v=abc123",
+		},
+		{
+			name:     "KeepQuery still removes fragment",
+			input:    "https://example.com/page?a=1#section",
+			opts:     []NormalizeOption{KeepQuery()},
+			expected: "https://example.com/page?a=1",
+		},
+		{
+			name:     "KeepHTTP preserves http scheme",
+			input:    "http://example.com/page",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "http://example.com/page",
+		},
+		{
+			name:     "KeepHTTP does not affect schemeless input",
+			input:    "example.com/page",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "https://example.com/page",
+		},
+		{
+			name:     "combined options",
+			input:    "http://example.com/search?q=go",
+			opts:     []NormalizeOption{KeepHTTP(), KeepQuery()},
+			expected: "http://example.com/search?q=go",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := NormalizeURL(tt.input)
+			result, err := NormalizeURL(tt.input, tt.opts...)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -167,7 +246,6 @@ func TestAreSameHost(t *testing.T) {
 			url2:     "",
 			expected: false,
 		},
-		// Edge cases: port handling and case sensitivity
 		{
 			name:     "same host with and without port",
 			url1:     "https://example.com:443/path",
@@ -252,7 +330,6 @@ func TestAreRelatedHosts(t *testing.T) {
 			url2:     "https://localhost",
 			expected: false,
 		},
-		// Edge cases: public suffixes
 		{
 			name:     "co.uk - same registrable domain",
 			url1:     "https://www.example.co.uk",
@@ -306,197 +383,187 @@ func TestAreRelatedHosts(t *testing.T) {
 	}
 }
 
-func TestSortURLs(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []string
-		expected []string
-	}{
-		{
-			name:     "sort URLs alphabetically",
-			input:    []string{"https://z.com", "https://a.com", "https://m.com"},
-			expected: []string{"https://a.com", "https://m.com", "https://z.com"},
-		},
-		{
-			name:     "already sorted",
-			input:    []string{"https://a.com", "https://b.com", "https://c.com"},
-			expected: []string{"https://a.com", "https://b.com", "https://c.com"},
-		},
-		{
-			name:     "single URL",
-			input:    []string{"https://example.com"},
-			expected: []string{"https://example.com"},
-		},
-		{
-			name:     "empty slice",
-			input:    []string{},
-			expected: []string{},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Convert strings to URLs
-			urls := make([]*url.URL, len(tt.input))
-			for i, u := range tt.input {
-				urls[i], _ = url.Parse(u)
-			}
-
-			// Sort the URLs
-			SortURLs(urls)
-
-			// Convert back to strings for comparison
-			result := make([]string, len(urls))
-			for i, u := range urls {
-				result[i] = u.String()
-			}
-
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestSortURLsWithNilEntries(t *testing.T) {
-	// Test that nil entries are sorted to the end
-	urls := []*url.URL{
-		mustParse("https://z.com"),
-		nil,
-		mustParse("https://a.com"),
-		nil,
-		mustParse("https://m.com"),
-	}
-
-	SortURLs(urls)
-
-	// Non-nil entries should be sorted, nils at end
-	assert.Equal(t, "https://a.com", urls[0].String())
-	assert.Equal(t, "https://m.com", urls[1].String())
-	assert.Equal(t, "https://z.com", urls[2].String())
-	assert.Nil(t, urls[3])
-	assert.Nil(t, urls[4])
-}
-
 func TestResolveLink(t *testing.T) {
 	tests := []struct {
-		name     string
-		domain   string
-		link     string
-		expected string
-		valid    bool
+		name        string
+		base        string
+		link        string
+		opts        []NormalizeOption
+		expected    string
+		expectError bool
 	}{
 		{
 			name:     "absolute HTTPS URL",
-			domain:   "example.com",
+			base:     "https://example.com",
 			link:     "https://example.com/page",
 			expected: "https://example.com/page",
-			valid:    true,
 		},
 		{
-			name:     "absolute HTTP URL",
-			domain:   "example.com",
+			name:     "absolute HTTP URL upgraded",
+			base:     "https://example.com",
 			link:     "http://example.com/page",
 			expected: "https://example.com/page",
-			valid:    true,
 		},
 		{
 			name:     "relative URL with leading slash",
-			domain:   "example.com",
+			base:     "https://example.com",
 			link:     "/about",
 			expected: "https://example.com/about",
-			valid:    true,
 		},
 		{
 			name:     "relative URL without leading slash",
-			domain:   "example.com",
+			base:     "https://example.com",
 			link:     "about",
 			expected: "https://example.com/about",
-			valid:    true,
+		},
+		// Relative links resolve against the page URL per RFC 3986: the last
+		// path segment of the base is dropped unless it ends with "/".
+		{
+			name:     "relative link against page URL",
+			base:     "https://example.com/blog/post",
+			link:     "other-post",
+			expected: "https://example.com/blog/other-post",
 		},
 		{
-			name:   "invalid scheme",
-			domain: "example.com",
-			link:   "ftp://example.com/file",
-			valid:  false,
+			name:     "relative link against directory URL",
+			base:     "https://example.com/docs/guide/",
+			link:     "intro",
+			expected: "https://example.com/docs/guide/intro",
 		},
 		{
-			name:   "javascript URL",
-			domain: "example.com",
-			link:   "javascript:void(0)",
-			valid:  false,
+			name:     "parent directory link",
+			base:     "https://example.com/blog/post",
+			link:     "../about",
+			expected: "https://example.com/about",
 		},
 		{
-			name:   "mailto URL",
-			domain: "example.com",
-			link:   "mailto:test@example.com",
-			valid:  false,
+			name:     "fragment-only link resolves to page",
+			base:     "https://example.com/blog/post",
+			link:     "#section",
+			expected: "https://example.com/blog/post",
+		},
+		{
+			name:     "protocol-relative link uses base scheme",
+			base:     "https://example.com/page",
+			link:     "//cdn.example.com/lib",
+			expected: "https://cdn.example.com/lib",
+		},
+		{
+			name:        "invalid scheme",
+			base:        "https://example.com",
+			link:        "ftp://example.com/file",
+			expectError: true,
+		},
+		{
+			name:        "javascript URL",
+			base:        "https://example.com",
+			link:        "javascript:void(0)",
+			expectError: true,
+		},
+		{
+			name:        "mailto URL",
+			base:        "https://example.com",
+			link:        "mailto:test@example.com",
+			expectError: true,
 		},
 		{
 			name:     "URL with fragment",
-			domain:   "example.com",
+			base:     "https://example.com",
 			link:     "https://example.com/page#section",
 			expected: "https://example.com/page",
-			valid:    true,
 		},
 		{
-			name:     "domain with https prefix",
-			domain:   "https://example.com",
-			link:     "/page",
-			expected: "https://example.com/page",
-			valid:    true,
+			name:     "query removed by default",
+			base:     "https://example.com",
+			link:     "/search?q=go",
+			expected: "https://example.com/search",
+		},
+		{
+			name:     "KeepQuery preserves link query",
+			base:     "https://example.com",
+			link:     "/search?q=go",
+			opts:     []NormalizeOption{KeepQuery()},
+			expected: "https://example.com/search?q=go",
+		},
+		{
+			name:     "http base preserved with KeepHTTP",
+			base:     "http://example.com/page",
+			link:     "/about",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "http://example.com/about",
+		},
+		{
+			name:     "http base upgraded by default",
+			base:     "http://example.com/page",
+			link:     "/about",
+			expected: "https://example.com/about",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, valid := ResolveLink(tt.domain, tt.link)
-			assert.Equal(t, tt.valid, valid)
-			if valid {
-				assert.Equal(t, tt.expected, result)
+			base, err := url.Parse(tt.base)
+			assert.NoError(t, err)
+			result, err := ResolveLink(base, tt.link, tt.opts...)
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result.String())
 			}
 		})
 	}
+}
+
+func TestResolveLinkInvalidBase(t *testing.T) {
+	_, err := ResolveLink(nil, "/about")
+	assert.Error(t, err)
+
+	ftpBase, _ := url.Parse("ftp://example.com")
+	_, err = ResolveLink(ftpBase, "/about")
+	assert.Error(t, err)
 }
 
 // Example demonstrates basic URL normalization.
 func ExampleNormalizeURL() {
 	// Normalize a URL with query parameters and fragment
-	url, _ := NormalizeURL("example.com/path?query=1#fragment")
-	fmt.Println(url.String())
+	u, _ := NormalizeURL("example.com/path?query=1#fragment")
+	fmt.Println(u.String())
 
 	// Convert http to https
-	url, _ = NormalizeURL("http://example.com")
-	fmt.Println(url.String())
+	u, _ = NormalizeURL("http://example.com")
+	fmt.Println(u.String())
 
-	// Add https prefix when missing
-	url, _ = NormalizeURL("example.com")
-	fmt.Println(url.String())
+	// Preserve query parameters when they matter
+	u, _ = NormalizeURL("example.com/watch?v=abc123", KeepQuery())
+	fmt.Println(u.String())
 
 	// Output:
 	// https://example.com/path
 	// https://example.com
-	// https://example.com
+	// https://example.com/watch?v=abc123
 }
 
-// Example demonstrates resolving relative URLs against a base domain.
+// Example demonstrates resolving links against the page they appear on.
 func ExampleResolveLink() {
-	baseDomain := "example.com"
+	page, _ := url.Parse("https://example.com/blog/post")
 
-	// Resolve absolute path
-	resolved, ok := ResolveLink(baseDomain, "/about")
-	fmt.Printf("%s: %v\n", resolved, ok)
+	// Relative links resolve against the page URL
+	u, _ := ResolveLink(page, "../about")
+	fmt.Println(u.String())
 
-	// Resolve relative path
-	resolved, ok = ResolveLink(baseDomain, "contact")
-	fmt.Printf("%s: %v\n", resolved, ok)
+	// Absolute links are validated and normalized
+	u, _ = ResolveLink(page, "https://other.com/page")
+	fmt.Println(u.String())
 
-	// Reject non-HTTP schemes
-	resolved, ok = ResolveLink(baseDomain, "mailto:test@example.com")
-	fmt.Printf("valid: %v\n", ok)
+	// Non-HTTP schemes are rejected
+	_, err := ResolveLink(page, "mailto:test@example.com")
+	fmt.Println(err != nil)
 
 	// Output:
-	// https://example.com/about: true
-	// https://example.com/contact: true
-	// valid: false
+	// https://example.com/about
+	// https://other.com/page
+	// true
 }
 
 // Example demonstrates comparing URL hosts.
@@ -525,33 +592,4 @@ func ExampleAreRelatedHosts() {
 	// Output:
 	// true
 	// false
-}
-
-// Example demonstrates sorting URLs alphabetically.
-func ExampleSortURLs() {
-	urls := []*url.URL{
-		mustParse("https://z.com/page"),
-		mustParse("https://a.com/page"),
-		mustParse("https://m.com/page"),
-	}
-
-	SortURLs(urls)
-
-	for _, u := range urls {
-		fmt.Println(u.String())
-	}
-
-	// Output:
-	// https://a.com/page
-	// https://m.com/page
-	// https://z.com/page
-}
-
-// mustParse is a helper function for examples.
-func mustParse(s string) *url.URL {
-	u, err := url.Parse(s)
-	if err != nil {
-		panic(err)
-	}
-	return u
 }

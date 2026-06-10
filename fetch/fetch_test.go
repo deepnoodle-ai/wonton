@@ -15,44 +15,65 @@ import (
 
 // Test errors.go
 
-func TestRequestError(t *testing.T) {
-	err := errors.New("test error")
-	reqErr := NewRequestError(err)
+func TestError(t *testing.T) {
+	t.Run("message with status and URL", func(t *testing.T) {
+		err := &Error{StatusCode: 404, URL: "https://example.com/missing"}
+		assert.Equal(t, "fetch https://example.com/missing failed: status 404 Not Found", err.Error())
+	})
 
-	assert.Equal(t, "test error", reqErr.Error())
-	assert.Equal(t, err, reqErr.Unwrap())
-	assert.Equal(t, 0, reqErr.StatusCode())
-	assert.Equal(t, "", reqErr.RawURL())
+	t.Run("message with underlying error", func(t *testing.T) {
+		err := &Error{URL: "https://example.com", Err: errors.New("connection refused")}
+		assert.Equal(t, "fetch https://example.com failed: connection refused", err.Error())
+	})
+
+	t.Run("minimal message", func(t *testing.T) {
+		err := &Error{}
+		assert.Equal(t, "fetch failed", err.Error())
+	})
+
+	t.Run("Unwrap returns underlying error", func(t *testing.T) {
+		underlying := errors.New("boom")
+		err := &Error{StatusCode: 500, Err: underlying}
+		assert.Equal(t, underlying, err.Unwrap())
+		assert.True(t, errors.Is(err, underlying))
+	})
 }
 
-func TestRequestErrorf(t *testing.T) {
-	reqErr := NewRequestErrorf("error: %s", "test")
-	assert.Equal(t, "error: test", reqErr.Error())
+func TestErrorRetryable(t *testing.T) {
+	tests := []struct {
+		statusCode int
+		retryable  bool
+	}{
+		{400, false},
+		{401, false},
+		{403, false},
+		{404, false},
+		{408, true},
+		{429, true},
+		{500, true},
+		{501, false},
+		{502, true},
+		{503, true},
+		{504, true},
+	}
+
+	for _, tt := range tests {
+		err := &Error{StatusCode: tt.statusCode}
+		assert.Equal(t, tt.retryable, err.Retryable())
+	}
 }
 
-func TestRequestError_WithStatusCode(t *testing.T) {
-	reqErr := NewRequestError(errors.New("error")).WithStatusCode(404)
-	assert.Equal(t, 404, reqErr.StatusCode())
-}
+func TestIsRetryable(t *testing.T) {
+	assert.False(t, IsRetryable(nil))
+	assert.False(t, IsRetryable(errors.New("some error")))
+	assert.False(t, IsRetryable(context.Canceled))
+	assert.True(t, IsRetryable(context.DeadlineExceeded))
+	assert.False(t, IsRetryable(&Error{StatusCode: 404}))
+	assert.True(t, IsRetryable(&Error{StatusCode: 503}))
 
-func TestRequestError_WithRawURL(t *testing.T) {
-	reqErr := NewRequestError(errors.New("error")).WithRawURL("https://example.com")
-	assert.Equal(t, "https://example.com", reqErr.RawURL())
-}
-
-func TestRequestError_Chaining(t *testing.T) {
-	reqErr := NewRequestError(errors.New("error")).
-		WithStatusCode(500).
-		WithRawURL("https://test.com")
-
-	assert.Equal(t, 500, reqErr.StatusCode())
-	assert.Equal(t, "https://test.com", reqErr.RawURL())
-}
-
-func TestIsRequestError(t *testing.T) {
-	assert.False(t, IsRequestError(nil))
-	assert.False(t, IsRequestError(errors.New("regular error")))
-	assert.True(t, IsRequestError(NewRequestError(errors.New("request error"))))
+	// Wrapped errors are unwrapped
+	wrapped := fmt.Errorf("request failed: %w", &Error{StatusCode: 429})
+	assert.True(t, IsRetryable(wrapped))
 }
 
 func TestErrUnsupportedOption(t *testing.T) {
@@ -564,20 +585,23 @@ func ExampleNewScreenshotAction() {
 	// Output: Action type: screenshot
 }
 
-// ExampleRequestError demonstrates creating and using RequestError.
-func ExampleRequestError() {
-	// Create an error with context
-	err := NewRequestErrorf("failed to fetch page").
-		WithStatusCode(404).
-		WithRawURL("https://example.com/missing")
+// ExampleError demonstrates inspecting a fetch failure.
+func ExampleError() {
+	err := error(&Error{
+		StatusCode: 404,
+		URL:        "https://example.com/missing",
+	})
 
-	fmt.Printf("Error: %s\n", err.Error())
-	fmt.Printf("Status Code: %d\n", err.StatusCode())
-	fmt.Printf("URL: %s\n", err.RawURL())
+	var fetchErr *Error
+	if errors.As(err, &fetchErr) {
+		fmt.Printf("Error: %s\n", fetchErr.Error())
+		fmt.Printf("Status Code: %d\n", fetchErr.StatusCode)
+		fmt.Printf("Retryable: %v\n", IsRetryable(err))
+	}
 	// Output:
-	// Error: failed to fetch page
+	// Error: fetch https://example.com/missing failed: status 404 Not Found
 	// Status Code: 404
-	// URL: https://example.com/missing
+	// Retryable: false
 }
 
 // ExampleRequest_formats demonstrates requesting multiple output formats.
