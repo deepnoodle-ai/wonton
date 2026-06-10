@@ -134,6 +134,17 @@ type Cell struct {
 	Continuation bool // True if this cell is a continuation of a wide character
 }
 
+// Equal reports whether two cells render identically. RGB style overrides
+// are compared by value (see Style.Equal), so cells styled with separately
+// constructed but identical RGB values compare equal.
+func (c Cell) Equal(other Cell) bool {
+	return c.Char == other.Char &&
+		c.Trailing == other.Trailing &&
+		c.Width == other.Width &&
+		c.Continuation == other.Continuation &&
+		c.Style.Equal(other.Style)
+}
+
 // DirtyRegion tracks the rectangular area that has been modified
 type DirtyRegion struct {
 	MinX  int
@@ -448,7 +459,8 @@ type Terminal struct {
 	resizeChan      chan os.Signal
 	stopResize      chan struct{}
 	resizing        bool
-	resizeCallbacks []func(width, height int)
+	resizeCallbacks      []resizeCallback
+	nextResizeCallbackID int
 	callbackMu      sync.RWMutex
 
 	// Deprecated: Styles should be passed explicitly to render methods.
@@ -472,19 +484,36 @@ type Terminal struct {
 	// Mode tracking for cleanup
 	mouseEnabled   bool // Mouse tracking is enabled
 	bracketedPaste bool // Bracketed paste is enabled
+
+	// Frame state: true between BeginFrame and EndFrame (guarded by mu,
+	// which is held for the duration of the frame)
+	inFrame bool
 }
 
 // EndFrame finishes the frame, flushes the buffer to the terminal, and unlocks.
 //
 // Errors:
-//   - Returns ErrInvalidFrame if the frame doesn't match this terminal
+//   - Returns ErrInvalidFrame if the frame doesn't match this terminal,
+//     or if no frame is currently open
 func (t *Terminal) EndFrame(f RenderFrame) error {
 	// Ensure we are unlocking the same terminal we locked
 	tf, ok := f.(*terminalRenderFrame)
 	if !ok || tf.t != t {
+		// Invalid frame. If this terminal has an open frame, its BeginFrame
+		// left the mutex held; release it so the error is recoverable
+		// instead of deadlocking every subsequent operation.
+		if t.inFrame {
+			t.inFrame = false
+			t.mu.Unlock()
+		}
+		return ErrInvalidFrame
+	}
+	if !t.inFrame {
+		// EndFrame called twice, or without BeginFrame
 		return ErrInvalidFrame
 	}
 
+	t.inFrame = false
 	defer t.mu.Unlock()
 	return t.flushInternal()
 }
@@ -617,6 +646,7 @@ func (t *Terminal) BeginFrame() (RenderFrame, error) {
 		t.mu.Unlock()
 		return nil, ErrClosed
 	}
+	t.inFrame = true
 
 	// The initial frame covers the entire terminal
 	return &terminalRenderFrame{
@@ -728,9 +758,7 @@ func (t *Terminal) RefreshSize() error {
 		t.callbackMu.RLock()
 		callbacks := make([]func(width, height int), 0, len(t.resizeCallbacks))
 		for _, cb := range t.resizeCallbacks {
-			if cb != nil {
-				callbacks = append(callbacks, cb)
-			}
+			callbacks = append(callbacks, cb.fn)
 		}
 		t.callbackMu.RUnlock()
 
@@ -1049,6 +1077,17 @@ func (t *Terminal) DetectKittyProtocol() bool {
 		return false
 	}
 
+	// The probe relies on read deadlines so the reader goroutine can never
+	// block past the timeout. If stdin doesn't support deadlines (redirected
+	// input, some consoles), skip detection entirely: otherwise the
+	// goroutine would park in Read for the process lifetime and silently
+	// swallow the user's next keystrokes.
+	if err := os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+		t.kittySupported = false
+		return false
+	}
+	os.Stdin.SetReadDeadline(time.Time{}) // Clear the probe deadline
+
 	// Need raw mode for detection
 	oldState, err := term.MakeRaw(t.fd)
 	if err != nil {
@@ -1066,7 +1105,9 @@ func (t *Terminal) DetectKittyProtocol() bool {
 		response := ""
 		deadline := time.Now().Add(200 * time.Millisecond)
 		for time.Now().Before(deadline) {
-			os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+			if err := os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
+				break
+			}
 			n, err := os.Stdin.Read(buf)
 			if err != nil {
 				break
@@ -1322,10 +1363,16 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	// emoji, keycaps, ZWJ sequences, regional indicator flag pairs, skin-toned
 	// emoji, and combining marks — land in a single Cell instead of having
 	// their trailing runes stomped by whichever character comes next.
+	skipLine := false // set when truncating: drop the remainder of the line
+
 	for cluster, clusterWidth := range runewidth.Graphemes(text) {
 		if cluster == "\n" {
+			skipLine = false
 			currentX = clipRect.Min.X // New line starts at the beginning of the clipRect
 			currentY++
+			continue
+		}
+		if skipLine {
 			continue
 		}
 
@@ -1338,7 +1385,10 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 				currentX = clipRect.Min.X
 				currentY++
 			} else {
-				// Truncate: skip characters that would go past the edge
+				// Truncate: skip everything up to the next newline so a
+				// narrower later cluster can't be drawn at the skipped
+				// cluster's position (which would reorder the text).
+				skipLine = true
 				continue
 			}
 		}
@@ -1551,8 +1601,22 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 		return nil
 	}
 
-	if x < 0 || y < 0 || x+width > t.width || y+height > t.height {
-		return ErrOutOfBounds
+	// Clip the rectangle to the terminal bounds rather than rejecting the
+	// whole fill: the public Fill/FillStyled methods have no way to surface
+	// an error, and a silent no-op for a rect one cell past the edge is
+	// surprising. This also matches RenderFrame.FillStyled, which clips.
+	if x < 0 {
+		width += x
+		x = 0
+	}
+	if y < 0 {
+		height += y
+		y = 0
+	}
+	width = min(width, t.width-x)
+	height = min(height, t.height-y)
+	if width <= 0 || height <= 0 {
+		return nil
 	}
 
 	// Get character width once
@@ -1757,16 +1821,14 @@ func (t *Terminal) flushInternal() error {
 			cell := t.backBuffer[y][x]
 			oldCell := t.frontBuffer[y][x]
 
-			// Skip continuation cells - they're already handled by their wide character
+			// Skip continuation cells - they're already handled by their wide
+			// character (the front buffer is committed wholesale after the
+			// write succeeds).
 			if cell.Continuation {
-				// Still need to update front buffer
-				if cell != oldCell {
-					t.frontBuffer[y][x] = cell
-				}
 				continue
 			}
 
-			if cell != oldCell {
+			if !cell.Equal(oldCell) {
 				// Move cursor if needed
 				if y != currentY || x != currentX {
 					// Optimization: If we are just 1 char ahead, no need to move
@@ -1802,7 +1864,7 @@ func (t *Terminal) flushInternal() error {
 				}
 
 				// Update style if needed
-				if cell.Style != currentStyle {
+				if !cell.Style.Equal(currentStyle) {
 					output.WriteString(cell.Style.String())
 					currentStyle = cell.Style
 					if t.metricsEnabled {
@@ -1840,9 +1902,6 @@ func (t *Terminal) flushInternal() error {
 				} else {
 					currentX += cell.Width
 				}
-
-				// Update front buffer
-				t.frontBuffer[y][x] = cell
 
 				if t.metricsEnabled {
 					cellsUpdated++
@@ -1884,8 +1943,15 @@ func (t *Terminal) flushInternal() error {
 	bytesWritten := len(outputStr)
 
 	if _, err := fmt.Fprint(t.out, outputStr); err != nil {
-		// Leave dirty region intact so caller can retry
+		// Leave the dirty region and front buffer intact so a retry
+		// re-diffs and re-emits the cells that never reached the terminal.
 		return err
+	}
+
+	// Commit the flushed region to the front buffer only now that the write
+	// has succeeded.
+	for y := minY; y <= maxY; y++ {
+		copy(t.frontBuffer[y][minX:maxX+1], t.backBuffer[y][minX:maxX+1])
 	}
 
 	// Note: Recording happens at Print() level, not here
@@ -1932,6 +1998,13 @@ func (t *Terminal) WatchResize() {
 	t.resizeChan = make(chan os.Signal, 1)
 	t.stopResize = make(chan struct{})
 	t.resizing = true
+
+	// Capture the channels so the goroutine never reads the struct fields,
+	// which StopWatchResize mutates under the lock (and a Stop/Watch restart
+	// replaces). This avoids a data race and ensures the old goroutine can't
+	// latch onto a newer watcher's channels.
+	resizeCh := t.resizeChan
+	stopCh := t.stopResize
 	t.mu.Unlock()
 
 	// Set up platform-specific resize signal handling
@@ -1940,9 +2013,9 @@ func (t *Terminal) WatchResize() {
 	go func() {
 		for {
 			select {
-			case <-t.resizeChan:
+			case <-resizeCh:
 				t.RefreshSize()
-			case <-t.stopResize:
+			case <-stopCh:
 				return
 			}
 		}
@@ -1980,19 +2053,31 @@ func (t *Terminal) OnResize(callback func(width, height int)) func() {
 	t.callbackMu.Lock()
 	defer t.callbackMu.Unlock()
 
-	t.resizeCallbacks = append(t.resizeCallbacks, callback)
-	index := len(t.resizeCallbacks) - 1
+	id := t.nextResizeCallbackID
+	t.nextResizeCallbackID++
+	t.resizeCallbacks = append(t.resizeCallbacks, resizeCallback{id: id, fn: callback})
 
-	// Return unregister function
+	// Return unregister function. The unique ID ensures a stale unregister
+	// function (e.g. kept across ClearResizeCallbacks) can never remove an
+	// unrelated callback that happens to occupy the same slot.
 	return func() {
 		t.callbackMu.Lock()
 		defer t.callbackMu.Unlock()
 
-		// Set to nil instead of removing to avoid index shifts
-		if index < len(t.resizeCallbacks) {
-			t.resizeCallbacks[index] = nil
+		for i, cb := range t.resizeCallbacks {
+			if cb.id == id {
+				t.resizeCallbacks = append(t.resizeCallbacks[:i], t.resizeCallbacks[i+1:]...)
+				return
+			}
 		}
 	}
+}
+
+// resizeCallback pairs a registered resize callback with a unique ID so
+// unregister functions remove exactly the callback they registered.
+type resizeCallback struct {
+	id int
+	fn func(width, height int)
 }
 
 // ClearResizeCallbacks removes all registered resize callbacks
@@ -2056,6 +2141,11 @@ func (t *Terminal) Close() error {
 		return nil // Already closed
 	}
 
+	// Mark closed before temporarily releasing the lock below, so a
+	// concurrent Close or BeginFrame can't slip in and run a second
+	// teardown (or start a frame) mid-close.
+	t.closed = true
+
 	// Stop resize watching
 	if t.resizing && t.resizeChan != nil {
 		t.mu.Unlock() // Unlock before calling StopWatchResize
@@ -2068,8 +2158,6 @@ func (t *Terminal) Close() error {
 		t.recorder.close()
 		t.recorder = nil
 	}
-
-	t.closed = true
 
 	// Disable special input modes (order matters for some terminals)
 	t.DisableMouseTracking()

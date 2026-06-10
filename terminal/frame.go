@@ -205,14 +205,16 @@ func (f *Frame) drawTopBorder(t RenderFrame) {
 				}
 			}
 
+			// The border consists of single-column runes, so rune indices in
+			// lineRunes map 1:1 to display columns. Replace titleLen columns
+			// of border with the title so the rendered border stays exactly
+			// f.Width columns wide even for wide (CJK/emoji) titles.
 			lineRunes := []rune(line)
-			titleRunes := []rune(titleWithSpaces)
-			for i, r := range titleRunes {
-				if pos+i < len(lineRunes)-1 { // Don't overwrite the top-right corner
-					lineRunes[pos+i] = r
-				}
+			end := pos + titleLen
+			if end > len(lineRunes)-1 {
+				end = len(lineRunes) - 1 // Don't overwrite the top-right corner
 			}
-			line = string(lineRunes)
+			line = string(lineRunes[:pos]) + titleWithSpaces + string(lineRunes[end:])
 		}
 	}
 

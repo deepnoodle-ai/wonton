@@ -259,7 +259,34 @@ func (s Style) Apply(text string) string {
 // IsEmpty returns true if the style has no attributes, colors, or URL set.
 // An empty style produces no visual changes when applied.
 func (s Style) IsEmpty() bool {
-	return s == NewStyle()
+	return s.Equal(NewStyle())
+}
+
+// Equal reports whether two styles are visually equivalent. Unlike the ==
+// operator, RGB overrides are compared by value rather than by pointer, so
+// styles built independently with WithFgRGB/WithBgRGB compare equal.
+func (s Style) Equal(other Style) bool {
+	if s.Foreground != other.Foreground ||
+		s.Background != other.Background ||
+		s.Bold != other.Bold ||
+		s.Italic != other.Italic ||
+		s.Underline != other.Underline ||
+		s.Strikethrough != other.Strikethrough ||
+		s.Blink != other.Blink ||
+		s.Reverse != other.Reverse ||
+		s.Hidden != other.Hidden ||
+		s.Dim != other.Dim ||
+		s.URL != other.URL {
+		return false
+	}
+	return rgbPtrEqual(s.FgRGB, other.FgRGB) && rgbPtrEqual(s.BgRGB, other.BgRGB)
+}
+
+func rgbPtrEqual(a, b *RGB) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // Merge combines two styles, with the other style's non-default values taking precedence.

@@ -57,15 +57,23 @@ func TestParseMouseEvent_SGRFormat_LeftClick(t *testing.T) {
 }
 
 func TestParseMouseEvent_SGRFormat_Release(t *testing.T) {
-	// Release uses lowercase 'm'
+	// Release uses lowercase 'm'; SGR encodes which button was released
 	seq := []byte("<0;10;5m")
 	event, err := ParseMouseEvent(seq)
 	assert.NoError(t, err)
 	assert.NotNil(t, event)
-	assert.Equal(t, MouseButtonNone, event.Button)
+	assert.Equal(t, MouseButtonLeft, event.Button)
 	assert.Equal(t, MouseRelease, event.Type)
 	assert.Equal(t, 9, event.X)
 	assert.Equal(t, 4, event.Y)
+}
+
+func TestParseMouseEvent_SGRFormat_RightRelease(t *testing.T) {
+	seq := []byte("<2;10;5m")
+	event, err := ParseMouseEvent(seq)
+	assert.NoError(t, err)
+	assert.Equal(t, MouseButtonRight, event.Button)
+	assert.Equal(t, MouseRelease, event.Type)
 }
 
 func TestParseMouseEvent_SGRFormat_MiddleClick(t *testing.T) {
@@ -87,12 +95,12 @@ func TestParseMouseEvent_SGRFormat_RightClick(t *testing.T) {
 }
 
 func TestParseMouseEvent_SGRFormat_NoButton(t *testing.T) {
-	// Button 3 = no button (used in some scenarios)
+	// Button code 3 with 'M' is the X10-style release event
 	seq := []byte("<3;10;10M")
 	event, err := ParseMouseEvent(seq)
 	assert.NoError(t, err)
 	assert.Equal(t, MouseButtonNone, event.Button)
-	assert.Equal(t, MousePress, event.Type)
+	assert.Equal(t, MouseRelease, event.Type)
 }
 
 func TestParseMouseEvent_SGRFormat_Modifiers(t *testing.T) {
