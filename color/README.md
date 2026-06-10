@@ -1,10 +1,20 @@
 # color
 
-ANSI color types, RGB/HSL conversion, and gradient generation for terminal rendering.
+ANSI color types, hex parsing, HSL conversion, and gradient generation for
+terminal rendering.
 
 ## Summary
 
-The color package provides a comprehensive color system for terminal applications. It supports standard ANSI colors (0-15), the full 256-color palette, and 24-bit RGB/TrueColor. It includes RGB to HSL conversion, gradient generation with multiple interpolation methods, and utilities for applying colors to text with automatic reset sequences. The package respects the NO_COLOR environment variable and provides terminal detection to automatically disable colors when appropriate.
+The color package provides a complete color system for terminal applications.
+It supports standard ANSI colors (0-15), the full 256-color palette, and
+24-bit RGB/TrueColor with hex parsing and HSL conversion in both directions.
+It includes gradient generation with multiple interpolation methods and
+helpers for applying colors to text with automatic reset sequences.
+
+Color output is handled automatically: the `Apply` helpers emit plain text
+when `NO_COLOR` is set, when `CLICOLOR=0` is set, or when stdout is not a
+terminal, and `FORCE_COLOR`/`CLICOLOR_FORCE` override in the other direction.
+The obvious code is also the correct code — no conditional logic required.
 
 ## Usage Examples
 
@@ -19,7 +29,8 @@ import (
 )
 
 func main() {
-    // Apply standard ANSI colors
+    // Apply standard ANSI colors. Output is automatically plain when piped
+    // or when NO_COLOR is set.
     fmt.Println(color.Red.Apply("Error message"))
     fmt.Println(color.Green.Apply("Success!"))
     fmt.Println(color.Yellow.Apply("Warning"))
@@ -31,7 +42,8 @@ func main() {
     // Apply as background
     fmt.Println(color.Red.ApplyBg("Red background"))
 
-    // Apply with dim attribute
+    // Apply with bold or dim attributes
+    fmt.Println(color.Red.ApplyBold("FAILED"))
     fmt.Println(color.White.ApplyDim("Dimmed text"))
 }
 ```
@@ -69,7 +81,7 @@ func main() {
 }
 ```
 
-### RGB Colors
+### RGB Colors and Hex Parsing
 
 ```go
 package main
@@ -80,20 +92,24 @@ import (
 )
 
 func main() {
-    // Create RGB colors
+    // Create RGB colors from channel values or hex strings
     orange := color.NewRGB(255, 165, 0)
-    purple := color.NewRGB(128, 0, 128)
-    pink := color.NewRGB(255, 192, 203)
+    purple := color.MustHex("#800080")          // panics on invalid input
+    pink, err := color.Hex("#ffc0cb")           // returns an error instead
+    if err != nil {
+        panic(err)
+    }
 
-    // Apply as foreground
-    fmt.Println(orange.ForegroundSeq() + "Orange text" + color.Reset)
+    fmt.Println(orange.Apply("Orange text"))
+    fmt.Println(purple.ApplyBg("Purple background"))
+    fmt.Println(pink.Sprintf("Pink %s", "formatted"))
 
-    // Apply as background
-    fmt.Println(purple.BackgroundSeq() + "Purple background" + color.Reset)
+    // Convert back to hex
+    fmt.Println(orange.Hex()) // "#ffa500"
 
-    // Use convenience method
-    fmt.Println(pink.Apply("Pink text", false)) // false = foreground
-    fmt.Println(pink.Apply("Pink background", true)) // true = background
+    // Interpolate between colors
+    mid := orange.Lerp(purple, 0.5)
+    fmt.Println(mid.Apply("Halfway between orange and purple"))
 }
 ```
 
@@ -108,16 +124,16 @@ import (
 )
 
 func main() {
-    // Use extended 256-color palette
+    // Use extended 256-color palette: 16-231 is a 6x6x6 color cube
     for i := uint8(16); i < 232; i++ {
         c := color.Palette(i)
         fmt.Print(c.Apply("█"))
     }
     fmt.Println()
 
-    // Grayscale colors (232-255)
-    for i := uint8(232); i < 256; i++ {
-        c := color.Palette(i)
+    // Grayscale ramp (232-255)
+    for i := 232; i < 256; i++ {
+        c := color.Palette(uint8(i))
         fmt.Print(c.Apply("█"))
     }
     fmt.Println()
@@ -135,27 +151,29 @@ import (
 )
 
 func main() {
-    // Simple gradient between two colors
-    start := color.NewRGB(255, 0, 0)   // Red
-    end := color.NewRGB(0, 0, 255)     // Blue
-    gradient := color.Gradient(start, end, 10)
+    // Color a string with a gradient across its characters
+    fmt.Println(color.ApplyGradient("Hello, gradient!",
+        color.MustHex("#ff5f5f"),
+        color.MustHex("#5f87ff"),
+    ))
 
-    for i, c := range gradient {
-        fmt.Print(c.ForegroundSeq() + "█" + color.Reset)
+    // Or generate gradient color steps to apply yourself
+    start := color.NewRGB(255, 0, 0) // Red
+    end := color.NewRGB(0, 0, 255)   // Blue
+    for _, c := range color.Gradient(start, end, 10) {
+        fmt.Print(c.Apply("█"))
     }
     fmt.Println()
 
-    // Rainbow gradient
-    rainbow := color.RainbowGradient(50)
-    for _, c := range rainbow {
-        fmt.Print(c.ForegroundSeq() + "█" + color.Reset)
+    // Rainbow gradient with classic color stops
+    for _, c := range color.RainbowGradient(50) {
+        fmt.Print(c.Apply("█"))
     }
     fmt.Println()
 
-    // Smooth rainbow using HSL
-    smoothRainbow := color.SmoothRainbow(50)
-    for _, c := range smoothRainbow {
-        fmt.Print(c.ForegroundSeq() + "█" + color.Reset)
+    // Smooth rainbow using HSL hue rotation
+    for _, c := range color.SmoothRainbow(50) {
+        fmt.Print(c.Apply("█"))
     }
     fmt.Println()
 }
@@ -174,16 +192,15 @@ import (
 func main() {
     // Gradient through multiple color stops
     stops := []color.RGB{
-        color.NewRGB(255, 0, 0),    // Red
-        color.NewRGB(255, 255, 0),  // Yellow
-        color.NewRGB(0, 255, 0),    // Green
-        color.NewRGB(0, 255, 255),  // Cyan
-        color.NewRGB(0, 0, 255),    // Blue
+        color.NewRGB(255, 0, 0),   // Red
+        color.NewRGB(255, 255, 0), // Yellow
+        color.NewRGB(0, 255, 0),   // Green
+        color.NewRGB(0, 255, 255), // Cyan
+        color.NewRGB(0, 0, 255),   // Blue
     }
 
-    gradient := color.MultiGradient(stops, 100)
-    for _, c := range gradient {
-        fmt.Print(c.ForegroundSeq() + "█" + color.Reset)
+    for _, c := range color.MultiGradient(stops, 100) {
+        fmt.Print(c.Apply("█"))
     }
     fmt.Println()
 }
@@ -200,24 +217,21 @@ import (
 )
 
 func main() {
-    // Convert HSL to RGB
-    // Hue: 0-360, Saturation: 0-1, Lightness: 0-1
-
-    // Pure red (hue=0)
+    // HSL to RGB: hue 0-360, saturation 0-1, lightness 0-1
     red := color.HSLToRGB(0, 1.0, 0.5)
-    fmt.Println(red.ForegroundSeq() + "Red" + color.Reset)
-
-    // Pure green (hue=120)
     green := color.HSLToRGB(120, 1.0, 0.5)
-    fmt.Println(green.ForegroundSeq() + "Green" + color.Reset)
-
-    // Pure blue (hue=240)
-    blue := color.HSLToRGB(240, 1.0, 0.5)
-    fmt.Println(blue.ForegroundSeq() + "Blue" + color.Reset)
-
-    // Pastel colors (reduced saturation)
     pastel := color.HSLToRGB(180, 0.5, 0.75)
-    fmt.Println(pastel.ForegroundSeq() + "Pastel cyan" + color.Reset)
+
+    fmt.Println(red.Apply("Red"))
+    fmt.Println(green.Apply("Green"))
+    fmt.Println(pastel.Apply("Pastel cyan"))
+
+    // RGB to HSL: derive variations of an existing color
+    h, s, l := color.MustHex("#ff8000").HSL()
+    darker := color.HSLToRGB(h, s, l*0.6)
+    desaturated := color.HSLToRGB(h, s*0.4, l)
+    fmt.Println(darker.Apply("Darker orange"))
+    fmt.Println(desaturated.Apply("Muted orange"))
 }
 ```
 
@@ -233,22 +247,22 @@ import (
 
 func main() {
     // Sprintf with color
-    msg := color.Red.Sprintf("Error: %s", "file not found")
-    fmt.Println(msg)
+    fmt.Println(color.Red.Sprintf("Error: %s", "file not found"))
 
     // Sprint with color
-    colored := color.Green.Sprint("Success: ", 42, " items processed")
-    fmt.Println(colored)
+    fmt.Println(color.Green.Sprint("Success: ", 42, " items processed"))
 
-    // Bold text
+    // Bold and dim text without color
     fmt.Println(color.ApplyBold("Important!"))
-
-    // Dim text
     fmt.Println(color.ApplyDim("Less important"))
+
+    // Bold and dim combined with color
+    fmt.Println(color.Red.ApplyBold("Critical failure"))
+    fmt.Println(color.Cyan.ApplyDim("(hint: use --help)"))
 }
 ```
 
-### Conditional Coloring
+### Controlling Color Output
 
 ```go
 package main
@@ -260,57 +274,24 @@ import (
 )
 
 func main() {
-    // Check if we should colorize based on terminal detection
-    shouldColor := color.ShouldColorize(os.Stdout)
-
-    if shouldColor {
-        fmt.Println(color.Green.Apply("Colors enabled"))
-    } else {
-        fmt.Println("Colors disabled")
-    }
-
-    // Manually control colorization
-    color.Enabled = false
-    fmt.Println(color.Colorize(color.Red, "Won't be colored"))
-
-    color.Enabled = true
-    fmt.Println(color.Colorize(color.Red, "Will be colored"))
-
-    // Conditional colorization
-    isError := true
-    msg := color.ColorizeIf(isError, color.Red, "Error occurred")
-    fmt.Println(msg)
-}
-```
-
-### NO_COLOR Support
-
-```go
-package main
-
-import (
-    "fmt"
-    "os"
-    "github.com/deepnoodle-ai/wonton/color"
-)
-
-func main() {
-    // Respects NO_COLOR environment variable automatically
-    // If NO_COLOR is set, colors are disabled by default
-
-    // Check current state
+    // color.Enabled is initialized automatically at startup:
+    //   1. FORCE_COLOR / CLICOLOR_FORCE force colors on
+    //   2. NO_COLOR / CLICOLOR=0 force colors off
+    //   3. Otherwise: on iff stdout is a terminal
     fmt.Printf("Colors enabled: %v\n", color.Enabled)
 
-    // Terminal detection that respects NO_COLOR
-    if color.ShouldColorize(os.Stdout) {
-        fmt.Println(color.Green.Apply("Colorized output"))
-    } else {
-        fmt.Println("Plain output")
-    }
+    // Override it for special cases, e.g. coloring stderr while stdout
+    // is piped:
+    color.Enabled = color.ShouldColorize(os.Stderr)
+    fmt.Fprintln(os.Stderr, color.Red.Apply("error: something failed"))
+
+    // Or take manual control, e.g. from a --no-color flag:
+    color.Enabled = false
+    fmt.Println(color.Red.Apply("This prints as plain text"))
 }
 ```
 
-### Color Progress Bar
+### Low-Level Escape Sequences
 
 ```go
 package main
@@ -321,28 +302,15 @@ import (
 )
 
 func main() {
-    total := 50
-    gradient := color.Gradient(
-        color.NewRGB(255, 0, 0),    // Red
-        color.NewRGB(0, 255, 0),    // Green
-        total,
-    )
+    // The sequence functions always emit escape codes, regardless of
+    // color.Enabled. Use them when managing terminal state yourself.
+    orange := color.NewRGB(255, 165, 0)
+    fmt.Println(orange.ForegroundSeq() + "Orange text" + color.Reset)
+    fmt.Println(color.Blue.BackgroundSeq() + "Blue background" + color.Reset)
 
-    for i := 0; i <= total; i++ {
-        progress := float64(i) / float64(total)
-        filled := int(progress * 50)
-
-        bar := ""
-        for j := 0; j < filled; j++ {
-            bar += gradient[j].ForegroundSeq() + "█" + color.Reset
-        }
-        for j := filled; j < 50; j++ {
-            bar += "░"
-        }
-
-        fmt.Printf("\r[%s] %.0f%%", bar, progress*100)
-    }
-    fmt.Println()
+    // SGR parameters for composing your own sequences
+    fmt.Printf("red fg code: %s\n", color.Red.ForegroundCode())  // "31"
+    fmt.Printf("red bg code: %s\n", color.Red.BackgroundCode())  // "41"
 }
 ```
 
@@ -352,81 +320,83 @@ func main() {
 
 | Constant/Function | Description | Value/Return |
 |-------------------|-------------|--------------|
-| `NoColor` | Represents absence of color | `-1` |
+| `Default` | The terminal's default color | `-1` |
 | `Black`, `Red`, `Green`, `Yellow`, `Blue`, `Magenta`, `Cyan`, `White` | Standard colors | `0-7` |
 | `BrightBlack` ... `BrightWhite` | Bright colors | `8-15` |
-| `Palette(n)` | Extended palette color | `Color` (16-255) |
+| `Palette(n)` | 256-color palette entry | `Color` |
 
 ### Color Methods
 
-| Method | Description | Parameters | Returns |
-|--------|-------------|------------|---------|
-| `Apply(text)` | Apply color as foreground | `string` | `string` |
-| `ApplyDim(text)` | Apply color with dim attribute | `string` | `string` |
-| `ApplyBg(text)` | Apply color as background | `string` | `string` |
-| `Sprintf(format, args...)` | Format string with color | `string`, `...any` | `string` |
-| `Sprint(args...)` | Sprint with color | `...any` | `string` |
-| `ForegroundSeq()` | Get ANSI foreground escape sequence | None | `string` |
-| `BackgroundSeq()` | Get ANSI background escape sequence | None | `string` |
-| `ForegroundSeqDim()` | Get dim foreground escape sequence | None | `string` |
-| `ForegroundCode()` | Get SGR parameter for foreground | None | `string` |
-| `BackgroundCode()` | Get SGR parameter for background | None | `string` |
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `Apply(text)` | Apply as foreground (respects `Enabled`) | `string` |
+| `ApplyBg(text)` | Apply as background (respects `Enabled`) | `string` |
+| `ApplyDim(text)` | Apply with dim attribute (respects `Enabled`) | `string` |
+| `ApplyBold(text)` | Apply with bold attribute (respects `Enabled`) | `string` |
+| `Sprintf(format, args...)` | Format string with color (respects `Enabled`) | `string` |
+| `Sprint(args...)` | Sprint with color (respects `Enabled`) | `string` |
+| `ForegroundSeq()` | ANSI foreground escape sequence | `string` |
+| `BackgroundSeq()` | ANSI background escape sequence | `string` |
+| `ForegroundSeqDim()` | Dim foreground escape sequence | `string` |
+| `ForegroundSeqBold()` | Bold foreground escape sequence | `string` |
+| `ForegroundCode()` | SGR parameter for foreground | `string` |
+| `BackgroundCode()` | SGR parameter for background | `string` |
 
 ### RGB Type
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `NewRGB(r, g, b)` | Create RGB color | `uint8`, `uint8`, `uint8` | `RGB` |
+| Function | Description | Returns |
+|----------|-------------|---------|
+| `NewRGB(r, g, b)` | Create RGB color from channels | `RGB` |
+| `Hex(s)` | Parse `#rrggbb` / `#rgb` hex string | `(RGB, error)` |
+| `MustHex(s)` | Like `Hex` but panics on invalid input | `RGB` |
 
 ### RGB Methods
 
-| Method | Description | Parameters | Returns |
-|--------|-------------|------------|---------|
-| `ForegroundSeq()` | Get ANSI foreground escape sequence | None | `string` |
-| `BackgroundSeq()` | Get ANSI background escape sequence | None | `string` |
-| `Apply(text, bg)` | Apply RGB color to text | `string`, `bool` | `string` |
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `Apply(text)` | Apply as foreground (respects `Enabled`) | `string` |
+| `ApplyBg(text)` | Apply as background (respects `Enabled`) | `string` |
+| `Sprintf(format, args...)` | Format string with color (respects `Enabled`) | `string` |
+| `Sprint(args...)` | Sprint with color (respects `Enabled`) | `string` |
+| `Hex()` | Format as `#rrggbb` | `string` |
+| `HSL()` | Convert to HSL | `(h, s, l float64)` |
+| `Lerp(other, t)` | Interpolate toward another color | `RGB` |
+| `ForegroundSeq()` | ANSI foreground escape sequence | `string` |
+| `BackgroundSeq()` | ANSI background escape sequence | `string` |
 
 ### Gradient Functions
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `Gradient(start, end, steps)` | Create gradient between two colors | `RGB`, `RGB`, `int` | `[]RGB` |
-| `RainbowGradient(steps)` | Create classic rainbow gradient | `int` | `[]RGB` |
-| `SmoothRainbow(steps)` | Create smooth rainbow using HSL | `int` | `[]RGB` |
-| `MultiGradient(stops, steps)` | Create gradient through multiple stops | `[]RGB`, `int` | `[]RGB` |
+| Function | Description | Returns |
+|----------|-------------|---------|
+| `Gradient(start, end, steps)` | Gradient between two colors | `[]RGB` |
+| `MultiGradient(stops, steps)` | Gradient through multiple stops | `[]RGB` |
+| `RainbowGradient(steps)` | Classic rainbow gradient | `[]RGB` |
+| `SmoothRainbow(steps)` | Smooth rainbow using HSL | `[]RGB` |
+| `ApplyGradient(text, stops...)` | Color text with a gradient (respects `Enabled`) | `string` |
+
+All gradient functions return an empty slice for `steps <= 0` and the first
+color for `steps == 1`.
 
 ### HSL Functions
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `HSLToRGB(h, s, l)` | Convert HSL to RGB | `float64`, `float64`, `float64` | `RGB` |
+| Function | Description | Returns |
+|----------|-------------|---------|
+| `HSLToRGB(h, s, l)` | Convert HSL to RGB | `RGB` |
 
-### Utility Functions
+### Utility Functions and Variables
 
-| Function | Description | Parameters | Returns |
-|----------|-------------|------------|---------|
-| `ApplyBold(text)` | Apply bold formatting | `string` | `string` |
-| `ApplyDim(text)` | Apply dim formatting | `string` | `string` |
-| `IsTerminal(f)` | Check if file is a terminal | `*os.File` | `bool` |
-| `ShouldColorize(f)` | Check if colors should be used | `*os.File` | `bool` |
-| `Colorize(c, text)` | Colorize if Enabled is true | `Color`, `string` | `string` |
-| `ColorizeIf(enabled, c, text)` | Conditionally colorize | `bool`, `Color`, `string` | `string` |
-| `ColorizeRGB(rgb, text)` | Colorize with RGB if Enabled | `RGB`, `string` | `string` |
+| Name | Description |
+|------|-------------|
+| `Enabled` | Whether the Apply helpers emit color; auto-initialized at startup |
+| `ShouldColorize(f)` | Whether colors should be used for a specific stream |
 
 ### Constants
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `Escape` | `"\033["` | ANSI escape sequence prefix |
 | `Reset` | `"\033[0m"` | Reset all attributes |
 | `Bold` | `"\033[1m"` | Bold attribute |
 | `Dim` | `"\033[2m"` | Dim/faint attribute |
-
-### Global Variables
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `Enabled` | `bool` | Controls global color output (respects NO_COLOR) |
 
 ## Related Packages
 
@@ -434,3 +404,4 @@ func main() {
 - **[terminal](../terminal/)** - Low-level terminal control with ANSI support
 - **[assert](../assert/)** - Test assertions that use colored diffs
 - **[cli](../cli/)** - CLI framework with colored output helpers
+- **[tty](../tty/)** - Terminal detection used by `ShouldColorize`
