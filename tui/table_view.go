@@ -43,7 +43,7 @@ type TableView struct {
 // Table creates a new table view with the given columns.
 // selected should be a pointer to the currently selected row index.
 //
-// The component handles keyboard navigation (arrow keys) and selection (Enter)
+// The component handles keyboard navigation (arrows, PageUp/PageDown, Home/End, j/k) and selection (Enter)
 // automatically when focused. Use Tab to focus the table.
 //
 // Example:
@@ -118,26 +118,16 @@ func (t *TableView) HandleKeyEvent(event KeyEvent) bool {
 		visibleHeight = 10 // default
 	}
 
-	// Handle arrow keys for navigation
+	if nav := listNavForKey(event, true); nav != listNavNone && t.selected != nil {
+		next, moved := moveListCursor(nav, *t.selected, len(t.rows), visibleHeight)
+		if moved {
+			*t.selected = next
+			scrollIntoView(&t.scrollY, *t.selected, visibleHeight)
+		}
+		return moved
+	}
+
 	switch event.Key {
-	case KeyArrowUp:
-		if t.selected != nil && *t.selected > 0 {
-			*t.selected--
-			// Adjust scroll if needed
-			if t.scrollY > *t.selected {
-				t.scrollY = *t.selected
-			}
-			return true
-		}
-	case KeyArrowDown:
-		if t.selected != nil && *t.selected < len(t.rows)-1 {
-			*t.selected++
-			// Adjust scroll if needed
-			if *t.selected-t.scrollY >= visibleHeight {
-				t.scrollY = *t.selected - visibleHeight + 1
-			}
-			return true
-		}
 	case KeyEnter:
 		// Enter selects the current row
 		if t.selected != nil && *t.selected >= 0 && *t.selected < len(t.rows) {

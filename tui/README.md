@@ -59,7 +59,7 @@ type listApp struct {
 func (a *listApp) View() tui.View {
 	return tui.Stack(
 		tui.Text("Select an item:").Bold(),
-		tui.Table([]tui.TableColumn{{Header: "Items"}}, &a.selected).
+		tui.Table([]tui.TableColumn{{Title: "Items"}}, &a.selected).
 			Rows(func() [][]string {
 				var rows [][]string
 				for _, item := range a.items {
@@ -106,8 +106,9 @@ func (a *formApp) View() tui.View {
 			OnSubmit(func(s string) { a.focused = 2 }),
 
 		tui.Text("Password:"),
-		tui.PasswordInput(&a.password).
+		tui.InputField(&a.password).
 			ID("password").
+			Mask('•').
 			OnSubmit(func(s string) { /* submit form */ }),
 
 		tui.Spacer(),
@@ -201,9 +202,9 @@ type tableApp struct {
 
 func (a *tableApp) View() tui.View {
 	columns := []tui.TableColumn{
-		{Header: "Name", Width: 15},
-		{Header: "Age", Width: 5},
-		{Header: "City", Width: 20},
+		{Title: "Name", Width: 15},
+		{Title: "Age", Width: 5},
+		{Title: "City", Width: 20},
 	}
 	rows := [][]string{
 		{"Alice", "28", "New York"},
@@ -215,8 +216,8 @@ func (a *tableApp) View() tui.View {
 		tui.Text("Employee Directory").Bold(),
 		tui.Table(columns, &a.selected).
 			Rows(rows).
-			Bordered().
-			Striped(),
+			HeaderBottomBorder(true).
+			SelectedStyle(tui.NewStyle().WithReverse()),
 	).Gap(1)
 }
 ```
@@ -269,25 +270,25 @@ func (a *app) View() tui.View {
 		tui.Group(
 			// Left sidebar
 			tui.Width(20,
-				tui.Stack(
+				tui.Bordered(tui.Stack(
 					tui.Text("Menu").Bold(),
-					tui.Table([]tui.TableColumn{{Header: ""}}, &a.menuIdx).
+					tui.Table([]tui.TableColumn{{Title: ""}}, &a.menuIdx).
 						Rows([][]string{{"Home"}, {"Profile"}, {"Settings"}}),
-				).Bordered(),
+				)),
 			),
 
 			// Main panel
-			tui.Stack(
+			tui.Bordered(tui.Stack(
 				tui.Text("Content Area"),
 				a.renderContent(),
-			).Flex(1).Bordered(),
+			).Flex(1)),
 
 			// Right sidebar
 			tui.Width(20,
-				tui.Stack(
+				tui.Bordered(tui.Stack(
 					tui.Text("Info").Bold(),
 					tui.Text("Status: Active").Dim(),
-				).Bordered(),
+				)),
 			),
 		).Gap(1).Flex(1),
 
@@ -304,43 +305,43 @@ func (a *app) View() tui.View {
 func (a *app) View() tui.View {
 	return tui.Stack(
 		// Rainbow color cycling
-		tui.Text("Welcome to the App!").Animate(Rainbow(3)),
+		tui.Text("Welcome to the App!").Animate(tui.Rainbow(3)),
 
 		// Pulsing alert
-		tui.Text("ALERT").Animate(Pulse(tui.NewRGB(255, 0, 0), 12)),
+		tui.Text("ALERT").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 12)),
 
 		// Wave effect
-		tui.Text("Status: Connected").Animate(Wave(12,
+		tui.Text("Status: Connected").Animate(tui.Wave(12,
 			tui.NewRGB(50, 150, 255),
 			tui.NewRGB(100, 200, 255),
 		)),
 
 		// Sliding highlight
-		tui.Text("Processing...").Animate(Slide(2,
+		tui.Text("Processing...").Animate(tui.Slide(2,
 			tui.NewRGB(100, 100, 100),
 			tui.NewRGB(255, 255, 255),
 		)),
 
 		// Sparkle effect
-		tui.Text("✨ Special ✨").Animate(Sparkle(3,
+		tui.Text("✨ Special ✨").Animate(tui.Sparkle(3,
 			tui.NewRGB(180, 180, 220),
 			tui.NewRGB(255, 255, 255),
 		)),
 
 		// Typewriter effect
-		tui.Text("Loading data...").Animate(Typewriter(3,
+		tui.Text("Loading data...").Animate(tui.Typewriter(3,
 			tui.NewRGB(0, 255, 100),
 			tui.NewRGB(255, 255, 255),
 		).Loop(true)),
 
 		// Glitch effect
-		tui.Text("SIGNAL_LOST").Animate(Glitch(2,
+		tui.Text("SIGNAL_LOST").Animate(tui.Glitch(2,
 			tui.NewRGB(255, 0, 100),
 			tui.NewRGB(0, 255, 255),
 		)),
 
 		// Reversed rainbow with custom animation configuration
-		tui.Text("Reversed!").Animate(Rainbow(3).Reverse()),
+		tui.Text("Reversed!").Animate(tui.Rainbow(3).Reverse()),
 	).Gap(1)
 }
 ```
@@ -404,15 +405,19 @@ func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
 }
 
 type dataLoadedEvent struct {
+	time time.Time
 	data []string
 }
+
+// Custom events implement tui.Event by providing a timestamp.
+func (e dataLoadedEvent) Timestamp() time.Time { return e.time }
 
 func (a *app) fetchData() tui.Cmd {
 	return func() tui.Event {
 		// This runs in a goroutine
 		time.Sleep(1 * time.Second)
 		data := []string{"Item 1", "Item 2", "Item 3"}
-		return dataLoadedEvent{data: data}
+		return dataLoadedEvent{time: time.Now(), data: data}
 	}
 }
 ```
@@ -504,19 +509,20 @@ func (a *app) View() tui.View {
 
 | Function | Description             | Inputs             | Outputs       |
 | -------- | ----------------------- | ------------------ | ------------- |
-| `Stack`  | Vertical stack layout   | `children ...View` | `*stack`      |
-| `Group`  | Horizontal stack layout | `children ...View` | `*group`      |
-| `ZStack` | Layered stack layout    | `children ...View` | `*zStack`     |
-| `Spacer` | Flexible spacing        | none               | `*spacerView` |
+| `Stack`  | Vertical stack layout   | `children ...View` | `*StackView`  |
+| `Group`  | Horizontal stack layout | `children ...View` | `*GroupView`  |
+| `ZStack` | Layered stack layout    | `children ...View` | `*ZStackView` |
+| `Spacer` | Flexible spacing        | none               | `*SpacerView` |
 | `Empty`  | Empty view              | none               | `View`        |
 
 **Flex Inheritance**: Stack and Group containers automatically inherit flexibility from their children. If a container holds flexible views (like Canvas or Spacer), the container itself becomes flexible without needing an explicit `.Flex()` call. This enables intuitive nested layouts:
 
 ```go
-// Canvas expands because Group inherits its flexibility
+// The canvas expands because Group inherits its flexibility
+draw := func(ctx *RenderContext) { /* custom drawing */ }
 Stack(
     Text("Header"),
-    Group(Canvas()),  // Group auto-inherits flex from Canvas
+    Group(CanvasContext(draw)), // Group auto-inherits flex from the canvas
     Text("Footer"),
 )
 ```
@@ -525,49 +531,55 @@ Stack(
 
 | Function   | Description       | Inputs                                        | Outputs          |
 | ---------- | ----------------- | --------------------------------------------- | ---------------- |
-| `Text`     | Formatted text    | `format string, args ...interface{}`          | `*textView`      |
-| `Markdown` | Markdown renderer | `content string, scrollY *int`                | `*markdownView`  |
-| `Code`     | Syntax highlight  | `code string, language string`                | `*codeView`      |
-| `DiffView` | Diff display      | `diff *Diff, language string, scrollY *int`   | `*diffView`      |
+| `Text`     | Formatted text    | `format string, args ...interface{}`          | `*TextView`        |
+| `Markdown` | Markdown renderer | `content string, scrollY *int`                | `*MarkdownView`    |
+| `Code`     | Syntax highlight  | `code string, language string`                | `*CodeView`        |
+| `DiffView` | Diff display      | `diff *Diff, language string, scrollY *int`   | `*UnifiedDiffView` |
 
 ### Input Views
 
 | Function        | Description           | Inputs          | Outputs               |
 | --------------- | --------------------- | --------------- | --------------------- |
-| `InputField`    | Text input            | `value *string` | `*inputFieldView`     |
-| `PasswordInput` | Password input        | `value *string` | `*passwordInputView`  |
-| `TextArea`      | Multi-line text input | `value *string` | `*textAreaView`       |
+| `InputField`           | Text input              | `value *string` | `*InputFieldView` |
+| `InputField` + `Mask`  | Password input          | `value *string` | `*InputFieldView` |
+| `TextArea`             | Multi-line text input   | `value *string` | `*TextAreaView`   |
 
 ### Interactive Views
 
 | Function       | Description                | Inputs                               | Outputs              |
 | -------------- | -------------------------- | ------------------------------------ | -------------------- |
-| `Button`       | Keyboard button            | `label string, onClick func()`       | `*buttonView`        |
-| `Clickable`    | Mouse-only clickable       | `label string, onClick func()`       | `*clickableView`     |
-| `PromptChoice` | Selection with inline input | `selected *int, inputText *string`  | `*promptChoiceView`  |
+| `Button`       | Keyboard button            | `label string, onClick func()`       | `*ButtonView`        |
+| `Clickable`    | Mouse-only clickable       | `label string, onClick func()`       | `*ClickableView`     |
+| `PromptChoice` | Selection with inline input | `selected *int, inputText *string`  | `*PromptChoiceView`  |
 
 ### Display Views
 
 | Function   | Description        | Inputs                                       | Outputs          |
 | ---------- | ------------------ | -------------------------------------------- | ---------------- |
-| `Table`    | Data table         | `columns []TableColumn, selected *int`       | `*tableView`     |
-| `Tree`     | Hierarchical tree  | `root *TreeNode`                             | `*treeView`      |
-| `Progress` | Progress indicator | `current, total int`                         | `*progressView`  |
-| `Loading`  | Loading spinner    | `frame uint64`                               | `*loadingView`   |
-| `Divider`  | Horizontal line    | none                                         | `*dividerView`   |
+| `Table`    | Data table         | `columns []TableColumn, selected *int`       | `*TableView`     |
+| `Tree`     | Hierarchical tree  | `root *TreeNode`                             | `*TreeView`      |
+| `Progress` | Progress indicator | `current, total int`                         | `*ProgressView`  |
+| `Loading`  | Loading spinner    | `frame uint64`                               | `*LoadingView`   |
+| `Divider`  | Horizontal line    | none                                         | `*DividerView`   |
+
+All list-shaped views (`Table`, `Tree`, `SelectList`, `FilterableList`,
+`CheckboxList`, `RadioList`) share one navigation key map when focused:
+arrow keys, PageUp/PageDown, Home/End, and vi-style `j`/`k` (`g`/`G` for
+first/last). `FilterableList` routes letters to its filter input when one
+is bound, so the vi keys are disabled there.
 
 ### Container/Modifier Views
 
 | Function    | Description          | Inputs                           | Outputs           |
 | ----------- | -------------------- | -------------------------------- | ----------------- |
-| `Bordered`  | Border container     | `inner View`                     | `*borderedView`   |
+| `Bordered`  | Border container     | `inner View`                     | `*BorderedView`   |
 | `Padding`   | Padding container    | `n int, inner View`              | `View`            |
 | `PaddingHV` | H/V padding          | `h, v int, inner View`           | `View`            |
 | `Width`     | Fixed width          | `w int, inner View`              | `View`            |
 | `Height`    | Fixed height         | `h int, inner View`              | `View`            |
 | `MaxWidth`  | Maximum width        | `w int, inner View`              | `View`            |
 | `MinWidth`  | Minimum width        | `w int, inner View`              | `View`            |
-| `Scroll`    | Scrollable container | `inner View, scrollY *int`       | `*scrollView`     |
+| `Scroll`    | Scrollable container | `inner View, scrollY *int`       | `*ScrollView`     |
 
 **borderedView methods**: `.Title(string)`, `.Border(*BorderStyle)`, `.BorderFg(Color)`, `.FocusBorderFg(Color)`, `.TitleStyle(Style)`
 
@@ -575,15 +587,15 @@ Stack(
 
 | Function        | Description           | Inputs                                               | Outputs       |
 | --------------- | --------------------- | ---------------------------------------------------- | ------------- |
-| `Canvas`        | Custom drawing area   | `draw func(frame RenderFrame, bounds Rectangle)`     | `*canvasView` |
-| `CanvasContext` | Canvas with context   | `draw func(ctx *RenderContext)`                      | `*canvasView` |
+| `Canvas`        | Custom drawing area   | `draw func(frame RenderFrame, bounds Rectangle)`     | `*CanvasView` |
+| `CanvasContext` | Canvas with context   | `draw func(ctx *RenderContext)`                      | `*CanvasView` |
 
 ### Collection Views
 
 | Function   | Description             | Inputs                                        | Outputs          |
 | ---------- | ----------------------- | --------------------------------------------- | ---------------- |
-| `ForEach`  | Map items to views      | `items []T, mapper func(T, int) View`         | `*forEachView`   |
-| `HForEach` | Horizontal map          | `items []T, mapper func(T, int) View`         | `*hForEachView`  |
+| `ForEach`  | Map items to views      | `items []T, mapper func(T, int) View`         | `*ForEachView`   |
+| `HForEach` | Horizontal map          | `items []T, mapper func(T, int) View`         | `*HForEachView`  |
 
 ### Conditional Views
 
@@ -656,9 +668,9 @@ Apply animations using `.Animate(animation)` with animation constructors:
 
 Example:
 ```go
-tui.Text("Hello").Animate(Rainbow(3))
-tui.Text("Hello").Animate(Rainbow(3).Reverse())
-tui.Text("Alert").Animate(Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
+tui.Text("Hello").Animate(tui.Rainbow(3))
+tui.Text("Hello").Animate(tui.Rainbow(3).Reverse())
+tui.Text("Alert").Animate(tui.Pulse(tui.NewRGB(255, 0, 0), 10).Brightness(0.3, 1.0))
 ```
 
 ### Event Types
@@ -745,8 +757,8 @@ Tests are organized by feature in `golden_test.go` with clear section headers:
 // MY COMPONENT TESTS - Description of what's being tested
 // =============================================================================
 
-func TestGolden_MyComponent_BasicUsage(t *testing.T) { ... }
-func TestGolden_MyComponent_EdgeCase(t *testing.T) { ... }
+func TestGolden_MyComponent_BasicUsage(t *testing.T) { /* ... */ }
+func TestGolden_MyComponent_EdgeCase(t *testing.T) { /* ... */ }
 ```
 
 ### Running Tests
