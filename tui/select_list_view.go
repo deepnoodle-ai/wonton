@@ -24,7 +24,7 @@ type SelectListView struct {
 // SelectList creates a selectable list view using the existing ListItem type.
 // selected should be a pointer to the currently selected index.
 //
-// The component handles keyboard navigation (arrow keys) and selection (Enter)
+// The component handles keyboard navigation (arrows, PageUp/PageDown, Home/End, j/k) and selection (Enter)
 // automatically when focused. Use Tab to focus the list.
 //
 // Example:
@@ -84,21 +84,21 @@ func (l *SelectListView) FocusBounds() image.Rectangle {
 }
 
 func (l *SelectListView) HandleKeyEvent(event KeyEvent) bool {
-	// Handle arrow keys for navigation
-	switch event.Key {
-	case KeyArrowUp:
-		if l.selected != nil && *l.selected > 0 {
-			*l.selected--
-			return true
+	if l.selected == nil {
+		return false
+	}
+
+	if nav := listNavForKey(event, true); nav != listNavNone {
+		next, moved := moveListCursor(nav, *l.selected, len(l.items), l.height)
+		if moved {
+			*l.selected = next
 		}
-	case KeyArrowDown:
-		if l.selected != nil && *l.selected < len(l.items)-1 {
-			*l.selected++
-			return true
-		}
-	case KeyEnter:
+		return moved
+	}
+
+	if event.Key == KeyEnter {
 		// Enter selects the current item
-		if l.selected != nil && *l.selected >= 0 && *l.selected < len(l.items) {
+		if *l.selected >= 0 && *l.selected < len(l.items) {
 			if l.onSelect != nil {
 				l.onSelect(l.items[*l.selected], *l.selected)
 			}

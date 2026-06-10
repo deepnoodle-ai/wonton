@@ -121,7 +121,7 @@ func ASCIITreeBranchChars() TreeBranchChars {
 
 // Tree creates a tree view with the given root node.
 //
-// The component handles keyboard navigation (arrow keys) and expand/collapse (Enter/Space)
+// The component handles keyboard navigation (arrows, PageUp/PageDown, Home/End, j/k) and expand/collapse (Enter/Space)
 // automatically when focused. Use Tab to focus the tree.
 //
 // Example:
@@ -211,20 +211,16 @@ func (t *TreeView) HandleKeyEvent(event KeyEvent) bool {
 		currentIdx = 0
 	}
 
-	// Handle arrow keys for navigation
+	if nav := listNavForKey(event, true); nav != listNavNone {
+		next, moved := moveListCursor(nav, currentIdx, len(visibleNodes), t.height)
+		if moved {
+			t.selected = visibleNodes[next]
+			t.adjustScroll(next)
+		}
+		return moved
+	}
+
 	switch event.Key {
-	case KeyArrowUp:
-		if currentIdx > 0 {
-			t.selected = visibleNodes[currentIdx-1]
-			t.adjustScroll(currentIdx - 1)
-			return true
-		}
-	case KeyArrowDown:
-		if currentIdx < len(visibleNodes)-1 {
-			t.selected = visibleNodes[currentIdx+1]
-			t.adjustScroll(currentIdx + 1)
-			return true
-		}
 	case KeyEnter:
 		// Toggle expand/collapse on Enter
 		if t.selected != nil && !t.selected.IsLeaf() {
