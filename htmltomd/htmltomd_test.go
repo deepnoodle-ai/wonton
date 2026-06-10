@@ -642,10 +642,11 @@ func TestConvert_SpecialCharactersInCode(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"backticks in inline code", "<code>foo`bar</code>", "`foo`bar`"},
+		{"backticks in inline code", "<code>foo`bar</code>", "``foo`bar``"},
+		{"code starting with backtick", "<code>`quoted`</code>", "`` `quoted` ``"},
 		{"code with html entities", "<code>&lt;div&gt;</code>", "`<div>`"},
 		{"code with ampersand", "<code>a &amp; b</code>", "`a & b`"},
-		{"pre with backticks", "<pre>```go\ncode\n```</pre>", "```\n```go\ncode\n```\n```"},
+		{"pre with backticks", "<pre>```go\ncode\n```</pre>", "````\n```go\ncode\n```\n````"},
 		{"code with unicode", "<code>λ → α</code>", "`λ → α`"},
 		{"code with newlines in pre", "<pre>line1\nline2\nline3</pre>", "```\nline1\nline2\nline3\n```"},
 		{"code preserves whitespace", "<pre>    indented\n    more</pre>", "```\n    indented\n    more\n```"},
@@ -831,7 +832,7 @@ func TestConvert_ListEdgeCases(t *testing.T) {
 		{
 			"list starting at different number",
 			`<ol start="5"><li>Five</li><li>Six</li></ol>`,
-			"1. Five\n2. Six",
+			"5. Five\n6. Six",
 		},
 	}
 
@@ -1023,4 +1024,66 @@ func TestDefaultOptions(t *testing.T) {
 	assert.Equal(t, CodeBlockStyleFenced, opts.CodeBlockStyle)
 	assert.Equal(t, "-", opts.BulletChar)
 	assert.Nil(t, opts.SkipTags)
+}
+
+func TestConvert_TableCellEscaping(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			"pipe in cell",
+			"<table><tr><th>op</th></tr><tr><td>a | b</td></tr></table>",
+			"| op |\n| --- |\n| a \\| b |",
+		},
+		{
+			"newline in cell",
+			"<table><tr><th>h</th></tr><tr><td>line1<br>line2</td></tr></table>",
+			"| h |\n| --- |\n| line1 line2 |",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Convert(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestConvert_CodeBlockLanguageDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			"language class among other classes",
+			`<pre><code class="hljs language-go">x := 1</code></pre>`,
+			"```go\nx := 1\n```",
+		},
+		{
+			"lang- prefix",
+			`<pre><code class="lang-python">x = 1</code></pre>`,
+			"```python\nx = 1\n```",
+		},
+		{
+			"language class on pre element",
+			`<pre class="language-rust"><code>let x = 1;</code></pre>`,
+			"```rust\nlet x = 1;\n```",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Convert(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestConvert_ImageTitle(t *testing.T) {
+	result := Convert(`<img src="a.png" alt="A" title="The title">`)
+	assert.Equal(t, `![A](a.png "The title")`, result)
 }

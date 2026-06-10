@@ -198,7 +198,10 @@ func ExponentialBackoff(attempt int, cfg *Config) time.Duration {
 		return 0
 	}
 	backoff := float64(cfg.InitialBackoff) * math.Pow(cfg.BackoffMultiplier, float64(attempt-1))
-	if time.Duration(backoff) > cfg.MaxBackoff {
+	// Cap in float64 space: for large attempt counts the product overflows
+	// time.Duration (going negative), so the comparison must happen before
+	// the conversion. The negated comparison also catches NaN.
+	if !(backoff < float64(cfg.MaxBackoff)) {
 		backoff = float64(cfg.MaxBackoff)
 	}
 	return applyJitter(time.Duration(backoff), cfg.Jitter)
@@ -215,7 +218,7 @@ func LinearBackoff(attempt int, cfg *Config) time.Duration {
 		return 0
 	}
 	backoff := cfg.InitialBackoff + time.Duration(attempt-1)*cfg.LinearIncrement
-	if backoff > cfg.MaxBackoff {
+	if backoff > cfg.MaxBackoff || backoff < 0 {
 		backoff = cfg.MaxBackoff
 	}
 	return applyJitter(backoff, cfg.Jitter)
@@ -252,14 +255,19 @@ func FullJitterBackoff(attempt int, cfg *Config) time.Duration {
 	return time.Duration(rand.Float64() * ceiling)
 }
 
-// applyJitter adds +/- jitter percentage to a duration.
+// applyJitter adds +/- jitter percentage to a duration. The result is never
+// negative, even when jitter > 1.0.
 func applyJitter(d time.Duration, jitter float64) time.Duration {
 	if jitter <= 0 {
 		return d
 	}
 	jitterRange := float64(d) * jitter
 	jitterAmount := (rand.Float64()*2 - 1) * jitterRange
-	return time.Duration(float64(d) + jitterAmount)
+	result := time.Duration(float64(d) + jitterAmount)
+	if result < 0 {
+		return 0
+	}
+	return result
 }
 
 // Option is a functional option for configuring retry behavior.
@@ -454,6 +462,16 @@ func doWithConfig[T any](ctx context.Context, fn func() (T, error), cfg *Config)
 	var errs []error
 	attempt := 0
 
+	// Honor the documented nil semantics on Config fields.
+	timer := cfg.Timer
+	if timer == nil {
+		timer = defaultTimer{}
+	}
+	delayFunc := cfg.DelayFunc
+	if delayFunc == nil {
+		delayFunc = ExponentialBackoff
+	}
+
 	for {
 		// Check context before each attempt (including the first)
 		if ctx.Err() != nil {
@@ -484,7 +502,7 @@ func doWithConfig[T any](ctx context.Context, fn func() (T, error), cfg *Config)
 		}
 
 		// Calculate delay using the configured delay function
-		delay := cfg.DelayFunc(attempt, cfg)
+		delay := delayFunc(attempt, cfg)
 
 		// Call OnRetry callback
 		if cfg.OnRetry != nil {
@@ -499,7 +517,7 @@ func doWithConfig[T any](ctx context.Context, fn func() (T, error), cfg *Config)
 				Attempts: attempt,
 				Errors:   append(errs, ctx.Err()),
 			}
-		case <-cfg.Timer.After(delay):
+		case <-timer.After(delay):
 		}
 	}
 }

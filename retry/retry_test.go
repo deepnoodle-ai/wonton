@@ -716,3 +716,51 @@ func processItem(item string) error {
 	// Simulate processing that might fail
 	return nil
 }
+
+func TestExponentialBackoffNoOverflow(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Jitter = 0
+
+	// Before the float64 cap fix, the multiplication overflowed time.Duration
+	// around attempt 40 and produced large negative delays, which turned
+	// infinite-retry loops into hot loops.
+	for _, attempt := range []int{1, 10, 40, 64, 1000} {
+		d := ExponentialBackoff(attempt, &cfg)
+		if d < 0 || d > cfg.MaxBackoff {
+			t.Fatalf("ExponentialBackoff(%d) = %v, want in [0, %v]", attempt, d, cfg.MaxBackoff)
+		}
+	}
+}
+
+func TestApplyJitterNeverNegative(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Jitter = 2.0 // out-of-range jitter must still never yield negative delays
+
+	for i := 0; i < 1000; i++ {
+		if d := ExponentialBackoff(1, &cfg); d < 0 {
+			t.Fatalf("got negative delay %v with jitter %v", d, cfg.Jitter)
+		}
+	}
+}
+
+func TestNilTimerAndDelayFuncUseDefaults(t *testing.T) {
+	ctx := context.Background()
+
+	// Config documents that nil Timer and nil DelayFunc fall back to
+	// time.After and ExponentialBackoff.
+	calls := 0
+	err := DoSimple(ctx, func() error {
+		calls++
+		if calls < 2 {
+			return errors.New("transient")
+		}
+		return nil
+	},
+		WithTimer(nil),
+		WithDelayFunc(nil),
+		WithBackoff(time.Millisecond, time.Millisecond),
+	)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, calls)
+}

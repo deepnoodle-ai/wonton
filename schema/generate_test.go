@@ -937,8 +937,8 @@ type recursiveNode struct {
 }
 
 type mutualPolicy struct {
-	Type   string       `json:"type"`
-	Humans *mutualRule  `json:"humans,omitempty"`
+	Type   string      `json:"type"`
+	Humans *mutualRule `json:"humans,omitempty"`
 }
 
 type mutualRule struct {
@@ -1057,4 +1057,67 @@ func TestGenerate_NonCyclicSharedType(t *testing.T) {
 	assert.True(t, hasX)
 	assert.Nil(t, a.AdditionalProperties)
 	assert.Nil(t, b.AdditionalProperties)
+}
+
+// Test []byte and json.RawMessage handling
+type BytesStruct struct {
+	Data    []byte          `json:"data" description:"Binary payload"`
+	Custom  namedBytes      `json:"custom"`
+	Raw     json.RawMessage `json:"raw"`
+	Fixed   [4]byte         `json:"fixed"`
+	NotByte []int8          `json:"not_byte"`
+}
+
+type namedBytes []byte
+
+func TestGenerate_ByteSlices(t *testing.T) {
+	s, err := schema.Generate(BytesStruct{})
+	assert.NoError(t, err)
+
+	// encoding/json marshals byte slices (including named types) as base64 strings
+	assert.Equal(t, schema.String, s.Properties["data"].Type)
+	assert.Equal(t, schema.String, s.Properties["custom"].Type)
+
+	// json.RawMessage is arbitrary pre-encoded JSON: no type constraint
+	assert.Empty(t, s.Properties["raw"].Type)
+
+	// Byte arrays (not slices) marshal as arrays of numbers
+	assert.Equal(t, schema.Array, s.Properties["fixed"].Type)
+	assert.Equal(t, schema.Integer, s.Properties["fixed"].Items.Type)
+
+	// []int8 is not a byte slice
+	assert.Equal(t, schema.Array, s.Properties["not_byte"].Type)
+}
+
+// Test embedded field semantics matching encoding/json
+type promotedEmbedOuter struct {
+	NamedEmbed `json:"named"`
+	IntEmbed
+	C string `json:"c"`
+}
+
+type NamedEmbed struct {
+	X string `json:"x"`
+}
+
+type IntEmbed int
+
+func TestGenerate_TaggedEmbeddedStructIsNested(t *testing.T) {
+	s, err := schema.Generate(promotedEmbedOuter{})
+	assert.NoError(t, err)
+
+	// A tagged embedded struct marshals as a nested object under the tag
+	// name, exactly like encoding/json.
+	assert.Contains(t, s.Properties, "named")
+	assert.NotContains(t, s.Properties, "x")
+	named := s.Properties["named"]
+	assert.Equal(t, schema.Object, named.Type)
+	assert.Contains(t, named.Properties, "x")
+
+	// An embedded non-struct marshals as a field named after the type.
+	assert.Contains(t, s.Properties, "IntEmbed")
+	assert.Equal(t, schema.Integer, s.Properties["IntEmbed"].Type)
+
+	assert.Contains(t, s.Properties, "c")
+	assert.Equal(t, []string{"named", "IntEmbed", "c"}, s.Required)
 }
