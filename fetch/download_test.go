@@ -1,11 +1,13 @@
-package web
+package fetch
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -42,7 +44,7 @@ func TestSanitizeFilename(t *testing.T) {
 	}
 }
 
-func TestExtractFilenameFromContentDisposition(t *testing.T) {
+func TestFilenameFromContentDisposition(t *testing.T) {
 	tests := []struct {
 		name     string
 		header   string
@@ -64,9 +66,9 @@ func TestExtractFilenameFromContentDisposition(t *testing.T) {
 			expected: "document.pdf",
 		},
 		{
-			name:     "single quotes - handled by fallback",
+			name:     "single quotes stripped",
 			header:   `attachment; filename='document.pdf'`,
-			expected: "'document.pdf'", // mime.ParseMediaType treats as literal, fallback handles
+			expected: "document.pdf",
 		},
 		{
 			name:     "filename with spaces",
@@ -92,22 +94,21 @@ func TestExtractFilenameFromContentDisposition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractFilenameFromContentDisposition(tt.header)
+			result := filenameFromContentDisposition(tt.header)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-// --- BinaryFetcher Tests ---
+// --- Download Tests ---
 
-func TestBinaryFetcherNilInput(t *testing.T) {
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), nil)
+func TestDownloadEmptyURL(t *testing.T) {
+	_, err := Download(context.Background(), "", nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "nil")
+	assert.Contains(t, err.Error(), "empty")
 }
 
-func TestBinaryFetcherBasicFetch(t *testing.T) {
+func TestDownloadToMemory(t *testing.T) {
 	content := []byte("test file content")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -115,18 +116,37 @@ func TestBinaryFetcherBasicFetch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL: server.URL + "/test.txt",
-	})
+	// nil options downloads to memory
+	result, err := Download(context.Background(), server.URL+"/test.txt", nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, content, result.Data)
 	assert.Equal(t, int64(len(content)), result.Size)
 	assert.Equal(t, "text/plain", result.ContentType)
+	assert.Equal(t, "test.txt", result.Filename)
 }
 
-func TestBinaryFetcherSaveToFile(t *testing.T) {
+func TestDownloadDefaultUserAgent(t *testing.T) {
+	var gotUA string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	_, err := Download(context.Background(), server.URL+"/x.txt", nil)
+	assert.NoError(t, err)
+	assert.True(t, strings.HasPrefix(gotUA, "wonton/"))
+
+	// Caller-provided User-Agent wins
+	_, err = Download(context.Background(), server.URL+"/x.txt", &DownloadOptions{
+		Headers: map[string]string{"User-Agent": "MyApp/2.0"},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "MyApp/2.0", gotUA)
+}
+
+func TestDownloadSaveToFile(t *testing.T) {
 	content := []byte("saved file content")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -138,14 +158,12 @@ func TestBinaryFetcherSaveToFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := filepath.Join(tmpDir, "output.bin")
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/download",
+	result, err := Download(context.Background(), server.URL+"/download", &DownloadOptions{
 		OutputPath: outputPath,
 	})
 
 	assert.NoError(t, err)
-	assert.Equal(t, outputPath, result.DownloadPath)
+	assert.Equal(t, outputPath, result.Path)
 	assert.Equal(t, int64(len(content)), result.Size)
 
 	// Verify file contents
@@ -154,7 +172,7 @@ func TestBinaryFetcherSaveToFile(t *testing.T) {
 	assert.Equal(t, content, savedContent)
 }
 
-func TestBinaryFetcherSaveToDirectory(t *testing.T) {
+func TestDownloadSaveToDirectory(t *testing.T) {
 	content := []byte("directory save test")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="myfile.dat"`)
@@ -164,31 +182,27 @@ func TestBinaryFetcherSaveToDirectory(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/download",
+	result, err := Download(context.Background(), server.URL+"/download", &DownloadOptions{
 		OutputPath: tmpDir,
 	})
 
 	assert.NoError(t, err)
 	expectedPath := filepath.Join(tmpDir, "myfile.dat")
-	assert.Equal(t, expectedPath, result.DownloadPath)
+	assert.Equal(t, expectedPath, result.Path)
 
 	savedContent, err := os.ReadFile(expectedPath)
 	assert.NoError(t, err)
 	assert.Equal(t, content, savedContent)
 }
 
-func TestBinaryFetcherSizeLimitInMemory(t *testing.T) {
+func TestDownloadSizeLimitInMemory(t *testing.T) {
 	content := []byte("this content is too large for the limit")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(content)
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:          server.URL + "/large",
+	_, err := Download(context.Background(), server.URL+"/large", &DownloadOptions{
 		MaxSizeBytes: 10,
 	})
 
@@ -196,7 +210,7 @@ func TestBinaryFetcherSizeLimitInMemory(t *testing.T) {
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
-func TestBinaryFetcherSizeLimitToFile(t *testing.T) {
+func TestDownloadSizeLimitToFile(t *testing.T) {
 	content := []byte("this content is too large for the limit")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(content)
@@ -206,9 +220,7 @@ func TestBinaryFetcherSizeLimitToFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := filepath.Join(tmpDir, "large.bin")
 
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:          server.URL + "/large",
+	_, err := Download(context.Background(), server.URL+"/large", &DownloadOptions{
 		OutputPath:   outputPath,
 		MaxSizeBytes: 10,
 	})
@@ -221,52 +233,57 @@ func TestBinaryFetcherSizeLimitToFile(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr))
 }
 
-func TestBinaryFetcherMIMETypeVerification(t *testing.T) {
+func TestDownloadExpectedType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/pdf; charset=utf-8")
 		w.Write([]byte("pdf content"))
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-
 	// Should succeed - media type matches even with charset parameter
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:            server.URL + "/doc.pdf",
-		ExpectedType:   "application/pdf",
-		VerifyMimeType: true,
+	result, err := Download(context.Background(), server.URL+"/doc.pdf", &DownloadOptions{
+		ExpectedType: "application/pdf",
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, "application/pdf; charset=utf-8", result.ContentType)
 
 	// Should fail - wrong media type
-	_, err = fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:            server.URL + "/doc.pdf",
-		ExpectedType:   "image/png",
-		VerifyMimeType: true,
+	_, err = Download(context.Background(), server.URL+"/doc.pdf", &DownloadOptions{
+		ExpectedType: "image/png",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "mismatch")
 }
 
-func TestBinaryFetcherHTTPError(t *testing.T) {
+func TestDownloadHTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL: server.URL + "/missing",
-	})
+	_, err := Download(context.Background(), server.URL+"/missing", nil)
 
 	assert.Error(t, err)
-	fetchErr, ok := err.(*FetchError)
-	assert.True(t, ok)
+	var fetchErr *Error
+	assert.True(t, errors.As(err, &fetchErr))
 	assert.Equal(t, 404, fetchErr.StatusCode)
+	assert.Equal(t, server.URL+"/missing", fetchErr.URL)
+	assert.False(t, IsRetryable(err))
 }
 
-func TestBinaryFetcherPathTraversalPrevention(t *testing.T) {
+func TestDownloadRetryableHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := Download(context.Background(), server.URL+"/busy", nil)
+
+	assert.Error(t, err)
+	assert.True(t, IsRetryable(err))
+}
+
+func TestDownloadPathTraversalPrevention(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Malicious server tries to write outside target directory
 		w.Header().Set("Content-Disposition", `attachment; filename="../../../etc/passwd"`)
@@ -276,9 +293,7 @@ func TestBinaryFetcherPathTraversalPrevention(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/malicious",
+	result, err := Download(context.Background(), server.URL+"/malicious", &DownloadOptions{
 		OutputPath: tmpDir,
 	})
 
@@ -286,10 +301,10 @@ func TestBinaryFetcherPathTraversalPrevention(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "passwd", result.Filename)
 	// File should be inside tmpDir
-	assert.True(t, filepath.HasPrefix(result.DownloadPath, tmpDir))
+	assert.True(t, strings.HasPrefix(result.Path, tmpDir+string(filepath.Separator)))
 }
 
-func TestBinaryFetcherCreateDirs(t *testing.T) {
+func TestDownloadCreateDirs(t *testing.T) {
 	content := []byte("nested directory content")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(content)
@@ -299,22 +314,20 @@ func TestBinaryFetcherCreateDirs(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := filepath.Join(tmpDir, "a", "b", "c", "file.txt")
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/file.txt",
+	result, err := Download(context.Background(), server.URL+"/file.txt", &DownloadOptions{
 		OutputPath: outputPath,
 		CreateDirs: true,
 	})
 
 	assert.NoError(t, err)
-	assert.Equal(t, outputPath, result.DownloadPath)
+	assert.Equal(t, outputPath, result.Path)
 
 	savedContent, err := os.ReadFile(outputPath)
 	assert.NoError(t, err)
 	assert.Equal(t, content, savedContent)
 }
 
-func TestBinaryFetcherCustomHeaders(t *testing.T) {
+func TestDownloadCustomHeaders(t *testing.T) {
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
@@ -322,9 +335,7 @@ func TestBinaryFetcherCustomHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL: server.URL + "/protected",
+	_, err := Download(context.Background(), server.URL+"/protected", &DownloadOptions{
 		Headers: map[string]string{
 			"Authorization": "Bearer token123",
 		},
@@ -334,7 +345,7 @@ func TestBinaryFetcherCustomHeaders(t *testing.T) {
 	assert.Equal(t, "Bearer token123", receivedAuth)
 }
 
-func TestBinaryFetcherExplicitOutputPathNoResponseFilename(t *testing.T) {
+func TestDownloadExplicitOutputPathNoResponseFilename(t *testing.T) {
 	// Server responds at root path with no Content-Disposition header
 	content := []byte("content without filename")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -345,24 +356,22 @@ func TestBinaryFetcherExplicitOutputPathNoResponseFilename(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputPath := filepath.Join(tmpDir, "explicit-name.bin")
 
-	fetcher := NewDefaultBinaryFetcher()
 	// URL is just "/" with no filename derivable from response
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/",
+	result, err := Download(context.Background(), server.URL+"/", &DownloadOptions{
 		OutputPath: outputPath,
 	})
 
 	// Should succeed because OutputPath is an explicit file path
 	assert.NoError(t, err)
 	assert.Equal(t, "explicit-name.bin", result.Filename)
-	assert.Equal(t, outputPath, result.DownloadPath)
+	assert.Equal(t, outputPath, result.Path)
 
 	savedContent, err := os.ReadFile(outputPath)
 	assert.NoError(t, err)
 	assert.Equal(t, content, savedContent)
 }
 
-func TestBinaryFetcherDirectoryOutputNoFilename(t *testing.T) {
+func TestDownloadDirectoryOutputNoFilename(t *testing.T) {
 	// Server responds at root path with no Content-Disposition header
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("content"))
@@ -371,10 +380,8 @@ func TestBinaryFetcherDirectoryOutputNoFilename(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	fetcher := NewDefaultBinaryFetcher()
 	// URL is just "/" - no filename can be derived
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/",
+	_, err := Download(context.Background(), server.URL+"/", &DownloadOptions{
 		OutputPath: tmpDir, // directory, so filename must come from response
 	})
 
@@ -383,18 +390,15 @@ func TestBinaryFetcherDirectoryOutputNoFilename(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename")
 }
 
-func TestBinaryFetcherInvalidExpectedType(t *testing.T) {
+func TestDownloadInvalidExpectedType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Write([]byte("content"))
 	}))
 	defer server.Close()
 
-	fetcher := NewDefaultBinaryFetcher()
-	_, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:            server.URL + "/file.pdf",
-		ExpectedType:   "not a valid mime type;;;",
-		VerifyMimeType: true,
+	_, err := Download(context.Background(), server.URL+"/file.pdf", &DownloadOptions{
+		ExpectedType: "not a valid mime type;;;",
 	})
 
 	// Should fail with clear error about invalid expected type
@@ -402,7 +406,7 @@ func TestBinaryFetcherInvalidExpectedType(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid expected type")
 }
 
-func TestBinaryFetcherNonExistentDirectoryWithCreateDirs(t *testing.T) {
+func TestDownloadNonExistentDirectoryWithCreateDirs(t *testing.T) {
 	content := []byte("content for new directory")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="downloaded.bin"`)
@@ -414,9 +418,7 @@ func TestBinaryFetcherNonExistentDirectoryWithCreateDirs(t *testing.T) {
 	// Path with trailing slash indicates it should be a directory
 	newDirPath := filepath.Join(tmpDir, "newdir", "subdir") + string(filepath.Separator)
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/download",
+	result, err := Download(context.Background(), server.URL+"/download", &DownloadOptions{
 		OutputPath: newDirPath,
 		CreateDirs: true,
 	})
@@ -425,7 +427,7 @@ func TestBinaryFetcherNonExistentDirectoryWithCreateDirs(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "downloaded.bin", result.Filename)
 	expectedPath := filepath.Join(tmpDir, "newdir", "subdir", "downloaded.bin")
-	assert.Equal(t, expectedPath, result.DownloadPath)
+	assert.Equal(t, expectedPath, result.Path)
 
 	// Verify file was created in the right place
 	savedContent, err := os.ReadFile(expectedPath)
@@ -433,7 +435,7 @@ func TestBinaryFetcherNonExistentDirectoryWithCreateDirs(t *testing.T) {
 	assert.Equal(t, content, savedContent)
 }
 
-func TestBinaryFetcherNonExistentDirectoryNoTrailingSlash(t *testing.T) {
+func TestDownloadNonExistentDirectoryNoTrailingSlash(t *testing.T) {
 	content := []byte("content")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", `attachment; filename="downloaded.bin"`)
@@ -445,9 +447,7 @@ func TestBinaryFetcherNonExistentDirectoryNoTrailingSlash(t *testing.T) {
 	// Path without trailing slash - treated as file path, not directory
 	newFilePath := filepath.Join(tmpDir, "newdir", "myfile.dat")
 
-	fetcher := NewDefaultBinaryFetcher()
-	result, err := fetcher.FetchBinary(context.Background(), &BinaryFetchInput{
-		URL:        server.URL + "/download",
+	result, err := Download(context.Background(), server.URL+"/download", &DownloadOptions{
 		OutputPath: newFilePath,
 		CreateDirs: true,
 	})
@@ -455,10 +455,31 @@ func TestBinaryFetcherNonExistentDirectoryNoTrailingSlash(t *testing.T) {
 	// Should succeed - create parent dirs and use explicit filename
 	assert.NoError(t, err)
 	assert.Equal(t, "myfile.dat", result.Filename)
-	assert.Equal(t, newFilePath, result.DownloadPath)
+	assert.Equal(t, newFilePath, result.Path)
 
 	// Verify file was created
 	savedContent, err := os.ReadFile(newFilePath)
 	assert.NoError(t, err)
 	assert.Equal(t, content, savedContent)
+}
+
+func TestDownloadOverwritesExistingFile(t *testing.T) {
+	content := []byte("new content")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "file.txt")
+	assert.NoError(t, os.WriteFile(outputPath, []byte("old content that is longer"), 0644))
+
+	_, err := Download(context.Background(), server.URL+"/file.txt", &DownloadOptions{
+		OutputPath: outputPath,
+	})
+	assert.NoError(t, err)
+
+	saved, err := os.ReadFile(outputPath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, saved)
 }

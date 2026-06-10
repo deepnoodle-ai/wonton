@@ -1,6 +1,6 @@
 # fetch
 
-The fetch package provides interfaces and implementations for fetching web pages with support for HTML parsing, content extraction, and format conversion. It includes a simple HTTP fetcher for direct requests and extensible interfaces for custom fetchers.
+The fetch package provides interfaces and implementations for fetching web pages with support for HTML parsing, content extraction, and format conversion. It includes a simple HTTP fetcher for direct requests, a `Download` function for fetching files, and extensible interfaces for custom fetchers.
 
 ## Usage Examples
 
@@ -304,7 +304,70 @@ req := &fetch.Request{
 |----------|-------------|
 | `StandardExcludeFilters` | Common elements to exclude (modals, scripts, nav, forms) |
 
+## Downloading Files
+
+`Download` fetches a file from a URL, either into memory or to disk:
+
+```go
+// Download to memory (result.Data holds the content)
+result, err := fetch.Download(ctx, "https://example.com/doc.pdf", nil)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Downloaded %d bytes: %s\n", result.Size, result.Filename)
+
+// Download to a file
+result, err = fetch.Download(ctx, "https://example.com/image.png", &fetch.DownloadOptions{
+    OutputPath: "/tmp/downloads/image.png",
+    CreateDirs: true,
+})
+
+// Download to a directory with limits — the filename comes from the
+// Content-Disposition header or the URL, sanitized against path traversal
+result, err = fetch.Download(ctx, "https://example.com/file.pdf", &fetch.DownloadOptions{
+    OutputPath:   "/tmp/downloads/",
+    MaxSizeBytes: 10 * 1024 * 1024,  // 10MB limit
+    ExpectedType: "application/pdf", // verify the Content-Type
+})
+fmt.Printf("Saved to: %s\n", result.Path)
+```
+
+Notes:
+
+- An existing file at the destination is overwritten.
+- The default client has no overall timeout (large downloads shouldn't race
+  a wall clock) but bounds how long the server may take to start responding.
+  Use the context to cancel or impose a deadline, or supply your own client
+  via `DownloadOptions.Client`.
+
+### Download Options
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Headers` | `map[string]string` | Additional request headers |
+| `OutputPath` | `string` | Destination file or directory; empty downloads to memory |
+| `CreateDirs` | `bool` | Create parent directories if needed |
+| `MaxSizeBytes` | `int64` | Maximum download size (0 = unlimited) |
+| `ExpectedType` | `string` | Required MIME type (e.g. `"application/pdf"`) |
+| `Client` | `*http.Client` | HTTP client (default: `DefaultDownloadClient`) |
+
 ## Error Handling
+
+HTTP failures are returned as `*fetch.Error`, which carries the status code
+and URL. `fetch.IsRetryable` classifies both HTTP-level failures (408, 429,
+5xx) and transport-level failures (timeouts, connection resets), making it a
+natural fit for the [retry](../retry) package:
+
+```go
+result, err := retry.Do(ctx, func() (*fetch.DownloadResult, error) {
+    return fetch.Download(ctx, url, nil)
+}, retry.WithRetryIf(fetch.IsRetryable))
+
+var fetchErr *fetch.Error
+if errors.As(err, &fetchErr) {
+    fmt.Printf("HTTP %d fetching %s\n", fetchErr.StatusCode, fetchErr.URL)
+}
+```
 
 The HTTP fetcher validates requests and returns errors for unsupported options:
 

@@ -1,10 +1,16 @@
 # web
 
-URL manipulation, text normalization, media type detection, binary file fetching, and web search abstractions for web crawling and content processing. Provides utilities for normalizing URLs, resolving relative links, cleaning text, identifying media files, downloading binary content, and implementing search functionality.
+URL canonicalization, link resolution, text normalization, and web search
+abstractions for crawlers and content processing. This package contains no
+I/O — for fetching pages and downloading files, see the
+[fetch](../fetch) package.
 
 ## Usage Examples
 
 ### URL Normalization
+
+`NormalizeURL` produces a canonical URL suitable for comparison and
+deduplication:
 
 ```go
 package main
@@ -17,464 +23,231 @@ import (
 )
 
 func main() {
-	// Normalize URL (adds https://, removes query params)
-	url, err := web.NormalizeURL("example.com/path?query=1#fragment")
+	// Adds https://, removes query params and fragments
+	u, err := web.NormalizeURL("example.com/path?query=1#fragment")
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(url.String())
+	fmt.Println(u.String())
 	// Output: https://example.com/path
 
-	// Normalize with http:// (converts to https://)
-	url, _ = web.NormalizeURL("http://example.com")
-	fmt.Println(url.String())
+	// http upgraded to https
+	u, _ = web.NormalizeURL("http://example.com")
+	fmt.Println(u.String())
 	// Output: https://example.com
 
-	// Already normalized URL
-	url, _ = web.NormalizeURL("https://example.com/path")
-	fmt.Println(url.String())
-	// Output: https://example.com/path
+	// Bare host:port inputs work
+	u, _ = web.NormalizeURL("localhost:3000")
+	fmt.Println(u.String())
+	// Output: https://localhost:3000
 
-	// Trim whitespace
-	url, _ = web.NormalizeURL("  example.com  ")
-	fmt.Println(url.String())
-	// Output: https://example.com
+	// Credentials, default ports, and dot segments are cleaned up
+	u, _ = web.NormalizeURL("https://user:pass@example.com:443/a/../b")
+	fmt.Println(u.String())
+	// Output: https://example.com/b
 }
 ```
 
-### Resolving Relative Links
+Use options when the defaults don't fit:
 
 ```go
-func resolveLinks(baseDomain string, links []string) {
-	for _, link := range links {
-		resolved, ok := web.ResolveLink(baseDomain, link)
-		if ok {
-			fmt.Printf("%s -> %s\n", link, resolved)
-		} else {
-			fmt.Printf("%s -> (invalid)\n", link)
-		}
-	}
+// Keep query parameters (they matter for sites like YouTube)
+u, _ := web.NormalizeURL("youtube.com/watch?v=abc123", web.KeepQuery())
+fmt.Println(u.String())
+// Output: https://youtube.com/watch?v=abc123
+
+// Don't upgrade http to https
+u, _ = web.NormalizeURL("http://internal.example.com", web.KeepHTTP())
+fmt.Println(u.String())
+// Output: http://internal.example.com
+```
+
+### Resolving Links
+
+`ResolveLink` resolves a link found on a page against that page's URL, the
+way a browser would, and returns the canonical result:
+
+```go
+page, _ := url.Parse("https://example.com/blog/post")
+
+links := []string{
+	"/about",                  // absolute path
+	"other-post",              // relative to the page
+	"../contact",              // parent path
+	"https://other.com/page",  // absolute URL
+	"mailto:test@example.com", // non-HTTP (rejected)
+	"#section",                // fragment (removed)
 }
 
-func main() {
-	// Resolve relative URLs
-	baseDomain := "https://example.com/blog"
-	links := []string{
-		"/about",                    // Absolute path
-		"post/123",                  // Relative path
-		"../contact",                // Parent path
-		"https://other.com/page",    // Absolute URL
-		"mailto:test@example.com",   // Non-HTTP (rejected)
-		"#section",                  // Fragment (removed)
+for _, link := range links {
+	resolved, err := web.ResolveLink(page, link)
+	if err != nil {
+		fmt.Printf("%s -> (invalid: %v)\n", link, err)
+		continue
 	}
-
-	resolveLinks(baseDomain, links)
-	// Output:
-	// /about -> https://example.com/about
-	// post/123 -> https://example.com/blog/post/123
-	// ../contact -> https://example.com/contact
-	// https://other.com/page -> https://other.com/page
-	// mailto:test@example.com -> (invalid)
-	// #section -> https://example.com/blog
+	fmt.Printf("%s -> %s\n", link, resolved)
 }
+// Output:
+// /about -> https://example.com/about
+// other-post -> https://example.com/blog/other-post
+// ../contact -> https://example.com/contact
+// https://other.com/page -> https://other.com/page
+// mailto:test@example.com -> (invalid: unsupported link scheme "mailto": mailto:test@example.com)
+// #section -> https://example.com/blog/post
+```
+
+`ResolveLink` accepts the same options as `NormalizeURL`:
+
+```go
+resolved, _ := web.ResolveLink(page, "/search?q=go", web.KeepQuery())
+// https://example.com/search?q=go
 ```
 
 ### Host Comparison
 
 ```go
-func compareHosts() {
-	url1, _ := web.NormalizeURL("https://example.com/path1")
-	url2, _ := web.NormalizeURL("https://example.com/path2")
-	url3, _ := web.NormalizeURL("https://sub.example.com/path")
-	url4, _ := web.NormalizeURL("https://other.com/path")
+url1, _ := web.NormalizeURL("https://example.com/path1")
+url2, _ := web.NormalizeURL("https://example.com/path2")
+url3, _ := web.NormalizeURL("https://sub.example.com/path")
+url4, _ := web.NormalizeURL("https://other.com/path")
 
-	// Check if same host
-	fmt.Println(web.AreSameHost(url1, url2))
-	// Output: true
+// Exact hostname match (ports ignored, case-insensitive)
+fmt.Println(web.AreSameHost(url1, url2)) // true
+fmt.Println(web.AreSameHost(url1, url3)) // false
 
-	fmt.Println(web.AreSameHost(url1, url3))
-	// Output: false
-
-	// Check if related hosts (same domain)
-	fmt.Println(web.AreRelatedHosts(url1, url3))
-	// Output: true (both *.example.com)
-
-	fmt.Println(web.AreRelatedHosts(url1, url4))
-	// Output: false (different domains)
-}
+// Same registrable domain (uses the Public Suffix List)
+fmt.Println(web.AreRelatedHosts(url1, url3)) // true (both *.example.com)
+fmt.Println(web.AreRelatedHosts(url1, url4)) // false (different domains)
 ```
 
-### Sorting URLs
-
-```go
-func sortURLs(urls []string) {
-	// Parse URLs
-	var parsedURLs []*url.URL
-	for _, u := range urls {
-		parsed, err := web.NormalizeURL(u)
-		if err == nil {
-			parsedURLs = append(parsedURLs, parsed)
-		}
-	}
-
-	// Sort alphabetically
-	web.SortURLs(parsedURLs)
-
-	// Print sorted URLs
-	for _, u := range parsedURLs {
-		fmt.Println(u.String())
-	}
-}
-
-func main() {
-	urls := []string{
-		"example.com/zebra",
-		"example.com/alpha",
-		"example.com/beta",
-	}
-	sortURLs(urls)
-	// Output:
-	// https://example.com/alpha
-	// https://example.com/beta
-	// https://example.com/zebra
-}
-```
+`AreRelatedHosts` correctly handles multi-part TLDs: `foo.example.co.uk` and
+`bar.example.co.uk` are related, but `example.co.uk` and `other.co.uk` are
+not.
 
 ### Text Normalization
 
 ```go
-func cleanText(input string) string {
-	return web.NormalizeText(input)
-}
+// Trim whitespace
+fmt.Println(web.NormalizeText("  Hello  "))
+// Output: Hello
 
-func main() {
-	// Trim whitespace
-	fmt.Println(cleanText("  Hello  "))
-	// Output: Hello
+// Unescape HTML entities
+fmt.Println(web.NormalizeText("Hello &amp; goodbye"))
+// Output: Hello & goodbye
 
-	// Unescape HTML entities
-	fmt.Println(cleanText("Hello &amp; goodbye"))
-	// Output: Hello & goodbye
-
-	fmt.Println(cleanText("&lt;div&gt;"))
-	// Output: <div>
-
-	// Remove non-printable characters
-	fmt.Println(cleanText("Hello\x00\x01World"))
-	// Output: Hello  World
-
-	// Combined transformations
-	fmt.Println(cleanText("  &quot;Hello&quot; \x00"))
-	// Output: "Hello"
-}
+// Replace non-printable characters and non-breaking spaces
+fmt.Println(web.NormalizeText("Hello\x00World"))
+// Output: Hello World
 ```
 
-### Checking Punctuation
+### Detecting File Downloads
+
+`IsBinaryURL` identifies URLs that point to file downloads and page
+subresources rather than web pages — the things a crawler extracting text or
+following links typically skips:
 
 ```go
-func checkPunctuation() {
-	fmt.Println(web.EndsWithPunctuation("Hello."))
-	// Output: true
-
-	fmt.Println(web.EndsWithPunctuation("Hello?"))
-	// Output: true
-
-	fmt.Println(web.EndsWithPunctuation("Hello"))
-	// Output: false
-
-	fmt.Println(web.EndsWithPunctuation("Hello!"))
-	// Output: true
-
-	fmt.Println(web.EndsWithPunctuation(""))
-	// Output: false
-}
-```
-
-### Media URL Detection
-
-```go
-func filterMediaURLs(urls []string) {
-	var mediaURLs []string
-	var pageURLs []string
-
-	for _, rawURL := range urls {
-		parsed, err := web.NormalizeURL(rawURL)
-		if err != nil {
-			continue
-		}
-
-		if web.IsMediaURL(parsed) {
-			mediaURLs = append(mediaURLs, parsed.String())
-		} else {
-			pageURLs = append(pageURLs, parsed.String())
-		}
-	}
-
-	fmt.Println("Page URLs:")
-	for _, u := range pageURLs {
-		fmt.Printf("  %s\n", u)
-	}
-
-	fmt.Println("\nMedia URLs:")
-	for _, u := range mediaURLs {
-		fmt.Printf("  %s\n", u)
-	}
-}
-
-func main() {
-	urls := []string{
-		"example.com/page.html",
-		"example.com/image.jpg",
-		"example.com/document.pdf",
-		"example.com/video.mp4",
-		"example.com/about",
-	}
-
-	filterMediaURLs(urls)
-	// Output:
-	// Page URLs:
-	//   https://example.com/page.html
-	//   https://example.com/about
-	//
-	// Media URLs:
-	//   https://example.com/image.jpg
-	//   https://example.com/document.pdf
-	//   https://example.com/video.mp4
-}
-```
-
-### Web Crawler URL Processing
-
-```go
-type Crawler struct {
-	baseDomain string
-	visited    map[string]bool
-	queue      []string
-}
-
-func (c *Crawler) AddLink(link string) {
-	// Resolve relative link
-	resolved, ok := web.ResolveLink(c.baseDomain, link)
-	if !ok {
-		return
-	}
-
-	// Parse normalized URL
-	url, err := web.NormalizeURL(resolved)
+for _, rawURL := range urls {
+	u, err := web.NormalizeURL(rawURL)
 	if err != nil {
-		return
+		continue
 	}
-
-	// Skip media files
-	if web.IsMediaURL(url) {
-		return
+	if web.IsBinaryURL(u) {
+		continue // skip images, archives, PDFs, scripts, ...
 	}
-
-	// Check if same domain
-	baseURL, _ := web.NormalizeURL(c.baseDomain)
-	if !web.AreSameHost(url, baseURL) {
-		return
-	}
-
-	// Add to queue if not visited
-	urlStr := url.String()
-	if !c.visited[urlStr] {
-		c.visited[urlStr] = true
-		c.queue = append(c.queue, urlStr)
-	}
+	crawl(u)
 }
 ```
 
-### Link Extraction with Filtering
+The default set is `web.BinaryExtensions`. Clone it to customize:
 
 ```go
-func extractPageLinks(baseURL string, htmlLinks []string) []string {
+exts := web.BinaryExtensions.Clone()
+exts.Remove(".pdf") // crawl PDFs too
+exts.Add(".dat")
+
+if exts.ContainsURL(u) {
+	// skip
+}
+```
+
+### Crawler Link Processing
+
+The pieces compose into a typical crawler loop:
+
+```go
+func extractPageLinks(pageURL *url.URL, htmlLinks []string) []string {
 	var validLinks []string
-
 	for _, link := range htmlLinks {
-		// Resolve and normalize
-		resolved, ok := web.ResolveLink(baseURL, link)
-		if !ok {
-			continue
-		}
-
-		url, err := web.NormalizeURL(resolved)
+		resolved, err := web.ResolveLink(pageURL, link)
 		if err != nil {
-			continue
+			continue // mailto:, javascript:, malformed, ...
 		}
-
-		// Skip media files
-		if web.IsMediaURL(url) {
-			continue
+		if web.IsBinaryURL(resolved) {
+			continue // skip file downloads
 		}
-
-		validLinks = append(validLinks, url.String())
+		if !web.AreRelatedHosts(pageURL, resolved) {
+			continue // stay on this site
+		}
+		validLinks = append(validLinks, resolved.String())
 	}
-
 	return validLinks
 }
 ```
 
-### HTML Text Cleaning
+(For a full implementation, see the [crawler](../crawler) package, which is
+built on these functions.)
 
-```go
-func extractCleanText(htmlText string) string {
-	// Remove HTML tags (simplified - use proper parser in production)
-	text := regexp.MustCompile(`<[^>]*>`).ReplaceAllString(htmlText, "")
-
-	// Normalize the text
-	text = web.NormalizeText(text)
-
-	return text
-}
-
-func main() {
-	html := `<p>Hello &amp; welcome!</p><div>This is a test.</div>`
-	fmt.Println(extractCleanText(html))
-	// Output: Hello & welcome! This is a test.
-}
-```
-
-### Deduplicate URLs
+### Deduplicating URLs
 
 ```go
 func deduplicateURLs(urls []string) []string {
 	seen := make(map[string]bool)
 	var unique []string
-
 	for _, rawURL := range urls {
-		// Normalize to ensure consistent comparison
 		normalized, err := web.NormalizeURL(rawURL)
 		if err != nil {
 			continue
 		}
-
-		urlStr := normalized.String()
-		if !seen[urlStr] {
-			seen[urlStr] = true
-			unique = append(unique, urlStr)
+		key := normalized.String()
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, key)
 		}
 	}
-
 	return unique
 }
 
-func main() {
-	urls := []string{
-		"example.com",
-		"http://example.com",
-		"https://example.com",
-		"example.com?foo=bar",
-		"example.com#section",
-	}
-
-	deduplicated := deduplicateURLs(urls)
-	for _, u := range deduplicated {
-		fmt.Println(u)
-	}
-	// Output:
-	// https://example.com
-}
-```
-
-### Binary File Fetching
-
-```go
-func downloadFile() {
-	fetcher := web.NewDefaultBinaryFetcher()
-
-	// Download to memory
-	result, err := fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
-		URL: "https://example.com/document.pdf",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Downloaded %d bytes: %s\n", result.Size, result.Filename)
-	// result.Data contains the file contents
-
-	// Download to file
-	result, err = fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
-		URL:        "https://example.com/image.png",
-		OutputPath: "/tmp/downloads/image.png",
-		CreateDirs: true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Saved to: %s\n", result.DownloadPath)
-
-	// Download with size limit and MIME verification
-	result, err = fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
-		URL:            "https://example.com/file.pdf",
-		OutputPath:     "/tmp/downloads/",  // Directory - filename from response
-		MaxSizeBytes:   10 * 1024 * 1024,   // 10MB limit
-		ExpectedType:   "application/pdf",
-		VerifyMimeType: true,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-### Error Handling
-
-```go
-func fetchWithRetry(url string) error {
-	fetcher := web.NewDefaultBinaryFetcher()
-
-	_, err := fetcher.FetchBinary(context.Background(), &web.BinaryFetchInput{
-		URL: url,
-	})
-	if err != nil {
-		// Check if it's a fetch error with status code
-		var fetchErr *web.FetchError
-		if errors.As(err, &fetchErr) {
-			fmt.Printf("HTTP %d: %s\n", fetchErr.StatusCode, fetchErr.Error())
-
-			// Check if we should retry
-			if fetchErr.IsRecoverable() {
-				fmt.Println("Error is recoverable, will retry...")
-				// Retry logic here
-			}
-		}
-		return err
-	}
-	return nil
-}
+// "example.com", "http://example.com", "https://example.com",
+// "example.com?foo=bar", and "example.com#section" all collapse
+// to "https://example.com"
 ```
 
 ### Implementing a Search Provider
 
+The `Searcher` interface is the contract between applications and web search
+backends (Google, Kagi, etc.):
+
 ```go
-// Implement the Searcher interface for your search backend
 type MySearcher struct {
 	apiKey string
 }
 
 func (s *MySearcher) Search(ctx context.Context, input *web.SearchInput) (*web.SearchOutput, error) {
-	// Call your search API
-	// ...
-
+	// Call your search API...
 	return &web.SearchOutput{
-		Items: []*web.SearchItem{
+		Items: []web.SearchItem{
 			{
 				URL:         "https://example.com/result1",
 				Title:       "First Result",
 				Description: "Description of the first result",
-			},
-			{
-				URL:         "https://example.com/result2",
-				Title:       "Second Result",
-				Description: "Description of the second result",
 			},
 		},
 	}, nil
 }
 
 func searchExample() {
-	searcher := &MySearcher{apiKey: "..."}
+	var searcher web.Searcher = &MySearcher{apiKey: "..."}
 
 	results, err := searcher.Search(context.Background(), &web.SearchInput{
 		Query: "golang web scraping",
@@ -483,7 +256,6 @@ func searchExample() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	for _, item := range results.Items {
 		fmt.Printf("%s: %s\n", item.Title, item.URL)
 	}
@@ -494,96 +266,86 @@ func searchExample() {
 
 ### URL Functions
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `NormalizeURL` | Normalizes URL with transformations | `value string` | `*url.URL, error` |
-| `ResolveLink` | Resolves relative URL against base | `domain, value string` | `string, bool` |
-| `AreSameHost` | Checks if URLs have same host | `url1, url2 *url.URL` | `bool` |
-| `AreRelatedHosts` | Checks if URLs share domain | `url1, url2 *url.URL` | `bool` |
-| `SortURLs` | Sorts URLs alphabetically | `urls []*url.URL` | none (in-place) |
-| `IsMediaURL` | Checks if URL points to media file | `u *url.URL` | `bool` |
-| `IsMediaExtension` | Checks if extension is a media type | `ext string` | `bool` |
+| Function          | Description                                  | Inputs                                       | Outputs           |
+| ----------------- | -------------------------------------------- | -------------------------------------------- | ----------------- |
+| `NormalizeURL`    | Canonicalizes a URL string                   | `value string, opts ...NormalizeOption`      | `*url.URL, error` |
+| `ResolveLink`     | Resolves a link against the page URL         | `base *url.URL, href string, opts ...`       | `*url.URL, error` |
+| `AreSameHost`     | Checks if URLs have the same hostname        | `url1, url2 *url.URL`                        | `bool`            |
+| `AreRelatedHosts` | Checks if URLs share a registrable domain    | `url1, url2 *url.URL`                        | `bool`            |
+
+### Normalization Options
+
+| Option        | Effect                                            |
+| ------------- | ------------------------------------------------- |
+| `KeepQuery()` | Preserve query parameters (removed by default)    |
+| `KeepHTTP()`  | Don't upgrade http to https (upgraded by default) |
+
+### File Extension Functions
+
+| Function / Variable  | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `IsBinaryURL`        | Checks if a URL points to a file download or subresource     |
+| `IsBinaryExtension`  | Checks an extension against the default set                  |
+| `BinaryExtensions`   | The default `ExtensionSet`                                   |
+| `ExtensionSet`       | Case-insensitive extension set: `Add`, `Remove`, `Contains`, `ContainsURL`, `Clone` |
 
 ### Text Functions
 
-| Function | Description | Inputs | Outputs |
-|----------|-------------|--------|---------|
-| `NormalizeText` | Cleans and normalizes text | `text string` | `string` |
-| `EndsWithPunctuation` | Checks if string ends with punctuation | `s string` | `bool` |
-
-### Binary Fetcher Types
-
-| Type | Description |
-|------|-------------|
-| `BinaryFetcher` | Interface for fetching binary files from URLs |
-| `DefaultBinaryFetcher` | Standard implementation with timeouts and security features |
-| `BinaryFetchInput` | Configuration: URL, headers, output path, size limits, MIME verification |
-| `BinaryFetchResult` | Result containing filename, size, content type, and data or path |
-
-### Error Types
-
-| Type | Description |
-|------|-------------|
-| `FetchError` | HTTP fetch error with status code and recoverability check |
-| `NewFetchError(code, err)` | Create a new FetchError |
-| `(*FetchError).IsRecoverable()` | Returns true for 429, 500, 502, 503, 504 status codes |
+| Function        | Description                  | Inputs        | Outputs  |
+| --------------- | ---------------------------- | ------------- | -------- |
+| `NormalizeText` | Cleans and normalizes text   | `text string` | `string` |
 
 ### Search Types
 
-| Type | Description |
-|------|-------------|
-| `Searcher` | Interface for web search implementations |
-| `SearchInput` | Search query and limit |
-| `SearchOutput` | Container for search results |
-| `SearchItem` | Individual result: URL, title, description, icon, image |
+| Type           | Description                                       |
+| -------------- | ------------------------------------------------- |
+| `Searcher`     | Interface for web search implementations          |
+| `SearchInput`  | Search query and limit                            |
+| `SearchOutput` | Container for search results                      |
+| `SearchItem`   | Individual result: URL, title, description, icon, image |
 
 ## URL Normalization Behavior
 
-`NormalizeURL` applies these transformations:
+`NormalizeURL` and `ResolveLink` apply these transformations:
 
-1. Trims whitespace
-2. Adds `https://` prefix if missing
-3. Converts `http://` to `https://`
-4. Removes query parameters
-5. Removes URL fragments
-6. Removes trailing `/` if path is just `/`
+1. Trim whitespace
+2. Add `https://` if there is no scheme (including `host:port` inputs)
+3. Convert `http://` to `https://` (disable with `KeepHTTP()`)
+4. Lowercase the host
+5. Remove userinfo (embedded credentials)
+6. Remove default ports (`:443` for https, `:80` for http)
+7. Remove query parameters (disable with `KeepQuery()`) and fragments
+8. Resolve dot segments in the path (`/a/../b` → `/b`)
+9. Remove trailing `/` if the path is just `/`
 
 Examples:
+
 - `"example.com"` → `"https://example.com"`
 - `"http://example.com"` → `"https://example.com"`
+- `"localhost:3000"` → `"https://localhost:3000"`
 - `"example.com/path?q=1#frag"` → `"https://example.com/path"`
-- `"  example.com/  "` → `"https://example.com"`
+- `"https://user:pass@example.com:443/"` → `"https://example.com"`
 
-## Text Normalization Behavior
+Non-http(s) schemes (`mailto:`, `ftp:`, `javascript:`, `data:`, ...) are
+rejected with an error.
 
-`NormalizeText` applies these transformations:
+## Supported Binary Extensions
 
-1. Trims whitespace
-2. Unescapes HTML entities (`&amp;` → `&`)
-3. Removes non-printable characters
+`BinaryExtensions` recognizes these common file types:
 
-Examples:
-- `"  text  "` → `"text"`
-- `"Hello &amp; goodbye"` → `"Hello & goodbye"`
-- `"&lt;div&gt;"` → `"<div>"`
-- `"text\x00\x01here"` → `"text  here"`
-
-## Supported Media Extensions
-
-`IsMediaURL` and `IsMediaExtension` recognize these common file types:
-
-- **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.svg`, `.webp`, `.bmp`, `.ico`, `.tiff`
-- **Documents**: `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`
-- **Video**: `.mp4`, `.avi`, `.mov`, `.wmv`, `.flv`, `.mkv`, `.m4v`
-- **Audio**: `.mp3`, `.wav`, `.aac`, `.ogg`, `.flac`, `.m4a`
-- **Archives**: `.zip`, `.tar`, `.gz`, `.rar`, `.7z`, `.iso`
+- **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.svg`, `.webp`, `.avif`, `.heic`, `.heif`, `.bmp`, `.ico`, `.tif`, `.tiff`
+- **Video**: `.mp4`, `.webm`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.flv`, `.m4v`, `.mpg`, `.mpeg`, `.ogv`
+- **Audio**: `.mp3`, `.wav`, `.aac`, `.ogg`, `.opus`, `.flac`, `.m4a`, `.weba`, `.mid`, `.midi`
+- **Documents**: `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`, `.odt`, `.ods`, `.odp`, `.epub`
+- **Archives**: `.zip`, `.tar`, `.gz`, `.tgz`, `.bz2`, `.xz`, `.zst`, `.rar`, `.7z`, `.iso`
 - **Fonts**: `.ttf`, `.otf`, `.woff`, `.woff2`, `.eot`
-- **Executables**: `.exe`, `.dmg`, `.apk`, `.deb`, `.rpm`, `.msi`, `.bin`, `.pkg`
-- **Other**: `.css`, `.torrent`
+- **Executables**: `.exe`, `.dmg`, `.apk`, `.deb`, `.rpm`, `.msi`, `.bin`, `.pkg`, `.img`, `.jar`
+- **Page subresources**: `.css`, `.js`, `.mjs`
+- **Other**: `.torrent`, `.swf`
 
 ## Related Packages
 
-- [crawler](../crawler) - Web crawler that uses these utilities
-- [fetch](../fetch) - HTTP page fetching
+- [crawler](../crawler) - Web crawler built on these utilities
+- [fetch](../fetch) - HTTP page fetching and file downloads
 - [htmlparse](../htmlparse) - HTML parsing and link extraction
 - [htmltomd](../htmltomd) - HTML to Markdown conversion

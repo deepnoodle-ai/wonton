@@ -15,7 +15,7 @@ type SearchInput struct {
 // SearchOutput contains the results of a web search.
 type SearchOutput struct {
 	// Items contains the search results, ordered by relevance.
-	Items []*SearchItem `json:"items"`
+	Items []SearchItem `json:"items"`
 }
 
 // SearchItem represents a single search result.

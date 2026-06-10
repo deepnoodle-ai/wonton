@@ -59,7 +59,7 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [color](./color/README.md)             | ANSI colors, RGB/HSL, gradients        |
 | [crawler](./crawler/README.md)         | Web crawler with caching               |
 | [env](./env/README.md)                 | Config from env vars, .env, JSON       |
-| [fetch](./fetch/README.md)             | HTTP fetching with HTML to markdown    |
+| [fetch](./fetch/README.md)             | HTTP fetching, downloads, markdown     |
 | [gif](./gif/README.md)                 | Animated GIF creation                  |
 | [git](./git/README.md)                 | Read-only Git operations               |
 | [htmlparse](./htmlparse/README.md)     | HTML parsing, metadata, links          |
@@ -74,7 +74,7 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [termtest](./termtest/README.md)       | Terminal output testing                |
 | [tui](./tui/README.md)                 | Declarative TUI with layout engine     |
 | [unidiff](./unidiff/README.md)         | Unified diff parsing                   |
-| [web](./web/README.md)                 | URL utilities, binary fetch, search    |
+| [web](./web/README.md)                 | URL canonicalization, search types     |
 
 ## Serving Suggestions
 

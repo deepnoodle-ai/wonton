@@ -3,6 +3,7 @@ package crawler
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/crawler/cache"
 	"github.com/deepnoodle-ai/wonton/fetch"
-	"github.com/deepnoodle-ai/wonton/web"
 )
 
 // Test fixtures
@@ -254,70 +254,60 @@ func TestCrawler_WithCache(t *testing.T) {
 }
 
 func TestResolveLink(t *testing.T) {
+	crawler, err := New(Options{DefaultFetcher: fetch.NewMockFetcher()})
+	assert.NoError(t, err)
+
+	base, err := url.Parse("https://example.com/blog/post")
+	assert.NoError(t, err)
+
 	tests := []struct {
 		name     string
-		domain   string
 		link     string
 		expected string
 		valid    bool
 	}{
 		{
 			name:     "absolute HTTPS URL",
-			domain:   "example.com",
 			link:     "https://example.com/page",
 			expected: "https://example.com/page",
 			valid:    true,
 		},
 		{
-			name:     "absolute HTTP URL",
-			domain:   "example.com",
+			name:     "absolute HTTP URL upgraded",
 			link:     "http://example.com/page",
 			expected: "https://example.com/page",
 			valid:    true,
 		},
 		{
 			name:     "relative URL with leading slash",
-			domain:   "example.com",
 			link:     "/about",
 			expected: "https://example.com/about",
 			valid:    true,
 		},
 		{
-			name:     "relative URL without leading slash",
-			domain:   "example.com",
-			link:     "about",
-			expected: "https://example.com/about",
+			name:     "relative URL resolves against page URL",
+			link:     "other-post",
+			expected: "https://example.com/blog/other-post",
 			valid:    true,
 		},
 		{
-			name:   "invalid scheme",
-			domain: "example.com",
-			link:   "ftp://example.com/file",
-			valid:  false,
+			name:  "invalid scheme",
+			link:  "ftp://example.com/file",
+			valid: false,
 		},
 		{
-			name:   "javascript URL",
-			domain: "example.com",
-			link:   "javascript:void(0)",
-			valid:  false,
+			name:  "javascript URL",
+			link:  "javascript:void(0)",
+			valid: false,
 		},
 		{
-			name:   "mailto URL",
-			domain: "example.com",
-			link:   "mailto:test@example.com",
-			valid:  false,
+			name:  "mailto URL",
+			link:  "mailto:test@example.com",
+			valid: false,
 		},
 		{
 			name:     "URL with fragment",
-			domain:   "example.com",
 			link:     "https://example.com/page#section",
-			expected: "https://example.com/page",
-			valid:    true,
-		},
-		{
-			name:     "domain with https prefix",
-			domain:   "https://example.com",
-			link:     "/page",
 			expected: "https://example.com/page",
 			valid:    true,
 		},
@@ -325,13 +315,30 @@ func TestResolveLink(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, valid := web.ResolveLink(tt.domain, tt.link)
+			result, valid := crawler.resolveLink(base, tt.link)
 			assert.Equal(t, tt.valid, valid)
 			if valid {
 				assert.Equal(t, tt.expected, result)
 			}
 		})
 	}
+}
+
+func TestResolveLinkRespectsOptions(t *testing.T) {
+	crawler, err := New(Options{
+		DefaultFetcher:      fetch.NewMockFetcher(),
+		AllowHTTP:           true,
+		PreserveQueryParams: true,
+	})
+	assert.NoError(t, err)
+
+	base, err := url.Parse("http://example.com/page")
+	assert.NoError(t, err)
+
+	// HTTP scheme and query parameters survive normalization
+	result, valid := crawler.resolveLink(base, "/search?q=go")
+	assert.True(t, valid)
+	assert.Equal(t, "http://example.com/search?q=go", result)
 }
 
 func TestCrawler_FollowBehavior(t *testing.T) {

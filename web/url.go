@@ -1,62 +1,49 @@
-// Package web provides URL manipulation, text normalization, media detection,
-// binary file fetching, and web search abstractions for web crawling and content
-// processing.
-//
-// # URL Operations
-//
-//   - [NormalizeURL]: Parse and standardize URLs (add https://, remove query params)
-//   - [ResolveLink]: Resolve relative URLs against a base domain
-//   - [AreSameHost]: Compare if two URLs have identical hosts
-//   - [AreRelatedHosts]: Check if URLs share a common parent domain
-//   - [SortURLs]: Sort URLs alphabetically by their string representation
-//
-// # Text Processing
-//
-//   - [NormalizeText]: Clean web text (trim, unescape HTML, remove non-printable chars)
-//   - [EndsWithPunctuation]: Check if text ends with common punctuation marks
-//
-// # Media Detection
-//
-//   - [IsMediaURL]: Identify URLs pointing to media files
-//   - [IsMediaExtension]: Check if a file extension is a media type
-//
-// # Binary File Fetching
-//
-//   - [BinaryFetcher]: Interface for downloading binary files from URLs
-//   - [DefaultBinaryFetcher]: Standard implementation with size limits and MIME verification
-//   - [BinaryFetchInput]: Configuration for binary fetch requests
-//   - [BinaryFetchResult]: Result containing downloaded data or file path
-//
-// # Web Search
-//
-//   - [Searcher]: Interface for web search implementations
-//   - [SearchInput]: Search query parameters
-//   - [SearchOutput]: Search results container
-//   - [SearchItem]: Individual search result with URL, title, and metadata
-//
-// # Error Handling
-//
-//   - [FetchError]: Structured error type for HTTP fetch failures with status codes
-//
-// This package is particularly useful when building web crawlers, content extractors,
-// or any application that needs to process URLs and text from web pages.
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"path"
 	"strings"
 
 	"golang.org/x/net/publicsuffix"
 )
 
-// AreSameHost checks if two URLs have the same host value.
-// Returns false if either URL is nil.
+// NormalizeOption configures the behavior of [NormalizeURL] and
+// [ResolveLink].
+type NormalizeOption func(*normalizeConfig)
+
+type normalizeConfig struct {
+	keepQuery bool
+	keepHTTP  bool
+}
+
+// KeepQuery preserves URL query parameters, which are removed by default.
+func KeepQuery() NormalizeOption {
+	return func(c *normalizeConfig) { c.keepQuery = true }
+}
+
+// KeepHTTP preserves the http scheme instead of upgrading it to https.
+// Inputs without a scheme still default to https.
+func KeepHTTP() NormalizeOption {
+	return func(c *normalizeConfig) { c.keepHTTP = true }
+}
+
+func applyOptions(opts []NormalizeOption) normalizeConfig {
+	var cfg normalizeConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+// AreSameHost checks if two URLs have the same hostname. Returns false if
+// either URL is nil.
 //
-// This function performs an exact host comparison, meaning subdomains are considered
-// different hosts. For example, "www.example.com" and "api.example.com" are not
-// the same host. Use AreRelatedHosts if you need to check for shared parent domains.
+// The comparison is case-insensitive and ignores ports, but subdomains are
+// considered different hosts: "www.example.com" and "api.example.com" do not
+// match. Use AreRelatedHosts to check for a shared parent domain.
 //
 // Example:
 //
@@ -70,7 +57,6 @@ func AreSameHost(url1, url2 *url.URL) bool {
 	if url1 == nil || url2 == nil {
 		return false
 	}
-	// Use Hostname() to ignore port differences and EqualFold for case-insensitive comparison
 	return strings.EqualFold(url1.Hostname(), url2.Hostname())
 }
 
@@ -78,9 +64,10 @@ func AreSameHost(url1, url2 *url.URL) bool {
 // (effective TLD + 1). Returns false if either URL is nil or cannot have its
 // registrable domain determined.
 //
-// This function uses the Public Suffix List to correctly handle multi-part TLDs
-// like "co.uk", "com.au", etc. For example, "example.co.uk" and "other.co.uk"
-// are NOT related because they have different registrable domains.
+// This function uses the Public Suffix List to correctly handle multi-part
+// TLDs like "co.uk", "com.au", etc. For example, "example.co.uk" and
+// "other.co.uk" are NOT related because they have different registrable
+// domains.
 //
 // This function is useful for determining if URLs belong to the same website
 // family, even if they use different subdomains.
@@ -97,9 +84,6 @@ func AreSameHost(url1, url2 *url.URL) bool {
 //	url4, _ := url.Parse("https://foo.example.co.uk")
 //	url5, _ := url.Parse("https://bar.example.co.uk")
 //	web.AreRelatedHosts(url4, url5) // true (both share "example.co.uk")
-//
-//	url6, _ := url.Parse("https://foo.other.co.uk")
-//	web.AreRelatedHosts(url4, url6) // false (different registrable domains)
 func AreRelatedHosts(url1, url2 *url.URL) bool {
 	if url1 == nil || url2 == nil {
 		return false
@@ -120,176 +104,190 @@ func AreRelatedHosts(url1, url2 *url.URL) bool {
 	return strings.EqualFold(domain1, domain2)
 }
 
-// NormalizeURL parses a URL string and returns a normalized URL.
+// NormalizeURL parses a URL string and returns a canonical URL suitable for
+// comparison and deduplication.
 //
-// The following transformations are applied:
+// The following transformations are applied by default:
 //   - Trim whitespace from the input
-//   - Add https:// prefix if the URL has no scheme
-//   - Convert http:// to https://
+//   - Add https:// if the URL has no scheme (including host:port inputs
+//     like "localhost:3000")
+//   - Convert http:// to https:// (disable with [KeepHTTP])
 //   - Lowercase the host
-//   - Remove query parameters and URL fragments
+//   - Remove userinfo (credentials embedded in the URL)
+//   - Remove default ports (:443 for https, :80 for http)
+//   - Remove query parameters (disable with [KeepQuery]) and fragments
+//   - Resolve dot segments in the path ("/a/../b" becomes "/b")
 //   - Remove trailing "/" if the path is only "/"
 //
-// This function returns an error if the input is empty, has an invalid scheme
-// (anything other than http/https), or cannot be parsed as a valid URL.
+// This function returns an error if the input is empty, has a non-http(s)
+// scheme (mailto:, ftp:, javascript:, etc.), or cannot be parsed as a valid
+// URL.
 //
 // Example:
 //
-//	url, _ := web.NormalizeURL("example.com/path?q=1#frag")
-//	fmt.Println(url.String()) // "https://example.com/path"
+//	u, _ := web.NormalizeURL("example.com/path?q=1#frag")
+//	fmt.Println(u.String()) // "https://example.com/path"
 //
-//	url, _ = web.NormalizeURL("http://example.com")
-//	fmt.Println(url.String()) // "https://example.com"
-func NormalizeURL(value string) (*url.URL, error) {
+//	u, _ = web.NormalizeURL("http://example.com", web.KeepHTTP())
+//	fmt.Println(u.String()) // "http://example.com"
+func NormalizeURL(value string, opts ...NormalizeOption) (*url.URL, error) {
+	cfg := applyOptions(opts)
+
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, fmt.Errorf("invalid empty url")
+		return nil, errors.New("invalid empty url")
 	}
 
-	// Parse the URL first to properly detect the scheme
 	u, err := url.Parse(value)
 	if err != nil {
-		return nil, fmt.Errorf("invalid url %q: %w", value, err)
+		// Inputs like "192.168.1.1:8080/admin" fail to parse because the
+		// port reads as a colon in the first path segment. Retry with an
+		// explicit scheme unless the input claimed one.
+		if strings.Contains(value, "://") {
+			return nil, fmt.Errorf("invalid url %q: %w", value, err)
+		}
+		u, err = url.Parse("https://" + value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid url %q: %w", value, err)
+		}
 	}
 
-	// Handle scheme
 	switch u.Scheme {
 	case "":
-		// No scheme - check if it's a protocol-relative URL (//example.com/path)
 		if u.Host != "" {
-			// Protocol-relative URL: just set the scheme
+			// Protocol-relative URL (//example.com/path): just set the scheme
 			u.Scheme = "https"
 		} else {
-			// Plain hostname like "example.com" or "httpbin.org"
-			// Add https:// and re-parse
+			// Plain hostname like "example.com": add https:// and re-parse
 			u, err = url.Parse("https://" + value)
 			if err != nil {
 				return nil, fmt.Errorf("invalid url %q: %w", value, err)
 			}
 		}
 	case "http":
-		// Upgrade http to https
-		u.Scheme = "https"
+		if !cfg.keepHTTP {
+			u.Scheme = "https"
+		}
 	case "https":
 		// Already https, nothing to do
 	default:
-		// Reject non-http/https schemes (mailto:, ftp:, javascript:, etc.)
-		return nil, fmt.Errorf("invalid url scheme %q: %s", u.Scheme, value)
+		// Inputs like "localhost:3000" parse as scheme "localhost" with
+		// opaque "3000". A digit-leading opaque means the "scheme" was a
+		// hostname and the opaque a port; real opaque schemes (mailto:a@b,
+		// tel:+1..., data:text/html) never start with a digit.
+		if u.Opaque == "" || u.Opaque[0] < '0' || u.Opaque[0] > '9' {
+			return nil, fmt.Errorf("invalid url scheme %q: %s", u.Scheme, value)
+		}
+		u, err = url.Parse("https://" + value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid url %q: %w", value, err)
+		}
 	}
 
-	// Require a non-empty hostname
-	if u.Hostname() == "" {
-		return nil, fmt.Errorf("invalid url missing hostname: %s", value)
+	return canonicalize(u, cfg)
+}
+
+// ResolveLink resolves a link found on a page against that page's URL and
+// returns the canonical result. The base URL must be the URL of the page the
+// link appeared on — relative links resolve against the page path, per RFC
+// 3986. The same normalization as [NormalizeURL] is applied to the result,
+// honoring any options.
+//
+// Absolute links are validated (only http and https are accepted) and
+// normalized. Fragments are always removed.
+//
+// Returns an error if base is nil or not http(s), or if the link cannot be
+// parsed or uses an unsupported scheme (mailto:, javascript:, etc.).
+//
+// Example:
+//
+//	base, _ := url.Parse("https://example.com/blog/post")
+//	u, _ := web.ResolveLink(base, "../about")
+//	fmt.Println(u.String()) // "https://example.com/about"
+//
+//	u, _ = web.ResolveLink(base, "https://other.com/page")
+//	fmt.Println(u.String()) // "https://other.com/page"
+//
+//	_, err := web.ResolveLink(base, "mailto:test@example.com")
+//	fmt.Println(err != nil) // true
+func ResolveLink(base *url.URL, href string, opts ...NormalizeOption) (*url.URL, error) {
+	if base == nil {
+		return nil, errors.New("nil base url")
 	}
+	if base.Scheme != "http" && base.Scheme != "https" {
+		return nil, fmt.Errorf("base url scheme must be http or https: %s", base)
+	}
+
+	ref, err := url.Parse(strings.TrimSpace(href))
+	if err != nil {
+		return nil, fmt.Errorf("invalid link %q: %w", href, err)
+	}
+	if ref.IsAbs() && ref.Scheme != "http" && ref.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported link scheme %q: %s", ref.Scheme, href)
+	}
+
+	cfg := applyOptions(opts)
+	resolved := base.ResolveReference(ref)
+	if resolved.Scheme == "http" && !cfg.keepHTTP {
+		resolved.Scheme = "https"
+	}
+	return canonicalize(resolved, cfg)
+}
+
+// canonicalize applies the shared normalization transformations to a parsed
+// http(s) URL. The URL is modified in place and returned.
+func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("invalid url missing hostname: %s", u)
+	}
+
+	// Credentials embedded in a URL are a fetch concern, not part of the
+	// resource's identity; carrying them through canonicalization risks
+	// leaking them into logs and stored URL sets.
+	u.User = nil
 
 	// Hostnames are case-insensitive; lowercase for stable comparisons and
 	// deduplication. (u.Host includes the port but not userinfo.)
 	u.Host = strings.ToLower(u.Host)
 
-	u.ForceQuery = false
-	u.RawQuery = ""
+	// Default ports are redundant: example.com:443 and example.com are the
+	// same resource over https.
+	if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+		host := u.Hostname()
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]" // restore IPv6 brackets stripped by Hostname
+		}
+		u.Host = host
+	}
+
+	if !cfg.keepQuery {
+		u.ForceQuery = false
+		u.RawQuery = ""
+	}
 	u.Fragment = ""
+	u.RawFragment = ""
+
+	// Resolve dot segments so "/a/../b" and "/b" compare equal. Skip paths
+	// with their own encoding (RawPath set) — cleaning the decoded form
+	// could change which characters are escaped.
+	if u.RawPath == "" && u.Path != "" {
+		u.Path = cleanPath(u.Path)
+	}
 	if u.Path == "/" {
 		u.Path = ""
 	}
 	return u, nil
 }
 
-// SortURLs sorts a slice of URLs alphabetically by their string representation.
-// The slice is sorted in place. Nil entries are sorted to the end of the slice.
-//
-// Example:
-//
-//	urls := []*url.URL{
-//	    mustParse("https://z.com"),
-//	    mustParse("https://a.com"),
-//	    mustParse("https://m.com"),
-//	}
-//	web.SortURLs(urls)
-//	// urls is now ordered: a.com, m.com, z.com
-func SortURLs(urls []*url.URL) {
-	sort.Slice(urls, func(i, j int) bool {
-		// Nil entries sort to the end
-		if urls[i] == nil {
-			return false
-		}
-		if urls[j] == nil {
-			return true
-		}
-		return urls[i].String() < urls[j].String()
-	})
-}
-
-// ResolveLink resolves a relative or absolute URL against a base domain and returns
-// the normalized result.
-//
-// For absolute URLs, this function validates the scheme (only http/https are accepted)
-// and normalizes the URL. For relative URLs, it resolves them against the provided
-// domain. URL fragments are always removed.
-//
-// Returns the resolved URL string and true if successful, or an empty string and
-// false if the URL is invalid (e.g., unsupported scheme, parse error).
-//
-// The domain parameter can be specified with or without a scheme. If no scheme is
-// provided, https:// is assumed.
-//
-// Example:
-//
-//	// Resolve relative URL
-//	resolved, ok := web.ResolveLink("example.com", "/about")
-//	// resolved: "https://example.com/about", ok: true
-//
-//	// Validate absolute URL
-//	resolved, ok = web.ResolveLink("example.com", "https://other.com/page")
-//	// resolved: "https://other.com/page", ok: true
-//
-//	// Reject non-http schemes
-//	resolved, ok = web.ResolveLink("example.com", "ftp://files.com")
-//	// resolved: "", ok: false
-func ResolveLink(domain, value string) (string, bool) {
-	// Parse the input URL
-	parsedURL, err := url.Parse(value)
-	if err != nil {
-		return "", false
+// cleanPath resolves dot segments while preserving a trailing slash, which
+// path.Clean would drop ("/docs/" and "/docs" may be different resources).
+func cleanPath(p string) string {
+	cleaned := path.Clean(p)
+	if cleaned == "." {
+		return ""
 	}
-
-	// Remove fragment
-	parsedURL.Fragment = ""
-
-	// Check if it's already absolute
-	if parsedURL.IsAbs() {
-		// Only accept HTTP/HTTPS schemes
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return "", false
-		}
-		// Normalize and return
-		normalizedURL, err := NormalizeURL(parsedURL.String())
-		if err != nil {
-			return "", false
-		}
-		return normalizedURL.String(), true
+	if strings.HasSuffix(p, "/") && !strings.HasSuffix(cleaned, "/") {
+		cleaned += "/"
 	}
-
-	// For relative URLs, we need to resolve against the domain
-	// First, ensure domain has a scheme
-	baseDomain := domain
-	if !strings.HasPrefix(baseDomain, "http://") && !strings.HasPrefix(baseDomain, "https://") {
-		baseDomain = "https://" + baseDomain
-	}
-
-	// Parse the base domain
-	baseURL, err := url.Parse(baseDomain)
-	if err != nil {
-		return "", false
-	}
-
-	// Resolve the relative URL against the base
-	resolvedURL := baseURL.ResolveReference(parsedURL)
-
-	// Normalize and return
-	normalizedURL, err := NormalizeURL(resolvedURL.String())
-	if err != nil {
-		return "", false
-	}
-	return normalizedURL.String(), true
+	return cleaned
 }

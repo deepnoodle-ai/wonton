@@ -46,7 +46,6 @@ package crawler
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/url"
 	"sort"
@@ -266,9 +265,9 @@ type Crawler struct {
 	// enqueuedURLs counts URLs admitted to the queue, used to enforce maxURLs.
 	enqueuedURLs int64
 
-	// URL normalization options
-	allowHTTP           bool
-	preserveQueryParams bool
+	// URL normalization options, derived from AllowHTTP and
+	// PreserveQueryParams at construction time
+	normalizeOpts []web.NormalizeOption
 
 	// Retry configuration
 	retryOptions *RetryOptions
@@ -320,6 +319,13 @@ func New(opts Options) (*Crawler, error) {
 	if opts.RespectRobotsTxt != nil {
 		respectRobotsTxt = *opts.RespectRobotsTxt
 	}
+	var normalizeOpts []web.NormalizeOption
+	if opts.AllowHTTP {
+		normalizeOpts = append(normalizeOpts, web.KeepHTTP())
+	}
+	if opts.PreserveQueryParams {
+		normalizeOpts = append(normalizeOpts, web.KeepQuery())
+	}
 	c := &Crawler{
 		cache:                opts.Cache,
 		maxURLs:              opts.MaxURLs,
@@ -333,8 +339,7 @@ func New(opts Options) (*Crawler, error) {
 		showProgress:         opts.ShowProgress,
 		showProgressInterval: opts.ShowProgressInterval,
 		queueSize:            opts.QueueSize,
-		allowHTTP:            opts.AllowHTTP,
-		preserveQueryParams:  opts.PreserveQueryParams,
+		normalizeOpts:        normalizeOpts,
 		retryOptions:         opts.RetryOptions,
 		respectRobotsTxt:     respectRobotsTxt,
 		robotsTxtUserAgent:   opts.RobotsTxtUserAgent,
@@ -857,80 +862,16 @@ func (c *Crawler) idleMonitor(ctx context.Context, cancel context.CancelFunc) {
 }
 
 // normalizeURL parses and normalizes a URL according to the crawler's configuration.
-// This replaces the use of web.NormalizeURL to support configurable normalization.
 func (c *Crawler) normalizeURL(rawURL string) (*url.URL, error) {
-	rawURL = strings.TrimSpace(rawURL)
-	if rawURL == "" {
-		return nil, fmt.Errorf("invalid empty url")
-	}
-
-	// Add scheme if missing
-	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
-		if strings.Contains(rawURL, "://") {
-			return nil, fmt.Errorf("invalid url: %s", rawURL)
-		}
-		rawURL = "https://" + rawURL
-	}
-
-	// Optionally convert HTTP to HTTPS
-	if !c.allowHTTP && strings.HasPrefix(rawURL, "http://") {
-		rawURL = "https://" + rawURL[7:]
-	}
-
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid url %q: %w", rawURL, err)
-	}
-
-	// Optionally strip query parameters
-	if !c.preserveQueryParams {
-		u.ForceQuery = false
-		u.RawQuery = ""
-	}
-
-	// Always strip fragments
-	u.Fragment = ""
-
-	// Remove trailing slash from root path
-	if u.Path == "/" {
-		u.Path = ""
-	}
-
-	return u, nil
+	return web.NormalizeURL(rawURL, c.normalizeOpts...)
 }
 
-// resolveLink resolves a relative or absolute URL against a base URL,
-// preserving the scheme of the base URL when resolving relative links.
+// resolveLink resolves a relative or absolute URL against the page URL it
+// appeared on, applying the crawler's normalization configuration.
 func (c *Crawler) resolveLink(baseURL *url.URL, link string) (string, bool) {
-	// Parse the link
-	parsedLink, err := url.Parse(link)
+	resolved, err := web.ResolveLink(baseURL, link, c.normalizeOpts...)
 	if err != nil {
 		return "", false
 	}
-
-	// Remove fragment
-	parsedLink.Fragment = ""
-
-	// If absolute, validate and normalize
-	if parsedLink.IsAbs() {
-		// Only accept HTTP/HTTPS schemes
-		if parsedLink.Scheme != "http" && parsedLink.Scheme != "https" {
-			return "", false
-		}
-		normalized, err := c.normalizeURL(parsedLink.String())
-		if err != nil {
-			return "", false
-		}
-		return normalized.String(), true
-	}
-
-	// Resolve relative URL against base
-	resolved := baseURL.ResolveReference(parsedLink)
-
-	// Normalize and return
-	normalized, err := c.normalizeURL(resolved.String())
-	if err != nil {
-		return "", false
-	}
-	return normalized.String(), true
+	return resolved.String(), true
 }
