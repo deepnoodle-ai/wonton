@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// animatedBorderedView wraps a view with an animated border.
-type animatedBorderedView struct {
+// AnimatedBorderedView wraps a view with an animated border.
+type AnimatedBorderedView struct {
 	inner             View
 	border            *BorderStyle
 	borderAnimation   BorderAnimation
@@ -13,8 +13,8 @@ type animatedBorderedView struct {
 }
 
 // AnimatedBordered wraps a view with an animated border.
-func AnimatedBordered(inner View, animation BorderAnimation) *animatedBorderedView {
-	return &animatedBorderedView{
+func AnimatedBordered(inner View, animation BorderAnimation) *AnimatedBorderedView {
+	return &AnimatedBorderedView{
 		inner: inner,
 		border: &BorderStyle{
 			TopLeft: "┌", TopRight: "┐", BottomLeft: "└", BottomRight: "┘",
@@ -27,30 +27,30 @@ func AnimatedBordered(inner View, animation BorderAnimation) *animatedBorderedVi
 }
 
 // Border sets the border characters.
-func (f *animatedBorderedView) Border(style *BorderStyle) *animatedBorderedView {
+func (f *AnimatedBorderedView) Border(style *BorderStyle) *AnimatedBorderedView {
 	f.border = style
 	return f
 }
 
 // Title sets the title shown in the top border.
-func (f *animatedBorderedView) Title(title string) *animatedBorderedView {
+func (f *AnimatedBorderedView) Title(title string) *AnimatedBorderedView {
 	f.title = title
 	return f
 }
 
 // TitleStyle sets the style for the title text.
-func (f *animatedBorderedView) TitleStyle(s Style) *animatedBorderedView {
+func (f *AnimatedBorderedView) TitleStyle(s Style) *AnimatedBorderedView {
 	f.titleStyle = s
 	return f
 }
 
 // StaticBorderStyle sets a fallback style when no animation is active.
-func (f *animatedBorderedView) StaticBorderStyle(s Style) *animatedBorderedView {
+func (f *AnimatedBorderedView) StaticBorderStyle(s Style) *AnimatedBorderedView {
 	f.staticBorderStyle = s
 	return f
 }
 
-func (f *animatedBorderedView) size(maxWidth, maxHeight int) (int, int) {
+func (f *AnimatedBorderedView) size(maxWidth, maxHeight int) (int, int) {
 	borderSize := 0
 	if f.border != nil {
 		borderSize = 2
@@ -75,7 +75,7 @@ func (f *animatedBorderedView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + borderSize, innerH + borderSize
 }
 
-func (f *animatedBorderedView) render(ctx *RenderContext) {
+func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

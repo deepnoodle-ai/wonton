@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// inputFieldView is a high-level component combining a label, input, and optional border
+// InputFieldView is a high-level component combining a label, input, and optional border
 // with automatic focus-aware styling.
-type inputFieldView struct {
+type InputFieldView struct {
 	reg *registries // captured at construction; refreshed from ctx during render
 	// Input configuration
 	id               string
@@ -56,12 +56,12 @@ type inputFieldView struct {
 //	    Placeholder("Enter your name").
 //	    Bordered().
 //	    Width(40)
-func InputField(binding *string) *inputFieldView {
+func InputField(binding *string) *InputFieldView {
 	id := ""
 	if binding != nil {
 		id = generateInputID(binding)
 	}
-	return &inputFieldView{
+	return &InputFieldView{
 		reg:        capturedRegistries(),
 		id:         id,
 		binding:    binding,
@@ -76,92 +76,92 @@ func generateInputID(binding *string) string {
 }
 
 // ID sets a specific ID for this input field.
-func (f *inputFieldView) ID(id string) *inputFieldView {
+func (f *InputFieldView) ID(id string) *InputFieldView {
 	f.id = id
 	return f
 }
 
 // Label sets the label text displayed before the input.
-func (f *inputFieldView) Label(text string) *inputFieldView {
+func (f *InputFieldView) Label(text string) *InputFieldView {
 	f.label = text
 	return f
 }
 
 // LabelStyle sets the style for the label when unfocused.
-func (f *inputFieldView) LabelStyle(s Style) *inputFieldView {
+func (f *InputFieldView) LabelStyle(s Style) *InputFieldView {
 	f.labelStyle = s
 	return f
 }
 
 // FocusLabelStyle sets the style for the label when the input is focused.
 // Defaults to cyan + bold if not set.
-func (f *inputFieldView) FocusLabelStyle(s Style) *inputFieldView {
+func (f *InputFieldView) FocusLabelStyle(s Style) *InputFieldView {
 	f.focusLabelStyle = &s
 	return f
 }
 
 // Placeholder sets the placeholder text shown when empty.
-func (f *inputFieldView) Placeholder(text string) *inputFieldView {
+func (f *InputFieldView) Placeholder(text string) *InputFieldView {
 	f.placeholder = text
 	return f
 }
 
 // PlaceholderStyle sets the style for the placeholder text.
-func (f *inputFieldView) PlaceholderStyle(s Style) *inputFieldView {
+func (f *InputFieldView) PlaceholderStyle(s Style) *InputFieldView {
 	f.placeholderStyle = &s
 	return f
 }
 
 // Mask sets a mask character for password input.
-func (f *inputFieldView) Mask(r rune) *inputFieldView {
+func (f *InputFieldView) Mask(r rune) *InputFieldView {
 	f.mask = r
 	return f
 }
 
 // OnChange sets a callback invoked when the value changes.
-func (f *inputFieldView) OnChange(fn func(string)) *inputFieldView {
+func (f *InputFieldView) OnChange(fn func(string)) *InputFieldView {
 	f.onChange = fn
 	return f
 }
 
 // OnSubmit sets a callback invoked when Enter is pressed.
-func (f *inputFieldView) OnSubmit(fn func(string)) *inputFieldView {
+func (f *InputFieldView) OnSubmit(fn func(string)) *InputFieldView {
 	f.onSubmit = fn
 	return f
 }
 
 // Width sets the display width of the input (not including label or border).
-func (f *inputFieldView) Width(w int) *inputFieldView {
+func (f *InputFieldView) Width(w int) *InputFieldView {
 	f.width = w
 	return f
 }
 
 // MaxHeight sets the maximum height in lines for multiline input.
-func (f *inputFieldView) MaxHeight(lines int) *inputFieldView {
+func (f *InputFieldView) MaxHeight(lines int) *InputFieldView {
 	f.maxHeight = lines
 	return f
 }
 
 // PastePlaceholder enables paste placeholder mode.
-func (f *inputFieldView) PastePlaceholder(enabled bool) *inputFieldView {
+func (f *InputFieldView) PastePlaceholder(enabled bool) *InputFieldView {
 	f.pastePlaceholder = enabled
 	return f
 }
 
 // CursorBlink enables or disables cursor blinking.
-func (f *inputFieldView) CursorBlink(enabled bool) *inputFieldView {
+func (f *InputFieldView) CursorBlink(enabled bool) *InputFieldView {
 	f.cursorBlink = enabled
 	return f
 }
 
 // Multiline enables multiline input where Shift+Enter inserts newlines.
-func (f *inputFieldView) Multiline(enabled bool) *inputFieldView {
+func (f *InputFieldView) Multiline(enabled bool) *InputFieldView {
 	f.multiline = enabled
 	return f
 }
 
 // Bordered enables a border around the input.
-func (f *inputFieldView) Bordered() *inputFieldView {
+func (f *InputFieldView) Bordered() *InputFieldView {
 	f.bordered = true
 	if f.border == nil {
 		f.border = &RoundedBorder
@@ -170,21 +170,21 @@ func (f *inputFieldView) Bordered() *inputFieldView {
 }
 
 // Border sets the border style (implies Bordered).
-func (f *inputFieldView) Border(style *BorderStyle) *inputFieldView {
+func (f *InputFieldView) Border(style *BorderStyle) *InputFieldView {
 	f.bordered = true
 	f.border = style
 	return f
 }
 
 // BorderFg sets the border foreground color.
-func (f *inputFieldView) BorderFg(c Color) *inputFieldView {
+func (f *InputFieldView) BorderFg(c Color) *InputFieldView {
 	f.borderFg = c
 	return f
 }
 
 // FocusBorderFg sets the border color when the input is focused.
 // Defaults to cyan if not set.
-func (f *inputFieldView) FocusBorderFg(c Color) *inputFieldView {
+func (f *InputFieldView) FocusBorderFg(c Color) *InputFieldView {
 	f.focusBorderFg = c
 	f.hasFocusBorder = true
 	return f
@@ -192,7 +192,7 @@ func (f *inputFieldView) FocusBorderFg(c Color) *inputFieldView {
 
 // HorizontalBorderOnly enables horizontal bar border style (top and bottom only).
 // This creates a cleaner look with just horizontal lines above and below the input.
-func (f *inputFieldView) HorizontalBorderOnly() *inputFieldView {
+func (f *InputFieldView) HorizontalBorderOnly() *InputFieldView {
 	f.bordered = true
 	f.horizontalBarOnly = true
 	return f
@@ -200,32 +200,32 @@ func (f *inputFieldView) HorizontalBorderOnly() *inputFieldView {
 
 // Prompt sets a prompt character displayed on the left side of the input.
 // Common examples: ">", "❯", "$", etc.
-func (f *inputFieldView) Prompt(text string) *inputFieldView {
+func (f *InputFieldView) Prompt(text string) *InputFieldView {
 	f.prompt = text
 	f.hasPrompt = true
 	return f
 }
 
 // PromptStyle sets the style for the prompt character.
-func (f *inputFieldView) PromptStyle(s Style) *inputFieldView {
+func (f *InputFieldView) PromptStyle(s Style) *InputFieldView {
 	f.promptStyle = s
 	return f
 }
 
 // CursorShape sets the cursor shape/style for the input.
 // Options are: InputCursorBlock (default), InputCursorUnderline, InputCursorBar.
-func (f *inputFieldView) CursorShape(shape InputCursorStyle) *inputFieldView {
+func (f *InputFieldView) CursorShape(shape InputCursorStyle) *InputFieldView {
 	f.cursorShape = shape
 	return f
 }
 
 // CursorColor sets a custom cursor color.
-func (f *inputFieldView) CursorColor(color Color) *inputFieldView {
+func (f *InputFieldView) CursorColor(color Color) *InputFieldView {
 	f.cursorColor = &color
 	return f
 }
 
-func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
+func (f *InputFieldView) size(maxWidth, maxHeight int) (int, int) {
 	// Account for border if present
 	borderSize := 0
 	if f.bordered && f.border != nil && !f.horizontalBarOnly {
@@ -307,7 +307,7 @@ func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
 	return totalW, totalH
 }
 
-func (f *inputFieldView) render(ctx *RenderContext) {
+func (f *InputFieldView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return
@@ -369,7 +369,7 @@ func (f *inputFieldView) render(ctx *RenderContext) {
 	}
 }
 
-func (f *inputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, isFocused bool) {
+func (f *InputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, isFocused bool) {
 	// Determine border color based on focus
 	borderStyle := NewStyle()
 	if isFocused {
@@ -451,7 +451,7 @@ func (f *inputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, is
 	}
 }
 
-func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h int, isFocused bool) {
+func (f *InputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h int, isFocused bool) {
 	// Determine border color based on focus
 	borderStyle := NewStyle()
 	if isFocused {
@@ -544,7 +544,7 @@ func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h in
 	}
 }
 
-func (f *inputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
+func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
 	f.reg = ctx.registries()

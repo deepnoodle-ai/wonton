@@ -224,16 +224,16 @@
 //
 //	Markdown(mdContent).Width(80)
 //
-// Code Highlighting: CodeView with syntax highlighting:
+// Code Highlighting: Code with syntax highlighting:
 //
-//	CodeView(code, "go").Width(80)
+//	Code(code, "go").Width(80)
 //
 // # Testing
 //
 // The terminal package provides TestTerminal for unit testing TUI applications:
 //
 //	func TestApp(t *testing.T) {
-//	    term := tui.NewTestTerminal(80, 24)
+//	    term := tui.NewTestTerminal(80, 24, io.Discard)
 //	    runtime := tui.NewRuntime(term, &App{}, 30)
 //	    // Send events and verify output
 //	}

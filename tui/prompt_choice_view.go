@@ -23,7 +23,7 @@ func (r *promptChoiceRegistryImpl) Get(id string) *textInput {
 	return ti
 }
 
-// promptChoiceView displays a selection with numbered options and optional inline input.
+// PromptChoiceView displays a selection with numbered options and optional inline input.
 //
 // This component provides a Claude Code-style selection interface where users can:
 //   - Navigate between options using arrow keys
@@ -61,8 +61,8 @@ func (r *promptChoiceRegistryImpl) Get(id string) *textInput {
 //
 // The component implements the Focusable interface and integrates with
 // the FocusManager for Tab navigation between multiple focusable elements.
-type promptChoiceView struct {
-	reg *registries // captured at construction; refreshed from ctx during render
+type PromptChoiceView struct {
+	reg         *registries // captured at construction; refreshed from ctx during render
 	id          string
 	selected    *int     // Currently selected option index
 	inputText   *string  // Text for the input option (if any)
@@ -150,10 +150,10 @@ type promptChoiceView struct {
 //	            OnCancel(app.handleCancel),
 //	    )
 //	}
-func PromptChoice(selected *int, inputText *string) *promptChoiceView {
+func PromptChoice(selected *int, inputText *string) *PromptChoiceView {
 	id := fmt.Sprintf("prompt_choice_%p", selected)
-	return &promptChoiceView{
-		reg: capturedRegistries(),
+	return &PromptChoiceView{
+		reg:         capturedRegistries(),
 		id:          id,
 		selected:    selected,
 		inputText:   inputText,
@@ -176,7 +176,7 @@ func PromptChoice(selected *int, inputText *string) *promptChoiceView {
 // Example:
 //
 //	PromptChoice(&selected, nil).ID("main-menu")
-func (p *promptChoiceView) ID(id string) *promptChoiceView {
+func (p *PromptChoiceView) ID(id string) *PromptChoiceView {
 	p.id = id
 	return p
 }
@@ -192,7 +192,7 @@ func (p *promptChoiceView) ID(id string) *promptChoiceView {
 //	    Option("Save and exit").
 //	    Option("Exit without saving").
 //	    Option("Cancel")
-func (p *promptChoiceView) Option(label string) *promptChoiceView {
+func (p *PromptChoiceView) Option(label string) *PromptChoiceView {
 	p.options = append(p.options, label)
 	return p
 }
@@ -204,7 +204,7 @@ func (p *promptChoiceView) Option(label string) *promptChoiceView {
 // Example:
 //
 //	PromptChoice(&selected, nil).Options("Yes", "No", "Maybe")
-func (p *promptChoiceView) Options(labels ...string) *promptChoiceView {
+func (p *PromptChoiceView) Options(labels ...string) *PromptChoiceView {
 	p.options = append(p.options, labels...)
 	return p
 }
@@ -223,7 +223,7 @@ func (p *promptChoiceView) Options(labels ...string) *promptChoiceView {
 //	PromptChoice(&selected, &customText).
 //	    Option("Use default").
 //	    InputOption("Enter custom value...")
-func (p *promptChoiceView) InputOption(label string) *promptChoiceView {
+func (p *PromptChoiceView) InputOption(label string) *PromptChoiceView {
 	p.inputLabel = label
 	return p
 }
@@ -250,7 +250,7 @@ func (p *promptChoiceView) InputOption(label string) *promptChoiceView {
 //	            handleCustom(inputText)
 //	        }
 //	    })
-func (p *promptChoiceView) OnSelect(fn func(idx int, inputText string)) *promptChoiceView {
+func (p *PromptChoiceView) OnSelect(fn func(idx int, inputText string)) *PromptChoiceView {
 	p.onSelect = fn
 	return p
 }
@@ -267,7 +267,7 @@ func (p *promptChoiceView) OnSelect(fn func(idx int, inputText string)) *promptC
 //	    OnCancel(func() {
 //	        app.showMenu = false
 //	    })
-func (p *promptChoiceView) OnCancel(fn func()) *promptChoiceView {
+func (p *PromptChoiceView) OnCancel(fn func()) *PromptChoiceView {
 	p.onCancel = fn
 	return p
 }
@@ -281,7 +281,7 @@ func (p *promptChoiceView) OnCancel(fn func()) *promptChoiceView {
 //	PromptChoice(&selected, nil).
 //	    Option("Delete").
 //	    Style(tui.NewStyle().WithForeground(tui.ColorRed))
-func (p *promptChoiceView) Style(s Style) *promptChoiceView {
+func (p *PromptChoiceView) Style(s Style) *PromptChoiceView {
 	p.style = s
 	return p
 }
@@ -296,7 +296,7 @@ func (p *promptChoiceView) Style(s Style) *promptChoiceView {
 //	PromptChoice(&selected, &text).
 //	    InputOption("Type here...").
 //	    InputStyle(tui.NewStyle().WithForeground(tui.ColorBrightBlack).WithItalic())
-func (p *promptChoiceView) InputStyle(s Style) *promptChoiceView {
+func (p *PromptChoiceView) InputStyle(s Style) *PromptChoiceView {
 	p.inputStyle = s
 	return p
 }
@@ -307,7 +307,7 @@ func (p *promptChoiceView) InputStyle(s Style) *promptChoiceView {
 //
 //	PromptChoice(&selected, nil).
 //	    CursorStyle(tui.NewStyle().WithForeground(tui.ColorCyan).WithBold())
-func (p *promptChoiceView) CursorStyle(s Style) *promptChoiceView {
+func (p *PromptChoiceView) CursorStyle(s Style) *PromptChoiceView {
 	p.cursorStyle = s
 	return p
 }
@@ -319,7 +319,7 @@ func (p *promptChoiceView) CursorStyle(s Style) *promptChoiceView {
 // Example:
 //
 //	PromptChoice(&selected, nil).CursorChar(">")
-func (p *promptChoiceView) CursorChar(c string) *promptChoiceView {
+func (p *PromptChoiceView) CursorChar(c string) *PromptChoiceView {
 	p.cursorChar = c
 	return p
 }
@@ -340,7 +340,7 @@ func (p *promptChoiceView) CursorChar(c string) *promptChoiceView {
 //	    Option("Yes").
 //	    Option("No").
 //	    ShowNumbers(false)
-func (p *promptChoiceView) ShowNumbers(show bool) *promptChoiceView {
+func (p *PromptChoiceView) ShowNumbers(show bool) *PromptChoiceView {
 	p.showNumbers = show
 	return p
 }
@@ -352,7 +352,7 @@ func (p *promptChoiceView) ShowNumbers(show bool) *promptChoiceView {
 // Example:
 //
 //	PromptChoice(&selected, nil).HintText("Enter to confirm, Esc to go back")
-func (p *promptChoiceView) HintText(text string) *promptChoiceView {
+func (p *PromptChoiceView) HintText(text string) *PromptChoiceView {
 	p.hintText = text
 	return p
 }
@@ -365,13 +365,13 @@ func (p *promptChoiceView) HintText(text string) *promptChoiceView {
 // Example:
 //
 //	PromptChoice(&selected, nil).Width(40)
-func (p *promptChoiceView) Width(w int) *promptChoiceView {
+func (p *PromptChoiceView) Width(w int) *PromptChoiceView {
 	p.width = w
 	return p
 }
 
 // totalOptions returns the total number of options including input option if present
-func (p *promptChoiceView) totalOptions() int {
+func (p *PromptChoiceView) totalOptions() int {
 	n := len(p.options)
 	if p.inputLabel != "" {
 		n++
@@ -380,7 +380,7 @@ func (p *promptChoiceView) totalOptions() int {
 }
 
 // inputOptionIndex returns the index of the input option, or -1 if none
-func (p *promptChoiceView) inputOptionIndex() int {
+func (p *PromptChoiceView) inputOptionIndex() int {
 	if p.inputLabel == "" {
 		return -1
 	}
@@ -388,7 +388,7 @@ func (p *promptChoiceView) inputOptionIndex() int {
 }
 
 // isInputSelected returns true if the input option is currently selected
-func (p *promptChoiceView) isInputSelected() bool {
+func (p *PromptChoiceView) isInputSelected() bool {
 	if p.selected == nil || p.inputLabel == "" {
 		return false
 	}
@@ -397,15 +397,15 @@ func (p *promptChoiceView) isInputSelected() bool {
 
 // Focusable interface implementation
 
-func (p *promptChoiceView) FocusID() string {
+func (p *PromptChoiceView) FocusID() string {
 	return p.id
 }
 
-func (p *promptChoiceView) IsFocused() bool {
+func (p *PromptChoiceView) IsFocused() bool {
 	return p.focused
 }
 
-func (p *promptChoiceView) SetFocused(focused bool) {
+func (p *PromptChoiceView) SetFocused(focused bool) {
 	p.focused = focused
 	// Update textInput focus state
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
@@ -413,11 +413,11 @@ func (p *promptChoiceView) SetFocused(focused bool) {
 	}
 }
 
-func (p *promptChoiceView) FocusBounds() image.Rectangle {
+func (p *PromptChoiceView) FocusBounds() image.Rectangle {
 	return p.bounds
 }
 
-func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
+func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	total := p.totalOptions()
 	if total == 0 {
 		return false
@@ -497,13 +497,13 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // updateInputFocus updates the textInput focus based on current selection
-func (p *promptChoiceView) updateInputFocus() {
+func (p *PromptChoiceView) updateInputFocus() {
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())
 	}
 }
 
-func (p *promptChoiceView) size(maxWidth, maxHeight int) (int, int) {
+func (p *PromptChoiceView) size(maxWidth, maxHeight int) (int, int) {
 	// Calculate width from options
 	w := p.width
 	if w == 0 {
@@ -541,7 +541,7 @@ func (p *promptChoiceView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (p *promptChoiceView) render(ctx *RenderContext) {
+func (p *PromptChoiceView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -592,7 +592,7 @@ func (p *promptChoiceView) render(ctx *RenderContext) {
 	}
 }
 
-func (p *promptChoiceView) renderOption(ctx *RenderContext, y, idx int, label string, isSelected bool, isInput bool, width int) {
+func (p *PromptChoiceView) renderOption(ctx *RenderContext, y, idx int, label string, isSelected bool, isInput bool, width int) {
 	x := 0
 	style := p.style
 
@@ -613,7 +613,7 @@ func (p *promptChoiceView) renderOption(ctx *RenderContext, y, idx int, label st
 	ctx.PrintTruncated(x, y, label, style)
 }
 
-func (p *promptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isSelected bool, width int, ti *textInput) {
+func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isSelected bool, width int, ti *textInput) {
 	x := 0
 
 	// Draw cursor

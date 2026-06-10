@@ -422,13 +422,13 @@ func TestClickable_Chaining(t *testing.T) {
 
 func TestButton_Render(t *testing.T) {
 	btn := Button("Submit", func() {})
-	screen := SprintScreen(btn, PrintConfig{Width: 20})
+	screen := SprintScreen(btn, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 0, "Submit")
 }
 
 func TestButton_Render_WithStyle(t *testing.T) {
 	btn := Button("OK", func() {}).Fg(ColorGreen).Bold()
-	screen := SprintScreen(btn, PrintConfig{Width: 20})
+	screen := SprintScreen(btn, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "OK")
 
@@ -443,7 +443,7 @@ func TestButton_Render_InStack(t *testing.T) {
 		Button("Save", func() {}),
 		Button("Cancel", func() {}),
 	)
-	screen := SprintScreen(stack, PrintConfig{Width: 20})
+	screen := SprintScreen(stack, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Form:")
 	termtest.AssertRowContains(t, screen, 1, "Save")
@@ -452,13 +452,13 @@ func TestButton_Render_InStack(t *testing.T) {
 
 func TestClickable_Render(t *testing.T) {
 	c := Clickable("Click me", func() {})
-	screen := SprintScreen(c, PrintConfig{Width: 20})
+	screen := SprintScreen(c, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 0, "Click me")
 }
 
 func TestClickable_Render_WithStyle(t *testing.T) {
 	c := Clickable("Link", func() {}).Fg(ColorCyan).Bold()
-	screen := SprintScreen(c, PrintConfig{Width: 20})
+	screen := SprintScreen(c, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Link")
 
@@ -472,7 +472,7 @@ func TestButton_Render_InGroup(t *testing.T) {
 		Button("Yes", func() {}),
 		Button("No", func() {}),
 	).Gap(2)
-	screen := SprintScreen(group, PrintConfig{Width: 20})
+	screen := SprintScreen(group, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "Yes")
 	termtest.AssertRowContains(t, screen, 0, "No")

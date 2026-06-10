@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// canvasView allows imperative drawing within the declarative tree
-type canvasView struct {
+// CanvasView allows imperative drawing within the declarative tree
+type CanvasView struct {
 	draw        func(frame RenderFrame, bounds image.Rectangle)
 	drawContext func(ctx *RenderContext)
 	width       int
@@ -19,8 +19,8 @@ type canvasView struct {
 //	    // Custom imperative drawing
 //	    frame.PrintStyled(0, 0, "Custom content", style)
 //	})
-func Canvas(draw func(frame RenderFrame, bounds image.Rectangle)) *canvasView {
-	return &canvasView{
+func Canvas(draw func(frame RenderFrame, bounds image.Rectangle)) *CanvasView {
+	return &CanvasView{
 		draw:   draw,
 		width:  0,
 		height: 0,
@@ -40,8 +40,8 @@ func Canvas(draw func(frame RenderFrame, bounds image.Rectangle)) *canvasView {
 //	    x := int(frame) % w
 //	    ctx.SetCell(x, 0, '█', style)
 //	})
-func CanvasContext(draw func(ctx *RenderContext)) *canvasView {
-	return &canvasView{
+func CanvasContext(draw func(ctx *RenderContext)) *CanvasView {
+	return &CanvasView{
 		drawContext: draw,
 		width:       0,
 		height:      0,
@@ -50,25 +50,25 @@ func CanvasContext(draw func(ctx *RenderContext)) *canvasView {
 
 // Size sets the preferred size for the canvas.
 // Without this, the canvas will use all available space.
-func (c *canvasView) Size(w, h int) *canvasView {
+func (c *CanvasView) Size(w, h int) *CanvasView {
 	c.width = w
 	c.height = h
 	return c
 }
 
 // Width sets the preferred width for the canvas.
-func (c *canvasView) Width(w int) *canvasView {
+func (c *CanvasView) Width(w int) *CanvasView {
 	c.width = w
 	return c
 }
 
 // Height sets the preferred height for the canvas.
-func (c *canvasView) Height(h int) *canvasView {
+func (c *CanvasView) Height(h int) *CanvasView {
 	c.height = h
 	return c
 }
 
-func (c *canvasView) size(maxWidth, maxHeight int) (int, int) {
+func (c *CanvasView) size(maxWidth, maxHeight int) (int, int) {
 	w := c.width
 	h := c.height
 
@@ -91,7 +91,7 @@ func (c *canvasView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *canvasView) render(ctx *RenderContext) {
+func (c *CanvasView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return
@@ -111,7 +111,7 @@ func (c *canvasView) render(ctx *RenderContext) {
 }
 
 // Canvas is flexible - it can expand to fill available space
-func (c *canvasView) flex() int {
+func (c *CanvasView) flex() int {
 	// Only flexible if no explicit size is set
 	if c.width == 0 && c.height == 0 {
 		return 1

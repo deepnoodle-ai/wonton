@@ -190,11 +190,16 @@ func ExampleWidth() {
 	_ = tui.Size(40, 10, content)
 }
 
-// ExampleRun demonstrates running a TUI application with options.
-func ExampleRun() {
-	type App struct{}
+// exampleRunApp is a minimal Application for ExampleRun.
+type exampleRunApp struct{}
 
-	app := &App{}
+func (a *exampleRunApp) View() tui.View { return tui.Text("Hello") }
+
+// ExampleRun demonstrates running a TUI application with options.
+// No Output comment: this example is compiled but not executed, since
+// Run takes over the terminal.
+func ExampleRun() {
+	app := &exampleRunApp{}
 
 	// Run with default options
 	// tui.Run(app)
@@ -206,8 +211,6 @@ func ExampleRun() {
 		tui.WithAlternateScreen(true), // Use alternate screen buffer
 		tui.WithBracketedPaste(true),  // Handle pasted text properly
 	)
-
-	// Output:
 }
 
 // ExampleBatch demonstrates running multiple commands.

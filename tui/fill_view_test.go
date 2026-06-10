@@ -113,7 +113,7 @@ func TestFill_FlexWithDifferentConfigurations(t *testing.T) {
 	// Fill should always be flexible regardless of configuration
 	tests := []struct {
 		name string
-		fill *fillView
+		fill *FillView
 	}{
 		{"basic fill", Fill('*')},
 		{"styled fill", Fill('*').Fg(ColorRed)},
@@ -133,7 +133,7 @@ func TestFill_Render(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('*')
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -145,7 +145,7 @@ func TestFill_RenderWithColor(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('*').Fg(ColorRed)
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -158,7 +158,7 @@ func TestFill_RenderWithBackground(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill(' ').Bg(ColorBlue)
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -170,7 +170,7 @@ func TestFill_RenderWithBothColors(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('█').Fg(ColorGreen).Bg(ColorBlue)
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -183,7 +183,7 @@ func TestFill_RenderWithRGB(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('*').FgRGB(255, 128, 0).BgRGB(0, 64, 128)
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -197,17 +197,17 @@ func TestFill_RenderEmpty(t *testing.T) {
 	fill := Fill('*')
 
 	// Zero width
-	err := Print(fill, PrintConfig{Width: 0, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(0), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	// Zero height
 	buf.Reset()
-	err = Print(fill, PrintConfig{Width: 10, Height: 0, Output: &buf})
+	err = Print(fill, WithWidth(10), WithHeight(0), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	// Both zero
 	buf.Reset()
-	err = Print(fill, PrintConfig{Width: 0, Height: 0, Output: &buf})
+	err = Print(fill, WithWidth(0), WithHeight(0), WithOutput(&buf))
 	assert.NoError(t, err)
 }
 
@@ -233,7 +233,7 @@ func TestFill_RenderDifferentCharacters(t *testing.T) {
 			var buf strings.Builder
 			fill := Fill(tt.char)
 
-			err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+			err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 			assert.NoError(t, err)
 
 			output := buf.String()
@@ -254,7 +254,7 @@ func TestFill_InStack(t *testing.T) {
 		Text("Footer"),
 	)
 
-	err := Print(view, PrintConfig{Width: 20, Height: 10, Output: &buf})
+	err := Print(view, WithWidth(20), WithHeight(10), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -273,7 +273,7 @@ func TestFill_MultipleInStack(t *testing.T) {
 		Text("Section 3"),
 	)
 
-	err := Print(view, PrintConfig{Width: 20, Height: 15, Output: &buf})
+	err := Print(view, WithWidth(20), WithHeight(15), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -292,7 +292,7 @@ func TestFill_Spacing(t *testing.T) {
 		Text("Line 2"),
 	)
 
-	err := Print(view, PrintConfig{Width: 20, Height: 10, Output: &buf})
+	err := Print(view, WithWidth(20), WithHeight(10), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -305,7 +305,7 @@ func TestFill_AsBackground(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill(' ').BgRGB(32, 32, 32)
 
-	err := Print(fill, PrintConfig{Width: 20, Height: 10, Output: &buf})
+	err := Print(fill, WithWidth(20), WithHeight(10), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -321,7 +321,7 @@ func TestFill_CustomStyle(t *testing.T) {
 		WithBold()
 	fill := Fill('*').Style(customStyle)
 
-	err := Print(fill, PrintConfig{Width: 10, Height: 5, Output: &buf})
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -333,7 +333,7 @@ func TestFill_LargeDimensions(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('.')
 
-	err := Print(fill, PrintConfig{Width: 100, Height: 50, Output: &buf})
+	err := Print(fill, WithWidth(100), WithHeight(50), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -344,7 +344,7 @@ func TestFill_SingleCell(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('X')
 
-	err := Print(fill, PrintConfig{Width: 1, Height: 1, Output: &buf})
+	err := Print(fill, WithWidth(1), WithHeight(1), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()

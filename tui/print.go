@@ -10,16 +10,60 @@ import (
 	"golang.org/x/term"
 )
 
-// PrintConfig configures printing functions like Print, Fprint, and Sprint.
+// printConfig configures printing functions like Print, Fprint, and Sprint.
 // All fields are optional with sensible zero-value defaults.
-type PrintConfig struct {
+type printConfig struct {
 	Width   int       // 0 = auto (terminal width or 80). Positive values set the width.
 	Height  int       // 0 = auto (based on view size). Positive values set a fixed height.
 	Output  io.Writer // nil = os.Stdout. Specify where to write output.
 	RawMode bool      // false = use \n line endings. true = use \r\n for raw terminal mode.
 }
 
-func (c PrintConfig) withDefaults() PrintConfig {
+// PrintOption is a functional option for the printing functions:
+// Print, Fprint, Sprint, SprintScreen, NewLivePrinter, and Live.
+type PrintOption func(*printConfig)
+
+// WithWidth sets the rendering width in columns.
+// Default is the terminal width, or 80 when not attached to a terminal.
+func WithWidth(width int) PrintOption {
+	return func(c *printConfig) {
+		c.Width = width
+	}
+}
+
+// WithHeight sets a fixed rendering height in lines.
+// Default is the view's natural height.
+func WithHeight(height int) PrintOption {
+	return func(c *printConfig) {
+		c.Height = height
+	}
+}
+
+// WithOutput sets where output is written. Default is os.Stdout.
+func WithOutput(w io.Writer) PrintOption {
+	return func(c *printConfig) {
+		c.Output = w
+	}
+}
+
+// WithRawMode controls line endings: when enabled, lines end with \r\n as
+// required in raw terminal mode, where \n alone only moves down without
+// returning to column 0. Default is \n.
+func WithRawMode(enabled bool) PrintOption {
+	return func(c *printConfig) {
+		c.RawMode = enabled
+	}
+}
+
+func newPrintConfig(opts []PrintOption) printConfig {
+	var cfg printConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
+func (c printConfig) withDefaults() printConfig {
 	if c.Width == 0 {
 		c.Width = 80
 		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
@@ -56,12 +100,12 @@ func (c PrintConfig) withDefaults() PrintConfig {
 //
 // With configuration:
 //
-//	tui.Print(view, tui.PrintConfig{Width: 60})
-func Print(view View, cfgs ...PrintConfig) error {
-	cfg := PrintConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
-	}
+//	tui.Print(view, tui.WithWidth(60))
+func Print(view View, opts ...PrintOption) error {
+	return printWith(view, newPrintConfig(opts))
+}
+
+func printWith(view View, cfg printConfig) error {
 	cfg = cfg.withDefaults()
 
 	// Measure the view to get its natural height
@@ -185,24 +229,18 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 }
 
 // Fprint renders a view to the specified writer.
-func Fprint(w io.Writer, view View, cfgs ...PrintConfig) error {
-	cfg := PrintConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
-	}
+func Fprint(w io.Writer, view View, opts ...PrintOption) error {
+	cfg := newPrintConfig(opts)
 	cfg.Output = w
-	return Print(view, cfg)
+	return printWith(view, cfg)
 }
 
 // Sprint renders a view to a string with ANSI escape codes.
-func Sprint(view View, cfgs ...PrintConfig) string {
+func Sprint(view View, opts ...PrintOption) string {
 	var buf strings.Builder
-	cfg := PrintConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
-	}
+	cfg := newPrintConfig(opts)
 	cfg.Output = &buf
-	Print(view, cfg)
+	printWith(view, cfg)
 	return buf.String()
 }
 
@@ -214,15 +252,11 @@ func Sprint(view View, cfgs ...PrintConfig) string {
 //
 //	func TestButton(t *testing.T) {
 //	    btn := Button("Submit", func() {})
-//	    screen := SprintScreen(btn, PrintConfig{Width: 20})
+//	    screen := SprintScreen(btn, WithWidth(20))
 //	    termtest.AssertRowContains(t, screen, 0, "Submit")
 //	}
-func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
-	cfg := PrintConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
-	}
-	cfg = cfg.withDefaults()
+func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
+	cfg := newPrintConfig(opts).withDefaults()
 
 	// Get view dimensions
 	_, viewHeight := view.size(cfg.Width, 0)
@@ -237,7 +271,11 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 	}
 
 	// Render to string
-	output := Sprint(view, cfg)
+	var buf strings.Builder
+	renderCfg := cfg
+	renderCfg.Output = &buf
+	printWith(view, renderCfg)
+	output := buf.String()
 
 	// Create screen and write output
 	screen := termtest.NewScreen(cfg.Width, height)
@@ -275,7 +313,7 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 //
 // # Example
 //
-//	live := tui.NewLivePrinter(tui.PrintConfig{Width: 60})
+//	live := tui.NewLivePrinter(tui.WithWidth(60))
 //	defer live.Stop()
 //
 //	for i := 0; i <= 100; i++ {
@@ -283,7 +321,7 @@ func SprintScreen(view View, cfgs ...PrintConfig) *termtest.Screen {
 //	    time.Sleep(50 * time.Millisecond)
 //	}
 type LivePrinter struct {
-	config       PrintConfig
+	config       printConfig
 	maxHeight    int // Terminal height limit. 0 = unconstrained.
 	lastHeight   int
 	started      bool
@@ -294,14 +332,9 @@ type LivePrinter struct {
 }
 
 // NewLivePrinter creates a new LivePrinter for updating a region in place.
-func NewLivePrinter(cfgs ...PrintConfig) *LivePrinter {
-	cfg := PrintConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
-	}
-	cfg = cfg.withDefaults()
+func NewLivePrinter(opts ...PrintOption) *LivePrinter {
 	return &LivePrinter{
-		config: cfg,
+		config: newPrintConfig(opts).withDefaults(),
 	}
 }
 
@@ -675,9 +708,9 @@ func writeCellGlyph(w *strings.Builder, cell Cell) {
 //	        update(tui.Text("Loading... %d%%", i))
 //	        time.Sleep(50 * time.Millisecond)
 //	    }
-//	}, tui.PrintConfig{Width: 40})
-func Live(fn func(update func(View)), cfgs ...PrintConfig) error {
-	lp := NewLivePrinter(cfgs...)
+//	}, tui.WithWidth(40))
+func Live(fn func(update func(View)), opts ...PrintOption) error {
+	lp := NewLivePrinter(opts...)
 	defer lp.Stop()
 
 	var lastErr error

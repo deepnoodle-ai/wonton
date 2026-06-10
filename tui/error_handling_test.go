@@ -197,17 +197,17 @@ func TestAnimation_EmptyText(t *testing.T) {
 // TestAnimation_ZeroSpeedParameters verifies default handling
 func TestAnimation_ZeroSpeedParameters(t *testing.T) {
 	// RainbowAnimation with zero speed should use defaults
-	rainbow := &RainbowAnimation{Speed: 0, Length: 0}
+	rainbow := &RainbowAnimation{speed: 0, length: 0}
 	style := rainbow.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
 
 	// PulseAnimation with zero parameters should use defaults
-	pulse := &PulseAnimation{Speed: 0}
+	pulse := &PulseAnimation{speed: 0}
 	style = pulse.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
 
 	// WaveAnimation with zero parameters should use defaults
-	wave := &WaveAnimation{Speed: 0}
+	wave := &WaveAnimation{speed: 0}
 	style = wave.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
 }

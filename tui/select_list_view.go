@@ -5,8 +5,8 @@ import (
 	"image"
 )
 
-// selectListView displays a selectable list of items (declarative view)
-type selectListView struct {
+// SelectListView displays a selectable list of items (declarative view)
+type SelectListView struct {
 	id            string
 	items         []ListItem
 	selected      *int
@@ -30,10 +30,10 @@ type selectListView struct {
 // Example:
 //
 //	SelectList(items, &app.selectedIndex).OnSelect(func(item, idx) { app.handleSelect(item, idx) })
-func SelectList(items []ListItem, selected *int) *selectListView {
+func SelectList(items []ListItem, selected *int) *SelectListView {
 	// Generate ID from selected pointer address
 	id := fmt.Sprintf("select_%p", selected)
-	return &selectListView{
+	return &SelectListView{
 		id:            id,
 		items:         items,
 		selected:      selected,
@@ -45,7 +45,7 @@ func SelectList(items []ListItem, selected *int) *selectListView {
 }
 
 // SelectListStrings creates a list from string labels.
-func SelectListStrings(labels []string, selected *int) *selectListView {
+func SelectListStrings(labels []string, selected *int) *SelectListView {
 	items := make([]ListItem, len(labels))
 	for i, label := range labels {
 		items[i] = ListItem{Label: label, Value: label}
@@ -55,35 +55,35 @@ func SelectListStrings(labels []string, selected *int) *selectListView {
 
 // OnSelect sets a callback when an item is clicked.
 // The callback receives the selected item and its index.
-func (l *selectListView) OnSelect(fn func(item ListItem, index int)) *selectListView {
+func (l *SelectListView) OnSelect(fn func(item ListItem, index int)) *SelectListView {
 	l.onSelect = fn
 	return l
 }
 
 // ID sets a custom ID for this select list (for focus management).
-func (l *selectListView) ID(id string) *selectListView {
+func (l *SelectListView) ID(id string) *SelectListView {
 	l.id = id
 	return l
 }
 
 // Focusable interface implementation
-func (l *selectListView) FocusID() string {
+func (l *SelectListView) FocusID() string {
 	return l.id
 }
 
-func (l *selectListView) IsFocused() bool {
+func (l *SelectListView) IsFocused() bool {
 	return l.focused
 }
 
-func (l *selectListView) SetFocused(focused bool) {
+func (l *SelectListView) SetFocused(focused bool) {
 	l.focused = focused
 }
 
-func (l *selectListView) FocusBounds() image.Rectangle {
+func (l *SelectListView) FocusBounds() image.Rectangle {
 	return l.bounds
 }
 
-func (l *selectListView) HandleKeyEvent(event KeyEvent) bool {
+func (l *SelectListView) HandleKeyEvent(event KeyEvent) bool {
 	// Handle arrow keys for navigation
 	switch event.Key {
 	case KeyArrowUp:
@@ -110,73 +110,73 @@ func (l *selectListView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // Fg sets the foreground color for normal items.
-func (l *selectListView) Fg(c Color) *selectListView {
+func (l *SelectListView) Fg(c Color) *SelectListView {
 	l.style = l.style.WithForeground(c)
 	return l
 }
 
 // Bg sets the background color for normal items.
-func (l *selectListView) Bg(c Color) *selectListView {
+func (l *SelectListView) Bg(c Color) *SelectListView {
 	l.style = l.style.WithBackground(c)
 	return l
 }
 
 // Style sets the style for normal items.
-func (l *selectListView) Style(s Style) *selectListView {
+func (l *SelectListView) Style(s Style) *SelectListView {
 	l.style = s
 	return l
 }
 
 // SelectedStyle sets the style for the selected item.
-func (l *selectListView) SelectedStyle(s Style) *selectListView {
+func (l *SelectListView) SelectedStyle(s Style) *SelectListView {
 	l.selectedStyle = s
 	return l
 }
 
 // SelectedFg sets the foreground for selected items.
-func (l *selectListView) SelectedFg(c Color) *selectListView {
+func (l *SelectListView) SelectedFg(c Color) *SelectListView {
 	l.selectedStyle = l.selectedStyle.WithForeground(c)
 	return l
 }
 
 // SelectedBg sets the background for selected items.
-func (l *selectListView) SelectedBg(c Color) *selectListView {
+func (l *SelectListView) SelectedBg(c Color) *SelectListView {
 	l.selectedStyle = l.selectedStyle.WithBackground(c)
 	return l
 }
 
 // CursorChar sets the cursor indicator character.
-func (l *selectListView) CursorChar(c string) *selectListView {
+func (l *SelectListView) CursorChar(c string) *SelectListView {
 	l.cursorChar = c
 	return l
 }
 
 // ShowCursor enables/disables the cursor indicator.
-func (l *selectListView) ShowCursor(show bool) *selectListView {
+func (l *SelectListView) ShowCursor(show bool) *SelectListView {
 	l.showCursor = show
 	return l
 }
 
 // Width sets a fixed width for the list.
-func (l *selectListView) Width(w int) *selectListView {
+func (l *SelectListView) Width(w int) *SelectListView {
 	l.width = w
 	return l
 }
 
 // Height sets a fixed height for the list.
-func (l *selectListView) Height(h int) *selectListView {
+func (l *SelectListView) Height(h int) *SelectListView {
 	l.height = h
 	return l
 }
 
 // Size sets both width and height at once.
-func (l *selectListView) Size(w, h int) *selectListView {
+func (l *SelectListView) Size(w, h int) *SelectListView {
 	l.width = w
 	l.height = h
 	return l
 }
 
-func (l *selectListView) size(maxWidth, maxHeight int) (int, int) {
+func (l *SelectListView) size(maxWidth, maxHeight int) (int, int) {
 	// Calculate width from items
 	w := l.width
 	if w == 0 {
@@ -207,7 +207,7 @@ func (l *selectListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (l *selectListView) render(ctx *RenderContext) {
+func (l *SelectListView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(l.items) == 0 {
 		return

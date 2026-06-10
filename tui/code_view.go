@@ -9,8 +9,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// codeView displays syntax-highlighted code.
-type codeView struct {
+// CodeView displays syntax-highlighted code.
+type CodeView struct {
 	code        string
 	language    string
 	theme       string
@@ -30,8 +30,8 @@ type codeView struct {
 //	Code(`func main() {
 //	    fmt.Println("Hello")
 //	}`, "go")
-func Code(code string, language string) *codeView {
-	return &codeView{
+func Code(code string, language string) *CodeView {
+	return &CodeView{
 		code:        code,
 		language:    language,
 		theme:       "monokai",
@@ -43,7 +43,7 @@ func Code(code string, language string) *codeView {
 
 // Language sets the programming language for syntax highlighting.
 // If not set or unknown, falls back to plain text.
-func (c *codeView) Language(lang string) *codeView {
+func (c *CodeView) Language(lang string) *CodeView {
 	c.language = lang
 	c.highlighted = nil // invalidate cache
 	return c
@@ -51,51 +51,51 @@ func (c *codeView) Language(lang string) *codeView {
 
 // Theme sets the syntax highlighting theme.
 // Available themes: monokai, dracula, github, vs, solarized-dark, solarized-light, etc.
-func (c *codeView) Theme(theme string) *codeView {
+func (c *CodeView) Theme(theme string) *CodeView {
 	c.theme = theme
 	c.highlighted = nil // invalidate cache
 	return c
 }
 
 // LineNumbers enables or disables line numbers.
-func (c *codeView) LineNumbers(show bool) *codeView {
+func (c *CodeView) LineNumbers(show bool) *CodeView {
 	c.showNumbers = show
 	return c
 }
 
 // StartLine sets the starting line number (default: 1).
-func (c *codeView) StartLine(n int) *codeView {
+func (c *CodeView) StartLine(n int) *CodeView {
 	c.startLine = n
 	return c
 }
 
 // ScrollY sets the scroll position pointer.
-func (c *codeView) ScrollY(scrollY *int) *codeView {
+func (c *CodeView) ScrollY(scrollY *int) *CodeView {
 	c.scrollY = scrollY
 	return c
 }
 
 // Width sets a fixed width for the view.
-func (c *codeView) Width(w int) *codeView {
+func (c *CodeView) Width(w int) *CodeView {
 	c.width = w
 	return c
 }
 
 // Height sets a fixed height for the view.
-func (c *codeView) Height(h int) *codeView {
+func (c *CodeView) Height(h int) *CodeView {
 	c.height = h
 	return c
 }
 
 // Size sets both width and height at once.
-func (c *codeView) Size(w, h int) *codeView {
+func (c *CodeView) Size(w, h int) *CodeView {
 	c.width = w
 	c.height = h
 	return c
 }
 
 // TabWidth sets the number of spaces to use for tab expansion (default: 4).
-func (c *codeView) TabWidth(w int) *codeView {
+func (c *CodeView) TabWidth(w int) *CodeView {
 	if w > 0 {
 		c.tabWidth = w
 		c.highlighted = nil // invalidate cache
@@ -104,7 +104,7 @@ func (c *codeView) TabWidth(w int) *codeView {
 }
 
 // highlight performs syntax highlighting and caches the result.
-func (c *codeView) highlight() {
+func (c *CodeView) highlight() {
 	if c.highlighted != nil {
 		return
 	}
@@ -168,7 +168,7 @@ func (c *codeView) highlight() {
 }
 
 // plainLines creates unhighlighted lines for fallback.
-func (c *codeView) plainLines() [][]StyledSegment {
+func (c *CodeView) plainLines() [][]StyledSegment {
 	lines := strings.Split(c.code, "\n")
 	result := make([][]StyledSegment, len(lines))
 	for i, line := range lines {
@@ -178,7 +178,7 @@ func (c *codeView) plainLines() [][]StyledSegment {
 }
 
 // chromaToStyle converts a chroma style entry to our Style.
-func (c *codeView) chromaToStyle(entry chroma.StyleEntry) Style {
+func (c *CodeView) chromaToStyle(entry chroma.StyleEntry) Style {
 	style := NewStyle()
 
 	if entry.Colour.IsSet() {
@@ -203,7 +203,7 @@ func (c *codeView) chromaToStyle(entry chroma.StyleEntry) Style {
 }
 
 // expandTabs expands tab characters to spaces based on the current column.
-func (c *codeView) expandTabs(s string, startCol int) string {
+func (c *CodeView) expandTabs(s string, startCol int) string {
 	if !strings.Contains(s, "\t") {
 		return s
 	}
@@ -229,7 +229,7 @@ func (c *codeView) expandTabs(s string, startCol int) string {
 }
 
 // lineNumberWidth calculates the width needed for line numbers.
-func (c *codeView) lineNumberWidth() int {
+func (c *CodeView) lineNumberWidth() int {
 	if !c.showNumbers {
 		return 0
 	}
@@ -243,7 +243,7 @@ func (c *codeView) lineNumberWidth() int {
 	return width + 2 // number + space + separator
 }
 
-func (c *codeView) size(maxWidth, maxHeight int) (int, int) {
+func (c *CodeView) size(maxWidth, maxHeight int) (int, int) {
 	c.highlight()
 
 	// Calculate width
@@ -278,7 +278,7 @@ func (c *codeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *codeView) render(ctx *RenderContext) {
+func (c *CodeView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -348,7 +348,7 @@ func (c *codeView) render(ctx *RenderContext) {
 }
 
 // GetLineCount returns the total number of lines.
-func (c *codeView) GetLineCount() int {
+func (c *CodeView) GetLineCount() int {
 	c.highlight()
 	return len(c.highlighted)
 }

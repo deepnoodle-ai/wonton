@@ -46,6 +46,10 @@ type testKeyboardApp struct {
 	events []Event
 }
 
+func (app *testKeyboardApp) View() View {
+	return Empty()
+}
+
 func (app *testKeyboardApp) HandleEvent(event Event) []Cmd {
 	app.mu.Lock()
 	app.events = append(app.events, event)

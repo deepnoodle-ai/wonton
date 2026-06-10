@@ -70,7 +70,7 @@ type Runtime struct {
 //   - fps: Frames per second for TickEvents (30 recommended, 60 for smooth animations)
 //
 // The runtime does not start automatically. Call Run() to start the event loop.
-func NewRuntime(terminal *Terminal, app any, fps int) *Runtime {
+func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 	if fps <= 0 {
 		fps = 30 // Default to 30 FPS
 	}

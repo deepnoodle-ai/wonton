@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// filePickerView displays a file picker with filter input and file list.
-type filePickerView struct {
+// FilePickerView displays a file picker with filter input and file list.
+type FilePickerView struct {
 	items       []ListItem
 	filter      *string
 	selected    *int
@@ -33,8 +33,8 @@ type filePickerView struct {
 //	FilePicker(app.files, &app.filter, &app.selected).
 //	    CurrentPath(app.currentDir).
 //	    OnSelect(func(item ListItem, index int) { app.handleSelect(item, index) })
-func FilePicker(items []ListItem, filter *string, selected *int) *filePickerView {
-	return &filePickerView{
+func FilePicker(items []ListItem, filter *string, selected *int) *FilePickerView {
+	return &FilePickerView{
 		items:      items,
 		filter:     filter,
 		selected:   selected,
@@ -45,75 +45,75 @@ func FilePicker(items []ListItem, filter *string, selected *int) *filePickerView
 }
 
 // CurrentPath sets the current directory path to display.
-func (f *filePickerView) CurrentPath(path string) *filePickerView {
+func (f *FilePickerView) CurrentPath(path string) *FilePickerView {
 	f.currentPath = path
 	return f
 }
 
 // OnSelect sets a callback when an item is selected.
 // The callback receives the selected item and its index.
-func (f *filePickerView) OnSelect(fn func(item ListItem, index int)) *filePickerView {
+func (f *FilePickerView) OnSelect(fn func(item ListItem, index int)) *FilePickerView {
 	f.onSelect = fn
 	return f
 }
 
 // ShowHidden enables or disables showing hidden files.
-func (f *filePickerView) ShowHidden(show bool) *filePickerView {
+func (f *FilePickerView) ShowHidden(show bool) *FilePickerView {
 	f.showHidden = show
 	return f
 }
 
 // Fg sets the foreground color for list items.
-func (f *filePickerView) Fg(c Color) *filePickerView {
+func (f *FilePickerView) Fg(c Color) *FilePickerView {
 	f.style = f.style.WithForeground(c)
 	return f
 }
 
 // Bg sets the background color for list items.
-func (f *filePickerView) Bg(c Color) *filePickerView {
+func (f *FilePickerView) Bg(c Color) *FilePickerView {
 	f.style = f.style.WithBackground(c)
 	return f
 }
 
 // Style sets the style for list items.
-func (f *filePickerView) Style(s Style) *filePickerView {
+func (f *FilePickerView) Style(s Style) *FilePickerView {
 	f.style = s
 	return f
 }
 
 // InputStyle sets the style for the filter input.
-func (f *filePickerView) InputStyle(s Style) *filePickerView {
+func (f *FilePickerView) InputStyle(s Style) *FilePickerView {
 	f.inputStyle = s
 	return f
 }
 
 // PathStyle sets the style for the current path display.
-func (f *filePickerView) PathStyle(s Style) *filePickerView {
+func (f *FilePickerView) PathStyle(s Style) *FilePickerView {
 	f.pathStyle = s
 	return f
 }
 
 // Width sets a fixed width for the file picker.
-func (f *filePickerView) Width(w int) *filePickerView {
+func (f *FilePickerView) Width(w int) *FilePickerView {
 	f.width = w
 	return f
 }
 
 // Height sets a fixed height for the file picker.
-func (f *filePickerView) Height(h int) *filePickerView {
+func (f *FilePickerView) Height(h int) *FilePickerView {
 	f.height = h
 	return f
 }
 
 // Size sets both width and height at once.
-func (f *filePickerView) Size(w, h int) *filePickerView {
+func (f *FilePickerView) Size(w, h int) *FilePickerView {
 	f.width = w
 	f.height = h
 	return f
 }
 
 // filteredItems returns items that match the current filter.
-func (f *filePickerView) filteredItems() []ListItem {
+func (f *FilePickerView) filteredItems() []ListItem {
 	filterText := ""
 	if f.filter != nil {
 		filterText = *f.filter
@@ -132,7 +132,7 @@ func (f *filePickerView) filteredItems() []ListItem {
 	return filtered
 }
 
-func (f *filePickerView) size(maxWidth, maxHeight int) (int, int) {
+func (f *FilePickerView) size(maxWidth, maxHeight int) (int, int) {
 	h := f.height
 	if h == 0 {
 		// Default: input (1) + divider (1) + list (items or 10)
@@ -159,7 +159,7 @@ func (f *filePickerView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (f *filePickerView) render(ctx *RenderContext) {
+func (f *FilePickerView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -174,13 +174,13 @@ func (f *filePickerView) render(ctx *RenderContext) {
 	}
 
 	// Create input view
-	inputView := Input(f.filter).
+	InputView := Input(f.filter).
 		Placeholder("Filter...").
 		Width(width)
 
 	// Render input
 	inputCtx := ctx.SubContext(image.Rect(0, 0, width, inputHeight))
-	inputView.render(inputCtx)
+	InputView.render(inputCtx)
 
 	// Render divider with path
 	dividerY := inputHeight
@@ -209,7 +209,7 @@ func (f *filePickerView) render(ctx *RenderContext) {
 	}
 
 	// Create list view
-	listView := SelectList(items, f.selected).
+	FilterableListView := SelectList(items, f.selected).
 		Style(f.style).
 		Height(listHeight).
 		OnSelect(func(item ListItem, index int) {
@@ -220,5 +220,5 @@ func (f *filePickerView) render(ctx *RenderContext) {
 
 	// Render list
 	listCtx := ctx.SubContext(image.Rect(0, dividerY+dividerHeight, width, height))
-	listView.render(listCtx)
+	FilterableListView.render(listCtx)
 }

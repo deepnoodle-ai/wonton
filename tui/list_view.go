@@ -10,9 +10,9 @@ import (
 // It receives the item, whether it's selected, and returns a View.
 type ListItemRenderer func(item ListItem, selected bool) View
 
-// listView is a flexible list component that supports keyboard navigation,
+// FilterableListView is a flexible list component that supports keyboard navigation,
 // scrolling, filtering, and custom rendering of items.
-type listView struct {
+type FilterableListView struct {
 	// Focus management
 	id      string
 	bounds  image.Rectangle
@@ -79,13 +79,13 @@ type listView struct {
 //	    Chosen(&app.chosen).
 //	    Markers("[ ]", "[x]").
 //	    OnSelect(func(item tui.ListItem, idx int) { ... })
-func FilterableList(items []ListItem, selected *int) *listView {
+func FilterableList(items []ListItem, selected *int) *FilterableListView {
 	filteredIdxs := make([]int, len(items))
 	for i := range items {
 		filteredIdxs[i] = i
 	}
 
-	return &listView{
+	return &FilterableListView{
 		items:             items,
 		filteredIdxs:      filteredIdxs,
 		selected:          selected,
@@ -100,7 +100,7 @@ func FilterableList(items []ListItem, selected *int) *listView {
 }
 
 // FilterableListStrings creates a filterable list from string labels.
-func FilterableListStrings(labels []string, selected *int) *listView {
+func FilterableListStrings(labels []string, selected *int) *FilterableListView {
 	items := make([]ListItem, len(labels))
 	for i, label := range labels {
 		items[i] = ListItem{Label: label, Value: label}
@@ -109,35 +109,35 @@ func FilterableListStrings(labels []string, selected *int) *listView {
 }
 
 // OnSelect sets a callback when an item is selected (Enter key or click).
-func (l *listView) OnSelect(fn func(item ListItem, index int)) *listView {
+func (l *FilterableListView) OnSelect(fn func(item ListItem, index int)) *FilterableListView {
 	l.onSelect = fn
 	return l
 }
 
 // ID sets a custom ID for this list (for focus management).
-func (l *listView) ID(id string) *listView {
+func (l *FilterableListView) ID(id string) *FilterableListView {
 	l.id = id
 	return l
 }
 
 // Focusable interface implementation
-func (l *listView) FocusID() string {
+func (l *FilterableListView) FocusID() string {
 	return l.id
 }
 
-func (l *listView) IsFocused() bool {
+func (l *FilterableListView) IsFocused() bool {
 	return l.focused
 }
 
-func (l *listView) SetFocused(focused bool) {
+func (l *FilterableListView) SetFocused(focused bool) {
 	l.focused = focused
 }
 
-func (l *listView) FocusBounds() image.Rectangle {
+func (l *FilterableListView) FocusBounds() image.Rectangle {
 	return l.bounds
 }
 
-func (l *listView) HandleKeyEvent(event KeyEvent) bool {
+func (l *FilterableListView) HandleKeyEvent(event KeyEvent) bool {
 	// Get visible height for scroll calculations
 	visibleHeight := l.height
 	if visibleHeight == 0 {
@@ -212,32 +212,32 @@ func (l *listView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // Style sets the style for normal items.
-func (l *listView) Style(s Style) *listView {
+func (l *FilterableListView) Style(s Style) *FilterableListView {
 	l.style = s
 	return l
 }
 
 // SelectedStyle sets the style for the selected item.
-func (l *listView) SelectedStyle(s Style) *listView {
+func (l *FilterableListView) SelectedStyle(s Style) *FilterableListView {
 	l.selectedStyle = s
 	return l
 }
 
 // Fg sets the foreground color for normal items.
-func (l *listView) Fg(c Color) *listView {
+func (l *FilterableListView) Fg(c Color) *FilterableListView {
 	l.style = l.style.WithForeground(c)
 	return l
 }
 
 // SelectedFg sets the foreground color for the selected item.
-func (l *listView) SelectedFg(c Color) *listView {
+func (l *FilterableListView) SelectedFg(c Color) *FilterableListView {
 	l.selectedStyle = l.selectedStyle.WithForeground(c)
 	return l
 }
 
 // SelectedBg sets the background color for the selected item.
 // This also disables the default reverse video effect to allow explicit color control.
-func (l *listView) SelectedBg(c Color) *listView {
+func (l *FilterableListView) SelectedBg(c Color) *FilterableListView {
 	l.selectedStyle = l.selectedStyle.WithBackground(c)
 	// Disable reverse when setting explicit background - otherwise colors get inverted
 	l.selectedStyle.Reverse = false
@@ -248,19 +248,19 @@ func (l *listView) SelectedBg(c Color) *listView {
 // This style is applied to items that have been selected via the Enter key.
 // Note: When an item is both chosen and under the cursor, the selected style
 // takes precedence.
-func (l *listView) ChosenStyle(s Style) *listView {
+func (l *FilterableListView) ChosenStyle(s Style) *FilterableListView {
 	l.chosenStyle = s
 	return l
 }
 
 // ChosenFg sets the foreground color for chosen items (items confirmed with Enter).
-func (l *listView) ChosenFg(c Color) *listView {
+func (l *FilterableListView) ChosenFg(c Color) *FilterableListView {
 	l.chosenStyle = l.chosenStyle.WithForeground(c)
 	return l
 }
 
 // ChosenBg sets the background color for chosen items (items confirmed with Enter).
-func (l *listView) ChosenBg(c Color) *listView {
+func (l *FilterableListView) ChosenBg(c Color) *FilterableListView {
 	l.chosenStyle = l.chosenStyle.WithBackground(c)
 	return l
 }
@@ -269,7 +269,7 @@ func (l *listView) ChosenBg(c Color) *listView {
 // When enabled, pressing Enter on an item toggles its chosen state without
 // affecting other chosen items. When disabled (default), pressing Enter
 // clears any previously chosen items and selects only the current item.
-func (l *listView) MultiSelect(enabled bool) *listView {
+func (l *FilterableListView) MultiSelect(enabled bool) *FilterableListView {
 	l.multiSelect = enabled
 	return l
 }
@@ -283,7 +283,7 @@ func (l *listView) MultiSelect(enabled bool) *listView {
 //	Markers("[ ]", "[x]")  // checkbox style
 //	Markers("○", "●")      // radio style
 //	Markers("", "✓")       // checkmark only when chosen
-func (l *listView) Markers(defaultMarker, chosenMarker string) *listView {
+func (l *FilterableListView) Markers(defaultMarker, chosenMarker string) *FilterableListView {
 	l.defaultMarker = defaultMarker
 	l.chosenMarker = chosenMarker
 	return l
@@ -294,7 +294,7 @@ func (l *listView) Markers(defaultMarker, chosenMarker string) *listView {
 // Indices refer to the original item positions (not filtered indices).
 // Use with MultiSelect(true) to allow multiple chosen items, or leave as
 // single-select mode where choosing a new item clears the previous choice.
-func (l *listView) Chosen(chosen *[]int) *listView {
+func (l *FilterableListView) Chosen(chosen *[]int) *FilterableListView {
 	l.chosenPtr = chosen
 	// Initialize internal map from provided slice
 	if chosen != nil {
@@ -307,7 +307,7 @@ func (l *listView) Chosen(chosen *[]int) *listView {
 }
 
 // syncChosenToPtr updates the external chosen pointer from the internal map.
-func (l *listView) syncChosenToPtr() {
+func (l *FilterableListView) syncChosenToPtr() {
 	if l.chosenPtr == nil {
 		return
 	}
@@ -320,24 +320,24 @@ func (l *listView) syncChosenToPtr() {
 }
 
 // isChosen checks if an item (by original index) is chosen.
-func (l *listView) isChosen(origIdx int) bool {
+func (l *FilterableListView) isChosen(origIdx int) bool {
 	return l.chosen[origIdx]
 }
 
 // Width sets a fixed width for the list.
-func (l *listView) Width(w int) *listView {
+func (l *FilterableListView) Width(w int) *FilterableListView {
 	l.width = w
 	return l
 }
 
 // Height sets a fixed height for the list (including filter if shown).
-func (l *listView) Height(h int) *listView {
+func (l *FilterableListView) Height(h int) *FilterableListView {
 	l.height = h
 	return l
 }
 
 // Size sets both width and height at once.
-func (l *listView) Size(w, h int) *listView {
+func (l *FilterableListView) Size(w, h int) *FilterableListView {
 	l.width = w
 	l.height = h
 	return l
@@ -345,7 +345,7 @@ func (l *listView) Size(w, h int) *listView {
 
 // ItemHeight sets the height of each item in rows. Values less than 1 are
 // ignored, since layout math divides by the item height.
-func (l *listView) ItemHeight(h int) *listView {
+func (l *FilterableListView) ItemHeight(h int) *FilterableListView {
 	if h >= 1 {
 		l.itemHeight = h
 	}
@@ -354,47 +354,47 @@ func (l *listView) ItemHeight(h int) *listView {
 
 // Renderer sets a custom renderer for list items.
 // The renderer function receives the item and whether it's selected.
-func (l *listView) Renderer(fn ListItemRenderer) *listView {
+func (l *FilterableListView) Renderer(fn ListItemRenderer) *FilterableListView {
 	l.renderer = fn
 	return l
 }
 
 // Filter enables filtering with the given text binding.
 // The filter input is shown at the top of the list.
-func (l *listView) Filter(filterText *string) *listView {
+func (l *FilterableListView) Filter(filterText *string) *FilterableListView {
 	l.showFilter = true
 	l.filterText = filterText
 	return l
 }
 
 // FilterPlaceholder sets the placeholder text for the filter input.
-func (l *listView) FilterPlaceholder(text string) *listView {
+func (l *FilterableListView) FilterPlaceholder(text string) *FilterableListView {
 	l.filterPlaceholder = text
 	return l
 }
 
 // FilterFunc sets a custom filter function.
 // Default is case-insensitive substring match on Label.
-func (l *listView) FilterFunc(fn func(item ListItem, query string) bool) *listView {
+func (l *FilterableListView) FilterFunc(fn func(item ListItem, query string) bool) *FilterableListView {
 	l.filterFunc = fn
 	return l
 }
 
 // ScrollY binds an external scroll position for programmatic control.
-func (l *listView) ScrollY(scrollY *int) *listView {
+func (l *FilterableListView) ScrollY(scrollY *int) *FilterableListView {
 	l.scrollOffset = scrollY
 	return l
 }
 
 // ScrollOffset binds an external scroll offset for programmatic control.
 // Deprecated: Use ScrollY instead for consistency with other scrollable components.
-func (l *listView) ScrollOffset(offset *int) *listView {
+func (l *FilterableListView) ScrollOffset(offset *int) *FilterableListView {
 	l.scrollOffset = offset
 	return l
 }
 
 // applyFilter updates the filteredIdxs based on the current filter text.
-func (l *listView) applyFilter() {
+func (l *FilterableListView) applyFilter() {
 	if l.filterText == nil || *l.filterText == "" {
 		// No filter - show all items
 		l.filteredIdxs = make([]int, len(l.items))
@@ -431,7 +431,7 @@ func (l *listView) applyFilter() {
 	}
 }
 
-func (l *listView) size(maxWidth, maxHeight int) (int, int) {
+func (l *FilterableListView) size(maxWidth, maxHeight int) (int, int) {
 	l.applyFilter()
 
 	w := l.width
@@ -477,7 +477,7 @@ func (l *listView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (l *listView) render(ctx *RenderContext) {
+func (l *FilterableListView) render(ctx *RenderContext) {
 	l.applyFilter()
 
 	width, height := ctx.Size()
@@ -521,7 +521,7 @@ func (l *listView) render(ctx *RenderContext) {
 	l.renderItems(listCtx)
 }
 
-func (l *listView) renderFilter(ctx *RenderContext) {
+func (l *FilterableListView) renderFilter(ctx *RenderContext) {
 	if l.filterText == nil {
 		return
 	}
@@ -542,7 +542,7 @@ func (l *listView) renderFilter(ctx *RenderContext) {
 	}
 }
 
-func (l *listView) renderItems(ctx *RenderContext) {
+func (l *FilterableListView) renderItems(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -674,7 +674,7 @@ func (l *listView) renderItems(ctx *RenderContext) {
 	}
 }
 
-func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, chosen bool, index int, origIdx int) {
+func (l *FilterableListView) renderItem(ctx *RenderContext, item ListItem, selected bool, chosen bool, index int, origIdx int) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -771,8 +771,8 @@ func (l *listView) renderItem(ctx *RenderContext, item ListItem, selected bool, 
 	}
 }
 
-// checkboxListView displays a list with checkable items
-type checkboxListView struct {
+// CheckboxListView displays a list with checkable items
+type CheckboxListView struct {
 	id             string
 	items          []ListItem
 	checked        []bool
@@ -805,8 +805,8 @@ type checkboxListView struct {
 //	CheckboxList(items, app.checked, &app.cursor).
 //	    ID("my-checkbox-list").
 //	    OnToggle(func(i int, c bool) { ... })
-func CheckboxList(items []ListItem, checked []bool, cursor *int) *checkboxListView {
-	return &checkboxListView{
+func CheckboxList(items []ListItem, checked []bool, cursor *int) *CheckboxListView {
+	return &CheckboxListView{
 		items:         items,
 		checked:       checked,
 		cursor:        cursor,
@@ -819,7 +819,7 @@ func CheckboxList(items []ListItem, checked []bool, cursor *int) *checkboxListVi
 }
 
 // CheckboxListStrings creates a checkbox list from string labels.
-func CheckboxListStrings(labels []string, checked []bool, cursor *int) *checkboxListView {
+func CheckboxListStrings(labels []string, checked []bool, cursor *int) *CheckboxListView {
 	items := make([]ListItem, len(labels))
 	for i, label := range labels {
 		items[i] = ListItem{Label: label, Value: label}
@@ -828,35 +828,35 @@ func CheckboxListStrings(labels []string, checked []bool, cursor *int) *checkbox
 }
 
 // OnToggle sets a callback when an item is toggled.
-func (c *checkboxListView) OnToggle(fn func(index int, checked bool)) *checkboxListView {
+func (c *CheckboxListView) OnToggle(fn func(index int, checked bool)) *CheckboxListView {
 	c.onToggle = fn
 	return c
 }
 
 // ID sets a custom ID for this checkbox list (for focus management).
-func (c *checkboxListView) ID(id string) *checkboxListView {
+func (c *CheckboxListView) ID(id string) *CheckboxListView {
 	c.id = id
 	return c
 }
 
 // Focusable interface implementation
-func (c *checkboxListView) FocusID() string {
+func (c *CheckboxListView) FocusID() string {
 	return c.id
 }
 
-func (c *checkboxListView) IsFocused() bool {
+func (c *CheckboxListView) IsFocused() bool {
 	return c.focused
 }
 
-func (c *checkboxListView) SetFocused(focused bool) {
+func (c *CheckboxListView) SetFocused(focused bool) {
 	c.focused = focused
 }
 
-func (c *checkboxListView) FocusBounds() image.Rectangle {
+func (c *CheckboxListView) FocusBounds() image.Rectangle {
 	return c.bounds
 }
 
-func (c *checkboxListView) HandleKeyEvent(event KeyEvent) bool {
+func (c *CheckboxListView) HandleKeyEvent(event KeyEvent) bool {
 	// Handle arrow keys for navigation
 	switch event.Key {
 	case KeyArrowUp:
@@ -886,43 +886,43 @@ func (c *checkboxListView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // Fg sets the foreground color for normal items.
-func (c *checkboxListView) Fg(col Color) *checkboxListView {
+func (c *CheckboxListView) Fg(col Color) *CheckboxListView {
 	c.style = c.style.WithForeground(col)
 	return c
 }
 
 // Bg sets the background color for normal items.
-func (c *checkboxListView) Bg(col Color) *checkboxListView {
+func (c *CheckboxListView) Bg(col Color) *CheckboxListView {
 	c.style = c.style.WithBackground(col)
 	return c
 }
 
 // CursorFg sets the foreground color for the cursor line.
-func (c *checkboxListView) CursorFg(col Color) *checkboxListView {
+func (c *CheckboxListView) CursorFg(col Color) *CheckboxListView {
 	c.cursorStyle = c.cursorStyle.WithForeground(col)
 	return c
 }
 
 // CursorBg sets the background color for the cursor line.
-func (c *checkboxListView) CursorBg(col Color) *checkboxListView {
+func (c *CheckboxListView) CursorBg(col Color) *CheckboxListView {
 	c.cursorStyle = c.cursorStyle.WithBackground(col)
 	return c
 }
 
 // CheckedFg sets the foreground color for checked items.
-func (c *checkboxListView) CheckedFg(col Color) *checkboxListView {
+func (c *CheckboxListView) CheckedFg(col Color) *CheckboxListView {
 	c.checkedStyle = c.checkedStyle.WithForeground(col)
 	return c
 }
 
 // CheckedBg sets the background color for checked items.
-func (c *checkboxListView) CheckedBg(col Color) *checkboxListView {
+func (c *CheckboxListView) CheckedBg(col Color) *CheckboxListView {
 	c.checkedStyle = c.checkedStyle.WithBackground(col)
 	return c
 }
 
 // HighlightFg sets the foreground color for highlighted items (when hovered).
-func (c *checkboxListView) HighlightFg(col Color) *checkboxListView {
+func (c *CheckboxListView) HighlightFg(col Color) *CheckboxListView {
 	if c.highlightStyle == nil {
 		s := NewStyle()
 		c.highlightStyle = &s
@@ -932,7 +932,7 @@ func (c *checkboxListView) HighlightFg(col Color) *checkboxListView {
 }
 
 // HighlightBg sets the background color for highlighted items (when hovered).
-func (c *checkboxListView) HighlightBg(col Color) *checkboxListView {
+func (c *CheckboxListView) HighlightBg(col Color) *CheckboxListView {
 	if c.highlightStyle == nil {
 		s := NewStyle()
 		c.highlightStyle = &s
@@ -942,61 +942,61 @@ func (c *checkboxListView) HighlightBg(col Color) *checkboxListView {
 }
 
 // Style sets the style for normal items.
-func (c *checkboxListView) Style(s Style) *checkboxListView {
+func (c *CheckboxListView) Style(s Style) *CheckboxListView {
 	c.style = s
 	return c
 }
 
 // CursorStyle sets the style for the cursor line.
-func (c *checkboxListView) CursorStyle(s Style) *checkboxListView {
+func (c *CheckboxListView) CursorStyle(s Style) *CheckboxListView {
 	c.cursorStyle = s
 	return c
 }
 
 // CheckedStyle sets the style for checked items.
-func (c *checkboxListView) CheckedStyle(s Style) *checkboxListView {
+func (c *CheckboxListView) CheckedStyle(s Style) *CheckboxListView {
 	c.checkedStyle = s
 	return c
 }
 
 // HighlightStyle sets the style for highlighted items (when hovered).
-func (c *checkboxListView) HighlightStyle(s Style) *checkboxListView {
+func (c *CheckboxListView) HighlightStyle(s Style) *CheckboxListView {
 	c.highlightStyle = &s
 	return c
 }
 
 // CheckedChar sets the checked checkbox character.
-func (c *checkboxListView) CheckedChar(ch string) *checkboxListView {
+func (c *CheckboxListView) CheckedChar(ch string) *CheckboxListView {
 	c.checkedChar = ch
 	return c
 }
 
 // UncheckedChar sets the unchecked checkbox character.
-func (c *checkboxListView) UncheckedChar(ch string) *checkboxListView {
+func (c *CheckboxListView) UncheckedChar(ch string) *CheckboxListView {
 	c.uncheckedChar = ch
 	return c
 }
 
 // Width sets a fixed width.
-func (c *checkboxListView) Width(w int) *checkboxListView {
+func (c *CheckboxListView) Width(w int) *CheckboxListView {
 	c.width = w
 	return c
 }
 
 // Height sets a fixed height.
-func (c *checkboxListView) Height(h int) *checkboxListView {
+func (c *CheckboxListView) Height(h int) *CheckboxListView {
 	c.height = h
 	return c
 }
 
 // Size sets both width and height at once.
-func (c *checkboxListView) Size(w, h int) *checkboxListView {
+func (c *CheckboxListView) Size(w, h int) *CheckboxListView {
 	c.width = w
 	c.height = h
 	return c
 }
 
-func (c *checkboxListView) size(maxWidth, maxHeight int) (int, int) {
+func (c *CheckboxListView) size(maxWidth, maxHeight int) (int, int) {
 	w := c.width
 	if w == 0 {
 		checkW, _ := MeasureText(c.checkedChar)
@@ -1022,7 +1022,7 @@ func (c *checkboxListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *checkboxListView) render(ctx *RenderContext) {
+func (c *CheckboxListView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(c.items) == 0 {
 		return
@@ -1096,8 +1096,8 @@ func (c *checkboxListView) render(ctx *RenderContext) {
 	}
 }
 
-// radioListView displays a list with radio button items
-type radioListView struct {
+// RadioListView displays a list with radio button items
+type RadioListView struct {
 	id             string
 	items          []ListItem
 	selected       *int
@@ -1126,8 +1126,8 @@ type radioListView struct {
 //	RadioList(items, &app.selected).
 //	    ID("my-radio-list").
 //	    OnSelect(func(i int) { ... })
-func RadioList(items []ListItem, selected *int) *radioListView {
-	return &radioListView{
+func RadioList(items []ListItem, selected *int) *RadioListView {
+	return &RadioListView{
 		items:          items,
 		selected:       selected,
 		style:          NewStyle(),
@@ -1138,7 +1138,7 @@ func RadioList(items []ListItem, selected *int) *radioListView {
 }
 
 // RadioListStrings creates a radio list from string labels.
-func RadioListStrings(labels []string, selected *int) *radioListView {
+func RadioListStrings(labels []string, selected *int) *RadioListView {
 	items := make([]ListItem, len(labels))
 	for i, label := range labels {
 		items[i] = ListItem{Label: label, Value: label}
@@ -1147,35 +1147,35 @@ func RadioListStrings(labels []string, selected *int) *radioListView {
 }
 
 // OnSelect sets a callback when an item is selected.
-func (r *radioListView) OnSelect(fn func(index int)) *radioListView {
+func (r *RadioListView) OnSelect(fn func(index int)) *RadioListView {
 	r.onSelect = fn
 	return r
 }
 
 // ID sets a custom ID for this radio list (for focus management).
-func (r *radioListView) ID(id string) *radioListView {
+func (r *RadioListView) ID(id string) *RadioListView {
 	r.id = id
 	return r
 }
 
 // Focusable interface implementation
-func (r *radioListView) FocusID() string {
+func (r *RadioListView) FocusID() string {
 	return r.id
 }
 
-func (r *radioListView) IsFocused() bool {
+func (r *RadioListView) IsFocused() bool {
 	return r.focused
 }
 
-func (r *radioListView) SetFocused(focused bool) {
+func (r *RadioListView) SetFocused(focused bool) {
 	r.focused = focused
 }
 
-func (r *radioListView) FocusBounds() image.Rectangle {
+func (r *RadioListView) FocusBounds() image.Rectangle {
 	return r.bounds
 }
 
-func (r *radioListView) HandleKeyEvent(event KeyEvent) bool {
+func (r *RadioListView) HandleKeyEvent(event KeyEvent) bool {
 	// Handle arrow keys for navigation
 	switch event.Key {
 	case KeyArrowUp:
@@ -1212,61 +1212,61 @@ func (r *radioListView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // Fg sets the foreground color.
-func (r *radioListView) Fg(c Color) *radioListView {
+func (r *RadioListView) Fg(c Color) *RadioListView {
 	r.style = r.style.WithForeground(c)
 	return r
 }
 
 // CursorFg sets the foreground color for the focused item.
-func (r *radioListView) CursorFg(c Color) *radioListView {
+func (r *RadioListView) CursorFg(c Color) *RadioListView {
 	r.cursorStyle = r.cursorStyle.WithForeground(c)
 	return r
 }
 
 // Style sets the style for normal items.
-func (r *radioListView) Style(s Style) *radioListView {
+func (r *RadioListView) Style(s Style) *RadioListView {
 	r.style = s
 	return r
 }
 
 // CursorStyle sets the style for the focused item.
-func (r *radioListView) CursorStyle(s Style) *radioListView {
+func (r *RadioListView) CursorStyle(s Style) *RadioListView {
 	r.cursorStyle = s
 	return r
 }
 
 // SelectedChar sets the selected radio character.
-func (r *radioListView) SelectedChar(ch string) *radioListView {
+func (r *RadioListView) SelectedChar(ch string) *RadioListView {
 	r.selectedChar = ch
 	return r
 }
 
 // UnselectedChar sets the unselected radio character.
-func (r *radioListView) UnselectedChar(ch string) *radioListView {
+func (r *RadioListView) UnselectedChar(ch string) *RadioListView {
 	r.unselectedChar = ch
 	return r
 }
 
 // Width sets a fixed width.
-func (r *radioListView) Width(w int) *radioListView {
+func (r *RadioListView) Width(w int) *RadioListView {
 	r.width = w
 	return r
 }
 
 // Height sets a fixed height.
-func (r *radioListView) Height(h int) *radioListView {
+func (r *RadioListView) Height(h int) *RadioListView {
 	r.height = h
 	return r
 }
 
 // Size sets both width and height at once.
-func (r *radioListView) Size(w, h int) *radioListView {
+func (r *RadioListView) Size(w, h int) *RadioListView {
 	r.width = w
 	r.height = h
 	return r
 }
 
-func (r *radioListView) size(maxWidth, maxHeight int) (int, int) {
+func (r *RadioListView) size(maxWidth, maxHeight int) (int, int) {
 	w := r.width
 	if w == 0 {
 		radioW, _ := MeasureText(r.selectedChar)
@@ -1292,7 +1292,7 @@ func (r *radioListView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (r *radioListView) render(ctx *RenderContext) {
+func (r *RadioListView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(r.items) == 0 {
 		return
@@ -1351,8 +1351,8 @@ func (r *radioListView) render(ctx *RenderContext) {
 	}
 }
 
-// meterView displays a labeled meter/gauge
-type meterView struct {
+// MeterView displays a labeled meter/gauge
+type MeterView struct {
 	label      string
 	value      int
 	max        int
@@ -1369,8 +1369,8 @@ type meterView struct {
 // Example:
 //
 //	Meter("CPU", 75, 100).Width(20)
-func Meter(label string, value, max int) *meterView {
-	return &meterView{
+func Meter(label string, value, max int) *MeterView {
+	return &MeterView{
 		label:      label,
 		value:      value,
 		max:        max,
@@ -1384,48 +1384,48 @@ func Meter(label string, value, max int) *meterView {
 }
 
 // Width sets the width of the bar portion.
-func (m *meterView) Width(w int) *meterView {
+func (m *MeterView) Width(w int) *MeterView {
 	m.width = w
 	return m
 }
 
 // FilledChar sets the filled character.
-func (m *meterView) FilledChar(c rune) *meterView {
+func (m *MeterView) FilledChar(c rune) *MeterView {
 	m.filledChar = c
 	return m
 }
 
 // EmptyChar sets the empty character.
-func (m *meterView) EmptyChar(c rune) *meterView {
+func (m *MeterView) EmptyChar(c rune) *MeterView {
 	m.emptyChar = c
 	return m
 }
 
 // Fg sets the bar foreground color.
-func (m *meterView) Fg(c Color) *meterView {
+func (m *MeterView) Fg(c Color) *MeterView {
 	m.style = m.style.WithForeground(c)
 	return m
 }
 
 // LabelFg sets the label foreground color.
-func (m *meterView) LabelFg(c Color) *meterView {
+func (m *MeterView) LabelFg(c Color) *MeterView {
 	m.labelStyle = m.labelStyle.WithForeground(c)
 	return m
 }
 
 // Style sets the bar style.
-func (m *meterView) Style(s Style) *meterView {
+func (m *MeterView) Style(s Style) *MeterView {
 	m.style = s
 	return m
 }
 
 // ShowValue enables/disables value display.
-func (m *meterView) ShowValue(show bool) *meterView {
+func (m *MeterView) ShowValue(show bool) *MeterView {
 	m.showValue = show
 	return m
 }
 
-func (m *meterView) size(maxWidth, maxHeight int) (int, int) {
+func (m *MeterView) size(maxWidth, maxHeight int) (int, int) {
 	labelW, _ := MeasureText(m.label)
 	w := labelW + 2 + m.width // label + ": " + bar
 	if m.showValue {
@@ -1437,7 +1437,7 @@ func (m *meterView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (m *meterView) render(ctx *RenderContext) {
+func (m *MeterView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return

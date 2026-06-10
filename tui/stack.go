@@ -7,8 +7,8 @@ import "image"
 // - AlignCenter
 // - AlignRight (equivalent to AlignEnd)
 
-// stack arranges children vertically
-type stack struct {
+// StackView arranges children vertically. Construct it with Stack.
+type StackView struct {
 	children   []View
 	gap        int
 	alignment  Alignment
@@ -29,8 +29,8 @@ type stack struct {
 //	    Spacer(),
 //	    Text("Footer"),
 //	).Gap(1).Align(AlignCenter)
-func Stack(children ...View) *stack {
-	return &stack{
+func Stack(children ...View) *StackView {
+	return &StackView{
 		children:   children,
 		gap:        0,
 		alignment:  AlignLeft,
@@ -40,7 +40,7 @@ func Stack(children ...View) *stack {
 
 // Flex sets the flex factor for this stack.
 // Used when this stack is a child of another flex container.
-func (s *stack) Flex(factor int) *stack {
+func (s *StackView) Flex(factor int) *StackView {
 	s.flexFactor = factor
 	return s
 }
@@ -49,7 +49,7 @@ func (s *stack) Flex(factor int) *stack {
 // If no explicit flex factor is set, the stack inherits flexibility from
 // its flexible children (like Canvas or Fill), but NOT from Spacers.
 // Spacers are layout utilities that shouldn't make their container flexible.
-func (s *stack) flex() int {
+func (s *StackView) flex() int {
 	if s.flexFactor != 0 {
 		return s.flexFactor
 	}
@@ -58,7 +58,7 @@ func (s *stack) flex() int {
 	// won't become flexible just because it contains a Spacer
 	for _, child := range s.children {
 		// Skip spacers - they're layout utilities, not content
-		if _, isSpacer := child.(*spacerView); isSpacer {
+		if _, isSpacer := child.(*SpacerView); isSpacer {
 			continue
 		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
@@ -70,19 +70,19 @@ func (s *stack) flex() int {
 
 // Gap sets the spacing between children in number of rows.
 // Only visible children (non-zero size) contribute to spacing.
-func (s *stack) Gap(n int) *stack {
+func (s *StackView) Gap(n int) *StackView {
 	s.gap = n
 	return s
 }
 
 // Align sets the horizontal alignment of children within the stack.
 // Options: AlignLeft (default), AlignCenter, AlignRight.
-func (s *stack) Align(a Alignment) *stack {
+func (s *StackView) Align(a Alignment) *StackView {
 	s.alignment = a
 	return s
 }
 
-func (s *stack) size(maxWidth, maxHeight int) (int, int) {
+func (s *StackView) size(maxWidth, maxHeight int) (int, int) {
 	if len(s.children) == 0 {
 		return 0, 0
 	}
@@ -199,7 +199,7 @@ func (s *stack) size(maxWidth, maxHeight int) (int, int) {
 	return maxChildWidth, totalHeight
 }
 
-func (s *stack) render(ctx *RenderContext) {
+func (s *StackView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(s.children) == 0 {
 		return

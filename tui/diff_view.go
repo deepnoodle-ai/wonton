@@ -4,8 +4,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// diffView displays a file diff with syntax highlighting.
-type diffView struct {
+// UnifiedDiffView displays a file diff with syntax highlighting.
+type UnifiedDiffView struct {
 	diff      *Diff
 	scrollY   *int
 	language  string
@@ -24,8 +24,8 @@ type diffView struct {
 //
 //	diff, _ := tui.ParseUnifiedDiff(diffText)
 //	DiffView(diff, "go", &app.scrollY)
-func DiffView(diff *Diff, language string, scrollY *int) *diffView {
-	return &diffView{
+func DiffView(diff *Diff, language string, scrollY *int) *UnifiedDiffView {
+	return &UnifiedDiffView{
 		diff:      diff,
 		scrollY:   scrollY,
 		language:  language,
@@ -37,7 +37,7 @@ func DiffView(diff *Diff, language string, scrollY *int) *diffView {
 
 // DiffViewFromText creates a diff view from diff text.
 // Returns an error if the diff cannot be parsed.
-func DiffViewFromText(diffText, language string, scrollY *int) (*diffView, error) {
+func DiffViewFromText(diffText, language string, scrollY *int) (*UnifiedDiffView, error) {
 	diff, err := ParseUnifiedDiff(diffText)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func DiffViewFromText(diffText, language string, scrollY *int) (*diffView, error
 }
 
 // Theme sets the diff theme.
-func (d *diffView) Theme(theme DiffTheme) *diffView {
+func (d *UnifiedDiffView) Theme(theme DiffTheme) *UnifiedDiffView {
 	d.theme = theme
 	d.renderer.Theme = theme
 	d.rendered = nil // invalidate cache
@@ -54,14 +54,14 @@ func (d *diffView) Theme(theme DiffTheme) *diffView {
 }
 
 // Language sets the programming language for syntax highlighting.
-func (d *diffView) Language(lang string) *diffView {
+func (d *UnifiedDiffView) Language(lang string) *UnifiedDiffView {
 	d.language = lang
 	d.rendered = nil // invalidate cache
 	return d
 }
 
 // ShowLineNumbers enables or disables line numbers.
-func (d *diffView) ShowLineNumbers(show bool) *diffView {
+func (d *UnifiedDiffView) ShowLineNumbers(show bool) *UnifiedDiffView {
 	d.showLines = show
 	d.renderer.ShowLineNums = show
 	d.rendered = nil // invalidate cache
@@ -69,20 +69,20 @@ func (d *diffView) ShowLineNumbers(show bool) *diffView {
 }
 
 // SyntaxHighlight enables or disables syntax highlighting.
-func (d *diffView) SyntaxHighlight(enable bool) *diffView {
+func (d *UnifiedDiffView) SyntaxHighlight(enable bool) *UnifiedDiffView {
 	d.renderer.SyntaxHighlight = enable
 	d.rendered = nil // invalidate cache
 	return d
 }
 
 // Height sets a fixed height for the view.
-func (d *diffView) Height(h int) *diffView {
+func (d *UnifiedDiffView) Height(h int) *UnifiedDiffView {
 	d.height = h
 	return d
 }
 
 // renderContent renders the diff if needed.
-func (d *diffView) renderContent() {
+func (d *UnifiedDiffView) renderContent() {
 	if d.rendered != nil && d.lastDiff == d.diff {
 		return // use cached render
 	}
@@ -92,7 +92,7 @@ func (d *diffView) renderContent() {
 	d.lastDiff = d.diff
 }
 
-func (d *diffView) size(maxWidth, maxHeight int) (int, int) {
+func (d *UnifiedDiffView) size(maxWidth, maxHeight int) (int, int) {
 	// Render to get line count
 	d.renderContent()
 
@@ -112,7 +112,7 @@ func (d *diffView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (d *diffView) render(ctx *RenderContext) {
+func (d *UnifiedDiffView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -213,7 +213,7 @@ func (d *diffView) render(ctx *RenderContext) {
 }
 
 // GetLineCount returns the total number of rendered lines.
-func (d *diffView) GetLineCount() int {
+func (d *UnifiedDiffView) GetLineCount() int {
 	d.renderContent()
 	return len(d.rendered)
 }

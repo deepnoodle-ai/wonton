@@ -5,8 +5,8 @@ import (
 	"image"
 )
 
-// toggleView displays an on/off toggle switch
-type toggleView struct {
+// ToggleView displays an on/off toggle switch
+type ToggleView struct {
 	id         string
 	value      *bool
 	onLabel    string
@@ -28,10 +28,10 @@ type toggleView struct {
 // Example:
 //
 //	Toggle(&app.darkMode).OnChange(func(v bool) { app.updateTheme() })
-func Toggle(value *bool) *toggleView {
+func Toggle(value *bool) *ToggleView {
 	// Generate ID from value pointer address
 	id := fmt.Sprintf("toggle_%p", value)
-	return &toggleView{
+	return &ToggleView{
 		id:         id,
 		value:      value,
 		onLabel:    "ON",
@@ -43,65 +43,65 @@ func Toggle(value *bool) *toggleView {
 }
 
 // OnLabel sets the label for the ON state.
-func (t *toggleView) OnLabel(label string) *toggleView {
+func (t *ToggleView) OnLabel(label string) *ToggleView {
 	t.onLabel = label
 	return t
 }
 
 // OffLabel sets the label for the OFF state.
-func (t *toggleView) OffLabel(label string) *toggleView {
+func (t *ToggleView) OffLabel(label string) *ToggleView {
 	t.offLabel = label
 	return t
 }
 
 // OnStyle sets the style for the ON state.
-func (t *toggleView) OnStyle(s Style) *toggleView {
+func (t *ToggleView) OnStyle(s Style) *ToggleView {
 	t.onStyle = s
 	return t
 }
 
 // OffStyle sets the style for the OFF state.
-func (t *toggleView) OffStyle(s Style) *toggleView {
+func (t *ToggleView) OffStyle(s Style) *ToggleView {
 	t.offStyle = s
 	return t
 }
 
 // OnChange sets a callback when the toggle is clicked.
-func (t *toggleView) OnChange(fn func(bool)) *toggleView {
+func (t *ToggleView) OnChange(fn func(bool)) *ToggleView {
 	t.onChange = fn
 	return t
 }
 
 // ShowLabels enables/disables showing ON/OFF labels.
-func (t *toggleView) ShowLabels(show bool) *toggleView {
+func (t *ToggleView) ShowLabels(show bool) *ToggleView {
 	t.showLabels = show
 	return t
 }
 
 // ID sets a custom ID for this toggle (for focus management).
-func (t *toggleView) ID(id string) *toggleView {
+func (t *ToggleView) ID(id string) *ToggleView {
 	t.id = id
 	return t
 }
 
 // Focusable interface implementation
-func (t *toggleView) FocusID() string {
+func (t *ToggleView) FocusID() string {
 	return t.id
 }
 
-func (t *toggleView) IsFocused() bool {
+func (t *ToggleView) IsFocused() bool {
 	return t.focused
 }
 
-func (t *toggleView) SetFocused(focused bool) {
+func (t *ToggleView) SetFocused(focused bool) {
 	t.focused = focused
 }
 
-func (t *toggleView) FocusBounds() image.Rectangle {
+func (t *ToggleView) FocusBounds() image.Rectangle {
 	return t.bounds
 }
 
-func (t *toggleView) HandleKeyEvent(event KeyEvent) bool {
+func (t *ToggleView) HandleKeyEvent(event KeyEvent) bool {
 	if t.value == nil {
 		return false
 	}
@@ -118,7 +118,7 @@ func (t *toggleView) HandleKeyEvent(event KeyEvent) bool {
 	return false
 }
 
-func (t *toggleView) size(maxWidth, maxHeight int) (int, int) {
+func (t *ToggleView) size(maxWidth, maxHeight int) (int, int) {
 	// [●] ON  or  [○] OFF
 	w := 3 // switch chars
 	if t.showLabels {
@@ -136,7 +136,7 @@ func (t *toggleView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (t *toggleView) render(ctx *RenderContext) {
+func (t *ToggleView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

@@ -10,8 +10,8 @@ import (
 
 func TestRainbowAnimation_GetStyle(t *testing.T) {
 	anim := &RainbowAnimation{
-		Speed:  3,
-		Length: 10,
+		speed:  3,
+		length: 10,
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -22,18 +22,18 @@ func TestRainbowAnimation_GetStyle(t *testing.T) {
 func TestRainbowAnimation_Defaults(t *testing.T) {
 	anim := &RainbowAnimation{}
 
-	// Should use defaults when Speed/Length are 0
+	// Should use defaults when speed/length are 0
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 3, anim.Speed)   // default
-	assert.Equal(t, 10, anim.Length) // set to totalChars
+	assert.Equal(t, 3, anim.speed)   // default
+	assert.Equal(t, 10, anim.length) // set to totalChars
 }
 
 func TestRainbowAnimation_Reversed(t *testing.T) {
 	anim := &RainbowAnimation{
-		Speed:    3,
-		Length:   10,
-		Reversed: true,
+		speed:    3,
+		length:   10,
+		reversed: true,
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -42,8 +42,8 @@ func TestRainbowAnimation_Reversed(t *testing.T) {
 
 func TestRainbowAnimation_VariousFrames(t *testing.T) {
 	anim := &RainbowAnimation{
-		Speed:  3,
-		Length: 10,
+		speed:  3,
+		length: 10,
 	}
 
 	// Different frames should produce different colors (for animation)
@@ -59,9 +59,9 @@ func TestRainbowAnimation_VariousFrames(t *testing.T) {
 
 func TestWaveAnimation_GetStyle(t *testing.T) {
 	anim := &WaveAnimation{
-		Speed:     12,
-		Amplitude: 1.0,
-		Colors: []RGB{
+		speed:     12,
+		amplitude: 1.0,
+		colors: []RGB{
 			NewRGB(255, 0, 0),
 			NewRGB(0, 255, 0),
 			NewRGB(0, 0, 255),
@@ -78,15 +78,15 @@ func TestWaveAnimation_Defaults(t *testing.T) {
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 12, anim.Speed)
-	assert.Equal(t, 1.0, anim.Amplitude)
-	assert.Len(t, anim.Colors, 3) // default colors
+	assert.Equal(t, 12, anim.speed)
+	assert.Equal(t, 1.0, anim.amplitude)
+	assert.Len(t, anim.colors, 3) // default colors
 }
 
 func TestWaveAnimation_ColorBlending(t *testing.T) {
 	anim := &WaveAnimation{
-		Speed: 2,
-		Colors: []RGB{
+		speed: 2,
+		colors: []RGB{
 			NewRGB(255, 0, 0),
 			NewRGB(0, 255, 0),
 		},
@@ -104,10 +104,10 @@ func TestWaveAnimation_ColorBlending(t *testing.T) {
 
 func TestSlideAnimation_GetStyle(t *testing.T) {
 	anim := &SlideAnimation{
-		Speed:          2,
-		BaseColor:      NewRGB(50, 50, 50),
-		HighlightColor: NewRGB(255, 255, 255),
-		Width:          3,
+		speed:          2,
+		baseColor:      NewRGB(50, 50, 50),
+		highlightColor: NewRGB(255, 255, 255),
+		width:          3,
 	}
 
 	style := anim.GetStyle(0, 0, 20)
@@ -120,17 +120,17 @@ func TestSlideAnimation_Defaults(t *testing.T) {
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 2, anim.Speed)
-	assert.Equal(t, 3, anim.Width)
+	assert.Equal(t, 2, anim.speed)
+	assert.Equal(t, 3, anim.width)
 }
 
 func TestSlideAnimation_Reverse(t *testing.T) {
 	anim := &SlideAnimation{
-		Speed:          2,
-		BaseColor:      NewRGB(50, 50, 50),
-		HighlightColor: NewRGB(255, 255, 255),
-		Width:          3,
-		Reverse:        true,
+		speed:          2,
+		baseColor:      NewRGB(50, 50, 50),
+		highlightColor: NewRGB(255, 255, 255),
+		width:          3,
+		reversed:       true,
 	}
 
 	style := anim.GetStyle(0, 5, 20)
@@ -139,10 +139,10 @@ func TestSlideAnimation_Reverse(t *testing.T) {
 
 func TestSlideAnimation_Highlight(t *testing.T) {
 	anim := &SlideAnimation{
-		Speed:          1,
-		BaseColor:      NewRGB(0, 0, 0),
-		HighlightColor: NewRGB(255, 255, 255),
-		Width:          2,
+		speed:          1,
+		baseColor:      NewRGB(0, 0, 0),
+		highlightColor: NewRGB(255, 255, 255),
+		width:          2,
 	}
 
 	// At frame 0, highlight should be around position 0
@@ -155,10 +155,10 @@ func TestSlideAnimation_Highlight(t *testing.T) {
 
 func TestSparkleAnimation_GetStyle(t *testing.T) {
 	anim := &SparkleAnimation{
-		Speed:      3,
-		BaseColor:  NewRGB(100, 100, 100),
-		SparkColor: NewRGB(255, 255, 255),
-		Density:    3,
+		speed:      3,
+		baseColor:  NewRGB(100, 100, 100),
+		sparkColor: NewRGB(255, 255, 255),
+		density:    3,
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -171,16 +171,16 @@ func TestSparkleAnimation_Defaults(t *testing.T) {
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 3, anim.Speed)
-	assert.Equal(t, 3, anim.Density)
+	assert.Equal(t, 3, anim.speed)
+	assert.Equal(t, 3, anim.density)
 }
 
 func TestSparkleAnimation_DifferentChars(t *testing.T) {
 	anim := &SparkleAnimation{
-		Speed:      3,
-		BaseColor:  NewRGB(100, 100, 100),
-		SparkColor: NewRGB(255, 255, 255),
-		Density:    5,
+		speed:      3,
+		baseColor:  NewRGB(100, 100, 100),
+		sparkColor: NewRGB(255, 255, 255),
+		density:    5,
 	}
 
 	// Different character indices should have different sparkle patterns
@@ -195,9 +195,9 @@ func TestSparkleAnimation_DifferentChars(t *testing.T) {
 
 func TestTypewriterAnimation_GetStyle(t *testing.T) {
 	anim := &TypewriterAnimation{
-		Speed:       4,
-		TextColor:   NewRGB(255, 255, 255),
-		CursorColor: NewRGB(255, 200, 0),
+		speed:       4,
+		textColor:   NewRGB(255, 255, 255),
+		cursorColor: NewRGB(255, 200, 0),
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -210,14 +210,14 @@ func TestTypewriterAnimation_Defaults(t *testing.T) {
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 4, anim.Speed)
-	assert.Equal(t, 60, anim.HoldFrames)
+	assert.Equal(t, 4, anim.speed)
+	assert.Equal(t, 60, anim.holdFrames)
 }
 
 func TestTypewriterAnimation_Reveal(t *testing.T) {
 	anim := &TypewriterAnimation{
-		Speed:     1,
-		TextColor: NewRGB(255, 255, 255),
+		speed:     1,
+		textColor: NewRGB(255, 255, 255),
 	}
 
 	// At frame 0, char 0 should be cursor (dimmed until revealed)
@@ -231,10 +231,10 @@ func TestTypewriterAnimation_Reveal(t *testing.T) {
 
 func TestTypewriterAnimation_Loop(t *testing.T) {
 	anim := &TypewriterAnimation{
-		Speed:      2,
-		TextColor:  NewRGB(255, 255, 255),
-		Loop:       true,
-		HoldFrames: 10,
+		speed:      2,
+		textColor:  NewRGB(255, 255, 255),
+		loop:       true,
+		holdFrames: 10,
 	}
 
 	// Should cycle
@@ -246,10 +246,10 @@ func TestTypewriterAnimation_Loop(t *testing.T) {
 
 func TestGlitchAnimation_GetStyle(t *testing.T) {
 	anim := &GlitchAnimation{
-		Speed:       2,
-		BaseColor:   NewRGB(100, 100, 100),
-		GlitchColor: NewRGB(0, 255, 255),
-		Intensity:   3,
+		speed:       2,
+		baseColor:   NewRGB(100, 100, 100),
+		glitchColor: NewRGB(0, 255, 255),
+		intensity:   3,
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -262,16 +262,16 @@ func TestGlitchAnimation_Defaults(t *testing.T) {
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 2, anim.Speed)
-	assert.Equal(t, 3, anim.Intensity)
+	assert.Equal(t, 2, anim.speed)
+	assert.Equal(t, 3, anim.intensity)
 }
 
 func TestGlitchAnimation_Patterns(t *testing.T) {
 	anim := &GlitchAnimation{
-		Speed:       2,
-		BaseColor:   NewRGB(100, 100, 100),
-		GlitchColor: NewRGB(0, 255, 255),
-		Intensity:   5,
+		speed:       2,
+		baseColor:   NewRGB(100, 100, 100),
+		glitchColor: NewRGB(0, 255, 255),
+		intensity:   5,
 	}
 
 	// Check various frames to verify deterministic glitch behavior
@@ -285,10 +285,10 @@ func TestGlitchAnimation_Patterns(t *testing.T) {
 
 func TestPulseAnimation_GetStyle(t *testing.T) {
 	anim := &PulseAnimation{
-		Speed:         15,
-		Color:         NewRGB(255, 100, 50),
-		MinBrightness: 0.3,
-		MaxBrightness: 1.0,
+		speed:         15,
+		color:         NewRGB(255, 100, 50),
+		minBrightness: 0.3,
+		maxBrightness: 1.0,
 	}
 
 	style := anim.GetStyle(0, 0, 10)
@@ -298,22 +298,22 @@ func TestPulseAnimation_GetStyle(t *testing.T) {
 
 func TestPulseAnimation_Defaults(t *testing.T) {
 	anim := &PulseAnimation{
-		Color: NewRGB(255, 255, 255),
+		color: NewRGB(255, 255, 255),
 	}
 
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 15, anim.Speed)
-	assert.Equal(t, 0.3, anim.MinBrightness)
-	assert.Equal(t, 1.0, anim.MaxBrightness)
+	assert.Equal(t, 15, anim.speed)
+	assert.Equal(t, 0.3, anim.minBrightness)
+	assert.Equal(t, 1.0, anim.maxBrightness)
 }
 
 func TestPulseAnimation_Brightness(t *testing.T) {
 	anim := &PulseAnimation{
-		Speed:         10,
-		Color:         NewRGB(200, 200, 200),
-		MinBrightness: 0.5,
-		MaxBrightness: 1.0,
+		speed:         10,
+		color:         NewRGB(200, 200, 200),
+		minBrightness: 0.5,
+		maxBrightness: 1.0,
 	}
 
 	// Different frames should have different brightness
@@ -344,7 +344,7 @@ func TestSine(t *testing.T) {
 // AnimatedText tests
 
 func TestNewAnimatedText(t *testing.T) {
-	anim := &RainbowAnimation{Speed: 3}
+	anim := &RainbowAnimation{speed: 3}
 	at := NewAnimatedText(10, 5, "Hello", anim)
 
 	assert.NotNil(t, at)

@@ -1,7 +1,7 @@
 package tui
 
-// hyperlinkView displays a clickable hyperlink (declarative view)
-type linkRowView struct {
+// HyperlinkView displays a clickable hyperlink (declarative view)
+type LinkRowView struct {
 	label      string
 	url        string
 	linkText   string
@@ -15,8 +15,8 @@ type linkRowView struct {
 // Example:
 //
 //	LinkRow("Documentation", "https://docs.example.com", "docs.example.com")
-func LinkRow(label, url, linkText string) *linkRowView {
-	return &linkRowView{
+func LinkRow(label, url, linkText string) *LinkRowView {
+	return &LinkRowView{
 		label:      label,
 		url:        url,
 		linkText:   linkText,
@@ -27,36 +27,36 @@ func LinkRow(label, url, linkText string) *linkRowView {
 }
 
 // LabelFg sets the label foreground color.
-func (l *linkRowView) LabelFg(c Color) *linkRowView {
+func (l *LinkRowView) LabelFg(c Color) *LinkRowView {
 	l.labelStyle = l.labelStyle.WithForeground(c)
 	return l
 }
 
 // LinkFg sets the link foreground color.
-func (l *linkRowView) LinkFg(c Color) *linkRowView {
+func (l *LinkRowView) LinkFg(c Color) *LinkRowView {
 	l.linkStyle = l.linkStyle.WithForeground(c)
 	return l
 }
 
 // LabelStyle sets the label style.
-func (l *linkRowView) LabelStyle(s Style) *linkRowView {
+func (l *LinkRowView) LabelStyle(s Style) *LinkRowView {
 	l.labelStyle = s
 	return l
 }
 
 // LinkStyle sets the link style.
-func (l *linkRowView) LinkStyle(s Style) *linkRowView {
+func (l *LinkRowView) LinkStyle(s Style) *LinkRowView {
 	l.linkStyle = s
 	return l
 }
 
 // Gap sets the space between label and link.
-func (l *linkRowView) Gap(g int) *linkRowView {
+func (l *LinkRowView) Gap(g int) *LinkRowView {
 	l.gap = g
 	return l
 }
 
-func (l *linkRowView) size(maxWidth, maxHeight int) (int, int) {
+func (l *LinkRowView) size(maxWidth, maxHeight int) (int, int) {
 	labelW, _ := MeasureText(l.label)
 	linkW, _ := MeasureText(l.linkText)
 	w := labelW + l.gap + linkW
@@ -66,7 +66,7 @@ func (l *linkRowView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (l *linkRowView) render(ctx *RenderContext) {
+func (l *LinkRowView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return
@@ -84,4 +84,4 @@ func (l *linkRowView) render(ctx *RenderContext) {
 	ctx.PrintHyperlink(x, 0, link)
 }
 
-// linkListView displays a list of hyperlinks
+// LinkListView displays a list of hyperlinks

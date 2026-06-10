@@ -61,11 +61,11 @@ func (app *AnimationDemoApp) View() tui.View {
 		// Typewriter animations - text reveal effect
 		tui.Group(
 			tui.Text("Typewriter:      ").Fg(tui.ColorBrightBlack),
-			tui.Text("Characters appear one by one...").Animate(tui.Typewriter(3, tui.NewRGB(0, 255, 100), tui.NewRGB(255, 255, 255)).WithLoop(true)),
+			tui.Text("Characters appear one by one...").Animate(tui.Typewriter(3, tui.NewRGB(0, 255, 100), tui.NewRGB(255, 255, 255)).Loop(true)),
 		),
 		tui.Group(
 			tui.Text("Terminal:        ").Fg(tui.ColorBrightBlack),
-			tui.Text("System initialized successfully").Animate(tui.Typewriter(2, tui.NewRGB(255, 180, 0), tui.NewRGB(255, 100, 0)).WithLoop(true)),
+			tui.Text("System initialized successfully").Animate(tui.Typewriter(2, tui.NewRGB(255, 180, 0), tui.NewRGB(255, 100, 0)).Loop(true)),
 		),
 
 		tui.Spacer().MinHeight(1),
@@ -89,7 +89,7 @@ func (app *AnimationDemoApp) View() tui.View {
 		),
 		tui.Group(
 			tui.Text("Slide Reverse:   ").Fg(tui.ColorBrightBlack),
-			tui.Text("Right to left shine").Animate(tui.Slide(2, tui.NewRGB(0, 100, 200), tui.NewRGB(100, 200, 255)).Reversed()),
+			tui.Text("Right to left shine").Animate(tui.Slide(2, tui.NewRGB(0, 100, 200), tui.NewRGB(100, 200, 255)).Reverse()),
 		),
 
 		tui.Spacer().MinHeight(1),

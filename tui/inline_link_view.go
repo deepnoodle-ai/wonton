@@ -1,7 +1,7 @@
 package tui
 
-// hyperlinkView displays a clickable hyperlink (declarative view)
-type inlineLinkView struct {
+// HyperlinkView displays a clickable hyperlink (declarative view)
+type InlineLinkView struct {
 	links     []Hyperlink
 	separator string
 	style     Style
@@ -15,8 +15,8 @@ type inlineLinkView struct {
 //		NewHyperlink("https://go.dev", "Go"),
 //		NewHyperlink("https://github.com", "GitHub"),
 //	)
-func InlineLinks(separator string, links ...Hyperlink) *inlineLinkView {
-	return &inlineLinkView{
+func InlineLinks(separator string, links ...Hyperlink) *InlineLinkView {
+	return &InlineLinkView{
 		links:     links,
 		separator: separator,
 		style:     NewStyle().WithUnderline().WithForeground(ColorBlue),
@@ -24,12 +24,12 @@ func InlineLinks(separator string, links ...Hyperlink) *inlineLinkView {
 }
 
 // Style sets the style for all links.
-func (i *inlineLinkView) Style(s Style) *inlineLinkView {
+func (i *InlineLinkView) Style(s Style) *InlineLinkView {
 	i.style = s
 	return i
 }
 
-func (i *inlineLinkView) size(maxWidth, maxHeight int) (int, int) {
+func (i *InlineLinkView) size(maxWidth, maxHeight int) (int, int) {
 	w := 0
 	sepW, _ := MeasureText(i.separator)
 	for idx, link := range i.links {
@@ -45,7 +45,7 @@ func (i *inlineLinkView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (i *inlineLinkView) render(ctx *RenderContext) {
+func (i *InlineLinkView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(i.links) == 0 {
 		return
