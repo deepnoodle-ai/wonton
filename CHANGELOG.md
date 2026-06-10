@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Fixed
+
+- `unidiff.Parse` now uses hunk line counts from `@@` headers, so changed
+  lines that resemble file headers (e.g., a removed line starting with `--`,
+  which appears as `--- ...` in the diff) are no longer misparsed as file
+  headers.
+- `unidiff.Parse` now parses plain `diff -u` output (no `diff --git` lines),
+  which previously produced an empty result, and strips tab-separated
+  timestamps from `---`/`+++` headers.
+- `unidiff.Parse` accepts lines longer than 64KB (e.g., minified code).
+- `humanize.Duration` no longer returns an empty string for sub-millisecond
+  durations (now formats µs/ns) and no longer renders "1000ms" for values
+  that round up to a second.
+- `humanize.DurationShort` formats sub-microsecond durations as nanoseconds
+  instead of "0µs".
+- `humanize.Bytes`/`BytesSI` no longer display values like "1024.0 KiB" just
+  below a unit boundary; they roll over to the next unit.
+- `humanize.Number`/`NumberWithSeparator` no longer return a double negative
+  sign for `math.MinInt64`.
+- `humanize.Truncate`/`TruncateWithSuffix` no longer panic for negative
+  maxLen; non-positive maxLen returns an empty string.
+- `tty.IsTerminal` returns false for a nil file instead of panicking.
+- `sse.Reader` strips a leading UTF-8 BOM per the SSE specification, and the
+  `retry` field now requires ASCII digits only (signed values are ignored).
+
+### Added
+
+- `unidiff.File` gained `IsNew`, `IsDelete`, and `IsRename` fields, detected
+  from git metadata lines (`new file mode`, `deleted file mode`,
+  `rename from`/`rename to`) and `/dev/null` paths. Pure renames without
+  hunks now parse with both paths populated. `GIT binary patch` sections are
+  detected as binary.
+- `sse.HTTPError` gained a `Body` field with up to 8KB of the error response
+  body, which is included in `Error()` when present.
+
+### Changed
+
+- `web.NormalizeURL` lowercases the host for stable comparisons and
+  deduplication.
+- `sse.Client` validates the response Content-Type with `mime.ParseMediaType`
+  instead of a prefix check.
+
 ## [0.0.33] - 2026-04-28
 
 ### Fixed

@@ -3,6 +3,7 @@
 // The primary function is IsTerminal, which reports whether a file
 // is connected to a terminal. This is useful for deciding whether to
 // enable interactive features like colors, progress bars, or prompts.
+// IsTerminal returns false for a nil file.
 //
 // Example:
 //

@@ -8,6 +8,10 @@ import (
 	"github.com/deepnoodle-ai/wonton/tty"
 )
 
+func TestIsTerminalNil(t *testing.T) {
+	assert.False(t, tty.IsTerminal(nil), "nil file should not be a terminal")
+}
+
 func TestIsTerminal(t *testing.T) {
 	// 1. Test with a temporary file (should not be a terminal)
 	tmpFile, err := os.CreateTemp("", "not-a-tty")

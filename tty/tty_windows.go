@@ -10,6 +10,9 @@ import (
 
 // IsTerminal reports whether f is a terminal (console).
 func IsTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
 	var mode uint32
 	err := windows.GetConsoleMode(windows.Handle(f.Fd()), &mode)
 	return err == nil

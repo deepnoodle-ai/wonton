@@ -2,6 +2,7 @@ package humanize
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -21,6 +22,10 @@ func TestBytes(t *testing.T) {
 		{1048576, "1.0 MiB"},
 		{1073741824, "1.0 GiB"},
 		{-1024, "-1.0 KiB"},
+		// Values just under a unit boundary must not display as the base
+		// (e.g., "1024.0 KiB")
+		{1048575, "1.0 MiB"},
+		{1073741823, "1.0 GiB"},
 	}
 
 	for _, tt := range tests {
@@ -62,6 +67,14 @@ func TestDuration(t *testing.T) {
 		{1500 * time.Millisecond, "1s 500ms"},
 		{61500 * time.Millisecond, "1m 1s"},
 		{-30 * time.Second, "-30s"},
+		// Sub-millisecond durations
+		{750 * time.Microsecond, "750µs"},
+		{500 * time.Nanosecond, "500ns"},
+		{-750 * time.Microsecond, "-750µs"},
+		// Sub-millisecond remainders round into the displayed units
+		{999600 * time.Microsecond, "1s"},
+		{time.Minute + 999600*time.Microsecond, "1m 1s"},
+		{time.Second + 400*time.Microsecond, "1s"},
 	}
 
 	for _, tt := range tests {
@@ -80,6 +93,8 @@ func TestDurationShort(t *testing.T) {
 		{90 * time.Second, "1m"},
 		{3 * time.Hour, "3h"},
 		{48 * time.Hour, "2d"},
+		{500 * time.Microsecond, "500µs"},
+		{500 * time.Nanosecond, "500ns"},
 	}
 
 	for _, tt := range tests {
@@ -228,6 +243,8 @@ func TestTruncateWithSuffix(t *testing.T) {
 		{"hello world", 8, "~", "hello w~"},
 		{"hello", 10, "...", "hello"},
 		{"lengthy", 3, "..", "l.."},
+		{"hello", 0, "...", ""},
+		{"hello", -1, "...", ""},
 	}
 
 	for _, tt := range tests {
@@ -240,6 +257,8 @@ func TestNumberWithSeparator(t *testing.T) {
 	assert.Equal(t, "1.234.567", NumberWithSeparator(1234567, "."))
 	assert.Equal(t, "-9 876", NumberWithSeparator(-9876, " "))
 	assert.Equal(t, "100", NumberWithSeparator(100, "_"))
+	assert.Equal(t, "9,223,372,036,854,775,807", Number(math.MaxInt64))
+	assert.Equal(t, "-9,223,372,036,854,775,808", Number(math.MinInt64))
 }
 
 func TestFloat(t *testing.T) {

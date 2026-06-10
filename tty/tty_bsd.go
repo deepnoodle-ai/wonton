@@ -10,6 +10,9 @@ import (
 
 // IsTerminal reports whether f is a terminal.
 func IsTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
 	_, err := unix.IoctlGetTermios(int(f.Fd()), unix.TIOCGETA)
 	return err == nil
 }

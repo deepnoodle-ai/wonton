@@ -174,6 +174,18 @@ type File struct {
 	// IsBinary indicates if the file is a binary file.
 	IsBinary bool
 
+	// IsNew indicates the file was created in this diff. Detected from git's
+	// "new file mode" metadata or an old path of /dev/null.
+	IsNew bool
+
+	// IsDelete indicates the file was deleted in this diff. Detected from git's
+	// "deleted file mode" metadata or a new path of /dev/null.
+	IsDelete bool
+
+	// IsRename indicates the file was renamed in this diff. Detected from git's
+	// "rename from" / "rename to" metadata.
+	IsRename bool
+
 	// Hunks contains all the change blocks for this file.
 	Hunks []Hunk
 }
@@ -195,11 +207,15 @@ type Diff struct {
 //   - Multiple hunks per file
 //   - Line number tracking for old and new files
 //   - Detection of added, removed, and context lines
-//   - File renames (when old and new paths differ)
+//   - New, deleted, and renamed files (IsNew, IsDelete, IsRename)
 //   - Binary files (marked with IsBinary=true)
+//   - Plain diff -u output, including tab-separated timestamps in headers
 //
 // The parser strips a/ and b/ prefixes from file paths (common in git diffs)
-// and preserves both the raw line (with markers) and cleaned content.
+// and preserves both the raw line (with markers) and cleaned content. Hunk
+// line counts from the @@ header are used to parse hunk content, so changed
+// lines that resemble file headers (e.g., a removed line starting with "--")
+// are handled correctly.
 //
 // Example:
 //
@@ -218,8 +234,9 @@ type Diff struct {
 //	fmt.Printf("Files changed: %d\n", len(diff.Files))
 func Parse(diffText string) (*Diff, error) {
 	scanner := bufio.NewScanner(strings.NewReader(diffText))
-	// Increase buffer size to handle very long lines if necessary,
-	// but default is usually fine for diffs unless minified code.
+	// Allow long lines (e.g., diffs of minified or generated code). The
+	// buffer only grows on demand, so this is cheap for typical diffs.
+	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 
 	diff := &Diff{}
 
@@ -227,24 +244,86 @@ func Parse(diffText string) (*Diff, error) {
 	var currentHunk *Hunk
 	oldLineNum := 0
 	newLineNum := 0
+	// Lines remaining in the current hunk according to its header counts.
+	// While either is positive, lines are parsed as hunk content before any
+	// header detection, so content like "--- foo" (a removed line whose text
+	// starts with "--") is not misparsed as a file header.
+	oldRemaining := 0
+	newRemaining := 0
 
 	flushHunk := func() {
 		if currentFile != nil && currentHunk != nil {
 			currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
 			currentHunk = nil
 		}
+		oldRemaining = 0
+		newRemaining = 0
 	}
 
 	flushFile := func() {
 		flushHunk()
 		if currentFile != nil {
-			diff.Files = append(diff.Files, *currentFile)
+			// Skip header-only artifacts: a lone "--- " line with no matching
+			// "+++" header and no content (e.g., text resembling a diff header
+			// in surrounding prose such as a format-patch commit message).
+			if len(currentFile.Hunks) > 0 || currentFile.NewPath != "" ||
+				currentFile.IsBinary || currentFile.IsRename ||
+				currentFile.IsNew || currentFile.IsDelete {
+				diff.Files = append(diff.Files, *currentFile)
+			}
 			currentFile = nil
 		}
 	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		if currentHunk != nil && (oldRemaining > 0 || newRemaining > 0) {
+			if strings.HasPrefix(line, "\\") {
+				// "\ No newline at end of file" marker; does not count
+				// against the hunk line counts.
+				continue
+			}
+
+			var diffLine Line
+			diffLine.RawLine = line
+			parsed := true
+
+			if strings.HasPrefix(line, "+") {
+				diffLine.Type = LineAdded
+				diffLine.Content = line[1:]
+				diffLine.NewLineNum = newLineNum
+				newLineNum++
+				newRemaining--
+			} else if strings.HasPrefix(line, "-") {
+				diffLine.Type = LineRemoved
+				diffLine.Content = line[1:]
+				diffLine.OldLineNum = oldLineNum
+				oldLineNum++
+				oldRemaining--
+			} else if strings.HasPrefix(line, " ") || line == "" {
+				diffLine.Type = LineContext
+				diffLine.Content = strings.TrimPrefix(line, " ")
+				diffLine.OldLineNum = oldLineNum
+				diffLine.NewLineNum = newLineNum
+				oldLineNum++
+				newLineNum++
+				oldRemaining--
+				newRemaining--
+			} else {
+				// The hunk is shorter than its header claimed (truncated or
+				// hand-edited diff). Stop treating lines as hunk content and
+				// fall through to normal handling.
+				oldRemaining = 0
+				newRemaining = 0
+				parsed = false
+			}
+
+			if parsed {
+				currentHunk.Lines = append(currentHunk.Lines, diffLine)
+				continue
+			}
+		}
 
 		if strings.HasPrefix(line, "diff --git") {
 			flushFile()
@@ -259,18 +338,47 @@ func Parse(diffText string) (*Diff, error) {
 				currentFile.NewPath = strings.TrimPrefix(parts[3], "b/")
 			}
 		} else if strings.HasPrefix(line, "--- ") {
-			if currentFile != nil {
-				path := strings.TrimPrefix(line, "--- ")
-				path = strings.TrimPrefix(path, "a/")
-				currentFile.OldPath = path
+			// Plain "diff -u" output has no "diff --git" line, so this header
+			// starts a new file. In git diffs the preceding "diff --git" line
+			// already created a fresh file, which is reused here.
+			if currentFile == nil || len(currentFile.Hunks) > 0 || currentHunk != nil {
+				flushFile()
+				currentFile = &File{}
+			}
+			path := headerPath(strings.TrimPrefix(line, "--- "))
+			path = strings.TrimPrefix(path, "a/")
+			currentFile.OldPath = path
+			if path == "/dev/null" {
+				currentFile.IsNew = true
 			}
 		} else if strings.HasPrefix(line, "+++ ") {
 			if currentFile != nil {
-				path := strings.TrimPrefix(line, "+++ ")
+				path := headerPath(strings.TrimPrefix(line, "+++ "))
 				path = strings.TrimPrefix(path, "b/")
 				currentFile.NewPath = path
+				if path == "/dev/null" {
+					currentFile.IsDelete = true
+				}
 			}
-		} else if strings.HasPrefix(line, "Binary files") {
+		} else if strings.HasPrefix(line, "new file mode") {
+			if currentFile != nil {
+				currentFile.IsNew = true
+			}
+		} else if strings.HasPrefix(line, "deleted file mode") {
+			if currentFile != nil {
+				currentFile.IsDelete = true
+			}
+		} else if strings.HasPrefix(line, "rename from ") {
+			if currentFile != nil {
+				currentFile.IsRename = true
+				currentFile.OldPath = strings.TrimPrefix(line, "rename from ")
+			}
+		} else if strings.HasPrefix(line, "rename to ") {
+			if currentFile != nil {
+				currentFile.IsRename = true
+				currentFile.NewPath = strings.TrimPrefix(line, "rename to ")
+			}
+		} else if strings.HasPrefix(line, "Binary files") || line == "GIT binary patch" {
 			if currentFile != nil {
 				currentFile.IsBinary = true
 				// Try to extract paths if possible, but they are usually already set
@@ -331,12 +439,14 @@ func Parse(diffText string) (*Diff, error) {
 
 			oldLineNum = currentHunk.OldStart
 			newLineNum = currentHunk.NewStart
+			oldRemaining = currentHunk.OldCount
+			newRemaining = currentHunk.NewCount
 
-		} else if strings.HasPrefix(line, "\\ No newline at end of file") {
+		} else if strings.HasPrefix(line, "\\") {
+			// "\ No newline at end of file" (the text may be localized).
 			// This indicates the previous line didn't end with a newline.
 			// Currently we preserve lines as strings without newline characters,
 			// so this metadata is primarily informational or for exact reconstruction.
-			// We can ignore it for now or store it if we needed perfect fidelity.
 			continue
 		} else if currentHunk != nil {
 			// Process diff line
@@ -378,6 +488,20 @@ func Parse(diffText string) (*Diff, error) {
 	flushFile()
 
 	return diff, nil
+}
+
+// headerPath extracts the file path from a "---" or "+++" header value,
+// stripping the tab-separated timestamp that traditional diff -u appends
+// (e.g., "file.txt\t2024-01-01 12:00:00.000000000 +0000"). Quoted paths
+// (which may legitimately contain tabs) are returned unchanged.
+func headerPath(value string) string {
+	if strings.HasPrefix(value, `"`) {
+		return value
+	}
+	if idx := strings.IndexByte(value, '\t'); idx >= 0 {
+		return value[:idx]
+	}
+	return value
 }
 
 // Stats contains summary statistics about changes in a diff.

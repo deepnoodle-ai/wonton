@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -100,12 +101,12 @@ func IsMediaURL(u *url.URL) bool {
 	if u == nil {
 		return false
 	}
-	if idx := strings.LastIndex(u.Path, "."); idx > 0 {
-		ext := strings.ToLower(u.Path[idx:])
-		_, ok := mediaExtensions[ext]
-		return ok
+	ext := path.Ext(u.Path)
+	if ext == "" {
+		return false
 	}
-	return false
+	_, ok := mediaExtensions[strings.ToLower(ext)]
+	return ok
 }
 
 // IsMediaExtension checks if a file extension is considered a media file extension.

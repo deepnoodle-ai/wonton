@@ -260,6 +260,44 @@ func TestHTTPError(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, httpErr.StatusCode)
 }
 
+func TestHTTPError_IncludesBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error": "rate limited"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+	for range events {
+	}
+
+	err := <-errs
+	var httpErr *HTTPError
+	assert.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusTooManyRequests, httpErr.StatusCode)
+	assert.Equal(t, `{"error": "rate limited"}`, httpErr.Body)
+	assert.Contains(t, err.Error(), "rate limited")
+}
+
+func TestReaderStripsBOM(t *testing.T) {
+	data := "\uFEFFdata: hello\n\ndata: world\n\n"
+	reader := NewReader(strings.NewReader(data))
+
+	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "hello", event.Data)
+
+	event, err = reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, "world", event.Data)
+}
+
 func TestEventIsEmpty(t *testing.T) {
 	empty := Event{}
 	assert.True(t, empty.IsEmpty())
@@ -629,6 +667,13 @@ func TestReaderRetryInvalid(t *testing.T) {
 	data := "retry: -1000\ndata: test\n\n"
 	reader := NewReader(strings.NewReader(data))
 	event, err := reader.Read()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, event.Retry)
+
+	// Signed retry (spec requires ASCII digits only)
+	data = "retry: +1000\ndata: test\n\n"
+	reader = NewReader(strings.NewReader(data))
+	event, err = reader.Read()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, event.Retry)
 

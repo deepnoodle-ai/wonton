@@ -126,6 +126,7 @@ func AreRelatedHosts(url1, url2 *url.URL) bool {
 //   - Trim whitespace from the input
 //   - Add https:// prefix if the URL has no scheme
 //   - Convert http:// to https://
+//   - Lowercase the host
 //   - Remove query parameters and URL fragments
 //   - Remove trailing "/" if the path is only "/"
 //
@@ -180,6 +181,10 @@ func NormalizeURL(value string) (*url.URL, error) {
 	if u.Hostname() == "" {
 		return nil, fmt.Errorf("invalid url missing hostname: %s", value)
 	}
+
+	// Hostnames are case-insensitive; lowercase for stable comparisons and
+	// deduplication. (u.Host includes the port but not userinfo.)
+	u.Host = strings.ToLower(u.Host)
 
 	u.ForceQuery = false
 	u.RawQuery = ""
