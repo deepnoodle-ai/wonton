@@ -175,46 +175,32 @@ func TestTerminalMetricsIntegration(t *testing.T) {
 	assert.Equal(t, uint64(0), snapshot.TotalFrames)
 }
 
-func TestMetricsPerformanceOverhead(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping performance overhead test in short mode")
-	}
+// Metrics collection overhead can be measured by comparing these two
+// benchmarks with `go test -bench BenchmarkFrameRender ./terminal`.
+// This was previously an asserting test comparing wall-clock timings, which
+// was inherently flaky on shared CI runners.
 
-	// This test measures metrics collection overhead (informational)
+func BenchmarkFrameRender(b *testing.B) {
 	var output strings.Builder
 	term := NewTestTerminal(80, 24, &output)
 
-	iterations := 10000 // More iterations for better measurement
-
-	// Measure without metrics
-	start := time.Now()
-	for i := 0; i < iterations; i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		frame, _ := term.BeginFrame()
 		frame.PrintStyled(0, 0, "Test", NewStyle())
 		term.EndFrame(frame)
 	}
-	withoutMetrics := time.Since(start)
+}
 
-	// Reset and enable metrics
-	output.Reset()
-	term = NewTestTerminal(80, 24, &output)
+func BenchmarkFrameRenderWithMetrics(b *testing.B) {
+	var output strings.Builder
+	term := NewTestTerminal(80, 24, &output)
 	term.EnableMetrics()
 
-	// Measure with metrics
-	start = time.Now()
-	for i := 0; i < iterations; i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		frame, _ := term.BeginFrame()
 		frame.PrintStyled(0, 0, "Test", NewStyle())
 		term.EndFrame(frame)
 	}
-	withMetrics := time.Since(start)
-
-	// Calculate and report overhead (informational, not strict requirement)
-	overhead := float64(withMetrics-withoutMetrics) / float64(withoutMetrics)
-	t.Logf("Performance overhead: %.2f%% (without: %v, with: %v)",
-		overhead*100, withoutMetrics, withMetrics)
-
-	// Just verify it's not absurdly high (> 100%)
-	assert.Less(t, overhead, 1.0,
-		"Metrics overhead should not exceed 100%% (actual: %.2f%%)", overhead*100)
 }
