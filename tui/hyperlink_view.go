@@ -1,7 +1,7 @@
 package tui
 
-// hyperlinkView displays a clickable hyperlink (declarative view)
-type hyperlinkView struct {
+// HyperlinkView displays a clickable hyperlink (declarative view)
+type HyperlinkView struct {
 	url     string
 	text    string
 	style   Style
@@ -15,11 +15,11 @@ type hyperlinkView struct {
 //
 //	Link("https://github.com", "GitHub")
 //	Link("https://example.com", "").Fg(ColorCyan)  // uses URL as text
-func Link(url, text string) *hyperlinkView {
+func Link(url, text string) *HyperlinkView {
 	if text == "" {
 		text = url
 	}
-	return &hyperlinkView{
+	return &HyperlinkView{
 		url:   url,
 		text:  text,
 		style: NewStyle().WithUnderline().WithForeground(ColorBlue),
@@ -27,25 +27,25 @@ func Link(url, text string) *hyperlinkView {
 }
 
 // Fg sets the foreground color.
-func (h *hyperlinkView) Fg(c Color) *hyperlinkView {
+func (h *HyperlinkView) Fg(c Color) *HyperlinkView {
 	h.style = h.style.WithForeground(c)
 	return h
 }
 
 // Bg sets the background color.
-func (h *hyperlinkView) Bg(c Color) *hyperlinkView {
+func (h *HyperlinkView) Bg(c Color) *HyperlinkView {
 	h.style = h.style.WithBackground(c)
 	return h
 }
 
 // Bold makes the link text bold.
-func (h *hyperlinkView) Bold() *hyperlinkView {
+func (h *HyperlinkView) Bold() *HyperlinkView {
 	h.style = h.style.WithBold()
 	return h
 }
 
 // Underline sets whether the link is underlined (default true).
-func (h *hyperlinkView) Underline(u bool) *hyperlinkView {
+func (h *HyperlinkView) Underline(u bool) *HyperlinkView {
 	if u {
 		h.style = h.style.WithUnderline()
 	} else {
@@ -70,18 +70,18 @@ func (h *hyperlinkView) Underline(u bool) *hyperlinkView {
 }
 
 // Style sets the complete style.
-func (h *hyperlinkView) Style(s Style) *hyperlinkView {
+func (h *HyperlinkView) Style(s Style) *HyperlinkView {
 	h.style = s
 	return h
 }
 
 // ShowURL enables fallback format showing URL in parentheses.
-func (h *hyperlinkView) ShowURL() *hyperlinkView {
+func (h *HyperlinkView) ShowURL() *HyperlinkView {
 	h.showURL = true
 	return h
 }
 
-func (h *hyperlinkView) size(maxWidth, maxHeight int) (int, int) {
+func (h *HyperlinkView) size(maxWidth, maxHeight int) (int, int) {
 	w, _ := MeasureText(h.text)
 	if h.showURL {
 		w += len(" ()") + len(h.url)
@@ -92,7 +92,7 @@ func (h *hyperlinkView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (h *hyperlinkView) render(ctx *RenderContext) {
+func (h *HyperlinkView) render(ctx *RenderContext) {
 	w, ht := ctx.Size()
 	if w == 0 || ht == 0 {
 		return
@@ -108,4 +108,4 @@ func (h *hyperlinkView) render(ctx *RenderContext) {
 	}
 }
 
-// linkRowView displays a label followed by a hyperlink
+// LinkRowView displays a label followed by a hyperlink

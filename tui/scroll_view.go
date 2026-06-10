@@ -12,8 +12,8 @@ const (
 	ScrollAnchorBottom
 )
 
-// scrollView wraps content in a scrollable viewport.
-type scrollView struct {
+// ScrollView wraps content in a scrollable viewport.
+type ScrollView struct {
 	inner   View
 	scrollY *int         // external scroll position (optional)
 	anchor  ScrollAnchor // where to anchor when content exceeds viewport
@@ -26,8 +26,8 @@ type scrollView struct {
 //
 //	Scroll(content, &app.scrollY).Anchor(ScrollAnchorBottom)
 //	Scroll(content, nil).Bottom() // auto-scroll to bottom
-func Scroll(inner View, scrollY *int) *scrollView {
-	return &scrollView{
+func Scroll(inner View, scrollY *int) *ScrollView {
+	return &ScrollView{
 		inner:   inner,
 		scrollY: scrollY,
 		anchor:  ScrollAnchorTop,
@@ -35,22 +35,22 @@ func Scroll(inner View, scrollY *int) *scrollView {
 }
 
 // Anchor sets the scroll anchor behavior.
-func (s *scrollView) Anchor(anchor ScrollAnchor) *scrollView {
+func (s *ScrollView) Anchor(anchor ScrollAnchor) *ScrollView {
 	s.anchor = anchor
 	return s
 }
 
 // Bottom is a shorthand for Anchor(ScrollAnchorBottom).
-func (s *scrollView) Bottom() *scrollView {
+func (s *ScrollView) Bottom() *ScrollView {
 	s.anchor = ScrollAnchorBottom
 	return s
 }
 
-func (s *scrollView) flex() int {
+func (s *ScrollView) flex() int {
 	return 1 // Scroll views are flexible to fill available space
 }
 
-func (s *scrollView) size(maxWidth, maxHeight int) (int, int) {
+func (s *ScrollView) size(maxWidth, maxHeight int) (int, int) {
 	// The scroll view takes all available space
 	w, _ := s.inner.size(maxWidth, 0) // Get content width, ignore height constraint
 	if maxWidth > 0 && w > maxWidth {
@@ -64,7 +64,7 @@ func (s *scrollView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (s *scrollView) render(ctx *RenderContext) {
+func (s *ScrollView) render(ctx *RenderContext) {
 	viewportWidth, viewportHeight := ctx.Size()
 	if viewportWidth == 0 || viewportHeight == 0 {
 		return

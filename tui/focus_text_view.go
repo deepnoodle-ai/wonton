@@ -1,7 +1,7 @@
 package tui
 
-// focusTextView displays text with different styles based on focus state
-type focusTextView struct {
+// FocusTextView displays text with different styles based on focus state
+type FocusTextView struct {
 	content    string
 	focusID    string // The focus ID to watch
 	style      Style  // Normal style
@@ -16,8 +16,8 @@ type focusTextView struct {
 //	FocusText("Name: ", "name-input").
 //	    Style(dimStyle).
 //	    FocusStyle(brightStyle)
-func FocusText(content string, focusID string) *focusTextView {
-	return &focusTextView{
+func FocusText(content string, focusID string) *FocusTextView {
+	return &FocusTextView{
 		content: content,
 		focusID: focusID,
 		style:   NewStyle(),
@@ -25,42 +25,42 @@ func FocusText(content string, focusID string) *focusTextView {
 }
 
 // Style sets the normal (unfocused) style.
-func (f *focusTextView) Style(s Style) *focusTextView {
+func (f *FocusTextView) Style(s Style) *FocusTextView {
 	f.style = s
 	return f
 }
 
 // FocusStyle sets the style applied when the watched element is focused.
-func (f *focusTextView) FocusStyle(s Style) *focusTextView {
+func (f *FocusTextView) FocusStyle(s Style) *FocusTextView {
 	f.focusStyle = &s
 	return f
 }
 
 // Fg sets the normal foreground color.
-func (f *focusTextView) Fg(c Color) *focusTextView {
+func (f *FocusTextView) Fg(c Color) *FocusTextView {
 	f.style = f.style.WithForeground(c)
 	return f
 }
 
 // Bg sets the normal background color.
-func (f *focusTextView) Bg(c Color) *focusTextView {
+func (f *FocusTextView) Bg(c Color) *FocusTextView {
 	f.style = f.style.WithBackground(c)
 	return f
 }
 
 // Bold enables bold text in the normal style.
-func (f *focusTextView) Bold() *focusTextView {
+func (f *FocusTextView) Bold() *FocusTextView {
 	f.style = f.style.WithBold()
 	return f
 }
 
 // Dim enables dim text in the normal style.
-func (f *focusTextView) Dim() *focusTextView {
+func (f *FocusTextView) Dim() *FocusTextView {
 	f.style = f.style.WithDim()
 	return f
 }
 
-func (f *focusTextView) size(maxWidth, maxHeight int) (int, int) {
+func (f *FocusTextView) size(maxWidth, maxHeight int) (int, int) {
 	w, h := MeasureText(f.content)
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
@@ -71,7 +71,7 @@ func (f *focusTextView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (f *focusTextView) render(ctx *RenderContext) {
+func (f *FocusTextView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

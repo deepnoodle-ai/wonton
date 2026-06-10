@@ -208,9 +208,7 @@ func main() {
 	app := &diveLikeApp{
 		showExitHint: true,
 	}
-	app.runner = tui.NewInlineApp(tui.InlineAppConfig{
-		FPS: 20,
-	})
+	app.runner = tui.NewInlineApp(tui.WithInlineFPS(20))
 	if err := app.runner.Run(app); err != nil {
 		panic(err)
 	}

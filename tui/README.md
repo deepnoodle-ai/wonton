@@ -331,7 +331,7 @@ func (a *app) View() tui.View {
 		tui.Text("Loading data...").Animate(Typewriter(3,
 			tui.NewRGB(0, 255, 100),
 			tui.NewRGB(255, 255, 255),
-		).WithLoop(true)),
+		).Loop(true)),
 
 		// Glitch effect
 		tui.Text("SIGNAL_LOST").Animate(Glitch(2,
@@ -493,11 +493,11 @@ func (a *app) View() tui.View {
 
 | Function            | Description                | Inputs                                   | Outputs         |
 | ------------------- | -------------------------- | ---------------------------------------- | --------------- |
-| `Run`               | Starts full-screen app     | `app Application, opts ...RuntimeOption` | `error`         |
+| `Run`               | Starts full-screen app     | `app Application, opts ...RunOption`     | `error`         |
 | `NewInlineApp`      | Creates inline app runner  | `opts ...InlineOption`                   | `*InlineApp`    |
-| `RunInline`         | Convenience inline runner  | `app any, opts ...InlineOption`          | `error`         |
-| `WithFPS`           | Sets frame rate            | `fps int`                                | `RuntimeOption` |
-| `WithMouseTracking` | Enables mouse support      | `enabled bool`                           | `RuntimeOption` |
+| `RunInline`         | Convenience inline runner  | `app InlineApplication, opts ...InlineOption` | `error`    |
+| `WithFPS`           | Sets frame rate            | `fps int`                                | `RunOption`     |
+| `WithMouseTracking` | Enables mouse support      | `enabled bool`                           | `RunOption`     |
 | `Quit`              | Returns quit command       | none                                     | `Cmd`           |
 
 ### Layout Views
@@ -646,13 +646,13 @@ Apply animations using `.Animate(animation)` with animation constructors:
 
 | Animation Constructor             | Description         | Parameters                         | Chainable Methods                          |
 | --------------------------------- | ------------------- | ---------------------------------- | ------------------------------------------ |
-| `Rainbow(speed)`                  | Rainbow color cycle | `speed int`                        | `.Reverse()`, `.WithLength(int)`           |
+| `Rainbow(speed)`                  | Rainbow color cycle | `speed int`                        | `.Reverse()`, `.Length(int)`               |
 | `Pulse(color, speed)`             | Pulsing brightness  | `color RGB, speed int`             | `.Brightness(min, max float64)`            |
-| `Wave(speed, colors...)`          | Wave color effect   | `speed int, colors ...RGB`         | `.WithAmplitude(float64)`                  |
-| `Slide(speed, base, highlight)`   | Sliding highlight   | `speed int, base, highlight RGB`   | `.Reversed()`, `.WithWidth(int)`           |
-| `Sparkle(speed, base, spark)`     | Sparkle effect      | `speed int, base, spark RGB`       | `.WithDensity(int)`                        |
-| `Typewriter(speed, text, cursor)` | Typewriter reveal   | `speed int, text, cursor RGB`      | `.WithLoop(bool)`, `.WithHoldFrames(int)`  |
-| `Glitch(speed, base, glitch)`     | Glitch effect       | `speed int, base, glitch RGB`      | `.WithIntensity(int)`                      |
+| `Wave(speed, colors...)`          | Wave color effect   | `speed int, colors ...RGB`         | `.Amplitude(float64)`                      |
+| `Slide(speed, base, highlight)`   | Sliding highlight   | `speed int, base, highlight RGB`   | `.Reverse()`, `.Width(int)`                |
+| `Sparkle(speed, base, spark)`     | Sparkle effect      | `speed int, base, spark RGB`       | `.Density(int)`                            |
+| `Typewriter(speed, text, cursor)` | Typewriter reveal   | `speed int, text, cursor RGB`      | `.Loop(bool)`, `.HoldFrames(int)`          |
+| `Glitch(speed, base, glitch)`     | Glitch effect       | `speed int, base, glitch RGB`      | `.Intensity(int)`                          |
 
 Example:
 ```go
@@ -904,15 +904,15 @@ func main() {
 ### InlineApp Options
 
 ```go
-runner := tui.NewInlineApp(tui.InlineAppConfig{
-    Width:          80,   // Rendering width (0 = auto)
-    FPS:            30,   // Enable tick events for animations (0 = no ticks)
-    MouseTracking:  true, // Enable mouse events
-    BracketedPaste: true, // Enable bracketed paste mode
-    KittyKeyboard:  true, // Enable Kitty keyboard protocol
-    PasteTabWidth:  4,    // Convert tabs in pasted text
-    BackslashEnter: true, // \+Enter => Shift+Enter (for chat-style apps)
-})
+runner := tui.NewInlineApp(
+    tui.WithInlineWidth(80),          // Rendering width (0 = auto)
+    tui.WithInlineFPS(30),            // Enable tick events for animations (0 = no ticks)
+    tui.WithInlineMouseTracking(true),  // Enable mouse events
+    tui.WithInlineBracketedPaste(true), // Enable bracketed paste mode
+    tui.WithInlineKittyKeyboard(true),  // Enable Kitty keyboard protocol
+    tui.WithInlinePasteTabWidth(4),     // Convert tabs in pasted text
+    tui.WithInlineBackslashEnter(true), // \+Enter => Shift+Enter (for chat-style apps)
+)
 ```
 
 ### InlineApp Architecture

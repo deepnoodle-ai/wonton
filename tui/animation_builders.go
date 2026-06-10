@@ -25,7 +25,7 @@ func NewAnimationBuilder() *AnimationBuilder {
 
 // Add adds an animation to the builder.
 func (ab *AnimationBuilder) Add(duration uint64, easing Easing) *AnimationBuilder {
-	anim := NewAnimation(duration).WithEasing(easing)
+	anim := NewAnimation(duration).Easing(easing)
 	ab.animations = append(ab.animations, anim)
 	return ab
 }
@@ -75,7 +75,7 @@ func (ab *AnimationBuilder) buildStaggered() *AnimationSequence {
 
 	for i, anim := range ab.animations {
 		delay := uint64(i) * staggerDelay
-		delayedAnim := NewAnimation(delay + anim.duration).WithEasing(anim.easing)
+		delayedAnim := NewAnimation(delay + anim.duration).Easing(anim.easing)
 		delayedAnims = append(delayedAnims, delayedAnim)
 	}
 
@@ -195,46 +195,46 @@ func PresetFireBorder(speed int) BorderAnimation {
 
 // PresetFadeIn creates a fade-in animation.
 func PresetFadeIn(duration uint64) *Animation {
-	return NewAnimation(duration).WithEasing(EaseInQuad)
+	return NewAnimation(duration).Easing(EaseInQuad)
 }
 
 // PresetFadeOut creates a fade-out animation.
 func PresetFadeOut(duration uint64) *Animation {
-	return NewAnimation(duration).WithEasing(EaseOutQuad)
+	return NewAnimation(duration).Easing(EaseOutQuad)
 }
 
 // PresetPulse creates a pulsing animation.
 func PresetPulse(duration uint64) *Animation {
 	return NewAnimation(duration).
-		WithEasing(EaseInOutSine).
-		WithLoop(true).
-		WithPingPong(true)
+		Easing(EaseInOutSine).
+		Loop(true).
+		PingPong(true)
 }
 
 // PresetBounce creates a bouncing animation.
 func PresetBounce(duration uint64) *Animation {
 	return NewAnimation(duration).
-		WithEasing(EaseOutBounce)
+		Easing(EaseOutBounce)
 }
 
 // PresetElastic creates an elastic animation.
 func PresetElastic(duration uint64) *Animation {
 	return NewAnimation(duration).
-		WithEasing(EaseOutElastic)
+		Easing(EaseOutElastic)
 }
 
 // PresetSlideIn creates a slide-in animation.
 func PresetSlideIn(duration uint64) *Animation {
 	return NewAnimation(duration).
-		WithEasing(EaseOutCubic)
+		Easing(EaseOutCubic)
 }
 
 // PresetAttention creates an attention-grabbing animation.
 func PresetAttention(duration uint64) *Animation {
 	return NewAnimation(duration).
-		WithEasing(EaseInOutBack).
-		WithLoop(true).
-		WithPingPong(true)
+		Easing(EaseInOutBack).
+		Loop(true).
+		PingPong(true)
 }
 
 // AnimationPresets provides common animation presets.

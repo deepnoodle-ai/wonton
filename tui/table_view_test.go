@@ -200,10 +200,7 @@ func TestTablePrintCompletesWhenColumnsNeedShrinking(t *testing.T) {
 			done := make(chan error, 1)
 
 			go func() {
-				done <- Print(Table(columns, &selected).Rows(rows), PrintConfig{
-					Width:  width,
-					Output: &buf,
-				})
+				done <- Print(Table(columns, &selected).Rows(rows), WithWidth(width), WithOutput(&buf))
 			}()
 
 			select {

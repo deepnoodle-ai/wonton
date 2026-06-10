@@ -138,8 +138,8 @@ func (r *interactiveRegistryImpl) HandleClick(x, y int) bool {
 	return false
 }
 
-// buttonView displays an interactive button that can be focused and activated
-type buttonView struct {
+// ButtonView displays an interactive button that can be focused and activated
+type ButtonView struct {
 	id         string
 	label      string
 	callback   func()
@@ -154,10 +154,10 @@ type buttonView struct {
 // Example:
 //
 //	Button("Submit", func() { app.submit() })
-func Button(label string, callback func()) *buttonView {
+func Button(label string, callback func()) *ButtonView {
 	// Generate unique ID from callback pointer
 	id := fmt.Sprintf("button_%p", callback)
-	return &buttonView{
+	return &ButtonView{
 		id:         id,
 		label:      label,
 		callback:   callback,
@@ -168,54 +168,54 @@ func Button(label string, callback func()) *buttonView {
 }
 
 // ID sets a specific ID for this button (useful for focus management).
-func (b *buttonView) ID(id string) *buttonView {
+func (b *ButtonView) ID(id string) *ButtonView {
 	b.id = id
 	return b
 }
 
 // Fg sets the foreground color.
-func (b *buttonView) Fg(col Color) *buttonView {
+func (b *ButtonView) Fg(col Color) *ButtonView {
 	b.style = b.style.WithForeground(col)
 	return b
 }
 
 // Bg sets the background color.
-func (b *buttonView) Bg(col Color) *buttonView {
+func (b *ButtonView) Bg(col Color) *ButtonView {
 	b.style = b.style.WithBackground(col)
 	return b
 }
 
 // Bold enables bold text.
-func (b *buttonView) Bold() *buttonView {
+func (b *ButtonView) Bold() *ButtonView {
 	b.style = b.style.WithBold()
 	return b
 }
 
 // Reverse enables reverse video.
-func (b *buttonView) Reverse() *buttonView {
+func (b *ButtonView) Reverse() *ButtonView {
 	b.style = b.style.WithReverse()
 	return b
 }
 
 // Style sets the complete style.
-func (b *buttonView) Style(s Style) *buttonView {
+func (b *ButtonView) Style(s Style) *ButtonView {
 	b.style = s
 	return b
 }
 
 // FocusStyle sets the style applied when this button is focused.
-func (b *buttonView) FocusStyle(s Style) *buttonView {
+func (b *ButtonView) FocusStyle(s Style) *ButtonView {
 	b.focusStyle = s
 	return b
 }
 
 // Width sets a fixed width for the button.
-func (b *buttonView) Width(w int) *buttonView {
+func (b *ButtonView) Width(w int) *ButtonView {
 	b.width = w
 	return b
 }
 
-func (b *buttonView) size(maxWidth, maxHeight int) (int, int) {
+func (b *ButtonView) size(maxWidth, maxHeight int) (int, int) {
 	w, h := MeasureText(b.label)
 	if b.width > 0 {
 		w = b.width
@@ -229,7 +229,7 @@ func (b *buttonView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (b *buttonView) render(ctx *RenderContext) {
+func (b *ButtonView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return
@@ -249,8 +249,8 @@ func (b *buttonView) render(ctx *RenderContext) {
 	ctx.PrintTruncated(0, 0, b.label, style)
 }
 
-// clickableView displays an interactive clickable element (mouse-only, not focusable)
-type clickableView struct {
+// ClickableView displays an interactive clickable element (mouse-only, not focusable)
+type ClickableView struct {
 	label    string
 	callback func()
 	style    Style
@@ -263,8 +263,8 @@ type clickableView struct {
 // Example:
 //
 //	Clickable("Link", func() { app.openLink() })
-func Clickable(label string, callback func()) *clickableView {
-	return &clickableView{
+func Clickable(label string, callback func()) *ClickableView {
+	return &ClickableView{
 		label:    label,
 		callback: callback,
 		style:    NewStyle(),
@@ -273,42 +273,42 @@ func Clickable(label string, callback func()) *clickableView {
 }
 
 // Fg sets the foreground color.
-func (c *clickableView) Fg(col Color) *clickableView {
+func (c *ClickableView) Fg(col Color) *ClickableView {
 	c.style = c.style.WithForeground(col)
 	return c
 }
 
 // Bg sets the background color.
-func (c *clickableView) Bg(col Color) *clickableView {
+func (c *ClickableView) Bg(col Color) *ClickableView {
 	c.style = c.style.WithBackground(col)
 	return c
 }
 
 // Bold enables bold text.
-func (c *clickableView) Bold() *clickableView {
+func (c *ClickableView) Bold() *ClickableView {
 	c.style = c.style.WithBold()
 	return c
 }
 
 // Reverse enables reverse video (useful for selected state).
-func (c *clickableView) Reverse() *clickableView {
+func (c *ClickableView) Reverse() *ClickableView {
 	c.style = c.style.WithReverse()
 	return c
 }
 
 // Style sets the complete style.
-func (c *clickableView) Style(s Style) *clickableView {
+func (c *ClickableView) Style(s Style) *ClickableView {
 	c.style = s
 	return c
 }
 
 // Width sets a fixed width for the clickable.
-func (c *clickableView) Width(w int) *clickableView {
+func (c *ClickableView) Width(w int) *ClickableView {
 	c.width = w
 	return c
 }
 
-func (c *clickableView) size(maxWidth, maxHeight int) (int, int) {
+func (c *ClickableView) size(maxWidth, maxHeight int) (int, int) {
 	w, h := MeasureText(c.label)
 	if c.width > 0 {
 		w = c.width
@@ -322,7 +322,7 @@ func (c *clickableView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *clickableView) render(ctx *RenderContext) {
+func (c *ClickableView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

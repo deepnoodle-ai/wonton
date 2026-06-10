@@ -72,8 +72,8 @@ func (n *TreeNode) CollapseAll() {
 	}
 }
 
-// treeView displays a tree of nodes with expand/collapse support.
-type treeView struct {
+// TreeView displays a tree of nodes with expand/collapse support.
+type TreeView struct {
 	id           string
 	root         *TreeNode
 	selected     *TreeNode
@@ -135,10 +135,10 @@ func ASCIITreeBranchChars() TreeBranchChars {
 //	Tree(root).OnSelect(func(node *tui.TreeNode) {
 //	    fmt.Println("Selected:", node.Label)
 //	})
-func Tree(root *TreeNode) *treeView {
+func Tree(root *TreeNode) *TreeView {
 	// Generate ID from root pointer address
 	id := fmt.Sprintf("tree_%p", root)
-	return &treeView{
+	return &TreeView{
 		id:           id,
 		root:         root,
 		expandedChar: "▼",
@@ -151,41 +151,41 @@ func Tree(root *TreeNode) *treeView {
 }
 
 // Selected sets the currently selected node.
-func (t *treeView) Selected(node *TreeNode) *treeView {
+func (t *TreeView) Selected(node *TreeNode) *TreeView {
 	t.selected = node
 	return t
 }
 
 // OnSelect sets a callback when a node is selected/clicked.
-func (t *treeView) OnSelect(fn func(*TreeNode)) *treeView {
+func (t *TreeView) OnSelect(fn func(*TreeNode)) *TreeView {
 	t.onSelect = fn
 	return t
 }
 
 // ID sets a custom ID for this tree (for focus management).
-func (t *treeView) ID(id string) *treeView {
+func (t *TreeView) ID(id string) *TreeView {
 	t.id = id
 	return t
 }
 
 // Focusable interface implementation
-func (t *treeView) FocusID() string {
+func (t *TreeView) FocusID() string {
 	return t.id
 }
 
-func (t *treeView) IsFocused() bool {
+func (t *TreeView) IsFocused() bool {
 	return t.focused
 }
 
-func (t *treeView) SetFocused(focused bool) {
+func (t *TreeView) SetFocused(focused bool) {
 	t.focused = focused
 }
 
-func (t *treeView) FocusBounds() image.Rectangle {
+func (t *TreeView) FocusBounds() image.Rectangle {
 	return t.bounds
 }
 
-func (t *treeView) HandleKeyEvent(event KeyEvent) bool {
+func (t *TreeView) HandleKeyEvent(event KeyEvent) bool {
 	if t.root == nil {
 		return false
 	}
@@ -250,7 +250,7 @@ func (t *treeView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // adjustScroll adjusts scroll position to keep selected item visible
-func (t *treeView) adjustScroll(selectedIdx int) {
+func (t *TreeView) adjustScroll(selectedIdx int) {
 	if t.scrollY == nil {
 		return
 	}
@@ -272,7 +272,7 @@ func (t *treeView) adjustScroll(selectedIdx int) {
 }
 
 // flattenVisibleNodes returns all visible nodes in traversal order
-func (t *treeView) flattenVisibleNodes(node *TreeNode, depth int) []*TreeNode {
+func (t *TreeView) flattenVisibleNodes(node *TreeNode, depth int) []*TreeNode {
 	if node == nil {
 		return nil
 	}
@@ -287,74 +287,74 @@ func (t *treeView) flattenVisibleNodes(node *TreeNode, depth int) []*TreeNode {
 }
 
 // ScrollY sets the scroll position pointer.
-func (t *treeView) ScrollY(scrollY *int) *treeView {
+func (t *TreeView) ScrollY(scrollY *int) *TreeView {
 	t.scrollY = scrollY
 	return t
 }
 
 // Width sets a fixed width for the tree.
-func (t *treeView) Width(w int) *treeView {
+func (t *TreeView) Width(w int) *TreeView {
 	t.width = w
 	return t
 }
 
 // Height sets a fixed height for the tree.
-func (t *treeView) Height(h int) *treeView {
+func (t *TreeView) Height(h int) *TreeView {
 	t.height = h
 	return t
 }
 
 // Size sets both width and height at once.
-func (t *treeView) Size(w, h int) *treeView {
+func (t *TreeView) Size(w, h int) *TreeView {
 	t.width = w
 	t.height = h
 	return t
 }
 
 // Fg sets the foreground color for nodes.
-func (t *treeView) Fg(c Color) *treeView {
+func (t *TreeView) Fg(c Color) *TreeView {
 	t.style = t.style.WithForeground(c)
 	return t
 }
 
 // Bg sets the background color for nodes.
-func (t *treeView) Bg(c Color) *treeView {
+func (t *TreeView) Bg(c Color) *TreeView {
 	t.style = t.style.WithBackground(c)
 	return t
 }
 
 // Style sets the default style for nodes.
-func (t *treeView) Style(s Style) *treeView {
+func (t *TreeView) Style(s Style) *TreeView {
 	t.style = s
 	return t
 }
 
 // SelectedStyle sets the style for the selected node.
-func (t *treeView) SelectedStyle(s Style) *treeView {
+func (t *TreeView) SelectedStyle(s Style) *TreeView {
 	t.selectedSty = s
 	return t
 }
 
 // ExpandChar sets the character shown for expanded nodes.
-func (t *treeView) ExpandChar(c string) *treeView {
+func (t *TreeView) ExpandChar(c string) *TreeView {
 	t.expandedChar = c
 	return t
 }
 
 // CollapseChar sets the character shown for collapsed nodes.
-func (t *treeView) CollapseChar(c string) *treeView {
+func (t *TreeView) CollapseChar(c string) *TreeView {
 	t.collapsedChr = c
 	return t
 }
 
 // LeafChar sets the character shown for leaf nodes.
-func (t *treeView) LeafChar(c string) *treeView {
+func (t *TreeView) LeafChar(c string) *TreeView {
 	t.leafChar = c
 	return t
 }
 
 // BranchChars sets the characters used for drawing tree branches.
-func (t *treeView) BranchChars(chars TreeBranchChars) *treeView {
+func (t *TreeView) BranchChars(chars TreeBranchChars) *TreeView {
 	t.branchChars = chars
 	return t
 }
@@ -368,7 +368,7 @@ type flattenedNode struct {
 }
 
 // flatten converts the tree to a flat list of visible nodes.
-func (t *treeView) flatten() []flattenedNode {
+func (t *TreeView) flatten() []flattenedNode {
 	if t.root == nil {
 		return nil
 	}
@@ -378,7 +378,7 @@ func (t *treeView) flatten() []flattenedNode {
 	return result
 }
 
-func (t *treeView) flattenNode(node *TreeNode, depth int, isLast bool, ancestors []bool, result *[]flattenedNode) {
+func (t *TreeView) flattenNode(node *TreeNode, depth int, isLast bool, ancestors []bool, result *[]flattenedNode) {
 	*result = append(*result, flattenedNode{
 		node:      node,
 		depth:     depth,
@@ -399,7 +399,7 @@ func (t *treeView) flattenNode(node *TreeNode, depth int, isLast bool, ancestors
 	}
 }
 
-func (t *treeView) size(maxWidth, maxHeight int) (int, int) {
+func (t *TreeView) size(maxWidth, maxHeight int) (int, int) {
 	nodes := t.flatten()
 
 	// Calculate width needed
@@ -432,7 +432,7 @@ func (t *treeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (t *treeView) render(ctx *RenderContext) {
+func (t *TreeView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || t.root == nil {
 		return
@@ -551,12 +551,12 @@ func (t *treeView) render(ctx *RenderContext) {
 }
 
 // GetVisibleCount returns the number of currently visible nodes.
-func (t *treeView) GetVisibleCount() int {
+func (t *TreeView) GetVisibleCount() int {
 	return len(t.flatten())
 }
 
 // FindNode finds a node by its label (depth-first search).
-func (t *treeView) FindNode(label string) *TreeNode {
+func (t *TreeView) FindNode(label string) *TreeNode {
 	if t.root == nil {
 		return nil
 	}

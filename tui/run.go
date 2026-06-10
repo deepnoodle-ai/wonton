@@ -1,7 +1,5 @@
 package tui
 
-import "fmt"
-
 // RunOption is a functional option for configuring Run.
 type RunOption func(*runConfig)
 
@@ -140,13 +138,7 @@ func WithBackslashEnter(enabled bool) RunOption {
 //	    tui.WithFPS(60),
 //	    tui.WithMouseTracking(true),
 //	)
-func Run(app any, opts ...RunOption) error {
-	// Validate app implements required interface
-	_, isApp := app.(Application)
-	if !isApp {
-		return fmt.Errorf("app must implement Application (View())")
-	}
-
+func Run(app Application, opts ...RunOption) error {
 	// Apply options
 	cfg := defaultRunConfig()
 	for _, opt := range opts {

@@ -1,7 +1,7 @@
 package tui
 
-// animatedTextView displays text with per-character animation (declarative view)
-type animatedTextView struct {
+// AnimatedTextView displays text with per-character animation (declarative view)
+type AnimatedTextView struct {
 	text      string
 	animation TextAnimation
 	style     Style // fallback style if no animation
@@ -9,18 +9,18 @@ type animatedTextView struct {
 }
 
 // Width sets a fixed width for the animated text.
-func (a *animatedTextView) Width(w int) *animatedTextView {
+func (a *AnimatedTextView) Width(w int) *AnimatedTextView {
 	a.width = w
 	return a
 }
 
 // Style sets the fallback style (used when animation is nil).
-func (a *animatedTextView) Style(s Style) *animatedTextView {
+func (a *AnimatedTextView) Style(s Style) *AnimatedTextView {
 	a.style = s
 	return a
 }
 
-func (a *animatedTextView) size(maxWidth, maxHeight int) (int, int) {
+func (a *AnimatedTextView) size(maxWidth, maxHeight int) (int, int) {
 	w, _ := MeasureText(a.text)
 	if a.width > 0 {
 		w = a.width
@@ -31,7 +31,7 @@ func (a *animatedTextView) size(maxWidth, maxHeight int) (int, int) {
 	return w, 1
 }
 
-func (a *animatedTextView) render(ctx *RenderContext) {
+func (a *AnimatedTextView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

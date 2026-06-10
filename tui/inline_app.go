@@ -116,9 +116,9 @@ type InlineApplication interface {
 	LiveView() View
 }
 
-// InlineAppConfig configures an InlineApp.
+// inlineConfig configures an InlineApp.
 // All fields are optional with sensible zero-value defaults.
-type InlineAppConfig struct {
+type inlineConfig struct {
 	Width          int       // 0 = auto (terminal width or 80). Rendering width.
 	Output         io.Writer // nil = os.Stdout. Where to write output.
 	Input          io.Reader // nil = os.Stdin. Where to read input.
@@ -127,10 +127,94 @@ type InlineAppConfig struct {
 	BracketedPaste bool      // Enable bracketed paste mode.
 	PasteTabWidth  int       // 0 = preserve tabs. Convert tabs to N spaces in pastes.
 	KittyKeyboard  bool      // Enable Kitty keyboard protocol.
-	BackslashEnter bool      // Synthesize Shift+Enter from backslash+Enter (delays typed backslashes; see WithBackslashEnter).
+	BackslashEnter bool      // Synthesize Shift+Enter from backslash+Enter (delays typed backslashes; see WithInlineBackslashEnter).
 }
 
-func (c InlineAppConfig) withDefaults() InlineAppConfig {
+// InlineOption is a functional option for configuring NewInlineApp and
+// RunInline.
+type InlineOption func(*inlineConfig)
+
+// WithInlineWidth sets the rendering width in columns.
+// Default is the terminal width, or 80 when not attached to a terminal.
+func WithInlineWidth(width int) InlineOption {
+	return func(c *inlineConfig) {
+		c.Width = width
+	}
+}
+
+// WithInlineOutput sets where output is written. Default is os.Stdout.
+func WithInlineOutput(w io.Writer) InlineOption {
+	return func(c *inlineConfig) {
+		c.Output = w
+	}
+}
+
+// WithInlineInput sets where input events are read from. Default is os.Stdin.
+func WithInlineInput(r io.Reader) InlineOption {
+	return func(c *inlineConfig) {
+		c.Input = r
+	}
+}
+
+// WithInlineFPS sets the frames per second for TickEvents.
+// Default is 0, meaning no ticks are delivered.
+func WithInlineFPS(fps int) InlineOption {
+	return func(c *inlineConfig) {
+		c.FPS = fps
+	}
+}
+
+// WithInlineMouseTracking enables mouse event tracking.
+// When enabled, the application will receive MouseEvent events.
+func WithInlineMouseTracking(enabled bool) InlineOption {
+	return func(c *inlineConfig) {
+		c.MouseTracking = enabled
+	}
+}
+
+// WithInlineBracketedPaste enables bracketed paste mode.
+// When enabled, the terminal can distinguish pasted text from typed text,
+// allowing proper handling of multi-line pastes.
+func WithInlineBracketedPaste(enabled bool) InlineOption {
+	return func(c *inlineConfig) {
+		c.BracketedPaste = enabled
+	}
+}
+
+// WithInlinePasteTabWidth configures how tabs in pasted content are handled.
+// If width is 0 (default), tabs are preserved as-is.
+// If width > 0, each tab is converted to that many spaces.
+func WithInlinePasteTabWidth(width int) InlineOption {
+	return func(c *inlineConfig) {
+		c.PasteTabWidth = width
+	}
+}
+
+// WithInlineKittyKeyboard enables the Kitty keyboard protocol, which lets
+// supporting terminals report keys (e.g. Shift+Enter) unambiguously.
+func WithInlineKittyKeyboard(enabled bool) InlineOption {
+	return func(c *inlineConfig) {
+		c.KittyKeyboard = enabled
+	}
+}
+
+// WithInlineBackslashEnter enables synthesizing Shift+Enter from a backslash
+// immediately followed by Enter — a fallback for terminals without the
+// Kitty keyboard protocol, useful for chat-style apps where Shift+Enter
+// inserts a newline.
+//
+// Disabled by default: when enabled, every typed backslash is delayed
+// briefly while the runtime waits to see if Enter follows, and a backslash
+// followed quickly by Enter is rewritten to Shift+Enter (losing the
+// backslash). Only enable this for applications that need the Shift+Enter
+// affordance.
+func WithInlineBackslashEnter(enabled bool) InlineOption {
+	return func(c *inlineConfig) {
+		c.BackslashEnter = enabled
+	}
+}
+
+func (c inlineConfig) withDefaults() inlineConfig {
 	if c.Width == 0 {
 		c.Width = 80
 		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
@@ -161,7 +245,7 @@ func (c InlineAppConfig) withDefaults() InlineAppConfig {
 // responsive UI through non-blocking async operations.
 type InlineApp struct {
 	// Configuration
-	config InlineAppConfig
+	config inlineConfig
 
 	// Runtime state
 	app      any
@@ -212,20 +296,20 @@ type InlineApp struct {
 //
 // Example:
 //
-//	runner := tui.NewInlineApp(tui.InlineAppConfig{
-//	    Width:          80,
-//	    BracketedPaste: true,
-//	})
+//	runner := tui.NewInlineApp(
+//	    tui.WithInlineWidth(80),
+//	    tui.WithInlineBracketedPaste(true),
+//	)
 //	if err := runner.Run(&MyApp{}); err != nil {
 //	    log.Fatal(err)
 //	}
-func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
-	cfg := InlineAppConfig{}
-	if len(cfgs) > 0 {
-		cfg = cfgs[0]
+func NewInlineApp(opts ...InlineOption) *InlineApp {
+	var cfg inlineConfig
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 	cfg = cfg.withDefaults()
-	live := NewLivePrinter(PrintConfig{Width: cfg.Width, Output: cfg.Output})
+	live := NewLivePrinter(WithWidth(cfg.Width), WithOutput(cfg.Output))
 
 	// Set max height to terminal height so the live region never exceeds it.
 	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
@@ -263,12 +347,7 @@ func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
 //  5. Process events until Quit command
 //  6. Restore terminal state
 //  7. Call Destroy() if implemented
-func (r *InlineApp) Run(app any) error {
-	// Validate app implements required interface
-	if _, ok := app.(InlineApplication); !ok {
-		return fmt.Errorf("app must implement InlineApplication (LiveView())")
-	}
-
+func (r *InlineApp) Run(app InlineApplication) error {
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -646,7 +725,7 @@ func (r *InlineApp) inputReader() {
 			return
 		case event := <-inputChan:
 			// Check for backslash key - might be start of backslash+Enter
-			// sequence (opt-in via InlineAppConfig.BackslashEnter)
+			// sequence (opt-in via WithInlineBackslashEnter)
 			if keyEvent, ok := event.(KeyEvent); ok && r.config.BackslashEnter && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
 				select {
 				case <-r.done:
@@ -806,7 +885,7 @@ func (r *InlineApp) Print(view View) {
 	r.live.Clear()
 
 	// Print to scrollback with raw mode line endings
-	Fprint(r.output, view, PrintConfig{Width: r.config.Width, RawMode: true})
+	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true))
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Re-render live region (skip its internal sync since we're already in one)
@@ -888,20 +967,16 @@ func (r *InlineApp) ClearScrollback() {
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.
-// The optional cfg callback receives the runner before it starts, which is
-// useful for storing a reference so the app can call Print/Printf:
+//
+//	err := tui.RunInline(&MyApp{}, tui.WithInlineBracketedPaste(true))
+//
+// If the app needs a reference to the runner (to call Print/Printf from
+// HandleEvent), create it explicitly instead:
 //
 //	app := &MyApp{}
-//	err := tui.RunInline(app, func(r *tui.InlineApp) {
-//	    app.runner = r
-//	})
-//
-// For configuration (width, mouse tracking, etc.), use NewInlineApp with an
-// InlineAppConfig instead.
-func RunInline(app any, cfg func(*InlineApp)) error {
-	runner := NewInlineApp()
-	if cfg != nil {
-		cfg(runner)
-	}
-	return runner.Run(app)
+//	runner := tui.NewInlineApp()
+//	app.runner = runner
+//	err := runner.Run(app)
+func RunInline(app InlineApplication, opts ...InlineOption) error {
+	return NewInlineApp(opts...).Run(app)
 }

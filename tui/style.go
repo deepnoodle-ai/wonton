@@ -91,6 +91,12 @@ const (
 	AlignLeft   = terminal.AlignLeft
 	AlignCenter = terminal.AlignCenter
 	AlignRight  = terminal.AlignRight
+
+	// AlignTop and AlignBottom are vertical-axis names for the same values,
+	// for containers whose cross axis is vertical (e.g. Group.Align, which
+	// aligns children top-to-bottom within the row).
+	AlignTop    = terminal.AlignLeft
+	AlignBottom = terminal.AlignRight
 )
 
 // Re-export terminal functions

@@ -112,15 +112,15 @@ const (
 // NewGlobalEffect creates a new global effect.
 func NewGlobalEffect(effectType GlobalEffectType, duration uint64) *GlobalEffect {
 	return &GlobalEffect{
-		animation:  NewAnimation(duration).WithLoop(true),
+		animation:  NewAnimation(duration).Loop(true),
 		effectType: effectType,
 		easingFunc: EaseInOutSine,
 	}
 }
 
-// WithEasing sets the easing function for the effect.
-func (ge *GlobalEffect) WithEasing(easing Easing) *GlobalEffect {
-	ge.animation = ge.animation.WithEasing(easing)
+// Easing sets the easing function for the effect.
+func (ge *GlobalEffect) Easing(easing Easing) *GlobalEffect {
+	ge.animation = ge.animation.Easing(easing)
 	return ge
 }
 
@@ -163,18 +163,18 @@ func (ge *GlobalEffect) Type() GlobalEffectType {
 	return ge.effectType
 }
 
-// coordinatedView wraps a view to participate in global animations.
-type coordinatedView struct {
+// CoordinatedView wraps a view to participate in global animations.
+type CoordinatedView struct {
 	inner         View
 	effectName    string
 	coordinator   *AnimationCoordinator
 	transformFunc func(View, float64) View
 }
 
-// CoordinatedView wraps a view to participate in a global animation effect.
+// Coordinated wraps a view to participate in a global animation effect.
 // transformFunc is called with the current effect value to transform the view.
-func CoordinatedView(inner View, effectName string, transformFunc func(View, float64) View) *coordinatedView {
-	return &coordinatedView{
+func Coordinated(inner View, effectName string, transformFunc func(View, float64) View) *CoordinatedView {
+	return &CoordinatedView{
 		inner:         inner,
 		effectName:    effectName,
 		coordinator:   GlobalAnimationCoordinator,
@@ -182,11 +182,11 @@ func CoordinatedView(inner View, effectName string, transformFunc func(View, flo
 	}
 }
 
-func (cv *coordinatedView) size(maxWidth, maxHeight int) (int, int) {
+func (cv *CoordinatedView) size(maxWidth, maxHeight int) (int, int) {
 	return cv.inner.size(maxWidth, maxHeight)
 }
 
-func (cv *coordinatedView) render(ctx *RenderContext) {
+func (cv *CoordinatedView) render(ctx *RenderContext) {
 	// Get the global effect value
 	effect := cv.coordinator.GetEffect(cv.effectName)
 	if effect == nil {

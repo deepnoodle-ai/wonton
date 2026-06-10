@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// borderedView wraps a view with an optional border
-type borderedView struct {
+// BorderedView wraps a view with an optional border
+type BorderedView struct {
 	inner       View
 	border      *BorderStyle
 	title       string
@@ -32,8 +32,8 @@ type borderedView struct {
 //	Bordered(InputField(&app.input)).
 //	    FocusID("my-input").
 //	    FocusBorderFg(ColorGreen)
-func Bordered(inner View) *borderedView {
-	return &borderedView{
+func Bordered(inner View) *BorderedView {
+	return &BorderedView{
 		inner:       inner,
 		borderStyle: NewStyle(),
 		titleStyle:  NewStyle(),
@@ -41,45 +41,45 @@ func Bordered(inner View) *borderedView {
 }
 
 // Border sets the border style for the frame.
-func (f *borderedView) Border(style *BorderStyle) *borderedView {
+func (f *BorderedView) Border(style *BorderStyle) *BorderedView {
 	f.border = style
 	return f
 }
 
 // Title sets the title shown in the border.
-func (f *borderedView) Title(title string) *borderedView {
+func (f *BorderedView) Title(title string) *BorderedView {
 	f.title = title
 	return f
 }
 
 // TitleStyle sets the style for the title text.
-func (f *borderedView) TitleStyle(s Style) *borderedView {
+func (f *BorderedView) TitleStyle(s Style) *BorderedView {
 	f.titleStyle = s
 	return f
 }
 
 // BorderFg sets the border foreground color.
-func (f *borderedView) BorderFg(c Color) *borderedView {
+func (f *BorderedView) BorderFg(c Color) *BorderedView {
 	f.borderStyle = f.borderStyle.WithForeground(c)
 	return f
 }
 
 // FocusID sets the focus ID to watch for styling changes.
 // When the element with this ID is focused, focus styles will be applied.
-func (f *borderedView) FocusID(id string) *borderedView {
+func (f *BorderedView) FocusID(id string) *BorderedView {
 	f.focusID = id
 	return f
 }
 
 // FocusBorderFg sets the border color when the watched element is focused.
-func (f *borderedView) FocusBorderFg(c Color) *borderedView {
+func (f *BorderedView) FocusBorderFg(c Color) *BorderedView {
 	f.focusBorderFg = c
 	f.hasFocusBorder = true
 	return f
 }
 
 // FocusTitleStyle sets the title style when the watched element is focused.
-func (f *borderedView) FocusTitleStyle(s Style) *borderedView {
+func (f *BorderedView) FocusTitleStyle(s Style) *BorderedView {
 	f.focusTitleStyle = &s
 	return f
 }
@@ -87,14 +87,14 @@ func (f *borderedView) FocusTitleStyle(s Style) *borderedView {
 // flex implements the Flexible interface by delegating to the inner view.
 // This allows bordered views containing flexible content (like Fill) to
 // participate in flex layout distribution.
-func (f *borderedView) flex() int {
+func (f *BorderedView) flex() int {
 	if flex, ok := f.inner.(Flexible); ok {
 		return flex.flex()
 	}
 	return 0
 }
 
-func (f *borderedView) size(maxWidth, maxHeight int) (int, int) {
+func (f *BorderedView) size(maxWidth, maxHeight int) (int, int) {
 	borderSize := 0
 	if f.border != nil {
 		borderSize = 2 // 1 char on each side
@@ -119,7 +119,7 @@ func (f *borderedView) size(maxWidth, maxHeight int) (int, int) {
 	return innerW + borderSize, innerH + borderSize
 }
 
-func (f *borderedView) render(ctx *RenderContext) {
+func (f *BorderedView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return

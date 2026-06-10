@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"io"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -15,7 +16,7 @@ func TestRuntimeWithPipedInput(t *testing.T) {
 	// before calling EnableRawMode().
 
 	// Create a test terminal
-	terminal := NewTestTerminal(80, 24, nil)
+	terminal := NewTestTerminal(80, 24, io.Discard)
 	assert.NotNil(t, terminal)
 
 	// Create a simple test app

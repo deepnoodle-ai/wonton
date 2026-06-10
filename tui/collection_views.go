@@ -8,30 +8,30 @@ package tui
 //	ForEach(app.items, func(item Item, i int) View {
 //	    return Text("%d. %s", i+1, item.Name)
 //	})
-func ForEach[T any](items []T, mapper func(item T, index int) View) *forEachView[T] {
-	return &forEachView[T]{
+func ForEach[T any](items []T, mapper func(item T, index int) View) *ForEachView[T] {
+	return &ForEachView[T]{
 		items:     items,
 		mapper:    mapper,
 		separator: nil,
 	}
 }
 
-// forEachView represents a collection of views generated from items
-type forEachView[T any] struct {
+// ForEachView represents a collection of views generated from items
+type ForEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
 	gap       int
-	cached    *stack // cached result for rendering
+	cached    *StackView // cached result for rendering
 }
 
 // Separator sets a view to be rendered between each item.
-func (f *forEachView[T]) Separator(sep View) *forEachView[T] {
+func (f *ForEachView[T]) Separator(sep View) *ForEachView[T] {
 	f.separator = sep
 	return f
 }
 
-func (f *forEachView[T]) buildStack() *stack {
+func (f *ForEachView[T]) buildStack() *StackView {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -51,18 +51,18 @@ func (f *forEachView[T]) buildStack() *stack {
 	return f.cached
 }
 
-func (f *forEachView[T]) size(maxWidth, maxHeight int) (int, int) {
+func (f *ForEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	// Clear cache to rebuild with fresh mapper calls
 	f.cached = nil
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *forEachView[T]) render(ctx *RenderContext) {
+func (f *ForEachView[T]) render(ctx *RenderContext) {
 	f.buildStack().render(ctx)
 }
 
 // Gap sets the spacing between items (like Stack.Gap).
-func (f *forEachView[T]) Gap(n int) *forEachView[T] {
+func (f *ForEachView[T]) Gap(n int) *ForEachView[T] {
 	f.gap = n
 	return f
 }
@@ -74,30 +74,30 @@ func (f *forEachView[T]) Gap(n int) *forEachView[T] {
 //	HForEach(app.tabs, func(tab Tab, i int) View {
 //	    return Text(tab.Title).Padding(1)
 //	})
-func HForEach[T any](items []T, mapper func(item T, index int) View) *hForEachView[T] {
-	return &hForEachView[T]{
+func HForEach[T any](items []T, mapper func(item T, index int) View) *HForEachView[T] {
+	return &HForEachView[T]{
 		items:     items,
 		mapper:    mapper,
 		separator: nil,
 	}
 }
 
-// hForEachView arranges mapped views horizontally
-type hForEachView[T any] struct {
+// HForEachView arranges mapped views horizontally
+type HForEachView[T any] struct {
 	items     []T
 	mapper    func(item T, index int) View
 	separator View
 	gap       int
-	cached    *group
+	cached    *GroupView
 }
 
 // Separator sets a view to be rendered between each item.
-func (f *hForEachView[T]) Separator(sep View) *hForEachView[T] {
+func (f *HForEachView[T]) Separator(sep View) *HForEachView[T] {
 	f.separator = sep
 	return f
 }
 
-func (f *hForEachView[T]) buildStack() *group {
+func (f *HForEachView[T]) buildStack() *GroupView {
 	if f.cached != nil {
 		return f.cached
 	}
@@ -117,17 +117,17 @@ func (f *hForEachView[T]) buildStack() *group {
 	return f.cached
 }
 
-func (f *hForEachView[T]) size(maxWidth, maxHeight int) (int, int) {
+func (f *HForEachView[T]) size(maxWidth, maxHeight int) (int, int) {
 	f.cached = nil
 	return f.buildStack().size(maxWidth, maxHeight)
 }
 
-func (f *hForEachView[T]) render(ctx *RenderContext) {
+func (f *HForEachView[T]) render(ctx *RenderContext) {
 	f.buildStack().render(ctx)
 }
 
 // Gap sets the spacing between items (like Group.Gap).
-func (f *hForEachView[T]) Gap(n int) *hForEachView[T] {
+func (f *HForEachView[T]) Gap(n int) *HForEachView[T] {
 	f.gap = n
 	return f
 }

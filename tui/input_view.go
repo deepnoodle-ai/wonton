@@ -19,7 +19,7 @@ type inputRegistryImpl struct {
 
 type inputState struct {
 	id               string
-	input            *TextInput
+	input            *textInput
 	binding          *string
 	bounds           image.Rectangle
 	onChange         func(string)
@@ -73,7 +73,7 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	}
 
-	// Route to TextInput
+	// Route to textInput
 	handled := s.input.HandleKey(event)
 
 	// Sync value back to binding
@@ -109,8 +109,8 @@ func (r *inputRegistryImpl) Register(id string, binding *string, bounds image.Re
 
 	state, exists := r.inputs[id]
 	if !exists {
-		// Create new TextInput widget
-		ti := NewTextInput()
+		// Create new textInput widget
+		ti := newTextInput()
 		if mask != 0 {
 			ti.WithMask(mask)
 		}
@@ -201,9 +201,9 @@ func (r *inputRegistryImpl) GetFocused(fm *FocusManager) *inputState {
 	return nil
 }
 
-// inputView wraps a TextInput for declarative use
-type inputView struct {
-	reg *registries // captured at construction; refreshed from ctx during render
+// InputView wraps a textInput for declarative use
+type InputView struct {
+	reg              *registries // captured at construction; refreshed from ctx during render
 	id               string
 	binding          *string
 	placeholder      string
@@ -228,14 +228,14 @@ type inputView struct {
 // Example:
 //
 //	Input(&app.name).Placeholder("Enter name...")
-func Input(binding *string) *inputView {
+func Input(binding *string) *InputView {
 	// Generate a unique ID based on the pointer address
 	id := ""
 	if binding != nil {
 		id = fmt.Sprintf("input_%p", binding)
 	}
-	return &inputView{
-		reg: capturedRegistries(),
+	return &InputView{
+		reg:     capturedRegistries(),
 		id:      id,
 		binding: binding,
 		width:   20,
@@ -243,43 +243,43 @@ func Input(binding *string) *inputView {
 }
 
 // ID sets a specific ID for this input (useful for focus management).
-func (i *inputView) ID(id string) *inputView {
+func (i *InputView) ID(id string) *InputView {
 	i.id = id
 	return i
 }
 
 // Placeholder sets the placeholder text shown when empty.
-func (i *inputView) Placeholder(text string) *inputView {
+func (i *InputView) Placeholder(text string) *InputView {
 	i.placeholder = text
 	return i
 }
 
 // PlaceholderStyle sets the style for the placeholder text.
-func (i *inputView) PlaceholderStyle(style Style) *inputView {
+func (i *InputView) PlaceholderStyle(style Style) *InputView {
 	i.placeholderStyle = &style
 	return i
 }
 
 // Mask sets a mask character for password input.
-func (i *inputView) Mask(r rune) *inputView {
+func (i *InputView) Mask(r rune) *InputView {
 	i.mask = r
 	return i
 }
 
 // OnChange sets a callback invoked when the value changes.
-func (i *inputView) OnChange(fn func(string)) *inputView {
+func (i *InputView) OnChange(fn func(string)) *InputView {
 	i.onChange = fn
 	return i
 }
 
 // OnSubmit sets a callback invoked when Enter is pressed.
-func (i *inputView) OnSubmit(fn func(string)) *inputView {
+func (i *InputView) OnSubmit(fn func(string)) *InputView {
 	i.onSubmit = fn
 	return i
 }
 
 // Width sets the display width of the input.
-func (i *inputView) Width(w int) *inputView {
+func (i *InputView) Width(w int) *InputView {
 	i.width = w
 	return i
 }
@@ -287,19 +287,19 @@ func (i *inputView) Width(w int) *inputView {
 // PastePlaceholder enables paste placeholder mode.
 // When enabled, multi-line pastes are collapsed into "[pasted N lines]"
 // placeholders that can be deleted atomically with backspace.
-func (i *inputView) PastePlaceholder(enabled bool) *inputView {
+func (i *InputView) PastePlaceholder(enabled bool) *InputView {
 	i.pastePlaceholder = enabled
 	return i
 }
 
 // CursorBlink enables or disables cursor blinking.
-func (i *inputView) CursorBlink(enabled bool) *inputView {
+func (i *InputView) CursorBlink(enabled bool) *InputView {
 	i.cursorBlink = enabled
 	return i
 }
 
 // Multiline enables multiline input where Shift+Enter inserts newlines.
-func (i *inputView) Multiline(enabled bool) *inputView {
+func (i *InputView) Multiline(enabled bool) *InputView {
 	i.multiline = enabled
 	return i
 }
@@ -308,20 +308,20 @@ func (i *inputView) Multiline(enabled bool) *inputView {
 // When content exceeds this height, the input becomes scrollable.
 // Overflow indicators (▲/▼) show when content exists above/below.
 // A value of 0 means unlimited height (default).
-func (i *inputView) MaxHeight(lines int) *inputView {
+func (i *InputView) MaxHeight(lines int) *InputView {
 	i.maxHeight = lines
 	return i
 }
 
 // Style sets the style for the input text.
-func (i *inputView) Style(s Style) *inputView {
+func (i *InputView) Style(s Style) *InputView {
 	i.style = &s
 	return i
 }
 
 // FocusStyle sets the style applied when this input is focused.
 // If not set, the normal style is used.
-func (i *inputView) FocusStyle(s Style) *inputView {
+func (i *InputView) FocusStyle(s Style) *InputView {
 	i.focusStyle = &s
 	return i
 }
@@ -352,7 +352,7 @@ func calcWrappedHeight(text string, width int) int {
 	return lines
 }
 
-func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
+func (i *InputView) size(maxWidth, maxHeight int) (int, int) {
 	w := i.width
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
@@ -377,7 +377,7 @@ func (i *inputView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (i *inputView) render(ctx *RenderContext) {
+func (i *InputView) render(ctx *RenderContext) {
 	w, h := ctx.Size()
 	if w == 0 || h == 0 {
 		return
@@ -392,16 +392,16 @@ func (i *inputView) render(ctx *RenderContext) {
 	i.reg = ctx.registries()
 	state := i.reg.inputs.Register(i.id, i.binding, inputBounds, i.placeholder, i.placeholderStyle, i.mask, i.pastePlaceholder, i.cursorBlink, i.multiline, i.maxHeight, i.onChange, i.onSubmit, fm)
 
-	// Apply focus-aware styling to the TextInput
+	// Apply focus-aware styling to the textInput
 	if isFocused && i.focusStyle != nil {
 		state.input.Style = *i.focusStyle
 	} else if i.style != nil {
 		state.input.Style = *i.style
 	}
 
-	// Update TextInput bounds
+	// Update textInput bounds
 	state.input.SetBounds(inputBounds)
 
-	// Draw the TextInput - pass the underlying frame
+	// Draw the textInput - pass the underlying frame
 	state.input.Draw(ctx.frame)
 }

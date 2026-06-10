@@ -106,15 +106,7 @@ func TestInlineApp_NewInlineApp(t *testing.T) {
 
 	t.Run("with config", func(t *testing.T) {
 		var buf bytes.Buffer
-		runner := NewInlineApp(InlineAppConfig{
-			Width:          100,
-			Output:         &buf,
-			FPS:            30,
-			MouseTracking:  true,
-			BracketedPaste: true,
-			PasteTabWidth:  4,
-			KittyKeyboard:  true,
-		})
+		runner := NewInlineApp(WithInlineWidth(100), WithInlineOutput(&buf), WithInlineFPS(30), WithInlineMouseTracking(true), WithInlineBracketedPaste(true), WithInlinePasteTabWidth(4), WithInlineKittyKeyboard(true))
 
 		assert.Equal(t, 100, runner.config.Width)
 		assert.Equal(t, 30, runner.config.FPS)
@@ -123,17 +115,6 @@ func TestInlineApp_NewInlineApp(t *testing.T) {
 		assert.Equal(t, 4, runner.config.PasteTabWidth)
 		assert.True(t, runner.config.KittyKeyboard)
 	})
-}
-
-// TestInlineApp_RequiresInlineApplication tests interface validation
-func TestInlineApp_RequiresInlineApplication(t *testing.T) {
-	runner := NewInlineApp()
-
-	// App without LiveView should fail
-	type noLiveView struct{}
-	err := runner.Run(&noLiveView{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "InlineApplication")
 }
 
 // TestInlineApp_Stop tests graceful shutdown
@@ -185,10 +166,7 @@ func TestInlineApp_PrintFormats(t *testing.T) {
 	// Full integration testing would require a real terminal
 
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  40,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(40))
 
 	// We can't fully test Print without running, but we can test the method exists
 	assert.NotNil(t, runner.Printf)
@@ -198,7 +176,7 @@ func TestInlineApp_PrintFormats(t *testing.T) {
 func TestInlineApp_RunInline(t *testing.T) {
 	// RunInline should return error for non-terminal stdin
 	app := &testInlineApp{liveText: "test"}
-	err := RunInline(app, nil)
+	err := RunInline(app)
 
 	// Should error because stdin is not a terminal in tests
 	assert.Error(t, err)
@@ -284,16 +262,13 @@ func TestInlineApp_ProcessEventWithQuitCheck(t *testing.T) {
 // TestInlineApp_LivePrinterIntegration tests LivePrinter output
 func TestInlineApp_LivePrinterIntegration(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  40,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(40))
 
 	app := &testInlineApp{liveText: "Hello, World!"}
 	runner.app = app
 
 	// Create a live printer manually for testing
-	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
 
 	// Render should call LiveView and update the live printer
 	runner.render()
@@ -308,7 +283,7 @@ func TestInlineApp_LivePrinterIntegration(t *testing.T) {
 
 // TestInlineApp_ConfigDefaults tests config default values
 func TestInlineApp_ConfigDefaults(t *testing.T) {
-	cfg := InlineAppConfig{}.withDefaults()
+	cfg := inlineConfig{}.withDefaults()
 
 	// Check defaults match the design doc
 	assert.Equal(t, 0, cfg.FPS)
@@ -321,14 +296,11 @@ func TestInlineApp_ConfigDefaults(t *testing.T) {
 // TestInlineApp_ConcurrentPrint tests thread safety of Print
 func TestInlineApp_ConcurrentPrint(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  40,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(40))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
 
 	// Multiple goroutines calling methods concurrently
 	var wg sync.WaitGroup
@@ -348,14 +320,11 @@ func TestInlineApp_ConcurrentPrint(t *testing.T) {
 // TestInlineApp_PrintRawModeLineEndings tests that Print uses raw mode line endings
 func TestInlineApp_PrintRawModeLineEndings(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  40,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(40))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 40, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(40), WithOutput(&buf))
 
 	// Print a multi-line view
 	runner.Print(Stack(
@@ -375,7 +344,7 @@ func TestWithRawMode(t *testing.T) {
 	t.Run("without raw mode uses LF", func(t *testing.T) {
 		var buf bytes.Buffer
 		view := Stack(Text("Line 1"), Text("Line 2"))
-		Fprint(&buf, view, PrintConfig{Width: 20})
+		Fprint(&buf, view, WithWidth(20))
 		output := buf.String()
 
 		// Should contain plain \n (or no special line ending if single line equivalent)
@@ -386,7 +355,7 @@ func TestWithRawMode(t *testing.T) {
 	t.Run("with raw mode uses CRLF", func(t *testing.T) {
 		var buf bytes.Buffer
 		view := Stack(Text("Line 1"), Text("Line 2"))
-		Fprint(&buf, view, PrintConfig{Width: 20, RawMode: true})
+		Fprint(&buf, view, WithWidth(20), WithRawMode(true))
 		output := buf.String()
 
 		// Should contain \r\n
@@ -412,14 +381,11 @@ func TestInlineApp_AlreadyRunningError(t *testing.T) {
 // TestInlineApp_ProcessResizeEvent tests ResizeEvent handling
 func TestInlineApp_ProcessResizeEvent(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Initial width should be 80
 	assert.Equal(t, 80, runner.config.Width)
@@ -457,14 +423,11 @@ func TestInlineApp_ResizeChannelInitialized(t *testing.T) {
 // TestInlineApp_MultipleResizeEvents tests handling multiple resize events
 func TestInlineApp_MultipleResizeEvents(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Process multiple resize events in sequence
 	sizes := []int{100, 120, 90, 150}
@@ -487,14 +450,11 @@ func TestInlineApp_MultipleResizeEvents(t *testing.T) {
 // TestInlineApp_ResizeEventWithConcurrentPrint tests resize during Print operations
 func TestInlineApp_ResizeEventWithConcurrentPrint(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	var wg sync.WaitGroup
 
@@ -529,14 +489,11 @@ func TestInlineApp_ResizeEventWithConcurrentPrint(t *testing.T) {
 // TestInlineApp_Printf tests formatted printing to scrollback
 func TestInlineApp_Printf(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "live content"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Test simple format string
 	runner.Printf("Hello, %s!", "World")
@@ -557,14 +514,11 @@ func TestInlineApp_Printf(t *testing.T) {
 // TestInlineApp_PrintfMultipleArgs tests Printf with various argument types
 func TestInlineApp_PrintfMultipleArgs(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Test with multiple different types
 	runner.Printf("String: %s, Int: %d, Bool: %t, Float: %.1f", "test", 123, true, 45.6)
@@ -579,14 +533,11 @@ func TestInlineApp_PrintfMultipleArgs(t *testing.T) {
 // TestInlineApp_PrintfNoArgs tests Printf with no format arguments
 func TestInlineApp_PrintfNoArgs(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Printf with just a string and no format specifiers
 	runner.Printf("Simple message")
@@ -597,14 +548,11 @@ func TestInlineApp_PrintfNoArgs(t *testing.T) {
 // TestInlineApp_ClearScrollback tests clearing terminal scrollback
 func TestInlineApp_ClearScrollback(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "live content"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Add some content first
 	runner.Printf("Some scrollback content")
@@ -629,14 +577,11 @@ func TestInlineApp_ClearScrollback(t *testing.T) {
 // TestInlineApp_ClearScrollbackMultipleTimes tests multiple clear operations
 func TestInlineApp_ClearScrollbackMultipleTimes(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "persistent live view"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Clear multiple times
 	for i := 0; i < 3; i++ {
@@ -653,14 +598,11 @@ func TestInlineApp_ClearScrollbackMultipleTimes(t *testing.T) {
 // TestInlineApp_ClearScrollbackThreadSafe tests concurrent ClearScrollback calls
 func TestInlineApp_ClearScrollbackThreadSafe(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	var wg sync.WaitGroup
 
@@ -690,14 +632,11 @@ func TestInlineApp_ClearScrollbackThreadSafe(t *testing.T) {
 // TestInlineApp_ProcessEvent_FocusSetEvent tests FocusSetEvent handling
 func TestInlineApp_ProcessEvent_FocusSetEvent(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register a focusable element
 	runner.focusMgr.Register(newTestFocusable("test-input", 10, 5))
@@ -718,14 +657,11 @@ func TestInlineApp_ProcessEvent_FocusSetEvent(t *testing.T) {
 // TestInlineApp_ProcessEvent_FocusNextEvent tests FocusNextEvent handling
 func TestInlineApp_ProcessEvent_FocusNextEvent(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register multiple focusable elements
 	runner.focusMgr.Register(newTestFocusable("input1", 10, 5))
@@ -751,14 +687,11 @@ func TestInlineApp_ProcessEvent_FocusNextEvent(t *testing.T) {
 // TestInlineApp_ProcessEvent_FocusPrevEvent tests FocusPrevEvent handling
 func TestInlineApp_ProcessEvent_FocusPrevEvent(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register multiple focusable elements
 	runner.focusMgr.Register(newTestFocusable("input1", 10, 5))
@@ -784,14 +717,11 @@ func TestInlineApp_ProcessEvent_FocusPrevEvent(t *testing.T) {
 // TestInlineApp_ProcessEvent_MouseClickFocusHandling tests mouse click focus routing
 func TestInlineApp_ProcessEvent_MouseClickFocusHandling(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register focusable elements at different positions
 	runner.focusMgr.Register(newTestFocusable("input1", 10, 5))
@@ -815,14 +745,11 @@ func TestInlineApp_ProcessEvent_MouseClickFocusHandling(t *testing.T) {
 // TestInlineApp_ProcessEvent_MouseNonClickIgnored tests that non-click mouse events don't affect focus
 func TestInlineApp_ProcessEvent_MouseNonClickIgnored(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register focusable elements
 	runner.focusMgr.Register(newTestFocusable("input1", 10, 5))
@@ -850,14 +777,11 @@ func TestInlineApp_ProcessEvent_MouseNonClickIgnored(t *testing.T) {
 // TestInlineApp_ProcessEvent_KeyEventRoutedToFocusManager tests key event routing
 func TestInlineApp_ProcessEvent_KeyEventRoutedToFocusManager(t *testing.T) {
 	var buf bytes.Buffer
-	runner := NewInlineApp(InlineAppConfig{
-		Output: &buf,
-		Width:  80,
-	})
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
 
 	app := &testInlineApp{liveText: "test"}
 	runner.app = app
-	runner.live = NewLivePrinter(PrintConfig{Width: 80, Output: &buf})
+	runner.live = NewLivePrinter(WithWidth(80), WithOutput(&buf))
 
 	// Register focusable elements
 	runner.focusMgr.Register(newTestFocusable("input1", 10, 5))

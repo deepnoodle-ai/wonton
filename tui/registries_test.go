@@ -86,9 +86,9 @@ func TestBuildViewsCapture(t *testing.T) {
 	binding := ""
 
 	view := buildViews(reg, func() View { return InputField(&binding) })
-	field, ok := view.(*inputFieldView)
+	field, ok := view.(*InputFieldView)
 	if !ok {
-		t.Fatalf("expected *inputFieldView, got %T", view)
+		t.Fatalf("expected *InputFieldView, got %T", view)
 	}
 	if field.reg != reg {
 		t.Error("constructor inside buildViews should capture the runtime's registries")

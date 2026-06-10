@@ -2,8 +2,8 @@ package tui
 
 import "image"
 
-// zStack layers children on top of each other
-type zStack struct {
+// ZStackView layers children on top of each other
+type ZStackView struct {
 	children   []View
 	alignment  Alignment
 	childSizes []image.Point
@@ -23,8 +23,8 @@ type zStack struct {
 //	    // Foreground content
 //	    Padding(2, Text("Overlay")),
 //	).Align(AlignCenter)
-func ZStack(children ...View) *zStack {
-	return &zStack{
+func ZStack(children ...View) *ZStackView {
+	return &ZStackView{
 		children:  children,
 		alignment: AlignCenter,
 	}
@@ -33,12 +33,12 @@ func ZStack(children ...View) *zStack {
 // Align sets the alignment of children within the stack.
 // Options: AlignLeft, AlignCenter (default), AlignRight.
 // This affects how smaller children are positioned relative to larger ones.
-func (z *zStack) Align(a Alignment) *zStack {
+func (z *ZStackView) Align(a Alignment) *ZStackView {
 	z.alignment = a
 	return z
 }
 
-func (z *zStack) size(maxWidth, maxHeight int) (int, int) {
+func (z *ZStackView) size(maxWidth, maxHeight int) (int, int) {
 	if len(z.children) == 0 {
 		return 0, 0
 	}
@@ -60,7 +60,7 @@ func (z *zStack) size(maxWidth, maxHeight int) (int, int) {
 	return maxW, maxH
 }
 
-func (z *zStack) render(ctx *RenderContext) {
+func (z *ZStackView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || len(z.children) == 0 {
 		return

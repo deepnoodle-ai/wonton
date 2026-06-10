@@ -12,14 +12,14 @@ import (
 // draws (and gets clipped) on the current line instead.
 func TestTextInput_OversizedClusterDoesNotBlankLeadingLine(t *testing.T) {
 	t.Run("countVisualLines width=1 cjk char", func(t *testing.T) {
-		ti := NewTextInput()
+		ti := newTextInput()
 		s := "中"
 		ti.SetValue(s)
 		assert.Equal(t, 1, ti.countVisualLines(1))
 	})
 
 	t.Run("countVisualLines width=2 three-em dash", func(t *testing.T) {
-		ti := NewTextInput()
+		ti := newTextInput()
 		s := "\u2E3B" // THREE-EM DASH, width 4
 		ti.SetValue(s)
 		// Width 2, cluster width 4: the cluster is too wide for the line but
@@ -29,7 +29,7 @@ func TestTextInput_OversizedClusterDoesNotBlankLeadingLine(t *testing.T) {
 	})
 
 	t.Run("countVisualLines ascii then oversized cjk", func(t *testing.T) {
-		ti := NewTextInput()
+		ti := newTextInput()
 		s := "ab中"
 		ti.SetValue(s)
 		// width=2: "ab" fills line 1 (x=2), CJK (width 2) wraps to line 2,
@@ -56,7 +56,7 @@ func TestTextInput_OversizedClusterDoesNotBlankLeadingLine(t *testing.T) {
 		// and a fitting cluster does not break across lines mid-cluster.
 		cluster := "👍🏽"
 
-		ti := NewTextInput()
+		ti := newTextInput()
 		ti.SetValue(cluster)
 		// width=1: the cluster (width 2) is oversized for the line but must
 		// count as exactly 1 visual line (drawn and clipped), exercising

@@ -143,7 +143,7 @@ func TestDivider_NotFlexible(t *testing.T) {
 	// and fill width via size(), not flex distribution.
 	// This matches CSS behavior where <hr> has flex-grow: 0.
 	_, ok := interface{}(d).(Flexible)
-	assert.False(t, ok, "dividerView should not implement Flexible")
+	assert.False(t, ok, "DividerView should not implement Flexible")
 }
 
 func TestDivider_Size_NoTitle(t *testing.T) {
@@ -189,7 +189,7 @@ func TestDivider_Render_SimpleLine(t *testing.T) {
 	var buf strings.Builder
 	d := Divider()
 
-	err := Print(d, PrintConfig{Width: 20, Output: &buf})
+	err := Print(d, WithWidth(20), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -201,7 +201,7 @@ func TestDivider_Render_CustomChar(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Char('═')
 
-	err := Print(d, PrintConfig{Width: 20, Output: &buf})
+	err := Print(d, WithWidth(20), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -212,7 +212,7 @@ func TestDivider_Render_WithTitle(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Title("Section")
 
-	err := Print(d, PrintConfig{Width: 40, Output: &buf})
+	err := Print(d, WithWidth(40), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -225,7 +225,7 @@ func TestDivider_Render_WithTitle_NarrowWidth(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Title("Very Long Title That Won't Fit")
 
-	err := Print(d, PrintConfig{Width: 10, Output: &buf})
+	err := Print(d, WithWidth(10), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -237,7 +237,7 @@ func TestDivider_Render_Colored(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Fg(ColorRed)
 
-	err := Print(d, PrintConfig{Width: 20, Output: &buf})
+	err := Print(d, WithWidth(20), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -249,7 +249,7 @@ func TestDivider_Render_Bold(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Bold()
 
-	err := Print(d, PrintConfig{Width: 20, Output: &buf})
+	err := Print(d, WithWidth(20), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -261,7 +261,7 @@ func TestDivider_Render_Dim(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Dim()
 
-	err := Print(d, PrintConfig{Width: 20, Output: &buf})
+	err := Print(d, WithWidth(20), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -273,7 +273,7 @@ func TestDivider_Render_ZeroWidth(t *testing.T) {
 	var buf strings.Builder
 	d := Divider()
 
-	err := Print(d, PrintConfig{Width: 0, Output: &buf})
+	err := Print(d, WithWidth(0), WithOutput(&buf))
 	assert.NoError(t, err)
 	// Should not panic with zero width
 }
@@ -288,7 +288,7 @@ func TestDivider_Render_InStack(t *testing.T) {
 		Text("Footer"),
 	)
 
-	err := Print(view, PrintConfig{Width: 40, Output: &buf})
+	err := Print(view, WithWidth(40), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -303,7 +303,7 @@ func TestDivider_Render_WithTitleAndCustomChar(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Char('═').Title("Section")
 
-	err := Print(d, PrintConfig{Width: 40, Output: &buf})
+	err := Print(d, WithWidth(40), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -316,7 +316,7 @@ func TestDivider_Render_Styled(t *testing.T) {
 	style := NewStyle().WithForeground(ColorMagenta).WithBold()
 	d := Divider().Style(style).Title("Styled")
 
-	err := Print(d, PrintConfig{Width: 40, Output: &buf})
+	err := Print(d, WithWidth(40), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -338,7 +338,7 @@ func TestDivider_MultipleStyles(t *testing.T) {
 		Divider().Fg(ColorBlue).Title("Blue"),
 	)
 
-	err := Print(view, PrintConfig{Width: 40, Output: &buf})
+	err := Print(view, WithWidth(40), WithOutput(&buf))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -352,7 +352,7 @@ func TestHeaderBar_NotFlexible(t *testing.T) {
 	// Header bars should NOT implement Flexible - they have fixed height (1 row)
 	// and fill width via size(), not flex distribution.
 	_, ok := interface{}(h).(Flexible)
-	assert.False(t, ok, "headerBarView should not implement Flexible")
+	assert.False(t, ok, "HeaderBarView should not implement Flexible")
 }
 
 func TestStatusBar_NotFlexible(t *testing.T) {
@@ -360,5 +360,5 @@ func TestStatusBar_NotFlexible(t *testing.T) {
 	// Status bars should NOT implement Flexible - they have fixed height (1 row)
 	// and fill width via size(), not flex distribution.
 	_, ok := interface{}(s).(Flexible)
-	assert.False(t, ok, "statusBar (headerBarView) should not implement Flexible")
+	assert.False(t, ok, "statusBar (HeaderBarView) should not implement Flexible")
 }

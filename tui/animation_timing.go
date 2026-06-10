@@ -61,20 +61,20 @@ func NewAnimation(duration uint64) *Animation {
 	}
 }
 
-// WithEasing sets the easing function for the animation.
-func (a *Animation) WithEasing(easing Easing) *Animation {
+// Easing sets the easing function for the animation.
+func (a *Animation) Easing(easing Easing) *Animation {
 	a.easing = easing
 	return a
 }
 
-// WithLoop enables looping for the animation.
-func (a *Animation) WithLoop(loop bool) *Animation {
+// Loop enables looping for the animation.
+func (a *Animation) Loop(loop bool) *Animation {
 	a.loop = loop
 	return a
 }
 
-// WithPingPong enables ping-pong looping (reverses direction on loop).
-func (a *Animation) WithPingPong(pingPong bool) *Animation {
+// PingPong enables ping-pong looping (reverses direction on loop).
+func (a *Animation) PingPong(pingPong bool) *Animation {
 	a.pingPong = pingPong
 	a.loop = true // ping-pong requires looping
 	return a
@@ -262,8 +262,8 @@ func animationGroupMin(values []float64) float64 {
 	return min
 }
 
-// WithCombiner sets how to combine values from multiple animations.
-func (ag *AnimationGroup) WithCombiner(combiner func(values []float64) float64) *AnimationGroup {
+// Combiner sets how to combine values from multiple animations.
+func (ag *AnimationGroup) Combiner(combiner func(values []float64) float64) *AnimationGroup {
 	ag.combiner = combiner
 	return ag
 }

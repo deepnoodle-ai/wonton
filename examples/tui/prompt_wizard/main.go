@@ -207,7 +207,7 @@ func main() {
 	app := &App{
 		answers: make([]string, 0, len(steps)),
 	}
-	app.runner = tui.NewInlineApp(tui.InlineAppConfig{Width: 60})
+	app.runner = tui.NewInlineApp(tui.WithInlineWidth(60))
 
 	fmt.Println()
 	fmt.Println("  ╭────────────────────────────────────────╮")

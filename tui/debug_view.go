@@ -33,8 +33,8 @@ type DebugInfo struct {
 	Custom map[string]string
 }
 
-// debugView displays debug information as an overlay.
-type debugView struct {
+// DebugView displays debug information as an overlay.
+type DebugView struct {
 	info     *DebugInfo
 	position DebugPosition
 	style    Style
@@ -70,8 +70,8 @@ const (
 //	    app.debug.Update(event) // Call this to track events
 //	    // ...
 //	}
-func Debug(info *DebugInfo) *debugView {
-	return &debugView{
+func Debug(info *DebugInfo) *DebugView {
+	return &DebugView{
 		info:     info,
 		position: DebugTopRight,
 		style:    NewStyle().WithForeground(ColorBrightWhite),
@@ -80,24 +80,24 @@ func Debug(info *DebugInfo) *debugView {
 }
 
 // Position sets where the debug overlay appears.
-func (d *debugView) Position(pos DebugPosition) *debugView {
+func (d *DebugView) Position(pos DebugPosition) *DebugView {
 	d.position = pos
 	return d
 }
 
 // Style sets the text style for the debug overlay.
-func (d *debugView) Style(s Style) *debugView {
+func (d *DebugView) Style(s Style) *DebugView {
 	d.style = s
 	return d
 }
 
 // BackgroundStyle sets the background style.
-func (d *debugView) BackgroundStyle(s Style) *debugView {
+func (d *DebugView) BackgroundStyle(s Style) *DebugView {
 	d.bgStyle = s
 	return d
 }
 
-func (d *debugView) size(maxWidth, maxHeight int) (int, int) {
+func (d *DebugView) size(maxWidth, maxHeight int) (int, int) {
 	// Debug overlay is sized to fit its content
 	// Typical content:
 	// FPS: 60.0
@@ -126,7 +126,7 @@ func (d *debugView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (d *debugView) buildLines() []string {
+func (d *DebugView) buildLines() []string {
 	if d.info == nil {
 		return []string{"[debug: no info]"}
 	}
@@ -158,7 +158,7 @@ func (d *debugView) buildLines() []string {
 	return lines
 }
 
-func (d *debugView) render(ctx *RenderContext) {
+func (d *DebugView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 || d.info == nil {
 		return

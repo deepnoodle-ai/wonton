@@ -4,8 +4,8 @@ import (
 	"fmt"
 )
 
-// textView displays styled text
-type textView struct {
+// TextView displays styled text
+type TextView struct {
 	content    string
 	style      Style
 	wrap       bool
@@ -20,92 +20,92 @@ type textView struct {
 // The text view supports:
 //   - Styling methods (Fg, Bg, Bold, Italic, etc.)
 //   - Semantic styling (Success, Error, Warning, Info, Muted, Hint)
-//   - Animation effects (Rainbow, Pulse, Typewriter, Glitch, etc.)
+//   - Animation effects via Animate (Rainbow, Pulse, Typewriter, Glitch, etc.)
 //
 // Example:
 //
 //	Text("Hello, %s!", userName).Fg(ColorGreen).Bold()
 //	Text("Error: %s", err).Error()
-//	Text("Loading...").Pulse(tui.NewRGB(0, 255, 0), 10)
-func Text(format string, args ...any) *textView {
+//	Text("Loading...").Animate(Pulse(tui.NewRGB(0, 255, 0), 10))
+func Text(format string, args ...any) *TextView {
 	content := format
 	if len(args) > 0 {
 		content = fmt.Sprintf(format, args...)
 	}
-	return &textView{
+	return &TextView{
 		content: content,
 		style:   NewStyle(),
 	}
 }
 
 // Fg sets the foreground color.
-func (t *textView) Fg(c Color) *textView {
+func (t *TextView) Fg(c Color) *TextView {
 	t.style = t.style.WithForeground(c)
 	return t
 }
 
 // FgRGB sets the foreground color using RGB values.
-func (t *textView) FgRGB(r, g, b uint8) *textView {
+func (t *TextView) FgRGB(r, g, b uint8) *TextView {
 	t.style = t.style.WithFgRGB(RGB{R: r, G: g, B: b})
 	return t
 }
 
 // Bg sets the background color.
-func (t *textView) Bg(c Color) *textView {
+func (t *TextView) Bg(c Color) *TextView {
 	t.style = t.style.WithBackground(c)
 	return t
 }
 
 // BgRGB sets the background color using RGB values.
-func (t *textView) BgRGB(r, g, b uint8) *textView {
+func (t *TextView) BgRGB(r, g, b uint8) *TextView {
 	t.style = t.style.WithBgRGB(RGB{R: r, G: g, B: b})
 	return t
 }
 
 // Bold enables bold text.
-func (t *textView) Bold() *textView {
+func (t *TextView) Bold() *TextView {
 	t.style = t.style.WithBold()
 	return t
 }
 
 // Italic enables italic text.
-func (t *textView) Italic() *textView {
+func (t *TextView) Italic() *TextView {
 	t.style = t.style.WithItalic()
 	return t
 }
 
 // Underline enables underlined text.
-func (t *textView) Underline() *textView {
+func (t *TextView) Underline() *TextView {
 	t.style = t.style.WithUnderline()
 	return t
 }
 
 // Strikethrough enables strikethrough text.
-func (t *textView) Strikethrough() *textView {
+func (t *TextView) Strikethrough() *TextView {
 	t.style = t.style.WithStrikethrough()
 	return t
 }
 
 // Dim enables dim/faint text.
-func (t *textView) Dim() *textView {
+func (t *TextView) Dim() *TextView {
 	t.style = t.style.WithDim()
 	return t
 }
 
 // Reverse enables reverse video (swap fg/bg).
-func (t *textView) Reverse() *textView {
+func (t *TextView) Reverse() *TextView {
 	t.style = t.style.WithReverse()
 	return t
 }
 
 // Blink enables blinking text.
-func (t *textView) Blink() *textView {
+func (t *TextView) Blink() *TextView {
 	t.style = t.style.WithBlink()
 	return t
 }
 
 // Style sets the complete style.
-func (t *textView) Style(s Style) *textView {
+func (t *TextView) Style(s Style) *TextView {
 	t.style = s
 	return t
 }
@@ -113,75 +113,75 @@ func (t *textView) Style(s Style) *textView {
 // Semantic styling methods for common text patterns
 
 // Success returns text styled for success messages (green, bold).
-func (t *textView) Success() *textView {
+func (t *TextView) Success() *TextView {
 	t.style = t.style.WithForeground(ColorGreen).WithBold()
 	return t
 }
 
 // Error returns text styled for error messages (red, bold).
-func (t *textView) Error() *textView {
+func (t *TextView) Error() *TextView {
 	t.style = t.style.WithForeground(ColorRed).WithBold()
 	return t
 }
 
 // Warning returns text styled for warning messages (yellow, bold).
-func (t *textView) Warning() *textView {
+func (t *TextView) Warning() *TextView {
 	t.style = t.style.WithForeground(ColorYellow).WithBold()
 	return t
 }
 
 // Info returns text styled for informational messages (cyan).
-func (t *textView) Info() *textView {
+func (t *TextView) Info() *TextView {
 	t.style = t.style.WithForeground(ColorCyan)
 	return t
 }
 
 // Muted returns text styled for secondary/muted content (dim, gray).
-func (t *textView) Muted() *textView {
+func (t *TextView) Muted() *TextView {
 	t.style = t.style.WithForeground(ColorBrightBlack).WithDim()
 	return t
 }
 
 // Hint returns text styled for hints and helper text (dim, italic).
-func (t *textView) Hint() *textView {
+func (t *TextView) Hint() *TextView {
 	t.style = t.style.WithForeground(ColorBrightBlack).WithDim().WithItalic()
 	return t
 }
 
 // Wrap enables text wrapping to fit within the available width.
 // By default, text is truncated instead of wrapped.
-func (t *textView) Wrap() *textView {
+func (t *TextView) Wrap() *TextView {
 	t.wrap = true
 	return t
 }
 
 // Truncate disables text wrapping, causing text to be truncated at the edge.
 // This is the default behavior; use Wrap() to enable wrapping instead.
-func (t *textView) Truncate() *textView {
+func (t *TextView) Truncate() *TextView {
 	t.wrap = false
 	return t
 }
 
 // Align sets the text alignment (left, center, or right).
-func (t *textView) Align(a Alignment) *textView {
+func (t *TextView) Align(a Alignment) *TextView {
 	t.align = a
 	return t
 }
 
 // Center is a shorthand for Align(AlignCenter).
-func (t *textView) Center() *textView {
+func (t *TextView) Center() *TextView {
 	t.align = AlignCenter
 	return t
 }
 
 // Right is a shorthand for Align(AlignRight).
-func (t *textView) Right() *textView {
+func (t *TextView) Right() *TextView {
 	t.align = AlignRight
 	return t
 }
 
 // FillBg fills the entire background with the background color.
-func (t *textView) FillBg() *textView {
+func (t *TextView) FillBg() *TextView {
 	t.fillBg = true
 	return t
 }
@@ -189,13 +189,13 @@ func (t *textView) FillBg() *textView {
 // Flex sets the flex factor for this view in flex layouts.
 // A higher value means this view gets more of the available space.
 // Set to 0 to make the view non-flexible (fixed size).
-func (t *textView) Flex(factor int) *textView {
+func (t *TextView) Flex(factor int) *TextView {
 	t.flexFactor = factor
 	return t
 }
 
 // flex implements the Flexible interface.
-func (t *textView) flex() int {
+func (t *TextView) flex() int {
 	return t.flexFactor
 }
 
@@ -213,15 +213,15 @@ func (t *textView) flex() int {
 //
 //	Text("Reversed rainbow").Animate(Rainbow(3).Reverse())
 //	Text("Bright pulse").Animate(Pulse(green, 10).Brightness(0.5, 1.0))
-func (t *textView) Animate(animation TextAnimation) *animatedTextView {
-	return &animatedTextView{
+func (t *TextView) Animate(animation TextAnimation) *AnimatedTextView {
+	return &AnimatedTextView{
 		text:      t.content,
 		animation: animation,
 		style:     t.style,
 	}
 }
 
-func (t *textView) render(ctx *RenderContext) {
+func (t *TextView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -261,7 +261,7 @@ func (t *textView) render(ctx *RenderContext) {
 	}
 }
 
-func (t *textView) size(maxWidth, maxHeight int) (int, int) {
+func (t *TextView) size(maxWidth, maxHeight int) (int, int) {
 	w, h := MeasureText(t.content)
 
 	// For wrapped text, expand to fill available width
@@ -286,7 +286,7 @@ func (t *textView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-// splitLinesSimple splits text on newlines (used by textView)
+// splitLinesSimple splits text on newlines (used by TextView)
 func splitLinesSimple(s string) []string {
 	if s == "" {
 		return []string{}

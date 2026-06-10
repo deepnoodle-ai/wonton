@@ -281,9 +281,9 @@ func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 				for j, r := range runes {
 					switch anim := item.Animation.(type) {
 					case *RainbowAnimation:
-						colors := SmoothRainbow(anim.Length)
-						offset := int(asb.currentFrame) / anim.Speed
-						if anim.Reversed {
+						colors := SmoothRainbow(anim.length)
+						offset := int(asb.currentFrame) / anim.speed
+						if anim.reversed {
 							offset = -offset
 						}
 						rainbowPos := (j + offset) % len(colors)
