@@ -24,8 +24,12 @@ func TestSession_Resize_ChildSeesNewSize(t *testing.T) {
 	// Shell installs the SIGWINCH trap, prints READY, then loops waiting for
 	// the signal. The READY sentinel lets the test know the trap is in place
 	// before calling Resize — no timing dependency on shell startup latency.
+	//
+	// The trap only exits when it sees the expected new size (42x132). On Linux,
+	// a spurious SIGWINCH is sometimes delivered during pty initialization with
+	// the initial dimensions; the loop absorbs those and keeps waiting.
 	script := `
-trap 'set -- $(stty size); echo "WINCH:${1}x${2}"; exit 0' WINCH
+trap 'set -- $(stty size); echo "WINCH:${1}x${2}"; [ "${1}x${2}" = "42x132" ] && exit 0' WINCH
 echo "READY"
 i=0
 while [ $i -lt 40 ]; do
