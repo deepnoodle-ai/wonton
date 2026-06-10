@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -126,6 +127,7 @@ type InlineAppConfig struct {
 	BracketedPaste bool      // Enable bracketed paste mode.
 	PasteTabWidth  int       // 0 = preserve tabs. Convert tabs to N spaces in pastes.
 	KittyKeyboard  bool      // Enable Kitty keyboard protocol.
+	BackslashEnter bool      // Synthesize Shift+Enter from backslash+Enter (delays typed backslashes; see WithBackslashEnter).
 }
 
 func (c InlineAppConfig) withDefaults() InlineAppConfig {
@@ -162,15 +164,27 @@ type InlineApp struct {
 	config InlineAppConfig
 
 	// Runtime state
-	app    any
-	events chan Event
-	cmds   chan Cmd
-	done   chan struct{}
-	ticker *time.Ticker
-	frame  uint64
+	app      any
+	events   chan Event
+	cmds     chan Cmd
+	done     chan struct{}
+	doneOnce sync.Once
+	ticker   *time.Ticker
+	frame    uint64
+
+	// Panic capture: a panic in any runtime-managed goroutine is recorded here
+	// so Run can restore the terminal before re-panicking with the original
+	// stack trace.
+	panicMu    sync.Mutex
+	panicVal   any
+	panicStack []byte
+	runExited  bool
 
 	// Focus management
 	focusMgr *FocusManager
+
+	// Per-app view state stores (buttons, inputs, clickable regions, ...)
+	reg *registries
 
 	// Rendering
 	live   *LivePrinter
@@ -220,6 +234,9 @@ func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
 		}
 	}
 
+	reg := newRegistries()
+	live.reg = reg
+
 	return &InlineApp{
 		config:   cfg,
 		events:   make(chan Event, 100),
@@ -228,6 +245,7 @@ func NewInlineApp(cfgs ...InlineAppConfig) *InlineApp {
 		output:   cfg.Output,
 		live:     live,
 		focusMgr: NewFocusManager(),
+		reg:      reg,
 	}
 }
 
@@ -319,24 +337,28 @@ func (r *InlineApp) Run(app any) error {
 	// Goroutine 1: Main event loop
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.eventLoop()
 	}()
 
 	// Goroutine 2: Input reader
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.inputReader()
 	}()
 
 	// Goroutine 3: Command executor
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.commandExecutor()
 	}()
 
 	// Goroutine 4: Resize listener
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.resizeListener()
 	}()
 
@@ -355,7 +377,51 @@ func (r *InlineApp) Run(app any) error {
 	r.running = false
 	r.mu.Unlock()
 
+	// If a goroutine panicked, re-panic now that the terminal is restored.
+	// The original stack is embedded in the message since the panic crossed
+	// goroutines.
+	r.panicMu.Lock()
+	pv, ps := r.panicVal, r.panicStack
+	r.runExited = true
+	r.panicMu.Unlock()
+	if pv != nil {
+		panic(fmt.Sprintf("tui: application panic: %v\n\noriginal stack:\n%s", pv, ps))
+	}
+
 	return nil
+}
+
+// closeDone signals shutdown to all goroutines. Safe to call multiple times
+// (quit path and panic path can both reach it).
+func (r *InlineApp) closeDone() {
+	r.doneOnce.Do(func() { close(r.done) })
+}
+
+// capturePanic recovers a panic from a runtime-managed goroutine, records it,
+// and triggers shutdown. Run re-panics with the original stack after the
+// terminal has been restored, so the trace is readable instead of being
+// printed to a raw-mode terminal.
+//
+// Must be invoked via defer.
+func (r *InlineApp) capturePanic() {
+	rec := recover()
+	if rec == nil {
+		return
+	}
+	stack := debug.Stack()
+	r.panicMu.Lock()
+	if r.runExited {
+		// Run has already returned; nobody will re-deliver this panic.
+		// Crash here to preserve fail-fast semantics (terminal is restored).
+		r.panicMu.Unlock()
+		panic(rec)
+	}
+	if r.panicVal == nil {
+		r.panicVal = rec
+		r.panicStack = stack
+	}
+	r.panicMu.Unlock()
+	r.closeDone()
 }
 
 // cleanup restores terminal state
@@ -395,7 +461,7 @@ func (r *InlineApp) eventLoop() {
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			if r.processEventWithQuitCheck(event) {
-				close(r.done)
+				r.closeDone()
 				return
 			}
 
@@ -405,7 +471,7 @@ func (r *InlineApp) eventLoop() {
 				select {
 				case event := <-r.events:
 					if r.processEventWithQuitCheck(event) {
-						close(r.done)
+						r.closeDone()
 						return
 					}
 				default:
@@ -490,10 +556,16 @@ func (r *InlineApp) processEvent(event Event) {
 	case MouseEvent:
 		if e.Type == MouseClick {
 			r.focusMgr.HandleClick(e.X, e.Y)
-			interactiveRegistry.HandleClick(e.X, e.Y)
+			r.reg.interactive.HandleClick(e.X, e.Y)
 		}
 	case KeyEvent:
-		r.focusMgr.HandleKey(e)
+		// A key consumed by the focused element is NOT delivered to the app,
+		// so typing into a focused input can't trigger app shortcuts.
+		// Ctrl+C is always delivered so apps can implement a reliable quit
+		// shortcut regardless of focus.
+		if r.focusMgr.HandleKey(e) && !isInterruptKey(e) {
+			return
+		}
 	}
 
 	// Call user's event handler
@@ -522,18 +594,17 @@ func (r *InlineApp) render() {
 	if app, ok := r.app.(InlineApplication); ok {
 		// Clear registries before render
 		r.focusMgr.Clear()
-		buttonRegistry.Clear()
-		interactiveRegistry.Clear()
-		inputRegistry.Clear()
-		textAreaRegistry.Clear()
+		r.reg.clearForRender()
 
-		view := app.LiveView()
+		// Build the view tree with this app's registries as the capture
+		// target for stateful view constructors (InputField, TextArea, ...).
+		view := buildViews(r.reg, app.LiveView)
 
 		// Render the view using LivePrinter with focus manager
 		r.live.UpdateWithFocus(view, r.focusMgr)
 
 		// Prune TextArea state for IDs that weren't rendered
-		textAreaRegistry.Prune()
+		r.reg.textAreas.Prune()
 	}
 }
 
@@ -548,6 +619,7 @@ func (r *InlineApp) inputReader() {
 
 	// Start a nested goroutine that continuously reads from stdin
 	go func() {
+		defer r.capturePanic()
 		for {
 			event, err := decoder.ReadEvent()
 			if err != nil {
@@ -573,8 +645,9 @@ func (r *InlineApp) inputReader() {
 		case <-r.done:
 			return
 		case event := <-inputChan:
-			// Check for backslash key - might be start of backslash+Enter sequence
-			if keyEvent, ok := event.(KeyEvent); ok && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
+			// Check for backslash key - might be start of backslash+Enter
+			// sequence (opt-in via InlineAppConfig.BackslashEnter)
+			if keyEvent, ok := event.(KeyEvent); ok && r.config.BackslashEnter && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
 				select {
 				case <-r.done:
 					return
@@ -692,6 +765,7 @@ func (r *InlineApp) commandExecutor() {
 		select {
 		case cmd := <-r.cmds:
 			go func(c Cmd) {
+				defer r.capturePanic()
 				event := c()
 				select {
 				case r.events <- event:
@@ -737,7 +811,7 @@ func (r *InlineApp) Print(view View) {
 
 	// Re-render live region (skip its internal sync since we're already in one)
 	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdateNoSync(app.LiveView())
+		r.live.UpdateNoSync(buildViews(r.reg, app.LiveView))
 	}
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
@@ -768,7 +842,7 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	r.output.Write(data)
 
 	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdateNoSync(app.LiveView())
+		r.live.UpdateNoSync(buildViews(r.reg, app.LiveView))
 	}
 }
 
@@ -809,7 +883,7 @@ func (r *InlineApp) ClearScrollback() {
 
 	// Re-render live region
 	if app, ok := r.app.(InlineApplication); ok {
-		r.live.Update(app.LiveView())
+		r.live.Update(buildViews(r.reg, app.LiveView))
 	}
 }
 

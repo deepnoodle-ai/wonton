@@ -313,7 +313,10 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 }
 
 func main() {
-	if err := tui.Run(&ClaudeStyleDemo{}, tui.WithMouseTracking(true)); err != nil {
+	if err := tui.Run(&ClaudeStyleDemo{},
+		tui.WithMouseTracking(true),
+		tui.WithBackslashEnter(true), // \+Enter inserts a newline (Shift+Enter fallback)
+	); err != nil {
 		log.Fatal(err)
 	}
 }

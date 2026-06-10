@@ -5,12 +5,9 @@ import (
 	"image"
 )
 
-// promptChoiceRegistry manages text input state for prompt choices.
-// This registry persists TextInput widgets across renders, maintaining
-// cursor position and input state.
-var promptChoiceRegistry = &promptChoiceRegistryImpl{
-	inputs: make(map[string]*TextInput),
-}
+// promptChoiceRegistryImpl manages text input state for prompt choices.
+// It persists TextInput widgets across renders, maintaining cursor position
+// and input state. Owned per-runtime via the registries struct.
 
 type promptChoiceRegistryImpl struct {
 	inputs map[string]*TextInput
@@ -65,6 +62,7 @@ func (r *promptChoiceRegistryImpl) Get(id string) *TextInput {
 // The component implements the Focusable interface and integrates with
 // the FocusManager for Tab navigation between multiple focusable elements.
 type promptChoiceView struct {
+	reg *registries // captured at construction; refreshed from ctx during render
 	id          string
 	selected    *int     // Currently selected option index
 	inputText   *string  // Text for the input option (if any)
@@ -155,6 +153,7 @@ type promptChoiceView struct {
 func PromptChoice(selected *int, inputText *string) *promptChoiceView {
 	id := fmt.Sprintf("prompt_choice_%p", selected)
 	return &promptChoiceView{
+		reg: capturedRegistries(),
 		id:          id,
 		selected:    selected,
 		inputText:   inputText,
@@ -409,7 +408,7 @@ func (p *promptChoiceView) IsFocused() bool {
 func (p *promptChoiceView) SetFocused(focused bool) {
 	p.focused = focused
 	// Update TextInput focus state
-	if ti := promptChoiceRegistry.Get(p.id); ti != nil {
+	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(focused && p.isInputSelected())
 	}
 }
@@ -474,7 +473,7 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 
 	// If input option is selected, route character input to TextInput
 	if p.isInputSelected() {
-		ti := promptChoiceRegistry.Get(p.id)
+		ti := p.reg.promptChoices.Get(p.id)
 		if ti != nil {
 			// Handle paste events
 			if event.Paste != "" {
@@ -499,7 +498,7 @@ func (p *promptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 
 // updateInputFocus updates the TextInput focus based on current selection
 func (p *promptChoiceView) updateInputFocus() {
-	if ti := promptChoiceRegistry.Get(p.id); ti != nil {
+	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())
 	}
 }
@@ -547,6 +546,7 @@ func (p *promptChoiceView) render(ctx *RenderContext) {
 	if width == 0 || height == 0 {
 		return
 	}
+	p.reg = ctx.registries()
 
 	// Register with focus manager
 	p.bounds = ctx.AbsoluteBounds()
@@ -560,7 +560,7 @@ func (p *promptChoiceView) render(ctx *RenderContext) {
 	}
 
 	// Sync input text to TextInput
-	ti := promptChoiceRegistry.Get(p.id)
+	ti := p.reg.promptChoices.Get(p.id)
 	if p.inputText != nil && ti.Value() != *p.inputText {
 		ti.SetValue(*p.inputText)
 	}

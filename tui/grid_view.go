@@ -139,7 +139,7 @@ func (g *gridView) render(ctx *RenderContext) {
 					bounds.Min.Y+cellY+g.cellHeight,
 				)
 				c, r := col, row // capture for closure
-				interactiveRegistry.RegisterButton(clickBounds, func() {
+				ctx.registries().interactive.RegisterButton(clickBounds, func() {
 					g.onClick(c, r)
 				})
 			}
@@ -252,7 +252,7 @@ func (g *colorGridView) render(ctx *RenderContext) {
 				bounds.Min.Y+cellY+g.cellHeight,
 			)
 			c, r := col, row // capture for closure
-			interactiveRegistry.RegisterButton(clickBounds, func() {
+			ctx.registries().interactive.RegisterButton(clickBounds, func() {
 				if r < len(g.state) && c < len(g.state[r]) {
 					g.state[r][c] = (g.state[r][c] + 1) % len(g.colors)
 					if g.onStateChange != nil {

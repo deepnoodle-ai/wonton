@@ -9,6 +9,7 @@ import (
 // inputFieldView is a high-level component combining a label, input, and optional border
 // with automatic focus-aware styling.
 type inputFieldView struct {
+	reg *registries // captured at construction; refreshed from ctx during render
 	// Input configuration
 	id               string
 	binding          *string
@@ -61,6 +62,7 @@ func InputField(binding *string) *inputFieldView {
 		id = generateInputID(binding)
 	}
 	return &inputFieldView{
+		reg:        capturedRegistries(),
 		id:         id,
 		binding:    binding,
 		width:      0, // 0 means fill available width
@@ -264,7 +266,7 @@ func (f *inputFieldView) size(maxWidth, maxHeight int) (int, int) {
 	h := 1
 	if f.binding != nil && *f.binding != "" && innerW > 0 {
 		displayText := *f.binding
-		if state, exists := inputRegistry.inputs[f.id]; exists {
+		if state, exists := f.reg.inputs.lookup(f.id); exists {
 			displayText = state.input.DisplayText()
 		}
 		h = calcWrappedHeight(displayText, innerW)
@@ -545,7 +547,8 @@ func (f *inputFieldView) renderHorizontalBarInput(ctx *RenderContext, x, w, h in
 func (f *inputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
-	state := inputRegistry.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit, ctx.FocusManager())
+	f.reg = ctx.registries()
+	state := f.reg.inputs.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit, ctx.FocusManager())
 
 	// Apply cursor customizations if set
 	if f.cursorShape != InputCursorBlock {

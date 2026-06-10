@@ -103,33 +103,9 @@ func TestRuntimeSendEvent(t *testing.T) {
 	assert.Equal(t, 3, model.counter.Load())
 }
 
-// TestRuntimePanic tests that the runtime handles panics
-// Currently, panics in HandleEvent will crash the runtime (expected behavior)
-// This test documents this behavior and can be updated when panic recovery is added
-func TestRuntimePanic(t *testing.T) {
-	t.Skip("Panics in HandleEvent currently crash the runtime - this is expected behavior")
-
-	// When panic handling is implemented, this test can be enabled:
-	// var buf bytes.Buffer
-	// terminal := NewTestTerminal(80, 24, &buf)
-	//
-	// model := &testRuntimeModel{}
-	// runtime := NewRuntime(terminal, model, 30)
-	//
-	// // Send a panic event
-	// go func() {
-	// 	for {
-	// 		time.Sleep(1 * time.Millisecond)
-	// 		if model.executed.Load() != nil {
-	// 			runtime.SendEvent(panicEvent{})
-	// 			return
-	// 		}
-	// 	}
-	// }()
-	//
-	// err := runtime.Run()
-	// assert.Error(t, err, "should return error on panic")
-}
+// Panic recovery behavior is covered in runtime_panic_test.go: panics in
+// View, HandleEvent, and Cmd goroutines shut down the runtime, restore the
+// terminal, and re-panic from Run with the original stack.
 
 // TestRuntimeMultipleQuits tests that multiple quit commands don't cause issues
 func TestRuntimeMultipleQuits(t *testing.T) {

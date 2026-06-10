@@ -141,6 +141,6 @@ func (s *styledButtonView) render(ctx *RenderContext) {
 
 	// Register click region
 	if s.callback != nil {
-		interactiveRegistry.RegisterButton(ctx.AbsoluteBounds(), s.callback)
+		ctx.registries().interactive.RegisterButton(ctx.AbsoluteBounds(), s.callback)
 	}
 }

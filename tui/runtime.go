@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -26,20 +27,33 @@ type Runtime struct {
 	events   chan Event
 	cmds     chan Cmd
 	done     chan struct{}
+	doneOnce sync.Once
 	ticker   *time.Ticker
 	fps      int
 	frame    uint64 // Frame counter for TickEvents
 
+	// Panic capture: a panic in any runtime-managed goroutine (event loop,
+	// input reader, command goroutines) is recorded here so Run can restore
+	// the terminal before re-panicking with the original stack trace.
+	panicMu    sync.Mutex
+	panicVal   any
+	panicStack []byte
+	runExited  bool
+
 	// Focus management
 	focusMgr *FocusManager
+
+	// Per-runtime view state stores (buttons, inputs, clickable regions, ...)
+	reg *registries
 
 	mu          sync.Mutex
 	running     bool
 	resizeUnsub func() // Unsubscribe function for resize callback
 
 	// Input configuration
-	inputSource   InputSource // Source of input events (defaults to stdin decoder)
-	pasteTabWidth int         // 0 = preserve tabs, >0 = convert to this many spaces
+	inputSource    InputSource // Source of input events (defaults to stdin decoder)
+	pasteTabWidth  int         // 0 = preserve tabs, >0 = convert to this many spaces
+	backslashEnter bool        // synthesize Shift+Enter from backslash+Enter (opt-in)
 
 	// Mouse click synthesis state
 	mousePressX      int         // X position of last mouse press
@@ -71,6 +85,7 @@ func NewRuntime(terminal *Terminal, app any, fps int) *Runtime {
 		frame:         0,
 		pasteTabWidth: 0, // Default: preserve tabs
 		focusMgr:      NewFocusManager(),
+		reg:           newRegistries(),
 	}
 }
 
@@ -80,6 +95,20 @@ func NewRuntime(terminal *Terminal, app any, fps int) *Runtime {
 // Must be called before Run().
 func (r *Runtime) SetPasteTabWidth(width int) {
 	r.pasteTabWidth = width
+}
+
+// SetBackslashEnter enables synthesizing Shift+Enter from a backslash
+// immediately followed by Enter. This is a fallback for terminals without
+// the Kitty keyboard protocol, useful for chat-style apps where Shift+Enter
+// inserts a newline.
+//
+// Disabled by default: when enabled, every typed backslash is delayed
+// briefly while the runtime waits to see if Enter follows, and a backslash
+// followed quickly by Enter is rewritten to Shift+Enter (losing the
+// backslash). Only enable this for applications that need the Shift+Enter
+// affordance. Must be called before Run().
+func (r *Runtime) SetBackslashEnter(enabled bool) {
+	r.backslashEnter = enabled
 }
 
 // Run starts the runtime's event loop and blocks until the application quits.
@@ -159,18 +188,21 @@ func (r *Runtime) Run() error {
 	// Goroutine 1: Main event loop
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.eventLoop()
 	}()
 
 	// Goroutine 2: Input reader
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.inputReader()
 	}()
 
 	// Goroutine 3: Command executor
 	go func() {
 		defer wg.Done()
+		defer r.capturePanic()
 		r.commandExecutor()
 	}()
 
@@ -197,7 +229,52 @@ func (r *Runtime) Run() error {
 	r.running = false
 	r.mu.Unlock()
 
+	// If a runtime goroutine panicked, re-panic now that the terminal has been
+	// restored (and run.go's deferred cleanup will complete during unwinding).
+	// The original stack is embedded in the message since the panic crossed
+	// goroutines.
+	r.panicMu.Lock()
+	pv, ps := r.panicVal, r.panicStack
+	r.runExited = true
+	r.panicMu.Unlock()
+	if pv != nil {
+		panic(fmt.Sprintf("tui: application panic: %v\n\noriginal stack:\n%s", pv, ps))
+	}
+
 	return nil
+}
+
+// closeDone signals shutdown to all runtime goroutines. Safe to call multiple
+// times (quit path and panic path can both reach it).
+func (r *Runtime) closeDone() {
+	r.doneOnce.Do(func() { close(r.done) })
+}
+
+// capturePanic recovers a panic from a runtime-managed goroutine, records it,
+// and triggers shutdown. Run re-panics with the original stack after the
+// terminal has been restored, so the trace is readable instead of being
+// printed to a raw-mode alternate screen.
+//
+// Must be invoked via defer.
+func (r *Runtime) capturePanic() {
+	rec := recover()
+	if rec == nil {
+		return
+	}
+	stack := debug.Stack()
+	r.panicMu.Lock()
+	if r.runExited {
+		// Run has already returned; nobody will re-deliver this panic.
+		// Crash here to preserve fail-fast semantics (terminal is restored).
+		r.panicMu.Unlock()
+		panic(rec)
+	}
+	if r.panicVal == nil {
+		r.panicVal = rec
+		r.panicStack = stack
+	}
+	r.panicMu.Unlock()
+	r.closeDone()
 }
 
 // Stop gracefully stops the runtime by sending a QuitEvent.
@@ -219,7 +296,7 @@ func (r *Runtime) eventLoop() {
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			if r.processEventWithQuitCheck(event) {
-				close(r.done)
+				r.closeDone()
 				return
 			}
 
@@ -230,7 +307,7 @@ func (r *Runtime) eventLoop() {
 				select {
 				case event := <-r.events:
 					if r.processEventWithQuitCheck(event) {
-						close(r.done)
+						r.closeDone()
 						return
 					}
 				default:
@@ -302,12 +379,16 @@ func (r *Runtime) processEvent(event Event) {
 			// Check if the click hit a focusable element
 			r.focusMgr.HandleClick(e.X, e.Y)
 			// Check if the click hit a non-focusable interactive region
-			interactiveRegistry.HandleClick(e.X, e.Y)
+			r.reg.interactive.HandleClick(e.X, e.Y)
 		}
 	case KeyEvent:
-		// Route key events to focused element (handles Tab/Shift+Tab navigation)
-		if r.focusMgr.HandleKey(e) {
-			// Focused element consumed the event, but still pass to app
+		// Route key events to the focused element first (this also handles
+		// Tab/Shift+Tab navigation). A consumed key is NOT delivered to the
+		// app, so typing into a focused input can't trigger app shortcuts
+		// like 'q' to quit. Ctrl+C is always delivered so apps can implement
+		// a reliable quit shortcut regardless of focus.
+		if r.focusMgr.HandleKey(e) && !isInterruptKey(e) {
+			return
 		}
 	}
 
@@ -336,26 +417,29 @@ func (r *Runtime) render() {
 		// Terminal not ready, skip this frame
 		return
 	}
+	// Deferred so a panic in View()/render releases the terminal's frame lock
+	// (BeginFrame holds it until EndFrame); otherwise cleanup would deadlock.
+	// Flush to screen (diffs and sends only dirty regions).
+	defer r.terminal.EndFrame(frame)
 
 	if app, ok := r.app.(Application); ok {
 		// Application interface - use declarative View() rendering
 		// Clear registries before render (they get repopulated during render)
 		r.focusMgr.Clear()
-		buttonRegistry.Clear()
-		interactiveRegistry.Clear()
-		inputRegistry.Clear()
-		textAreaRegistry.Clear()
+		r.reg.clearForRender()
 
 		// Clear the frame before rendering. This ensures that when views shrink,
 		// old content outside their new bounds is erased. The double-buffering
 		// system ensures only actual changes are sent to the terminal.
 		frame.Fill(' ', NewStyle())
 
-		view := app.View()
+		// Build the view tree with this runtime's registries as the capture
+		// target for stateful view constructors (InputField, TextArea, ...).
+		view := buildViews(r.reg, app.View)
 		width, height := frame.Size()
 
 		// Create render context with frame counter and focus manager for animations
-		ctx := NewRenderContext(frame, r.frame).WithFocusManager(r.focusMgr)
+		ctx := NewRenderContext(frame, r.frame).WithFocusManager(r.focusMgr).withRegistries(r.reg)
 
 		// Measure phase (populates cached child sizes)
 		view.size(width, height)
@@ -363,11 +447,8 @@ func (r *Runtime) render() {
 		view.render(ctx)
 
 		// Prune TextArea state for IDs that weren't rendered this frame
-		textAreaRegistry.Prune()
+		r.reg.textAreas.Prune()
 	}
-
-	// Flush to screen (diffs and sends only dirty regions)
-	r.terminal.EndFrame(frame)
 }
 
 // SetInputSource sets the input source for the runtime.
@@ -415,6 +496,7 @@ func (r *Runtime) inputReader() {
 
 	// Start a nested goroutine that continuously reads from source
 	go func() {
+		defer r.capturePanic()
 		for {
 			event, err := source.ReadEvent()
 			if err != nil {
@@ -446,8 +528,10 @@ func (r *Runtime) inputReader() {
 			return
 		case event := <-inputChan:
 			// Check for backslash key - might be start of backslash+Enter sequence
-			// This provides a terminal-agnostic way to input Shift+Enter
-			if keyEvent, ok := event.(KeyEvent); ok && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
+			// This provides a terminal-agnostic way to input Shift+Enter.
+			// Opt-in via WithBackslashEnter: intercepting backslashes delays
+			// them and can rewrite legitimate input (backslash then Enter).
+			if keyEvent, ok := event.(KeyEvent); ok && r.backslashEnter && keyEvent.Rune == '\\' && keyEvent.Key == KeyUnknown {
 				// Wait briefly for Enter to follow
 				select {
 				case <-r.done:
@@ -589,6 +673,7 @@ func (r *Runtime) commandExecutor() {
 		case cmd := <-r.cmds:
 			// Execute command in a new goroutine
 			go func(c Cmd) {
+				defer r.capturePanic()
 				// Execute the command (may take time)
 				event := c()
 
