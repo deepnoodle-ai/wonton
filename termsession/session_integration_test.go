@@ -119,7 +119,11 @@ func TestSession_Integration_Record(t *testing.T) {
 	filename := filepath.Join(dir, "test.cast")
 
 	s, err := NewSession(SessionOptions{
-		Command: []string{"echo", "recorded output"},
+		// The trailing sleep keeps the PTY slave open long enough for
+		// copyOutput to drain the master; if the child exits immediately
+		// after writing, the kernel (macOS in particular) may discard
+		// unread PTY output when the slave side closes.
+		Command: []string{"sh", "-c", "echo recorded output; sleep 0.2"},
 	})
 	assert.NoError(t, err)
 	defer s.Close()
@@ -162,7 +166,8 @@ func TestSession_Integration_RecordCompressed(t *testing.T) {
 	filename := filepath.Join(dir, "test.cast.gz")
 
 	s, err := NewSession(SessionOptions{
-		Command: []string{"echo", "compressed recording"},
+		// Trailing sleep: see TestSession_Integration_Record.
+		Command: []string{"sh", "-c", "echo compressed recording; sleep 0.2"},
 	})
 	assert.NoError(t, err)
 	defer s.Close()
