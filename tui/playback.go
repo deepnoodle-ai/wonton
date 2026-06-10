@@ -355,7 +355,11 @@ func (p *PlaybackController) GetHeader() RecordingHeader {
 func (p *PlaybackController) GetDuration() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+	return p.durationLocked()
+}
 
+// durationLocked returns the recording duration. Caller must hold p.mu.
+func (p *PlaybackController) durationLocked() float64 {
 	if len(p.events) == 0 {
 		return 0
 	}
@@ -366,9 +370,13 @@ func (p *PlaybackController) GetDuration() float64 {
 func (p *PlaybackController) GetPosition() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+	return p.positionLocked()
+}
 
+// positionLocked returns the current position. Caller must hold p.mu.
+func (p *PlaybackController) positionLocked() float64 {
 	if p.currentIndex >= len(p.events) {
-		return p.GetDuration()
+		return p.durationLocked()
 	}
 	if p.currentIndex == 0 {
 		return 0
@@ -378,9 +386,12 @@ func (p *PlaybackController) GetPosition() float64 {
 
 // GetProgress returns playback progress as a value between 0.0 and 1.0
 func (p *PlaybackController) GetProgress() float64 {
-	duration := p.GetDuration()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	duration := p.durationLocked()
 	if duration == 0 {
 		return 0
 	}
-	return p.GetPosition() / duration
+	return p.positionLocked() / duration
 }

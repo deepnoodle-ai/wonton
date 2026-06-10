@@ -150,11 +150,30 @@ func (fl *FlexLayout) Layout(containerBounds image.Rectangle, children []Composa
 		}
 	}
 
+	// Compute main/cross sizes from preferred sizes and margins.
+	// This must happen before wrapping decisions, which depend on mainSize.
+	fl.computeBaseSizes(items)
+
 	// Layout items (with or without wrapping)
 	if fl.wrap == FlexWrapOn {
 		fl.layoutWithWrap(containerBounds, items, containerMain, containerCross)
 	} else {
 		fl.layoutSingleLine(containerBounds, items, containerMain, containerCross)
+	}
+}
+
+// computeBaseSizes initializes each item's mainSize and crossSize from its
+// preferred size plus margins.
+func (fl *FlexLayout) computeBaseSizes(items []flexItem) {
+	for i := range items {
+		item := &items[i]
+		if fl.direction == FlexRow {
+			item.mainSize = item.baseSize.X + item.params.MarginLeft + item.params.MarginRight
+			item.crossSize = item.baseSize.Y + item.params.MarginTop + item.params.MarginBottom
+		} else {
+			item.mainSize = item.baseSize.Y + item.params.MarginTop + item.params.MarginBottom
+			item.crossSize = item.baseSize.X + item.params.MarginLeft + item.params.MarginRight
+		}
 	}
 }
 
@@ -167,16 +186,6 @@ func (fl *FlexLayout) layoutSingleLine(containerBounds image.Rectangle, items []
 
 	for i := range items {
 		item := &items[i]
-
-		// Get size along main axis
-		if fl.direction == FlexRow {
-			item.mainSize = item.baseSize.X + item.params.MarginLeft + item.params.MarginRight
-			item.crossSize = item.baseSize.Y + item.params.MarginTop + item.params.MarginBottom
-		} else {
-			item.mainSize = item.baseSize.Y + item.params.MarginTop + item.params.MarginBottom
-			item.crossSize = item.baseSize.X + item.params.MarginLeft + item.params.MarginRight
-		}
-
 		totalBaseSize += item.mainSize
 		totalGrow += item.flexGrow
 		totalShrink += item.flexShrink
@@ -188,27 +197,46 @@ func (fl *FlexLayout) layoutSingleLine(containerBounds image.Rectangle, items []
 	// Calculate remaining space
 	remainingSpace := containerMain - totalBaseSize
 
-	// Distribute remaining space based on flex grow/shrink
+	// Distribute remaining space based on flex grow/shrink.
+	// Integer division loses a remainder; give it to the last flexible item
+	// so the full container space is used (same approach as Stack/Group).
 	if remainingSpace > 0 && totalGrow > 0 {
 		// Grow items
+		distributed := 0
+		var lastFlex *flexItem
 		for i := range items {
 			item := &items[i]
 			if item.flexGrow > 0 {
 				extraSize := (remainingSpace * item.flexGrow) / totalGrow
 				item.mainSize += extraSize
+				distributed += extraSize
+				lastFlex = item
 			}
+		}
+		if lastFlex != nil {
+			lastFlex.mainSize += remainingSpace - distributed
 		}
 	} else if remainingSpace < 0 && totalShrink > 0 {
 		// Shrink items
 		shrinkAmount := -remainingSpace
+		distributed := 0
+		var lastFlex *flexItem
 		for i := range items {
 			item := &items[i]
 			if item.flexShrink > 0 {
 				shrinkSize := (shrinkAmount * item.flexShrink) / totalShrink
 				item.mainSize -= shrinkSize
+				distributed += shrinkSize
 				if item.mainSize < 0 {
 					item.mainSize = 0
 				}
+				lastFlex = item
+			}
+		}
+		if lastFlex != nil {
+			lastFlex.mainSize -= shrinkAmount - distributed
+			if lastFlex.mainSize < 0 {
+				lastFlex.mainSize = 0
 			}
 		}
 	}
@@ -254,21 +282,6 @@ func (fl *FlexLayout) layoutSingleLine(containerBounds image.Rectangle, items []
 func (fl *FlexLayout) layoutWithWrap(containerBounds image.Rectangle, items []flexItem, containerMain, _ int) {
 	// Split items into lines
 	lines := fl.splitIntoLines(items, containerMain)
-
-	// Calculate total cross size needed
-	totalCrossSize := 0
-	for i, line := range lines {
-		maxCross := 0
-		for _, item := range line {
-			if item.crossSize > maxCross {
-				maxCross = item.crossSize
-			}
-		}
-		totalCrossSize += maxCross
-		if i < len(lines)-1 {
-			totalCrossSize += fl.lineSpacing
-		}
-	}
 
 	// Position each line
 	var crossPos int

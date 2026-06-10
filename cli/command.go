@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -637,7 +638,12 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 		// Check env var first
 		if f.GetEnvVar() != "" {
 			if val, ok := lookupEnv(f.GetEnvVar()); ok {
-				ctx.flags[name] = val
+				typed, err := convertFlagValue(f, val)
+				if err != nil {
+					return c.errorWithHelpHint(fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
+						val, name, f.GetEnvVar(), err))
+				}
+				ctx.flags[name] = typed
 				ctx.setFlags[name] = true
 				continue
 			}
@@ -889,9 +895,55 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 }
 
 func parseInt(s string) (int, error) {
-	var i int
-	_, err := fmt.Sscanf(s, "%d", &i)
-	return i, err
+	return strconv.Atoi(strings.TrimSpace(s))
+}
+
+// convertFlagValue converts a raw string (e.g. from an environment variable)
+// to the flag's value type, as indicated by the type of its default value.
+// Slice flags accept comma-separated values.
+func convertFlagValue(f Flag, val string) (any, error) {
+	switch f.GetDefault().(type) {
+	case bool:
+		switch strings.ToLower(strings.TrimSpace(val)) {
+		case "true", "1", "yes", "on":
+			return true, nil
+		case "false", "0", "no", "off", "":
+			return false, nil
+		default:
+			return nil, fmt.Errorf("invalid boolean")
+		}
+	case int:
+		return parseInt(val)
+	case float64:
+		return strconv.ParseFloat(strings.TrimSpace(val), 64)
+	case time.Duration:
+		return time.ParseDuration(strings.TrimSpace(val))
+	case []string:
+		if val == "" {
+			return []string(nil), nil
+		}
+		parts := strings.Split(val, ",")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		return parts, nil
+	case []int:
+		if val == "" {
+			return []int(nil), nil
+		}
+		parts := strings.Split(val, ",")
+		ints := make([]int, len(parts))
+		for i, p := range parts {
+			n, err := parseInt(p)
+			if err != nil {
+				return nil, fmt.Errorf("invalid integer %q", strings.TrimSpace(p))
+			}
+			ints[i] = n
+		}
+		return ints, nil
+	default:
+		return val, nil
+	}
 }
 
 func (c *Command) showHelp() error {
@@ -1056,7 +1108,7 @@ func writeFlagHelp(sb *strings.Builder, f Flag, nameWidth int) {
 	sb.WriteString(" ")
 	sb.WriteString(f.GetHelp())
 	def := f.GetDefault()
-	if def != nil && def != "" && def != false && def != 0 {
+	if !isZeroDefault(def) {
 		sb.WriteString(fmt.Sprintf(" (default: %v)", def))
 	}
 	if f.IsRequired() {
@@ -1066,4 +1118,28 @@ func writeFlagHelp(sb *strings.Builder, f Flag, nameWidth int) {
 		sb.WriteString(fmt.Sprintf(" [%s]", strings.Join(enum, "|")))
 	}
 	sb.WriteString("\n")
+}
+
+// isZeroDefault reports whether a flag default is the zero value for its type
+// and should therefore be omitted from help text.
+func isZeroDefault(def any) bool {
+	switch v := def.(type) {
+	case nil:
+		return true
+	case string:
+		return v == ""
+	case bool:
+		return !v
+	case int:
+		return v == 0
+	case float64:
+		return v == 0
+	case time.Duration:
+		return v == 0
+	case []string:
+		return len(v) == 0
+	case []int:
+		return len(v) == 0
+	}
+	return false
 }

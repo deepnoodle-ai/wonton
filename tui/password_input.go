@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -193,9 +194,9 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 
 		// Handle regular character input first (before checking Key)
 		if event.Rune != 0 && event.Key == 0 {
-			// Regular character
+			// Regular character (UTF-8 encoded; may be multiple bytes)
 			if p.maxLength == 0 || len(buffer) < p.maxLength {
-				buffer = append(buffer, byte(event.Rune))
+				buffer = utf8.AppendRune(buffer, event.Rune)
 				p.updateMaskedDisplay(buffer, firstChar)
 				firstChar = false
 			}
@@ -210,7 +211,9 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 
 		case KeyBackspace:
 			if len(buffer) > 0 {
-				buffer = buffer[:len(buffer)-1]
+				// Remove the last rune, which may span multiple bytes
+				_, size := utf8.DecodeLastRune(buffer)
+				buffer = buffer[:len(buffer)-size]
 				p.updateMaskedDisplay(buffer, false)
 			}
 
@@ -264,9 +267,9 @@ func (p *PasswordInput) updateMaskedDisplay(buffer []byte, _ bool) {
 		os.Stdout.WriteString("\033[0m")
 	}
 
-	// Show masked characters
+	// Show masked characters (one mask per character, not per byte)
 	if len(buffer) > 0 {
-		masked := strings.Repeat(string(p.maskChar), len(buffer))
+		masked := strings.Repeat(string(p.maskChar), utf8.RuneCount(buffer))
 		os.Stdout.WriteString(masked)
 	}
 }

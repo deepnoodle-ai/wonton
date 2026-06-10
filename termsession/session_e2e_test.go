@@ -117,7 +117,10 @@ func TestSession_Record_StructuralRoundTrip(t *testing.T) {
 	filename := filepath.Join(dir, "e2e.cast")
 
 	s, err := NewSession(SessionOptions{
-		Command: []string{"sh", "-c", "echo hello-e2e"},
+		// Trailing sleep keeps the PTY slave open long enough for the
+		// session to drain the master before the child exits; otherwise
+		// the kernel (macOS in particular) may discard unread output.
+		Command: []string{"sh", "-c", "echo hello-e2e; sleep 0.2"},
 	})
 	assert.NoError(t, err)
 	defer s.Close()

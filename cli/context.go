@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/color"
 )
@@ -165,6 +166,24 @@ func (c *Context) Float64(name string) float64 {
 		case string:
 			if f, err := strconv.ParseFloat(val, 64); err == nil {
 				return f
+			}
+		}
+	}
+	return 0
+}
+
+// Duration returns a flag value as a time.Duration.
+// String values are parsed with time.ParseDuration (e.g. "30s", "1h15m").
+func (c *Context) Duration(name string) time.Duration {
+	if v, ok := c.flags[name]; ok {
+		switch val := v.(type) {
+		case time.Duration:
+			return val
+		case int64:
+			return time.Duration(val)
+		case string:
+			if d, err := time.ParseDuration(val); err == nil {
+				return d
 			}
 		}
 	}

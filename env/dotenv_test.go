@@ -524,3 +524,41 @@ func TestFindClosingQuote(t *testing.T) {
 		})
 	}
 }
+
+func TestParseEnv_EarliestSeparatorWins(t *testing.T) {
+	// A colon-separated line may contain = in its value, and vice versa
+	env, err := ParseEnvString(`
+YAML_STYLE: a=b
+EQUALS_STYLE=a:b
+URL: http://example.com
+`)
+	assert.NoError(t, err)
+	assert.Equal(t, "a=b", env["YAML_STYLE"])
+	assert.Equal(t, "a:b", env["EQUALS_STYLE"])
+	assert.Equal(t, "http://example.com", env["URL"])
+}
+
+func TestParseEnv_UnclosedQuoteSkipped(t *testing.T) {
+	// An unclosed quote is malformed; the line is skipped rather than
+	// keeping the stray quote character in the value
+	env, err := ParseEnvString(`
+GOOD=value
+BAD="unclosed
+ALSO_BAD='unclosed
+OTHER=ok
+`)
+	assert.NoError(t, err)
+	assert.Len(t, env, 2)
+	assert.Equal(t, "value", env["GOOD"])
+	assert.Equal(t, "ok", env["OTHER"])
+}
+
+func TestParseEnv_ExportPrefix(t *testing.T) {
+	env, err := ParseEnvString("export SPACED=one\nexport\tTABBED=two\nexport=three\nexported=four\n")
+	assert.NoError(t, err)
+	assert.Equal(t, "one", env["SPACED"])
+	assert.Equal(t, "two", env["TABBED"])
+	// "export" only acts as a prefix when followed by whitespace
+	assert.Equal(t, "three", env["export"])
+	assert.Equal(t, "four", env["exported"])
+}
