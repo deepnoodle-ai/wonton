@@ -210,6 +210,14 @@ func (d *Document) Metadata() Metadata {
 				m.Charset = charset
 			}
 
+			// Legacy charset declaration:
+			// <meta http-equiv="Content-Type" content="text/html; charset=...">
+			if m.Charset == "" && strings.EqualFold(getAttr(n, "http-equiv"), "content-type") {
+				if cs := charsetFromContentType(content); cs != "" {
+					m.Charset = cs
+				}
+			}
+
 			switch name {
 			case "description":
 				m.Description = content
@@ -238,7 +246,13 @@ func (d *Document) Metadata() Metadata {
 				og.SiteName = content
 			}
 
-			switch name {
+			// Twitter Cards are specified with name= but commonly appear
+			// with property= in the wild; accept both.
+			twitterKey := name
+			if !strings.HasPrefix(twitterKey, "twitter:") && strings.HasPrefix(property, "twitter:") {
+				twitterKey = property
+			}
+			switch twitterKey {
 			case "twitter:card":
 				tw.Card = content
 			case "twitter:title":
@@ -253,8 +267,7 @@ func (d *Document) Metadata() Metadata {
 				tw.Creator = content
 			}
 		case "link":
-			rel := strings.ToLower(getAttr(n, "rel"))
-			if rel == "canonical" {
+			if hasRelToken(getAttr(n, "rel"), "canonical") {
 				m.Canonical = getAttr(n, "href")
 			}
 		}
@@ -763,7 +776,9 @@ func (d *Document) renderCompact(buf *strings.Builder, n *html.Node, opts *rende
 
 	switch n.Type {
 	case html.TextNode:
-		buf.WriteString(n.Data)
+		// Re-escape text content: the parser unescaped entities, so writing
+		// n.Data raw would turn text like "&lt;script&gt;" into live markup.
+		buf.WriteString(escapeText(n.Data))
 	case html.ElementNode:
 		tag := strings.ToLower(n.Data)
 
@@ -832,7 +847,7 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 		text := strings.TrimSpace(n.Data)
 		if text != "" {
 			buf.WriteString(indent)
-			buf.WriteString(text)
+			buf.WriteString(escapeText(text))
 			buf.WriteString("\n")
 		}
 	case html.ElementNode:
@@ -871,7 +886,7 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 		// Check if this is an inline element with only text content
 		if isInlineTextOnly(n) {
 			buf.WriteString(">")
-			buf.WriteString(getTextContent(n))
+			buf.WriteString(escapeText(getTextContent(n)))
 			buf.WriteString("</")
 			buf.WriteString(n.Data)
 			buf.WriteString(">\n")
@@ -901,6 +916,16 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 	}
 }
 
+// textEscaper escapes the characters that would be misinterpreted as markup
+// in HTML text content. Quotes are left alone (they only need escaping inside
+// attribute values, which use html.EscapeString).
+var textEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+
+// escapeText escapes text node content for safe inclusion in rendered HTML.
+func escapeText(s string) string {
+	return textEscaper.Replace(s)
+}
+
 func getAttr(n *html.Node, key string) string {
 	for _, attr := range n.Attr {
 		if strings.EqualFold(attr.Key, key) {
@@ -923,6 +948,37 @@ func getTextContent(n *html.Node) string {
 	}
 	walk(n)
 	return buf.String()
+}
+
+// hasRelToken reports whether a rel attribute value contains the given token.
+// Per the HTML spec, rel is a space-separated list of case-insensitive tokens.
+func hasRelToken(rel, token string) bool {
+	for _, t := range strings.Fields(rel) {
+		if strings.EqualFold(t, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// charsetFromContentType extracts the charset parameter from a Content-Type
+// value like "text/html; charset=utf-8". Returns "" if not present.
+func charsetFromContentType(contentType string) string {
+	for _, part := range strings.Split(contentType, ";") {
+		part = strings.TrimSpace(part)
+		if rest, ok := cutPrefixFold(part, "charset="); ok {
+			return strings.Trim(rest, `"'`)
+		}
+	}
+	return ""
+}
+
+// cutPrefixFold is strings.CutPrefix with ASCII case-insensitive matching.
+func cutPrefixFold(s, prefix string) (string, bool) {
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):], true
+	}
+	return s, false
 }
 
 func parseKeywords(s string) []string {
@@ -1013,15 +1069,15 @@ func (d *Document) Branding() Branding {
 			}
 
 		case "link":
-			rel := strings.ToLower(getAttr(n, "rel"))
+			rel := getAttr(n, "rel")
 			href := getAttr(n, "href")
 
-			switch rel {
-			case "icon", "shortcut icon":
+			switch {
+			case hasRelToken(rel, "icon"):
 				if b.Favicon == "" {
 					b.Favicon = href
 				}
-			case "apple-touch-icon", "apple-touch-icon-precomposed":
+			case hasRelToken(rel, "apple-touch-icon") || hasRelToken(rel, "apple-touch-icon-precomposed"):
 				if b.AppleIcon == "" {
 					b.AppleIcon = href
 				}

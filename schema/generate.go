@@ -94,6 +94,16 @@ func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool
 		return &Property{Type: String, Format: &format}, nil
 	}
 
+	// json.RawMessage holds arbitrary pre-encoded JSON, so any value is valid.
+	if t == reflect.TypeOf(json.RawMessage{}) {
+		return &Property{}, nil
+	}
+
+	// Byte slices marshal to base64 strings in encoding/json, not arrays.
+	if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+		return &Property{Type: String}, nil
+	}
+
 	switch t.Kind() {
 	case reflect.String:
 		return &Property{Type: String}, nil
@@ -192,8 +202,11 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 			continue
 		}
 
-		// Handle embedded structs
-		if field.Anonymous {
+		// Handle embedded (anonymous) fields. Matching encoding/json semantics:
+		// embedded structs without a json name tag are flattened into the
+		// parent; embedded fields with a json name tag, and embedded
+		// non-struct types, are treated as regular named fields.
+		if field.Anonymous && shouldFlattenEmbedded(field) {
 			embedded, err := reflectType(field.Type, opt, seen)
 			if err != nil {
 				return nil, fmt.Errorf("failed to reflect embedded field %s: %w", field.Name, err)
@@ -243,6 +256,22 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		prop.AdditionalProperties = &additionalProps
 	}
 	return prop, nil
+}
+
+// shouldFlattenEmbedded reports whether an anonymous struct field's
+// properties should be merged into the parent schema. encoding/json only
+// flattens embedded structs (or pointers to structs) that don't carry a
+// json name tag; everything else marshals as a regular named field.
+func shouldFlattenEmbedded(field reflect.StructField) bool {
+	t := field.Type
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+	name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	return name == ""
 }
 
 // parseJSONTag extracts the JSON field name and omitempty flag from a struct field's json tag.

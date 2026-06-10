@@ -1215,3 +1215,53 @@ func ExampleStandardExcludeFilters() {
 	// false
 	// false
 }
+
+func TestTransform_EscapesTextContent(t *testing.T) {
+	// Text that was escaped in the source must stay escaped in the output;
+	// otherwise "&lt;script&gt;" round-trips into live markup.
+	doc, _ := Parse(`<html><body><p>a &lt;script&gt;alert(1)&lt;/script&gt; b &amp; c</p></body></html>`)
+	result := doc.Transform(nil)
+	assert.Contains(t, result, "&lt;script&gt;alert(1)&lt;/script&gt;")
+	assert.Contains(t, result, "b &amp; c")
+	assert.True(t, !strings.Contains(result, "<script>"))
+}
+
+func TestTransform_PrettyPrintEscapesTextContent(t *testing.T) {
+	doc, _ := Parse(`<html><body><div><p>1 &lt; 2</p><span>a &amp; b<em>c</em></span></div></body></html>`)
+	result := doc.Transform(&TransformOptions{PrettyPrint: true})
+	assert.Contains(t, result, "1 &lt; 2")
+	assert.Contains(t, result, "a &amp; b")
+}
+
+func TestMetadata_TwitterPropertyAttribute(t *testing.T) {
+	// Twitter Cards are specified with name= but many sites use property=.
+	doc, _ := Parse(`<html><head>
+		<meta property="twitter:card" content="summary_large_image">
+		<meta property="twitter:title" content="Prop Title">
+	</head></html>`)
+	m := doc.Metadata()
+	assert.NotNil(t, m.Twitter)
+	assert.Equal(t, "summary_large_image", m.Twitter.Card)
+	assert.Equal(t, "Prop Title", m.Twitter.Title)
+}
+
+func TestMetadata_CharsetFromHTTPEquiv(t *testing.T) {
+	doc, _ := Parse(`<html><head><meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"></head></html>`)
+	m := doc.Metadata()
+	assert.Equal(t, "iso-8859-1", m.Charset)
+}
+
+func TestMetadata_CharsetAttributeWins(t *testing.T) {
+	doc, _ := Parse(`<html><head>
+		<meta charset="utf-8">
+		<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+	</head></html>`)
+	m := doc.Metadata()
+	assert.Equal(t, "utf-8", m.Charset)
+}
+
+func TestMetadata_CanonicalWithMultipleRelTokens(t *testing.T) {
+	doc, _ := Parse(`<html><head><link rel="canonical nofollow" href="https://example.com/page"></head></html>`)
+	m := doc.Metadata()
+	assert.Equal(t, "https://example.com/page", m.Canonical)
+}

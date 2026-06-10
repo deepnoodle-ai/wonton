@@ -43,7 +43,7 @@
 //   - Headings: h1-h6
 //   - Text formatting: strong, b, em, i, del, s, strike, code
 //   - Links: a (preserves href and title attributes)
-//   - Images: img (preserves src and alt attributes)
+//   - Images: img (preserves src, alt, and title attributes)
 //   - Lists: ul, ol, li with full nesting support
 //   - Blockquotes: blockquote with nesting
 //   - Code blocks: pre, code with language detection from class attributes
@@ -61,6 +61,7 @@ package htmltomd
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -432,7 +433,31 @@ func (c *converter) handleCode(n *html.Node, ctx *context) string {
 		return c.convertChildren(n, ctx)
 	}
 	content := c.convertChildren(n, ctx)
-	return "`" + content + "`"
+	// Per CommonMark, the delimiter must be longer than any backtick run in
+	// the content, and content starting or ending with a backtick needs a
+	// space inside the delimiters (stripped on render).
+	delim := strings.Repeat("`", longestBacktickRun(content)+1)
+	if strings.HasPrefix(content, "`") || strings.HasSuffix(content, "`") {
+		return delim + " " + content + " " + delim
+	}
+	return delim + content + delim
+}
+
+// longestBacktickRun returns the length of the longest run of consecutive
+// backticks in s.
+func longestBacktickRun(s string) int {
+	longest, run := 0, 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	return longest
 }
 
 func (c *converter) handleLink(n *html.Node, ctx *context) string {
@@ -478,6 +503,9 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 func (c *converter) handleImage(n *html.Node, ctx *context) string {
 	src := getAttr(n, "src")
 	alt := getAttr(n, "alt")
+	if title := getAttr(n, "title"); title != "" {
+		return fmt.Sprintf("![%s](%s \"%s\")", alt, src, title)
+	}
 	return fmt.Sprintf("![%s](%s)", alt, src)
 }
 
@@ -500,6 +528,13 @@ func (c *converter) handleOrderedList(n *html.Node, ctx *context) string {
 	newCtx.listDepth++
 	newCtx.listType = "ol"
 	newCtx.listItemNum = 0
+	// Honor the start attribute: CommonMark numbers an ordered list from the
+	// first item's marker.
+	if start := getAttr(n, "start"); start != "" {
+		if v, err := strconv.Atoi(start); err == nil && v >= 0 {
+			newCtx.listItemNum = v - 1
+		}
+	}
 	newCtx.parentListType = append(newCtx.parentListType, "ol")
 
 	content := c.convertListChildren(n, newCtx)
@@ -722,15 +757,19 @@ func (c *converter) handlePre(n *html.Node, ctx *context) string {
 	newCtx := ctx.copy()
 	newCtx.inPre = true
 
-	// Check for language class
+	// Check for a language class on a <code> child, falling back to the
+	// <pre> element itself.
 	lang := ""
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
 		if child.Type == html.ElementNode && strings.ToLower(child.Data) == "code" {
-			class := getAttr(child, "class")
-			if strings.HasPrefix(class, "language-") {
-				lang = strings.TrimPrefix(class, "language-")
+			if l := classLanguage(getAttr(child, "class")); l != "" {
+				lang = l
+				break
 			}
 		}
+	}
+	if lang == "" {
+		lang = classLanguage(getAttr(n, "class"))
 	}
 
 	content := c.convertChildren(n, newCtx)
@@ -745,10 +784,30 @@ func (c *converter) handlePre(n *html.Node, ctx *context) string {
 		}
 		result = strings.Join(lines, "\n")
 	} else {
-		result = "```" + lang + "\n" + content + "\n```"
+		// The fence must be longer than any backtick run in the content so
+		// that code containing ``` doesn't terminate the block early.
+		fence := "```"
+		if run := longestBacktickRun(content); run >= 3 {
+			fence = strings.Repeat("`", run+1)
+		}
+		result = fence + lang + "\n" + content + "\n" + fence
 	}
 
 	return "\n\n" + result + "\n\n"
+}
+
+// classLanguage extracts a code language from a class attribute, recognizing
+// the "language-x" and "lang-x" conventions used by syntax highlighters. The
+// class may contain other tokens (e.g. "hljs language-go").
+func classLanguage(class string) string {
+	for _, cls := range strings.Fields(class) {
+		for _, prefix := range []string{"language-", "lang-"} {
+			if l := strings.TrimPrefix(cls, prefix); l != cls && l != "" {
+				return l
+			}
+		}
+	}
+	return ""
 }
 
 func (c *converter) handleHorizontalRule(n *html.Node, ctx *context) string {
@@ -832,6 +891,10 @@ func (c *converter) extractTableRow(n *html.Node) []string {
 		tag := strings.ToLower(child.Data)
 		if tag == "th" || tag == "td" {
 			content := strings.TrimSpace(c.convertChildren(child, &context{}))
+			// Cell content must stay on one line, and literal pipes would
+			// be parsed as column separators.
+			content = whitespaceRegex.ReplaceAllString(content, " ")
+			content = strings.ReplaceAll(content, "|", `\|`)
 			cells = append(cells, content)
 		}
 	}
