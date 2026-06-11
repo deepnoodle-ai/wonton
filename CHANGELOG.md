@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.36] - 2026-06-10
+
+`tui` input enhancements for REPL-style apps (#42).
+
+### Added
+
+- `tui`: `OnKey(fn)` hook on `Input`, `InputField`, and `TextArea` — the app
+  sees every key before built-in handling; return `true` to consume.
+- `tui`: `History(items)` on `Input`/`InputField` — shell-style ↑/↓ recall
+  with draft preservation; multiline recalls only at the first/last line.
+- `tui`: `OnComplete(fn)` on `Input`/`InputField` — Tab completion with
+  in-buffer cycling (Tab/Shift+Tab to cycle, Esc to restore).
+- New `examples/tui/input_repl` REPL example.
+
+### Changed
+
+- `tui`: multiline ↑/↓ bubble to the app at the first/last visual line, and
+  Tab is offered to the focused element before focus-cycling.
+
 ## [0.0.35] - 2026-06-10
 
 A large correctness and API-hardening release spanning nearly every package:
