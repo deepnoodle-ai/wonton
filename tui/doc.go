@@ -164,6 +164,35 @@
 //	    FocusID("name").
 //	    FocusBorderFg(ColorCyan)
 //
+// Key events go to the focused element first; keys it consumes are not
+// delivered to the application (Ctrl+C always is). Tab is offered to the
+// focused element before cycling focus, so a widget can claim it (an input
+// with OnComplete, or an OnKey hook returning true); with only one focusable
+// and no claim, Tab reaches the application.
+//
+// # Input History, Completion, and Key Hooks
+//
+// InputField and Input support shell-style affordances for building
+// REPL/agent-style CLIs:
+//
+//	InputField(&app.input).
+//	    Multiline(true).
+//	    History(app.history).                  // Up/Down recall
+//	    OnComplete(func(v string) []string {   // Tab completion
+//	        return matchingCommands(v)
+//	    }).
+//	    OnKey(func(e tui.KeyEvent) bool {      // claim keys before the input
+//	        if e.Key == tui.KeyEscape { app.dismiss(); return true }
+//	        return false
+//	    }).
+//	    OnSubmit(func(v string) {
+//	        app.history = append(app.history, v)
+//	        app.run(v)
+//	    })
+//
+// In multiline mode, Up/Down navigate the text first and recall history only
+// when the cursor is on the first/last visual line (like zsh/fish).
+//
 // # Mouse Support
 //
 // Mouse tracking is opt-in via WithMouseTracking:

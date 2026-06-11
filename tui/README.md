@@ -120,6 +120,53 @@ func (a *formApp) View() tui.View {
 }
 ```
 
+### REPL-Style Input (History, Completion, Key Hooks)
+
+For agent/REPL-style CLIs, `InputField` supports shell-style affordances:
+`History` gives Up/Down recall of previous entries, `OnComplete` gives Tab
+completion with in-buffer cycling (Tab/Shift+Tab or Down/Up cycle, Esc
+restores the original text), and `OnKey` lets the app claim specific keys
+before the input processes them.
+
+```go
+type replApp struct {
+	input   string
+	history []string
+}
+
+func (a *replApp) View() tui.View {
+	return tui.InputField(&a.input).
+		ID("repl").
+		Multiline(true).
+		History(a.history). // Up/Down recall previous submissions
+		OnComplete(func(value string) []string { // Tab completion
+			var out []string
+			for _, cmd := range []string{"/help", "/reset", "/quit"} {
+				if strings.HasPrefix(cmd, value) {
+					out = append(out, cmd)
+				}
+			}
+			return out
+		}).
+		OnKey(func(e tui.KeyEvent) bool { // runs before the input's own keys
+			if e.Key == tui.KeyCtrlL {
+				a.input = ""
+				return true
+			}
+			return false
+		}).
+		OnSubmit(func(v string) {
+			a.history = append(a.history, v)
+			a.input = ""
+		})
+}
+```
+
+In multiline mode, Up/Down navigate the text first and recall history only
+when the cursor is on the first/last visual line (like zsh/fish). While
+`OnComplete` is set the field claims Tab, so Tab no longer cycles focus
+while it is focused. See `examples/tui/input_repl` for a runnable demo.
+
 ### Prompt Choice (Claude Code Style)
 
 A selection widget with numbered options where one option can accept inline text input. Similar to confirmation prompts in Claude Code.
@@ -620,6 +667,9 @@ Views support fluent modifier methods:
 | `.Gap(int)`       | Sets spacing (Stack/Group)     | `tui.Stack(...).Gap(1)`                     |
 | `.Align(align)`   | Sets alignment (Stack/Group)   | `tui.Stack(...).Align(tui.AlignCenter)`     |
 | `.ID(string)`     | Sets focus ID (inputs)         | `tui.InputField(&s).ID("name")`             |
+| `.History([]string)` | Up/Down recall (inputs)     | `tui.InputField(&s).History(app.history)`   |
+| `.OnComplete(fn)` | Tab completion (inputs)        | `tui.InputField(&s).OnComplete(complete)`   |
+| `.OnKey(fn)`      | Pre-input key hook (inputs)    | `tui.InputField(&s).OnKey(handleKey)`       |
 
 ### Text Style Modifiers
 

@@ -183,14 +183,25 @@ func (fm *FocusManager) findCurrentIndex() int {
 
 // HandleKey routes a key event to the focused element.
 // Returns true if the event was handled.
+//
+// Tab/Shift+Tab are offered to the focused element first, so widgets that
+// claim Tab (an input with OnComplete, or an OnKey hook that returns true)
+// can consume it. An unclaimed Tab cycles focus when there are at least two
+// focusables; with nowhere to go, it propagates to the application.
 func (fm *FocusManager) HandleKey(event KeyEvent) bool {
-	// Handle Tab/Shift+Tab for navigation (before delegating to focused element)
+	fm.mu.Lock()
+	focused := fm.focusables[fm.focusedID]
+	fm.mu.Unlock()
+
 	if event.Key == KeyTab {
+		if focused != nil && focused.HandleKeyEvent(event) {
+			return true
+		}
 		fm.mu.Lock()
-		hasFocusables := len(fm.order) > 0
+		canCycle := len(fm.order) > 1
 		fm.mu.Unlock()
-		if !hasFocusables {
-			// Nothing to cycle through: let the application observe Tab.
+		if !canCycle {
+			// Nowhere to cycle to: let the application observe Tab.
 			return false
 		}
 		if event.Shift {
@@ -200,10 +211,6 @@ func (fm *FocusManager) HandleKey(event KeyEvent) bool {
 		}
 		return true
 	}
-
-	fm.mu.Lock()
-	focused := fm.focusables[fm.focusedID]
-	fm.mu.Unlock()
 
 	if focused == nil {
 		return false

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -24,6 +25,7 @@ type diveLikeApp struct {
 	expandedMsg bool
 
 	inputText string
+	history   []string
 }
 
 func (a *diveLikeApp) LiveView() tui.View {
@@ -58,7 +60,11 @@ func (a *diveLikeApp) LiveView() tui.View {
 			Placeholder("Type a message...").
 			Multiline(true).
 			MaxHeight(10).
+			History(a.history).
+			OnComplete(a.completeMention).
 			OnSubmit(func(value string) {
+				a.history = append(a.history, value)
+				a.inputText = ""
 				if a.runner != nil {
 					a.runner.Printf("You entered: %s", value)
 				}
@@ -102,6 +108,23 @@ func (a *diveLikeApp) LiveView() tui.View {
 	}
 
 	return tui.Stack(views...).Gap(0)
+}
+
+// completeMention offers @-mention file completion for the trailing word,
+// using the same fake file list shown in the autocomplete footer.
+func (a *diveLikeApp) completeMention(value string) []string {
+	idx := strings.LastIndex(value, "@")
+	if idx == -1 {
+		return nil
+	}
+	prefix, partial := value[:idx+1], value[idx+1:]
+	var matches []string
+	for _, f := range []string{"file.txt", "folder/", "README.md", "notes.md", "todo.md"} {
+		if strings.HasPrefix(f, partial) {
+			matches = append(matches, prefix+f)
+		}
+	}
+	return matches
 }
 
 func (a *diveLikeApp) HandleEvent(event tui.Event) []tui.Cmd {
