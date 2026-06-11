@@ -655,6 +655,24 @@ func (t *textInput) cursorDown(displayText string) int {
 	return nextLine.end
 }
 
+// atFirstVisualLine reports whether the cursor is on the first visual line,
+// i.e. pressing Up would not move it. Always true in single-line mode.
+func (t *textInput) atFirstVisualLine() bool {
+	if !t.MultilineMode {
+		return true
+	}
+	return t.cursorUp(t.DisplayText()) == t.CursorPos
+}
+
+// atLastVisualLine reports whether the cursor is on the last visual line,
+// i.e. pressing Down would not move it. Always true in single-line mode.
+func (t *textInput) atLastVisualLine() bool {
+	if !t.MultilineMode {
+		return true
+	}
+	return t.cursorDown(t.DisplayText()) == t.CursorPos
+}
+
 // prevClusterBoundary returns the byte offset of the cluster containing
 // pos-1 within s. It is the position the cursor should move to when the user
 // presses Left from pos. For pos at or below a cluster boundary this returns
@@ -977,19 +995,19 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 			newPos := t.cursorUp(displayText)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
+				return true
 			}
-			return true
 		}
-		return false // Let app handle if not multiline
+		return false // Cursor can't move: let app handle (history, shortcuts)
 	case KeyArrowDown:
 		if t.MultilineMode {
 			newPos := t.cursorDown(displayText)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
+				return true
 			}
-			return true
 		}
-		return false // Let app handle if not multiline
+		return false // Cursor can't move: let app handle (history, shortcuts)
 	case KeyBackspace:
 		if t.deleteBackward() {
 			if t.OnChange != nil {

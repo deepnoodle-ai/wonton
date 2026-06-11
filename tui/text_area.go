@@ -102,6 +102,9 @@ type TextAreaView struct {
 	hasCurrentLineStyle  bool
 	cursorLine           *int // pointer to external cursor line position
 	internalCursorLine   int  // internal cursor line if cursorLine is nil
+
+	// Key hook, consulted before the built-in scrolling keys
+	onKey func(KeyEvent) bool
 }
 
 // TextArea creates a scrollable text display component.
@@ -142,6 +145,14 @@ func (t *TextAreaView) ID(id string) *TextAreaView {
 // Content sets static content (ignored if binding is provided).
 func (t *TextAreaView) Content(content string) *TextAreaView {
 	t.content = content
+	return t
+}
+
+// OnKey sets a hook that sees every key event before the built-in scrolling
+// keys. Return true to consume the event; return false to let the text area
+// process it normally.
+func (t *TextAreaView) OnKey(fn func(KeyEvent) bool) *TextAreaView {
+	t.onKey = fn
 	return t
 }
 
@@ -580,6 +591,11 @@ func (h *textAreaFocusHandler) FocusBounds() image.Rectangle {
 }
 
 func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
+	// Application hook sees every key first.
+	if h.area.onKey != nil && h.area.onKey(event) {
+		return true
+	}
+
 	scrollY := h.area.getScrollY()
 	cursorLine := h.area.getCursorLine()
 	content := h.area.getContent()

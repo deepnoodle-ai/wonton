@@ -228,6 +228,37 @@ func TestFocusManager_HandleKey_TabWithoutFocusables(t *testing.T) {
 	assert.False(t, fm.HandleKey(KeyEvent{Key: KeyTab, Shift: true}))
 }
 
+func TestFocusManager_HandleKey_TabSingleFocusable(t *testing.T) {
+	fm := NewFocusManager()
+	fm.Register(&mockFocusable{id: "only"})
+
+	// A lone focusable that doesn't claim Tab: there is nowhere to cycle
+	// to, so Tab must propagate to the application.
+	assert.False(t, fm.HandleKey(KeyEvent{Key: KeyTab}))
+	assert.Equal(t, "only", fm.GetFocusedID(), "focus should not change")
+}
+
+func TestFocusManager_HandleKey_TabDelegatesToFocusedFirst(t *testing.T) {
+	fm := NewFocusManager()
+
+	claimer := &mockFocusableWithHandler{
+		id:    "claimer",
+		onKey: func(e KeyEvent) bool { return e.Key == KeyTab },
+	}
+	fm.Register(claimer)
+	fm.Register(&mockFocusable{id: "other"})
+
+	// The focused element claims Tab, so focus must not move.
+	assert.True(t, fm.HandleKey(KeyEvent{Key: KeyTab}))
+	assert.Equal(t, "claimer", fm.GetFocusedID())
+
+	// Once focus moves to an element that doesn't claim Tab, cycling
+	// resumes normally.
+	fm.SetFocus("other")
+	assert.True(t, fm.HandleKey(KeyEvent{Key: KeyTab}))
+	assert.Equal(t, "claimer", fm.GetFocusedID())
+}
+
 func TestFocusManager_HandleKey_DelegatesToFocused(t *testing.T) {
 	fm := NewFocusManager()
 

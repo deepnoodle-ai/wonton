@@ -18,6 +18,9 @@ type InputFieldView struct {
 	mask             rune
 	onChange         func(string)
 	onSubmit         func(string)
+	onKey            func(KeyEvent) bool
+	onComplete       func(string) []string
+	history          []string
 	width            int
 	maxHeight        int
 	pastePlaceholder bool
@@ -127,6 +130,61 @@ func (f *InputFieldView) OnChange(fn func(string)) *InputFieldView {
 // OnSubmit sets a callback invoked when Enter is pressed.
 func (f *InputFieldView) OnSubmit(fn func(string)) *InputFieldView {
 	f.onSubmit = fn
+	return f
+}
+
+// OnKey sets a hook that sees every key event before the input's own
+// handling (completion, history, submit, editing). Return true to consume
+// the event; return false to let the input process it normally. Use this to
+// claim specific keys for application shortcuts while the input is focused.
+//
+// Example:
+//
+//	InputField(&app.input).
+//	    OnKey(func(e tui.KeyEvent) bool {
+//	        if e.Key == tui.KeyEscape { app.dismiss(); return true }
+//	        return false
+//	    })
+func (f *InputFieldView) OnKey(fn func(KeyEvent) bool) *InputFieldView {
+	f.onKey = fn
+	return f
+}
+
+// History enables Up/Down recall of previous entries, oldest first.
+// Recall engages when the cursor can't move within the text: always in
+// single-line mode, and at the first/last visual line in multiline mode
+// (arrows navigate the text first, like zsh/fish). The in-progress draft is
+// preserved while navigating and restored when moving past the newest entry.
+// Pass the current history slice on each render; appending submitted values
+// to it is the application's responsibility.
+//
+// Example:
+//
+//	InputField(&app.input).
+//	    History(app.history).
+//	    OnSubmit(func(v string) { app.history = append(app.history, v) })
+func (f *InputFieldView) History(items []string) *InputFieldView {
+	f.history = items
+	return f
+}
+
+// OnComplete enables Tab completion. The callback receives the current
+// input text and returns candidate replacements. A single candidate is
+// accepted immediately; multiple candidates are cycled in place with
+// Tab/Shift+Tab or Down/Up, and Esc restores the original text. Any other
+// key accepts the shown candidate and is processed normally.
+//
+// While OnComplete is set the input claims Tab, so Tab no longer cycles
+// focus while this input is focused.
+//
+// Example:
+//
+//	InputField(&app.input).
+//	    OnComplete(func(value string) []string {
+//	        return commandsMatching(value)
+//	    })
+func (f *InputFieldView) OnComplete(fn func(value string) []string) *InputFieldView {
+	f.onComplete = fn
 	return f
 }
 
@@ -548,7 +606,22 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
 	f.reg = ctx.registries()
-	state := f.reg.inputs.Register(f.id, f.binding, inputBounds, f.placeholder, f.placeholderStyle, f.mask, f.pastePlaceholder, f.cursorBlink, f.multiline, f.maxHeight, f.onChange, f.onSubmit, ctx.FocusManager())
+	state := f.reg.inputs.Register(f.id, inputConfig{
+		binding:          f.binding,
+		bounds:           inputBounds,
+		placeholder:      f.placeholder,
+		placeholderStyle: f.placeholderStyle,
+		mask:             f.mask,
+		pastePlaceholder: f.pastePlaceholder,
+		cursorBlink:      f.cursorBlink,
+		multiline:        f.multiline,
+		maxHeight:        f.maxHeight,
+		onChange:         f.onChange,
+		onSubmit:         f.onSubmit,
+		onKey:            f.onKey,
+		onComplete:       f.onComplete,
+		history:          f.history,
+	}, ctx.FocusManager())
 
 	// Apply cursor customizations if set
 	if f.cursorShape != InputCursorBlock {

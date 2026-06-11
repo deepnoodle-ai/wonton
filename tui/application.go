@@ -64,6 +64,12 @@ type EventHandler interface {
 	// like 'q' won't fire while the user is typing into an input. Ctrl+C is
 	// the exception: it is always delivered, making it the reliable choice
 	// for a global quit shortcut in apps with focusable inputs.
+	//
+	// Widgets only consume keys they act on. Keys an input doesn't use —
+	// Up/Down when the cursor can't move (and no History is configured),
+	// Tab when no completion or focus target wants it — fall through to
+	// HandleEvent. To claim specific keys while an input is focused, use
+	// the input's OnKey hook rather than handling them here.
 	HandleEvent(event Event) []Cmd
 }
 
