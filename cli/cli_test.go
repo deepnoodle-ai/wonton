@@ -1890,6 +1890,86 @@ func TestCompletionWithGroups(t *testing.T) {
 	assert.Contains(t, output, "create")
 }
 
+func TestCompletionOutputOrderIsStable(t *testing.T) {
+	tests := []struct {
+		name     string
+		generate func(*App, *bytes.Buffer) error
+		want     []string
+	}{
+		{
+			name: "bash",
+			generate: func(app *App, buf *bytes.Buffer) error {
+				return app.GenerateBashCompletion(buf)
+			},
+			want: []string{
+				`commands="zeta alpha middle tools"`,
+				`compgen -W "gamma alpha beta"`,
+			},
+		},
+		{
+			name: "zsh",
+			generate: func(app *App, buf *bytes.Buffer) error {
+				return app.GenerateZshCompletion(buf)
+			},
+			want: []string{
+				"'zeta:Zeta command'",
+				"'alpha:Alpha command'",
+				"'middle:Middle command'",
+				"'tools:Tool commands'",
+				"'gamma:Gamma command'",
+				"'alpha:Alpha subcommand'",
+				"'beta:Beta subcommand'",
+			},
+		},
+		{
+			name: "fish",
+			generate: func(app *App, buf *bytes.Buffer) error {
+				return app.GenerateFishCompletion(buf)
+			},
+			want: []string{
+				"-a 'zeta'",
+				"-a 'alpha'",
+				"-a 'middle'",
+				"# Group: tools",
+				"-a 'gamma'",
+				"-a 'alpha'",
+				"-a 'beta'",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := orderedCompletionTestApp()
+
+			var first bytes.Buffer
+			err := tt.generate(app, &first)
+			assert.NoError(t, err)
+
+			var second bytes.Buffer
+			err = tt.generate(app, &second)
+			assert.NoError(t, err)
+
+			assert.Equal(t, first.String(), second.String())
+			assertSubstringsInOrder(t, first.String(), tt.want...)
+		})
+	}
+}
+
+func orderedCompletionTestApp() *App {
+	app := New("order").Description("Order test")
+	app.Command("zeta").Description("Zeta command").Run(func(ctx *Context) error { return nil })
+	app.Command("alpha").Description("Alpha command").Run(func(ctx *Context) error { return nil })
+	app.Command("middle").Description("Middle command").Run(func(ctx *Context) error { return nil })
+
+	group := app.Group("tools").Description("Tool commands")
+	group.Command("gamma").Description("Gamma command").Run(func(ctx *Context) error { return nil })
+	group.Command("alpha").Description("Alpha subcommand").Run(func(ctx *Context) error { return nil })
+	group.Command("beta").Description("Beta subcommand").Run(func(ctx *Context) error { return nil })
+
+	return app
+}
+
 func TestTestStdin(t *testing.T) {
 	app := New("test").Description("Test")
 	app.Command("read").Description("Read input").Run(func(ctx *Context) error {

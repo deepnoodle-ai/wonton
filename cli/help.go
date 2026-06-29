@@ -69,7 +69,7 @@ func (a *App) getHelpTheme() HelpTheme {
 // hasSubcommands returns true if the app has any subcommands or groups.
 // It excludes the root command (name == "") from the count.
 func (a *App) hasSubcommands() bool {
-	for name := range a.commands {
+	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
 		if name != "" {
 			return true
 		}
@@ -155,8 +155,9 @@ func (a *App) renderAppHelp() tui.View {
 
 // hasNonFlatGroups returns true if any group does not use flat routing.
 func (a *App) hasNonFlatGroups() bool {
-	for _, g := range a.groups {
-		if !g.flatRouting {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		g := a.groups[name]
+		if g != nil && !g.flatRouting {
 			return true
 		}
 	}
@@ -280,13 +281,9 @@ func (g *Group) renderGroupHelp() tui.View {
 	}
 
 	if len(g.commands) > 0 {
-		order := g.commandOrder
-		if len(order) == 0 {
-			order = sortedKeys(g.commands)
-		}
 		views = append(views, tui.Stack(
 			renderSection("COMMANDS", theme),
-			renderCommandList(g.commands, order, theme),
+			renderCommandList(g.commands, orderedCommandKeys(g.commands, g.commandOrder), theme),
 		))
 	}
 
@@ -412,10 +409,7 @@ func renderCommands(commands map[string]*Command, theme HelpTheme) tui.View {
 
 // renderOrderedCommands renders the command list in insertion order.
 func renderOrderedCommands(commands map[string]*Command, order []string, theme HelpTheme) tui.View {
-	if len(order) == 0 {
-		return renderCommands(commands, theme)
-	}
-	return renderCommandList(commands, order, theme)
+	return renderCommandList(commands, orderedCommandKeys(commands, order), theme)
 }
 
 // renderCommandList renders commands in the given name order.
@@ -460,18 +454,13 @@ func renderGroups(groups map[string]*Group, theme HelpTheme) tui.View {
 
 // renderOrderedGroups renders the command groups in insertion order.
 func renderOrderedGroups(groups map[string]*Group, order []string, theme HelpTheme) tui.View {
-	if len(order) == 0 {
-		return renderGroups(groups, theme)
-	}
-	return renderGroupList(groups, order, theme)
+	return renderGroupList(groups, orderedGroupKeys(groups, order), theme)
 }
 
 // renderFilteredGroups renders groups filtered by flat routing mode.
 // If flat is true, only flat-routed groups are shown; if false, only non-flat groups.
 func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, theme HelpTheme) tui.View {
-	if len(order) == 0 {
-		order = sortedGroupKeys(groups)
-	}
+	order = orderedGroupKeys(groups, order)
 	groupBlocks := make([]tui.View, 0, len(order))
 	anyExpanded := false
 	for _, name := range order {
@@ -482,10 +471,7 @@ func renderFilteredGroups(groups map[string]*Group, order []string, flat bool, t
 		block := []tui.View{renderGroupHeaderRow(name, group.description, theme)}
 		if group.isExpanded() {
 			anyExpanded = true
-			subOrder := group.commandOrder
-			if len(subOrder) == 0 {
-				subOrder = sortedKeys(group.commands)
-			}
+			subOrder := orderedCommandKeys(group.commands, group.commandOrder)
 			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
 			for _, subName := range subOrder {
 				subCmd := group.commands[subName]
@@ -538,10 +524,7 @@ func renderGroupList(groups map[string]*Group, names []string, theme HelpTheme) 
 		if group.isExpanded() {
 			anyExpanded = true
 			// Subcommands in insertion order
-			subOrder := group.commandOrder
-			if len(subOrder) == 0 {
-				subOrder = sortedKeys(group.commands)
-			}
+			subOrder := orderedCommandKeys(group.commands, group.commandOrder)
 			subWidth := maxVisibleCommandNameLen(group.commands, subOrder)
 			for _, subName := range subOrder {
 				subCmd := group.commands[subName]
@@ -714,6 +697,37 @@ func sortedKeys(commands map[string]*Command) []string {
 	return names
 }
 
+// orderedCommandKeys returns commands in tracked insertion order, with a
+// sorted fallback for maps that were populated without using App.Command or
+// Group.Command.
+func orderedCommandKeys(commands map[string]*Command, order []string) []string {
+	if len(commands) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(commands))
+	seen := make(map[string]struct{}, len(commands))
+	for _, name := range order {
+		if _, ok := commands[name]; !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		names = append(names, name)
+		seen[name] = struct{}{}
+	}
+	if len(seen) == len(commands) {
+		return names
+	}
+	for _, name := range sortedKeys(commands) {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
 // sortedGroupKeys returns sorted group names
 func sortedGroupKeys(groups map[string]*Group) []string {
 	names := make([]string, 0, len(groups))
@@ -721,5 +735,35 @@ func sortedGroupKeys(groups map[string]*Group) []string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	return names
+}
+
+// orderedGroupKeys returns groups in tracked insertion order, with a sorted
+// fallback for maps that were populated without using App.Group.
+func orderedGroupKeys(groups map[string]*Group, order []string) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(groups))
+	seen := make(map[string]struct{}, len(groups))
+	for _, name := range order {
+		if _, ok := groups[name]; !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		names = append(names, name)
+		seen[name] = struct{}{}
+	}
+	if len(seen) == len(groups) {
+		return names
+	}
+	for _, name := range sortedGroupKeys(groups) {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		names = append(names, name)
+	}
 	return names
 }

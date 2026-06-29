@@ -536,7 +536,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		cmd = a.commands[result.Command]
 		if cmd == nil {
 			// Check aliases
-			for _, c := range a.commands {
+			for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
+				c := a.commands[name]
+				if c == nil {
+					continue
+				}
 				for _, alias := range c.aliases {
 					if alias == result.Command {
 						cmd = c
@@ -736,18 +740,21 @@ func levenshtein(a, b string) int {
 // commands (excluding the empty root name), their aliases, and group names.
 func (a *App) topLevelCommandNames() []string {
 	out := make([]string, 0, len(a.commands)+len(a.groups))
-	for name, cmd := range a.commands {
+	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
+		cmd := a.commands[name]
 		if name == "" || cmd == nil || cmd.hidden {
 			continue
 		}
 		out = append(out, name)
 		out = append(out, cmd.aliases...)
 	}
-	for name, g := range a.groups {
-		out = append(out, name)
-		if g != nil {
-			out = append(out, g.aliases...)
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		g := a.groups[name]
+		if g == nil {
+			continue
 		}
+		out = append(out, name)
+		out = append(out, g.aliases...)
 	}
 	return out
 }
@@ -755,7 +762,8 @@ func (a *App) topLevelCommandNames() []string {
 // groupSubcommandNames returns visible subcommand names and aliases for a group.
 func groupSubcommandNames(g *Group) []string {
 	out := make([]string, 0, len(g.commands))
-	for name, cmd := range g.commands {
+	for _, name := range orderedCommandKeys(g.commands, g.commandOrder) {
+		cmd := g.commands[name]
 		if cmd == nil || cmd.hidden {
 			continue
 		}
@@ -763,6 +771,19 @@ func groupSubcommandNames(g *Group) []string {
 		out = append(out, cmd.aliases...)
 	}
 	return out
+}
+
+func writePlainCommandRows(sb *strings.Builder, commands map[string]*Command, order []string, indent int) {
+	names := orderedCommandKeys(commands, order)
+	width := maxVisibleCommandNameLen(commands, names)
+	prefix := strings.Repeat(" ", indent)
+	for _, name := range names {
+		cmd := commands[name]
+		if cmd == nil || cmd.hidden || name == "" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%s%-*s  %s\n", prefix, width, name, cmd.description))
+	}
 }
 
 // unknownCommandError builds an error for an unknown top-level command,
@@ -806,7 +827,11 @@ func (a *App) findGroup(name string) (*Group, string, bool) {
 	if g, ok := a.groups[name]; ok {
 		return g, name, true
 	}
-	for canonical, g := range a.groups {
+	for _, canonical := range orderedGroupKeys(a.groups, a.groupOrder) {
+		g := a.groups[canonical]
+		if g == nil {
+			continue
+		}
 		for _, alias := range g.aliases {
 			if alias == name {
 				return g, canonical, true
@@ -891,14 +916,7 @@ func (a *App) showHelp() error {
 	// Commands section (in insertion order)
 	if len(a.commands) > 0 && hasSubcmds {
 		sb.WriteString("Commands:\n")
-		order := a.commandOrder
-		for _, name := range order {
-			cmd := a.commands[name]
-			if cmd == nil || cmd.hidden || name == "" {
-				continue
-			}
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
-		}
+		writePlainCommandRows(&sb, a.commands, a.commandOrder, 2)
 		sb.WriteString("\n")
 	}
 
@@ -909,14 +927,7 @@ func (a *App) showHelp() error {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("%s:\n", strings.ToUpper(name)))
-		subOrder := group.commandOrder
-		for _, subName := range subOrder {
-			cmd := group.commands[subName]
-			if cmd == nil || cmd.hidden {
-				continue
-			}
-			sb.WriteString(fmt.Sprintf("  %-15s %s\n", subName, cmd.description))
-		}
+		writePlainCommandRows(&sb, group.commands, group.commandOrder, 2)
 		sb.WriteString("\n")
 	}
 
@@ -940,24 +951,7 @@ func (a *App) showHelp() error {
 				sb.WriteString(fmt.Sprintf("  %s\n", name))
 			}
 			if group.isExpanded() {
-				subOrder := group.commandOrder
-				subWidth := 0
-				for _, subName := range subOrder {
-					cmd := group.commands[subName]
-					if cmd == nil || cmd.hidden {
-						continue
-					}
-					if len(subName) > subWidth {
-						subWidth = len(subName)
-					}
-				}
-				for _, subName := range subOrder {
-					cmd := group.commands[subName]
-					if cmd == nil || cmd.hidden {
-						continue
-					}
-					sb.WriteString(fmt.Sprintf("    %-*s  %s\n", subWidth, subName, cmd.description))
-				}
+				writePlainCommandRows(&sb, group.commands, group.commandOrder, 4)
 			}
 		}
 		sb.WriteString("\n")
@@ -1195,12 +1189,7 @@ func (g *Group) showHelp() error {
 
 	// Commands
 	sb.WriteString("Commands:\n")
-	for name, cmd := range g.commands {
-		if cmd.hidden {
-			continue
-		}
-		sb.WriteString(fmt.Sprintf("  %-15s %s\n", name, cmd.description))
-	}
+	writePlainCommandRows(&sb, g.commands, g.commandOrder, 2)
 	sb.WriteString("\n")
 
 	// Group flags

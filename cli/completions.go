@@ -71,12 +71,17 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 	sb.WriteString("}\n\n")
 
 	// Group functions
-	for name, group := range a.groups {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		group := a.groups[name]
+		if group == nil {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("__%s_group_%s() {\n", a.name, name))
 		sb.WriteString("    local commands\n")
 		sb.WriteString("    commands=(\n")
-		for cmdName, cmd := range group.commands {
-			if !cmd.hidden {
+		for _, cmdName := range orderedCommandKeys(group.commands, group.commandOrder) {
+			cmd := group.commands[cmdName]
+			if cmd != nil && !cmd.hidden {
 				sb.WriteString(fmt.Sprintf("        '%s:%s'\n", cmdName, escapeZsh(cmd.description)))
 			}
 		}
@@ -95,7 +100,10 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 	sb.WriteString("    case $state in\n")
 	sb.WriteString("        args)\n")
 	sb.WriteString("            case $line[1] in\n")
-	for name := range a.groups {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		if a.groups[name] == nil {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("                %s)\n", name))
 		sb.WriteString(fmt.Sprintf("                    __%s_group_%s\n", a.name, name))
 		sb.WriteString("                    ;;\n")
@@ -130,8 +138,9 @@ func (a *App) GenerateFishCompletion(w io.Writer) error {
 	sb.WriteString(fmt.Sprintf("complete -c %s -f\n\n", a.name))
 
 	// Add commands
-	for name, cmd := range a.commands {
-		if cmd.hidden {
+	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
+		cmd := a.commands[name]
+		if cmd == nil || cmd.hidden || name == "" {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("complete -c %s -n '__fish_use_subcommand' -a '%s' -d '%s'\n",
@@ -153,13 +162,18 @@ func (a *App) GenerateFishCompletion(w io.Writer) error {
 	}
 
 	// Add groups
-	for groupName, group := range a.groups {
+	for _, groupName := range orderedGroupKeys(a.groups, a.groupOrder) {
+		group := a.groups[groupName]
+		if group == nil {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("\n# Group: %s\n", groupName))
 		sb.WriteString(fmt.Sprintf("complete -c %s -n '__fish_use_subcommand' -a '%s' -d '%s'\n",
 			a.name, groupName, escapeFish(group.description)))
 
-		for cmdName, cmd := range group.commands {
-			if cmd.hidden {
+		for _, cmdName := range orderedCommandKeys(group.commands, group.commandOrder) {
+			cmd := group.commands[cmdName]
+			if cmd == nil || cmd.hidden {
 				continue
 			}
 			sb.WriteString(fmt.Sprintf("complete -c %s -n '__fish_seen_subcommand_from %s' -a '%s' -d '%s'\n",
@@ -222,6 +236,9 @@ func CompletionCommand() *Command {
 func (a *App) AddCompletionCommand() *App {
 	cmd := CompletionCommand()
 	cmd.app = a
+	if _, exists := a.commands[cmd.name]; !exists {
+		a.commandOrder = append(a.commandOrder, cmd.name)
+	}
 	a.commands["completion"] = cmd
 	return a
 }
@@ -230,12 +247,16 @@ func (a *App) AddCompletionCommand() *App {
 
 func (a *App) getCommandNames() []string {
 	var names []string
-	for name, cmd := range a.commands {
-		if !cmd.hidden {
+	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
+		cmd := a.commands[name]
+		if cmd != nil && !cmd.hidden && name != "" {
 			names = append(names, name)
 		}
 	}
-	for name := range a.groups {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		if a.groups[name] == nil {
+			continue
+		}
 		names = append(names, name)
 	}
 	return names
@@ -243,10 +264,15 @@ func (a *App) getCommandNames() []string {
 
 func (a *App) generateBashGroupCases() string {
 	var sb strings.Builder
-	for name, group := range a.groups {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		group := a.groups[name]
+		if group == nil {
+			continue
+		}
 		var cmds []string
-		for cmdName, cmd := range group.commands {
-			if !cmd.hidden {
+		for _, cmdName := range orderedCommandKeys(group.commands, group.commandOrder) {
+			cmd := group.commands[cmdName]
+			if cmd != nil && !cmd.hidden {
 				cmds = append(cmds, cmdName)
 			}
 		}
@@ -260,12 +286,17 @@ func (a *App) generateBashGroupCases() string {
 
 func (a *App) generateZshCommandDesc() string {
 	var lines []string
-	for name, cmd := range a.commands {
-		if !cmd.hidden {
+	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
+		cmd := a.commands[name]
+		if cmd != nil && !cmd.hidden && name != "" {
 			lines = append(lines, fmt.Sprintf("        '%s:%s'", name, escapeZsh(cmd.description)))
 		}
 	}
-	for name, group := range a.groups {
+	for _, name := range orderedGroupKeys(a.groups, a.groupOrder) {
+		group := a.groups[name]
+		if group == nil {
+			continue
+		}
 		lines = append(lines, fmt.Sprintf("        '%s:%s'", name, escapeZsh(group.description)))
 	}
 	return strings.Join(lines, "\n")

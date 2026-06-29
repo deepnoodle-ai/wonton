@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.37] - 2026-06-29
+
+### Fixed
+
+- `cli`: help and shell completion output now render commands and groups in
+  stable registration order instead of depending on Go map iteration.
+- `cli`: group help now sizes the command-name column to the longest visible
+  command so long command names keep descriptions aligned.
+
 ## [0.0.36] - 2026-06-10
 
 `tui` input enhancements for REPL-style apps (#42).

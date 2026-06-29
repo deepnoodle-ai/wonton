@@ -254,7 +254,11 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 	}
 
 	// Check command aliases
-	for name, cmd := range p.app.commands {
+	for _, name := range orderedCommandKeys(p.app.commands, p.app.commandOrder) {
+		cmd := p.app.commands[name]
+		if cmd == nil {
+			continue
+		}
 		for _, alias := range cmd.aliases {
 			if alias == arg {
 				return name, ""
@@ -279,7 +283,11 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 		if _, ok := g.commands[arg]; ok {
 			return arg, gName
 		}
-		for cmdName, cmd := range g.commands {
+		for _, cmdName := range orderedCommandKeys(g.commands, g.commandOrder) {
+			cmd := g.commands[cmdName]
+			if cmd == nil {
+				continue
+			}
 			for _, alias := range cmd.aliases {
 				if alias == arg {
 					return cmdName, gName
@@ -295,7 +303,11 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 				return parts[1], canonical
 			}
 			// Check aliases within the group
-			for cmdName, cmd := range g.commands {
+			for _, cmdName := range orderedCommandKeys(g.commands, g.commandOrder) {
+				cmd := g.commands[cmdName]
+				if cmd == nil {
+					continue
+				}
 				for _, alias := range cmd.aliases {
 					if alias == parts[1] {
 						return cmdName, canonical
@@ -321,7 +333,11 @@ func (p *parser) resolveGroupSubcommand(groupName, subArg string) string {
 	}
 
 	// Check aliases
-	for name, cmd := range g.commands {
+	for _, name := range orderedCommandKeys(g.commands, g.commandOrder) {
+		cmd := g.commands[name]
+		if cmd == nil {
+			continue
+		}
 		for _, alias := range cmd.aliases {
 			if alias == subArg {
 				return name
@@ -341,7 +357,7 @@ func (p *parser) isKnownCommand(arg string) bool {
 // hasCommands returns true if the app has any defined commands or groups.
 func (p *parser) hasCommands() bool {
 	// Check for non-root commands
-	for name := range p.app.commands {
+	for _, name := range orderedCommandKeys(p.app.commands, p.app.commandOrder) {
 		if name != "" {
 			return true
 		}

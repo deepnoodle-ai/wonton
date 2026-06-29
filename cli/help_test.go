@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -110,6 +111,53 @@ func TestRenderAppHelp(t *testing.T) {
 	})
 }
 
+func TestPlainAppHelpCommandOrderIsStable(t *testing.T) {
+	app := New("order").Description("Order test")
+	app.Command("zeta").Description("Zeta command").Run(func(ctx *Context) error { return nil })
+	app.Command("alpha").Description("Alpha command").Run(func(ctx *Context) error { return nil })
+	app.Command("middle").Description("Middle command").Run(func(ctx *Context) error { return nil })
+
+	first := renderPlainHelpForTest(t, app, "--help")
+	second := renderPlainHelpForTest(t, app, "--help")
+
+	assert.Equal(t, first, second)
+	assertSubstringsInOrder(t, first, "  zeta", "  alpha", "  middle")
+}
+
+func TestPlainGroupHelpCommandOrderIsStable(t *testing.T) {
+	app := New("order").Description("Order test")
+	group := app.Group("tools").Description("Tool commands")
+	group.Command("zeta").Description("Zeta command").Run(func(ctx *Context) error { return nil })
+	group.Command("alpha").Description("Alpha command").Run(func(ctx *Context) error { return nil })
+	group.Command("middle").Description("Middle command").Run(func(ctx *Context) error { return nil })
+
+	first := renderPlainHelpForTest(t, app, "tools", "--help")
+	second := renderPlainHelpForTest(t, app, "tools", "--help")
+
+	assert.Equal(t, first, second)
+	assertSubstringsInOrder(t, first, "  zeta", "  alpha", "  middle")
+}
+
+func TestPlainGroupHelpAlignsLongCommandNames(t *testing.T) {
+	app := New("order").Description("Order test")
+	group := app.Group("sessions").Description("Session commands")
+	group.Command("short").Description("Short command").Run(func(ctx *Context) error { return nil })
+	group.Command("append-session-messages").Description("Append messages").Run(func(ctx *Context) error { return nil })
+	group.Command("replace-toolkit-assignments").Description("Replace assignments").Run(func(ctx *Context) error { return nil })
+
+	output := renderPlainHelpForTest(t, app, "sessions", "--help")
+	shortLine := lineContaining(t, output, "Short command")
+	appendLine := lineContaining(t, output, "Append messages")
+	replaceLine := lineContaining(t, output, "Replace assignments")
+
+	shortColumn := strings.Index(shortLine, "Short command")
+	appendColumn := strings.Index(appendLine, "Append messages")
+	replaceColumn := strings.Index(replaceLine, "Replace assignments")
+
+	assert.Equal(t, shortColumn, appendColumn)
+	assert.Equal(t, shortColumn, replaceColumn)
+}
+
 func TestBuildRootUsageString(t *testing.T) {
 	t.Run("builds usage for app with no args or flags", func(t *testing.T) {
 		app := New("myapp")
@@ -141,6 +189,44 @@ func TestBuildRootUsageString(t *testing.T) {
 
 		assert.Contains(t, usage, "[output]")
 	})
+}
+
+func renderPlainHelpForTest(t *testing.T, app *App, args ...string) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	app.SetStdout(&buf)
+	app.SetColorEnabled(false)
+
+	err := app.ExecuteArgs(args)
+	assert.True(t, IsHelpRequested(err))
+
+	return buf.String()
+}
+
+func assertSubstringsInOrder(t *testing.T, output string, substrings ...string) {
+	t.Helper()
+
+	offset := 0
+	for _, substring := range substrings {
+		index := strings.Index(output[offset:], substring)
+		if index < 0 {
+			t.Fatalf("expected %q after byte %d in output:\n%s", substring, offset, output)
+		}
+		offset += index + len(substring)
+	}
+}
+
+func lineContaining(t *testing.T, output, substring string) string {
+	t.Helper()
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, substring) {
+			return line
+		}
+	}
+	t.Fatalf("expected line containing %q in output:\n%s", substring, output)
+	return ""
 }
 
 func TestRenderCommandHelp(t *testing.T) {
