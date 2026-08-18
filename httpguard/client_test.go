@@ -221,16 +221,59 @@ func TestClientAllowsBoundedGuardedHTTPSRedirects(t *testing.T) {
 		"third redirect exceeds the limit")
 
 	for _, target := range []string{
-		"http://example.com/next",           // scheme downgrade
-		"https://user@example.com/next",     // userinfo
-		"https://example.com/next#fragment", // fragment
+		"http://example.com/next",       // scheme downgrade
+		"https://user@example.com/next", // userinfo
+		"https:opaque",                  // opaque form
 	} {
 		request, err := http.NewRequest(http.MethodGet, target, nil)
 		assert.NoError(t, err)
 		assert.ErrorIs(t, client.CheckRedirect(request, []*http.Request{next}), ErrRedirectRefused, "redirect to %q", target)
 	}
 
+	// A fragment never reaches the server, so it cannot change where the
+	// request goes and is not a reason to refuse the hop.
+	fragment, err := http.NewRequest(http.MethodGet, "https://example.com/next#section", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, client.CheckRedirect(fragment, []*http.Request{next}))
+
 	assert.ErrorIs(t, client.CheckRedirect(nil, []*http.Request{next}), ErrRedirectRefused, "nil redirect target")
+}
+
+func TestWithHTTPRedirectsAllowsPlainHTTPHops(t *testing.T) {
+	strict := NewClient(WithMaxRedirects(2))
+	relaxed := NewClient(WithMaxRedirects(2), WithHTTPRedirects())
+
+	plain, err := http.NewRequest(http.MethodGet, "http://example.com/next", nil)
+	assert.NoError(t, err)
+	secure, err := http.NewRequest(http.MethodGet, "https://example.com/next", nil)
+	assert.NoError(t, err)
+
+	assert.ErrorIs(t, strict.CheckRedirect(plain, []*http.Request{secure}), ErrRedirectRefused)
+	assert.NoError(t, relaxed.CheckRedirect(plain, []*http.Request{secure}))
+	assert.NoError(t, relaxed.CheckRedirect(secure, []*http.Request{secure}))
+
+	// The bound and the other target rules still apply.
+	assert.ErrorIs(t,
+		relaxed.CheckRedirect(plain, []*http.Request{secure, secure, secure}),
+		ErrRedirectRefused,
+		"the redirect limit still applies")
+	withUser, err := http.NewRequest(http.MethodGet, "http://user@example.com/next", nil)
+	assert.NoError(t, err)
+	assert.ErrorIs(t, relaxed.CheckRedirect(withUser, []*http.Request{secure}), ErrRedirectRefused)
+
+	// WithHTTPRedirects does nothing on its own.
+	assert.ErrorIs(t,
+		NewClient(WithHTTPRedirects()).CheckRedirect(secure, []*http.Request{secure}),
+		ErrRedirectRefused,
+		"redirects stay off unless WithMaxRedirects enables them")
+}
+
+func TestWithResponseHeaderTimeout(t *testing.T) {
+	transport := transportOf(t, NewClient(WithResponseHeaderTimeout(9*time.Second)))
+	assert.Equal(t, transport.ResponseHeaderTimeout, 9*time.Second)
+
+	transport = transportOf(t, NewClient())
+	assert.Equal(t, transport.ResponseHeaderTimeout, time.Duration(0), "unset means no bound")
 }
 
 func TestValidatePublicIP(t *testing.T) {

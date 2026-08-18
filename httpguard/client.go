@@ -14,8 +14,9 @@
 //     hostname, so a name cannot resolve to a public address for the check and
 //     a private one for the dial (DNS rebinding).
 //   - Redirects are refused by default. [WithMaxRedirects] enables a bounded
-//     number of them, and each hop is still HTTPS-only and re-validated at
-//     dial time.
+//     number of them; each hop is HTTPS-only unless [WithHTTPRedirects] says
+//     otherwise, and is address-validated at dial time like any other
+//     request.
 //   - Ambient HTTP(S)_PROXY environment variables are ignored, so a proxy
 //     cannot relay the request somewhere the guard would have refused.
 //
@@ -92,12 +93,14 @@ type LookupFunc func(ctx context.Context, host string) ([]net.IPAddr, error)
 type DialFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
 type config struct {
-	dnsTimeout          time.Duration
-	connectTimeout      time.Duration
-	tlsHandshakeTimeout time.Duration
-	maxRedirects        int
-	lookup              LookupFunc
-	dial                DialFunc
+	dnsTimeout            time.Duration
+	connectTimeout        time.Duration
+	tlsHandshakeTimeout   time.Duration
+	responseHeaderTimeout time.Duration
+	maxRedirects          int
+	allowHTTPRedirects    bool
+	lookup                LookupFunc
+	dial                  DialFunc
 }
 
 // Option configures a client returned by [NewClient].
@@ -133,12 +136,35 @@ func WithTLSHandshakeTimeout(d time.Duration) Option {
 	}
 }
 
+// WithResponseHeaderTimeout bounds how long the server may take to send
+// response headers after the request is written — a defense against a target
+// that accepts the connection and then stalls. Unset means no bound, matching
+// the standard transport. Values <= 0 are ignored.
+func WithResponseHeaderTimeout(d time.Duration) Option {
+	return func(c *config) {
+		if d > 0 {
+			c.responseHeaderTimeout = d
+		}
+	}
+}
+
 // WithMaxRedirects allows up to n redirects instead of refusing them outright.
-// Every hop must be a plain HTTPS URL — no scheme downgrade, no userinfo, no
-// fragment, no opaque form — and is re-validated at dial time like any other
-// request. n <= 0 keeps the default of refusing all redirects.
+// Every hop must be an HTTPS URL with no userinfo and no opaque form, and is
+// address-validated at dial time like any other request. n <= 0 keeps the
+// default of refusing all redirects. See [WithHTTPRedirects] to allow plain
+// HTTP hops as well.
 func WithMaxRedirects(n int) Option {
 	return func(c *config) { c.maxRedirects = n }
+}
+
+// WithHTTPRedirects also allows plain HTTP redirect hops, which
+// [WithMaxRedirects] alone refuses. Every hop is still address-validated, so
+// this does not widen where a request can reach — but it lets a target
+// downgrade the connection to plaintext, so do not use it for requests
+// carrying credentials or a signed payload. It has no effect unless
+// [WithMaxRedirects] enabled redirects.
+func WithHTTPRedirects() Option {
+	return func(c *config) { c.allowHTTPRedirects = true }
 }
 
 // WithResolver replaces the resolver used to look up hostnames, for a caching
@@ -184,12 +210,13 @@ func NewClient(opts ...Option) *http.Client {
 		cfg.dial = dialer.DialContext
 	}
 	transport := &http.Transport{
-		Proxy:               nil, // never relay through an ambient proxy
-		DialContext:         cfg.dialGuarded,
-		TLSHandshakeTimeout: cfg.tlsHandshakeTimeout,
-		ForceAttemptHTTP2:   true,
-		MaxIdleConns:        32,
-		IdleConnTimeout:     30 * time.Second,
+		Proxy:                 nil, // never relay through an ambient proxy
+		DialContext:           cfg.dialGuarded,
+		TLSHandshakeTimeout:   cfg.tlsHandshakeTimeout,
+		ResponseHeaderTimeout: cfg.responseHeaderTimeout,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          32,
+		IdleConnTimeout:       30 * time.Second,
 	}
 	return &http.Client{
 		Transport:     transport,
@@ -266,11 +293,18 @@ func (c *config) checkRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("%w: no redirect target", ErrRedirectRefused)
 	}
 	target := req.URL
-	if !strings.EqualFold(target.Scheme, "https") || target.Opaque != "" ||
-		target.Host == "" || target.Hostname() == "" || target.User != nil || target.Fragment != "" {
-		return fmt.Errorf("%w: %q is not a plain HTTPS URL", ErrRedirectRefused, target.Redacted())
+	if !c.allowedRedirectScheme(target.Scheme) || target.Opaque != "" ||
+		target.Host == "" || target.Hostname() == "" || target.User != nil {
+		return fmt.Errorf("%w: %q is not an allowed redirect target", ErrRedirectRefused, target.Redacted())
 	}
 	return nil
+}
+
+func (c *config) allowedRedirectScheme(scheme string) bool {
+	if strings.EqualFold(scheme, "https") {
+		return true
+	}
+	return c.allowHTTPRedirects && strings.EqualFold(scheme, "http")
 }
 
 // ValidatePublicIP reports whether ip is publicly routable, returning an error

@@ -10,7 +10,7 @@ Four properties make that hold:
 
 - **Every resolved address is validated.** A hostname that mixes a public and a private address is rejected outright rather than filtered down to the public one.
 - **The dial goes to a validated address, not the hostname.** A name cannot resolve to a public address for the check and a private one for the connection (DNS rebinding). TLS is unaffected: the handshake still uses the hostname for SNI and certificate verification, because only the dial address is pinned.
-- **Redirects are refused by default.** `WithMaxRedirects` enables a bounded number of them; each hop must be a plain HTTPS URL and is re-validated at dial time like any other request.
+- **Redirects are refused by default.** `WithMaxRedirects` enables a bounded number of them; each hop is HTTPS-only unless `WithHTTPRedirects` says otherwise, and is address-validated at dial time like any other request.
 - **Ambient proxies are ignored.** `HTTP_PROXY` and friends cannot relay the request somewhere the guard would have refused.
 
 The client sets no total timeout. Bound the whole request with its context; the options here bound only connection setup, which a context deadline alone does not distinguish.
@@ -75,10 +75,14 @@ bounds all the attempts together, not each one.
 ### Allowing Redirects
 
 ```go
-// Follow up to 3 redirects. Every hop must be a plain HTTPS URL: no scheme
-// downgrade, no userinfo, no fragment — and it is address-validated on dial
-// like any other request.
+// Follow up to 3 redirects. Every hop must be an HTTPS URL with no userinfo,
+// and is address-validated on dial like any other request.
 client := httpguard.NewClient(httpguard.WithMaxRedirects(3))
+
+// Allow plain HTTP hops too. Every hop is still address-validated, so this
+// does not widen where the request can reach — but a target can downgrade the
+// connection to plaintext, so don't use it for credentialed requests.
+client = httpguard.NewClient(httpguard.WithMaxRedirects(3), httpguard.WithHTTPRedirects())
 ```
 
 Leave redirects off unless you need them. A redirect is an attacker-controlled
@@ -133,7 +137,9 @@ rather than `==`.
 | `WithDNSTimeout(d)`             | 5s        | Bounds hostname resolution                             |
 | `WithConnectTimeout(d)`         | 10s       | Bounds the connect phase, across every address tried   |
 | `WithTLSHandshakeTimeout(d)`    | 10s       | Bounds the TLS handshake                               |
+| `WithResponseHeaderTimeout(d)`  | none      | Bounds how long the server may take to send headers    |
 | `WithMaxRedirects(n)`           | 0         | Allows up to n guarded HTTPS redirects                 |
+| `WithHTTPRedirects()`           | off       | Also allows plain HTTP hops (still address-validated)  |
 | `WithResolver(lookup)`          | system    | Replaces the resolver; results are validated the same  |
 | `WithDialContext(dial)`         | `net.Dialer` | Replaces the dialer; called only with a validated IP |
 
@@ -144,7 +150,7 @@ Non-positive durations fall back to the defaults.
 | Error                 | Meaning                                                                        |
 | --------------------- | ------------------------------------------------------------------------------ |
 | `ErrNonPublicAddress` | The target resolved to, or named, an address that is not publicly routable      |
-| `ErrRedirectRefused`  | A redirect was refused: disabled, over the limit, or not a plain HTTPS URL      |
+| `ErrRedirectRefused`  | A redirect was refused: disabled, over the limit, or not an allowed target       |
 
 ### Rejected Address Space
 

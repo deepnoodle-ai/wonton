@@ -18,8 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   choose. It validates every address a hostname resolves to, dials a validated
   address rather than the hostname (closing the DNS-rebinding hole), refuses
   redirects unless `WithMaxRedirects` enables a bounded number of guarded HTTPS
-  ones, and ignores ambient proxy environment variables. `ValidatePublicIP` is
-  exported for callers that want the same check elsewhere.
+  ones, and ignores ambient proxy environment variables. `WithHTTPRedirects`
+  additionally allows plain-HTTP hops (still address-validated) for callers
+  fetching public pages, and `ValidatePublicIP` is exported for callers that
+  want the same check elsewhere.
 - New `thumbnail` package: preview images for files — downscaled PNG/JPEG/GIF/
   WebP rasters, and synthetic cards for text, code, and unknown types. Bad
   input never errors; it degrades to a typed card. Pure Go, no new module
