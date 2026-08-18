@@ -249,6 +249,9 @@ func (c *config) connect(ctx context.Context, network string, addresses []string
 			break
 		}
 	}
+	if err == nil { // unreachable: callers always pass at least one address
+		err = errors.New("outbound target has no address to dial")
+	}
 	return nil, err
 }
 
