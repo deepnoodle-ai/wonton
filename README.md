@@ -64,6 +64,7 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [git](./git/README.md)                 | Read-only Git operations               |
 | [htmlparse](./htmlparse/README.md)     | HTML parsing, metadata, links          |
 | [htmltomd](./htmltomd/README.md)       | HTML to Markdown conversion            |
+| [httpguard](./httpguard/README.md)     | SSRF-guarded HTTP client               |
 | [humanize](./humanize/README.md)       | Human-readable formatting              |
 | [ptr](./ptr/README.md)                 | Generic pointer helpers                |
 | [retry](./retry/README.md)             | Retry with backoff and jitter          |
