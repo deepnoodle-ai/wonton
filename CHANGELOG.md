@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Added
+
+- New `strs` package: `FirstNonEmpty` / `FirstNonBlank` / `FirstNonBlankTrim`
+  for layered fallbacks, and `Dedupe` / `DedupeNonBlank` for order-preserving
+  deduplication.
+- New `ptr` package: generic pointer helpers (`To`, `Deref`, `Or`,
+  `IfNotZero`, `DerefSlice`, `DerefMap`, `MapIfNotEmpty`, `SliceIfNotEmpty`)
+  for optional and generated-client fields.
+- New `thumbnail` package: preview images for files — downscaled PNG/JPEG/GIF/
+  WebP rasters, and synthetic cards for text, code, and unknown types. Bad
+  input never errors; it degrades to a typed card. Pure Go, no new module
+  dependencies (stdlib plus the existing `golang.org/x/image`).
+
 ## [0.0.37] - 2026-06-29
 
 ### Fixed

@@ -65,13 +65,16 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [htmlparse](./htmlparse/README.md)     | HTML parsing, metadata, links          |
 | [htmltomd](./htmltomd/README.md)       | HTML to Markdown conversion            |
 | [humanize](./humanize/README.md)       | Human-readable formatting              |
+| [ptr](./ptr/README.md)                 | Generic pointer helpers                |
 | [retry](./retry/README.md)             | Retry with backoff and jitter          |
 | [runewidth](./runewidth/README.md)     | Unicode width and grapheme clusters    |
 | [schema](./schema/README.md)           | JSON Schema types for LLM tools        |
 | [sse](./sse/README.md)                 | Server-Sent Events client              |
+| [strs](./strs/README.md)               | String and string-slice helpers        |
 | [terminal](./terminal/README.md)       | Terminal control and input decoding    |
 | [termsession](./termsession/README.md) | Session recording (asciinema format)   |
 | [termtest](./termtest/README.md)       | Terminal output testing                |
+| [thumbnail](./thumbnail/README.md)     | Image and document thumbnails          |
 | [tui](./tui/README.md)                 | Declarative TUI with layout engine     |
 | [unidiff](./unidiff/README.md)         | Unified diff parsing                   |
 | [web](./web/README.md)                 | URL canonicalization, search types     |

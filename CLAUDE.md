@@ -37,13 +37,16 @@ and CLI building blocks that work well together.
 | **htmlparse**   | HTML parsing, metadata, links                  |
 | **htmltomd**    | HTML to Markdown conversion                    |
 | **humanize**    | Human-readable formatting                      |
+| **ptr**         | Generic pointer helpers                        |
 | **retry**       | Retry with backoff and jitter                  |
 | **runewidth**   | Unicode display width and grapheme clusters    |
 | **schema**      | JSON Schema types and generation for LLM tools |
 | **sse**         | Server-Sent Events client                      |
+| **strs**        | String and string-slice helpers                |
 | **terminal**    | Terminal control and input decoding            |
 | **termsession** | Session recording (asciinema format)           |
 | **termtest**    | Terminal output testing                        |
+| **thumbnail**   | Image and document thumbnails                  |
 | **tui**         | Declarative TUI with layout engine             |
 | **unidiff**     | Unified diff parsing                           |
 | **web**         | URL canonicalization, search abstractions      |
