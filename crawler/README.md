@@ -6,6 +6,26 @@ Pluggable web crawler with configurable fetchers, parsers, and caching.
 
 The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports pluggable fetchers for different domains, custom parsers for extracting structured data, optional caching to reduce redundant fetches, and flexible link-following behavior (same domain, related subdomains, or any domain). The crawler uses worker pools for concurrency, tracks statistics, and provides progress reporting. Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
 
+## Fetching Is SSRF-Guarded by Default
+
+A crawler follows links it did not choose, which makes it a natural SSRF
+vector: a page can link to `http://169.254.169.254/` or to a host that
+resolves inside your network. The crawler itself does not connect to anything
+— it goes through whatever `fetch.Fetcher` you give it — and `fetch`'s default
+clients refuse non-public addresses. So a crawler built on
+`fetch.NewHTTPFetcher` inherits the guard, including for `robots.txt`.
+
+The practical consequence is that crawling `localhost` or an intranet host
+needs an explicit client:
+
+```go
+fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{
+    Client: &http.Client{Timeout: fetch.DefaultTimeout},
+})
+```
+
+See the [fetch](../fetch/) and [httpguard](../httpguard/) READMEs for details.
+
 ## Usage Examples
 
 ### Basic Crawler
@@ -523,6 +543,7 @@ Called for each crawled page. Process the result and extract needed data.
 ## Related Packages
 
 - **[fetch](../fetch/)** - HTTP page fetching used by the crawler
+- **[httpguard](../httpguard/)** - The SSRF guard behind fetch's default clients
 - **[htmlparse](../htmlparse/)** - HTML parsing for extracting data and links
 - **[web](../web/)** - URL normalization and manipulation utilities
 - **[retry](../retry/)** - Retry logic for failed requests

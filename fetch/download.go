@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/deepnoodle-ai/wonton/httpguard"
 )
 
 // DownloadOptions configures a [Download] call. The zero value (or nil)
@@ -40,7 +42,8 @@ type DownloadOptions struct {
 	ExpectedType string `json:"expected_type,omitempty"`
 
 	// Client is the HTTP client used for the request. If nil,
-	// DefaultDownloadClient is used.
+	// DefaultDownloadClient is used, which refuses non-public addresses.
+	// Supply your own client to download from localhost or an intranet host.
 	Client *http.Client `json:"-"`
 }
 
@@ -69,15 +72,18 @@ type DownloadResult struct {
 // whole transfer would make large downloads on slow connections fail — but
 // it does bound how long the server may take to start responding. Use the
 // context to cancel a download or to impose a deadline.
-var DefaultDownloadClient = &http.Client{Transport: newDownloadTransport()}
+//
+// Like [DefaultHTTPClient], it is guarded by [httpguard] and will not connect
+// to loopback, private, or other non-public addresses, nor honor an ambient
+// proxy. Supply [DownloadOptions].Client to download from such a host.
+var DefaultDownloadClient = newGuardedDownloadClient()
 
-func newDownloadTransport() http.RoundTripper {
-	if base, ok := http.DefaultTransport.(*http.Transport); ok {
-		t := base.Clone()
-		t.ResponseHeaderTimeout = 30 * time.Second
-		return t
-	}
-	return http.DefaultTransport
+func newGuardedDownloadClient() *http.Client {
+	return httpguard.NewClient(
+		httpguard.WithResponseHeaderTimeout(30*time.Second),
+		httpguard.WithMaxRedirects(defaultMaxRedirects),
+		httpguard.WithHTTPRedirects(),
+	)
 }
 
 // downloadUserAgent is sent when the caller does not provide a User-Agent

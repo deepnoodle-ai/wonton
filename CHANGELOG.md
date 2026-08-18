@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `fetch.DefaultHTTPClient` and `fetch.DefaultDownloadClient` are
+  now built by the new `httpguard` package. They refuse to connect to
+  loopback, private, link-local, and other non-public addresses, and they
+  ignore `HTTP_PROXY` / `HTTPS_PROXY` (a proxy would choose the destination
+  itself, where the guard cannot see it). Redirects are still followed up to
+  the standard limit of 10, with every hop address-validated. `crawler`
+  inherits this through whatever fetcher it is given.
+
+  Fetching or downloading from `localhost` or an intranet host now requires an
+  explicit client — `HTTPFetcherOptions.Client`, `DownloadOptions.Client`, or
+  reassigning the package variable:
+
+  ```go
+  fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+  ```
+
 ### Added
 
 - New `strs` package: `FirstNonEmpty` / `FirstNonBlank` / `FirstNonBlankTrim`
