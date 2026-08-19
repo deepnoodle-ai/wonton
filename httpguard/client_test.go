@@ -318,7 +318,9 @@ func TestClientRoundTripsThroughTheGuardedTransport(t *testing.T) {
 		}),
 	)
 
-	resp, err := client.Get("http://example.com/")
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com/", nil)
+	assert.NoError(t, err)
+	resp, err := client.Do(request)
 	assert.NoError(t, err)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -326,6 +328,8 @@ func TestClientRoundTripsThroughTheGuardedTransport(t *testing.T) {
 	assert.Equal(t, string(body), "hello")
 	assert.Equal(t, gotHost, "example.com", "pinning the dial address must not change the Host header")
 
-	_, err = client.Get("http://example.com/redirect")
+	redirected, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com/redirect", nil)
+	assert.NoError(t, err)
+	_, err = client.Do(redirected)
 	assert.ErrorIs(t, err, ErrRedirectRefused)
 }
