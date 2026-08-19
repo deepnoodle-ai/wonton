@@ -75,6 +75,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   Both packages decode input the caller did not author, which is the same
   threat model `httpguard` addresses at the network layer.
 
+- CI now runs `govulncheck ./...` on every pull request. It reports only
+  advisories reachable from a call in Wonton's own code, and it reads a live
+  database, so the job can turn red without a code change.
+
 - Also updated `github.com/alecthomas/chroma/v2` v2.20.0 -> v2.27.0,
   `github.com/yuin/goldmark` v1.7.13 -> v1.8.5, `golang.org/x/sys`
   v0.39.0 -> v0.47.0, and `golang.org/x/term` v0.38.0 -> v0.45.0. No API
