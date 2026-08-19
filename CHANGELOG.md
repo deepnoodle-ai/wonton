@@ -57,6 +57,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   attosecond before an earlier one. The subtraction now stays in integer
   nanoseconds and converts to seconds once.
 
+### Security
+
+- Updated dependencies to clear 9 vulnerabilities reachable from Wonton's own
+  code, as reported by `govulncheck`:
+  - `golang.org/x/net` v0.48.0 -> v0.58.0. Five advisories in `x/net/html`,
+    which `htmlparse`, `htmltomd`, and `crawler` all run over HTML fetched
+    from the open web: a denial of service on arbitrary markup, an XSS via
+    duplicate attributes, and three parser confusions around foreign content,
+    DOCTYPE character references, and Punycode labels. Also an infinite loop
+    in the HTTP/2 transport on a malformed `SETTINGS_MAX_FRAME_SIZE`.
+  - `golang.org/x/image` v0.34.0 -> v0.45.0. Four advisories in image
+    decoding, reachable from the new `thumbnail` package and from `gif` font
+    loading: excessive allocation on VP8L and on malicious SFNT, and panics
+    on a VP8 alpha-channel size mismatch and on large WEBP images.
+
+  Both packages decode input the caller did not author, which is the same
+  threat model `httpguard` addresses at the network layer.
+
+- Also updated `github.com/alecthomas/chroma/v2` v2.20.0 -> v2.27.0,
+  `github.com/yuin/goldmark` v1.7.13 -> v1.8.5, `golang.org/x/sys`
+  v0.39.0 -> v0.47.0, and `golang.org/x/term` v0.38.0 -> v0.45.0. No API
+  changes; the full test suite passes unmodified.
+
 ## [0.0.37] - 2026-06-29
 
 ### Fixed
