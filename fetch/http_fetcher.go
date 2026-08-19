@@ -73,11 +73,11 @@ type HTTPFetcherOptions struct {
 	// Headers are default HTTP headers sent with all requests.
 	// Request-specific headers override these. Defaults to DefaultHeaders.
 	//
-	// Credential headers deserve care here. The default client follows
-	// redirects including plain-HTTP hops, and Go forwards Authorization and
-	// Cookie to a same-host redirect target whatever the scheme, so an
-	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
-	// refuses plaintext hops if these headers carry a secret.
+	// Credential headers survive the default client's redirects safely: a hop
+	// that downgrades an HTTPS chain to plain HTTP has Authorization,
+	// Proxy-Authorization, and cookies stripped before it is sent, which the
+	// standard client does not do on its own. A Client of your own only gets
+	// that if it also comes from [httpguard].
 	Headers map[string]string
 
 	// Client is the HTTP client to use for requests.
