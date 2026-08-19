@@ -48,6 +48,14 @@ var (
 // newGuardedClient builds the SSRF-guarded client used by default. Redirects
 // stay enabled — a fetcher that cannot follow them is not much use — but every
 // hop is address-validated like the original request.
+//
+// Plain-HTTP hops are allowed too, since legitimate sites still redirect
+// between plaintext hosts. That permits an HTTPS-to-HTTP downgrade, and Go
+// decides whether to forward Authorization and Cookie across a redirect by
+// comparing hosts only, never schemes — so on a same-host downgrade it sends
+// those headers in the clear. Requests carrying credentials want a client with
+// a stricter redirect policy; see [httpguard.WithMaxRedirects] without
+// [httpguard.WithHTTPRedirects].
 func newGuardedClient(timeout time.Duration) *http.Client {
 	client := httpguard.NewClient(
 		httpguard.WithMaxRedirects(defaultMaxRedirects),
@@ -66,6 +74,12 @@ type HTTPFetcherOptions struct {
 
 	// Headers are default HTTP headers sent with all requests.
 	// Request-specific headers override these. Defaults to DefaultHeaders.
+	//
+	// Credential headers deserve care here. The default client follows
+	// redirects including plain-HTTP hops, and Go forwards Authorization and
+	// Cookie to a same-host redirect target whatever the scheme, so an
+	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
+	// refuses plaintext hops if these headers carry a secret.
 	Headers map[string]string
 
 	// Client is the HTTP client to use for requests.

@@ -20,6 +20,12 @@ import (
 // downloads the file into memory with no size limit.
 type DownloadOptions struct {
 	// Headers contains additional HTTP headers to include in the request.
+	//
+	// Credential headers deserve care here. The default client follows
+	// redirects including plain-HTTP hops, and Go forwards Authorization and
+	// Cookie to a same-host redirect target whatever the scheme, so an
+	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
+	// refuses plaintext hops if these headers carry a secret.
 	Headers map[string]string `json:"headers,omitempty"`
 
 	// OutputPath is the destination file path or directory. If it's a
@@ -78,6 +84,16 @@ type DownloadResult struct {
 // proxy. Supply [DownloadOptions].Client to download from such a host.
 var DefaultDownloadClient = newGuardedDownloadClient()
 
+// newGuardedDownloadClient builds the SSRF-guarded client used by default.
+// Redirects stay enabled, plain-HTTP hops included, since download links
+// routinely bounce through them; every hop is still address-validated.
+//
+// That permits an HTTPS-to-HTTP downgrade, and Go decides whether to forward
+// Authorization and Cookie across a redirect by comparing hosts only, never
+// schemes — so on a same-host downgrade it sends those headers in the clear.
+// Downloads carrying credentials want a client with a stricter redirect
+// policy; see [httpguard.WithMaxRedirects] without
+// [httpguard.WithHTTPRedirects].
 func newGuardedDownloadClient() *http.Client {
 	return httpguard.NewClient(
 		httpguard.WithResponseHeaderTimeout(30*time.Second),
