@@ -38,6 +38,11 @@ var (
 	// [HTTPFetcherOptions].Client, or globally by replacing this variable:
 	//
 	//	fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+	//
+	// Reassign it before constructing any fetcher: [NewHTTPFetcher] copies the
+	// value at construction time. To keep the guard everywhere but one
+	// network, pass [httpguard.WithAddressValidator] rather than replacing the
+	// client with an unguarded one.
 	DefaultHTTPClient = newGuardedClient(DefaultTimeout)
 
 	// DefaultHeaders are the default HTTP headers sent with requests.
@@ -47,15 +52,8 @@ var (
 
 // newGuardedClient builds the SSRF-guarded client used by default. Redirects
 // stay enabled — a fetcher that cannot follow them is not much use — but every
-// hop is address-validated like the original request.
-//
-// Plain-HTTP hops are allowed too, since legitimate sites still redirect
-// between plaintext hosts. That permits an HTTPS-to-HTTP downgrade, and Go
-// decides whether to forward Authorization and Cookie across a redirect by
-// comparing hosts only, never schemes — so on a same-host downgrade it sends
-// those headers in the clear. Requests carrying credentials want a client with
-// a stricter redirect policy; see [httpguard.WithMaxRedirects] without
-// [httpguard.WithHTTPRedirects].
+// hop is address-validated like the original request, and credential headers
+// are dropped if a hop downgrades an HTTPS chain to plain HTTP.
 func newGuardedClient(timeout time.Duration) *http.Client {
 	client := httpguard.NewClient(
 		httpguard.WithMaxRedirects(defaultMaxRedirects),
@@ -75,11 +73,11 @@ type HTTPFetcherOptions struct {
 	// Headers are default HTTP headers sent with all requests.
 	// Request-specific headers override these. Defaults to DefaultHeaders.
 	//
-	// Credential headers deserve care here. The default client follows
-	// redirects including plain-HTTP hops, and Go forwards Authorization and
-	// Cookie to a same-host redirect target whatever the scheme, so an
-	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
-	// refuses plaintext hops if these headers carry a secret.
+	// Credential headers survive the default client's redirects safely: a hop
+	// that downgrades an HTTPS chain to plain HTTP has Authorization,
+	// Proxy-Authorization, and cookies stripped before it is sent, which the
+	// standard client does not do on its own. A Client of your own only gets
+	// that if it also comes from [httpguard].
 	Headers map[string]string
 
 	// Client is the HTTP client to use for requests.
@@ -139,7 +137,9 @@ func (f *HTTPFetcher) validateRequest(req *Request) error {
 // NewHTTPFetcher creates a new HTTPFetcher with the given options.
 //
 // All options are optional and will use sensible defaults if not specified.
-// Returns a configured HTTPFetcher ready to use.
+// Returns a configured HTTPFetcher ready to use. Defaults are read once, here:
+// a later reassignment of [DefaultHTTPClient] does not reach a fetcher that
+// already exists.
 //
 // Example:
 //
