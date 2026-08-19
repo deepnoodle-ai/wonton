@@ -17,11 +17,18 @@
 //     number of them; each hop is HTTPS-only unless [WithHTTPRedirects] says
 //     otherwise, and is address-validated at dial time like any other
 //     request.
+//   - Credential headers (Authorization, Proxy-Authorization, and cookies) are
+//     dropped when a redirect chain that began over HTTPS is downgraded to
+//     plain HTTP. The standard client keeps them on a same-host downgrade,
+//     which puts a bearer token on the wire in the clear.
 //   - Ambient HTTP(S)_PROXY environment variables are ignored, so a proxy
 //     cannot relay the request somewhere the guard would have refused.
 //
 // TLS is unaffected: the handshake still uses the hostname for SNI and
 // certificate verification, because only the dial address is pinned.
+//
+// A caller that needs to reach one private host without giving up the guard
+// everywhere else can widen the address check with [WithAddressValidator].
 //
 // The client sets no total timeout. Bound the whole request with the request
 // context; the options here bound only connection setup, which a context
@@ -34,6 +41,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -79,8 +87,11 @@ var nonPublicRanges = []*net.IPNet{
 	mustCIDR("100::/64"),        // discard-only
 	mustCIDR("2001::/32"),       // Teredo
 	mustCIDR("2001:2::/48"),     // benchmarking
+	mustCIDR("2001:10::/28"),    // ORCHID (deprecated)
 	mustCIDR("2001:db8::/32"),   // documentation
 	mustCIDR("2002::/16"),       // 6to4
+	mustCIDR("3fff::/20"),       // documentation (RFC 9637)
+	mustCIDR("5f00::/16"),       // SRv6 SIDs (RFC 9602)
 	mustCIDR("fec0::/10"),       // site-local (deprecated)
 }
 
@@ -92,6 +103,10 @@ type LookupFunc func(ctx context.Context, host string) ([]net.IPAddr, error)
 // [net.Dialer.DialContext].
 type DialFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
+// ValidateFunc reports whether an address may be dialed, returning an error
+// when it may not. It matches the signature of [ValidatePublicIP].
+type ValidateFunc func(ip net.IP) error
+
 type config struct {
 	dnsTimeout            time.Duration
 	connectTimeout        time.Duration
@@ -101,6 +116,7 @@ type config struct {
 	allowHTTPRedirects    bool
 	lookup                LookupFunc
 	dial                  DialFunc
+	validate              ValidateFunc
 }
 
 // Option configures a client returned by [NewClient].
@@ -160,9 +176,10 @@ func WithMaxRedirects(n int) Option {
 // WithHTTPRedirects also allows plain HTTP redirect hops, which
 // [WithMaxRedirects] alone refuses. Every hop is still address-validated, so
 // this does not widen where a request can reach — but it lets a target
-// downgrade the connection to plaintext, so do not use it for requests
-// carrying credentials or a signed payload. It has no effect unless
-// [WithMaxRedirects] enabled redirects.
+// downgrade the connection to plaintext. Credential headers are dropped on a
+// downgraded hop (see [NewClient]); the body and everything else still cross
+// in the clear, so do not use this for a signed or sensitive payload. It has
+// no effect unless [WithMaxRedirects] enabled redirects.
 func WithHTTPRedirects() Option {
 	return func(c *config) { c.allowHTTPRedirects = true }
 }
@@ -190,6 +207,36 @@ func WithDialContext(dial DialFunc) Option {
 	}
 }
 
+// WithAddressValidator replaces [ValidatePublicIP] as the check applied to
+// every address, for a caller that needs to reach one specific private host —
+// a dev server, an internal API — without giving up the guard everywhere
+// else. It is the narrow escape hatch: widening the check here is far better
+// than dropping the client altogether, which is the only other way to reach a
+// private address.
+//
+// Build on [ValidatePublicIP] rather than replacing it wholesale, so that
+// everything outside the exception stays guarded:
+//
+//	_, devNet, _ := net.ParseCIDR("10.1.2.0/24")
+//	client := httpguard.NewClient(httpguard.WithAddressValidator(
+//		func(ip net.IP) error {
+//			if devNet.Contains(ip) {
+//				return nil
+//			}
+//			return httpguard.ValidatePublicIP(ip)
+//		}))
+//
+// The replacement is called for literal targets and for every resolved
+// address alike, and the dial is still pinned to an address it accepted. A nil
+// argument is ignored.
+func WithAddressValidator(validate ValidateFunc) Option {
+	return func(c *config) {
+		if validate != nil {
+			c.validate = validate
+		}
+	}
+}
+
 // NewClient returns an [http.Client] that connects only to public addresses.
 //
 // The returned client has no total timeout: bound the request with its
@@ -201,6 +248,7 @@ func NewClient(opts ...Option) *http.Client {
 		connectTimeout:      DefaultConnectTimeout,
 		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
 		lookup:              net.DefaultResolver.LookupIPAddr,
+		validate:            ValidatePublicIP,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -232,7 +280,7 @@ func (c *config) dialGuarded(ctx context.Context, network, address string) (net.
 		return nil, err
 	}
 	if literal := net.ParseIP(host); literal != nil {
-		if err := ValidatePublicIP(literal); err != nil {
+		if err := c.validate(literal); err != nil {
 			return nil, err
 		}
 		return c.connect(ctx, network, []string{address})
@@ -251,7 +299,7 @@ func (c *config) dialGuarded(ctx context.Context, network, address string) (net.
 	// mixes public and non-public results is refused rather than filtered.
 	addresses := make([]string, 0, len(resolved))
 	for _, addr := range resolved {
-		if err := ValidatePublicIP(addr.IP); err != nil {
+		if err := c.validate(addr.IP); err != nil {
 			return nil, err
 		}
 		addresses = append(addresses, net.JoinHostPort(addr.IP.String(), port))
@@ -265,21 +313,32 @@ func (c *config) dialGuarded(ctx context.Context, network, address string) (net.
 func (c *config) connect(ctx context.Context, network string, addresses []string) (net.Conn, error) {
 	connectCtx, cancel := context.WithTimeout(ctx, c.connectTimeout)
 	defer cancel()
-	var err error
+	var errs []error
 	for _, address := range addresses {
-		var conn net.Conn
-		conn, err = c.dial(connectCtx, network, address)
-		if err == nil {
+		conn, err := c.dial(connectCtx, network, address)
+		if err == nil && conn != nil {
 			return conn, nil
 		}
+		if err == nil {
+			// A custom dialer that reports neither a connection nor a
+			// failure would otherwise hand the transport a nil conn.
+			err = fmt.Errorf("dialer returned no connection for %s", address)
+		}
+		errs = append(errs, err)
 		if connectCtx.Err() != nil {
 			break
 		}
 	}
-	if err == nil { // unreachable: callers always pass at least one address
-		err = errors.New("outbound target has no address to dial")
+	switch len(errs) {
+	case 0: // unreachable: callers always pass at least one address
+		return nil, errors.New("outbound target has no address to dial")
+	case 1:
+		return nil, errs[0]
+	default:
+		// Report every attempt: with fallback, the first failure is usually
+		// the one that explains the outcome.
+		return nil, errors.Join(errs...)
 	}
-	return nil, err
 }
 
 func (c *config) checkRedirect(req *http.Request, via []*http.Request) error {
@@ -297,6 +356,9 @@ func (c *config) checkRedirect(req *http.Request, via []*http.Request) error {
 		target.Host == "" || target.Hostname() == "" || target.User != nil {
 		return fmt.Errorf("%w: %q is not an allowed redirect target", ErrRedirectRefused, target.Redacted())
 	}
+	if isDowngrade(target, via) {
+		stripCredentials(req.Header)
+	}
 	return nil
 }
 
@@ -307,14 +369,47 @@ func (c *config) allowedRedirectScheme(scheme string) bool {
 	return c.allowHTTPRedirects && strings.EqualFold(scheme, "http")
 }
 
+// credentialHeaders carry a secret that must not cross a plaintext hop. The
+// standard client already drops them when a redirect leaves the original
+// domain, but it compares hosts only, so an https://host -> http://host hop
+// keeps them and puts them on the wire in the clear.
+var credentialHeaders = []string{
+	"Authorization",
+	"Proxy-Authorization",
+	"Cookie",
+	"Cookie2",
+}
+
+// isDowngrade reports whether target is plain HTTP while some earlier request
+// in the chain was HTTPS. The whole chain matters, not just the previous hop:
+// the standard client copies credential headers forward from the original
+// request, so that is where the secret entered.
+func isDowngrade(target *url.URL, via []*http.Request) bool {
+	if !strings.EqualFold(target.Scheme, "http") {
+		return false
+	}
+	for _, previous := range via {
+		if previous != nil && previous.URL != nil && strings.EqualFold(previous.URL.Scheme, "https") {
+			return true
+		}
+	}
+	return false
+}
+
+func stripCredentials(header http.Header) {
+	for _, name := range credentialHeaders {
+		header.Del(name)
+	}
+}
+
 // ValidatePublicIP reports whether ip is publicly routable, returning an error
 // wrapping [ErrNonPublicAddress] when it is not. Loopback, private, link-local
 // (including the 169.254.169.254 metadata address), multicast, unspecified,
 // shared, documentation, benchmark, and reserved addresses are all rejected.
 //
-// Clients from [NewClient] apply this to every address they resolve. It is
-// exported for callers that want the same check before they enqueue a URL, or
-// at another layer of their own.
+// Clients from [NewClient] apply this to every address they resolve, unless
+// [WithAddressValidator] replaced it. It is exported for callers that want the
+// same check before they enqueue a URL, or at another layer of their own.
 func ValidatePublicIP(ip net.IP) error {
 	if ip == nil {
 		return fmt.Errorf("%w: target is not resolvable", ErrNonPublicAddress)

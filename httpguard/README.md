@@ -6,11 +6,12 @@ An HTTP client for requests to URLs your program did not choose — a webhook ta
 
 Such a URL is an SSRF vector. It can name a hostname that resolves to `127.0.0.1`, to the cloud metadata endpoint at `169.254.169.254`, or to a service reachable only from inside your network. `NewClient` returns a standard `*http.Client` that refuses to connect to any of those.
 
-Four properties make that hold:
+Five properties make that hold:
 
 - **Every resolved address is validated.** A hostname that mixes a public and a private address is rejected outright rather than filtered down to the public one.
 - **The dial goes to a validated address, not the hostname.** A name cannot resolve to a public address for the check and a private one for the connection (DNS rebinding). TLS is unaffected: the handshake still uses the hostname for SNI and certificate verification, because only the dial address is pinned.
 - **Redirects are refused by default.** `WithMaxRedirects` enables a bounded number of them; each hop is HTTPS-only unless `WithHTTPRedirects` says otherwise, and is address-validated at dial time like any other request.
+- **Credentials do not cross a downgraded hop.** When a chain that began over HTTPS is redirected to plain HTTP, `Authorization`, `Proxy-Authorization`, and cookies are dropped. The standard client compares only hosts, so it keeps them on a same-host downgrade and puts a bearer token on the wire in the clear.
 - **Ambient proxies are ignored.** `HTTP_PROXY` and friends cannot relay the request somewhere the guard would have refused.
 
 The client sets no total timeout. Bound the whole request with its context; the options here bound only connection setup, which a context deadline alone does not distinguish.
@@ -81,9 +82,14 @@ client := httpguard.NewClient(httpguard.WithMaxRedirects(3))
 
 // Allow plain HTTP hops too. Every hop is still address-validated, so this
 // does not widen where the request can reach — but a target can downgrade the
-// connection to plaintext, so don't use it for credentialed requests.
+// connection to plaintext.
 client = httpguard.NewClient(httpguard.WithMaxRedirects(3), httpguard.WithHTTPRedirects())
 ```
+
+Credential headers are dropped on a downgraded hop, so a redirect cannot trick
+the client into revealing a bearer token or a session cookie in the clear. The
+request body and everything else still cross unencrypted, so `WithHTTPRedirects`
+is for fetching public pages, not for a signed or sensitive payload.
 
 Leave redirects off unless you need them. A redirect is an attacker-controlled
 second request, and it is the usual way an SSRF filter gets bypassed.
@@ -105,6 +111,28 @@ for _, ip := range mustResolve(host) {
 Treat that as an early warning, not a substitute: DNS can change between the
 check and the request, which is exactly why the client validates again at dial
 time.
+
+### Reaching One Private Host
+
+Dropping the client to reach a dev server gives up the guard for every other
+URL that client touches. `WithAddressValidator` widens the check instead, so
+the exception is the only thing that changes:
+
+```go
+_, devNet, _ := net.ParseCIDR("10.1.2.0/24")
+
+client := httpguard.NewClient(httpguard.WithAddressValidator(
+    func(ip net.IP) error {
+        if devNet.Contains(ip) {
+            return nil
+        }
+        return httpguard.ValidatePublicIP(ip) // everything else stays guarded
+    }))
+```
+
+The replacement runs for literal targets and for every resolved address alike,
+and the dial is still pinned to an address it accepted — so a hostname cannot
+resolve into the exception and then rebind somewhere else.
 
 ### Handling Errors
 
@@ -142,6 +170,7 @@ rather than `==`.
 | `WithHTTPRedirects()`           | off       | Also allows plain HTTP hops (still address-validated)  |
 | `WithResolver(lookup)`          | system    | Replaces the resolver; results are validated the same  |
 | `WithDialContext(dial)`         | `net.Dialer` | Replaces the dialer; called only with a validated IP |
+| `WithAddressValidator(fn)`      | `ValidatePublicIP` | Replaces the address check, to allow one private network |
 
 Non-positive durations fall back to the defaults.
 
@@ -157,9 +186,15 @@ Non-positive durations fall back to the defaults.
 Loopback, private (RFC 1918 and IPv6 unique-local), link-local — including the
 `169.254.169.254` metadata address — multicast, unspecified, and broadcast
 addresses, plus shared address space (`100.64.0.0/10`), documentation and
-benchmark ranges, IPv4/IPv6 transition ranges (`64:ff9b::/96`, `2001::/32`,
-`2002::/16`), and reserved space (`240.0.0.0/4`). IPv4-mapped IPv6 addresses
-are checked as IPv4, so `::ffff:127.0.0.1` is rejected as loopback.
+benchmark ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`,
+`2001:db8::/32`, `3fff::/20`), IPv4/IPv6 transition ranges (`64:ff9b::/96`,
+`2001::/32`, `2002::/16`), and reserved space (`240.0.0.0/4`, `5f00::/16`).
+IPv4-mapped IPv6 addresses are checked as IPv4, so `::ffff:127.0.0.1` is
+rejected as loopback.
+
+The list tracks the "globally reachable: false" entries of the IANA
+special-purpose address registries, which is where a newly reserved range
+shows up first.
 
 ## What This Does Not Do
 

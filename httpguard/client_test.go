@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -332,4 +333,178 @@ func TestClientRoundTripsThroughTheGuardedTransport(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = client.Do(redirected)
 	assert.ErrorIs(t, err, ErrRedirectRefused)
+}
+
+func TestClientDropsCredentialsOnADowngradedRedirect(t *testing.T) {
+	// The standard client compares only hosts when deciding whether to carry
+	// Authorization and Cookie across a redirect, so an https://host ->
+	// http://host hop keeps them and sends them in the clear.
+	client := NewClient(WithMaxRedirects(2), WithHTTPRedirects())
+
+	plain, err := http.NewRequest(http.MethodGet, "http://example.com/next", nil)
+	assert.NoError(t, err)
+	plain.Header.Set("Authorization", "Bearer secret")
+	plain.Header.Set("Proxy-Authorization", "Basic secret")
+	plain.Header.Set("Cookie", "session=secret")
+	plain.Header.Set("Cookie2", "$Version=1")
+	plain.Header.Set("Accept", "text/html")
+
+	secure, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
+	assert.NoError(t, err)
+
+	assert.NoError(t, client.CheckRedirect(plain, []*http.Request{secure}))
+	for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "Cookie2"} {
+		assert.Equal(t, plain.Header.Get(name), "", "%s must not cross a plaintext hop", name)
+	}
+	assert.Equal(t, plain.Header.Get("Accept"), "text/html", "ordinary headers are untouched")
+}
+
+func TestClientKeepsCredentialsOnRedirectsThatDoNotDowngrade(t *testing.T) {
+	client := NewClient(WithMaxRedirects(2), WithHTTPRedirects())
+
+	// https -> https keeps them: the hop is still encrypted.
+	secure, err := http.NewRequest(http.MethodGet, "https://example.com/next", nil)
+	assert.NoError(t, err)
+	secure.Header.Set("Authorization", "Bearer secret")
+	assert.NoError(t, client.CheckRedirect(secure, []*http.Request{secure}))
+	assert.Equal(t, secure.Header.Get("Authorization"), "Bearer secret")
+
+	// http -> http keeps them: nothing was ever encrypted, so there is no
+	// downgrade and no expectation to violate.
+	plain, err := http.NewRequest(http.MethodGet, "http://example.com/next", nil)
+	assert.NoError(t, err)
+	plain.Header.Set("Authorization", "Bearer secret")
+	from, err := http.NewRequest(http.MethodGet, "http://example.com/start", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, client.CheckRedirect(plain, []*http.Request{from}))
+	assert.Equal(t, plain.Header.Get("Authorization"), "Bearer secret")
+}
+
+func TestClientDropsCredentialsEndToEndOnADowngrade(t *testing.T) {
+	// The header rewrite has to survive the standard client's own header
+	// copying, which happens just before CheckRedirect runs.
+	var sawAuthorization, sawCookie string
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAuthorization = r.Header.Get("Authorization")
+		sawCookie = r.Header.Get("Cookie")
+		w.Write([]byte("plaintext hop"))
+	}))
+	defer plain.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com/downgraded", http.StatusFound)
+	}))
+	defer secure.Close()
+
+	client := NewClient(
+		WithMaxRedirects(2), WithHTTPRedirects(),
+		WithResolver(staticLookup("8.8.8.8")),
+		WithDialContext(func(ctx context.Context, network, address string) (net.Conn, error) {
+			target := plain.Listener.Addr().String()
+			if _, port, _ := net.SplitHostPort(address); port == "443" {
+				target = secure.Listener.Addr().String()
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, target)
+		}),
+	)
+	transportOf(t, client).TLSClientConfig = secure.Client().Transport.(*http.Transport).TLSClientConfig
+
+	request, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
+	assert.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer secret")
+	request.Header.Set("Cookie", "session=secret")
+
+	resp, err := client.Do(request)
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, sawAuthorization, "", "the bearer token reached the plaintext hop")
+	assert.Equal(t, sawCookie, "", "the cookie reached the plaintext hop")
+}
+
+func TestWithAddressValidatorWidensTheCheck(t *testing.T) {
+	// The escape hatch for one private host: everything outside the exception
+	// stays guarded, and the dial is still pinned to a checked address.
+	_, allowed, err := net.ParseCIDR("10.1.2.0/24")
+	assert.NoError(t, err)
+	validate := func(ip net.IP) error {
+		if allowed.Contains(ip) {
+			return nil
+		}
+		return ValidatePublicIP(ip)
+	}
+
+	sentinel := errors.New("stop after observing the dial")
+	var dialed []string
+	client := NewClient(
+		WithAddressValidator(validate),
+		WithResolver(staticLookup("10.1.2.3")),
+		WithDialContext(func(_ context.Context, _, address string) (net.Conn, error) {
+			dialed = append(dialed, address)
+			return nil, sentinel
+		}),
+	)
+	transport := transportOf(t, client)
+
+	_, err = transport.DialContext(context.Background(), "tcp", "dev.internal:443")
+	assert.ErrorIs(t, err, sentinel, "the allowed network is reachable")
+	assert.Equal(t, dialed, []string{"10.1.2.3:443"})
+
+	_, err = transport.DialContext(context.Background(), "tcp", "10.9.9.9:443")
+	assert.ErrorIs(t, err, ErrNonPublicAddress, "a private address outside the exception is still refused")
+
+	// A nil validator leaves the default in place.
+	fallback := transportOf(t, NewClient(WithAddressValidator(nil)))
+	_, err = fallback.DialContext(context.Background(), "tcp", "10.1.2.3:443")
+	assert.ErrorIs(t, err, ErrNonPublicAddress)
+}
+
+func TestConnectReportsEveryFailedAddress(t *testing.T) {
+	first := errors.New("network unreachable")
+	second := errors.New("connection refused")
+	client := NewClient(
+		WithResolver(staticLookup("2606:4700:4700::1111", "1.1.1.1")),
+		WithDialContext(func(_ context.Context, _, address string) (net.Conn, error) {
+			if strings.HasPrefix(address, "[") {
+				return nil, first
+			}
+			return nil, second
+		}),
+	)
+	_, err := transportOf(t, client).DialContext(context.Background(), "tcp", "example.com:443")
+	assert.ErrorIs(t, err, first, "the first failure usually explains the outcome")
+	assert.ErrorIs(t, err, second)
+}
+
+func TestConnectRejectsADialerThatReturnsNoConnection(t *testing.T) {
+	// A nil conn with a nil error would panic the transport.
+	client := NewClient(WithDialContext(func(context.Context, string, string) (net.Conn, error) {
+		return nil, nil
+	}))
+	conn, err := transportOf(t, client).DialContext(context.Background(), "tcp", "1.1.1.1:443")
+	assert.Nil(t, conn)
+	assert.ErrorContains(t, err, "returned no connection")
+}
+
+func TestClientRefusesLoopbackThroughTheDefaultStack(t *testing.T) {
+	// Everything above stubs the resolver or the dialer. This one drives a
+	// stock NewClient() end to end at a real listener, so a future change that
+	// forgets to wire the guard into the transport cannot pass unnoticed.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("should not be reachable"))
+	}))
+	defer server.Close()
+
+	_, err := NewClient().Get(server.URL)
+	assert.ErrorIs(t, err, ErrNonPublicAddress)
+}
+
+func TestValidatePublicIPRejectsRecentlyReservedRanges(t *testing.T) {
+	// IANA keeps adding non-globally-reachable space; these three postdate the
+	// ranges Go's own predicates know about.
+	for _, value := range []string{
+		"3fff::1",    // documentation (RFC 9637)
+		"5f00::1",    // SRv6 SIDs (RFC 9602)
+		"2001:10::1", // ORCHID (deprecated)
+	} {
+		assert.ErrorIs(t, ValidatePublicIP(net.ParseIP(value)), ErrNonPublicAddress, "ValidatePublicIP(%q)", value)
+	}
 }

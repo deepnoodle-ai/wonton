@@ -38,6 +38,11 @@ var (
 	// [HTTPFetcherOptions].Client, or globally by replacing this variable:
 	//
 	//	fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+	//
+	// Reassign it before constructing any fetcher: [NewHTTPFetcher] copies the
+	// value at construction time. To keep the guard everywhere but one
+	// network, pass [httpguard.WithAddressValidator] rather than replacing the
+	// client with an unguarded one.
 	DefaultHTTPClient = newGuardedClient(DefaultTimeout)
 
 	// DefaultHeaders are the default HTTP headers sent with requests.
@@ -47,15 +52,8 @@ var (
 
 // newGuardedClient builds the SSRF-guarded client used by default. Redirects
 // stay enabled — a fetcher that cannot follow them is not much use — but every
-// hop is address-validated like the original request.
-//
-// Plain-HTTP hops are allowed too, since legitimate sites still redirect
-// between plaintext hosts. That permits an HTTPS-to-HTTP downgrade, and Go
-// decides whether to forward Authorization and Cookie across a redirect by
-// comparing hosts only, never schemes — so on a same-host downgrade it sends
-// those headers in the clear. Requests carrying credentials want a client with
-// a stricter redirect policy; see [httpguard.WithMaxRedirects] without
-// [httpguard.WithHTTPRedirects].
+// hop is address-validated like the original request, and credential headers
+// are dropped if a hop downgrades an HTTPS chain to plain HTTP.
 func newGuardedClient(timeout time.Duration) *http.Client {
 	client := httpguard.NewClient(
 		httpguard.WithMaxRedirects(defaultMaxRedirects),
@@ -139,7 +137,9 @@ func (f *HTTPFetcher) validateRequest(req *Request) error {
 // NewHTTPFetcher creates a new HTTPFetcher with the given options.
 //
 // All options are optional and will use sensible defaults if not specified.
-// Returns a configured HTTPFetcher ready to use.
+// Returns a configured HTTPFetcher ready to use. Defaults are read once, here:
+// a later reassignment of [DefaultHTTPClient] does not reach a fetcher that
+// already exists.
 //
 // Example:
 //

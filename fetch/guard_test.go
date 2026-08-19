@@ -57,3 +57,27 @@ func TestGuardedClientFollowsRedirects(t *testing.T) {
 	assert.ErrorIs(t, client.CheckRedirect(next, chain), httpguard.ErrRedirectRefused,
 		"the redirect chain is still bounded")
 }
+
+func TestGuardedClientDropsCredentialsOnADowngradedRedirect(t *testing.T) {
+	// The default clients allow plain-HTTP hops, and callers set headers of
+	// their own — Request.Headers or HTTPFetcherOptions.Headers. A redirect
+	// from HTTPS down to HTTP must not carry an Authorization header along.
+	client := newGuardedClient(DefaultTimeout)
+
+	plain, err := http.NewRequest(http.MethodGet, "http://example.com/next", nil)
+	assert.NoError(t, err)
+	plain.Header.Set("Authorization", "Bearer secret")
+	plain.Header.Set("Cookie", "session=secret")
+
+	secure, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
+	assert.NoError(t, err)
+
+	assert.NoError(t, client.CheckRedirect(plain, []*http.Request{secure}))
+	assert.Equal(t, plain.Header.Get("Authorization"), "")
+	assert.Equal(t, plain.Header.Get("Cookie"), "")
+
+	// The download client follows the same policy.
+	plain.Header.Set("Authorization", "Bearer secret")
+	assert.NoError(t, newGuardedDownloadClient().CheckRedirect(plain, []*http.Request{secure}))
+	assert.Equal(t, plain.Header.Get("Authorization"), "")
+}

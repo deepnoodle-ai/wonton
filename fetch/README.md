@@ -12,7 +12,10 @@ means **they will not fetch from `localhost`, `127.0.0.1`, or an intranet
 host**, and they ignore `HTTP_PROXY` / `HTTPS_PROXY`.
 
 Redirects are still followed, up to the standard limit of 10, with each hop
-address-validated like the original request.
+address-validated like the original request. Plain-HTTP hops are allowed, since
+plenty of legitimate sites still use them; credential headers you set
+(`Authorization`, cookies) are dropped if such a hop downgrades a chain that
+began over HTTPS, so a redirect cannot pull them onto the wire in the clear.
 
 To fetch from a private address — a local dev server, a service on your own
 network — supply a client:
@@ -27,11 +30,31 @@ result, err := fetch.Download(ctx, url, &fetch.DownloadOptions{
 })
 ```
 
-Or change it once for the whole program:
+Or change it once for the whole program, before any fetcher is constructed —
+`NewHTTPFetcher` copies the variable at construction time, so a fetcher built
+earlier keeps the client it was given:
 
 ```go
 fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
 fetch.DefaultDownloadClient = &http.Client{}
+```
+
+Both of those give up the guard entirely. To keep it everywhere but one
+network, widen the address check instead:
+
+```go
+_, devNet, _ := net.ParseCIDR("10.1.2.0/24")
+
+fetch.DefaultHTTPClient = httpguard.NewClient(
+    httpguard.WithMaxRedirects(10),
+    httpguard.WithHTTPRedirects(),
+    httpguard.WithAddressValidator(func(ip net.IP) error {
+        if devNet.Contains(ip) {
+            return nil
+        }
+        return httpguard.ValidatePublicIP(ip)
+    }))
+fetch.DefaultHTTPClient.Timeout = fetch.DefaultTimeout
 ```
 
 The guard is a network boundary, not a whole policy: it does not enforce an
