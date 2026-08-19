@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `fetch.DefaultHTTPClient` and `fetch.DefaultDownloadClient` are
+  now built by the new `httpguard` package. They refuse to connect to
+  loopback, private, link-local, and other non-public addresses, and they
+  ignore `HTTP_PROXY` / `HTTPS_PROXY` (a proxy would choose the destination
+  itself, where the guard cannot see it). Redirects are still followed up to
+  the standard limit of 10, with every hop address-validated. `crawler`
+  inherits this through whatever fetcher it is given.
+
+  Fetching or downloading from `localhost` or an intranet host now requires an
+  explicit client — `HTTPFetcherOptions.Client`, `DownloadOptions.Client`, or
+  reassigning the package variable:
+
+  ```go
+  fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+  ```
+
 ### Added
 
 - New `strs` package: `FirstNonEmpty` / `FirstNonBlank` / `FirstNonBlankTrim`
@@ -14,10 +32,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - New `ptr` package: generic pointer helpers (`To`, `Deref`, `Or`,
   `IfNotZero`, `DerefSlice`, `DerefMap`, `MapIfNotEmpty`, `SliceIfNotEmpty`)
   for optional and generated-client fields.
+- New `httpguard` package: an `http.Client` for URLs your program did not
+  choose. It validates every address a hostname resolves to, dials a validated
+  address rather than the hostname (closing the DNS-rebinding hole), refuses
+  redirects unless `WithMaxRedirects` enables a bounded number of guarded HTTPS
+  ones, and ignores ambient proxy environment variables. `WithHTTPRedirects`
+  additionally allows plain-HTTP hops (still address-validated) for callers
+  fetching public pages, and `ValidatePublicIP` is exported for callers that
+  want the same check elsewhere.
 - New `thumbnail` package: preview images for files — downscaled PNG/JPEG/GIF/
   WebP rasters, and synthetic cards for text, code, and unknown types. Bad
   input never errors; it degrades to a typed card. Pure Go, no new module
   dependencies (stdlib plus the existing `golang.org/x/image`).
+
+### Fixed
+
+- `termsession`: recorded event timestamps can no longer go backwards across a
+  `Pause`/`Resume`. The elapsed time and the accumulated pause adjustment were
+  each converted to float64 seconds and then subtracted, so the two independent
+  roundings could disagree by an ulp and place a later event a fraction of an
+  attosecond before an earlier one. The subtraction now stays in integer
+  nanoseconds and converts to seconds once.
 
 ## [0.0.37] - 2026-06-29
 

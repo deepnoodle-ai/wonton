@@ -36,6 +36,7 @@ and CLI building blocks that work well together.
 | **git**         | Git read operations                            |
 | **htmlparse**   | HTML parsing, metadata, links                  |
 | **htmltomd**    | HTML to Markdown conversion                    |
+| **httpguard**   | SSRF-guarded HTTP client                       |
 | **humanize**    | Human-readable formatting                      |
 | **ptr**         | Generic pointer helpers                        |
 | **retry**       | Retry with backoff and jitter                  |

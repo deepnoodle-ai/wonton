@@ -456,12 +456,12 @@ type Terminal struct {
 	dirtyRegion DirtyRegion
 
 	// Resize handling
-	resizeChan      chan os.Signal
-	stopResize      chan struct{}
-	resizing        bool
+	resizeChan           chan os.Signal
+	stopResize           chan struct{}
+	resizing             bool
 	resizeCallbacks      []resizeCallback
 	nextResizeCallbackID int
-	callbackMu      sync.RWMutex
+	callbackMu           sync.RWMutex
 
 	// Deprecated: Styles should be passed explicitly to render methods.
 	// This field will be removed in v2.0.

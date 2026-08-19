@@ -10,6 +10,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/htmlparse"
 	"github.com/deepnoodle-ai/wonton/htmltomd"
+	"github.com/deepnoodle-ai/wonton/httpguard"
 )
 
 const (
@@ -19,16 +20,50 @@ const (
 
 	// DefaultTimeout is the default HTTP request timeout (30 seconds).
 	DefaultTimeout = 30 * time.Second
+
+	// defaultMaxRedirects matches the standard library's redirect limit.
+	defaultMaxRedirects = 10
 )
 
 var (
-	// DefaultHTTPClient is the default HTTP client used when none is specified.
-	DefaultHTTPClient = &http.Client{Timeout: DefaultTimeout}
+	// DefaultHTTPClient is the default HTTP client used when none is
+	// specified. It is guarded by [httpguard]: it refuses to connect to
+	// loopback, private, link-local, and other non-public addresses, so a URL
+	// from an untrusted source cannot reach a service inside your network. It
+	// also ignores HTTP(S)_PROXY, since a proxy would decide the destination
+	// itself and the guard could not see it.
+	//
+	// That means it cannot fetch from localhost or an intranet host. To allow
+	// those, supply your own client — either per call, through
+	// [HTTPFetcherOptions].Client, or globally by replacing this variable:
+	//
+	//	fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+	DefaultHTTPClient = newGuardedClient(DefaultTimeout)
 
 	// DefaultHeaders are the default HTTP headers sent with requests.
 	// Empty by default; populate to set global headers.
 	DefaultHeaders = map[string]string{}
 )
+
+// newGuardedClient builds the SSRF-guarded client used by default. Redirects
+// stay enabled — a fetcher that cannot follow them is not much use — but every
+// hop is address-validated like the original request.
+//
+// Plain-HTTP hops are allowed too, since legitimate sites still redirect
+// between plaintext hosts. That permits an HTTPS-to-HTTP downgrade, and Go
+// decides whether to forward Authorization and Cookie across a redirect by
+// comparing hosts only, never schemes — so on a same-host downgrade it sends
+// those headers in the clear. Requests carrying credentials want a client with
+// a stricter redirect policy; see [httpguard.WithMaxRedirects] without
+// [httpguard.WithHTTPRedirects].
+func newGuardedClient(timeout time.Duration) *http.Client {
+	client := httpguard.NewClient(
+		httpguard.WithMaxRedirects(defaultMaxRedirects),
+		httpguard.WithHTTPRedirects(),
+	)
+	client.Timeout = timeout
+	return client
+}
 
 // HTTPFetcherOptions defines configuration options for HTTPFetcher.
 //
@@ -39,10 +74,17 @@ type HTTPFetcherOptions struct {
 
 	// Headers are default HTTP headers sent with all requests.
 	// Request-specific headers override these. Defaults to DefaultHeaders.
+	//
+	// Credential headers deserve care here. The default client follows
+	// redirects including plain-HTTP hops, and Go forwards Authorization and
+	// Cookie to a same-host redirect target whatever the scheme, so an
+	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
+	// refuses plaintext hops if these headers carry a secret.
 	Headers map[string]string
 
 	// Client is the HTTP client to use for requests.
-	// Defaults to DefaultHTTPClient.
+	// Defaults to DefaultHTTPClient, which refuses non-public addresses.
+	// Supply your own client to fetch from localhost or an intranet host.
 	Client *http.Client
 
 	// MaxBodySize is the maximum response body size in bytes.

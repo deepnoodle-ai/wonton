@@ -15,7 +15,7 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 - `tui` - Declarative terminal UI with layout engine, inputs, tables, lists, markdown rendering, animations, and mouse support
 - `color` - ANSI colors (standard, 256, RGB), HSL conversion, and gradient generation
 - `env` - Configuration from environment variables, .env files, and JSON files with struct tag parsing
-- `fetch` - HTTP page fetching with metadata extraction, markdown conversion, and link discovery
+- `fetch` - HTTP page fetching with metadata extraction, markdown conversion, and link discovery. Default clients are SSRF-guarded (no loopback/private addresses, no ambient proxy); supply a `Client` to reach one
 - `crawler` - Concurrent web crawler with rate-limited requests and configurable follow behavior
 - `sse` - Server-Sent Events parser and client (useful for streaming LLM responses)
 - `schema` - JSON Schema generation from Go structs for LLM tool definitions
@@ -26,6 +26,7 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 - `ptr` - Generic pointer helpers: box a value, deref safely, omit empty optional fields
 - `htmlparse` - HTML parsing with metadata extraction, link discovery, content transformation
 - `htmltomd` - HTML to Markdown conversion
+- `httpguard` - HTTP client for untrusted URLs: validates every resolved address, pins the dial to a checked IP (no DNS rebinding), refuses redirects by default
 - `unidiff` - Unified diff parsing
 - `clipboard` - System clipboard read/write
 - `runewidth` - Unicode-aware display width, UAX#29 grapheme cluster segmentation, and terminal-compat helpers (in-tree replacement for `go-runewidth`/`uniseg`)

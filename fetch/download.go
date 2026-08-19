@@ -12,12 +12,20 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/deepnoodle-ai/wonton/httpguard"
 )
 
 // DownloadOptions configures a [Download] call. The zero value (or nil)
 // downloads the file into memory with no size limit.
 type DownloadOptions struct {
 	// Headers contains additional HTTP headers to include in the request.
+	//
+	// Credential headers deserve care here. The default client follows
+	// redirects including plain-HTTP hops, and Go forwards Authorization and
+	// Cookie to a same-host redirect target whatever the scheme, so an
+	// HTTPS-to-HTTP downgrade sends them in the clear. Set Client to one that
+	// refuses plaintext hops if these headers carry a secret.
 	Headers map[string]string `json:"headers,omitempty"`
 
 	// OutputPath is the destination file path or directory. If it's a
@@ -40,7 +48,8 @@ type DownloadOptions struct {
 	ExpectedType string `json:"expected_type,omitempty"`
 
 	// Client is the HTTP client used for the request. If nil,
-	// DefaultDownloadClient is used.
+	// DefaultDownloadClient is used, which refuses non-public addresses.
+	// Supply your own client to download from localhost or an intranet host.
 	Client *http.Client `json:"-"`
 }
 
@@ -69,15 +78,28 @@ type DownloadResult struct {
 // whole transfer would make large downloads on slow connections fail — but
 // it does bound how long the server may take to start responding. Use the
 // context to cancel a download or to impose a deadline.
-var DefaultDownloadClient = &http.Client{Transport: newDownloadTransport()}
+//
+// Like [DefaultHTTPClient], it is guarded by [httpguard] and will not connect
+// to loopback, private, or other non-public addresses, nor honor an ambient
+// proxy. Supply [DownloadOptions].Client to download from such a host.
+var DefaultDownloadClient = newGuardedDownloadClient()
 
-func newDownloadTransport() http.RoundTripper {
-	if base, ok := http.DefaultTransport.(*http.Transport); ok {
-		t := base.Clone()
-		t.ResponseHeaderTimeout = 30 * time.Second
-		return t
-	}
-	return http.DefaultTransport
+// newGuardedDownloadClient builds the SSRF-guarded client used by default.
+// Redirects stay enabled, plain-HTTP hops included, since download links
+// routinely bounce through them; every hop is still address-validated.
+//
+// That permits an HTTPS-to-HTTP downgrade, and Go decides whether to forward
+// Authorization and Cookie across a redirect by comparing hosts only, never
+// schemes — so on a same-host downgrade it sends those headers in the clear.
+// Downloads carrying credentials want a client with a stricter redirect
+// policy; see [httpguard.WithMaxRedirects] without
+// [httpguard.WithHTTPRedirects].
+func newGuardedDownloadClient() *http.Client {
+	return httpguard.NewClient(
+		httpguard.WithResponseHeaderTimeout(30*time.Second),
+		httpguard.WithMaxRedirects(defaultMaxRedirects),
+		httpguard.WithHTTPRedirects(),
+	)
 }
 
 // downloadUserAgent is sent when the caller does not provide a User-Agent

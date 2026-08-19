@@ -2,6 +2,42 @@
 
 The fetch package provides interfaces and implementations for fetching web pages with support for HTML parsing, content extraction, and format conversion. It includes a simple HTTP fetcher for direct requests, a `Download` function for fetching files, and extensible interfaces for custom fetchers.
 
+## Default Clients Are SSRF-Guarded
+
+A URL handed to a fetcher is often a URL the program did not choose — from a
+user, a feed, or a link on a page it just crawled. So `DefaultHTTPClient` and
+`DefaultDownloadClient` are built by [httpguard](../httpguard/): they validate
+every address a hostname resolves to and connect only to public ones, which
+means **they will not fetch from `localhost`, `127.0.0.1`, or an intranet
+host**, and they ignore `HTTP_PROXY` / `HTTPS_PROXY`.
+
+Redirects are still followed, up to the standard limit of 10, with each hop
+address-validated like the original request.
+
+To fetch from a private address — a local dev server, a service on your own
+network — supply a client:
+
+```go
+fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{
+    Client: &http.Client{Timeout: fetch.DefaultTimeout},
+})
+
+result, err := fetch.Download(ctx, url, &fetch.DownloadOptions{
+    Client: &http.Client{},
+})
+```
+
+Or change it once for the whole program:
+
+```go
+fetch.DefaultHTTPClient = &http.Client{Timeout: fetch.DefaultTimeout}
+fetch.DefaultDownloadClient = &http.Client{}
+```
+
+The guard is a network boundary, not a whole policy: it does not enforce an
+allowlist, restrict schemes, or cap the response. See the
+[httpguard](../httpguard/) README for what it does and does not cover.
+
 ## Usage Examples
 
 ### Basic HTTP Fetching
@@ -117,6 +153,10 @@ if resp.Branding != nil {
 
 ### Custom HTTP Client
 
+A supplied client replaces the guarded default entirely, so it reaches
+whatever it is pointed at. Wrap it with `httpguard.NewClient` if you want the
+guard and your own settings.
+
 ```go
 import (
     "net/http"
@@ -223,7 +263,7 @@ req := &fetch.Request{
 |-------|------|-------------|---------|
 | `Timeout` | `time.Duration` | Request timeout | 30s |
 | `Headers` | `map[string]string` | Default headers | `{}` |
-| `Client` | `*http.Client` | HTTP client to use | Default client |
+| `Client` | `*http.Client` | HTTP client to use | `DefaultHTTPClient` (guarded) |
 | `MaxBodySize` | `int64` | Max response body size | 10 MB |
 
 ### Request Fields
@@ -349,7 +389,7 @@ Notes:
 | `CreateDirs` | `bool` | Create parent directories if needed |
 | `MaxSizeBytes` | `int64` | Maximum download size (0 = unlimited) |
 | `ExpectedType` | `string` | Required MIME type (e.g. `"application/pdf"`) |
-| `Client` | `*http.Client` | HTTP client (default: `DefaultDownloadClient`) |
+| `Client` | `*http.Client` | HTTP client (default: `DefaultDownloadClient`, which refuses non-public addresses) |
 
 ## Error Handling
 
@@ -412,9 +452,11 @@ func (f *MyFetcher) Fetch(ctx context.Context, req *fetch.Request) (*fetch.Respo
 - [htmltomd](../htmltomd/) - HTML to Markdown conversion
 - [web](../web/) - URL manipulation and normalization
 - [crawler](../crawler/) - Web crawling with fetch integration
+- [httpguard](../httpguard/) - The SSRF guard behind the default clients
 
 ## Implementation Notes
 
+- Default clients refuse non-public addresses; supply a `Client` to reach one
 - HTTP fetcher only supports text/html content type
 - Response body size is limited to prevent memory exhaustion (default 10 MB)
 - When no formats are specified, returns HTML by default

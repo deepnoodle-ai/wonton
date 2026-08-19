@@ -80,7 +80,7 @@ func TestContextDurationGetter(t *testing.T) {
 	app.Command("run").
 		Description("Run").
 		Flags(
-			Duration("timeout", "t").Default(30 * time.Second),
+			Duration("timeout", "t").Default(30*time.Second),
 			Duration("interval", "i"),
 		).
 		Run(func(ctx *Context) error {
