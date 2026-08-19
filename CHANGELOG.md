@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.38] - 2026-08-18
+
 ### Changed
 
 - **Breaking**: `fetch.DefaultHTTPClient` and `fetch.DefaultDownloadClient` are
