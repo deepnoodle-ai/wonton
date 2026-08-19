@@ -1,8 +1,12 @@
+![Wonton — a tasty Go toolkit for CLI tools and terminal UIs](.github/assets/wonton-header.jpg)
+
 # Wonton
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/deepnoodle-ai/wonton.svg)](https://pkg.go.dev/github.com/deepnoodle-ai/wonton)
-[![Go Report Card](https://goreportcard.com/badge/github.com/deepnoodle-ai/wonton?v=1)](https://goreportcard.com/report/github.com/deepnoodle-ai/wonton)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Reference](https://img.shields.io/badge/reference-pkg.go.dev-00ADD8?style=flat-square&logo=go&logoColor=white&labelColor=2f363d)](https://pkg.go.dev/github.com/deepnoodle-ai/wonton)
+[![Tests](https://img.shields.io/github/actions/workflow/status/deepnoodle-ai/wonton/go-test.yml?branch=main&style=flat-square&label=tests&labelColor=2f363d&color=00ADD8)](https://github.com/deepnoodle-ai/wonton/actions/workflows/go-test.yml)
+[![Version](https://img.shields.io/github/v/tag/deepnoodle-ai/wonton?style=flat-square&label=version&labelColor=2f363d&color=00ADD8)](https://github.com/deepnoodle-ai/wonton/tags)
+[![Go](https://img.shields.io/github/go-mod/go-version/deepnoodle-ai/wonton?style=flat-square&labelColor=2f363d&color=00ADD8)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache_2.0-00ADD8?style=flat-square&labelColor=2f363d)](LICENSE)
 
 A tasty Go toolkit for CLI tools and terminal UIs. Especially suited for
 building agentic tools like Claude Code.
