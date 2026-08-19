@@ -143,11 +143,11 @@ type Recorder struct {
 	startTime     time.Time
 	lastEventTime time.Time
 	pauseStart    time.Time
-	timeAdjust    float64 // cumulative time adjustment for idle clamping and pauses
+	timeAdjust    time.Duration // cumulative time removed for idle clamping and pauses
 	mu            sync.Mutex
 	compress      bool
 	redactSecrets bool
-	idleTimeLimit float64
+	idleTimeLimit time.Duration
 	paused        bool
 	closed        bool
 	width         int
@@ -176,12 +176,16 @@ type Recorder struct {
 //	}
 //	defer recorder.Close()
 func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Recorder, error) {
+	// One clock reading for both, so the first event's timestamp is measured
+	// from the same instant the idle accounting starts from.
+	now := time.Now()
+
 	r := &Recorder{
-		startTime:     time.Now(),
-		lastEventTime: time.Now(),
+		startTime:     now,
+		lastEventTime: now,
 		compress:      opts.Compress,
 		redactSecrets: opts.RedactSecrets,
-		idleTimeLimit: opts.IdleTimeLimit,
+		idleTimeLimit: time.Duration(opts.IdleTimeLimit * float64(time.Second)),
 		width:         width,
 		height:        height,
 	}
@@ -269,12 +273,17 @@ func (r *Recorder) RecordOutput(data string) {
 // eventTimeLocked computes the timestamp for an event occurring at now,
 // applying the idle time limit and accumulated pause adjustments.
 // Caller must hold r.mu.
+// The subtraction is kept in integer nanoseconds and converted to seconds
+// exactly once, at the end. Converting each term separately would round each
+// one independently, which can order two timestamps backwards when the true
+// difference between them is zero -- as happens on hosts whose clock
+// granularity is coarser than the interval being measured.
 func (r *Recorder) eventTimeLocked(now time.Time) float64 {
-	elapsed := now.Sub(r.startTime).Seconds()
+	elapsed := now.Sub(r.startTime)
 
 	// Apply idle time limit if configured
 	if r.idleTimeLimit > 0 {
-		timeSinceLastEvent := now.Sub(r.lastEventTime).Seconds()
+		timeSinceLastEvent := now.Sub(r.lastEventTime)
 		if timeSinceLastEvent > r.idleTimeLimit {
 			// Accumulate the excess time so subsequent events stay consistent
 			r.timeAdjust += timeSinceLastEvent - r.idleTimeLimit
@@ -283,7 +292,7 @@ func (r *Recorder) eventTimeLocked(now time.Time) float64 {
 
 	r.lastEventTime = now
 
-	return elapsed - r.timeAdjust
+	return (elapsed - r.timeAdjust).Seconds()
 }
 
 // RecordInput records user input data.
@@ -356,9 +365,12 @@ func (r *Recorder) Resume() {
 	if r.paused {
 		r.paused = false
 		// Remove the paused duration from the timeline so the recording
-		// resumes from the point where Pause was called.
-		r.timeAdjust += time.Since(r.pauseStart).Seconds()
-		r.lastEventTime = time.Now()
+		// resumes from the point where Pause was called. One clock reading
+		// for both, so no sliver of real time escapes both the pause
+		// adjustment and the idle accounting.
+		now := time.Now()
+		r.timeAdjust += now.Sub(r.pauseStart)
+		r.lastEventTime = now
 	}
 	r.mu.Unlock()
 }

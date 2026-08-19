@@ -45,6 +45,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   input never errors; it degrades to a typed card. Pure Go, no new module
   dependencies (stdlib plus the existing `golang.org/x/image`).
 
+### Fixed
+
+- `termsession`: recorded event timestamps can no longer go backwards across a
+  `Pause`/`Resume`. The elapsed time and the accumulated pause adjustment were
+  each converted to float64 seconds and then subtracted, so the two independent
+  roundings could disagree by an ulp and place a later event a fraction of an
+  attosecond before an earlier one. The subtraction now stays in integer
+  nanoseconds and converts to seconds once.
+
 ## [0.0.37] - 2026-06-29
 
 ### Fixed

@@ -95,6 +95,55 @@ func TestRecorder_PauseRemovesGap(t *testing.T) {
 	}
 }
 
+// TestRecorder_EventTimeNeverGoesBackwards verifies that a pause can never
+// order two event timestamps backwards, however coarse the host clock is.
+//
+// eventTimeLocked used to convert the elapsed time and the accumulated pause
+// adjustment to float64 seconds separately and subtract them. Each conversion
+// rounds on its own, so when the true gap between two events is exactly zero
+// -- which happens on hosts whose clock granularity is coarser than the
+// interval being measured, such as Windows -- the two roundings could disagree
+// by an ulp and put the later event a few hundred attoseconds before the
+// earlier one. That surfaced as a rare "gap = -0.000s" failure in
+// TestRecorder_PauseRemovesGap.
+//
+// The nanosecond values below are real triggers for the old arithmetic. They
+// drive eventTimeLocked directly so the check does not depend on the host
+// clock being coarse enough to reproduce the condition naturally.
+func TestRecorder_EventTimeNeverGoesBackwards(t *testing.T) {
+	cases := []struct {
+		name          string
+		firstEventAt  time.Duration // after startTime
+		pauseDuration time.Duration
+	}{
+		{"case1", 1292884469, 629424483},
+		{"case2", 3532116411, 1856234380},
+		{"case3", 3719384267, 289458594},
+		{"case4", 4330296842, 1257011184},
+		{"case5", 931165873, 1159095051},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			start := time.Unix(1700000000, 0)
+			r := &Recorder{startTime: start, lastEventTime: start}
+
+			// An event, then a pause that begins the instant the event was
+			// recorded and ends the instant the next one is, so the pause
+			// removes the entire interval between them and the true gap is
+			// exactly zero.
+			first := r.eventTimeLocked(start.Add(tc.firstEventAt))
+			r.timeAdjust += tc.pauseDuration
+			second := r.eventTimeLocked(start.Add(tc.firstEventAt + tc.pauseDuration))
+
+			if second < first {
+				t.Errorf("event times went backwards: first = %v, second = %v, delta = %v",
+					first, second, second-first)
+			}
+		})
+	}
+}
+
 // TestRecorder_UpdateSizeEmitsResizeEvent verifies that resizes are recorded
 // as asciicast v2 "r" events.
 func TestRecorder_UpdateSizeEmitsResizeEvent(t *testing.T) {
