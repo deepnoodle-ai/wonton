@@ -404,13 +404,13 @@ func (b *intBuilder) ValidateWith(f func(int) error) *intBuilder {
 	return b
 }
 
-func (b *intBuilder) GetName() string       { return b.name }
-func (b *intBuilder) GetShort() string      { return b.short }
-func (b *intBuilder) GetHelp() string       { return b.help }
-func (b *intBuilder) GetEnvVar() string     { return b.envVar }
-func (b *intBuilder) GetDefault() any       { return b.value }
-func (b *intBuilder) IsRequired() bool      { return b.required }
-func (b *intBuilder) IsHidden() bool        { return b.hidden }
+func (b *intBuilder) GetName() string   { return b.name }
+func (b *intBuilder) GetShort() string  { return b.short }
+func (b *intBuilder) GetHelp() string   { return b.help }
+func (b *intBuilder) GetEnvVar() string { return b.envVar }
+func (b *intBuilder) GetDefault() any   { return b.value }
+func (b *intBuilder) IsRequired() bool  { return b.required }
+func (b *intBuilder) IsHidden() bool    { return b.hidden }
 func (b *intBuilder) GetEnum() []string { return nil }
 func (b *intBuilder) Validate(value string) error {
 	if b.validator == nil {
@@ -458,13 +458,13 @@ func (b *float64Builder) ValidateWith(f func(float64) error) *float64Builder {
 	return b
 }
 
-func (b *float64Builder) GetName() string       { return b.name }
-func (b *float64Builder) GetShort() string      { return b.short }
-func (b *float64Builder) GetHelp() string       { return b.help }
-func (b *float64Builder) GetEnvVar() string     { return b.envVar }
-func (b *float64Builder) GetDefault() any       { return b.value }
-func (b *float64Builder) IsRequired() bool      { return b.required }
-func (b *float64Builder) IsHidden() bool        { return b.hidden }
+func (b *float64Builder) GetName() string   { return b.name }
+func (b *float64Builder) GetShort() string  { return b.short }
+func (b *float64Builder) GetHelp() string   { return b.help }
+func (b *float64Builder) GetEnvVar() string { return b.envVar }
+func (b *float64Builder) GetDefault() any   { return b.value }
+func (b *float64Builder) IsRequired() bool  { return b.required }
+func (b *float64Builder) IsHidden() bool    { return b.hidden }
 func (b *float64Builder) GetEnum() []string { return nil }
 func (b *float64Builder) Validate(value string) error {
 	if b.validator == nil {

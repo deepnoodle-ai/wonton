@@ -529,14 +529,14 @@ type Float64Flag struct {
 	Validator func(float64) error
 }
 
-func (f *Float64Flag) GetName() string       { return f.Name }
-func (f *Float64Flag) GetShort() string      { return f.Short }
-func (f *Float64Flag) GetHelp() string       { return f.Help }
-func (f *Float64Flag) GetEnvVar() string     { return f.EnvVar }
-func (f *Float64Flag) GetDefault() any       { return f.Value }
-func (f *Float64Flag) IsRequired() bool      { return f.Required }
-func (f *Float64Flag) IsHidden() bool        { return f.Hidden }
-func (f *Float64Flag) GetEnum() []string     { return nil }
+func (f *Float64Flag) GetName() string   { return f.Name }
+func (f *Float64Flag) GetShort() string  { return f.Short }
+func (f *Float64Flag) GetHelp() string   { return f.Help }
+func (f *Float64Flag) GetEnvVar() string { return f.EnvVar }
+func (f *Float64Flag) GetDefault() any   { return f.Value }
+func (f *Float64Flag) IsRequired() bool  { return f.Required }
+func (f *Float64Flag) IsHidden() bool    { return f.Hidden }
+func (f *Float64Flag) GetEnum() []string { return nil }
 func (f *Float64Flag) Validate(value string) error {
 	if f.Validator == nil {
 		return nil
