@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Added
+
+- `httpguard`: `WithMaxIdleConnsPerHost` and `WithMaxIdleConns` size the
+  connection pool. Without them the transport keeps
+  `http.DefaultMaxIdleConnsPerHost` (2) idle connections per host, so a
+  program making many concurrent requests to one host — webhook fan-out to a
+  busy receiver, a crawler working through one site — pays a fresh TCP
+  connection and TLS handshake for all but two of them. `DefaultMaxIdleConns`
+  is exported so callers can raise the per-host figure without lowering the
+  total below the package default. Defaults are unchanged.
+
 ## [0.0.38] - 2026-08-18
 
 ### Changed

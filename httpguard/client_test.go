@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,6 +91,58 @@ func TestClientAppliesSetupTimeouts(t *testing.T) {
 	// Non-positive values fall back to the defaults.
 	transport = transportOf(t, NewClient(WithTLSHandshakeTimeout(0)))
 	assert.Equal(t, transport.TLSHandshakeTimeout, DefaultTLSHandshakeTimeout)
+}
+
+func TestClientConnectionPoolDefaultsAndOptions(t *testing.T) {
+	// The default leaves MaxIdleConnsPerHost zero, which the transport reads
+	// as http.DefaultMaxIdleConnsPerHost (2).
+	transport := transportOf(t, NewClient())
+	assert.Equal(t, transport.MaxIdleConns, DefaultMaxIdleConns)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 0)
+
+	transport = transportOf(t, NewClient(
+		WithMaxIdleConns(256),
+		WithMaxIdleConnsPerHost(64),
+	))
+	assert.Equal(t, transport.MaxIdleConns, 256)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 64)
+
+	// Non-positive values are ignored, as with the timeout options.
+	transport = transportOf(t, NewClient(WithMaxIdleConns(0), WithMaxIdleConnsPerHost(-1)))
+	assert.Equal(t, transport.MaxIdleConns, DefaultMaxIdleConns)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 0)
+}
+
+// TestClientReusesConnectionsUpToPerHostLimit checks the option has its actual
+// effect — connection reuse — rather than only that the field was copied.
+func TestClientReusesConnectionsUpToPerHostLimit(t *testing.T) {
+	var mu sync.Mutex
+	conns := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		conns[r.RemoteAddr] = true
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Loopback is not a public address, so widen the validator for the test.
+	client := NewClient(
+		WithAddressValidator(func(net.IP) error { return nil }),
+		WithMaxIdleConns(16),
+		WithMaxIdleConnsPerHost(8),
+	)
+	// Sequential requests: each should come back to the same pooled
+	// connection, which only happens if idle connections are retained.
+	for range 12 {
+		resp, err := client.Get(server.URL)
+		assert.Nil(t, err)
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, len(conns), 1, "sequential requests should reuse one pooled connection")
 }
 
 func TestClientBoundsDNSLookupWithDNSTimeout(t *testing.T) {

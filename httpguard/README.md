@@ -166,6 +166,8 @@ rather than `==`.
 | `WithConnectTimeout(d)`         | 10s       | Bounds the connect phase, across every address tried   |
 | `WithTLSHandshakeTimeout(d)`    | 10s       | Bounds the TLS handshake                               |
 | `WithResponseHeaderTimeout(d)`  | none      | Bounds how long the server may take to send headers    |
+| `WithMaxIdleConns(n)`           | 32        | Total idle keep-alive connections, across all hosts     |
+| `WithMaxIdleConnsPerHost(n)`    | 2         | Idle connections kept per host; raise it for fan-out to a few hosts |
 | `WithMaxRedirects(n)`           | 0         | Allows up to n guarded HTTPS redirects                 |
 | `WithHTTPRedirects()`           | off       | Also allows plain HTTP hops (still address-validated)  |
 | `WithResolver(lookup)`          | system    | Replaces the resolver; results are validated the same  |
