@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.39] - 2026-08-31
+
 ### Added
 
 - `httpguard`: `WithMaxIdleConnsPerHost` and `WithMaxIdleConns` size the
