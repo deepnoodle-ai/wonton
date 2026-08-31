@@ -65,6 +65,10 @@ const (
 	DefaultDNSTimeout          = 5 * time.Second
 	DefaultConnectTimeout      = 10 * time.Second
 	DefaultTLSHandshakeTimeout = 10 * time.Second
+
+	// DefaultMaxIdleConns is the total idle connection pool size, across all
+	// hosts, used when [WithMaxIdleConns] is not supplied.
+	DefaultMaxIdleConns = 32
 )
 
 // nonPublicRanges are the ranges that Go's own net.IP predicates do not
@@ -114,6 +118,8 @@ type config struct {
 	responseHeaderTimeout time.Duration
 	maxRedirects          int
 	allowHTTPRedirects    bool
+	maxIdleConns          int
+	maxIdleConnsPerHost   int
 	lookup                LookupFunc
 	dial                  DialFunc
 	validate              ValidateFunc
@@ -207,6 +213,35 @@ func WithDialContext(dial DialFunc) Option {
 	}
 }
 
+// WithMaxIdleConnsPerHost sets how many idle keep-alive connections the client
+// keeps for a single host. Unset means [net/http.DefaultMaxIdleConnsPerHost],
+// which is 2 — so a program making many concurrent requests to one host tears
+// down and re-establishes a connection (and its TLS handshake) for all but two
+// of them. Raise it when outbound traffic concentrates on a few hosts, such as
+// webhook fan-out to one busy receiver. Values <= 0 are ignored.
+//
+// Keep it at or below the value given to [WithMaxIdleConns], which bounds the
+// pool across all hosts: a per-host figure above the total cannot be reached.
+func WithMaxIdleConnsPerHost(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxIdleConnsPerHost = n
+		}
+	}
+}
+
+// WithMaxIdleConns sets the total number of idle keep-alive connections kept
+// across all hosts. Defaults to [DefaultMaxIdleConns]. Values <= 0 are
+// ignored; use a negative value only through the standard transport, since
+// this option cannot express "unlimited".
+func WithMaxIdleConns(n int) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxIdleConns = n
+		}
+	}
+}
+
 // WithAddressValidator replaces [ValidatePublicIP] as the check applied to
 // every address, for a caller that needs to reach one specific private host —
 // a dev server, an internal API — without giving up the guard everywhere
@@ -247,6 +282,7 @@ func NewClient(opts ...Option) *http.Client {
 		dnsTimeout:          DefaultDNSTimeout,
 		connectTimeout:      DefaultConnectTimeout,
 		tlsHandshakeTimeout: DefaultTLSHandshakeTimeout,
+		maxIdleConns:        DefaultMaxIdleConns,
 		lookup:              net.DefaultResolver.LookupIPAddr,
 		validate:            ValidatePublicIP,
 	}
@@ -263,7 +299,8 @@ func NewClient(opts ...Option) *http.Client {
 		TLSHandshakeTimeout:   cfg.tlsHandshakeTimeout,
 		ResponseHeaderTimeout: cfg.responseHeaderTimeout,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          32,
+		MaxIdleConns:          cfg.maxIdleConns,
+		MaxIdleConnsPerHost:   cfg.maxIdleConnsPerHost,
 		IdleConnTimeout:       30 * time.Second,
 	}
 	return &http.Client{

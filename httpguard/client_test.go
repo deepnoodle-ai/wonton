@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,6 +91,151 @@ func TestClientAppliesSetupTimeouts(t *testing.T) {
 	// Non-positive values fall back to the defaults.
 	transport = transportOf(t, NewClient(WithTLSHandshakeTimeout(0)))
 	assert.Equal(t, transport.TLSHandshakeTimeout, DefaultTLSHandshakeTimeout)
+}
+
+func TestClientConnectionPoolDefaultsAndOptions(t *testing.T) {
+	// The default leaves MaxIdleConnsPerHost zero, which the transport reads
+	// as http.DefaultMaxIdleConnsPerHost (2).
+	transport := transportOf(t, NewClient())
+	assert.Equal(t, transport.MaxIdleConns, DefaultMaxIdleConns)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 0)
+
+	transport = transportOf(t, NewClient(
+		WithMaxIdleConns(256),
+		WithMaxIdleConnsPerHost(64),
+	))
+	assert.Equal(t, transport.MaxIdleConns, 256)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 64)
+
+	// Non-positive values are ignored, as with the timeout options.
+	transport = transportOf(t, NewClient(WithMaxIdleConns(0), WithMaxIdleConnsPerHost(-1)))
+	assert.Equal(t, transport.MaxIdleConns, DefaultMaxIdleConns)
+	assert.Equal(t, transport.MaxIdleConnsPerHost, 0)
+}
+
+// holdBarrier parks every request of a burst in the handler until all of
+// them have arrived, forcing the burst onto that many simultaneous
+// connections rather than letting one connection serve them in turn.
+type holdBarrier struct {
+	arrived sync.WaitGroup
+	release chan struct{}
+}
+
+// TestClientReusesConnectionsUpToPerHostLimit checks the option has its
+// actual effect rather than only that the field was copied.
+//
+// Sequential requests would not show it: one connection is reused even at the
+// default per-host limit of 2, and a single idle connection is all a
+// sequential caller ever needs. So this issues two bursts that each hold
+// several requests open at once. The first burst has to dial one connection
+// per request; if the pool then retained all of them, the second burst opens
+// none. At the default limit it would have kept 2 and re-dialed the rest.
+func TestClientReusesConnectionsUpToPerHostLimit(t *testing.T) {
+	const concurrent = 8
+
+	var mu sync.Mutex
+	conns := map[string]bool{}
+	var holding *holdBarrier // non-nil while a burst is being held
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		conns[r.RemoteAddr] = true
+		barrier := holding
+		mu.Unlock()
+
+		if barrier != nil {
+			barrier.arrived.Done()
+			select {
+			case <-barrier.release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	distinctConns := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(conns)
+	}
+
+	// Loopback is not a public address, so widen the validator for the test.
+	client := NewClient(
+		WithAddressValidator(func(net.IP) error { return nil }),
+		WithMaxIdleConns(16),
+		WithMaxIdleConnsPerHost(concurrent),
+	)
+
+	// The client sets no total timeout by design, so bound the requests with
+	// a context as the package documentation tells callers to: a regression
+	// that wedges a dial should fail this test in seconds rather than stall
+	// the run until the test binary's own timeout.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	// burst fires n requests that are all in flight at once, then lets them
+	// finish. Draining and closing each body is what returns its connection
+	// to the idle pool, which is the thing under test.
+	burst := func(t *testing.T, n int) {
+		t.Helper()
+		barrier := &holdBarrier{release: make(chan struct{})}
+		barrier.arrived.Add(n)
+		mu.Lock()
+		holding = barrier
+		mu.Unlock()
+
+		var wg sync.WaitGroup
+		for range n {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// t.Errorf, not assert: these run off the test goroutine,
+				// where a Fatal would skip the barrier bookkeeping below and
+				// strand the requests that did arrive.
+				request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+				if err != nil {
+					t.Errorf("new request: %v", err)
+					return
+				}
+				resp, err := client.Do(request)
+				if err != nil {
+					t.Errorf("request: %v", err)
+					return
+				}
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}()
+		}
+
+		// Bounded, so a request that never reaches the handler fails the
+		// test rather than parking it until the binary's own timeout.
+		arrived := make(chan struct{})
+		go func() {
+			barrier.arrived.Wait()
+			close(arrived)
+		}()
+		select {
+		case <-arrived:
+		case <-time.After(15 * time.Second):
+			t.Fatalf("only some of the %d requests reached the handler", n)
+		}
+
+		mu.Lock()
+		holding = nil
+		mu.Unlock()
+		close(barrier.release)
+		wg.Wait()
+	}
+
+	burst(t, concurrent)
+	opened := distinctConns()
+	assert.Equal(t, opened, concurrent, "each held request should have needed its own connection")
+
+	burst(t, concurrent)
+	assert.Equal(t, distinctConns(), opened,
+		"the second burst dialed again, so the pool did not retain all %d idle connections", concurrent)
 }
 
 func TestClientBoundsDNSLookupWithDNSTimeout(t *testing.T) {
