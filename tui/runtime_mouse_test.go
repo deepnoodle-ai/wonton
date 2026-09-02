@@ -123,3 +123,23 @@ func TestSetKittyKeyboardEnablesWithoutProbing(t *testing.T) {
 	term.DisableEnhancedKeyboard()
 	assert.Equal(t, "\033[<u", buf.String(), "and it is released on the way out")
 }
+
+func TestResizeRepaintsAreThrottledButKeystrokesAreNot(t *testing.T) {
+	// A window drag delivers SIGWINCH far faster than the frame rate and each
+	// resize repaints every cell, so back-to-back resizes coalesce onto the
+	// ticker. Anything the user typed renders straight away.
+	r := newTestRuntime(t)
+	r.lastRender = time.Now()
+	within := r.lastRender.Add(r.frameInterval() / 2)
+	after := r.lastRender.Add(2 * r.frameInterval())
+
+	assert.True(t, r.shouldThrottleResize(true, within), "a second resize inside the frame waits")
+	assert.False(t, r.shouldThrottleResize(true, after), "a frame later it repaints")
+	assert.False(t, r.shouldThrottleResize(false, within), "a keystroke never waits")
+}
+
+func TestFrameIntervalMatchesTheFrameRate(t *testing.T) {
+	var buf bytes.Buffer
+	assert.Equal(t, time.Second/30, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 30).frameInterval())
+	assert.Equal(t, time.Second/60, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 60).frameInterval())
+}

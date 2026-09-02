@@ -38,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   one call with embedded newlines — what an unwrapped `Text` renders as — was
   tested only by its first row, so the whole block vanished as soon as that row
   scrolled off. Each line is now clipped on its own.
+- **A window drag repainted the screen per SIGWINCH.** Resizes arrive far
+  faster than the frame rate and each one invalidates every cell, so a drag
+  flooded the terminal and visibly stuttered. A batch of nothing but resize
+  events now waits for the ticker, which renders within a frame anyway; every
+  other event still renders immediately.
 - **`DisableMouseTracking` left `?1002` on**, so an app that had enabled
   button-event tracking kept receiving drag reports after disabling the mouse.
 - **The full-screen flush is wrapped in synchronized output** (DEC 2026), as

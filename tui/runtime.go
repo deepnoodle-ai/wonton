@@ -22,15 +22,16 @@ import (
 // This design eliminates race conditions in application code while maintaining
 // responsive UI through non-blocking async operations.
 type Runtime struct {
-	terminal *Terminal
-	app      any // Application
-	events   chan Event
-	cmds     chan Cmd
-	done     chan struct{}
-	doneOnce sync.Once
-	ticker   *time.Ticker
-	fps      int
-	frame    uint64 // Frame counter for TickEvents
+	terminal   *Terminal
+	app        any // Application
+	events     chan Event
+	cmds       chan Cmd
+	done       chan struct{}
+	doneOnce   sync.Once
+	ticker     *time.Ticker
+	fps        int
+	lastRender time.Time // when render() last ran, for throttling resize repaints
+	frame      uint64    // Frame counter for TickEvents
 
 	// Panic capture: a panic in any runtime-managed goroutine (event loop,
 	// input reader, command goroutines) is recorded here so Run can restore
@@ -327,6 +328,7 @@ func (r *Runtime) eventLoop() {
 		select {
 		case event := <-r.events:
 			// Process this event and drain any other pending events
+			_, resizeOnly := event.(ResizeEvent)
 			if r.processEventWithQuitCheck(event) {
 				r.closeDone()
 				return
@@ -338,6 +340,9 @@ func (r *Runtime) eventLoop() {
 			for {
 				select {
 				case event := <-r.events:
+					if _, isResize := event.(ResizeEvent); !isResize {
+						resizeOnly = false
+					}
 					if r.processEventWithQuitCheck(event) {
 						r.closeDone()
 						return
@@ -346,6 +351,16 @@ func (r *Runtime) eventLoop() {
 					// No more pending events
 					break drainLoop
 				}
+			}
+
+			// Dragging a window edge delivers SIGWINCH far faster than the
+			// frame rate, and every resize repaints each cell on the screen
+			// because the size change invalidates the whole front buffer.
+			// Repainting per signal floods the terminal and the drag visibly
+			// stutters, so let the ticker pick these up instead. Only resize
+			// is throttled: a keystroke has to feel immediate.
+			if r.shouldThrottleResize(resizeOnly, time.Now()) {
+				continue
 			}
 
 			// Render once after processing all pending events
@@ -443,7 +458,24 @@ func (r *Runtime) processEvent(event Event) {
 }
 
 // render calls the application's View() method using BeginFrame/EndFrame.
+// shouldThrottleResize reports whether a batch of nothing but resize events
+// should wait for the ticker rather than repaint now. Resizes arrive faster
+// than the frame rate during a drag and each one repaints the whole screen;
+// the ticker renders within a frame either way.
+func (r *Runtime) shouldThrottleResize(resizeOnly bool, now time.Time) bool {
+	return resizeOnly && now.Sub(r.lastRender) < r.frameInterval()
+}
+
+// frameInterval is how long one frame lasts at the runtime's frame rate.
+func (r *Runtime) frameInterval() time.Duration {
+	if r.fps <= 0 {
+		return 0
+	}
+	return time.Second / time.Duration(r.fps)
+}
+
 func (r *Runtime) render() {
+	r.lastRender = time.Now()
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
 		// Terminal not ready, skip this frame
