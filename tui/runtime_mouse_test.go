@@ -100,3 +100,26 @@ func TestMouseModeOptionsKeepTheMostCapableRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestSetKittyKeyboardEnablesWithoutProbing(t *testing.T) {
+	// The probe never runs against a test terminal, so what this pins down is
+	// the decision: asking for the protocol outright is not the same as being
+	// told the terminal supports it.
+	var buf bytes.Buffer
+	term := NewTestTerminal(80, 24, &buf)
+	r := NewRuntime(term, &testRuntimeModel{}, 30)
+
+	assert.False(t, r.kittyKeyboard)
+	r.SetKittyKeyboard(true)
+	assert.True(t, r.kittyKeyboard)
+
+	buf.Reset()
+	term.EnableEnhancedKeyboard()
+	assert.Equal(t, "\033[>1u", buf.String(), "the enable is unconditional")
+	assert.True(t, term.IsKittyProtocolEnabled())
+	assert.False(t, term.IsKittyProtocolSupported(), "enabling is not a claim of support")
+
+	buf.Reset()
+	term.DisableEnhancedKeyboard()
+	assert.Equal(t, "\033[<u", buf.String(), "and it is released on the way out")
+}

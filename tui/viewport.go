@@ -87,6 +87,7 @@ func (s *ViewportState) ScrollBy(lines int) {
 	}
 	s.clampAnchor()
 	s.Follow = s.atBottom()
+	s.updatePosition()
 }
 
 // PageUp scrolls up by one viewport, less a line of overlap so the reader keeps
@@ -105,6 +106,7 @@ func (s *ViewportState) ScrollToTop() {
 	s.anchorItem, s.anchorLine = s.firstVisible(), 0
 	s.clampAnchor()
 	s.Follow = s.atBottom()
+	s.updatePosition()
 }
 
 // ScrollToBottom jumps to the end of the list and follows it from then on.
@@ -126,6 +128,7 @@ func (s *ViewportState) ScrollToItem(i int) {
 	s.anchorItem, s.anchorLine = i, 0
 	s.clampAnchor()
 	s.Follow = s.atBottom()
+	s.updatePosition()
 }
 
 // Anchor returns the item index and line currently at the top of the viewport.
@@ -468,6 +471,17 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		y += h + s.gap
 	}
 
+	s.updatePosition()
+}
+
+// updatePosition refreshes the AtBottom and LinesBelow an application reads to
+// draw a scroll indicator. Every scroll operation ends with it, so a footer
+// built in the same frame as the scroll already reflects it — otherwise the
+// indicator would trail the scroll by a frame.
+func (s *ViewportState) updatePosition() {
+	if !s.ready() {
+		return
+	}
 	maxI, maxL := s.maxAnchor()
 	s.AtBottom = !anchorLess(s.anchorItem, s.anchorLine, maxI, maxL)
 	if s.AtBottom {

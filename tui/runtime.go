@@ -54,6 +54,7 @@ type Runtime struct {
 	inputSource    InputSource // Source of input events (defaults to stdin decoder)
 	pasteTabWidth  int         // 0 = preserve tabs, >0 = convert to this many spaces
 	backslashEnter bool        // synthesize Shift+Enter from backslash+Enter (opt-in)
+	kittyKeyboard  bool        // enable the Kitty keyboard protocol without probing
 
 	// Mouse click synthesis state
 	mousePressX      int         // X position of last mouse press
@@ -111,6 +112,20 @@ func (r *Runtime) SetPasteTabWidth(width int) {
 	r.pasteTabWidth = width
 }
 
+// SetKittyKeyboard asks for the Kitty keyboard protocol outright, instead of
+// probing the terminal for it. Terminals that do not implement the protocol
+// ignore the escape sequence, and the runtime turns it off again on the way
+// out either way.
+//
+// Use it when the probe's answer would be wrong or too expensive: it is skipped
+// under tmux and screen (TERM=screen*/tmux*) and in Apple Terminal, so a
+// multiplexed session loses Shift+Enter even when the outer terminal supports
+// it, and where it does run it costs up to 200 ms of startup. This is what
+// InlineApp's WithInlineKittyKeyboard does. Must be called before Run().
+func (r *Runtime) SetKittyKeyboard(enabled bool) {
+	r.kittyKeyboard = enabled
+}
+
 // SetBackslashEnter enables synthesizing Shift+Enter from a backslash
 // immediately followed by Enter. This is a fallback for terminals without
 // the Kitty keyboard protocol, useful for chat-style apps where Shift+Enter
@@ -155,9 +170,12 @@ func (r *Runtime) Run() error {
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		// Detect Kitty keyboard protocol support before enabling raw mode
-		// This probes the terminal and enables the protocol if supported
-		r.terminal.DetectKittyProtocol()
+		// Detect Kitty keyboard protocol support before enabling raw mode.
+		// SetKittyKeyboard skips the probe: the app has already decided, and
+		// the probe costs up to 200 ms of startup.
+		if !r.kittyKeyboard {
+			r.terminal.DetectKittyProtocol()
+		}
 
 		if err := r.terminal.EnableRawMode(); err != nil {
 			return fmt.Errorf("failed to enable raw mode: %w", err)
@@ -166,7 +184,7 @@ func (r *Runtime) Run() error {
 		// Enable Kitty keyboard protocol if the terminal supports it
 		// This allows detection of modifier keys (Shift+Enter, etc.)
 		// For terminals that don't support it, backslash+Enter fallback is used
-		if r.terminal.IsKittyProtocolSupported() {
+		if r.kittyKeyboard || r.terminal.IsKittyProtocolSupported() {
 			r.terminal.EnableEnhancedKeyboard()
 		}
 	}

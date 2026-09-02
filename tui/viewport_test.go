@@ -33,6 +33,15 @@ func (h *heightItems) Item(i int) View {
 	return Text("%s", strings.Join(lines, "\n"))
 }
 
+// heightsOf returns n items of the same height.
+func heightsOf(n, h int) []int {
+	heights := make([]int, n)
+	for i := range heights {
+		heights[i] = h
+	}
+	return heights
+}
+
 func newViewport(t *testing.T, heights []int, width, height, gap int) (*ViewportState, *heightItems) {
 	t.Helper()
 	items := &heightItems{heights: heights}
@@ -353,4 +362,25 @@ func TestViewportFollowSurvivesTheAnchoredItemStreaming(t *testing.T) {
 			assert.Equal(t, 5, len(rows), "height %d: a full viewport", h)
 		}
 	}
+}
+
+func TestViewportPositionIsCurrentBeforeTheNextRender(t *testing.T) {
+	// An app draws its scroll indicator from AtBottom and LinesBelow in the
+	// same frame that handles the key, so scrolling has to update them at once
+	// rather than leaving it to the render that follows.
+	state, _ := newViewport(t, heightsOf(40, 1), 20, 10, 0)
+	state.ScrollToBottom()
+	assert.True(t, state.AtBottom)
+
+	state.PageUp()
+	assert.False(t, state.AtBottom)
+	assert.Equal(t, 9, state.LinesBelow)
+
+	state.ScrollToTop()
+	assert.False(t, state.AtBottom)
+	assert.Equal(t, 30, state.LinesBelow)
+
+	state.ScrollToItem(35)
+	assert.True(t, state.AtBottom, "item 35 of 40 is inside the last screenful")
+	assert.Equal(t, 0, state.LinesBelow)
 }

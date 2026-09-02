@@ -23,6 +23,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `Runtime.Suspend(fn)` — leave the alternate screen, run `fn` against the
   user's own terminal, then restore and repaint. `fn` reads keys from a
   channel, since the runtime's input reader owns stdin.
+- `Runtime.SetKittyKeyboard(true)` — ask for the Kitty keyboard protocol
+  outright instead of probing for it, as `WithInlineKittyKeyboard` always has.
+  The probe is skipped under tmux and screen, so a multiplexed session would
+  otherwise lose Shift+Enter; where it does run it costs up to 200 ms of
+  startup.
 - `Terminal.Invalidate` — discard what the terminal believes is on screen so
   the next flush redraws every cell. `Terminal.IsAlternateScreen`, `IsRawMode`,
   `IsCursorHidden`, and `IsMouseEnabled` report the modes currently set.

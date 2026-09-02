@@ -1139,8 +1139,10 @@ func (t *Terminal) DetectKittyProtocol() bool {
 // This allows detection of modifier keys with Enter, Tab, and other special keys.
 // For example, Shift+Enter will be reported as a distinct key event (ESC[13;2u).
 //
-// If DetectKittyProtocol() was called and returned false, this does nothing.
-// Otherwise it enables the protocol (useful when you know the terminal supports it).
+// It enables the protocol whether or not DetectKittyProtocol() was called, so
+// an application that would rather not pay for the probe — or whose terminal
+// the probe refuses to ask, such as anything under tmux — can just call this.
+// Terminals without the protocol ignore the sequence.
 //
 // Supported terminals: kitty, WezTerm, foot, ghostty, iTerm2 (3.5+), and others.
 // Unsupported terminals will silently ignore this escape sequence.
