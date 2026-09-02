@@ -60,6 +60,20 @@ type Runtime struct {
 	mousePressY      int         // Y position of last mouse press
 	mousePressButton MouseButton // Button that was pressed
 	mousePressed     bool        // Whether a mouse button is currently pressed
+
+	// Click-count state: repeated clicks on the same cell with the same button
+	// inside doubleClickThreshold count up, so views get double- and
+	// triple-click for free rather than each keeping its own timer.
+	lastClickTime   time.Time
+	lastClickX      int
+	lastClickY      int
+	lastClickButton MouseButton
+	clickCount      int
+
+	// Suspend state. suspendKeys is non-nil exactly while Suspend is running
+	// fn; the input reader diverts events into it instead of the event loop.
+	suspendMu   sync.Mutex
+	suspendKeys chan Event
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -543,7 +557,7 @@ func (r *Runtime) inputReader() {
 						event = KeyEvent{Key: KeyEnter, Shift: true}
 					} else {
 						// Not Enter - forward backslash first, then process nextEvent
-						r.forwardEvent(keyEvent)
+						_ = r.forwardEvent(keyEvent)
 						event = nextEvent
 					}
 				case <-time.After(backslashEnterTimeout):
@@ -560,17 +574,13 @@ func (r *Runtime) inputReader() {
 			// sets clickSynthesized=true, and then skips synthesis in handleRelease.
 			// Without this ordering, handleRelease would create a duplicate click.
 			if clickEvent != nil {
-				select {
-				case r.events <- clickEvent:
-				case <-r.done:
+				if !r.forwardEvent(clickEvent) {
 					return
 				}
 			}
 
 			// Forward original event (Press, Release, Move, etc.)
-			select {
-			case r.events <- event:
-			case <-r.done:
+			if !r.forwardEvent(event) {
 				return
 			}
 		case err := <-errChan:
@@ -591,11 +601,34 @@ func (r *Runtime) inputReader() {
 
 // forwardEvent sends an event to the main event loop.
 // Used by inputReader when it needs to send multiple events (e.g., backslash followed by non-Enter).
-func (r *Runtime) forwardEvent(event Event) {
+// forwardEvent hands an input event to the event loop, or to a Suspend in
+// progress. Returns false once the runtime is shutting down, at which point the
+// caller should stop reading input.
+func (r *Runtime) forwardEvent(event Event) bool {
+	if keys := r.suspendChannel(); keys != nil {
+		// The application is not running: fn owns the screen and any keys the
+		// user presses belong to it. A full channel means fn is not reading, so
+		// drop rather than block the decoder.
+		select {
+		case keys <- event:
+		default:
+		}
+		return true
+	}
 	select {
 	case r.events <- event:
+		return true
 	case <-r.done:
+		return false
 	}
+}
+
+// suspendChannel returns the channel a Suspend is waiting on, or nil when the
+// runtime is not suspended.
+func (r *Runtime) suspendChannel() chan Event {
+	r.suspendMu.Lock()
+	defer r.suspendMu.Unlock()
+	return r.suspendKeys
 }
 
 // processMouseEvent tracks mouse state and returns any additional synthetic events.
@@ -617,6 +650,10 @@ func (r *Runtime) forwardEvent(event Event) {
 // Applications can handle whichever events they need:
 //   - Most apps just handle MouseClick for simple button behavior
 //   - Apps needing drag or press feedback can also handle MousePress/MouseRelease
+//
+// The synthetic click carries a ClickCount: repeated clicks on the same cell
+// with the same button, each within doubleClickThreshold of the last, count up
+// (1 = single, 2 = double, 3 = triple, and on). Any other click restarts at 1.
 //
 // Returns the original event and an optional synthetic click event.
 func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
@@ -642,12 +679,13 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 			// Return both the release AND a synthetic click
 			r.mousePressed = false
 			clickEvent := MouseEvent{
-				X:         mouseEvent.X,
-				Y:         mouseEvent.Y,
-				Button:    r.mousePressButton,
-				Type:      MouseClick,
-				Modifiers: mouseEvent.Modifiers,
-				Time:      mouseEvent.Time,
+				X:          mouseEvent.X,
+				Y:          mouseEvent.Y,
+				Button:     r.mousePressButton,
+				Type:       MouseClick,
+				Modifiers:  mouseEvent.Modifiers,
+				Time:       mouseEvent.Time,
+				ClickCount: r.countClick(mouseEvent),
 			}
 			return event, clickEvent
 		}
@@ -657,6 +695,26 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 	default:
 		return event, nil
 	}
+}
+
+// doubleClickThreshold is how long a second click may follow the first and
+// still count as part of the same multi-click. Matches MouseHandler.
+const doubleClickThreshold = 500 * time.Millisecond
+
+// countClick advances the multi-click counter for a click at ev's position and
+// returns the resulting count.
+func (r *Runtime) countClick(ev MouseEvent) int {
+	sameSpot := ev.X == r.lastClickX && ev.Y == r.lastClickY &&
+		r.mousePressButton == r.lastClickButton
+	if sameSpot && !r.lastClickTime.IsZero() && ev.Time.Sub(r.lastClickTime) <= doubleClickThreshold {
+		r.clickCount++
+	} else {
+		r.clickCount = 1
+	}
+	r.lastClickTime = ev.Time
+	r.lastClickX, r.lastClickY = ev.X, ev.Y
+	r.lastClickButton = r.mousePressButton
+	return r.clickCount
 }
 
 // commandExecutor runs async commands (Goroutine 3).

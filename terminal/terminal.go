@@ -1213,12 +1213,30 @@ func (t *Terminal) EnableMouseButtons() {
 	t.mouseEnabled = true
 }
 
+// EnableMouseDrag enables mouse reporting for button press, release, wheel, and
+// motion while a button is held — but not hover. This is what a view needs to
+// implement drag-to-select, and it is far quieter than EnableMouseTracking:
+// a terminal in ?1003 reports every pointer movement over the window.
+func (t *Terminal) EnableMouseDrag() {
+	if t.mouseEnabled {
+		return
+	}
+	// Enable SGR extended mouse mode (supports coordinates beyond 223)
+	fmt.Fprint(t.out, "\033[?1006h")
+	// Enable mouse tracking - report button press and release
+	fmt.Fprint(t.out, "\033[?1000h")
+	// Enable button-event tracking - report motion while a button is held
+	fmt.Fprint(t.out, "\033[?1002h")
+	t.mouseEnabled = true
+}
+
 // DisableMouseTracking disables mouse event reporting
 func (t *Terminal) DisableMouseTracking() {
 	if !t.mouseEnabled {
 		return
 	}
 	fmt.Fprint(t.out, "\033[?1000l")
+	fmt.Fprint(t.out, "\033[?1002l")
 	fmt.Fprint(t.out, "\033[?1003l")
 	fmt.Fprint(t.out, "\033[?1006l")
 	t.mouseEnabled = false
@@ -1792,16 +1810,23 @@ func (t *Terminal) flushInternal() error {
 		startTime = time.Now()
 	}
 
+	wasHidden := t.cursorHidden
+
+	var output strings.Builder
+
+	// Synchronized output: the terminal holds the frame back until the end
+	// marker, so a repaint that touches every visible cell — a page scroll, a
+	// resize — lands at once instead of tearing. Terminals that do not
+	// implement DEC 2026 ignore both markers.
+	output.WriteString("\033[?2026h")
+
 	// Hide cursor during rendering to prevent flicker.
 	// The cursor moves around while writing cells, which can cause visible
 	// flashing even if the app has called HideCursor(). We always hide it
 	// during flush and restore visibility based on the app's desired state.
-	wasHidden := t.cursorHidden
 	if !wasHidden {
-		fmt.Fprint(t.out, "\033[?25l") // Hide cursor
+		output.WriteString("\033[?25l") // Hide cursor
 	}
-
-	var output strings.Builder
 	cellsUpdated := 0
 	ansiCodes := 0
 
@@ -1938,6 +1963,8 @@ func (t *Terminal) flushInternal() error {
 	if !wasHidden {
 		output.WriteString("\033[?25h") // Show cursor
 	}
+
+	output.WriteString("\033[?2026l") // End sync
 
 	outputStr := output.String()
 	bytesWritten := len(outputStr)
@@ -2244,4 +2271,38 @@ func (t *Terminal) GetCell(x, y int) Cell {
 		return Cell{Char: ' '}
 	}
 	return t.backBuffer[y][x]
+}
+
+// IsAlternateScreen reports whether the alternate screen buffer is active.
+func (t *Terminal) IsAlternateScreen() bool { return t.altScreen }
+
+// IsRawMode reports whether raw mode is enabled.
+func (t *Terminal) IsRawMode() bool { return t.rawMode }
+
+// IsCursorHidden reports whether the cursor is hidden.
+func (t *Terminal) IsCursorHidden() bool { return t.cursorHidden }
+
+// IsMouseEnabled reports whether any mouse reporting mode is enabled.
+func (t *Terminal) IsMouseEnabled() bool { return t.mouseEnabled }
+
+// Invalidate discards the terminal's knowledge of what is currently on screen,
+// so the next flush redraws every cell rather than diffing against a picture
+// that is no longer true.
+//
+// Call it after anything outside the terminal's control has written to the
+// screen: a subprocess, a suspend-and-resume, a manual escape sequence. The
+// back buffer — what the application wants on screen — is untouched.
+func (t *Terminal) Invalidate() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if !t.buffered {
+		return
+	}
+	for y := range t.frontBuffer {
+		for x := range t.frontBuffer[y] {
+			t.frontBuffer[y][x] = Cell{Char: 0, Style: NewStyle(), Width: 0, Continuation: false}
+		}
+	}
+	t.dirtyRegion.MarkRect(0, 0, t.width, t.height)
 }

@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Added
+
+- `tui.Viewport` and `tui.ViewportState` — a scrollable, virtualized list. Only
+  the items intersecting the screen are built and measured, so a transcript of
+  ten thousand messages costs the same per frame as one of ten. The scroll
+  position is an anchor (item index plus line within it), not a line offset,
+  so appending to the list or an item growing as it streams moves nothing.
+  `Follow` pins the view to the end.
+- `tui.Measure(view, maxWidth, maxHeight)` — the size a view would render at,
+  without a terminal. For sizing a region whose height depends on its content.
+- `Terminal.EnableMouseDrag` and the `WithMouseDrag` / `WithMouseButtons` run
+  options — press, release, wheel, and motion while a button is held, but not
+  hover. `EnableMouseTracking`'s `?1003` reports every pointer movement over
+  the window; drag-to-select does not need that.
+- `Runtime.Suspend(fn)` — leave the alternate screen, run `fn` against the
+  user's own terminal, then restore and repaint. `fn` reads keys from a
+  channel, since the runtime's input reader owns stdin.
+- `Terminal.Invalidate` — discard what the terminal believes is on screen so
+  the next flush redraws every cell. `Terminal.IsAlternateScreen`, `IsRawMode`,
+  `IsCursorHidden`, and `IsMouseEnabled` report the modes currently set.
+
+### Fixed
+
+- **A scrolled `ScrollView` dropped multi-line text entirely.** Text printed in
+  one call with embedded newlines — what an unwrapped `Text` renders as — was
+  tested only by its first row, so the whole block vanished as soon as that row
+  scrolled off. Each line is now clipped on its own.
+- **`DisableMouseTracking` left `?1002` on**, so an app that had enabled
+  button-event tracking kept receiving drag reports after disabling the mouse.
+- **The full-screen flush is wrapped in synchronized output** (DEC 2026), as
+  the inline printer already was. A repaint that touches every visible cell —
+  a page scroll, a resize — now lands in one piece instead of tearing.
+- `Runtime` counts repeated clicks and sets `ClickCount` on the synthetic
+  `MouseClick` it emits, so views get double- and triple-click without each
+  keeping its own timer.
+
 ## [0.0.39] - 2026-08-31
 
 ### Added

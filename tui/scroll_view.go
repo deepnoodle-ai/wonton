@@ -1,6 +1,9 @@
 package tui
 
-import "image"
+import (
+	"image"
+	"strings"
+)
 
 // ScrollAnchor determines which part of content to show when content exceeds viewport.
 type ScrollAnchor int
@@ -144,21 +147,44 @@ func (f *scrollRenderFrame) SetCell(x, y int, char rune, style Style) error {
 }
 
 func (f *scrollRenderFrame) PrintStyled(x, y int, text string, style Style) error {
-	screenX := x + f.offsetX
-	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH {
-		return nil // Entire line outside viewport
-	}
-	return f.inner.PrintStyled(screenX, screenY, text, style)
+	return f.printPerLine(x, y, text, style, f.inner.PrintStyled)
 }
 
 func (f *scrollRenderFrame) PrintTruncated(x, y int, text string, style Style) error {
+	return f.printPerLine(x, y, text, style, f.inner.PrintTruncated)
+}
+
+// printPerLine clips a print to the viewport one line at a time.
+//
+// Text with embedded newlines occupies as many rows as it has lines, and a
+// scrolled frame usually shows only some of them. Testing the starting row
+// alone would drop a whole multi-line block the moment its first line scrolled
+// off — which is exactly what an unwrapped Text renders as: one call, every
+// line in it.
+func (f *scrollRenderFrame) printPerLine(
+	x, y int,
+	text string,
+	style Style,
+	print func(int, int, string, Style) error,
+) error {
 	screenX := x + f.offsetX
-	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH {
-		return nil
+	if !strings.Contains(text, "\n") {
+		screenY := y - f.offsetY
+		if screenY < 0 || screenY >= f.clipH {
+			return nil // Entire line outside viewport
+		}
+		return print(screenX, screenY, text, style)
 	}
-	return f.inner.PrintTruncated(screenX, screenY, text, style)
+	for i, line := range strings.Split(text, "\n") {
+		screenY := y + i - f.offsetY
+		if screenY < 0 || screenY >= f.clipH {
+			continue
+		}
+		if err := print(screenX, screenY, line, style); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (f *scrollRenderFrame) FillStyled(x, y, width, height int, char rune, style Style) error {

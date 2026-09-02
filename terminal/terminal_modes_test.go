@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -49,7 +50,7 @@ func TestTerminal_EnableDisableMouseTracking(t *testing.T) {
 
 	buf.Reset()
 	term.DisableMouseTracking()
-	assert.Equal(t, buf.String(), "\033[?1000l\033[?1003l\033[?1006l")
+	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
 	assert.True(t, !term.mouseEnabled)
 }
 
@@ -63,7 +64,22 @@ func TestTerminal_EnableMouseButtons(t *testing.T) {
 
 	buf.Reset()
 	term.DisableMouseTracking()
-	assert.Equal(t, buf.String(), "\033[?1000l\033[?1003l\033[?1006l")
+	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
+	assert.True(t, !term.mouseEnabled)
+}
+
+func TestTerminal_EnableMouseDrag(t *testing.T) {
+	buf := &bytes.Buffer{}
+	term := NewTestTerminal(10, 5, buf)
+
+	// Drag mode adds ?1002 (motion while held) but never ?1003 (hover).
+	term.EnableMouseDrag()
+	assert.Equal(t, buf.String(), "\033[?1006h\033[?1000h\033[?1002h")
+	assert.True(t, term.mouseEnabled)
+
+	buf.Reset()
+	term.DisableMouseTracking()
+	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
 	assert.True(t, !term.mouseEnabled)
 }
 
@@ -160,4 +176,49 @@ func TestTerminal_BypassInputPreservesGraphemeClusters(t *testing.T) {
 	assert.Equal(t, 'A', term.frontBuffer[0][2].Char)
 	assert.Equal(t, 3, term.virtualX)
 	assert.Equal(t, 0, term.virtualY)
+}
+
+func TestTerminal_FlushIsWrappedInSynchronizedOutput(t *testing.T) {
+	buf := &bytes.Buffer{}
+	term := NewTestTerminal(10, 5, buf)
+
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintStyled(0, 0, "hi", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+
+	out := buf.String()
+	// The whole repaint arrives between the markers, so a terminal that
+	// implements DEC 2026 shows it in one piece instead of tearing.
+	assert.True(t, strings.HasPrefix(out, "\033[?2026h"), "flush must begin with sync-on, got %q", out)
+	assert.True(t, strings.HasSuffix(out, "\033[?2026l"), "flush must end with sync-off, got %q", out)
+	assert.Contains(t, out, "hi")
+}
+
+func TestTerminal_InvalidateForcesAFullRedraw(t *testing.T) {
+	buf := &bytes.Buffer{}
+	term := NewTestTerminal(10, 2, buf)
+
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintStyled(0, 0, "hi", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+
+	// Nothing changed, so a second identical frame sends no cells.
+	buf.Reset()
+	frame, err = term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintStyled(0, 0, "hi", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+	assert.False(t, strings.Contains(buf.String(), "hi"), "an unchanged frame should re-send nothing")
+
+	// After something else has written to the screen, the terminal's picture of
+	// it is worthless and every cell has to go out again.
+	term.Invalidate()
+	buf.Reset()
+	frame, err = term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintStyled(0, 0, "hi", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+	assert.Contains(t, buf.String(), "hi")
 }
