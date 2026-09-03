@@ -1,6 +1,10 @@
 package tui
 
-import "image"
+import (
+	"image"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
+)
 
 // BorderedView wraps a view with an optional border
 type BorderedView struct {
@@ -20,6 +24,9 @@ type BorderedView struct {
 // Bordered wraps a view with a border and optional title.
 // The border consumes 2 cells of width and height (1 on each side).
 //
+// The border defaults to SingleBorder. Pass Border(nil) for a wrapper that
+// reserves no cells and draws nothing.
+//
 // Use the builder pattern to customize the border:
 //
 //	Bordered(content).
@@ -35,12 +42,14 @@ type BorderedView struct {
 func Bordered(inner View) *BorderedView {
 	return &BorderedView{
 		inner:       inner,
+		border:      &SingleBorder,
 		borderStyle: NewStyle(),
 		titleStyle:  NewStyle(),
 	}
 }
 
-// Border sets the border style for the frame.
+// Border sets the border style for the frame. A nil style draws no border and
+// reserves no cells for one.
 func (f *BorderedView) Border(style *BorderStyle) *BorderedView {
 	f.border = style
 	return f
@@ -157,15 +166,10 @@ func (f *BorderedView) render(ctx *RenderContext) {
 		ctx.PrintTruncated(w-1, 0, f.border.TopRight, borderStyle)
 	}
 
-	// Title in top border
+	// Title in top border. Truncate by display width, not by bytes: slicing
+	// bytes splits a multi-byte character into garbage.
 	if f.title != "" && w > 4 {
-		titleW, _ := MeasureText(f.title)
-		maxTitleW := w - 4
-		if titleW > maxTitleW {
-			titleW = maxTitleW
-		}
-		titleX := 2
-		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], titleStyle)
+		ctx.PrintTruncated(2, 0, runewidth.Truncate(f.title, w-4, "…"), titleStyle)
 	}
 
 	// Side borders

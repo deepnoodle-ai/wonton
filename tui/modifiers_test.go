@@ -267,12 +267,21 @@ func TestBordered_RenderWithTitle(t *testing.T) {
 
 func TestBordered_NoBorder(t *testing.T) {
 	inner := Text("Plain")
-	bordered := Bordered(inner)
+	bordered := Bordered(inner).Border(nil)
 
-	// Without border, size should match inner
+	// Border(nil) opts out, so nothing is reserved and the size is the inner's.
 	w, h := bordered.size(100, 100)
 	assert.Equal(t, 5, w)
 	assert.Equal(t, 1, h)
+}
+
+func TestBorderedDrawsABorderByDefault(t *testing.T) {
+	// Bordered() with no Border() call used to draw nothing, which silently
+	// swallowed every Title and BorderFg set on it.
+	screen := SprintScreen(Bordered(Text("Plain")).Title("T"), WithWidth(12), WithHeight(3))
+	assert.Equal(t, screen.Row(0), "┌─T────────┐")
+	assert.Equal(t, screen.Row(1), "│Plain     │")
+	assert.Equal(t, screen.Row(2), "└──────────┘")
 }
 
 func TestBordered_Chaining(t *testing.T) {

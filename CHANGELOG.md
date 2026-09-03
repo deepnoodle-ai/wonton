@@ -38,6 +38,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   one call with embedded newlines — what an unwrapped `Text` renders as — was
   tested only by its first row, so the whole block vanished as soon as that row
   scrolled off. Each line is now clipped on its own.
+- **`Bordered` drew no border unless `Border` was called.** The constructor
+  left the style nil, so `Bordered(x).Title("T").BorderFg(ColorCyan)` silently
+  dropped both. It now defaults to `SingleBorder`; pass `Border(nil)` for a
+  wrapper that reserves no cells and draws nothing. A title too long for the
+  frame is also truncated by display width now, not by bytes.
+- **A `Stack` dropped the children after an oversized flexible one.** A
+  `ScrollView` reports the full height of what it scrolls as its minimum, and
+  the stack handed over that much even when it exceeded the space left,
+  pushing the footer after it off the bottom. Flexible minimums are now scaled
+  to fit what remains.
+- **The `mouse` example did not scroll and drew no box.** Its scroll area had
+  no wheel or key handling at all, so the pointer readout and the border are
+  new; its buttons no longer spread to the screen edges.
 - **The `code` and `diff` examples could not scroll.** `diff`'s status bar
   advertised ↑↓, PgUp/PgDn, and Home/End, but its event handler only handled
   quit; `code` had no scroll keys at all and exited 0 in silence when run
