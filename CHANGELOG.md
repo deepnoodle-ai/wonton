@@ -10,6 +10,29 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- `crawler.Frontier`, `URLItem`, and the priority-ordered
+  `MemoryFrontier`, which applies context-aware backpressure instead of
+  silently dropping discovered URLs when its capacity is reached.
+- `crawler.HostPolicy` for per-host concurrency and request spacing.
+  `Result` now reports `Depth`, `Referrer`, and `DiscoveredAt`, and
+  `Crawler.Pending` exposes queued work for progress UIs.
+
+### Changed
+
+- `crawler.Options.RequestDelay` and robots.txt `Crawl-delay` are now enforced
+  per host by an eligibility scheduler. A slow or cooling-down host no longer
+  stalls unrelated hosts, and same-host concurrency defaults to one.
+- Crawler completion is event-driven; the former 100 ms idle polling loop has
+  been removed.
+
+### Fixed
+
+- A malformed empty `User-agent:` directive no longer matches every crawler.
+- Cached pages can be replayed without a configured fetcher, since cache hits
+  do not make network requests.
+
 ## [0.1.0] - 2026-09-02
 
 ### Added

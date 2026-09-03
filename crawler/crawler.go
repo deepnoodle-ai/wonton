@@ -91,6 +91,16 @@ type Result struct {
 	// URL is the parsed URL that was crawled
 	URL *url.URL
 
+	// Depth is the number of links between this page and its seed URL.
+	Depth int
+
+	// Referrer is the URL of the page where this URL was discovered. It is
+	// empty for seed URLs.
+	Referrer string
+
+	// DiscoveredAt is when this URL was admitted to the crawl frontier.
+	DiscoveredAt time.Time
+
 	// Parsed contains the result of running a Parser on the page, if a parser
 	// was configured for this domain. The type depends on the Parser implementation.
 	Parsed any
@@ -131,9 +141,18 @@ type Options struct {
 	// Cache stores fetched pages to avoid redundant requests. If nil, no caching is used.
 	Cache cache.Cache
 
-	// RequestDelay adds a delay between requests from each worker.
-	// Use this to be respectful of target servers and avoid overwhelming them.
+	// RequestDelay sets a minimum delay between requests to the same host.
+	// The delay is enforced per host, so an unrelated host does not stall while
+	// another host cools down. HostPolicy.MinDelay is used when it is larger.
 	RequestDelay time.Duration
+
+	// Frontier stores pending crawl work. If nil, a MemoryFrontier is created
+	// for each call to Crawl so the Crawler remains reusable. A provided
+	// frontier may be preloaded and crawled with an empty seed list.
+	Frontier Frontier
+
+	// HostPolicy controls per-host concurrency and request spacing.
+	HostPolicy HostPolicy
 
 	// KnownURLs is a list of URLs that are already known and should not be processed again.
 	// This is useful for resuming interrupted crawls.
@@ -169,10 +188,9 @@ type Options struct {
 	// Defaults to 30 seconds if ShowProgress is true and this is not set.
 	ShowProgressInterval time.Duration
 
-	// QueueSize sets the buffer size for the URL queue.
-	// Larger queues can improve throughput but use more memory.
-	// If the queue fills up, newly discovered URLs are dropped (and logged);
-	// they may be picked up again if rediscovered later in the crawl.
+	// QueueSize sets the maximum number of items waiting in the default
+	// MemoryFrontier. When full, producers wait for capacity; URLs are never
+	// silently dropped. It is ignored when Frontier is provided.
 	// Defaults to 10000 if not specified.
 	QueueSize int
 
@@ -192,8 +210,8 @@ type Options struct {
 
 	// RespectRobotsTxt enables robots.txt compliance.
 	// When enabled, the crawler will fetch and respect robots.txt rules,
-	// including Crawl-delay directives (applied per worker, in place of
-	// RequestDelay when larger).
+	// including per-host Crawl-delay directives when they are larger than the
+	// configured minimum delay.
 	// Defaults to true. Set to false to disable robots.txt checking.
 	RespectRobotsTxt *bool
 
@@ -237,11 +255,13 @@ func BoolPtr(b bool) *bool {
 // while crawling is in progress. Use New() to create instances.
 type Crawler struct {
 	processedURLs        sync.Map
-	queue                chan string
+	frontier             Frontier
+	frontierProvided     bool
 	queueSize            int
 	maxURLs              int
 	workers              int
 	requestDelay         time.Duration
+	hostPolicy           HostPolicy
 	cache                cache.Cache
 	parserRules          []*ParserRule
 	defaultParser        Parser
@@ -261,6 +281,10 @@ type Crawler struct {
 	// pendingURLs counts URLs that have been queued but not fully processed.
 	// The crawl is complete when this reaches zero.
 	pendingURLs int64
+
+	// inFlightURLs is used with pendingURLs to report the number of items that
+	// have not started yet.
+	inFlightURLs int64
 
 	// enqueuedURLs counts URLs admitted to the queue, used to enforce maxURLs.
 	enqueuedURLs int64
@@ -314,6 +338,15 @@ func New(opts Options) (*Crawler, error) {
 	if opts.RobotsTxtUserAgent == "" {
 		opts.RobotsTxtUserAgent = "*"
 	}
+	if opts.HostPolicy.MaxConcurrent <= 0 {
+		opts.HostPolicy.MaxConcurrent = 1
+	}
+	if opts.RequestDelay > opts.HostPolicy.MinDelay {
+		opts.HostPolicy.MinDelay = opts.RequestDelay
+	}
+	if opts.HostPolicy.MaxDelay < opts.HostPolicy.MinDelay {
+		opts.HostPolicy.MaxDelay = opts.HostPolicy.MinDelay
+	}
 	// Default RespectRobotsTxt to true
 	respectRobotsTxt := true
 	if opts.RespectRobotsTxt != nil {
@@ -326,11 +359,19 @@ func New(opts Options) (*Crawler, error) {
 	if opts.PreserveQueryParams {
 		normalizeOpts = append(normalizeOpts, web.KeepQuery())
 	}
+	frontier := opts.Frontier
+	frontierProvided := frontier != nil
+	if frontier == nil {
+		frontier = NewMemoryFrontier(opts.QueueSize)
+	}
 	c := &Crawler{
 		cache:                opts.Cache,
+		frontier:             frontier,
+		frontierProvided:     frontierProvided,
 		maxURLs:              opts.MaxURLs,
 		workers:              opts.Workers,
 		requestDelay:         opts.RequestDelay,
+		hostPolicy:           opts.HostPolicy,
 		defaultFetcher:       opts.DefaultFetcher,
 		defaultParser:        opts.DefaultParser,
 		followBehavior:       opts.FollowBehavior,
@@ -435,18 +476,28 @@ func (c *Crawler) sortFetcherRulesByPriority() {
 //		fmt.Printf("Crawled %s: found %d links\n", result.URL, len(result.Links))
 //	})
 func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	if c.running {
 		c.mu.Unlock()
 		return errors.New("crawler is already running")
 	}
 	c.running = true
-	// Create a fresh queue for each crawl so the Crawler can be reused.
-	c.queue = make(chan string, c.queueSize)
-	atomic.StoreInt64(&c.pendingURLs, 0)
+	// Create a fresh default frontier for each crawl so canceled work from one
+	// run cannot leak into the next. Caller-provided frontiers retain their own
+	// lifecycle and must be empty before the first crawl.
+	if !c.frontierProvided {
+		c.frontier = NewMemoryFrontier(c.queueSize)
+	}
+	initialPending := c.frontier.Len()
+	atomic.StoreInt64(&c.pendingURLs, int64(initialPending))
+	atomic.StoreInt64(&c.inFlightURLs, 0)
 	// This context is used to stop workers when the work is done
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
+	frontier := c.frontier
 	c.mu.Unlock()
 
 	defer func() {
@@ -457,32 +508,35 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 		c.mu.Unlock()
 	}()
 
-	// Start workers
+	scheduler := newHostScheduler(frontier, c.hostPolicy)
+	scheduler.start(ctx)
+
+	// Queue seeds before workers start. This prevents a very fast first item
+	// from making the outstanding-work count reach zero while seeds are still
+	// being admitted. The scheduler's frontier pump provides backpressure.
+	count, err := c.enqueue(ctx, urls, nil)
+	if err != nil || (count == 0 && initialPending == 0) {
+		cancel()
+		scheduler.wait()
+		return err
+	}
+
+	// Start workers only after every seed has been counted.
 	var wg sync.WaitGroup
 	for i := 0; i < c.workers; i++ {
 		wg.Add(1)
-		go c.worker(ctx, &wg, callback)
+		go c.worker(ctx, cancel, scheduler, &wg, callback)
 	}
 
-	// Optionally start the progress reporter
 	if c.showProgress {
 		go c.progressReporter(ctx)
 	}
 
-	// Queue initial URLs
-	count, err := c.enqueue(ctx, urls)
-	if err != nil || count == 0 {
-		// Nothing to crawl (or the context was canceled): stop the workers
-		// and wait for them to exit.
-		cancel()
-	} else {
-		// Start idle monitor to detect when all queued work is complete
-		go c.idleMonitor(ctx, cancel)
-	}
-
 	// Wait for workers to complete
 	wg.Wait()
-	return err
+	cancel()
+	scheduler.wait()
+	return scheduler.failure()
 }
 
 // Stop gracefully stops the crawler by canceling its context. This signals
@@ -499,7 +553,7 @@ func (c *Crawler) Stop() {
 	}
 }
 
-func (c *Crawler) enqueue(ctx context.Context, urls []string) (int, error) {
+func (c *Crawler) enqueue(ctx context.Context, urls []string, parent *URLItem) (int, error) {
 	queued := 0
 	for _, rawURL := range urls {
 		normalizedURL, err := c.normalizeURL(rawURL)
@@ -521,20 +575,25 @@ func (c *Crawler) enqueue(ctx context.Context, urls []string) (int, error) {
 			c.processedURLs.Delete(value)
 			return queued, nil
 		}
-		select {
-		case c.queue <- value:
-			atomic.AddInt64(&c.pendingURLs, 1)
-			queued++
-		case <-ctx.Done():
-			c.releaseURL(value)
-			return queued, ctx.Err()
-		default:
-			// Queue is full - unmark the URL so it can be retried if it is
-			// discovered again later.
-			c.releaseURL(value)
-			c.logger.Warn("queue full, dropping url",
-				slog.String("url", value))
+
+		item := URLItem{
+			URL:          value,
+			DiscoveredAt: time.Now(),
 		}
+		if parent != nil {
+			item.Depth = parent.Depth + 1
+			item.Referrer = parent.URL
+		}
+
+		// Count the item before exposing it to the frontier. A fast worker can
+		// otherwise finish it before pendingURLs is incremented.
+		atomic.AddInt64(&c.pendingURLs, 1)
+		if err := c.frontier.Push(ctx, item); err != nil {
+			atomic.AddInt64(&c.pendingURLs, -1)
+			c.releaseURL(value)
+			return queued, err
+		}
+		queued++
 	}
 	return queued, nil
 }
@@ -548,38 +607,41 @@ func (c *Crawler) releaseURL(value string) {
 	}
 }
 
-func (c *Crawler) worker(ctx context.Context, wg *sync.WaitGroup, callback Callback) {
+func (c *Crawler) worker(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	scheduler *hostScheduler,
+	wg *sync.WaitGroup,
+	callback Callback,
+) {
 	defer wg.Done()
-	queue := c.queue
 	for {
-		select {
-		case <-ctx.Done():
+		scheduled, ok := scheduler.next(ctx)
+		if !ok {
 			return
-		case rawURL, ok := <-queue:
-			if !ok {
-				return
-			}
-			delay := c.processURL(ctx, rawURL, callback)
-			// Decrement pending only after processing completes, so that any
-			// links discovered (and queued) by processURL are counted first
-			// and the idle monitor never observes a false zero.
-			atomic.AddInt64(&c.pendingURLs, -1)
-			if delay > 0 {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(delay):
-				}
-			}
+		}
+		// Caller-provided frontiers may be preloaded rather than populated by
+		// enqueue, so mark every dispatched item as seen before processing it.
+		c.processedURLs.Store(scheduled.item.URL, true)
+		atomic.AddInt64(&c.inFlightURLs, 1)
+		crawlDelay := c.processURL(ctx, scheduled.item, callback)
+		scheduler.complete(ctx, scheduled, crawlDelay)
+		atomic.AddInt64(&c.inFlightURLs, -1)
+
+		// processURL enqueues discovered links before returning, so zero here
+		// means no worker and no frontier item can produce more work.
+		if atomic.AddInt64(&c.pendingURLs, -1) == 0 {
+			cancel()
+			return
 		}
 	}
 }
 
-// processURL fetches, parses, and reports a single URL. It returns the delay
-// the worker should apply before processing its next URL, which is the larger
-// of the configured RequestDelay and any robots.txt Crawl-delay for the host.
-func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callback) time.Duration {
+// processURL fetches, parses, and reports a single URL. It returns the host's
+// robots.txt Crawl-delay so the scheduler can apply it to that host only.
+func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callback) time.Duration {
 	c.stats.IncrementProcessed()
+	rawURL := item.URL
 
 	// Parse the url to get its domain
 	parsedURL, err := url.Parse(rawURL)
@@ -587,7 +649,7 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		c.logger.Warn("invalid url",
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
-		return c.requestDelay
+		return 0
 	}
 	domain := parsedURL.Hostname()
 
@@ -609,27 +671,28 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		}
 	}
 
-	// Get the appropriate fetcher for this domain
-	fetcher, exists := c.getFetcher(domain)
-	if !exists {
-		c.logger.Error("no fetcher configured",
-			slog.String("url", rawURL),
-			slog.String("domain", domain))
-		callback(ctx, &Result{URL: parsedURL, Error: errors.New("no fetcher configured for domain")})
-		c.stats.IncrementFailed()
-		return c.requestDelay
-	}
-
 	// Fetch if there was not a cache hit
 	if response == nil {
+		// A cache hit does not need a fetcher at all. This permits replaying a
+		// cached crawl even when its original fetcher is unavailable.
+		fetcher, exists := c.getFetcher(domain)
+		if !exists {
+			c.logger.Error("no fetcher configured",
+				slog.String("url", rawURL),
+				slog.String("domain", domain))
+			callback(ctx, c.resultWithError(item, parsedURL, errors.New("no fetcher configured for domain")))
+			c.stats.IncrementFailed()
+			return 0
+		}
+
 		// Check robots.txt if enabled. Cache hits skip this check (and the
 		// robots.txt fetch it may trigger) since no network request is made.
 		if c.respectRobotsTxt && !c.isAllowedByRobots(ctx, parsedURL) {
 			c.logger.Debug("blocked by robots.txt",
 				slog.String("url", rawURL))
-			callback(ctx, &Result{URL: parsedURL, Error: errors.New("blocked by robots.txt")})
+			callback(ctx, c.resultWithError(item, parsedURL, errors.New("blocked by robots.txt")))
 			c.stats.IncrementFailed()
-			return c.delayFor(parsedURL)
+			return c.robotsCrawlDelayFor(parsedURL)
 		}
 
 		req := &fetch.Request{
@@ -673,9 +736,9 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		}
 
 		if err != nil {
-			callback(ctx, &Result{URL: parsedURL, Error: err})
+			callback(ctx, c.resultWithError(item, parsedURL, err))
 			c.stats.IncrementFailed()
-			return c.delayFor(parsedURL)
+			return c.robotsCrawlDelayFor(parsedURL)
 		}
 		if c.cache != nil && response.HTML != "" {
 			if err := c.cache.Set(ctx, rawURL, []byte(response.HTML)); err != nil {
@@ -708,11 +771,14 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 		discoveredLinks = c.extractURLs(response.Links, parsedURL)
 	}
 	callback(ctx, &Result{
-		URL:      parsedURL,
-		Parsed:   parsed,
-		Links:    discoveredLinks,
-		Response: response,
-		Error:    parseErr,
+		URL:          parsedURL,
+		Depth:        item.Depth,
+		Referrer:     item.Referrer,
+		DiscoveredAt: item.DiscoveredAt,
+		Parsed:       parsed,
+		Links:        discoveredLinks,
+		Response:     response,
+		Error:        parseErr,
 	})
 	if parseErr != nil {
 		c.stats.IncrementFailed()
@@ -721,26 +787,31 @@ func (c *Crawler) processURL(ctx context.Context, rawURL string, callback Callba
 	}
 
 	filteredURLs := c.filterLinks(parsedURL, discoveredLinks)
-	if _, err := c.enqueue(ctx, filteredURLs); err != nil {
+	if _, err := c.enqueue(ctx, filteredURLs, &item); err != nil {
 		c.logger.Warn("failed to enqueue discovered urls",
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
 	}
-	return c.delayFor(parsedURL)
+	return c.robotsCrawlDelayFor(parsedURL)
 }
 
-// delayFor returns the delay a worker should apply after processing a URL:
-// the configured RequestDelay, or the host's robots.txt Crawl-delay if that
-// is larger. Only already-cached robots.txt data is consulted; this never
-// triggers a robots.txt fetch.
-func (c *Crawler) delayFor(parsedURL *url.URL) time.Duration {
-	delay := c.requestDelay
-	if c.respectRobotsTxt {
-		if d := c.cachedRobotsCrawlDelay(parsedURL); d > delay {
-			delay = d
-		}
+func (c *Crawler) resultWithError(item URLItem, parsedURL *url.URL, err error) *Result {
+	return &Result{
+		URL:          parsedURL,
+		Depth:        item.Depth,
+		Referrer:     item.Referrer,
+		DiscoveredAt: item.DiscoveredAt,
+		Error:        err,
 	}
-	return delay
+}
+
+// robotsCrawlDelayFor returns the cached robots.txt Crawl-delay for a host.
+// The host scheduler combines it with HostPolicy.MinDelay.
+func (c *Crawler) robotsCrawlDelayFor(parsedURL *url.URL) time.Duration {
+	if !c.respectRobotsTxt {
+		return 0
+	}
+	return c.cachedRobotsCrawlDelay(parsedURL)
 }
 
 func (c *Crawler) getParser(domain string) (Parser, bool) {
@@ -839,26 +910,15 @@ func (c *Crawler) GetStats() *CrawlerStats {
 	return c.stats
 }
 
-func (c *Crawler) idleMonitor(ctx context.Context, cancel context.CancelFunc) {
-	// Check periodically for idle state
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			// The crawl is complete when no queued URLs remain. The counter
-			// is decremented only after a URL is fully processed (including
-			// enqueueing any discovered links), so a zero reading is final.
-			if atomic.LoadInt64(&c.pendingURLs) == 0 {
-				c.logger.Debug("no more work available, stopping crawler")
-				cancel() // Cancel context to stop all workers
-				return
-			}
-		}
+// Pending returns the number of queued URLs that have not started processing.
+// It is safe to call while a crawl is running and is intended for progress
+// reporting and observability integrations.
+func (c *Crawler) Pending() int {
+	pending := atomic.LoadInt64(&c.pendingURLs) - atomic.LoadInt64(&c.inFlightURLs)
+	if pending < 0 {
+		return 0
 	}
+	return int(pending)
 }
 
 // normalizeURL parses and normalizes a URL according to the crawler's configuration.

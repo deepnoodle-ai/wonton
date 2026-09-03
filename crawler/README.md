@@ -4,7 +4,7 @@ Pluggable web crawler with configurable fetchers, parsers, and caching.
 
 ## Summary
 
-The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports pluggable fetchers for different domains, custom parsers for extracting structured data, optional caching to reduce redundant fetches, and flexible link-following behavior (same domain, related subdomains, or any domain). The crawler uses worker pools for concurrency, tracks statistics, and provides progress reporting. Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
+The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports a pluggable crawl frontier, per-host scheduling, pluggable fetchers for different domains, custom parsers, optional caching, and flexible link-following behavior (same domain, related subdomains, or any domain). Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
 
 ## Fetching Is SSRF-Guarded by Default
 
@@ -47,7 +47,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        5,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
     })
     if err != nil {
@@ -123,7 +123,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        50,
         Workers:        3,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         ParserRules:    []*crawler.ParserRule{parserRule},
         FollowBehavior: crawler.FollowSameDomain,
     })
@@ -182,7 +182,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        200,
         Workers:        10,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         DefaultParser:  defaultParser,
         ParserRules:    parserRules,
         FollowBehavior: crawler.FollowRelatedSubdomains,
@@ -216,13 +216,13 @@ import (
 
 func main() {
     // Create memory cache
-    memCache := cache.NewMemoryCache(1000) // Max 1000 entries
+    memCache := cache.NewInMemoryCache()
 
     c, err := crawler.New(crawler.Options{
         MaxURLs:        500,
         Workers:        5,
         Cache:          memCache,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
     })
     if err != nil {
@@ -251,12 +251,16 @@ import (
 )
 
 func main() {
-    // Add delay between requests to be polite
+    // Add a per-host delay and limit each host to one in-flight request.
+    // Other hosts can continue while this host is waiting.
     c, err := crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        3,
-        RequestDelay:   2 * time.Second, // 2 second delay between requests
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        RequestDelay:   2 * time.Second,
+        HostPolicy: crawler.HostPolicy{
+            MaxConcurrent: 1,
+        },
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
     })
     if err != nil {
@@ -288,7 +292,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:              1000,
         Workers:              10,
-        DefaultFetcher:       fetch.NewHTTPFetcher(),
+        DefaultFetcher:       fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior:       crawler.FollowSameDomain,
         Logger:               logger,
         ShowProgress:         true,
@@ -315,7 +319,7 @@ import (
 )
 
 func main() {
-    fetcher := fetch.NewHTTPFetcher()
+    fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{})
 
     // Only follow links on the exact same domain
     sameDomain, _ := crawler.New(crawler.Options{
@@ -368,7 +372,7 @@ func main() {
     c, _ := crawler.New(crawler.Options{
         MaxURLs:        10000,
         Workers:        10,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowAny,
     })
 
@@ -387,16 +391,14 @@ func main() {
 package main
 
 import (
-    "context"
-
     "github.com/deepnoodle-ai/wonton/crawler"
     "github.com/deepnoodle-ai/wonton/fetch"
 )
 
-func main() {
-    // Different fetchers for different domains
-    httpFetcher := fetch.NewHTTPFetcher()
-    jsFetcher := fetch.NewBrowserFetcher() // Hypothetical JS-capable fetcher
+func newCrawler(jsFetcher fetch.Fetcher) (*crawler.Crawler, error) {
+    // jsFetcher is supplied by the application; any browser or remote fetching
+    // service can participate by implementing fetch.Fetcher.
+    httpFetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{})
 
     fetcherRules := []*crawler.FetcherRule{
         // Use JS fetcher for SPA sites
@@ -409,19 +411,36 @@ func main() {
             crawler.WithFetcherPriority(50)),
     }
 
-    c, err := crawler.New(crawler.Options{
+    return crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        5,
         DefaultFetcher: httpFetcher,
         FetcherRules:   fetcherRules,
         FollowBehavior: crawler.FollowSameDomain,
     })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    c.Crawl(context.Background(), []string{"https://app.example.com"}, processResult)
 }
+```
+
+### Custom Frontier
+
+`MemoryFrontier` prioritizes higher scores, then shallower URLs, then insertion
+order. Its optional capacity applies backpressure instead of dropping links.
+Provide another `Frontier` implementation for application-specific storage or
+ordering. A provided frontier may be preloaded; pass an empty seed list to
+`Crawl` to process only that existing work.
+
+```go
+frontier := crawler.NewMemoryFrontier(1000)
+
+c, err := crawler.New(crawler.Options{
+    Workers:        8,
+    Frontier:       frontier,
+    DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
+    HostPolicy: crawler.HostPolicy{
+        MaxConcurrent: 2,
+        MinDelay:      250 * time.Millisecond,
+    },
+})
 ```
 
 ## API Reference
@@ -435,7 +454,9 @@ func main() {
 | `MaxURLs` | `int` | Maximum number of URLs to crawl (0 = unlimited) |
 | `Workers` | `int` | Number of concurrent worker goroutines |
 | `Cache` | `cache.Cache` | Optional cache for storing fetched HTML |
-| `RequestDelay` | `time.Duration` | Delay between requests (per worker) |
+| `RequestDelay` | `time.Duration` | Minimum delay between requests to the same host |
+| `Frontier` | `Frontier` | Pending-work store (default: `MemoryFrontier`) |
+| `HostPolicy` | `HostPolicy` | Per-host concurrency and delay limits |
 | `KnownURLs` | `[]string` | Pre-populate list of known URLs |
 | `ParserRules` | `[]*ParserRule` | Domain-specific parser rules |
 | `DefaultParser` | `Parser` | Parser used when no rule matches |
@@ -445,13 +466,16 @@ func main() {
 | `Logger` | `*slog.Logger` | Logger for crawler events |
 | `ShowProgress` | `bool` | Enable periodic progress reporting |
 | `ShowProgressInterval` | `time.Duration` | How often to report progress (default: 30s) |
-| `QueueSize` | `int` | Size of URL queue (default: 10000) |
+| `QueueSize` | `int` | Capacity of the default frontier; full frontiers apply backpressure (default: 10000) |
 
 #### Result
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `URL` | `*url.URL` | The URL that was crawled |
+| `Depth` | `int` | Link distance from the seed URL |
+| `Referrer` | `string` | Page where the URL was discovered |
+| `DiscoveredAt` | `time.Time` | Time the URL entered the frontier |
 | `Parsed` | `any` | Parsed data from parser (if parser exists) |
 | `Links` | `[]string` | Discovered links on the page |
 | `Response` | `*fetch.Response` | Full fetch response with HTML and metadata |
