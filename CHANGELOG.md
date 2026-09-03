@@ -6,6 +6,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Added
+
+- `tui.Viewport` and `tui.ViewportState` — a scrollable, virtualized list. Only
+  the items intersecting the screen are built and measured, so a transcript of
+  ten thousand messages costs the same per frame as one of ten. The scroll
+  position is an anchor (item index plus line within it), not a line offset,
+  so appending to the list or an item growing as it streams moves nothing.
+  `Follow` pins the view to the end.
+- `tui.Measure(view, maxWidth, maxHeight)` — the size a view would render at,
+  without a terminal. For sizing a region whose height depends on its content.
+- `Terminal.EnableMouseDrag` and the `WithMouseDrag` / `WithMouseButtons` run
+  options — press, release, wheel, and motion while a button is held, but not
+  hover. `EnableMouseTracking`'s `?1003` reports every pointer movement over
+  the window; drag-to-select does not need that.
+- `Runtime.Suspend(fn)` — leave the alternate screen, run `fn` against the
+  user's own terminal, then restore and repaint. `fn` reads keys from a
+  channel, since the runtime's input reader owns stdin.
+- `Terminal.MouseMode` and the `MouseMode` constants — which reporting mode is
+  enabled, not merely whether one is. `IsMouseEnabled` is unchanged.
+- `Runtime.SetKittyKeyboard(true)` — ask for the Kitty keyboard protocol
+  outright instead of probing for it, as `WithInlineKittyKeyboard` always has.
+  The probe is skipped under tmux and screen, so a multiplexed session would
+  otherwise lose Shift+Enter; where it does run it costs up to 200 ms of
+  startup.
+- `Terminal.Invalidate` — discard what the terminal believes is on screen so
+  the next flush redraws every cell. `Terminal.IsAlternateScreen`, `IsRawMode`,
+  `IsCursorHidden`, and `IsMouseEnabled` report the modes currently set.
+
+### Fixed
+
+- **A scrolled `ScrollView` dropped multi-line text entirely.** Text printed in
+  one call with embedded newlines — what an unwrapped `Text` renders as — was
+  tested only by its first row, so the whole block vanished as soon as that row
+  scrolled off. Each line is now clipped on its own.
+- **`Runtime.Suspend` came back in the wrong mouse mode.** It restored drag
+  reporting whichever mode the app had chosen, so one that asked for buttons
+  only got motion events it never wanted and one that asked for hover silently
+  stopped getting them. `Terminal.MouseMode` reports the mode now, and Suspend
+  puts back exactly that one. A failure to restore raw mode is returned rather
+  than discarded; the rest of the state is still restored.
+- **`Bordered` drew no border unless `Border` was called.** The constructor
+  left the style nil, so `Bordered(x).Title("T").BorderFg(ColorCyan)` silently
+  dropped both. It now defaults to `SingleBorder`; pass `Border(nil)` for a
+  wrapper that reserves no cells and draws nothing. A title too long for the
+  frame is also truncated by display width now, not by bytes.
+- **A `Stack` dropped the children after an oversized flexible one.** A
+  `ScrollView` reports the full height of what it scrolls as its minimum, and
+  the stack handed over that much even when it exceeded the space left,
+  pushing the footer after it off the bottom. Flexible minimums are now scaled
+  to fit what remains.
+- **The `mouse` example did not scroll and drew no box.** Its scroll area had
+  no wheel or key handling at all, so the pointer readout and the border are
+  new; its buttons no longer spread to the screen edges.
+- **The `code` and `diff` examples could not scroll.** `diff`'s status bar
+  advertised ↑↓, PgUp/PgDn, and Home/End, but its event handler only handled
+  quit; `code` had no scroll keys at all and exited 0 in silence when run
+  without a file, because it discarded what `Execute` returned.
+- **A window drag repainted the screen per SIGWINCH.** Resizes arrive far
+  faster than the frame rate and each one invalidates every cell, so a drag
+  flooded the terminal and visibly stuttered. A batch of nothing but resize
+  events now waits for the ticker, which renders within a frame anyway; every
+  other event still renders immediately.
+- **`DisableMouseTracking` left `?1002` on**, so an app that had enabled
+  button-event tracking kept receiving drag reports after disabling the mouse.
+- **The full-screen flush is wrapped in synchronized output** (DEC 2026), as
+  the inline printer already was. A repaint that touches every visible cell —
+  a page scroll, a resize — now lands in one piece instead of tearing.
+- `Runtime` counts repeated clicks and sets `ClickCount` on the synthetic
+  `MouseClick` it emits, so views get double- and triple-click without each
+  keeping its own timer.
+
 ## [0.0.39] - 2026-08-31
 
 ### Added

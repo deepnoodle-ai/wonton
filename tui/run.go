@@ -7,19 +7,31 @@ type runConfig struct {
 	fps             int
 	alternateScreen bool
 	hideCursor      bool
-	mouseTracking   bool
+	mouseMode       mouseMode
 	bracketedPaste  bool
 	pasteTabWidth   int
 	backslashEnter  bool
 	inputSource     InputSource
 }
 
+// mouseMode selects how much the terminal reports. Each level is a superset of
+// the one above it, and more reporting means more input to decode: a terminal in
+// mouseHover sends an event for every pixel of pointer movement over the window.
+type mouseMode int
+
+const (
+	mouseOff    mouseMode = iota
+	mouseButton           // ?1000: press, release, wheel
+	mouseDrag             // ?1002: the above, plus motion while a button is held
+	mouseHover            // ?1003: the above, plus motion with no button held
+)
+
 func defaultRunConfig() runConfig {
 	return runConfig{
 		fps:             30,
 		alternateScreen: true,
 		hideCursor:      true,
-		mouseTracking:   false,
+		mouseMode:       mouseOff,
 		pasteTabWidth:   0,
 	}
 }
@@ -59,12 +71,45 @@ func WithHideCursor(hide bool) RunOption {
 	}
 }
 
-// WithMouseTracking enables mouse event tracking.
-// When enabled, the application will receive MouseEvent events.
+// WithMouseTracking enables full mouse event tracking, hover included.
+// When enabled, the application will receive MouseEvent events for every
+// pointer movement over the window. Prefer WithMouseDrag unless the app
+// actually paints hover state.
 func WithMouseTracking(enabled bool) RunOption {
 	return func(c *runConfig) {
-		c.mouseTracking = enabled
+		c.mouseMode = pickMouseMode(c.mouseMode, mouseHover, enabled)
 	}
+}
+
+// WithMouseButtons enables mouse button and wheel events without any motion
+// reporting. The quietest mode that still delivers clicks.
+func WithMouseButtons(enabled bool) RunOption {
+	return func(c *runConfig) {
+		c.mouseMode = pickMouseMode(c.mouseMode, mouseButton, enabled)
+	}
+}
+
+// WithMouseDrag enables button, wheel, and drag events — motion while a button
+// is held, but not hover. This is what drag-to-select needs.
+func WithMouseDrag(enabled bool) RunOption {
+	return func(c *runConfig) {
+		c.mouseMode = pickMouseMode(c.mouseMode, mouseDrag, enabled)
+	}
+}
+
+// pickMouseMode keeps the most capable mode any option asked for, so the order
+// options are passed in does not decide what the terminal reports.
+func pickMouseMode(current, want mouseMode, enabled bool) mouseMode {
+	if !enabled {
+		if current == want {
+			return mouseOff
+		}
+		return current
+	}
+	if want > current {
+		return want
+	}
+	return current
 }
 
 // WithBracketedPaste enables bracketed paste mode.
@@ -159,7 +204,12 @@ func Run(app Application, opts ...RunOption) error {
 	if cfg.hideCursor {
 		terminal.HideCursor()
 	}
-	if cfg.mouseTracking {
+	switch cfg.mouseMode {
+	case mouseButton:
+		terminal.EnableMouseButtons()
+	case mouseDrag:
+		terminal.EnableMouseDrag()
+	case mouseHover:
 		terminal.EnableMouseTracking()
 	}
 	if cfg.bracketedPaste {
@@ -172,7 +222,7 @@ func Run(app Application, opts ...RunOption) error {
 	runtime.SetBackslashEnter(cfg.backslashEnter)
 
 	// Ensure these modes are disabled on cleanup (terminal.Close doesn't handle this)
-	if cfg.mouseTracking {
+	if cfg.mouseMode != mouseOff {
 		defer terminal.DisableMouseTracking()
 	}
 	if cfg.bracketedPaste {

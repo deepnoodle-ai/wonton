@@ -427,3 +427,48 @@ func TestStack_Render_WithStyles(t *testing.T) {
 	cell = screen.Cell(0, 1)
 	assert.False(t, cell.Style.Bold)
 }
+
+func TestStackKeepsChildrenAfterAnOversizedFlexibleChild(t *testing.T) {
+	// A ScrollView reports the full height of what it scrolls as its minimum.
+	// Taken literally that minimum is larger than the stack, and the footer
+	// after it used to be pushed off the bottom and never drawn.
+	lines := make([]View, 0, 14)
+	for i := range 14 {
+		lines = append(lines, Text("line %d", i))
+	}
+	scrollY := 0
+	view := Stack(
+		Text("head"),
+		Scroll(Stack(lines...), &scrollY),
+		Text("FOOTER"),
+	)
+
+	screen := SprintScreen(view, WithWidth(20), WithHeight(8))
+
+	assert.Equal(t, screen.Row(0), "head")
+	assert.Equal(t, screen.Row(7), "FOOTER")
+}
+
+func TestStackSharesTheSqueezeBetweenFlexibleChildren(t *testing.T) {
+	// Two scroll areas whose content each exceeds the stack. Neither may take
+	// the whole thing, and the last child still has to land.
+	lines := func(n int) []View {
+		out := make([]View, 0, n)
+		for i := range n {
+			out = append(out, Text("line %d", i))
+		}
+		return out
+	}
+	topY, bottomY := 0, 0
+	view := Stack(
+		Scroll(Stack(lines(20)...), &topY),
+		Scroll(Stack(lines(20)...), &bottomY),
+		Text("FOOTER"),
+	)
+
+	screen := SprintScreen(view, WithWidth(20), WithHeight(11))
+
+	assert.Equal(t, screen.Row(0), "line 0", "the first scroll area starts at the top")
+	assert.Equal(t, screen.Row(5), "line 0", "the second one starts halfway down")
+	assert.Equal(t, screen.Row(10), "FOOTER")
+}

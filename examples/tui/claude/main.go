@@ -33,15 +33,24 @@ type ClaudeStyleDemo struct {
 	historyIndex int      // Current position in history (-1 = not browsing)
 	savedInput   string   // Input saved when starting to browse history
 
-	// Scroll position for message area
-	// Large initial value gets clamped to maxScroll (bottom)
-	scrollY int
+	// Scroll state for the message area. Viewport builds and measures only
+	// the messages that intersect the screen, and its Follow flag keeps the
+	// newest message in view as the conversation grows.
+	viewport tui.ViewportState
+}
+
+// Len and Item implement tui.ViewportItems: the viewport asks for a message's
+// view only when it needs to draw or measure it.
+func (d *ClaudeStyleDemo) Len() int { return len(d.messages) }
+
+func (d *ClaudeStyleDemo) Item(i int) tui.View {
+	return d.renderMessage(d.messages[i])
 }
 
 // Init implements the Initializable interface
 func (d *ClaudeStyleDemo) Init() error {
-	d.historyIndex = -1 // Not browsing history
-	d.scrollY = 999999  // Start at bottom (gets clamped to maxScroll)
+	d.historyIndex = -1      // Not browsing history
+	d.viewport.Follow = true // Start pinned to the newest message
 	d.messages = []Message{
 		{
 			Role:    "assistant",
@@ -59,8 +68,9 @@ func (d *ClaudeStyleDemo) View() tui.View {
 	footerHeight := 1 + inputLines + 1
 
 	return tui.Stack(
-		// Scrollable message area, anchored to bottom
-		tui.Scroll(d.renderMessages(), &d.scrollY).Bottom(),
+		// Scrollable message area. The viewport is flexible, so it takes
+		// exactly what the footer leaves.
+		tui.PaddingHV(2, 0, tui.Viewport(&d.viewport, d).Gap(1)),
 
 		// Fixed footer: separator + input area
 		tui.Height(footerHeight, tui.Stack(
@@ -86,14 +96,9 @@ func (d *ClaudeStyleDemo) handleMouseEvent(event tui.MouseEvent) []tui.Cmd {
 	if event.Type == tui.MouseScroll {
 		switch event.Button {
 		case tui.MouseButtonWheelUp:
-			// Scroll up to see older messages
-			d.scrollY -= 3
-			if d.scrollY < 0 {
-				d.scrollY = 0
-			}
+			d.viewport.ScrollBy(-3)
 		case tui.MouseButtonWheelDown:
-			// Scroll down to see newer messages
-			d.scrollY += 3
+			d.viewport.ScrollBy(3)
 		}
 	}
 	return nil
@@ -118,8 +123,8 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 				d.savedInput = ""
 
 				d.sendMessage(d.input)
-				d.input = ""       // Clear input after sending
-				d.scrollY = 999999 // Scroll to bottom to see new message
+				d.input = "" // Clear input after sending
+				d.viewport.ScrollToBottom()
 			}
 		}
 
@@ -158,16 +163,16 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 		}
 
 	case event.Key == tui.KeyPageUp:
-		// Scroll up to see older messages (decrease offset toward top)
-		d.scrollY -= 10
-		if d.scrollY < 0 {
-			d.scrollY = 0
-		}
+		d.viewport.PageUp()
 
 	case event.Key == tui.KeyPageDown:
-		// Scroll down to see newer messages (increase offset toward bottom)
-		// The scroll view will clamp to maxScroll
-		d.scrollY += 10
+		d.viewport.PageDown()
+
+	case event.Key == tui.KeyHome:
+		d.viewport.ScrollToTop()
+
+	case event.Key == tui.KeyEnd:
+		d.viewport.ScrollToBottom()
 
 	case event.Rune != 0:
 		// Regular character - reset history browsing
@@ -176,24 +181,6 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 	}
 
 	return nil
-}
-
-// renderMessages returns a view for all messages
-func (d *ClaudeStyleDemo) renderMessages() tui.View {
-	// Build all message views
-	var messageViews []tui.View
-
-	for i, msg := range d.messages {
-		// Add spacing between messages (except before first)
-		if i > 0 {
-			messageViews = append(messageViews, tui.Spacer().MinHeight(1))
-		}
-
-		messageViews = append(messageViews, d.renderMessage(msg))
-	}
-
-	// Wrap in a Stack with left padding
-	return tui.PaddingHV(2, 0, tui.Stack(messageViews...))
 }
 
 // renderMessage returns a view for a single message
@@ -259,7 +246,7 @@ func (d *ClaudeStyleDemo) renderInputArea() tui.View {
 	}
 
 	// Help text at the bottom, right-aligned
-	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn: scroll"
+	helpText := "Ctrl+C: exit | Enter: send | \\+Enter: newline | ↑↓: history | PgUp/PgDn/Home/End: scroll"
 
 	return tui.Stack(
 		tui.Stack(inputViews...),
@@ -314,7 +301,7 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 
 func main() {
 	if err := tui.Run(&ClaudeStyleDemo{},
-		tui.WithMouseTracking(true),
+		tui.WithMouseDrag(true),
 		tui.WithBackslashEnter(true), // \+Enter inserts a newline (Shift+Enter fallback)
 	); err != nil {
 		log.Fatal(err)

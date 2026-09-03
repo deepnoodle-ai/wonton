@@ -22,15 +22,16 @@ import (
 // This design eliminates race conditions in application code while maintaining
 // responsive UI through non-blocking async operations.
 type Runtime struct {
-	terminal *Terminal
-	app      any // Application
-	events   chan Event
-	cmds     chan Cmd
-	done     chan struct{}
-	doneOnce sync.Once
-	ticker   *time.Ticker
-	fps      int
-	frame    uint64 // Frame counter for TickEvents
+	terminal   *Terminal
+	app        any // Application
+	events     chan Event
+	cmds       chan Cmd
+	done       chan struct{}
+	doneOnce   sync.Once
+	ticker     *time.Ticker
+	fps        int
+	lastRender time.Time // when render() last ran, for throttling resize repaints
+	frame      uint64    // Frame counter for TickEvents
 
 	// Panic capture: a panic in any runtime-managed goroutine (event loop,
 	// input reader, command goroutines) is recorded here so Run can restore
@@ -54,12 +55,27 @@ type Runtime struct {
 	inputSource    InputSource // Source of input events (defaults to stdin decoder)
 	pasteTabWidth  int         // 0 = preserve tabs, >0 = convert to this many spaces
 	backslashEnter bool        // synthesize Shift+Enter from backslash+Enter (opt-in)
+	kittyKeyboard  bool        // enable the Kitty keyboard protocol without probing
 
 	// Mouse click synthesis state
 	mousePressX      int         // X position of last mouse press
 	mousePressY      int         // Y position of last mouse press
 	mousePressButton MouseButton // Button that was pressed
 	mousePressed     bool        // Whether a mouse button is currently pressed
+
+	// Click-count state: repeated clicks on the same cell with the same button
+	// inside doubleClickThreshold count up, so views get double- and
+	// triple-click for free rather than each keeping its own timer.
+	lastClickTime   time.Time
+	lastClickX      int
+	lastClickY      int
+	lastClickButton MouseButton
+	clickCount      int
+
+	// Suspend state. suspendKeys is non-nil exactly while Suspend is running
+	// fn; the input reader diverts events into it instead of the event loop.
+	suspendMu   sync.Mutex
+	suspendKeys chan Event
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -95,6 +111,20 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 // Must be called before Run().
 func (r *Runtime) SetPasteTabWidth(width int) {
 	r.pasteTabWidth = width
+}
+
+// SetKittyKeyboard asks for the Kitty keyboard protocol outright, instead of
+// probing the terminal for it. Terminals that do not implement the protocol
+// ignore the escape sequence, and the runtime turns it off again on the way
+// out either way.
+//
+// Use it when the probe's answer would be wrong or too expensive: it is skipped
+// under tmux and screen (TERM=screen*/tmux*) and in Apple Terminal, so a
+// multiplexed session loses Shift+Enter even when the outer terminal supports
+// it, and where it does run it costs up to 200 ms of startup. This is what
+// InlineApp's WithInlineKittyKeyboard does. Must be called before Run().
+func (r *Runtime) SetKittyKeyboard(enabled bool) {
+	r.kittyKeyboard = enabled
 }
 
 // SetBackslashEnter enables synthesizing Shift+Enter from a backslash
@@ -141,9 +171,12 @@ func (r *Runtime) Run() error {
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		// Detect Kitty keyboard protocol support before enabling raw mode
-		// This probes the terminal and enables the protocol if supported
-		r.terminal.DetectKittyProtocol()
+		// Detect Kitty keyboard protocol support before enabling raw mode.
+		// SetKittyKeyboard skips the probe: the app has already decided, and
+		// the probe costs up to 200 ms of startup.
+		if !r.kittyKeyboard {
+			r.terminal.DetectKittyProtocol()
+		}
 
 		if err := r.terminal.EnableRawMode(); err != nil {
 			return fmt.Errorf("failed to enable raw mode: %w", err)
@@ -152,7 +185,7 @@ func (r *Runtime) Run() error {
 		// Enable Kitty keyboard protocol if the terminal supports it
 		// This allows detection of modifier keys (Shift+Enter, etc.)
 		// For terminals that don't support it, backslash+Enter fallback is used
-		if r.terminal.IsKittyProtocolSupported() {
+		if r.kittyKeyboard || r.terminal.IsKittyProtocolSupported() {
 			r.terminal.EnableEnhancedKeyboard()
 		}
 	}
@@ -295,6 +328,7 @@ func (r *Runtime) eventLoop() {
 		select {
 		case event := <-r.events:
 			// Process this event and drain any other pending events
+			_, resizeOnly := event.(ResizeEvent)
 			if r.processEventWithQuitCheck(event) {
 				r.closeDone()
 				return
@@ -306,6 +340,9 @@ func (r *Runtime) eventLoop() {
 			for {
 				select {
 				case event := <-r.events:
+					if _, isResize := event.(ResizeEvent); !isResize {
+						resizeOnly = false
+					}
 					if r.processEventWithQuitCheck(event) {
 						r.closeDone()
 						return
@@ -314,6 +351,16 @@ func (r *Runtime) eventLoop() {
 					// No more pending events
 					break drainLoop
 				}
+			}
+
+			// Dragging a window edge delivers SIGWINCH far faster than the
+			// frame rate, and every resize repaints each cell on the screen
+			// because the size change invalidates the whole front buffer.
+			// Repainting per signal floods the terminal and the drag visibly
+			// stutters, so let the ticker pick these up instead. Only resize
+			// is throttled: a keystroke has to feel immediate.
+			if r.shouldThrottleResize(resizeOnly, time.Now()) {
+				continue
 			}
 
 			// Render once after processing all pending events
@@ -411,7 +458,24 @@ func (r *Runtime) processEvent(event Event) {
 }
 
 // render calls the application's View() method using BeginFrame/EndFrame.
+// shouldThrottleResize reports whether a batch of nothing but resize events
+// should wait for the ticker rather than repaint now. Resizes arrive faster
+// than the frame rate during a drag and each one repaints the whole screen;
+// the ticker renders within a frame either way.
+func (r *Runtime) shouldThrottleResize(resizeOnly bool, now time.Time) bool {
+	return resizeOnly && now.Sub(r.lastRender) < r.frameInterval()
+}
+
+// frameInterval is how long one frame lasts at the runtime's frame rate.
+func (r *Runtime) frameInterval() time.Duration {
+	if r.fps <= 0 {
+		return 0
+	}
+	return time.Second / time.Duration(r.fps)
+}
+
 func (r *Runtime) render() {
+	r.lastRender = time.Now()
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
 		// Terminal not ready, skip this frame
@@ -543,7 +607,7 @@ func (r *Runtime) inputReader() {
 						event = KeyEvent{Key: KeyEnter, Shift: true}
 					} else {
 						// Not Enter - forward backslash first, then process nextEvent
-						r.forwardEvent(keyEvent)
+						_ = r.forwardEvent(keyEvent)
 						event = nextEvent
 					}
 				case <-time.After(backslashEnterTimeout):
@@ -560,17 +624,13 @@ func (r *Runtime) inputReader() {
 			// sets clickSynthesized=true, and then skips synthesis in handleRelease.
 			// Without this ordering, handleRelease would create a duplicate click.
 			if clickEvent != nil {
-				select {
-				case r.events <- clickEvent:
-				case <-r.done:
+				if !r.forwardEvent(clickEvent) {
 					return
 				}
 			}
 
 			// Forward original event (Press, Release, Move, etc.)
-			select {
-			case r.events <- event:
-			case <-r.done:
+			if !r.forwardEvent(event) {
 				return
 			}
 		case err := <-errChan:
@@ -591,11 +651,34 @@ func (r *Runtime) inputReader() {
 
 // forwardEvent sends an event to the main event loop.
 // Used by inputReader when it needs to send multiple events (e.g., backslash followed by non-Enter).
-func (r *Runtime) forwardEvent(event Event) {
+// forwardEvent hands an input event to the event loop, or to a Suspend in
+// progress. Returns false once the runtime is shutting down, at which point the
+// caller should stop reading input.
+func (r *Runtime) forwardEvent(event Event) bool {
+	if keys := r.suspendChannel(); keys != nil {
+		// The application is not running: fn owns the screen and any keys the
+		// user presses belong to it. A full channel means fn is not reading, so
+		// drop rather than block the decoder.
+		select {
+		case keys <- event:
+		default:
+		}
+		return true
+	}
 	select {
 	case r.events <- event:
+		return true
 	case <-r.done:
+		return false
 	}
+}
+
+// suspendChannel returns the channel a Suspend is waiting on, or nil when the
+// runtime is not suspended.
+func (r *Runtime) suspendChannel() chan Event {
+	r.suspendMu.Lock()
+	defer r.suspendMu.Unlock()
+	return r.suspendKeys
 }
 
 // processMouseEvent tracks mouse state and returns any additional synthetic events.
@@ -617,6 +700,10 @@ func (r *Runtime) forwardEvent(event Event) {
 // Applications can handle whichever events they need:
 //   - Most apps just handle MouseClick for simple button behavior
 //   - Apps needing drag or press feedback can also handle MousePress/MouseRelease
+//
+// The synthetic click carries a ClickCount: repeated clicks on the same cell
+// with the same button, each within doubleClickThreshold of the last, count up
+// (1 = single, 2 = double, 3 = triple, and on). Any other click restarts at 1.
 //
 // Returns the original event and an optional synthetic click event.
 func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
@@ -642,12 +729,13 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 			// Return both the release AND a synthetic click
 			r.mousePressed = false
 			clickEvent := MouseEvent{
-				X:         mouseEvent.X,
-				Y:         mouseEvent.Y,
-				Button:    r.mousePressButton,
-				Type:      MouseClick,
-				Modifiers: mouseEvent.Modifiers,
-				Time:      mouseEvent.Time,
+				X:          mouseEvent.X,
+				Y:          mouseEvent.Y,
+				Button:     r.mousePressButton,
+				Type:       MouseClick,
+				Modifiers:  mouseEvent.Modifiers,
+				Time:       mouseEvent.Time,
+				ClickCount: r.countClick(mouseEvent),
 			}
 			return event, clickEvent
 		}
@@ -657,6 +745,26 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 	default:
 		return event, nil
 	}
+}
+
+// doubleClickThreshold is how long a second click may follow the first and
+// still count as part of the same multi-click. Matches MouseHandler.
+const doubleClickThreshold = 500 * time.Millisecond
+
+// countClick advances the multi-click counter for a click at ev's position and
+// returns the resulting count.
+func (r *Runtime) countClick(ev MouseEvent) int {
+	sameSpot := ev.X == r.lastClickX && ev.Y == r.lastClickY &&
+		r.mousePressButton == r.lastClickButton
+	if sameSpot && !r.lastClickTime.IsZero() && ev.Time.Sub(r.lastClickTime) <= doubleClickThreshold {
+		r.clickCount++
+	} else {
+		r.clickCount = 1
+	}
+	r.lastClickTime = ev.Time
+	r.lastClickX, r.lastClickY = ev.X, ev.Y
+	r.lastClickButton = r.mousePressButton
+	return r.clickCount
 }
 
 // commandExecutor runs async commands (Goroutine 3).

@@ -143,6 +143,26 @@ func (s *StackView) size(maxWidth, maxHeight int) (int, int) {
 			totalMinHeight += minH
 		}
 
+		// A flexible child's "minimum" is its natural content height, and that
+		// can be larger than the space left for it: a ScrollView reports the
+		// full height of everything it scrolls. Left unclamped it overruns the
+		// stack and pushes the children after it off the bottom, so scale the
+		// minimums down to what is actually available.
+		if totalMinHeight > remainingHeight {
+			assigned := 0
+			for i := range minHeights {
+				scaled := 0
+				if totalMinHeight > 0 {
+					scaled = minHeights[i] * remainingHeight / totalMinHeight
+				}
+				minHeights[i] = scaled
+				assigned += scaled
+			}
+			// Integer division can leave a row or two unassigned.
+			minHeights[0] += remainingHeight - assigned
+			totalMinHeight = remainingHeight
+		}
+
 		// Calculate extra space beyond minimums
 		extraHeight := remainingHeight - totalMinHeight
 		if extraHeight < 0 {

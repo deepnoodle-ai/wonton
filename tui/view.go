@@ -106,3 +106,22 @@ func (s *SpacerView) size(maxWidth, maxHeight int) (int, int) {
 	// Return minimum size - the layout will expand this
 	return s.minWidth, s.minHeight
 }
+
+// Measure returns the size a view would occupy when laid out within maxWidth
+// columns and maxHeight rows. Zero means unconstrained in that axis.
+//
+// Only the measure phase runs; nothing is drawn and no terminal is needed. Use
+// it to size a region whose height depends on its content — a footer whose
+// input box grows with what is typed, a list item you want to cache the height
+// of — where the alternative is rendering to a buffer and counting lines.
+//
+// Measuring has the same side effects as the measure pass of a normal render:
+// container views record their children's sizes. That is what makes a
+// subsequent render of the same view cheap, and it is why the result is only
+// meaningful for the width you asked about.
+func Measure(v View, maxWidth, maxHeight int) (width, height int) {
+	if v == nil {
+		return 0, 0
+	}
+	return v.size(maxWidth, maxHeight)
+}
