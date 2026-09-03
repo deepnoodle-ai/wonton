@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   one call with embedded newlines — what an unwrapped `Text` renders as — was
   tested only by its first row, so the whole block vanished as soon as that row
   scrolled off. Each line is now clipped on its own.
+- **The `code` and `diff` examples could not scroll.** `diff`'s status bar
+  advertised ↑↓, PgUp/PgDn, and Home/End, but its event handler only handled
+  quit; `code` had no scroll keys at all and exited 0 in silence when run
+  without a file, because it discarded what `Execute` returned.
 - **A window drag repainted the screen per SIGWINCH.** Resizes arrive far
   faster than the frame rate and each one invalidates every cell, so a drag
   flooded the terminal and visibly stuttered. A batch of nothing but resize
