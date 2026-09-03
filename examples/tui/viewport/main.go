@@ -114,17 +114,26 @@ func (a *app) copySelection() {
 		a.status = "Nothing selected"
 		return
 	}
-	if err := clipboard.Write(text); err != nil {
-		a.status = fmt.Sprintf("Clipboard: %v", err)
-	}
+	nativeErr := clipboard.Write(text)
+
 	// *tui.Terminal is an io.Writer, so it goes straight in. This runs on the
 	// goroutine that calls HandleEvent, which is the one that owns the
 	// terminal, so the sequence cannot land inside a frame.
-	if err := clipboard.WriteOSC52(a.runtime.Terminal(), text); err != nil {
-		a.status = fmt.Sprintf("OSC 52: %v", err)
-		return
+	osc52Err := clipboard.WriteOSC52(a.runtime.Terminal(), text)
+
+	// Each rung is tried and reported on its own. Reporting them together
+	// would claim the clipboard succeeded whenever the terminal did, which is
+	// the opposite of what a copy with no confirmation should tell the user.
+	switch {
+	case nativeErr != nil && osc52Err != nil:
+		a.status = fmt.Sprintf("Copy failed — clipboard: %v; OSC 52: %v", nativeErr, osc52Err)
+	case nativeErr != nil:
+		a.status = fmt.Sprintf("Sent %d bytes to the terminal; clipboard failed: %v", len(text), nativeErr)
+	case osc52Err != nil:
+		a.status = fmt.Sprintf("Copied %d bytes to the clipboard; OSC 52 failed: %v", len(text), osc52Err)
+	default:
+		a.status = fmt.Sprintf("Copied %d bytes (sent to clipboard and terminal)", len(text))
 	}
-	a.status = fmt.Sprintf("Copied %d bytes (sent to clipboard and terminal)", len(text))
 }
 
 // SetRuntime implements tui.RuntimeAware. The runtime calls it before Init, so

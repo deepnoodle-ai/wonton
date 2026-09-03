@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -539,4 +540,47 @@ func TestItemAtNamesWhatWasClicked(t *testing.T) {
 
 	_, _, ok = s.ItemAt(25, 0)
 	assert.False(t, ok, "past the viewport's width there is nothing to click")
+}
+
+func TestDragToTheBottomReachesTheLastLine(t *testing.T) {
+	// The auto-scroll endpoint used to be mapped through the layout recorded by
+	// the previous render, which the scroll had just invalidated. That left it
+	// one row behind on every step, and since the scroll stops before the
+	// endpoint catches up, the last line could not be selected by dragging.
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	items := &textItems{text: lines}
+	s := &ViewportState{}
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(1, 9) // held below the bottom edge
+	for range 40 {
+		if !s.DragAutoScroll() {
+			break
+		}
+		renderViewport(t, s, items, 20, 5, 0)
+	}
+	s.EndSelection()
+
+	assert.True(t, s.AtBottom, "the drag should have scrolled to the end")
+	assert.True(t, strings.HasSuffix(s.SelectedText(), "\nL19"),
+		"a drag held past the bottom edge reaches the last line")
+}
+
+func TestADragThatSelectsNothingRestoresFollow(t *testing.T) {
+	// A press that never became a selection leaves nothing for the user to
+	// dismiss, so releasing has to put Follow back itself.
+	s, _, _ := newTextViewport(t, []string{"hello world"}, 20, 5)
+	s.Follow = true
+
+	s.BeginSelection(2, 0)
+	assert.False(t, s.Follow, "the press pins the viewport")
+
+	s.EndSelection()
+
+	assert.False(t, s.HasSelection())
+	assert.True(t, s.Follow, "and releasing with nothing selected unpins it")
 }
