@@ -514,3 +514,29 @@ func TestAClickWithNothingToDismissFallsThroughToTheApp(t *testing.T) {
 	assert.True(t, s.HandleMouse(click), "dismissing a selection is the whole event")
 	assert.False(t, s.HasSelection())
 }
+
+func TestItemAtNamesWhatWasClicked(t *testing.T) {
+	// Gap 1, so rows are: item 0, gap, item 1 line 0, item 1 line 1, gap, item 2.
+	s := &ViewportState{}
+	items := &textItems{text: []string{"first", "second\nsecond line two", "third"}}
+	renderViewport(t, s, items, 20, 6, 1)
+
+	item, line, ok := s.ItemAt(0, 0)
+	assert.True(t, ok, "row 0 is the first item")
+	assert.Equal(t, item, 0)
+	assert.Equal(t, line, 0)
+
+	item, line, ok = s.ItemAt(3, 3)
+	assert.True(t, ok, "row 3 is the second line of the second item")
+	assert.Equal(t, item, 1)
+	assert.Equal(t, line, 1)
+
+	_, _, ok = s.ItemAt(0, 1)
+	assert.False(t, ok, "the gap between items belongs to neither")
+
+	_, _, ok = s.ItemAt(0, 40)
+	assert.False(t, ok, "below the last item there is nothing to click")
+
+	_, _, ok = s.ItemAt(25, 0)
+	assert.False(t, ok, "past the viewport's width there is nothing to click")
+}

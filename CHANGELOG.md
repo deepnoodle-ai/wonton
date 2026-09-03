@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   highlight keeps the characters and changes only the style. `SetCell` cannot
   do it, because a rune is not a grapheme cluster — writing one back drops the
   combining marks and variation selectors that make up the rest.
+- `ViewportState.ItemAt(x, y)` — which item and line a position in the
+  viewport falls on. `HandleMouse` returns false for a click it does not want,
+  and this says what that click landed on, so an application can put its own
+  click targets inside a `Viewport`.
 - `examples/tui/viewport` — a streaming transcript with mouse selection,
   auto-scroll past the edges, and copy to both the system clipboard and the
   terminal.

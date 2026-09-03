@@ -109,9 +109,16 @@ func (s *ViewportState) ExtendSelection(x, y int) {
 }
 
 // EndSelection finishes a drag, leaving the selection in place to be copied.
+//
+// A drag that never became a selection puts Follow back on the way out. It has
+// to: there is no selection left for the user to dismiss, so nothing else would
+// ever restore it, and the viewport would stop following for good.
 func (s *ViewportState) EndSelection() {
 	s.selecting = false
 	s.dragEdge = 0
+	if !s.hasSelection {
+		s.ClearSelection()
+	}
 }
 
 // SelectWord selects the word under a screen position, as a double-click does.
@@ -273,14 +280,19 @@ func (s *ViewportState) DragAutoScroll() bool {
 	}
 	// The drag is still pinned at the edge, so the selection now reaches one
 	// row further into the newly revealed content.
-	edgeRow := 0
+	//
+	// The edge is resolved from the anchor rather than through pointAt, because
+	// pointAt reads the layout recorded by the last render and the scroll above
+	// just invalidated it. Going through it left the endpoint one row behind the
+	// edge on every step — and since the scroll stops before the endpoint
+	// catches up, the last line could never be reached by dragging at all.
+	item, line = s.anchorItem, s.anchorLine
 	if s.dragEdge > 0 {
-		edgeRow = s.Height - 1
+		item, line = s.moveDown(item, line, s.Height-1)
 	}
-	if p, ok := s.pointAt(s.selCursor.Col, edgeRow); ok {
-		s.selCursor = p
-		s.hasSelection = p != s.selAnchor
-	}
+	p := SelectionPoint{Item: item, Line: line, Col: s.selCursor.Col}
+	s.selCursor = p
+	s.hasSelection = p != s.selAnchor
 	return true
 }
 
@@ -549,4 +561,25 @@ func (s *ViewportState) rowRange(item, line int, start, end SelectionPoint) (int
 		hi = s.width
 	}
 	return lo, max(lo, hi)
+}
+
+// ItemAt reports which item is drawn at a position in the viewport's own
+// coordinates, and which of that item's lines the position falls on.
+//
+// It is how an application puts a click target inside a Viewport. HandleMouse
+// returns false for a click it does not want — one that neither made a
+// selection nor dismissed one — and this says what that click landed on.
+//
+// The last return is false outside the viewport's width, above the first item,
+// below the last, and in the gaps between items.
+func (s *ViewportState) ItemAt(x, y int) (item, line int, ok bool) {
+	if x < 0 || (s.Width > 0 && x >= s.Width) {
+		return 0, 0, false
+	}
+	for _, span := range s.layout {
+		if y >= span.top && y < span.top+span.height {
+			return span.item, y - span.top, true
+		}
+	}
+	return 0, 0, false
 }
