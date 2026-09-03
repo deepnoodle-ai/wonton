@@ -33,10 +33,11 @@ type HostPolicy struct {
 }
 
 type scheduledItem struct {
-	item    URLItem
-	host    string
-	attempt int
-	leased  bool
+	item          URLItem
+	host          string
+	attempt       int
+	attemptErrors []error
+	leased        bool
 }
 
 type completedItem struct {
@@ -44,6 +45,7 @@ type completedItem struct {
 	crawlDelay  time.Duration
 	observation requestObservation
 	retry       bool
+	retryDelay  time.Duration
 }
 
 type requestObservation struct {
@@ -57,7 +59,6 @@ type requestObservation struct {
 type frontierResult struct {
 	item   URLItem
 	ok     bool
-	err    error
 	leased bool
 }
 
@@ -148,10 +149,12 @@ type hostScheduler struct {
 	adaptive   bool
 	stats      *hostStatsCollector
 	maxPending int
+	cancel     context.CancelFunc
 
 	ready     chan scheduledItem
 	completed chan completedItem
 	incoming  chan frontierResult
+	failed    chan error
 	err       error
 	wg        sync.WaitGroup
 }
@@ -175,10 +178,12 @@ func newHostScheduler(frontier Frontier, policy HostPolicy, adaptive bool, stats
 		ready:      make(chan scheduledItem),
 		completed:  make(chan completedItem),
 		incoming:   make(chan frontierResult),
+		failed:     make(chan error),
 	}
 }
 
-func (s *hostScheduler) start(ctx context.Context) {
+func (s *hostScheduler) start(ctx context.Context, cancel context.CancelFunc) {
+	s.cancel = cancel
 	s.wg.Add(2)
 	go s.run(ctx)
 	go s.pump(ctx, s.incoming)
@@ -218,6 +223,13 @@ func (s *hostScheduler) run(ctx context.Context) {
 	waiting := newHostWaitingQueues()
 	defer s.releaseWaiting(waiting)
 	totalInFlight := 0
+	leasedInFlight := 0
+	defer func() {
+		for leasedInFlight > 0 {
+			s.releaseLease()
+			leasedInFlight--
+		}
+	}()
 	frontierOpen := true
 
 	for {
@@ -229,9 +241,6 @@ func (s *hostScheduler) run(ctx context.Context) {
 		if eligible {
 			ready = s.ready
 			next = candidate
-			// Capacity belongs to the scheduler, not the worker. The original
-			// queued value retains the lease until the send succeeds.
-			next.leased = false
 		}
 
 		var timer *time.Timer
@@ -253,7 +262,7 @@ func (s *hostScheduler) run(ctx context.Context) {
 		}
 
 		admitIncoming := incoming
-		if s.maxPending > 0 && waiting.len() >= s.maxPending {
+		if s.maxPending > 0 && waiting.len()+totalInFlight >= s.maxPending {
 			admitIncoming = nil
 		}
 
@@ -262,21 +271,20 @@ func (s *hostScheduler) run(ctx context.Context) {
 			stopTimer(timer)
 			return
 
+		case err := <-s.failed:
+			stopTimer(timer)
+			if ctx.Err() != nil {
+				return
+			}
+			s.err = err
+			if s.cancel != nil {
+				s.cancel()
+			}
+			return
+
 		case result, ok := <-admitIncoming:
 			stopTimer(timer)
 			if !ok {
-				frontierOpen = false
-				incoming = nil
-				continue
-			}
-			if result.err != nil {
-				if result.leased {
-					s.releaseLease()
-				}
-				if ctx.Err() != nil {
-					return
-				}
-				s.err = result.err
 				frontierOpen = false
 				incoming = nil
 				continue
@@ -300,6 +308,9 @@ func (s *hostScheduler) run(ctx context.Context) {
 				state.inFlight--
 				totalInFlight--
 			}
+			if completion.scheduled.leased && leasedInFlight > 0 {
+				leasedInFlight--
+			}
 			if completion.crawlDelay > state.minDelay {
 				state.minDelay = completion.crawlDelay
 				next := state.lastStarted.Add(state.minDelay)
@@ -310,7 +321,12 @@ func (s *hostScheduler) run(ctx context.Context) {
 			s.applyObservation(state, completion.observation)
 			if completion.retry {
 				completion.scheduled.attempt++
+				if retryAt := time.Now().Add(completion.retryDelay); retryAt.After(state.nextEligibleAt) {
+					state.nextEligibleAt = retryAt
+				}
 				waiting.add(completion.scheduled)
+			} else if completion.scheduled.leased {
+				s.releaseLease()
 			}
 			if s.stats != nil {
 				s.stats.setDelay(completion.scheduled.host, effectiveHostDelay(state))
@@ -319,12 +335,12 @@ func (s *hostScheduler) run(ctx context.Context) {
 		case ready <- next:
 			stopTimer(timer)
 			queued, _ := waiting.pop(candidate.host)
-			if queued.leased {
-				s.releaseLease()
-			}
 			state := stateForHost(states, next.host, s.policy.MinDelay)
 			state.inFlight++
 			totalInFlight++
+			if queued.leased {
+				leasedInFlight++
+			}
 			state.lastStarted = time.Now()
 			state.nextEligibleAt = state.lastStarted.Add(effectiveHostDelay(state))
 
@@ -347,7 +363,17 @@ func (s *hostScheduler) pump(ctx context.Context, incoming chan<- frontierResult
 		} else {
 			item, ok, err = s.frontier.Next(ctx)
 		}
-		result := frontierResult{item: item, ok: ok, err: err, leased: leased}
+		if err != nil {
+			if leased {
+				s.releaseLease()
+			}
+			select {
+			case <-ctx.Done():
+			case s.failed <- err:
+			}
+			return
+		}
+		result := frontierResult{item: item, ok: ok, leased: leased}
 		select {
 		case <-ctx.Done():
 			if leased {
@@ -356,7 +382,7 @@ func (s *hostScheduler) pump(ctx context.Context, incoming chan<- frontierResult
 			return
 		case incoming <- result:
 		}
-		if err != nil || !ok {
+		if !ok {
 			return
 		}
 	}

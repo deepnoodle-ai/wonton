@@ -207,12 +207,14 @@ type Options struct {
 	// Defaults to 30 seconds if ShowProgress is true and this is not set.
 	ShowProgressInterval time.Duration
 
-	// QueueSize sets the maximum number of items staged by the scheduler. The
-	// default MemoryFrontier shares this limit, so moving an item into a host
-	// queue does not free capacity early. Custom frontiers control their own
-	// storage capacity while the scheduler still honors this staging limit.
-	// When full, producers wait for capacity; URLs are never silently dropped.
-	// Defaults to 10000 if not specified.
+	// QueueSize bounds normalized URLs across the default MemoryFrontier, host
+	// scheduler, active requests, and retries. Custom frontiers control their
+	// own storage capacity while the scheduler applies this limit to staged and
+	// active work. Raw link batches await normalization in a separate nonblocking
+	// broker so workers cannot deadlock behind frontier backpressure. A fetcher
+	// may return an arbitrarily large raw batch, which is not part of this limit;
+	// MaxURLs separately limits total admissions. URLs are never silently
+	// dropped. Defaults to 10000 if not specified.
 	QueueSize int
 
 	// AllowHTTP permits crawling HTTP URLs without upgrading to HTTPS.
@@ -546,7 +548,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	}()
 
 	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats, c.queueSize)
-	scheduler.start(ctx)
+	scheduler.start(ctx, cancel)
 	admitter := newFrontierAdmitter(c, frontier, cancel)
 	admitter.start(ctx)
 
@@ -669,11 +671,15 @@ func (c *Crawler) worker(
 		c.processedURLs.Store(scheduled.item.URL, true)
 		atomic.AddInt64(&c.inFlightURLs, 1)
 		outcome := c.processURL(ctx, scheduled, callback)
+		if outcome.attemptErrors != nil {
+			scheduled.attemptErrors = outcome.attemptErrors
+		}
 		scheduler.complete(ctx, completedItem{
 			scheduled:   scheduled,
 			crawlDelay:  outcome.crawlDelay,
 			observation: outcome.observation,
 			retry:       outcome.retry,
+			retryDelay:  outcome.retryDelay,
 		})
 		atomic.AddInt64(&c.inFlightURLs, -1)
 		if err := admitter.submit(ctx, outcome.discovered, &scheduled.item); err != nil && ctx.Err() == nil {
@@ -696,15 +702,17 @@ func (c *Crawler) worker(
 }
 
 type processOutcome struct {
-	crawlDelay  time.Duration
-	observation requestObservation
-	retry       bool
-	discovered  []string
+	crawlDelay    time.Duration
+	observation   requestObservation
+	retry         bool
+	retryDelay    time.Duration
+	attemptErrors []error
+	discovered    []string
 }
 
-// processURL fetches, parses, and reports one attempt for a URL. Throttled
-// adaptive attempts are handed back to the scheduler without invoking the
-// callback; the URL remains pending until its final attempt.
+// processURL fetches, parses, and reports one attempt for a URL. Retryable
+// attempts are handed back to the scheduler without invoking the callback;
+// the URL remains pending until its final attempt.
 func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callback Callback) processOutcome {
 	item := scheduled.item
 	rawURL := item.URL
@@ -804,53 +812,43 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 			}
 		}
 		c.logger.Debug("fetching", slog.String("url", rawURL))
-		fetchOnce := func() (*fetch.Response, error) {
-			started := time.Now()
-			c.hostStats.requestStarted(scheduled.host, started)
-			fetched, fetchErr := fetcher.Fetch(ctx, req)
-			latency := time.Since(started)
-			c.hostStats.requestFinished(scheduled.host, latency, fetched, fetchErr)
-			observation = requestObservation{
-				latency: latency,
-				failed:  fetchErr != nil,
-			}
-			if fetched != nil {
-				observation.statusCode = fetched.StatusCode
-			}
-			return fetched, fetchErr
+		started := time.Now()
+		c.hostStats.requestStarted(scheduled.host, started)
+		response, err = fetcher.Fetch(ctx, req)
+		latency := time.Since(started)
+		c.hostStats.requestFinished(scheduled.host, latency, response, err)
+		observation = requestObservation{
+			latency: latency,
+			failed:  err != nil,
 		}
-
-		// Use retry logic if configured
-		if c.retryOptions != nil {
-			maxAttempts := c.retryOptions.MaxAttempts
-			if maxAttempts <= 0 {
-				maxAttempts = 3
-			}
-			initialBackoff := c.retryOptions.InitialBackoff
-			if initialBackoff <= 0 {
-				initialBackoff = time.Second
-			}
-			maxBackoff := c.retryOptions.MaxBackoff
-			if maxBackoff <= 0 {
-				maxBackoff = 30 * time.Second
-			}
-
-			response, err = retry.Do(ctx, fetchOnce,
-				retry.WithMaxAttempts(maxAttempts),
-				retry.WithBackoff(initialBackoff, maxBackoff),
-				retry.WithOnRetry(func(attempt int, err error, delay time.Duration) {
-					c.logger.Warn("retrying fetch",
-						slog.String("url", rawURL),
-						slog.Int("attempt", attempt),
-						slog.String("error", err.Error()),
-						slog.Duration("delay", delay))
-				}),
-			)
-		} else {
-			response, err = fetchOnce()
+		if response != nil {
+			observation.statusCode = response.StatusCode
 		}
 
 		if err != nil {
+			attemptErrors := append(append([]error(nil), scheduled.attemptErrors...), err)
+			if c.retryOptions != nil && ctx.Err() == nil && scheduled.attempt < c.retryMaxAttempts() {
+				delay := c.retryBackoff(scheduled.attempt)
+				c.logger.Warn("retrying fetch",
+					slog.String("url", rawURL),
+					slog.Int("attempt", scheduled.attempt),
+					slog.String("error", err.Error()),
+					slog.Duration("delay", delay))
+				return processOutcome{
+					crawlDelay:    c.robotsCrawlDelayFor(parsedURL),
+					observation:   observation,
+					retry:         true,
+					retryDelay:    delay,
+					attemptErrors: attemptErrors,
+				}
+			}
+			if c.retryOptions != nil {
+				err = &retry.Error{
+					Last:     err,
+					Attempts: len(attemptErrors),
+					Errors:   attemptErrors,
+				}
+			}
 			callback(ctx, c.resultWithError(item, parsedURL, err))
 			c.stats.IncrementFailed()
 			return processOutcome{
@@ -876,7 +874,7 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 					observation.retryAfter = retryAfter
 					observation.hasRetryAfter = true
 				}
-				if c.adaptive && scheduled.attempt < c.adaptiveMaxAttempts() {
+				if c.adaptive && scheduled.attempt < c.retryMaxAttempts() {
 					c.logger.Warn("host asked crawler to back off",
 						slog.String("url", rawURL),
 						slog.Int("status", response.StatusCode),
@@ -887,16 +885,14 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 						retry:       true,
 					}
 				}
-				if c.adaptive {
-					fetchErr := &fetch.Error{StatusCode: response.StatusCode, URL: rawURL}
-					result := c.resultWithError(item, parsedURL, fetchErr)
-					result.Response = response
-					callback(ctx, result)
-					c.stats.IncrementFailed()
-					return processOutcome{
-						crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
-						observation: observation,
-					}
+				fetchErr := &fetch.Error{StatusCode: response.StatusCode, URL: rawURL}
+				result := c.resultWithError(item, parsedURL, fetchErr)
+				result.Response = response
+				callback(ctx, result)
+				c.stats.IncrementFailed()
+				return processOutcome{
+					crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
+					observation: observation,
 				}
 			}
 			c.storeFetchedResponse(ctx, rawURL, response)
@@ -1000,19 +996,20 @@ func isCacheableStatus(statusCode int) bool {
 }
 
 func (c *Crawler) storeResponseCacheEntry(ctx context.Context, rawURL string, entry *cache.Entry) {
-	if c.responseCache != nil {
-		if err := c.responseCache.SetEntry(ctx, cache.ResponseKey(rawURL), entry); err != nil {
-			c.logger.Warn("failed to cache response",
+	// Keep writing the original URL/HTML pair as well. Existing callers can
+	// continue reading entries through Cache.Get, and legacy Cache
+	// implementations remain fully supported. Write it first because coherent
+	// dual-interface caches invalidate a typed entry on a legacy update.
+	if c.cache != nil && len(entry.Body) > 0 {
+		if err := c.cache.Set(ctx, rawURL, entry.Body); err != nil {
+			c.logger.Warn("failed to cache html",
 				slog.String("url", rawURL),
 				slog.String("error", err.Error()))
 		}
 	}
-	// Keep writing the original URL/HTML pair as well. Existing callers can
-	// continue reading entries through Cache.Get, and legacy Cache
-	// implementations remain fully supported.
-	if c.cache != nil && len(entry.Body) > 0 {
-		if err := c.cache.Set(ctx, rawURL, entry.Body); err != nil {
-			c.logger.Warn("failed to cache html",
+	if c.responseCache != nil {
+		if err := c.responseCache.SetEntry(ctx, cache.ResponseKey(rawURL), entry); err != nil {
+			c.logger.Warn("failed to cache response",
 				slog.String("url", rawURL),
 				slog.String("error", err.Error()))
 		}
@@ -1074,11 +1071,29 @@ func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
 	return delay, true
 }
 
-func (c *Crawler) adaptiveMaxAttempts() int {
+func (c *Crawler) retryMaxAttempts() int {
 	if c.retryOptions != nil && c.retryOptions.MaxAttempts > 0 {
 		return c.retryOptions.MaxAttempts
 	}
 	return 3
+}
+
+func (c *Crawler) retryBackoff(attempt int) time.Duration {
+	initialBackoff := c.retryOptions.InitialBackoff
+	if initialBackoff <= 0 {
+		initialBackoff = time.Second
+	}
+	maxBackoff := c.retryOptions.MaxBackoff
+	if maxBackoff <= 0 {
+		maxBackoff = 30 * time.Second
+	}
+	config := retry.Config{
+		InitialBackoff:    initialBackoff,
+		MaxBackoff:        maxBackoff,
+		BackoffMultiplier: 2,
+		Jitter:            0.1,
+	}
+	return retry.ExponentialBackoff(attempt, &config)
 }
 
 // robotsCrawlDelayFor returns the cached robots.txt Crawl-delay for a host.

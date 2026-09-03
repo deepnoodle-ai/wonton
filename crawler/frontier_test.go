@@ -146,6 +146,46 @@ func TestCrawlerSmallFrontierDoesNotDropDiscoveredURLs(t *testing.T) {
 	assert.Equal(t, 0, c.Pending())
 }
 
+func TestCrawlerSmallFrontierHandlesRecursiveDiscovery(t *testing.T) {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://example.com", &fetch.Response{
+		URL: "https://example.com",
+		Links: []fetch.Link{
+			{URL: "/a"},
+			{URL: "/b"},
+			{URL: "/c"},
+		},
+	})
+	for _, name := range []string{"a", "b", "c"} {
+		pageURL := "https://example.com/" + name
+		mockFetcher.AddResponse(pageURL, &fetch.Response{
+			URL:   pageURL,
+			Links: []fetch.Link{{URL: "/" + name + "/child"}},
+		})
+		childURL := pageURL + "/child"
+		mockFetcher.AddResponse(childURL, &fetch.Response{URL: childURL})
+	}
+
+	c, err := New(Options{
+		Workers:          1,
+		QueueSize:        1,
+		DefaultFetcher:   mockFetcher,
+		FollowBehavior:   FollowSameDomain,
+		RespectRobotsTxt: BoolPtr(false),
+	})
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var visited []string
+	err = c.Crawl(ctx, []string{"https://example.com"}, func(_ context.Context, result *Result) {
+		visited = append(visited, result.URL.String())
+	})
+	assert.NoError(t, err)
+	assert.Len(t, visited, 7)
+	assert.Equal(t, 0, c.Pending())
+}
+
 type cancellationFetcher struct {
 	started chan struct{}
 	once    sync.Once
@@ -439,6 +479,49 @@ func TestCrawlerRequestDelayIsPerHost(t *testing.T) {
 	}
 }
 
+type retrySpacingFetcher struct {
+	mu       sync.Mutex
+	starts   []time.Time
+	attempts int
+}
+
+func (f *retrySpacingFetcher) Fetch(_ context.Context, request *fetch.Request) (*fetch.Response, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.starts = append(f.starts, time.Now())
+	f.attempts++
+	if f.attempts == 1 {
+		return nil, errors.New("temporary failure")
+	}
+	return &fetch.Response{URL: request.URL, StatusCode: 200}, nil
+}
+
+func TestCrawlerRequestDelayAppliesBetweenRetries(t *testing.T) {
+	fetcher := &retrySpacingFetcher{}
+	c, err := New(Options{
+		Workers:          1,
+		RequestDelay:     50 * time.Millisecond,
+		DefaultFetcher:   fetcher,
+		FollowBehavior:   FollowNone,
+		RespectRobotsTxt: BoolPtr(false),
+		RetryOptions: &RetryOptions{
+			MaxAttempts:    2,
+			InitialBackoff: time.Millisecond,
+			MaxBackoff:     time.Millisecond,
+		},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, c.Crawl(context.Background(), []string{"https://example.com"}, func(context.Context, *Result) {}))
+
+	fetcher.mu.Lock()
+	starts := append([]time.Time(nil), fetcher.starts...)
+	fetcher.mu.Unlock()
+	assert.Len(t, starts, 2)
+	if spacing := starts[1].Sub(starts[0]); spacing < 45*time.Millisecond {
+		t.Fatalf("retry started after only %s", spacing)
+	}
+}
+
 type robotsDelayFetcher struct {
 	mu         sync.Mutex
 	pageStarts []time.Time
@@ -518,6 +601,62 @@ func TestCrawlerReturnsFrontierFailure(t *testing.T) {
 	assert.NoError(t, err)
 	err = c.Crawl(context.Background(), []string{"https://example.com"}, func(context.Context, *Result) {})
 	assert.ErrorIs(t, err, expected)
+}
+
+type failAfterDispatchFrontier struct {
+	item      URLItem
+	started   <-chan struct{}
+	err       error
+	mu        sync.Mutex
+	delivered bool
+}
+
+func (f *failAfterDispatchFrontier) Push(context.Context, ...URLItem) error { return nil }
+func (f *failAfterDispatchFrontier) Next(ctx context.Context) (URLItem, bool, error) {
+	f.mu.Lock()
+	if !f.delivered {
+		f.delivered = true
+		f.mu.Unlock()
+		return f.item, true, nil
+	}
+	f.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return URLItem{}, false, ctx.Err()
+	case <-f.started:
+		return URLItem{}, false, f.err
+	}
+}
+func (f *failAfterDispatchFrontier) Len() int     { return 1 }
+func (f *failAfterDispatchFrontier) Close() error { return nil }
+
+func TestCrawlerFrontierFailureCancelsInFlightFetch(t *testing.T) {
+	expected := errors.New("frontier failed after dispatch")
+	fetcher := &cancellationFetcher{started: make(chan struct{})}
+	frontier := &failAfterDispatchFrontier{
+		item:    URLItem{URL: "https://example.com"},
+		started: fetcher.started,
+		err:     expected,
+	}
+	c, err := New(Options{
+		Frontier:         frontier,
+		QueueSize:        1,
+		DefaultFetcher:   fetcher,
+		FollowBehavior:   FollowNone,
+		RespectRobotsTxt: BoolPtr(false),
+	})
+	assert.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Crawl(context.Background(), nil, func(context.Context, *Result) {})
+	}()
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, expected)
+	case <-time.After(time.Second):
+		t.Fatal("crawl did not cancel an in-flight fetch after the frontier failed")
+	}
 }
 
 type closeAfterPushFrontier struct {

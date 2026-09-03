@@ -474,13 +474,18 @@ func newCrawler(jsFetcher fetch.Fetcher) (*crawler.Crawler, error) {
 ### Custom Frontier
 
 `MemoryFrontier` prioritizes higher scores, then shallower URLs, then insertion
-order. `QueueSize` bounds pending items across both the frontier and the
-crawler's per-host staging queues, applying backpressure instead of dropping
-links. Provide another `Frontier` implementation for application-specific
-storage or ordering; its own storage capacity remains implementation-defined,
-while `QueueSize` still bounds scheduler staging. A provided frontier may be
-preloaded; pass an empty seed list to `Crawl` to process only that existing
-work.
+order. `QueueSize` bounds normalized URLs across the frontier, per-host staging,
+active requests, and retries, applying backpressure instead of dropping links.
+Raw link batches returned by fetchers are brokered separately until they can be
+normalized and admitted; this keeps workers live when the frontier is full. A
+fetcher can return an arbitrarily large raw batch, so those candidates are not
+part of the `QueueSize` bound. Use `MaxURLs` to limit total admissions.
+
+Provide another `Frontier` implementation for application-specific storage or
+ordering. Its own storage capacity remains implementation-defined, while
+`QueueSize` still bounds scheduler staging and active work. A custom frontier
+can spill normalized pending work to disk. A provided frontier may be preloaded;
+pass an empty seed list to `Crawl` to process only that existing work.
 
 ```go
 frontier := crawler.NewMemoryFrontier(1000)
@@ -522,7 +527,7 @@ c, err := crawler.New(crawler.Options{
 | `Logger` | `*slog.Logger` | Logger for crawler events |
 | `ShowProgress` | `bool` | Enable periodic progress reporting |
 | `ShowProgressInterval` | `time.Duration` | How often to report progress (default: 30s) |
-| `QueueSize` | `int` | Shared pending capacity for the default frontier and scheduler staging; with custom frontiers, bounds scheduler staging (default: 10000) |
+| `QueueSize` | `int` | Normalized-URL capacity across the default frontier, scheduler, active requests, and retries; with custom frontiers, bounds scheduler staging and active work (default: 10000) |
 
 #### Result
 

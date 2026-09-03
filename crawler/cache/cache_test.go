@@ -182,6 +182,39 @@ func TestInMemoryCache_ResponseEntryNotFound(t *testing.T) {
 	assert.True(t, IsNotFound(err))
 }
 
+func TestInMemoryCacheLegacyWritesInvalidateResponseEntries(t *testing.T) {
+	memory := NewInMemoryCache()
+	ctx := context.Background()
+	url := "https://example.com"
+	key := ResponseKey(url)
+	entry := &Entry{
+		URL:           url,
+		StatusCode:    200,
+		Body:          []byte("old"),
+		SchemaVersion: ResponseSchemaVersion,
+	}
+
+	assert.NoError(t, memory.SetEntry(ctx, key, entry))
+	assert.NoError(t, memory.Set(ctx, url, []byte("new")))
+	_, err := memory.GetEntry(ctx, key)
+	assert.True(t, IsNotFound(err))
+	value, err := memory.Get(ctx, url)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("new"), value)
+
+	assert.NoError(t, memory.SetEntry(ctx, key, entry))
+	assert.NoError(t, memory.Delete(ctx, url))
+	_, err = memory.GetEntry(ctx, key)
+	assert.True(t, IsNotFound(err))
+	_, err = memory.Get(ctx, url)
+	assert.True(t, IsNotFound(err))
+
+	assert.NoError(t, memory.SetEntry(ctx, key, entry))
+	assert.NoError(t, memory.Set(ctx, key, []byte("legacy typed-key value")))
+	_, err = memory.GetEntry(ctx, key)
+	assert.True(t, IsNotFound(err))
+}
+
 func TestResponseKeyIncludesSchemaVersion(t *testing.T) {
 	assert.Equal(t, "crawler:response:v1:https://example.com", ResponseKey("https://example.com"))
 }

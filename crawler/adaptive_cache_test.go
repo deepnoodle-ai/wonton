@@ -125,6 +125,119 @@ func TestCrawlerAdaptiveRetriesAreBounded(t *testing.T) {
 	assert.Equal(t, int64(3), stats[0].StatusCodes[http.StatusServiceUnavailable])
 }
 
+func TestCrawlerThrottleStatusFailsWithoutAdaptiveRetries(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			url := "https://example.com/busy"
+			memory := cache.NewInMemoryCache()
+			fetcher := &scriptedFetcher{responses: []*fetch.Response{{
+				URL:        url,
+				StatusCode: status,
+			}}}
+			c, err := New(Options{
+				Cache:            memory,
+				DefaultFetcher:   fetcher,
+				FollowBehavior:   FollowNone,
+				RespectRobotsTxt: BoolPtr(false),
+			})
+			assert.NoError(t, err)
+
+			var result *Result
+			assert.NoError(t, c.Crawl(context.Background(), []string{url}, func(_ context.Context, got *Result) {
+				result = got
+			}))
+			assert.NotNil(t, result)
+			var fetchErr *fetch.Error
+			assert.True(t, errors.As(result.Error, &fetchErr))
+			assert.Equal(t, status, fetchErr.StatusCode)
+			assert.Equal(t, status, result.Response.StatusCode)
+			assert.Equal(t, int64(1), c.GetStats().GetProcessed())
+			assert.Equal(t, int64(1), c.GetStats().GetFailed())
+			assert.Equal(t, int64(0), c.GetStats().GetSucceeded())
+
+			_, err = memory.GetEntry(context.Background(), cache.ResponseKey(url))
+			assert.True(t, cache.IsNotFound(err))
+			_, err = memory.Get(context.Background(), url)
+			assert.True(t, cache.IsNotFound(err))
+		})
+	}
+}
+
+type throttleOnceFetcher struct {
+	mu       sync.Mutex
+	attempts map[string]int
+}
+
+func (f *throttleOnceFetcher) Fetch(_ context.Context, request *fetch.Request) (*fetch.Response, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attempts[request.URL]++
+	status := http.StatusOK
+	if f.attempts[request.URL] == 1 {
+		status = http.StatusServiceUnavailable
+	}
+	return &fetch.Response{URL: request.URL, StatusCode: status}, nil
+}
+
+func TestCrawlerAdaptiveRetriesHonorQueueSize(t *testing.T) {
+	fetcher := &throttleOnceFetcher{attempts: make(map[string]int)}
+	c, err := New(Options{
+		Workers:          4,
+		QueueSize:        1,
+		DefaultFetcher:   fetcher,
+		FollowBehavior:   FollowNone,
+		Adaptive:         true,
+		HostPolicy:       HostPolicy{MaxConcurrent: 4, MaxDelay: 30 * time.Millisecond},
+		RespectRobotsTxt: BoolPtr(false),
+	})
+	assert.NoError(t, err)
+
+	urls := []string{
+		"https://one.example/page",
+		"https://two.example/page",
+		"https://three.example/page",
+		"https://four.example/page",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	results := make(chan *Result, len(urls))
+	go func() {
+		done <- c.Crawl(ctx, urls, func(_ context.Context, result *Result) {
+			results <- result
+		})
+	}()
+
+	maxPending := 0
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			assert.NoError(t, err)
+			if pending := c.Pending(); pending > maxPending {
+				maxPending = pending
+			}
+			if maxPending > 1 {
+				t.Fatalf("QueueSize=1 allowed %d active or retrying URLs", maxPending)
+			}
+			assert.Len(t, results, len(urls))
+			fetcher.mu.Lock()
+			requests := 0
+			for _, attempts := range fetcher.attempts {
+				requests += attempts
+			}
+			fetcher.mu.Unlock()
+			assert.Equal(t, 2*len(urls), requests)
+			return
+		case <-ticker.C:
+			if pending := c.Pending(); pending > maxPending {
+				maxPending = pending
+			}
+		}
+	}
+}
+
 func TestAdaptiveLatencyBackoffAndRecovery(t *testing.T) {
 	scheduler := newHostScheduler(
 		NewMemoryFrontier(0),

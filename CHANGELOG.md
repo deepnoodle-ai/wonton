@@ -43,9 +43,17 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
   do not make network requests.
 - Caller cancellation is now returned from `Crawler.Crawl` after workers and
   the scheduler shut down, while scheduler failures retain precedence.
-- Frontier capacity now includes host-scheduler staging. Per-host queues and
-  asynchronous admission keep discovered links bounded without deadlocking
-  workers behind a full frontier.
+- Frontier capacity now includes host-scheduler staging, active requests, and
+  retries. Per-host queues and nonblocking discovery admission prevent workers
+  from deadlocking behind a full frontier.
+- Fatal frontier errors now cancel in-flight requests immediately, and both
+  configured fetch retries and adaptive retries retain scheduler capacity and
+  obey per-host request spacing.
+- Legacy writes and deletes now invalidate matching typed entries in
+  `cache.InMemoryCache`, preventing stale response metadata from shadowing an
+  explicit HTML cache update.
+- `429` and `503` responses now report fetch failures even when adaptive retry
+  behavior is disabled.
 - Only successful fetch responses are stored for replay; standalone `304`,
   `429`, and `503` responses no longer become cache entries.
 

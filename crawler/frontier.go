@@ -54,8 +54,8 @@ type Frontier interface {
 //
 // A positive maxPending applies backpressure to Push when that many items are
 // waiting. When used by Crawler, items staged in its host scheduler continue
-// to occupy capacity until dispatch. A value less than one makes the frontier
-// unbounded.
+// to occupy capacity while active and across retries, until processing reaches
+// a final outcome. A value less than one makes the frontier unbounded.
 type MemoryFrontier struct {
 	mu         sync.Mutex
 	items      memoryFrontierHeap
@@ -133,8 +133,9 @@ func (f *MemoryFrontier) Next(ctx context.Context) (URLItem, bool, error) {
 }
 
 // nextForScheduling transfers an item to the host scheduler without releasing
-// its capacity slot. The slot is released once the scheduler dispatches it,
-// so maxPending covers both the heap and scheduler staging queues.
+// its capacity slot. The slot is released after the scheduled URL reaches a
+// final outcome, so maxPending covers the heap, scheduler, active requests,
+// and retries.
 func (f *MemoryFrontier) nextForScheduling(ctx context.Context) (URLItem, bool, error) {
 	return f.next(ctx, true)
 }

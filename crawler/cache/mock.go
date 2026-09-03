@@ -50,6 +50,10 @@ func (m *InMemoryCache) Set(ctx context.Context, key string, value []byte) error
 	} else {
 		m.data[key] = append([]byte{}, value...)
 	}
+	// A legacy write is authoritative for its URL. Invalidate any richer entry
+	// the crawler previously stored so GetEntry cannot replay stale content.
+	delete(m.entries, key)
+	delete(m.entries, ResponseKey(key))
 	return nil
 }
 
@@ -82,6 +86,7 @@ func (m *InMemoryCache) Delete(ctx context.Context, key string) error {
 
 	delete(m.data, key)
 	delete(m.entries, key)
+	delete(m.entries, ResponseKey(key))
 	return nil
 }
 

@@ -13,33 +13,31 @@ type frontierBatch struct {
 }
 
 // frontierAdmitter is the only goroutine that pushes crawler-discovered work
-// into the frontier. Workers hand off raw batches before returning to the
-// scheduler, so bounded frontier backpressure cannot strand every worker in
-// Push while eligible work is waiting to be dispatched.
+// into the frontier. Workers hand off raw discovery batches through a
+// nonblocking broker before returning to the scheduler, so bounded frontier
+// backpressure cannot strand every worker in Push while eligible work is
+// waiting to be dispatched. QueueSize applies after URLs are normalized and
+// admitted; MaxURLs separately bounds how many URLs are ultimately admitted.
 type frontierAdmitter struct {
 	crawler  *Crawler
 	frontier Frontier
 	cancel   context.CancelFunc
-	batches  chan frontierBatch
+	wake     chan struct{}
 	active   int64
 	wg       sync.WaitGroup
 
-	mu  sync.Mutex
-	err error
+	mu     sync.Mutex
+	queue  []frontierBatch
+	closed bool
+	err    error
 }
 
 func newFrontierAdmitter(crawler *Crawler, frontier Frontier, cancel context.CancelFunc) *frontierAdmitter {
-	bufferSize := crawler.workers
-	if bufferSize < 1 {
-		bufferSize = 1
-	}
 	return &frontierAdmitter{
 		crawler:  crawler,
 		frontier: frontier,
 		cancel:   cancel,
-		// Each worker can hand off one completed page while another batch is
-		// applying backpressure, leaving every worker free to drain ready work.
-		batches: make(chan frontierBatch, bufferSize),
+		wake:     make(chan struct{}, 1),
 	}
 }
 
@@ -53,7 +51,10 @@ func (a *frontierAdmitter) wait() {
 }
 
 func (a *frontierAdmitter) close() {
-	close(a.batches)
+	a.mu.Lock()
+	a.closed = true
+	a.signalLocked()
+	a.mu.Unlock()
 }
 
 func (a *frontierAdmitter) failure() error {
@@ -66,29 +67,82 @@ func (a *frontierAdmitter) submit(ctx context.Context, urls []string, parent *UR
 	if len(urls) == 0 {
 		return nil
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	batch := frontierBatch{urls: urls}
 	if parent != nil {
 		batch.parent = *parent
 		batch.hasParent = true
 	}
 	atomic.AddInt64(&a.active, 1)
-	select {
-	case a.batches <- batch:
-		return nil
-	case <-ctx.Done():
+	a.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		a.mu.Unlock()
 		a.finishBatch()
-		return ctx.Err()
+		return err
 	}
+	if a.closed {
+		a.mu.Unlock()
+		a.finishBatch()
+		return ErrFrontierClosed
+	}
+	a.queue = append(a.queue, batch)
+	a.signalLocked()
+	a.mu.Unlock()
+	return nil
 }
 
 func (a *frontierAdmitter) run(ctx context.Context) {
 	defer a.wg.Done()
-	for batch := range a.batches {
-		if ctx.Err() != nil {
-			a.finishBatch()
+	for {
+		batch, ok, closed := a.takeBatch()
+		if ok {
+			if ctx.Err() != nil {
+				a.finishBatch()
+				continue
+			}
+			a.admitBatch(ctx, batch)
 			continue
 		}
-		a.admitBatch(ctx, batch)
+		if closed {
+			return
+		}
+		select {
+		case <-a.wake:
+		case <-ctx.Done():
+			a.discardQueued()
+			return
+		}
+	}
+}
+
+func (a *frontierAdmitter) takeBatch() (frontierBatch, bool, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.queue) == 0 {
+		return frontierBatch{}, false, a.closed
+	}
+	batch := a.queue[0]
+	a.queue[0] = frontierBatch{}
+	a.queue = a.queue[1:]
+	return batch, true, a.closed
+}
+
+func (a *frontierAdmitter) discardQueued() {
+	a.mu.Lock()
+	queued := a.queue
+	a.queue = nil
+	a.mu.Unlock()
+	for range queued {
+		a.finishBatch()
+	}
+}
+
+func (a *frontierAdmitter) signalLocked() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
 	}
 }
 
