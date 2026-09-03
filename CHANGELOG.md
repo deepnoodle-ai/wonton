@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton is pre-1.0; pin your version.
 
+Versions through `0.0.40` incremented the patch number for every release. From
+`0.1.0` on, the minor number carries anything that can break a build and the
+patch number carries the rest, which is what SemVer means by `0.y.z`.
+
 ## [Unreleased]
+
+## [0.1.0] - 2026-09-02
 
 ### Added
 
@@ -46,9 +52,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   `Cell` and `RestyleCell`. Every implementation in this module is updated;
   a type implementing `RenderFrame` outside it needs both methods. Callers of
   `RenderFrame` are unaffected.
-- A multi-click past the third now restarts the count at 1, so repeated clicks
-  cycle word, line, word the way a terminal does. Previously `ClickCount` ran
-  on to 4, 5 and beyond, leaving every further click a line select.
+
+### Fixed
+
+- `ClickCount` ran on to 4, 5 and beyond instead of restarting, so a view that
+  treated three clicks as a line select kept selecting lines for as long as the
+  user went on clicking. Repeated clicks now cycle word, line, word the way a
+  terminal does.
 
 ## [0.0.40] - 2026-09-02
 
