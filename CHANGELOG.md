@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+## [0.0.40] - 2026-09-02
+
 ### Added
 
 - `tui.Viewport` and `tui.ViewportState` — a scrollable, virtualized list. Only
@@ -33,6 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `Terminal.Invalidate` — discard what the terminal believes is on screen so
   the next flush redraws every cell. `Terminal.IsAlternateScreen`, `IsRawMode`,
   `IsCursorHidden`, and `IsMouseEnabled` report the modes currently set.
+- `Runtime` counts repeated clicks and sets `ClickCount` on the synthetic
+  `MouseClick` it emits, so views get double- and triple-click without each
+  keeping its own timer.
 
 ### Fixed
 
@@ -73,9 +78,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - **The full-screen flush is wrapped in synchronized output** (DEC 2026), as
   the inline printer already was. A repaint that touches every visible cell —
   a page scroll, a resize — now lands in one piece instead of tearing.
-- `Runtime` counts repeated clicks and sets `ClickCount` on the synthetic
-  `MouseClick` it emits, so views get double- and triple-click without each
-  keeping its own timer.
 
 ## [0.0.39] - 2026-08-31
 
