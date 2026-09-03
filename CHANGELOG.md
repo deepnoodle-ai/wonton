@@ -10,6 +10,8 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-03
+
 ### Added
 
 - `crawler.Frontier`, `URLItem`, and the priority-ordered
