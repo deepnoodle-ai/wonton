@@ -143,3 +143,16 @@ func TestFrameIntervalMatchesTheFrameRate(t *testing.T) {
 	assert.Equal(t, time.Second/30, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 30).frameInterval())
 	assert.Equal(t, time.Second/60, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 60).frameInterval())
 }
+
+func TestRuntimeClickCountCyclesAfterATriple(t *testing.T) {
+	// A terminal cycles word, line, word. Counting on to four would leave every
+	// further click a line select for as long as the user kept clicking.
+	r := newTestRuntime(t)
+	now := time.Now()
+
+	var counts []int
+	for i := range 5 {
+		counts = append(counts, clickAt(r, 5, 5, now.Add(time.Duration(i)*100*time.Millisecond)).ClickCount)
+	}
+	assert.Equal(t, []int{1, 2, 3, 1, 2}, counts)
+}

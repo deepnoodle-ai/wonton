@@ -115,6 +115,27 @@ func (c *RenderContext) SetCell(x, y int, char rune, style Style) {
 	c.frame.SetCell(x, y, char, style)
 }
 
+// Cell returns what is currently drawn at the given position. It reads the
+// frame being built, so a view sees what it and its children have drawn and
+// nothing later. Out of bounds reads as a blank.
+//
+// This is what lets a view repaint over its children — a selection highlight
+// keeps the character and changes the style — and read the text back out
+// without knowing how any of it was produced.
+func (c *RenderContext) Cell(x, y int) Cell {
+	return c.frame.Cell(x, y)
+}
+
+// RestyleCell changes the style of a cell and keeps its character exactly as
+// it is, including the combining marks and variation selectors that SetCell
+// would drop. Out of bounds does nothing.
+//
+// Paired with Cell, this is how a view paints over its children: read what is
+// there, decide, restyle. A selection highlight needs nothing more.
+func (c *RenderContext) RestyleCell(x, y int, style Style) {
+	c.frame.RestyleCell(x, y, style)
+}
+
 // PrintStyled prints text at the given position with a style.
 // Text wraps at the frame edge.
 func (c *RenderContext) PrintStyled(x, y int, text string, style Style) {

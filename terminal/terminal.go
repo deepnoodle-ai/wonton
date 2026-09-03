@@ -298,6 +298,34 @@ type RenderFrame interface {
 	// Performance: O(width * height)
 	FillStyled(x, y, width, height int, char rune, style Style) error
 
+	// Cell returns what is currently drawn at the given position, in the
+	// frame's own coordinates. Out-of-bounds reads return a blank cell rather
+	// than an error, so a caller sweeping a rectangle needs no bounds check.
+	//
+	// This reads the buffer being built, so it sees what has been drawn to
+	// this frame so far and nothing that comes after. A view uses it to paint
+	// over what its children drew — a selection highlight — and to read the
+	// text back out.
+	//
+	// Performance: O(1)
+	Cell(x, y int) Cell
+
+	// RestyleCell replaces the style of the cell at the given position and
+	// leaves its character exactly as it is. A multi-rune grapheme cluster
+	// keeps every rune, and a wide character is restyled together with its
+	// continuation cell so the whole glyph changes at once.
+	//
+	// This is the counterpart to Cell: it lets a view paint over what its
+	// children drew — a selection highlight — without reproducing their text.
+	// SetCell cannot do it, because a rune is not a grapheme cluster: writing
+	// one back would drop the combining marks and variation selectors that
+	// make up the rest of the cluster.
+	//
+	// Returns ErrOutOfBounds for a position outside the frame.
+	//
+	// Performance: O(1)
+	RestyleCell(x, y int, style Style) error
+
 	// Size returns the dimensions of the frame
 	//
 	// Returns: (width, height) of the terminal in character cells
@@ -657,6 +685,26 @@ func (t *Terminal) BeginFrame() (RenderFrame, error) {
 
 func (tf *terminalRenderFrame) Size() (width, height int) {
 	return tf.bounds.Dx(), tf.bounds.Dy()
+}
+
+func (tf *terminalRenderFrame) Cell(x, y int) Cell {
+	globalX := tf.bounds.Min.X + x
+	globalY := tf.bounds.Min.Y + y
+	if !image.Pt(globalX, globalY).In(tf.bounds) {
+		return Cell{Char: ' '}
+	}
+	// The frame holds t.mu for its whole life, so this must not re-lock.
+	return tf.t.getCellInternal(globalX, globalY)
+}
+
+func (tf *terminalRenderFrame) RestyleCell(x, y int, style Style) error {
+	globalX := tf.bounds.Min.X + x
+	globalY := tf.bounds.Min.Y + y
+	if !image.Pt(globalX, globalY).In(tf.bounds) {
+		return ErrOutOfBounds
+	}
+	// The frame holds t.mu for its whole life, so this must not re-lock.
+	return tf.t.restyleCellInternal(globalX, globalY, style)
 }
 
 func (tf *terminalRenderFrame) SetCell(x, y int, char rune, style Style) error {
@@ -2276,7 +2324,47 @@ func (t *Terminal) WriteRaw(data []byte) error {
 func (t *Terminal) GetCell(x, y int) Cell {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.getCellInternal(x, y)
+}
 
+// Cell returns the cell at the given position, satisfying RenderFrame. The
+// terminal is itself a frame covering the whole screen, so this is GetCell.
+func (t *Terminal) Cell(x, y int) Cell { return t.GetCell(x, y) }
+
+// RestyleCell changes the style of one cell and leaves its character alone,
+// satisfying RenderFrame.
+func (t *Terminal) RestyleCell(x, y int, style Style) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.restyleCellInternal(x, y, style)
+}
+
+// restyleCellInternal restyles a cell in the back buffer without locking.
+// Callers must already hold t.mu — a render frame does, for the whole frame.
+func (t *Terminal) restyleCellInternal(x, y int, style Style) error {
+	if !t.buffered {
+		// Nothing is retained to restyle, and the character is not known here
+		// well enough to write it back.
+		return nil
+	}
+	if x < 0 || x >= t.width || y < 0 || y >= t.height {
+		return ErrOutOfBounds
+	}
+	t.backBuffer[y][x].Style = style
+	t.dirtyRegion.Mark(x, y)
+	// A wide character's continuation cell carries the style too. Without it
+	// the right half of the glyph keeps the old background and the highlight
+	// is drawn half-width.
+	if t.backBuffer[y][x].Width == 2 && x+1 < t.width {
+		t.backBuffer[y][x+1].Style = style
+		t.dirtyRegion.Mark(x+1, y)
+	}
+	return nil
+}
+
+// getCellInternal reads the back buffer without locking. Callers must already
+// hold t.mu — a render frame does, for the duration of the frame.
+func (t *Terminal) getCellInternal(x, y int) Cell {
 	if y < 0 || y >= len(t.backBuffer) {
 		return Cell{Char: ' '}
 	}

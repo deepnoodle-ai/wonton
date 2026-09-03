@@ -758,6 +758,13 @@ func (r *Runtime) countClick(ev MouseEvent) int {
 		r.mousePressButton == r.lastClickButton
 	if sameSpot && !r.lastClickTime.IsZero() && ev.Time.Sub(r.lastClickTime) <= doubleClickThreshold {
 		r.clickCount++
+		// A terminal cycles word, line, word: the click after a triple starts
+		// a new run rather than counting on to four. Without this, every click
+		// past the third stays a line select for as long as the user keeps
+		// clicking.
+		if r.clickCount > 3 {
+			r.clickCount = 1
+		}
 	} else {
 		r.clickCount = 1
 	}

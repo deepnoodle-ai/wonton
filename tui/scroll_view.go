@@ -201,6 +201,29 @@ func (f *scrollRenderFrame) FillStyled(x, y, width, height int, char rune, style
 	return nil
 }
 
+// Cell reads through the same offset SetCell writes through, so a caller works
+// in content coordinates and gets a blank for anything scrolled out of view.
+func (f *scrollRenderFrame) Cell(x, y int) Cell {
+	screenX := x + f.offsetX
+	screenY := y - f.offsetY
+	if screenY < 0 || screenY >= f.clipH || screenX < 0 || screenX >= f.clipW {
+		return Cell{Char: ' '}
+	}
+	return f.inner.Cell(screenX, screenY)
+}
+
+// RestyleCell restyles through the same offset Cell reads through, so a cell
+// scrolled out of view is left alone rather than restyling whatever the
+// viewport happens to be showing at that row.
+func (f *scrollRenderFrame) RestyleCell(x, y int, style Style) error {
+	screenX := x + f.offsetX
+	screenY := y - f.offsetY
+	if screenY < 0 || screenY >= f.clipH || screenX < 0 || screenX >= f.clipW {
+		return nil
+	}
+	return f.inner.RestyleCell(screenX, screenY, style)
+}
+
 func (f *scrollRenderFrame) Size() (width, height int) {
 	// Report full content height so inner views render all content,
 	// even parts that are scrolled out of view (they get clipped by SetCell/PrintStyled)
