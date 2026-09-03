@@ -10,6 +10,19 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-03
+
+### Added
+
+- `tui.InputFieldView.TextStyle` to set the style for typed input text,
+  mirroring `PlaceholderStyle`.
+
+### Fixed
+
+- Typed input text now defaults to `ColorDefault` instead of `ColorWhite`,
+  which most terminal themes render as dim gray rather than the theme's
+  actual foreground color.
+
 ## [0.2.0] - 2026-09-03
 
 ### Added
