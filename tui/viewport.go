@@ -40,8 +40,21 @@ type ViewportState struct {
 	AtBottom      bool // nothing below the viewport
 	LinesBelow    int  // content lines below the viewport, 0 when AtBottom
 
+	// SelectionStyle paints the selected cells. The zero value reverses them,
+	// which is what a terminal's own selection does.
+	SelectionStyle Style
+
 	anchorItem int // item at the top of the viewport
 	anchorLine int // line within that item shown on the viewport's first row
+
+	selAnchor          SelectionPoint // where the drag started
+	selCursor          SelectionPoint // where it has been dragged to
+	hasSelection       bool
+	selecting          bool           // a drag is in progress
+	followBeforeSelect bool           // Follow as it was when the selection started
+	followSuspended    bool           // Follow is pinned for the life of the selection
+	dragEdge           int            // -1, 0 or +1: which edge a drag is being held past
+	layout             []viewportSpan // where each item landed in the last render
 
 	items ViewportItems
 	gap   int
@@ -49,11 +62,18 @@ type ViewportState struct {
 	width int // the width cache entries were measured at; 0 before first render
 }
 
-// viewportEntry caches one item's view and its height at the cached width.
+// viewportEntry caches one item's view and its height at the cached width, and
+// the rendered rows a selection reads, once anything has asked for them.
 type viewportEntry struct {
 	view   View
 	height int
 	valid  bool
+
+	// lines is what itemLines produced for this item, or nil until something
+	// asks. It hangs off the same entry as the height so it is dropped by the
+	// same Invalidate, InvalidateAll and width change.
+	lines      []itemLine
+	linesValid bool
 }
 
 // Invalidate drops the cached view and height for item i. Call it whenever an
@@ -455,6 +475,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 
 	// Draw from the anchor down until the viewport is full. The first item is
 	// usually cut off at the top, which is what the offset frame is for.
+	s.layout = s.layout[:0]
 	y := -s.anchorLine
 	for i := s.anchorItem; i >= 0 && i < s.len() && y < height; i = s.nextVisible(i) {
 		h := s.heightOf(i)
@@ -467,9 +488,15 @@ func (v *ViewportView) render(ctx *RenderContext) {
 				contentHeight: h,
 			}
 			s.viewOf(i).render(ctx.WithFrame(frame))
+			// Record where it landed so a mouse position can be turned back
+			// into a point in the content.
+			s.layout = append(s.layout, viewportSpan{item: i, top: y, height: h})
 		}
 		y += h + s.gap
 	}
+
+	// After the items, so the highlight paints over what they drew.
+	s.paintSelection(ctx)
 
 	s.updatePosition()
 }

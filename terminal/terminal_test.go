@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -522,4 +523,18 @@ func TestTerminal_FrameOperations_NoPanic(t *testing.T) {
 	// Verify cells were written
 	assert.Equal(t, 'A', term.backBuffer[10][10].Char)
 	assert.Equal(t, 'B', term.backBuffer[20][20].Char)
+}
+
+func TestTerminalIsAnIOWriter(t *testing.T) {
+	// clipboard.WriteOSC52 and anything else that writes bytes takes an
+	// io.Writer; WriteRaw's signature is not one.
+	var buf bytes.Buffer
+	term := NewTestTerminal(10, 5, &buf)
+
+	var w io.Writer = term
+	n, err := w.Write([]byte("\033]52;c;aGk=\a"))
+
+	assert.NoError(t, err)
+	assert.Equal(t, n, 12, "Write reports the bytes consumed, as io.Writer requires")
+	assert.Equal(t, buf.String(), "\033]52;c;aGk=\a")
 }

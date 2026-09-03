@@ -91,7 +91,7 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 		fps = 30 // Default to 30 FPS
 	}
 
-	return &Runtime{
+	r := &Runtime{
 		terminal:      terminal,
 		app:           app,
 		events:        make(chan Event, 100), // Buffered to prevent blocking
@@ -103,7 +103,17 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 		focusMgr:      NewFocusManager(),
 		reg:           newRegistries(),
 	}
+	// Before Init, so an application can reach Suspend and the terminal from
+	// the first thing it does.
+	if aware, ok := app.(RuntimeAware); ok {
+		aware.SetRuntime(r)
+	}
+	return r
 }
+
+// Terminal returns the terminal the runtime is driving. An application reaches
+// it through RuntimeAware; Run builds it and would otherwise keep it private.
+func (r *Runtime) Terminal() *Terminal { return r.terminal }
 
 // SetPasteTabWidth configures how tabs in pasted content are handled.
 // If width is 0 (default), tabs are preserved as-is.
@@ -758,6 +768,13 @@ func (r *Runtime) countClick(ev MouseEvent) int {
 		r.mousePressButton == r.lastClickButton
 	if sameSpot && !r.lastClickTime.IsZero() && ev.Time.Sub(r.lastClickTime) <= doubleClickThreshold {
 		r.clickCount++
+		// A terminal cycles word, line, word: the click after a triple starts
+		// a new run rather than counting on to four. Without this, every click
+		// past the third stays a line select for as long as the user keeps
+		// clicking.
+		if r.clickCount > 3 {
+			r.clickCount = 1
+		}
 	} else {
 		r.clickCount = 1
 	}

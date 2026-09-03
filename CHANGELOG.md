@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 
 ## [Unreleased]
 
+### Added
+
+- **Selection on `ViewportState`** — `HandleMouse` drives press-drag-release,
+  double-click for a word and triple-click for a line; `HasSelection`,
+  `Selection`, `SelectedText`, `ClearSelection` and `SelectionStyle` read and
+  paint it. Endpoints are `(item, line, column)`, not screen rows, so a
+  selection stays on its own words while a reply streams above it, while the
+  viewport scrolls, and across a resize. `DragAutoScroll`, called once a frame
+  during a drag, extends the selection past the top and bottom edges. `Follow`
+  is pinned for the life of a selection and restored when it is dismissed.
+- `RenderFrame.Cell(x, y)` and `RenderContext.Cell` — read back what has been
+  drawn to the frame so far, in the frame's own coordinates.
+- `RenderFrame.RestyleCell(x, y, style)` and `RenderContext.RestyleCell` —
+  change a cell's style and leave its character exactly as it is. Paired with
+  `Cell`, this is how a view paints over what its children drew: a selection
+  highlight keeps the characters and changes only the style. `SetCell` cannot
+  do it, because a rune is not a grapheme cluster — writing one back drops the
+  combining marks and variation selectors that make up the rest.
+- `ViewportState.ItemAt(x, y)` — which item and line a position in the
+  viewport falls on. `HandleMouse` returns false for a click it does not want,
+  and this says what that click landed on, so an application can put its own
+  click targets inside a `Viewport`.
+- `examples/tui/viewport` — a streaming transcript with mouse selection,
+  auto-scroll past the edges, and copy to both the system clipboard and the
+  terminal.
+- `Terminal.Write`, making `*Terminal` an `io.Writer`, and `Runtime.Terminal`
+  plus the optional `tui.RuntimeAware` interface, which hands an application
+  the runtime driving it before `Init`. `Run` builds both itself, so without
+  these an application started that way could not reach `Runtime.Suspend` or
+  write an escape sequence of its own.
+- `clipboard.WriteOSC52(w, text)` — ask the terminal to set the system
+  clipboard, which is the rung that still works over SSH. Capped at
+  `OSC52Limit` (100 KB); over that it returns `ErrTooLarge` and writes nothing.
+
+### Changed
+
+- **Breaking for implementers of `terminal.RenderFrame`** — the interface gains
+  `Cell` and `RestyleCell`. Every implementation in this module is updated;
+  a type implementing `RenderFrame` outside it needs both methods. Callers of
+  `RenderFrame` are unaffected.
+- A multi-click past the third now restarts the count at 1, so repeated clicks
+  cycle word, line, word the way a terminal does. Previously `ClickCount` ran
+  on to 4, 5 and beyond, leaving every further click a line select.
+
 ## [0.0.40] - 2026-09-02
 
 ### Added

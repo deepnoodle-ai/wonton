@@ -143,3 +143,41 @@ func TestFrameIntervalMatchesTheFrameRate(t *testing.T) {
 	assert.Equal(t, time.Second/30, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 30).frameInterval())
 	assert.Equal(t, time.Second/60, NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 60).frameInterval())
 }
+
+func TestRuntimeClickCountCyclesAfterATriple(t *testing.T) {
+	// A terminal cycles word, line, word. Counting on to four would leave every
+	// further click a line select for as long as the user kept clicking.
+	r := newTestRuntime(t)
+	now := time.Now()
+
+	var counts []int
+	for i := range 5 {
+		counts = append(counts, clickAt(r, 5, 5, now.Add(time.Duration(i)*100*time.Millisecond)).ClickCount)
+	}
+	assert.Equal(t, []int{1, 2, 3, 1, 2}, counts)
+}
+
+// runtimeAwareApp records the runtime it is handed.
+type runtimeAwareApp struct {
+	testRuntimeModel
+	got *Runtime
+}
+
+func (a *runtimeAwareApp) SetRuntime(r *Runtime) { a.got = r }
+
+func TestRuntimeHandsItselfToAnApplicationThatAsks(t *testing.T) {
+	// Run builds the terminal and the runtime itself, so without this an
+	// application started that way cannot reach Suspend or the terminal.
+	var buf bytes.Buffer
+	app := &runtimeAwareApp{}
+	r := NewRuntime(NewTestTerminal(80, 24, &buf), app, 30)
+
+	assert.Equal(t, app.got, r, "the application is handed the runtime driving it")
+	assert.Equal(t, r.Terminal(), r.terminal, "and reaches the terminal through it")
+}
+
+func TestRuntimeLeavesAnApplicationThatDoesNotAskAlone(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewRuntime(NewTestTerminal(80, 24, &buf), &testRuntimeModel{}, 30)
+	assert.NotNil(t, r.Terminal())
+}
