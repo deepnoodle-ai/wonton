@@ -4,7 +4,7 @@ Pluggable web crawler with configurable fetchers, parsers, and caching.
 
 ## Summary
 
-The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports a pluggable crawl frontier, per-host scheduling, pluggable fetchers for different domains, custom parsers, optional caching, and flexible link-following behavior (same domain, related subdomains, or any domain). Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
+The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports a pluggable crawl frontier, adaptive per-host scheduling, pluggable fetchers for different domains, custom parsers, HTTP-aware caching, and flexible link-following behavior (same domain, related subdomains, or any domain). Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
 
 ## Fetching Is SSRF-Guarded by Default
 
@@ -208,6 +208,8 @@ package main
 
 import (
     "context"
+    "log"
+    "time"
 
     "github.com/deepnoodle-ai/wonton/crawler"
     "github.com/deepnoodle-ai/wonton/crawler/cache"
@@ -218,13 +220,16 @@ func main() {
     // Create memory cache
     memCache := cache.NewInMemoryCache()
 
-    c, err := crawler.New(crawler.Options{
+    options := crawler.Options{
         MaxURLs:        500,
         Workers:        5,
         Cache:          memCache,
+        CacheTTL:       30 * time.Minute,
+        Revalidate:     true,
         DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
-    })
+    }
+    c, err := crawler.New(options)
     if err != nil {
         log.Fatal(err)
     }
@@ -232,10 +237,19 @@ func main() {
     // First crawl - fetches from web
     c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 
-    // Second crawl - uses cache
-    c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
+    // Crawlers remember visited URLs, so use a new crawler for a later pass.
+    // Fresh entries avoid the request; stale entries use ETag or
+    // Last-Modified and reuse their body when the server returns 304.
+    next, _ := crawler.New(options)
+    next.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 }
 ```
+
+`cache.InMemoryCache` implements both the original HTML-only `cache.Cache`
+interface and `cache.ResponseCache`. Existing `cache.Cache` implementations
+continue to work unchanged and retain their indefinite HTML caching behavior.
+TTL and conditional revalidation are available when the supplied cache also
+implements `cache.ResponseCache`. A zero `CacheTTL` means entries never expire.
 
 ### With Request Delay
 
@@ -270,6 +284,42 @@ func main() {
     c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 }
 ```
+
+### With Adaptive Politeness
+
+Adaptive mode requeues `429` and `503` responses, honors `Retry-After`, and
+adjusts each host independently when its latency rises. Retries are bounded by
+`RetryOptions.MaxAttempts` (three by default), and `MaxDelay` caps adaptive
+backoff. Robots.txt and configured minimum delays are always respected.
+
+```go
+c, err := crawler.New(crawler.Options{
+    Workers:        8,
+    Adaptive:       true,
+    DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
+    HostPolicy: crawler.HostPolicy{
+        MaxConcurrent: 2,
+        MinDelay:      250 * time.Millisecond,
+        MaxDelay:      30 * time.Second,
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+if err := c.Crawl(context.Background(), seeds, processResult); err != nil {
+    log.Fatal(err)
+}
+for _, host := range c.HostStats() {
+    fmt.Printf("%s: %d requests, %d bytes, p95 %s, final delay %s\n",
+        host.Host, host.Requests, host.Bytes, host.P95, host.FinalDelay)
+}
+```
+
+`HostStats` covers page-network requests in the current or most recent crawl;
+cache hits are excluded. `Errors` includes transport errors and HTTP statuses
+of 400 or higher. `PeakRPS` is the largest rolling one-second request-start
+count observed for the host.
 
 ### With Progress Reporting
 
@@ -453,10 +503,13 @@ c, err := crawler.New(crawler.Options{
 |-------|------|-------------|
 | `MaxURLs` | `int` | Maximum number of URLs to crawl (0 = unlimited) |
 | `Workers` | `int` | Number of concurrent worker goroutines |
-| `Cache` | `cache.Cache` | Optional cache for storing fetched HTML |
+| `Cache` | `cache.Cache` | Optional HTML cache; typed implementations also preserve HTTP metadata and links |
+| `CacheTTL` | `time.Duration` | Freshness lifetime for typed cache entries (0 = never expire) |
+| `Revalidate` | `bool` | Revalidate stale typed entries with ETag or Last-Modified |
 | `RequestDelay` | `time.Duration` | Minimum delay between requests to the same host |
 | `Frontier` | `Frontier` | Pending-work store (default: `MemoryFrontier`) |
 | `HostPolicy` | `HostPolicy` | Per-host concurrency and delay limits |
+| `Adaptive` | `bool` | Enable bounded 429/503 retries and latency-sensitive per-host backoff |
 | `KnownURLs` | `[]string` | Pre-populate list of known URLs |
 | `ParserRules` | `[]*ParserRule` | Domain-specific parser rules |
 | `DefaultParser` | `Parser` | Parser used when no rule matches |
@@ -480,6 +533,19 @@ c, err := crawler.New(crawler.Options{
 | `Links` | `[]string` | Discovered links on the page |
 | `Response` | `*fetch.Response` | Full fetch response with HTML and metadata |
 | `Error` | `error` | Error encountered during crawl (if any) |
+
+#### HostStats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Host` | `string` | Lowercase host name, including a non-default port |
+| `Requests` | `int64` | Page-network requests started |
+| `Bytes` | `int64` | Response body bytes observed |
+| `Errors` | `int64` | Transport errors and HTTP responses of 400 or higher |
+| `StatusCodes` | `map[int]int64` | Response count by HTTP status |
+| `PeakRPS` | `float64` | Peak rolling one-second request-start count |
+| `P50`, `P95` | `time.Duration` | Request latency percentiles |
+| `FinalDelay` | `time.Duration` | Effective host delay after policy, robots, and adaptation |
 
 #### FollowBehavior
 
@@ -515,6 +581,8 @@ c, err := crawler.New(crawler.Options{
 | `Crawl(ctx, urls, callback)` | Start crawling URLs | `context.Context`, `[]string`, `Callback` | `error` |
 | `Stop()` | Stop the crawler | None | None |
 | `GetStats()` | Get crawling statistics | None | `*CrawlerStats` |
+| `HostStats()` | Get per-host network impact for the current or latest crawl | None | `[]HostStats` |
+| `Pending()` | Get queued URLs that have not started | None | `int` |
 | `AddParserRules(rules...)` | Add parser rules dynamically | `...*ParserRule` | `error` |
 | `AddFetcherRules(rules...)` | Add fetcher rules dynamically | `...*FetcherRule` | `error` |
 
@@ -537,6 +605,13 @@ c, err := crawler.New(crawler.Options{
 | `WithFetcherMatchType(matchType)` | Set match type | `MatchType` | `FetcherRuleOption` |
 
 ### Interfaces
+
+#### ResponseCache
+
+`cache.ResponseCache` augments `cache.Cache` with typed entries containing the
+status, headers, body, extracted links, validators, and fetch time. Use
+`cache.ResponseKey(url)` when seeding, inspecting, or deleting typed entries;
+the key includes `cache.ResponseSchemaVersion`.
 
 #### Parser
 

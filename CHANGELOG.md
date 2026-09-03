@@ -18,6 +18,12 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 - `crawler.HostPolicy` for per-host concurrency and request spacing.
   `Result` now reports `Depth`, `Referrer`, and `DiscoveredAt`, and
   `Crawler.Pending` exposes queued work for progress UIs.
+- Adaptive crawler politeness for `429` and `503` responses, including bounded
+  requeueing, `Retry-After`, latency-sensitive delay adjustment, and
+  per-host request/byte/status/latency statistics through `Crawler.HostStats`.
+- `cache.ResponseCache`, schema-versioned `cache.Entry` values, and
+  `cache.ResponseKey`. `cache.InMemoryCache` implements the typed interface,
+  enabling crawler cache TTLs and conditional ETag/Last-Modified revalidation.
 
 ### Changed
 
@@ -26,6 +32,9 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
   stalls unrelated hosts, and same-host concurrency defaults to one.
 - Crawler completion is event-driven; the former 100 ms idle polling loop has
   been removed.
+- `fetch.HTTPFetcher` surfaces `304`, `429`, and `503` responses with their
+  headers even when they have no HTML body, allowing cache revalidation and
+  scheduler backoff decisions.
 
 ### Fixed
 

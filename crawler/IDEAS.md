@@ -3,6 +3,11 @@
 Scratch list of directions for this package. Nothing here is committed to —
 it's a menu, roughly ordered by how much it unlocks.
 
+Current status: the in-memory frontier, per-host scheduler, adaptive
+politeness/host statistics, HTTP-semantics cache, and the depth/referrer
+metadata portion of the crawl graph are implemented. Durable frontiers and
+graph export remain roadmap work.
+
 ## Observations on the current implementation
 
 The crawler knows about *URLs*, but not about *hosts*, *time*, *content*, or
@@ -34,20 +39,20 @@ those is currently reachable, which is the real priority ordering.
 
 ## Structure
 
-1. **`Frontier` as a pluggable interface.** `Push/Pop/Len/Close`. In-memory
+1. **`Frontier` as a pluggable interface (implemented).** `Push/Pop/Len/Close`. In-memory
    priority heap by default; BoltDB/SQLite for resumable crawls; Redis for
    distributed. Removes the silent drop, obsoletes `KnownURLs`, and makes
    most ideas below cheap.
-2. **Per-host scheduler.** Host-keyed sub-queues with per-host concurrency,
+2. **Per-host scheduler (implemented).** Host-keyed sub-queues with per-host concurrency,
    delay, and token bucket. Workers pull the next *eligible* host. Biggest
    behavioral-correctness win in the list.
-3. **Adaptive politeness.** Track per-host latency and 429/503 + `Retry-After`;
+3. **Adaptive politeness (implemented).** Track per-host latency and 429/503 + `Retry-After`;
    speed up on healthy hosts, back off on struggling ones. Emit an impact
    report: requests, bytes, peak RPS per host.
-4. **Depth, referrer, and the crawl graph.** `Result.Depth`,
+4. **Depth, referrer, and the crawl graph (metadata implemented).** `Result.Depth`,
    `Result.Referrer`, `Result.DiscoveredAt`, plus link-graph export
    (DOT/JSON), orphan detection, broken-link report, PageRank.
-5. **HTTP-semantics cache.** Store status, headers, body, and extracted links
+5. **HTTP-semantics cache (implemented).** Store status, headers, body, and extracted links
    under a schema-versioned key. Revalidate with `If-None-Match` /
    `If-Modified-Since`. Recrawling a docs site becomes nearly free.
 6. **Sitemap ingestion.** Follow `Sitemap:` from robots.txt, recurse sitemap

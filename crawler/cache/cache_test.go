@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/fetch"
 )
 
 func TestIsNotFound(t *testing.T) {
@@ -136,4 +138,50 @@ func TestInMemoryCache_NilValue(t *testing.T) {
 	value, err := cache.Get(ctx, "nil")
 	assert.NoError(t, err)
 	assert.Nil(t, value)
+}
+
+func TestInMemoryCache_ResponseEntries(t *testing.T) {
+	memory := NewInMemoryCache()
+	ctx := context.Background()
+	key := ResponseKey("https://example.com")
+	original := &Entry{
+		URL:           "https://example.com",
+		StatusCode:    200,
+		Headers:       map[string]string{"ETag": `"v1"`},
+		Body:          []byte("<html>one</html>"),
+		Links:         []fetch.Link{{URL: "/docs", Text: "Docs"}},
+		ETag:          `"v1"`,
+		LastModified:  "Tue, 02 Sep 2025 12:00:00 GMT",
+		FetchedAt:     time.Now(),
+		SchemaVersion: ResponseSchemaVersion,
+	}
+
+	assert.NoError(t, memory.SetEntry(ctx, key, original))
+	original.Body[0] = 'x'
+	original.Headers["ETag"] = `"changed"`
+	original.Links[0].URL = "/changed"
+
+	stored, err := memory.GetEntry(ctx, key)
+	assert.NoError(t, err)
+	assert.Equal(t, "<html>one</html>", string(stored.Body))
+	assert.Equal(t, `"v1"`, stored.Headers["ETag"])
+	assert.Equal(t, "/docs", stored.Links[0].URL)
+
+	stored.Body[0] = 'y'
+	again, err := memory.GetEntry(ctx, key)
+	assert.NoError(t, err)
+	assert.Equal(t, "<html>one</html>", string(again.Body))
+
+	assert.NoError(t, memory.Delete(ctx, key))
+	_, err = memory.GetEntry(ctx, key)
+	assert.True(t, IsNotFound(err))
+}
+
+func TestInMemoryCache_ResponseEntryNotFound(t *testing.T) {
+	_, err := NewInMemoryCache().GetEntry(context.Background(), ResponseKey("https://example.com"))
+	assert.True(t, IsNotFound(err))
+}
+
+func TestResponseKeyIncludesSchemaVersion(t *testing.T) {
+	assert.Equal(t, "crawler:response:v1:https://example.com", ResponseKey("https://example.com"))
 }

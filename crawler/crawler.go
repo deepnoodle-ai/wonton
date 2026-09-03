@@ -47,8 +47,10 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -138,8 +140,20 @@ type Options struct {
 	// Defaults to 1 if not specified.
 	Workers int
 
-	// Cache stores fetched pages to avoid redundant requests. If nil, no caching is used.
+	// Cache stores fetched pages to avoid redundant requests. Caches that also
+	// implement cache.ResponseCache preserve HTTP metadata and extracted links.
+	// If nil, no caching is used.
 	Cache cache.Cache
+
+	// CacheTTL controls how long typed response-cache entries are served
+	// without a network request. Zero preserves the legacy behavior and treats
+	// entries as fresh indefinitely.
+	CacheTTL time.Duration
+
+	// Revalidate conditionally refreshes stale typed cache entries with ETag or
+	// Last-Modified validators. It has no effect on HTML-only Cache
+	// implementations or when CacheTTL is zero.
+	Revalidate bool
 
 	// RequestDelay sets a minimum delay between requests to the same host.
 	// The delay is enforced per host, so an unrelated host does not stall while
@@ -153,6 +167,11 @@ type Options struct {
 
 	// HostPolicy controls per-host concurrency and request spacing.
 	HostPolicy HostPolicy
+
+	// Adaptive enables per-host backoff for 429/503 responses and elevated
+	// latency. Retry-After is honored and throttled URLs are retried up to the
+	// configured RetryOptions.MaxAttempts, or three attempts by default.
+	Adaptive bool
 
 	// KnownURLs is a list of URLs that are already known and should not be processed again.
 	// This is useful for resuming interrupted crawls.
@@ -171,7 +190,7 @@ type Options struct {
 	FetcherRules []*FetcherRule
 
 	// DefaultFetcher is used for domains that don't match any FetcherRule.
-	// This field is required - the crawler cannot function without a default fetcher.
+	// It may be nil when every crawled URL can be served from Cache.
 	DefaultFetcher fetch.Fetcher
 
 	// FollowBehavior determines which discovered links will be followed.
@@ -263,6 +282,11 @@ type Crawler struct {
 	requestDelay         time.Duration
 	hostPolicy           HostPolicy
 	cache                cache.Cache
+	responseCache        cache.ResponseCache
+	cacheTTL             time.Duration
+	revalidate           bool
+	adaptive             bool
+	hostStats            *hostStatsCollector
 	parserRules          []*ParserRule
 	defaultParser        Parser
 	fetcherRules         []*FetcherRule
@@ -306,8 +330,7 @@ type Crawler struct {
 // default values for optional fields, compiles rule patterns, and initializes
 // the worker queue.
 //
-// Returns an error if any parser or fetcher rules have invalid patterns, or if
-// required configuration is missing.
+// Returns an error if any parser or fetcher rules have invalid patterns.
 //
 // Example:
 //
@@ -341,6 +364,9 @@ func New(opts Options) (*Crawler, error) {
 	if opts.HostPolicy.MaxConcurrent <= 0 {
 		opts.HostPolicy.MaxConcurrent = 1
 	}
+	if opts.Adaptive && opts.HostPolicy.MaxDelay <= 0 {
+		opts.HostPolicy.MaxDelay = defaultAdaptiveMaxDelay
+	}
 	if opts.RequestDelay > opts.HostPolicy.MinDelay {
 		opts.HostPolicy.MinDelay = opts.RequestDelay
 	}
@@ -366,6 +392,10 @@ func New(opts Options) (*Crawler, error) {
 	}
 	c := &Crawler{
 		cache:                opts.Cache,
+		cacheTTL:             opts.CacheTTL,
+		revalidate:           opts.Revalidate,
+		adaptive:             opts.Adaptive,
+		hostStats:            newHostStatsCollector(),
 		frontier:             frontier,
 		frontierProvided:     frontierProvided,
 		maxURLs:              opts.MaxURLs,
@@ -384,6 +414,9 @@ func New(opts Options) (*Crawler, error) {
 		retryOptions:         opts.RetryOptions,
 		respectRobotsTxt:     respectRobotsTxt,
 		robotsTxtUserAgent:   opts.RobotsTxtUserAgent,
+	}
+	if responseCache, ok := opts.Cache.(cache.ResponseCache); ok {
+		c.responseCache = responseCache
 	}
 	// Seed the processed set with already-known URLs so they are not
 	// crawled again. This supports resuming interrupted crawls.
@@ -494,6 +527,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	initialPending := c.frontier.Len()
 	atomic.StoreInt64(&c.pendingURLs, int64(initialPending))
 	atomic.StoreInt64(&c.inFlightURLs, 0)
+	c.hostStats.reset()
 	// This context is used to stop workers when the work is done
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
@@ -508,7 +542,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 		c.mu.Unlock()
 	}()
 
-	scheduler := newHostScheduler(frontier, c.hostPolicy)
+	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats)
 	scheduler.start(ctx)
 
 	// Queue seeds before workers start. This prevents a very fast first item
@@ -624,9 +658,18 @@ func (c *Crawler) worker(
 		// enqueue, so mark every dispatched item as seen before processing it.
 		c.processedURLs.Store(scheduled.item.URL, true)
 		atomic.AddInt64(&c.inFlightURLs, 1)
-		crawlDelay := c.processURL(ctx, scheduled.item, callback)
-		scheduler.complete(ctx, scheduled, crawlDelay)
+		outcome := c.processURL(ctx, scheduled, callback)
+		scheduler.complete(ctx, completedItem{
+			scheduled:   scheduled,
+			crawlDelay:  outcome.crawlDelay,
+			observation: outcome.observation,
+			retry:       outcome.retry,
+		})
 		atomic.AddInt64(&c.inFlightURLs, -1)
+		if outcome.retry {
+			continue
+		}
+		c.stats.IncrementProcessed()
 
 		// processURL enqueues discovered links before returning, so zero here
 		// means no worker and no frontier item can produce more work.
@@ -637,10 +680,17 @@ func (c *Crawler) worker(
 	}
 }
 
-// processURL fetches, parses, and reports a single URL. It returns the host's
-// robots.txt Crawl-delay so the scheduler can apply it to that host only.
-func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callback) time.Duration {
-	c.stats.IncrementProcessed()
+type processOutcome struct {
+	crawlDelay  time.Duration
+	observation requestObservation
+	retry       bool
+}
+
+// processURL fetches, parses, and reports one attempt for a URL. Throttled
+// adaptive attempts are handed back to the scheduler without invoking the
+// callback; the URL remains pending until its final attempt.
+func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callback Callback) processOutcome {
+	item := scheduled.item
 	rawURL := item.URL
 
 	// Parse the url to get its domain
@@ -649,18 +699,37 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 		c.logger.Warn("invalid url",
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
-		return 0
+		return processOutcome{}
 	}
 	domain := parsedURL.Hostname()
 
-	// Check cache first if one is enabled
 	var response *fetch.Response
-	if c.cache != nil {
+	var cachedEntry *cache.Entry
+	var observation requestObservation
+	if c.responseCache != nil {
+		entry, cacheErr := c.responseCache.GetEntry(ctx, cache.ResponseKey(rawURL))
+		if cacheErr == nil && entry != nil && entry.SchemaVersion == cache.ResponseSchemaVersion {
+			cachedEntry = entry
+			if c.cacheTTL <= 0 || !entry.FetchedAt.IsZero() && time.Since(entry.FetchedAt) <= c.cacheTTL {
+				c.logger.Debug("typed cache hit", slog.String("url", rawURL))
+				response = responseFromCacheEntry(entry, rawURL)
+			}
+		} else if cacheErr != nil && !cache.IsNotFound(cacheErr) {
+			c.logger.Warn("failed to read cached response",
+				slog.String("url", rawURL),
+				slog.String("error", cacheErr.Error()))
+		}
+	}
+	// A typed stale entry must not fall through to its legacy HTML shadow,
+	// which would bypass TTL and revalidation. Legacy-only entries retain the
+	// original cache behavior and remain fresh indefinitely.
+	if response == nil && cachedEntry == nil && c.cache != nil {
 		if cachedHTML, err := c.cache.Get(ctx, rawURL); err == nil {
 			c.logger.Debug("cache hit", slog.String("url", rawURL))
 			response = &fetch.Response{
-				URL:  rawURL,
-				HTML: string(cachedHTML),
+				URL:        rawURL,
+				StatusCode: http.StatusOK,
+				HTML:       string(cachedHTML),
 			}
 			// The cache stores only HTML, not the links discovered at fetch
 			// time, so re-extract them to keep link following working on
@@ -682,7 +751,7 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 				slog.String("domain", domain))
 			callback(ctx, c.resultWithError(item, parsedURL, errors.New("no fetcher configured for domain")))
 			c.stats.IncrementFailed()
-			return 0
+			return processOutcome{}
 		}
 
 		// Check robots.txt if enabled. Cache hits skip this check (and the
@@ -692,7 +761,7 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 				slog.String("url", rawURL))
 			callback(ctx, c.resultWithError(item, parsedURL, errors.New("blocked by robots.txt")))
 			c.stats.IncrementFailed()
-			return c.robotsCrawlDelayFor(parsedURL)
+			return processOutcome{crawlDelay: c.robotsCrawlDelayFor(parsedURL)}
 		}
 
 		req := &fetch.Request{
@@ -701,7 +770,39 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 			OnlyMainContent: false,
 			Formats:         []string{"html", "links"},
 		}
+		if cachedEntry != nil && c.revalidate {
+			req.Headers = make(map[string]string, 2)
+			etag := cachedEntry.ETag
+			if etag == "" {
+				etag = headerValue(cachedEntry.Headers, "ETag")
+			}
+			if etag != "" {
+				req.Headers["If-None-Match"] = etag
+			}
+			lastModified := cachedEntry.LastModified
+			if lastModified == "" {
+				lastModified = headerValue(cachedEntry.Headers, "Last-Modified")
+			}
+			if lastModified != "" {
+				req.Headers["If-Modified-Since"] = lastModified
+			}
+		}
 		c.logger.Debug("fetching", slog.String("url", rawURL))
+		fetchOnce := func() (*fetch.Response, error) {
+			started := time.Now()
+			c.hostStats.requestStarted(scheduled.host, started)
+			fetched, fetchErr := fetcher.Fetch(ctx, req)
+			latency := time.Since(started)
+			c.hostStats.requestFinished(scheduled.host, latency, fetched, fetchErr)
+			observation = requestObservation{
+				latency: latency,
+				failed:  fetchErr != nil,
+			}
+			if fetched != nil {
+				observation.statusCode = fetched.StatusCode
+			}
+			return fetched, fetchErr
+		}
 
 		// Use retry logic if configured
 		if c.retryOptions != nil {
@@ -718,9 +819,7 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 				maxBackoff = 30 * time.Second
 			}
 
-			response, err = retry.Do(ctx, func() (*fetch.Response, error) {
-				return fetcher.Fetch(ctx, req)
-			},
+			response, err = retry.Do(ctx, fetchOnce,
 				retry.WithMaxAttempts(maxAttempts),
 				retry.WithBackoff(initialBackoff, maxBackoff),
 				retry.WithOnRetry(func(attempt int, err error, delay time.Duration) {
@@ -732,20 +831,59 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 				}),
 			)
 		} else {
-			response, err = fetcher.Fetch(ctx, req)
+			response, err = fetchOnce()
 		}
 
 		if err != nil {
 			callback(ctx, c.resultWithError(item, parsedURL, err))
 			c.stats.IncrementFailed()
-			return c.robotsCrawlDelayFor(parsedURL)
-		}
-		if c.cache != nil && response.HTML != "" {
-			if err := c.cache.Set(ctx, rawURL, []byte(response.HTML)); err != nil {
-				c.logger.Warn("failed to cache html",
-					slog.String("url", rawURL),
-					slog.String("error", err.Error()))
+			return processOutcome{
+				crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
+				observation: observation,
 			}
+		}
+
+		if response.StatusCode == http.StatusNotModified && cachedEntry != nil {
+			cachedEntry.FetchedAt = time.Now().UTC()
+			cachedEntry.Headers = mergeHeaders(cachedEntry.Headers, response.Headers)
+			if value := headerValue(response.Headers, "ETag"); value != "" {
+				cachedEntry.ETag = value
+			}
+			if value := headerValue(response.Headers, "Last-Modified"); value != "" {
+				cachedEntry.LastModified = value
+			}
+			c.storeResponseCacheEntry(ctx, rawURL, cachedEntry)
+			response = responseFromCacheEntry(cachedEntry, rawURL)
+		} else {
+			if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable {
+				if retryAfter, ok := parseRetryAfter(headerValue(response.Headers, "Retry-After"), time.Now()); ok {
+					observation.retryAfter = retryAfter
+					observation.hasRetryAfter = true
+				}
+				if c.adaptive && scheduled.attempt < c.adaptiveMaxAttempts() {
+					c.logger.Warn("host asked crawler to back off",
+						slog.String("url", rawURL),
+						slog.Int("status", response.StatusCode),
+						slog.Int("attempt", scheduled.attempt))
+					return processOutcome{
+						crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
+						observation: observation,
+						retry:       true,
+					}
+				}
+				if c.adaptive {
+					fetchErr := &fetch.Error{StatusCode: response.StatusCode, URL: rawURL}
+					result := c.resultWithError(item, parsedURL, fetchErr)
+					result.Response = response
+					callback(ctx, result)
+					c.stats.IncrementFailed()
+					return processOutcome{
+						crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
+						observation: observation,
+					}
+				}
+			}
+			c.storeFetchedResponse(ctx, rawURL, response)
 		}
 	}
 
@@ -792,7 +930,10 @@ func (c *Crawler) processURL(ctx context.Context, item URLItem, callback Callbac
 			slog.String("url", rawURL),
 			slog.String("error", err.Error()))
 	}
-	return c.robotsCrawlDelayFor(parsedURL)
+	return processOutcome{
+		crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
+		observation: observation,
+	}
 }
 
 func (c *Crawler) resultWithError(item URLItem, parsedURL *url.URL, err error) *Result {
@@ -803,6 +944,125 @@ func (c *Crawler) resultWithError(item URLItem, parsedURL *url.URL, err error) *
 		DiscoveredAt: item.DiscoveredAt,
 		Error:        err,
 	}
+}
+
+func responseFromCacheEntry(entry *cache.Entry, fallbackURL string) *fetch.Response {
+	responseURL := entry.URL
+	if responseURL == "" {
+		responseURL = fallbackURL
+	}
+	statusCode := entry.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusOK
+	}
+	return &fetch.Response{
+		URL:        responseURL,
+		StatusCode: statusCode,
+		Headers:    cloneHeaders(entry.Headers),
+		HTML:       string(entry.Body),
+		Links:      append([]fetch.Link(nil), entry.Links...),
+		Timestamp:  entry.FetchedAt,
+	}
+}
+
+func (c *Crawler) storeFetchedResponse(ctx context.Context, rawURL string, response *fetch.Response) {
+	if c.cache == nil || response == nil {
+		return
+	}
+	entry := &cache.Entry{
+		URL:           response.URL,
+		StatusCode:    response.StatusCode,
+		Headers:       cloneHeaders(response.Headers),
+		Body:          []byte(response.HTML),
+		Links:         append([]fetch.Link(nil), response.Links...),
+		ETag:          headerValue(response.Headers, "ETag"),
+		LastModified:  headerValue(response.Headers, "Last-Modified"),
+		FetchedAt:     time.Now().UTC(),
+		SchemaVersion: cache.ResponseSchemaVersion,
+	}
+	c.storeResponseCacheEntry(ctx, rawURL, entry)
+}
+
+func (c *Crawler) storeResponseCacheEntry(ctx context.Context, rawURL string, entry *cache.Entry) {
+	if c.responseCache != nil {
+		if err := c.responseCache.SetEntry(ctx, cache.ResponseKey(rawURL), entry); err != nil {
+			c.logger.Warn("failed to cache response",
+				slog.String("url", rawURL),
+				slog.String("error", err.Error()))
+		}
+	}
+	// Keep writing the original URL/HTML pair as well. Existing callers can
+	// continue reading entries through Cache.Get, and legacy Cache
+	// implementations remain fully supported.
+	if c.cache != nil && len(entry.Body) > 0 {
+		if err := c.cache.Set(ctx, rawURL, entry.Body); err != nil {
+			c.logger.Warn("failed to cache html",
+				slog.String("url", rawURL),
+				slog.String("error", err.Error()))
+		}
+	}
+}
+
+func cloneHeaders(headers map[string]string) map[string]string {
+	if headers == nil {
+		return nil
+	}
+	copy := make(map[string]string, len(headers))
+	for key, value := range headers {
+		copy[key] = value
+	}
+	return copy
+}
+
+func mergeHeaders(base, update map[string]string) map[string]string {
+	merged := cloneHeaders(base)
+	if merged == nil {
+		merged = make(map[string]string, len(update))
+	}
+	for key, value := range update {
+		for existing := range merged {
+			if strings.EqualFold(existing, key) {
+				delete(merged, existing)
+			}
+		}
+		merged[key] = value
+	}
+	return merged
+}
+
+func headerValue(headers map[string]string, name string) string {
+	for key, value := range headers {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	delay := when.Sub(now)
+	if delay < 0 {
+		delay = 0
+	}
+	return delay, true
+}
+
+func (c *Crawler) adaptiveMaxAttempts() int {
+	if c.retryOptions != nil && c.retryOptions.MaxAttempts > 0 {
+		return c.retryOptions.MaxAttempts
+	}
+	return 3
 }
 
 // robotsCrawlDelayFor returns the cached robots.txt Crawl-delay for a host.
@@ -908,6 +1168,13 @@ func (c *Crawler) progressReporter(ctx context.Context) {
 // on the same Crawler instance.
 func (c *Crawler) GetStats() *CrawlerStats {
 	return c.stats
+}
+
+// HostStats returns a stable, host-sorted snapshot of network activity for
+// the current or most recent Crawl call. The maps in the returned values are
+// copies and may be safely modified by the caller.
+func (c *Crawler) HostStats() []HostStats {
+	return c.hostStats.snapshot()
 }
 
 // Pending returns the number of queued URLs that have not started processing.
