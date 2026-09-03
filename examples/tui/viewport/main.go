@@ -47,11 +47,9 @@ type app struct {
 	items    *transcript
 	viewport tui.ViewportState
 
-	// term is kept so a copy can reach the terminal. tui.Run builds its own
-	// terminal and never hands it back, so an application that needs to write
-	// an escape sequence of its own constructs the runtime itself, as main
-	// does below.
-	term *tui.Terminal
+	// runtime is handed over by SetRuntime, which is how an application
+	// reaches its own terminal to write an escape sequence — OSC 52, here.
+	runtime *tui.Runtime
 
 	status  string
 	pending string // what is left to stream into the last message
@@ -119,25 +117,19 @@ func (a *app) copySelection() {
 	if err := clipboard.Write(text); err != nil {
 		a.status = fmt.Sprintf("Clipboard: %v", err)
 	}
-	// WriteOSC52 takes an io.Writer; *Terminal exposes WriteRaw, so the two are
-	// bridged here. This runs on the event loop, which is the goroutine that
-	// renders — writing from anywhere else could cut the sequence in half.
-	if err := clipboard.WriteOSC52(terminalWriter{a.term}, text); err != nil {
+	// *tui.Terminal is an io.Writer, so it goes straight in. This runs on the
+	// goroutine that calls HandleEvent, which is the one that owns the
+	// terminal, so the sequence cannot land inside a frame.
+	if err := clipboard.WriteOSC52(a.runtime.Terminal(), text); err != nil {
 		a.status = fmt.Sprintf("OSC 52: %v", err)
 		return
 	}
 	a.status = fmt.Sprintf("Copied %d bytes (sent to clipboard and terminal)", len(text))
 }
 
-// terminalWriter adapts *tui.Terminal to io.Writer.
-type terminalWriter struct{ t *tui.Terminal }
-
-func (w terminalWriter) Write(p []byte) (int, error) {
-	if err := w.t.WriteRaw(p); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-}
+// SetRuntime implements tui.RuntimeAware. The runtime calls it before Init, so
+// the terminal is available from the first frame.
+func (a *app) SetRuntime(r *tui.Runtime) { a.runtime = r }
 
 // stream appends a few characters to the last message each frame, so the
 // viewport has content moving under a selection.
@@ -190,20 +182,9 @@ func main() {
 	a.viewport.Follow = true
 	a.items.messages = append(a.items.messages, message{who: "assistant", body: ""})
 
-	term, err := tui.NewTerminal()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer term.Close()
-	a.term = term
-
-	term.EnableAlternateScreen()
-	term.HideCursor()
 	// Drag reporting, not full hover tracking: a selection needs motion while a
 	// button is held and nothing more.
-	term.EnableMouseDrag()
-
-	if err := tui.NewRuntime(term, a, 30).Run(); err != nil {
+	if err := tui.Run(a, tui.WithMouseDrag(true)); err != nil {
 		log.Fatal(err)
 	}
 }

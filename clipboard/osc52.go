@@ -26,9 +26,11 @@ var ErrTooLarge = errors.New("clipboard: text exceeds the OSC 52 limit")
 // terminal implements OSC 52, and some require it to be turned on. Tell the
 // user what was attempted, never that it landed.
 //
-// w must be the terminal itself. Write to it from the goroutine that owns the
-// terminal — for an application on a Runtime, that is the render goroutine —
-// or the sequence can be cut in half by a concurrent frame.
+// w must be the terminal itself: *tui.Terminal is an io.Writer, and an
+// application started by tui.Run reaches its own by implementing
+// tui.RuntimeAware and calling Runtime.Terminal. Write from the goroutine that
+// owns the terminal — for an application on a Runtime, that is the one calling
+// HandleEvent — or the sequence can be cut in half by a concurrent frame.
 //
 // Under tmux, prefer handing the text to tmux (`tmux load-buffer -w -`): the
 // DCS passthrough this would otherwise need depends on tmux's own

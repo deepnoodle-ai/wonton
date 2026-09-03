@@ -85,6 +85,19 @@ type Destroyable interface {
 	Destroy()
 }
 
+// RuntimeAware is an optional interface an application can implement to be
+// handed the Runtime driving it, before Init runs.
+//
+// Run builds the Terminal and the Runtime itself, so without this an
+// application started that way has no route to either — which puts
+// Runtime.Suspend and writing an escape sequence to the terminal out of reach
+// unless the application forgoes Run and assembles a Runtime by hand.
+//
+//	func (a *App) SetRuntime(r *tui.Runtime) { a.runtime = r }
+type RuntimeAware interface {
+	SetRuntime(*Runtime)
+}
+
 // InputSource abstracts the source of input events.
 type InputSource interface {
 	ReadEvent() (Event, error)

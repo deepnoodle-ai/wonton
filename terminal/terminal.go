@@ -2294,6 +2294,21 @@ func (tf *terminalRenderFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) 
 	return tf.PrintStyled(x, y, text, link.Style)
 }
 
+// Write writes raw bytes directly to the terminal output, making *Terminal an
+// io.Writer. It is WriteRaw with the signature the standard library expects,
+// so a terminal can be passed to anything that writes bytes — an escape
+// sequence builder, a logger, clipboard.WriteOSC52.
+//
+// Like WriteRaw it bypasses the double buffer, so a caller sending an escape
+// sequence should do it from the goroutine that owns the terminal, or it can
+// land in the middle of a frame.
+func (t *Terminal) Write(p []byte) (int, error) {
+	if err := t.WriteRaw(p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
 // WriteRaw writes raw bytes directly to the terminal output.
 // This is thread-safe and bypasses the double-buffering system.
 // Use this for playback or other cases where you need direct terminal output.

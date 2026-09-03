@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `examples/tui/viewport` — a streaming transcript with mouse selection,
   auto-scroll past the edges, and copy to both the system clipboard and the
   terminal.
+- `Terminal.Write`, making `*Terminal` an `io.Writer`, and `Runtime.Terminal`
+  plus the optional `tui.RuntimeAware` interface, which hands an application
+  the runtime driving it before `Init`. `Run` builds both itself, so without
+  these an application started that way could not reach `Runtime.Suspend` or
+  write an escape sequence of its own.
 - `clipboard.WriteOSC52(w, text)` — ask the terminal to set the system
   clipboard, which is the rung that still works over SSH. Capped at
   `OSC52Limit` (100 KB); over that it returns `ErrTooLarge` and writes nothing.

@@ -91,7 +91,7 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 		fps = 30 // Default to 30 FPS
 	}
 
-	return &Runtime{
+	r := &Runtime{
 		terminal:      terminal,
 		app:           app,
 		events:        make(chan Event, 100), // Buffered to prevent blocking
@@ -103,7 +103,17 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 		focusMgr:      NewFocusManager(),
 		reg:           newRegistries(),
 	}
+	// Before Init, so an application can reach Suspend and the terminal from
+	// the first thing it does.
+	if aware, ok := app.(RuntimeAware); ok {
+		aware.SetRuntime(r)
+	}
+	return r
 }
+
+// Terminal returns the terminal the runtime is driving. An application reaches
+// it through RuntimeAware; Run builds it and would otherwise keep it private.
+func (r *Runtime) Terminal() *Terminal { return r.terminal }
 
 // SetPasteTabWidth configures how tabs in pasted content are handled.
 // If width is 0 (default), tabs are preserved as-is.
