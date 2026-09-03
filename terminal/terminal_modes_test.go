@@ -46,12 +46,12 @@ func TestTerminal_EnableDisableMouseTracking(t *testing.T) {
 
 	term.EnableMouseTracking()
 	assert.Equal(t, buf.String(), "\033[?1006h\033[?1000h\033[?1003h")
-	assert.True(t, term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeTracking)
 
 	buf.Reset()
 	term.DisableMouseTracking()
 	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
-	assert.True(t, !term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeOff)
 }
 
 func TestTerminal_EnableMouseButtons(t *testing.T) {
@@ -60,12 +60,12 @@ func TestTerminal_EnableMouseButtons(t *testing.T) {
 
 	term.EnableMouseButtons()
 	assert.Equal(t, buf.String(), "\033[?1006h\033[?1000h")
-	assert.True(t, term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeButtons)
 
 	buf.Reset()
 	term.DisableMouseTracking()
 	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
-	assert.True(t, !term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeOff)
 }
 
 func TestTerminal_EnableMouseDrag(t *testing.T) {
@@ -75,12 +75,12 @@ func TestTerminal_EnableMouseDrag(t *testing.T) {
 	// Drag mode adds ?1002 (motion while held) but never ?1003 (hover).
 	term.EnableMouseDrag()
 	assert.Equal(t, buf.String(), "\033[?1006h\033[?1000h\033[?1002h")
-	assert.True(t, term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeDrag)
 
 	buf.Reset()
 	term.DisableMouseTracking()
 	assert.Equal(t, buf.String(), "\033[?1000l\033[?1002l\033[?1003l\033[?1006l")
-	assert.True(t, !term.mouseEnabled)
+	assert.Equal(t, term.MouseMode(), MouseModeOff)
 }
 
 func TestTerminal_EnableDisableEnhancedKeyboard(t *testing.T) {

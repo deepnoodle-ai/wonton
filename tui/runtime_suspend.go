@@ -32,7 +32,12 @@ var ErrSuspendReentrant = errors.New("tui: Suspend is already in progress")
 // Call Suspend from HandleEvent — that is the event-loop goroutine, between
 // frames. Calling it from another goroutine is safe but will race with a render
 // in progress; calling it from inside fn returns ErrSuspendReentrant.
-func (r *Runtime) Suspend(fn func(keys <-chan Event)) error {
+//
+// The error reports a failure to restore, not a failure of fn: fn has already
+// run and the rest of the terminal state has still been put back. A terminal
+// that cannot be returned to raw mode will not deliver keys as the application
+// expects, so it is worth surfacing rather than swallowing.
+func (r *Runtime) Suspend(fn func(keys <-chan Event)) (err error) {
 	if fn == nil {
 		return nil
 	}
@@ -49,11 +54,11 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) error {
 	// Remember what to put back. The terminal's own guards make each of these
 	// idempotent, so restoring something that was never on is harmless.
 	hadAltScreen := r.terminal.IsAlternateScreen()
-	hadMouse := r.terminal.IsMouseEnabled()
+	mouseMode := r.terminal.MouseMode()
 	hadHiddenCursor := r.terminal.IsCursorHidden()
 	hadRawMode := term.IsTerminal(int(os.Stdin.Fd())) && r.terminal.IsRawMode()
 
-	if hadMouse {
+	if mouseMode != MouseModeOff {
 		r.terminal.DisableMouseTracking()
 	}
 	if hadHiddenCursor {
@@ -72,7 +77,9 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) error {
 		r.suspendMu.Unlock()
 
 		if hadRawMode {
-			_ = r.terminal.EnableRawMode()
+			if rawErr := r.terminal.EnableRawMode(); rawErr != nil && err == nil {
+				err = rawErr
+			}
 		}
 		if hadAltScreen {
 			r.terminal.EnableAlternateScreen()
@@ -80,8 +87,17 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) error {
 		if hadHiddenCursor {
 			r.terminal.HideCursor()
 		}
-		if hadMouse {
+		// Back into the mode the application chose, not whichever one is
+		// handiest: an app that asked for buttons only would come back with
+		// drag reporting it never wanted, and one that asked for hover would
+		// come back without it.
+		switch mouseMode {
+		case MouseModeButtons:
+			r.terminal.EnableMouseButtons()
+		case MouseModeDrag:
 			r.terminal.EnableMouseDrag()
+		case MouseModeTracking:
+			r.terminal.EnableMouseTracking()
 		}
 		// The alternate screen came back blank but the front buffer still
 		// describes what used to be on it, so a diffing flush would send

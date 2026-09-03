@@ -38,6 +38,37 @@ func TestSuspendLeavesAndRestoresTheScreen(t *testing.T) {
 	assert.Contains(t, out, "\033[?1049h") // and came back
 }
 
+func TestSuspendComesBackInTheSameMouseMode(t *testing.T) {
+	// Restoring the wrong mode is silent: hover reporting simply stops
+	// arriving, or motion events start arriving for an app that never asked.
+	tests := []struct {
+		name   string
+		enable func(*Terminal)
+		want   MouseMode
+	}{
+		{"buttons", (*Terminal).EnableMouseButtons, MouseModeButtons},
+		{"drag", (*Terminal).EnableMouseDrag, MouseModeDrag},
+		{"tracking", (*Terminal).EnableMouseTracking, MouseModeTracking},
+		{"off", func(*Terminal) {}, MouseModeOff},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			term := NewTestTerminal(80, 24, &buf)
+			tc.enable(term)
+			r := NewRuntime(term, &testRuntimeModel{}, 30)
+
+			assert.NoError(t, r.Suspend(func(keys <-chan Event) {
+				assert.Equal(t, term.MouseMode(), MouseModeOff,
+					"reporting must be released while fn owns the terminal")
+			}))
+
+			assert.Equal(t, term.MouseMode(), tc.want)
+		})
+	}
+}
+
 func TestSuspendLeavesAlreadyDisabledModesAlone(t *testing.T) {
 	var buf bytes.Buffer
 	term := NewTestTerminal(80, 24, &buf)

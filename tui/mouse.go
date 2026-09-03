@@ -34,6 +34,17 @@ const (
 	MouseButtonWheelRight = terminal.MouseButtonWheelRight
 )
 
+// MouseMode reports which mouse reporting mode a terminal is in.
+type MouseMode = terminal.MouseMode
+
+// MouseMode constants, from quietest to loudest.
+const (
+	MouseModeOff      = terminal.MouseModeOff
+	MouseModeButtons  = terminal.MouseModeButtons
+	MouseModeDrag     = terminal.MouseModeDrag
+	MouseModeTracking = terminal.MouseModeTracking
+)
+
 // MouseEventType constants
 const (
 	MousePress       = terminal.MousePress

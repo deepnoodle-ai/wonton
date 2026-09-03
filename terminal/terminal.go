@@ -482,8 +482,8 @@ type Terminal struct {
 	cursorHidden bool
 
 	// Mode tracking for cleanup
-	mouseEnabled   bool // Mouse tracking is enabled
-	bracketedPaste bool // Bracketed paste is enabled
+	mouseMode      MouseMode // Which mouse reporting mode is enabled, if any
+	bracketedPaste bool      // Bracketed paste is enabled
 
 	// Frame state: true between BeginFrame and EndFrame (guarded by mu,
 	// which is held for the duration of the frame)
@@ -1184,11 +1184,22 @@ func (t *Terminal) IsKittyProtocolEnabled() bool {
 	return t.kittyEnabled
 }
 
+// MouseMode is how much a terminal has been asked to report about the pointer.
+// Each level is a superset of the one before it.
+type MouseMode int
+
+const (
+	MouseModeOff      MouseMode = iota // No reporting
+	MouseModeButtons                   // ?1000: press, release, wheel
+	MouseModeDrag                      // + ?1002: motion while a button is held
+	MouseModeTracking                  // + ?1003: motion with no button held
+)
+
 // EnableMouseTracking enables full mouse event reporting in the terminal.
 // This includes button press/release AND all mouse motion events (hover).
 // Use EnableMouseButtons() if you only need click events without motion tracking.
 func (t *Terminal) EnableMouseTracking() {
-	if t.mouseEnabled {
+	if t.mouseMode != MouseModeOff {
 		return
 	}
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
@@ -1198,21 +1209,21 @@ func (t *Terminal) EnableMouseTracking() {
 	// Enable all mouse motion tracking (including when no button is pressed)
 	// This is needed for proper hover state detection
 	fmt.Fprint(t.out, "\033[?1003h")
-	t.mouseEnabled = true
+	t.mouseMode = MouseModeTracking
 }
 
 // EnableMouseButtons enables mouse button tracking without motion events.
 // This reports button press/release events only, not mouse movement.
 // Use this for better performance when hover detection is not needed.
 func (t *Terminal) EnableMouseButtons() {
-	if t.mouseEnabled {
+	if t.mouseMode != MouseModeOff {
 		return
 	}
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
 	fmt.Fprint(t.out, "\033[?1006h")
 	// Enable mouse tracking - report button press and release only
 	fmt.Fprint(t.out, "\033[?1000h")
-	t.mouseEnabled = true
+	t.mouseMode = MouseModeButtons
 }
 
 // EnableMouseDrag enables mouse reporting for button press, release, wheel, and
@@ -1220,7 +1231,7 @@ func (t *Terminal) EnableMouseButtons() {
 // implement drag-to-select, and it is far quieter than EnableMouseTracking:
 // a terminal in ?1003 reports every pointer movement over the window.
 func (t *Terminal) EnableMouseDrag() {
-	if t.mouseEnabled {
+	if t.mouseMode != MouseModeOff {
 		return
 	}
 	// Enable SGR extended mouse mode (supports coordinates beyond 223)
@@ -1229,19 +1240,19 @@ func (t *Terminal) EnableMouseDrag() {
 	fmt.Fprint(t.out, "\033[?1000h")
 	// Enable button-event tracking - report motion while a button is held
 	fmt.Fprint(t.out, "\033[?1002h")
-	t.mouseEnabled = true
+	t.mouseMode = MouseModeDrag
 }
 
 // DisableMouseTracking disables mouse event reporting
 func (t *Terminal) DisableMouseTracking() {
-	if !t.mouseEnabled {
+	if t.mouseMode == MouseModeOff {
 		return
 	}
 	fmt.Fprint(t.out, "\033[?1000l")
 	fmt.Fprint(t.out, "\033[?1002l")
 	fmt.Fprint(t.out, "\033[?1003l")
 	fmt.Fprint(t.out, "\033[?1006l")
-	t.mouseEnabled = false
+	t.mouseMode = MouseModeOff
 }
 
 // DisableAlternateScreen switches back to the main screen buffer
@@ -2285,7 +2296,13 @@ func (t *Terminal) IsRawMode() bool { return t.rawMode }
 func (t *Terminal) IsCursorHidden() bool { return t.cursorHidden }
 
 // IsMouseEnabled reports whether any mouse reporting mode is enabled.
-func (t *Terminal) IsMouseEnabled() bool { return t.mouseEnabled }
+func (t *Terminal) IsMouseEnabled() bool { return t.mouseMode != MouseModeOff }
+
+// MouseMode reports which mouse reporting mode is enabled. Restoring reporting
+// after releasing it needs the mode, not just the fact that it was on: coming
+// back in the wrong one either floods the app with motion events it never asked
+// for, or silently drops the hover reports it depends on.
+func (t *Terminal) MouseMode() MouseMode { return t.mouseMode }
 
 // Invalidate discards the terminal's knowledge of what is currently on screen,
 // so the next flush redraws every cell rather than diffing against a picture

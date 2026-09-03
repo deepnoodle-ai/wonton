@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
 - `Runtime.Suspend(fn)` — leave the alternate screen, run `fn` against the
   user's own terminal, then restore and repaint. `fn` reads keys from a
   channel, since the runtime's input reader owns stdin.
+- `Terminal.MouseMode` and the `MouseMode` constants — which reporting mode is
+  enabled, not merely whether one is. `IsMouseEnabled` is unchanged.
 - `Runtime.SetKittyKeyboard(true)` — ask for the Kitty keyboard protocol
   outright instead of probing for it, as `WithInlineKittyKeyboard` always has.
   The probe is skipped under tmux and screen, so a multiplexed session would
@@ -38,6 +40,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton i
   one call with embedded newlines — what an unwrapped `Text` renders as — was
   tested only by its first row, so the whole block vanished as soon as that row
   scrolled off. Each line is now clipped on its own.
+- **`Runtime.Suspend` came back in the wrong mouse mode.** It restored drag
+  reporting whichever mode the app had chosen, so one that asked for buttons
+  only got motion events it never wanted and one that asked for hover silently
+  stopped getting them. `Terminal.MouseMode` reports the mode now, and Suspend
+  puts back exactly that one. A failure to restore raw mode is returned rather
+  than discarded; the rest of the state is still restored.
 - **`Bordered` drew no border unless `Border` was called.** The constructor
   left the style nil, so `Bordered(x).Title("T").BorderFg(ColorCyan)` silently
   dropped both. It now defaults to `SingleBorder`; pass `Border(nil)` for a
