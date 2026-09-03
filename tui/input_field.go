@@ -15,6 +15,7 @@ type InputFieldView struct {
 	binding          *string
 	placeholder      string
 	placeholderStyle *Style
+	textStyle        *Style
 	mask             rune
 	onChange         func(string)
 	onSubmit         func(string)
@@ -112,6 +113,13 @@ func (f *InputFieldView) Placeholder(text string) *InputFieldView {
 // PlaceholderStyle sets the style for the placeholder text.
 func (f *InputFieldView) PlaceholderStyle(s Style) *InputFieldView {
 	f.placeholderStyle = &s
+	return f
+}
+
+// TextStyle sets the style for the typed input text. Defaults to
+// ColorDefault (the terminal's own foreground) if unset.
+func (f *InputFieldView) TextStyle(s Style) *InputFieldView {
+	f.textStyle = &s
 	return f
 }
 
@@ -611,6 +619,7 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 		bounds:           inputBounds,
 		placeholder:      f.placeholder,
 		placeholderStyle: f.placeholderStyle,
+		textStyle:        f.textStyle,
 		mask:             f.mask,
 		pastePlaceholder: f.pastePlaceholder,
 		cursorBlink:      f.cursorBlink,

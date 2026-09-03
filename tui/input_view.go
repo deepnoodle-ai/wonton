@@ -268,6 +268,7 @@ type inputConfig struct {
 	bounds           image.Rectangle
 	placeholder      string
 	placeholderStyle *Style
+	textStyle        *Style
 	mask             rune
 	pastePlaceholder bool
 	cursorBlink      bool
@@ -297,6 +298,9 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 		}
 		if cfg.placeholderStyle != nil {
 			ti.PlaceholderStyle = *cfg.placeholderStyle
+		}
+		if cfg.textStyle != nil {
+			ti.Style = *cfg.textStyle
 		}
 		if cfg.pastePlaceholder {
 			ti.WithPastePlaceholderMode(true)
