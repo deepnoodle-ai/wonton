@@ -76,7 +76,10 @@ type textInput struct {
 func newTextInput() *textInput {
 	t := &textInput{
 		CursorPos:        0,
-		Style:            NewStyle().WithForeground(ColorWhite),
+		// ColorDefault (not ColorWhite) so typed text inherits the terminal's
+		// own foreground instead of ANSI white, which renders as dim gray in
+		// most terminal themes.
+		Style:            NewStyle(),
 		PlaceholderStyle: NewStyle().WithForeground(ColorBrightBlack),
 		CursorStyle:      NewStyle().WithBackground(ColorWhite).WithForeground(ColorBlack),
 		PasteStyle:       NewStyle().WithForeground(ColorBrightBlack).WithItalic(),
