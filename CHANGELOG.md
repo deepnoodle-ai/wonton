@@ -10,6 +10,53 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- `crawler.Frontier`, `URLItem`, and the priority-ordered
+  `MemoryFrontier`, which applies context-aware backpressure instead of
+  silently dropping discovered URLs when its capacity is reached.
+- `crawler.HostPolicy` for per-host concurrency and request spacing.
+  `Result` now reports `Depth`, `Referrer`, and `DiscoveredAt`, and
+  `Crawler.Pending` exposes queued work for progress UIs.
+- Adaptive crawler politeness for `429` and `503` responses, including bounded
+  requeueing, `Retry-After`, latency-sensitive delay adjustment, and
+  per-host request/byte/status/latency statistics through `Crawler.HostStats`.
+- `cache.ResponseCache`, schema-versioned `cache.Entry` values, and
+  `cache.ResponseKey`. `cache.InMemoryCache` implements the typed interface,
+  enabling crawler cache TTLs and conditional ETag/Last-Modified revalidation.
+
+### Changed
+
+- `crawler.Options.RequestDelay` and robots.txt `Crawl-delay` are now enforced
+  per host by an eligibility scheduler. A slow or cooling-down host no longer
+  stalls unrelated hosts, and same-host concurrency defaults to one.
+- Crawler completion is event-driven; the former 100 ms idle polling loop has
+  been removed.
+- `fetch.HTTPFetcher` surfaces `304`, `429`, and `503` responses with their
+  headers even when they have no HTML body, allowing cache revalidation and
+  scheduler backoff decisions.
+
+### Fixed
+
+- A malformed empty `User-agent:` directive no longer matches every crawler.
+- Cached pages can be replayed without a configured fetcher, since cache hits
+  do not make network requests.
+- Caller cancellation is now returned from `Crawler.Crawl` after workers and
+  the scheduler shut down, while scheduler failures retain precedence.
+- Frontier capacity now includes host-scheduler staging, active requests, and
+  retries. Per-host queues and nonblocking discovery admission prevent workers
+  from deadlocking behind a full frontier.
+- Fatal frontier errors now cancel in-flight requests immediately, and both
+  configured fetch retries and adaptive retries retain scheduler capacity and
+  obey per-host request spacing.
+- Legacy writes and deletes now invalidate matching typed entries in
+  `cache.InMemoryCache`, preventing stale response metadata from shadowing an
+  explicit HTML cache update.
+- `429` and `503` responses now report fetch failures even when adaptive retry
+  behavior is disabled.
+- Only successful fetch responses are stored for replay; standalone `304`,
+  `429`, and `503` responses no longer become cache entries.
+
 ## [0.1.0] - 2026-09-02
 
 ### Added

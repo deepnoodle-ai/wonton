@@ -4,7 +4,7 @@ Pluggable web crawler with configurable fetchers, parsers, and caching.
 
 ## Summary
 
-The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports pluggable fetchers for different domains, custom parsers for extracting structured data, optional caching to reduce redundant fetches, and flexible link-following behavior (same domain, related subdomains, or any domain). The crawler uses worker pools for concurrency, tracks statistics, and provides progress reporting. Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
+The crawler package provides a concurrent web crawler that can fetch and parse web pages at scale. It supports a pluggable crawl frontier, adaptive per-host scheduling, pluggable fetchers for different domains, custom parsers, HTTP-aware caching, and flexible link-following behavior (same domain, related subdomains, or any domain). Rules can be configured with priority-based matching using exact, regex, glob, prefix, or suffix patterns.
 
 ## Fetching Is SSRF-Guarded by Default
 
@@ -47,7 +47,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        5,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
     })
     if err != nil {
@@ -123,7 +123,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        50,
         Workers:        3,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         ParserRules:    []*crawler.ParserRule{parserRule},
         FollowBehavior: crawler.FollowSameDomain,
     })
@@ -182,7 +182,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:        200,
         Workers:        10,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         DefaultParser:  defaultParser,
         ParserRules:    parserRules,
         FollowBehavior: crawler.FollowRelatedSubdomains,
@@ -208,6 +208,8 @@ package main
 
 import (
     "context"
+    "log"
+    "time"
 
     "github.com/deepnoodle-ai/wonton/crawler"
     "github.com/deepnoodle-ai/wonton/crawler/cache"
@@ -216,15 +218,18 @@ import (
 
 func main() {
     // Create memory cache
-    memCache := cache.NewMemoryCache(1000) // Max 1000 entries
+    memCache := cache.NewInMemoryCache()
 
-    c, err := crawler.New(crawler.Options{
+    options := crawler.Options{
         MaxURLs:        500,
         Workers:        5,
         Cache:          memCache,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        CacheTTL:       30 * time.Minute,
+        Revalidate:     true,
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
-    })
+    }
+    c, err := crawler.New(options)
     if err != nil {
         log.Fatal(err)
     }
@@ -232,10 +237,19 @@ func main() {
     // First crawl - fetches from web
     c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 
-    // Second crawl - uses cache
-    c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
+    // Crawlers remember visited URLs, so use a new crawler for a later pass.
+    // Fresh entries avoid the request; stale entries use ETag or
+    // Last-Modified and reuse their body when the server returns 304.
+    next, _ := crawler.New(options)
+    next.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 }
 ```
+
+`cache.InMemoryCache` implements both the original HTML-only `cache.Cache`
+interface and `cache.ResponseCache`. Existing `cache.Cache` implementations
+continue to work unchanged and retain their indefinite HTML caching behavior.
+TTL and conditional revalidation are available when the supplied cache also
+implements `cache.ResponseCache`. A zero `CacheTTL` means entries never expire.
 
 ### With Request Delay
 
@@ -251,12 +265,16 @@ import (
 )
 
 func main() {
-    // Add delay between requests to be polite
+    // Add a per-host delay and limit each host to one in-flight request.
+    // Other hosts can continue while this host is waiting.
     c, err := crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        3,
-        RequestDelay:   2 * time.Second, // 2 second delay between requests
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        RequestDelay:   2 * time.Second,
+        HostPolicy: crawler.HostPolicy{
+            MaxConcurrent: 1,
+        },
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowSameDomain,
     })
     if err != nil {
@@ -266,6 +284,42 @@ func main() {
     c.Crawl(context.Background(), []string{"https://example.com"}, processResult)
 }
 ```
+
+### With Adaptive Politeness
+
+Adaptive mode requeues `429` and `503` responses, honors `Retry-After`, and
+adjusts each host independently when its latency rises. Retries are bounded by
+`RetryOptions.MaxAttempts` (three by default), and `MaxDelay` caps adaptive
+backoff. Robots.txt and configured minimum delays are always respected.
+
+```go
+c, err := crawler.New(crawler.Options{
+    Workers:        8,
+    Adaptive:       true,
+    DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
+    HostPolicy: crawler.HostPolicy{
+        MaxConcurrent: 2,
+        MinDelay:      250 * time.Millisecond,
+        MaxDelay:      30 * time.Second,
+    },
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+if err := c.Crawl(context.Background(), seeds, processResult); err != nil {
+    log.Fatal(err)
+}
+for _, host := range c.HostStats() {
+    fmt.Printf("%s: %d requests, %d bytes, p95 %s, final delay %s\n",
+        host.Host, host.Requests, host.Bytes, host.P95, host.FinalDelay)
+}
+```
+
+`HostStats` covers page-network requests in the current or most recent crawl;
+cache hits are excluded. `Errors` includes transport errors and HTTP statuses
+of 400 or higher. `PeakRPS` is the largest rolling one-second request-start
+count observed for the host.
 
 ### With Progress Reporting
 
@@ -288,7 +342,7 @@ func main() {
     c, err := crawler.New(crawler.Options{
         MaxURLs:              1000,
         Workers:              10,
-        DefaultFetcher:       fetch.NewHTTPFetcher(),
+        DefaultFetcher:       fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior:       crawler.FollowSameDomain,
         Logger:               logger,
         ShowProgress:         true,
@@ -315,7 +369,7 @@ import (
 )
 
 func main() {
-    fetcher := fetch.NewHTTPFetcher()
+    fetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{})
 
     // Only follow links on the exact same domain
     sameDomain, _ := crawler.New(crawler.Options{
@@ -368,7 +422,7 @@ func main() {
     c, _ := crawler.New(crawler.Options{
         MaxURLs:        10000,
         Workers:        10,
-        DefaultFetcher: fetch.NewHTTPFetcher(),
+        DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
         FollowBehavior: crawler.FollowAny,
     })
 
@@ -387,16 +441,14 @@ func main() {
 package main
 
 import (
-    "context"
-
     "github.com/deepnoodle-ai/wonton/crawler"
     "github.com/deepnoodle-ai/wonton/fetch"
 )
 
-func main() {
-    // Different fetchers for different domains
-    httpFetcher := fetch.NewHTTPFetcher()
-    jsFetcher := fetch.NewBrowserFetcher() // Hypothetical JS-capable fetcher
+func newCrawler(jsFetcher fetch.Fetcher) (*crawler.Crawler, error) {
+    // jsFetcher is supplied by the application; any browser or remote fetching
+    // service can participate by implementing fetch.Fetcher.
+    httpFetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{})
 
     fetcherRules := []*crawler.FetcherRule{
         // Use JS fetcher for SPA sites
@@ -409,19 +461,44 @@ func main() {
             crawler.WithFetcherPriority(50)),
     }
 
-    c, err := crawler.New(crawler.Options{
+    return crawler.New(crawler.Options{
         MaxURLs:        100,
         Workers:        5,
         DefaultFetcher: httpFetcher,
         FetcherRules:   fetcherRules,
         FollowBehavior: crawler.FollowSameDomain,
     })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    c.Crawl(context.Background(), []string{"https://app.example.com"}, processResult)
 }
+```
+
+### Custom Frontier
+
+`MemoryFrontier` prioritizes higher scores, then shallower URLs, then insertion
+order. `QueueSize` bounds normalized URLs across the frontier, per-host staging,
+active requests, and retries, applying backpressure instead of dropping links.
+Raw link batches returned by fetchers are brokered separately until they can be
+normalized and admitted; this keeps workers live when the frontier is full. A
+fetcher can return an arbitrarily large raw batch, so those candidates are not
+part of the `QueueSize` bound. Use `MaxURLs` to limit total admissions.
+
+Provide another `Frontier` implementation for application-specific storage or
+ordering. Its own storage capacity remains implementation-defined, while
+`QueueSize` still bounds scheduler staging and active work. A custom frontier
+can spill normalized pending work to disk. A provided frontier may be preloaded;
+pass an empty seed list to `Crawl` to process only that existing work.
+
+```go
+frontier := crawler.NewMemoryFrontier(1000)
+
+c, err := crawler.New(crawler.Options{
+    Workers:        8,
+    Frontier:       frontier,
+    DefaultFetcher: fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{}),
+    HostPolicy: crawler.HostPolicy{
+        MaxConcurrent: 2,
+        MinDelay:      250 * time.Millisecond,
+    },
+})
 ```
 
 ## API Reference
@@ -434,8 +511,13 @@ func main() {
 |-------|------|-------------|
 | `MaxURLs` | `int` | Maximum number of URLs to crawl (0 = unlimited) |
 | `Workers` | `int` | Number of concurrent worker goroutines |
-| `Cache` | `cache.Cache` | Optional cache for storing fetched HTML |
-| `RequestDelay` | `time.Duration` | Delay between requests (per worker) |
+| `Cache` | `cache.Cache` | Optional HTML cache; typed implementations also preserve HTTP metadata and links |
+| `CacheTTL` | `time.Duration` | Freshness lifetime for typed cache entries (0 = never expire) |
+| `Revalidate` | `bool` | Revalidate stale typed entries with ETag or Last-Modified |
+| `RequestDelay` | `time.Duration` | Minimum delay between requests to the same host |
+| `Frontier` | `Frontier` | Pending-work store (default: `MemoryFrontier`) |
+| `HostPolicy` | `HostPolicy` | Per-host concurrency and delay limits |
+| `Adaptive` | `bool` | Enable bounded 429/503 retries and latency-sensitive per-host backoff |
 | `KnownURLs` | `[]string` | Pre-populate list of known URLs |
 | `ParserRules` | `[]*ParserRule` | Domain-specific parser rules |
 | `DefaultParser` | `Parser` | Parser used when no rule matches |
@@ -445,17 +527,33 @@ func main() {
 | `Logger` | `*slog.Logger` | Logger for crawler events |
 | `ShowProgress` | `bool` | Enable periodic progress reporting |
 | `ShowProgressInterval` | `time.Duration` | How often to report progress (default: 30s) |
-| `QueueSize` | `int` | Size of URL queue (default: 10000) |
+| `QueueSize` | `int` | Normalized-URL capacity across the default frontier, scheduler, active requests, and retries; with custom frontiers, bounds scheduler staging and active work (default: 10000) |
 
 #### Result
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `URL` | `*url.URL` | The URL that was crawled |
+| `Depth` | `int` | Link distance from the seed URL |
+| `Referrer` | `string` | Page where the URL was discovered |
+| `DiscoveredAt` | `time.Time` | Time the URL entered the frontier |
 | `Parsed` | `any` | Parsed data from parser (if parser exists) |
 | `Links` | `[]string` | Discovered links on the page |
 | `Response` | `*fetch.Response` | Full fetch response with HTML and metadata |
 | `Error` | `error` | Error encountered during crawl (if any) |
+
+#### HostStats
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Host` | `string` | Lowercase host name, including a non-default port |
+| `Requests` | `int64` | Page-network requests started |
+| `Bytes` | `int64` | Response body bytes observed |
+| `Errors` | `int64` | Transport errors and HTTP responses of 400 or higher |
+| `StatusCodes` | `map[int]int64` | Response count by HTTP status |
+| `PeakRPS` | `float64` | Peak rolling one-second request-start count |
+| `P50`, `P95` | `time.Duration` | Request latency percentiles |
+| `FinalDelay` | `time.Duration` | Effective host delay after policy, robots, and adaptation |
 
 #### FollowBehavior
 
@@ -491,6 +589,8 @@ func main() {
 | `Crawl(ctx, urls, callback)` | Start crawling URLs | `context.Context`, `[]string`, `Callback` | `error` |
 | `Stop()` | Stop the crawler | None | None |
 | `GetStats()` | Get crawling statistics | None | `*CrawlerStats` |
+| `HostStats()` | Get per-host network impact for the current or latest crawl | None | `[]HostStats` |
+| `Pending()` | Get queued URLs that have not started | None | `int` |
 | `AddParserRules(rules...)` | Add parser rules dynamically | `...*ParserRule` | `error` |
 | `AddFetcherRules(rules...)` | Add fetcher rules dynamically | `...*FetcherRule` | `error` |
 
@@ -513,6 +613,13 @@ func main() {
 | `WithFetcherMatchType(matchType)` | Set match type | `MatchType` | `FetcherRuleOption` |
 
 ### Interfaces
+
+#### ResponseCache
+
+`cache.ResponseCache` augments `cache.Cache` with typed entries containing the
+status, headers, body, extracted links, validators, and fetch time. Use
+`cache.ResponseKey(url)` when seeding, inspecting, or deleting typed entries;
+the key includes `cache.ResponseSchemaVersion`.
 
 #### Parser
 

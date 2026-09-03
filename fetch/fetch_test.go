@@ -310,6 +310,41 @@ func TestHTTPFetcher_Fetch_CustomHeaders(t *testing.T) {
 	assert.Equal(t, "test-value", receivedHeader)
 }
 
+func TestHTTPFetcher_Fetch_NotModified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, `"v1"`, r.Header.Get("If-None-Match"))
+		w.Header().Set("ETag", `"v1"`)
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer server.Close()
+
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{})
+	resp, err := fetcher.Fetch(context.Background(), &Request{
+		URL:     server.URL,
+		Headers: map[string]string{"If-None-Match": `"v1"`},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusNotModified, resp.StatusCode)
+	assert.Equal(t, `"v1"`, resp.Headers["Etag"])
+	assert.Equal(t, "", resp.HTML)
+}
+
+func TestHTTPFetcher_Fetch_ThrottleResponseWithoutHTML(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Retry-After", "3")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("slow down"))
+	}))
+	defer server.Close()
+
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{})
+	resp, err := fetcher.Fetch(context.Background(), &Request{URL: server.URL})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	assert.Equal(t, "3", resp.Headers["Retry-After"])
+}
+
 func TestHTTPFetcher_Fetch_WrongContentType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

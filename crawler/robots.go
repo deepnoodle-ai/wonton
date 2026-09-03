@@ -113,8 +113,10 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 		case "user-agent":
 			currentUserAgent = strings.ToLower(value)
 			isWildcardMatch = currentUserAgent == "*"
-			isSpecificMatch = currentUserAgent == userAgentLower ||
-				strings.Contains(userAgentLower, currentUserAgent)
+			// A malformed bare User-agent directive must not match every agent:
+			// strings.Contains(s, "") is otherwise always true.
+			isSpecificMatch = currentUserAgent != "" &&
+				(currentUserAgent == userAgentLower || strings.Contains(userAgentLower, currentUserAgent))
 			// Don't count wildcard as specific
 			if isSpecificMatch && !isWildcardMatch {
 				hasSpecificRules = true

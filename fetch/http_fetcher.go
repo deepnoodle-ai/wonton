@@ -227,9 +227,34 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 	}
 	defer resp.Body.Close()
 
+	// Convert response headers before content processing. Conditional requests
+	// need the validators on 304, and callers need Retry-After even when a
+	// throttling response is not HTML.
+	headers := make(map[string]string)
+	for name, values := range resp.Header {
+		if len(values) > 0 {
+			headers[name] = values[0] // Use first value if multiple
+		}
+	}
+	bareResponse := &Response{
+		URL:        resp.Request.URL.String(),
+		StatusCode: resp.StatusCode,
+		Headers:    headers,
+		Timestamp:  time.Now().UTC(),
+	}
+	if resp.StatusCode == http.StatusNotModified {
+		return bareResponse, nil
+	}
+
 	// Confirm the content type indicates HTML
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "text/html") {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			// Read to EOF (within the normal cap) so the transport can reuse the
+			// connection. The non-HTML body is intentionally not exposed as HTML.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, f.maxBodySize+1))
+			return bareResponse, nil
+		}
 		return nil, fmt.Errorf("unexpected content type: %s", contentType)
 	}
 
@@ -243,14 +268,6 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 	// Check if the body is too large
 	if len(body) > int(f.maxBodySize) {
 		return nil, fmt.Errorf("response size exceeds limit of %d bytes", f.maxBodySize)
-	}
-
-	// Convert response headers to map[string]string
-	headers := make(map[string]string)
-	for name, values := range resp.Header {
-		if len(values) > 0 {
-			headers[name] = values[0] // Use first value if multiple
-		}
 	}
 
 	// Apply processing options
