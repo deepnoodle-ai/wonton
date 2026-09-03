@@ -207,9 +207,11 @@ type Options struct {
 	// Defaults to 30 seconds if ShowProgress is true and this is not set.
 	ShowProgressInterval time.Duration
 
-	// QueueSize sets the maximum number of items waiting in the default
-	// MemoryFrontier. When full, producers wait for capacity; URLs are never
-	// silently dropped. It is ignored when Frontier is provided.
+	// QueueSize sets the maximum number of items staged by the scheduler. The
+	// default MemoryFrontier shares this limit, so moving an item into a host
+	// queue does not free capacity early. Custom frontiers control their own
+	// storage capacity while the scheduler still honors this staging limit.
+	// When full, producers wait for capacity; URLs are never silently dropped.
 	// Defaults to 10000 if not specified.
 	QueueSize int
 
@@ -509,6 +511,7 @@ func (c *Crawler) sortFetcherRulesByPriority() {
 //		fmt.Printf("Crawled %s: found %d links\n", result.URL, len(result.Links))
 //	})
 func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) error {
+	parentCtx := ctx
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -542,24 +545,32 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 		c.mu.Unlock()
 	}()
 
-	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats)
+	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats, c.queueSize)
 	scheduler.start(ctx)
+	admitter := newFrontierAdmitter(c, frontier, cancel)
+	admitter.start(ctx)
 
-	// Queue seeds before workers start. This prevents a very fast first item
-	// from making the outstanding-work count reach zero while seeds are still
-	// being admitted. The scheduler's frontier pump provides backpressure.
-	count, err := c.enqueue(ctx, urls, nil)
-	if err != nil || (count == 0 && initialPending == 0) {
+	if len(urls) == 0 && initialPending == 0 {
 		cancel()
+		admitter.close()
+		admitter.wait()
 		scheduler.wait()
-		return err
+		if err := scheduler.failure(); err != nil {
+			return err
+		}
+		return parentCtx.Err()
 	}
 
-	// Start workers only after every seed has been counted.
+	// Start workers before admitting seeds so a bounded frontier can drain while
+	// the admission goroutine applies backpressure.
 	var wg sync.WaitGroup
 	for i := 0; i < c.workers; i++ {
 		wg.Add(1)
-		go c.worker(ctx, cancel, scheduler, &wg, callback)
+		go c.worker(ctx, cancel, scheduler, admitter, &wg, callback)
+	}
+	seedErr := admitter.submit(ctx, urls, nil)
+	if seedErr != nil {
+		cancel()
 	}
 
 	if c.showProgress {
@@ -569,8 +580,19 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	// Wait for workers to complete
 	wg.Wait()
 	cancel()
+	admitter.close()
+	admitter.wait()
 	scheduler.wait()
-	return scheduler.failure()
+	if err := scheduler.failure(); err != nil {
+		return err
+	}
+	if err := admitter.failure(); err != nil {
+		return err
+	}
+	if seedErr != nil {
+		return seedErr
+	}
+	return parentCtx.Err()
 }
 
 // Stop gracefully stops the crawler by canceling its context. This signals
@@ -587,49 +609,36 @@ func (c *Crawler) Stop() {
 	}
 }
 
-func (c *Crawler) enqueue(ctx context.Context, urls []string, parent *URLItem) (int, error) {
-	queued := 0
-	for _, rawURL := range urls {
-		normalizedURL, err := c.normalizeURL(rawURL)
-		if err != nil {
-			c.logger.Warn("invalid url",
-				slog.String("url", rawURL),
-				slog.String("error", err.Error()))
-			continue
-		}
-		value := strings.TrimSuffix(normalizedURL.String(), "/")
-		// Atomically check-and-mark as seen so concurrent workers cannot
-		// enqueue the same URL twice.
-		if _, seen := c.processedURLs.LoadOrStore(value, true); seen {
-			continue
-		}
-		// Reserve a slot against the max URLs limit before queueing.
-		if c.maxURLs > 0 && atomic.AddInt64(&c.enqueuedURLs, 1) > int64(c.maxURLs) {
-			atomic.AddInt64(&c.enqueuedURLs, -1)
-			c.processedURLs.Delete(value)
-			return queued, nil
-		}
-
-		item := URLItem{
-			URL:          value,
-			DiscoveredAt: time.Now(),
-		}
-		if parent != nil {
-			item.Depth = parent.Depth + 1
-			item.Referrer = parent.URL
-		}
-
-		// Count the item before exposing it to the frontier. A fast worker can
-		// otherwise finish it before pendingURLs is incremented.
-		atomic.AddInt64(&c.pendingURLs, 1)
-		if err := c.frontier.Push(ctx, item); err != nil {
-			atomic.AddInt64(&c.pendingURLs, -1)
-			c.releaseURL(value)
-			return queued, err
-		}
-		queued++
+func (c *Crawler) prepareURL(rawURL string, parent *URLItem) (URLItem, bool, bool) {
+	normalizedURL, err := c.normalizeURL(rawURL)
+	if err != nil {
+		c.logger.Warn("invalid url",
+			slog.String("url", rawURL),
+			slog.String("error", err.Error()))
+		return URLItem{}, false, false
 	}
-	return queued, nil
+	value := strings.TrimSuffix(normalizedURL.String(), "/")
+	// Atomically check-and-mark as seen so concurrent workers cannot enqueue
+	// the same URL twice.
+	if _, seen := c.processedURLs.LoadOrStore(value, true); seen {
+		return URLItem{}, false, false
+	}
+	// Reserve a slot against the max URLs limit before queueing.
+	if c.maxURLs > 0 && atomic.AddInt64(&c.enqueuedURLs, 1) > int64(c.maxURLs) {
+		atomic.AddInt64(&c.enqueuedURLs, -1)
+		c.processedURLs.Delete(value)
+		return URLItem{}, false, true
+	}
+
+	item := URLItem{
+		URL:          value,
+		DiscoveredAt: time.Now(),
+	}
+	if parent != nil {
+		item.Depth = parent.Depth + 1
+		item.Referrer = parent.URL
+	}
+	return item, true, false
 }
 
 // releaseURL undoes the bookkeeping performed before a URL is queued, used
@@ -645,6 +654,7 @@ func (c *Crawler) worker(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	scheduler *hostScheduler,
+	admitter *frontierAdmitter,
 	wg *sync.WaitGroup,
 	callback Callback,
 ) {
@@ -666,15 +676,20 @@ func (c *Crawler) worker(
 			retry:       outcome.retry,
 		})
 		atomic.AddInt64(&c.inFlightURLs, -1)
+		if err := admitter.submit(ctx, outcome.discovered, &scheduled.item); err != nil && ctx.Err() == nil {
+			c.logger.Warn("failed to admit discovered urls",
+				slog.String("url", scheduled.item.URL),
+				slog.String("error", err.Error()))
+		}
 		if outcome.retry {
 			continue
 		}
 		c.stats.IncrementProcessed()
 
-		// processURL enqueues discovered links before returning, so zero here
-		// means no worker and no frontier item can produce more work.
-		if atomic.AddInt64(&c.pendingURLs, -1) == 0 {
-			cancel()
+		// Discovered links are handed to the admission goroutine before this
+		// decrement, so zero means no worker or queued item can produce more work.
+		admitter.completeURL()
+		if ctx.Err() != nil {
 			return
 		}
 	}
@@ -684,6 +699,7 @@ type processOutcome struct {
 	crawlDelay  time.Duration
 	observation requestObservation
 	retry       bool
+	discovered  []string
 }
 
 // processURL fetches, parses, and reports one attempt for a URL. Throttled
@@ -925,14 +941,10 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 	}
 
 	filteredURLs := c.filterLinks(parsedURL, discoveredLinks)
-	if _, err := c.enqueue(ctx, filteredURLs, &item); err != nil {
-		c.logger.Warn("failed to enqueue discovered urls",
-			slog.String("url", rawURL),
-			slog.String("error", err.Error()))
-	}
 	return processOutcome{
 		crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
 		observation: observation,
+		discovered:  filteredURLs,
 	}
 }
 

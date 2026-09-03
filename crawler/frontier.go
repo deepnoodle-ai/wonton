@@ -53,11 +53,14 @@ type Frontier interface {
 // descending score, then ascending depth, then insertion order.
 //
 // A positive maxPending applies backpressure to Push when that many items are
-// waiting. A value less than one makes the frontier unbounded.
+// waiting. When used by Crawler, items staged in its host scheduler continue
+// to occupy capacity until dispatch. A value less than one makes the frontier
+// unbounded.
 type MemoryFrontier struct {
 	mu         sync.Mutex
 	items      memoryFrontierHeap
 	maxPending int
+	leased     int
 	nextSeq    uint64
 	closed     bool
 	changed    chan struct{}
@@ -79,39 +82,73 @@ func NewMemoryFrontier(maxPending int) *MemoryFrontier {
 // Push adds items to the frontier, waiting for capacity when it is bounded.
 func (f *MemoryFrontier) Push(ctx context.Context, items ...URLItem) error {
 	for _, item := range items {
-		for {
-			f.mu.Lock()
-			if f.closed {
-				f.mu.Unlock()
-				return ErrFrontierClosed
-			}
-			if f.maxPending <= 0 || f.items.Len() < f.maxPending {
-				f.nextSeq++
-				heap.Push(&f.items, memoryFrontierItem{URLItem: item, seq: f.nextSeq})
-				f.signalLocked()
-				f.mu.Unlock()
-				break
-			}
-			changed := f.changed
-			f.mu.Unlock()
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-changed:
-			}
+		if err := f.push(ctx, item, nil); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+// pushForScheduling runs onAdmit immediately before making an item visible to
+// the scheduler. This keeps crawler completion accounting and frontier
+// capacity changes atomic with respect to a fast scheduler pump.
+func (f *MemoryFrontier) pushForScheduling(ctx context.Context, item URLItem, onAdmit func()) error {
+	return f.push(ctx, item, onAdmit)
+}
+
+func (f *MemoryFrontier) push(ctx context.Context, item URLItem, onAdmit func()) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		f.mu.Lock()
+		if f.closed {
+			f.mu.Unlock()
+			return ErrFrontierClosed
+		}
+		if f.maxPending <= 0 || f.items.Len()+f.leased < f.maxPending {
+			if onAdmit != nil {
+				onAdmit()
+			}
+			f.nextSeq++
+			heap.Push(&f.items, memoryFrontierItem{URLItem: item, seq: f.nextSeq})
+			f.signalLocked()
+			f.mu.Unlock()
+			return nil
+		}
+		changed := f.changed
+		f.mu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		}
+	}
+}
+
 // Next returns the highest-priority pending item.
 func (f *MemoryFrontier) Next(ctx context.Context) (URLItem, bool, error) {
+	return f.next(ctx, false)
+}
+
+// nextForScheduling transfers an item to the host scheduler without releasing
+// its capacity slot. The slot is released once the scheduler dispatches it,
+// so maxPending covers both the heap and scheduler staging queues.
+func (f *MemoryFrontier) nextForScheduling(ctx context.Context) (URLItem, bool, error) {
+	return f.next(ctx, true)
+}
+
+func (f *MemoryFrontier) next(ctx context.Context, lease bool) (URLItem, bool, error) {
 	for {
 		f.mu.Lock()
 		if f.items.Len() > 0 {
 			item := heap.Pop(&f.items).(memoryFrontierItem).URLItem
-			f.signalLocked()
+			if lease {
+				f.leased++
+			} else {
+				f.signalLocked()
+			}
 			f.mu.Unlock()
 			return item, true, nil
 		}
@@ -128,6 +165,15 @@ func (f *MemoryFrontier) Next(ctx context.Context) (URLItem, bool, error) {
 		case <-changed:
 		}
 	}
+}
+
+func (f *MemoryFrontier) releaseScheduled() {
+	f.mu.Lock()
+	if f.leased > 0 {
+		f.leased--
+		f.signalLocked()
+	}
+	f.mu.Unlock()
 }
 
 // Len returns the number of pending items.

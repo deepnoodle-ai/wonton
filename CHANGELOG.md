@@ -41,6 +41,11 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 - A malformed empty `User-agent:` directive no longer matches every crawler.
 - Cached pages can be replayed without a configured fetcher, since cache hits
   do not make network requests.
+- Caller cancellation is now returned from `Crawler.Crawl` after workers and
+  the scheduler shut down, while scheduler failures retain precedence.
+- Frontier capacity now includes host-scheduler staging. Per-host queues and
+  asynchronous admission keep discovered links bounded without deadlocking
+  workers behind a full frontier.
 
 ## [0.1.0] - 2026-09-02
 

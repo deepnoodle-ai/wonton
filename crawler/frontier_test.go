@@ -69,6 +69,23 @@ func TestMemoryFrontierBackpressure(t *testing.T) {
 	}
 }
 
+func TestMemoryFrontierCapacityIncludesSchedulerLease(t *testing.T) {
+	frontier := NewMemoryFrontier(1)
+	assert.NoError(t, frontier.Push(context.Background(), URLItem{URL: "https://example.com/one"}))
+
+	_, ok, err := frontier.nextForScheduling(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err = frontier.Push(ctx, URLItem{URL: "https://example.com/two"})
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+	frontier.releaseScheduled()
+	assert.NoError(t, frontier.Push(context.Background(), URLItem{URL: "https://example.com/two"}))
+}
+
 func TestMemoryFrontierPushCancellation(t *testing.T) {
 	frontier := NewMemoryFrontier(1)
 	assert.NoError(t, frontier.Push(context.Background(), URLItem{URL: "https://example.com/one"}))
@@ -94,9 +111,13 @@ func TestCrawlerSmallFrontierDoesNotDropDiscoveredURLs(t *testing.T) {
 		HTML:  "<html></html>",
 		Links: links,
 	})
+	mockFetcher.AddResponse("https://example.com/seed-two", &fetch.Response{
+		URL:  "https://example.com/seed-two",
+		HTML: "<html></html>",
+	})
 
 	c, err := New(Options{
-		Workers:          4,
+		Workers:          1,
 		QueueSize:        1,
 		DefaultFetcher:   mockFetcher,
 		FollowBehavior:   FollowSameDomain,
@@ -106,14 +127,63 @@ func TestCrawlerSmallFrontierDoesNotDropDiscoveredURLs(t *testing.T) {
 
 	var mu sync.Mutex
 	visited := make(map[string]bool)
-	err = c.Crawl(context.Background(), []string{"https://example.com"}, func(_ context.Context, result *Result) {
+	maxPending := 0
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = c.Crawl(ctx, []string{"https://example.com", "https://example.com/seed-two"}, func(_ context.Context, result *Result) {
 		mu.Lock()
 		visited[result.URL.String()] = true
+		if pending := c.Pending(); pending > maxPending {
+			maxPending = pending
+		}
 		mu.Unlock()
 	})
 	assert.NoError(t, err)
-	assert.Len(t, visited, 65)
+	assert.Len(t, visited, 66)
+	if maxPending > 1 {
+		t.Fatalf("QueueSize=1 allowed %d URLs to wait", maxPending)
+	}
 	assert.Equal(t, 0, c.Pending())
+}
+
+type cancellationFetcher struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (f *cancellationFetcher) Fetch(ctx context.Context, _ *fetch.Request) (*fetch.Response, error) {
+	f.once.Do(func() { close(f.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestCrawlerReportsParentContextCancellation(t *testing.T) {
+	fetcher := &cancellationFetcher{started: make(chan struct{})}
+	c, err := New(Options{
+		DefaultFetcher:   fetcher,
+		FollowBehavior:   FollowNone,
+		RespectRobotsTxt: BoolPtr(false),
+	})
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Crawl(ctx, []string{"https://example.com"}, func(context.Context, *Result) {})
+	}()
+	select {
+	case <-fetcher.started:
+	case <-time.After(time.Second):
+		t.Fatal("fetch did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("crawl did not return after parent cancellation")
+	}
 }
 
 func TestCrawlerProcessesPreloadedFrontier(t *testing.T) {
@@ -467,8 +537,9 @@ func TestCrawlerDrainsClosedFrontier(t *testing.T) {
 		URL:  "https://example.com",
 		HTML: "<html></html>",
 	})
+	frontier := &closeAfterPushFrontier{MemoryFrontier: NewMemoryFrontier(1)}
 	c, err := New(Options{
-		Frontier:         &closeAfterPushFrontier{MemoryFrontier: NewMemoryFrontier(1)},
+		Frontier:         frontier,
 		DefaultFetcher:   mockFetcher,
 		FollowBehavior:   FollowNone,
 		RespectRobotsTxt: BoolPtr(false),
@@ -478,4 +549,5 @@ func TestCrawlerDrainsClosedFrontier(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	assert.NoError(t, c.Crawl(ctx, []string{"https://example.com"}, func(context.Context, *Result) {}))
+	assert.ErrorIs(t, frontier.Push(ctx, URLItem{URL: "https://example.com/late"}), ErrFrontierClosed)
 }

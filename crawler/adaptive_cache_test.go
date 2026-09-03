@@ -131,6 +131,7 @@ func TestAdaptiveLatencyBackoffAndRecovery(t *testing.T) {
 		HostPolicy{MinDelay: 100 * time.Millisecond, MaxDelay: time.Second},
 		true,
 		nil,
+		0,
 	)
 	state := &schedulerHostState{
 		minDelay:     100 * time.Millisecond,
@@ -152,6 +153,7 @@ func TestAdaptiveThrottleWithoutRetryAfterDoublesDelay(t *testing.T) {
 		HostPolicy{MinDelay: 10 * time.Millisecond, MaxDelay: 35 * time.Millisecond},
 		true,
 		nil,
+		0,
 	)
 	state := &schedulerHostState{
 		minDelay:     10 * time.Millisecond,
