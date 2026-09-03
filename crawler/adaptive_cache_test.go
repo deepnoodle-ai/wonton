@@ -303,6 +303,30 @@ func TestCrawlerRefreshesStaleCacheWithoutValidators(t *testing.T) {
 	assert.Equal(t, `"v2"`, refreshed.ETag)
 }
 
+func TestStoreFetchedResponseSkipsUncacheableStatuses(t *testing.T) {
+	for _, statusCode := range []int{
+		http.StatusNotModified,
+		http.StatusTooManyRequests,
+		http.StatusServiceUnavailable,
+	} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			memory := cache.NewInMemoryCache()
+			c, err := New(Options{Cache: memory})
+			assert.NoError(t, err)
+
+			rawURL := "https://example.com/uncacheable"
+			c.storeFetchedResponse(context.Background(), rawURL, &fetch.Response{
+				URL:        rawURL,
+				StatusCode: statusCode,
+				HTML:       "do not replay",
+			})
+
+			_, err = memory.GetEntry(context.Background(), cache.ResponseKey(rawURL))
+			assert.True(t, cache.IsNotFound(err))
+		})
+	}
+}
+
 func TestParseRetryAfterHTTPDate(t *testing.T) {
 	now := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
 	delay, ok := parseRetryAfter(now.Add(5*time.Second).Format(http.TimeFormat), now)

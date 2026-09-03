@@ -978,7 +978,7 @@ func responseFromCacheEntry(entry *cache.Entry, fallbackURL string) *fetch.Respo
 }
 
 func (c *Crawler) storeFetchedResponse(ctx context.Context, rawURL string, response *fetch.Response) {
-	if c.cache == nil || response == nil {
+	if c.cache == nil || response == nil || !isCacheableStatus(response.StatusCode) {
 		return
 	}
 	entry := &cache.Entry{
@@ -993,6 +993,10 @@ func (c *Crawler) storeFetchedResponse(ctx context.Context, rawURL string, respo
 		SchemaVersion: cache.ResponseSchemaVersion,
 	}
 	c.storeResponseCacheEntry(ctx, rawURL, entry)
+}
+
+func isCacheableStatus(statusCode int) bool {
+	return statusCode == 0 || statusCode == http.StatusOK
 }
 
 func (c *Crawler) storeResponseCacheEntry(ctx context.Context, rawURL string, entry *cache.Entry) {

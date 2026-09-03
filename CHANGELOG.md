@@ -46,6 +46,8 @@ patch number carries the rest, which is what SemVer means by `0.y.z`.
 - Frontier capacity now includes host-scheduler staging. Per-host queues and
   asynchronous admission keep discovered links bounded without deadlocking
   workers behind a full frontier.
+- Only successful fetch responses are stored for replay; standalone `304`,
+  `429`, and `503` responses no longer become cache entries.
 
 ## [0.1.0] - 2026-09-02
 
