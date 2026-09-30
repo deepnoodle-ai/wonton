@@ -49,7 +49,9 @@ Acceptance:
 - [ ] A runner that is not running returns `ErrHandoffNotRunning`. Reentry returns `ErrHandoffReentrant`. Errors name the failed phase and preserve underlying causes for `errors.Is`/`errors.As`.
 - [ ] Qualification/release failures and the callback result use `operationErr`. Restoration failures use `restoreErr` independently, including when the callback also fails. Failed release attempts restoration after any mutation and never start the callback.
 - [ ] Restoration, input-resume, or repaint failure stops input admission and rendering. `Run` returns that failure after best-effort terminal cleanup. The runner never continues interactively with uncertain ownership.
-- [ ] A callback panic attempts restoration before the existing runtime panic path propagates it. Stopping during the callback waits for callback return and restores a plain terminal without restarting application input.
+- [ ] A callback panic attempts restoration before the existing runtime panic path propagates it.
+- [ ] Both runners record `Stop` requests independently of event dispatch. `Stop` returns without waiting for callback settlement, queued-event dispatch, or terminal cleanup. Handoff waits for callback return, checks the stop signal before restoring interactive modes or resuming input, and restores a plain terminal without restarting the application reader, repainting, or dispatching pending input.
+- [ ] Stop-during-callback tests cover both runners with queued application events: `Stop` returns while the callback remains active, the child retains sole terminal ownership until callback return, and `Run` finishes after plain-terminal cleanup. No reader restart or application input dispatch occurs after the request.
 
 ### UC-3: Use Ctrl-D as forward delete
 
