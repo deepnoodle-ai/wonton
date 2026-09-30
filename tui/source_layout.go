@@ -401,7 +401,8 @@ func (s *ViewportState) validateSourceSelection() bool {
 		}
 		if aware {
 			old, selected := s.sourceSnapshots[i]
-			if !selected || !l.valid || selected && !strings.HasPrefix(l.source, old) || selected && i > start && i < end && !l.boundary(len(old)) {
+			lo, hi := s.sourceBounds(i, start, end, len(l.source))
+			if !selected || !l.valid || !strings.HasPrefix(l.source, old) || !l.boundary(lo) || !l.boundary(hi) {
 				s.ClearSelection()
 				return false
 			}

@@ -617,3 +617,23 @@ func TestSourceActiveDragAnchorSurvivesReflow(t *testing.T) {
 		t.Fatalf("continued drag moved anchor: %q", got)
 	}
 }
+
+func TestSourceCrossItemAppendedGraphemeClearsWholeSelection(t *testing.T) {
+	for _, pair := range [][2]string{{"e", "\u0301"}, {"👍", "🏽"}, {"👩", "\u200d💻"}} {
+		v := &sourceItems{text: []string{pair[0], "last"}}
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, v, 30, 10, 0)
+		s.BeginSelection(2, 0)
+		s.ExtendSelection(6, 1)
+		s.EndSelection()
+		if got := s.SelectedText(); got != pair[0]+"\nlast" {
+			t.Fatalf("initial %q", got)
+		}
+		v.text[0] += pair[1]
+		s.Invalidate(0)
+		renderViewport(t, s, v, 30, 10, 0)
+		if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+			t.Fatalf("changed grapheme retained %q", got)
+		}
+	}
+}
