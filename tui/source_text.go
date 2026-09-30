@@ -14,10 +14,8 @@ func plainLogicalRows(text string, offset, width int, wrap, safe bool) [][]Style
 	if safe {
 		rawRows = sourceTextLines(text, offset, 0, false)
 	} else {
-		at := offset
 		for _, line := range strings.Split(text, "\n") {
-			rawRows = append(rawRows, []StyledSegment{originalSegment(line, at, Style{})})
-			at += len(line) + 1
+			rawRows = append(rawRows, []StyledSegment{{Text: line}})
 		}
 	}
 	var out [][]StyledSegment
@@ -83,7 +81,7 @@ func plainPhysicalRows(rows [][]StyledSegment, width int, wrap bool, align Align
 			row = append([]StyledSegment{{Text: strings.Repeat(" ", left)}}, row...)
 			row = append(row, StyledSegment{Text: strings.Repeat(" ", right)})
 		}
-		if wrap {
+		if wrap && width > 0 && n > width {
 			wrapped := wrapLiteralSegments(row, width)
 			if len(wrapped) == 0 {
 				wrapped = [][]StyledSegment{nil}
@@ -95,7 +93,25 @@ func plainPhysicalRows(rows [][]StyledSegment, width int, wrap bool, align Align
 	}
 	return out
 }
+
+type textRowsCache struct {
+	width, offset int
+	wrap, marked  bool
+	align         Alignment
+	valid         bool
+	rows          [][]StyledSegment
+}
+
 func (t *TextView) textRows(width int) [][]StyledSegment {
+	for _, c := range t.rowsCache {
+		if c.valid && c.width == width && c.offset == t.sourceOffset &&
+			c.wrap == t.wrap && c.marked == t.sourceMarked && c.align == t.align {
+			return c.rows
+		}
+	}
 	rows := plainLogicalRows(t.content, t.sourceOffset, width, t.wrap, t.sourceMarked)
-	return plainPhysicalRows(rows, width, t.wrap, t.align)
+	rows = plainPhysicalRows(rows, width, t.wrap, t.align)
+	t.rowsCache[1] = t.rowsCache[0]
+	t.rowsCache[0] = textRowsCache{width, t.sourceOffset, t.wrap, t.sourceMarked, t.align, true, rows}
+	return rows
 }

@@ -119,13 +119,15 @@ func segmentSlice(seg StyledSegment, lo, hi int) StyledSegment {
 	out.Text = seg.Text[lo:hi]
 	out.source = nil
 	first, _ := slices.BinarySearchFunc(seg.source, lo, func(t sourceToken, n int) int { return cmp.Compare(t.lo, n) })
+	if first > 0 && seg.source[first-1].hi > lo {
+		first--
+	}
 	for _, t := range seg.source[first:] {
 		if t.lo >= hi {
 			break
 		}
-		if t.hi <= hi {
-			t.lo -= lo
-			t.hi -= lo
+		if t.hi > lo {
+			t.lo, t.hi = max(t.lo, lo)-lo, min(t.hi, hi)-lo
 			out.source = append(out.source, t)
 		}
 	}
@@ -147,15 +149,20 @@ func appendSegment(a, b StyledSegment) StyledSegment {
 // Tabs have a fixed four-column presentation; the source tab remains one token.
 func sourceTextLines(text string, offset, width int, wrap bool) [][]StyledSegment {
 	var rows [][]StyledSegment
-	var row []StyledSegment
+	var shownRow strings.Builder
+	var tokens []sourceToken
 	col, n := 0, 0
+	flush := func() {
+		rows = append(rows, []StyledSegment{{Text: shownRow.String(), source: tokens}})
+		shownRow = strings.Builder{}
+		tokens = nil
+		col = 0
+	}
 	for g, w := range runewidth.Graphemes(text) {
 		start := n
 		n += len(g)
 		if g == "\n" || g == "\r\n" {
-			rows = append(rows, row)
-			row = nil
-			col = 0
+			flush()
 			continue
 		}
 		shown := g
@@ -165,25 +172,22 @@ func sourceTextLines(text string, offset, width int, wrap bool) [][]StyledSegmen
 		} else {
 			for _, r := range g {
 				if sourceUnsafeRune(r) {
-					shown = "�"
-					w = 1
+					shown, w = "�", 1
 					break
 				}
 			}
 		}
 		if wrap && width > 0 && col+w > width && col > 0 {
-			rows = append(rows, row)
-			row = nil
-			col = 0
+			flush()
 		}
-		seg := StyledSegment{Text: shown, source: []sourceToken{{lo: 0, hi: len(shown), start: offset + start, end: offset + n}}}
-		row = append(row, seg)
+		lo := shownRow.Len()
+		shownRow.WriteString(shown)
+		tokens = append(tokens, sourceToken{lo, shownRow.Len(), offset + start, offset + n})
 		col += w
 	}
-	rows = append(rows, row)
+	flush()
 	return rows
 }
-
 func (c *RenderContext) clearSource(x, y, width, height int) {
 	if c.source == nil {
 		return
@@ -323,7 +327,7 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 	e.source, e.sourceValid = l, true
 	return l, true
 }
-func (s *ViewportState) sourceHit(p SelectionPoint, clamp bool) (*sourceEndpoint, bool) {
+func (s *ViewportState) sourceHit(p SelectionPoint, clamp, continuationEnd bool) (*sourceEndpoint, bool) {
 	l, aware := s.sourceLayout(p.Item)
 	if !aware {
 		return nil, true
@@ -339,12 +343,26 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp bool) (*sourceEndpoint
 		return &sourceEndpoint{item: p.Item, offset: offset, source: l.source}, true
 	}
 	offset, ok := l.hit(p.Col, p.Line, clamp)
-	if ok && !clamp {
+	if ok {
 		for _, cell := range l.cells {
-			if cell.y == p.Line && p.Col > cell.x && p.Col < cell.x+cell.width {
-				offset = cell.end
-				break
+			if cell.y != p.Line || p.Col < cell.x || p.Col >= cell.x+cell.width {
+				continue
 			}
+			continuation := p.Col > cell.x
+			for _, previous := range l.cells {
+				if previous.start == cell.start && previous.end == cell.end &&
+					(previous.y < cell.y || previous.y == cell.y && previous.x < cell.x) {
+					continuation = true
+					break
+				}
+			}
+			if continuation {
+				offset = cell.start
+				if continuationEnd {
+					offset = cell.end
+				}
+			}
+			break
 		}
 	}
 	if !ok {

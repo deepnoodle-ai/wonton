@@ -520,3 +520,82 @@ func TestSourceDirectionControlsAreInertButCopiedAsData(t *testing.T) {
 		}
 	}
 }
+
+func TestSourcePartialExpandedTokenCopiesWholeOriginalToken(t *testing.T) {
+	for _, tc := range []struct {
+		source     string
+		markdown   bool
+		start, end int
+		want       string
+	}{
+		{"a\tb", false, 3, 4, "\t"},
+		{"&fjlig; next", true, 2, 3, "&fjlig;"},
+	} {
+		s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+		s.BeginSelection(tc.start, 0)
+		s.ExtendSelection(tc.end, 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != tc.want {
+			t.Fatalf("%q: %q", tc.source, got)
+		}
+		s.BeginSelection(tc.end, 0)
+		s.ExtendSelection(tc.start, 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != tc.want {
+			t.Fatalf("reverse %q: %q", tc.source, got)
+		}
+	}
+}
+
+func TestSourceEveryExpandedTokenCellCopiesWholeToken(t *testing.T) {
+	for _, tc := range []struct {
+		source      string
+		markdown    bool
+		from, cells int
+		want        string
+	}{
+		{"a\tb", false, 3, 4, "\t"},
+		{"&fjlig; next", true, 2, 2, "&fjlig;"},
+	} {
+		for col := tc.from; col < tc.from+tc.cells; col++ {
+			s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+			s.BeginSelection(col, 0)
+			s.ExtendSelection(col+1, 0)
+			s.EndSelection()
+			if got := s.SelectedText(); got != tc.want {
+				t.Fatalf("%q cell %d: %q", tc.source, col, got)
+			}
+			s.BeginSelection(col+1, 0)
+			s.ExtendSelection(col, 0)
+			s.EndSelection()
+			if got := s.SelectedText(); got != tc.want {
+				t.Fatalf("reverse %q cell %d: %q", tc.source, col, got)
+			}
+		}
+	}
+}
+func BenchmarkViewportLongTextUnchanged(b *testing.B) {
+	for _, aware := range []bool{false, true} {
+		b.Run(fmt.Sprintf("source=%v", aware), func(b *testing.B) {
+			items := benchmarkSourceItems{&sourceItems{text: []string{strings.Repeat("word ", 10000)}, legacy: map[int]bool{0: !aware}}}
+			state := &ViewportState{}
+			view := Height(6, Viewport(state, items).Gap(0))
+			Sprint(view, WithWidth(80))
+			b.ResetTimer()
+			for b.Loop() {
+				Sprint(view, WithWidth(80))
+			}
+		})
+	}
+}
+
+type benchmarkSourceItems struct{ *sourceItems }
+
+func (v benchmarkSourceItems) Item(i int) View {
+	source, aware := v.Source(i)
+	text := Text("%s", source).Wrap()
+	if aware {
+		text.SourceOffset(0)
+	}
+	return text
+}

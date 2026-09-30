@@ -15,6 +15,7 @@ type TextView struct {
 	flexFactor   int
 	sourceOffset int
 	sourceMarked bool
+	rowsCache    [2]textRowsCache
 }
 
 // Text creates a text view with optional Printf-style formatting.
