@@ -53,10 +53,14 @@ func TestInlineCleanupDoesNotRepeatCompletedKeyboardPop(t *testing.T) {
 	out := &cleanupOutputProbe{flushErr: errors.New("flush failed")}
 	app := NewInlineApp(WithInlineOutput(out), WithInlineKittyKeyboard(true))
 	app.kittyEnabled = true // Includes an attempted startup enable.
-	for range 2 {
-		if err := app.cleanup(); !errors.Is(err, out.flushErr) {
-			t.Fatal(err)
-		}
+	if err := app.releaseKeyboard(); err != nil {
+		t.Fatal(err)
+	}
+	// Run owns one resize watcher and performs final cleanup once, after a
+	// handoff may already have released the keyboard protocol.
+	app.setupResizeWatcher()
+	if err := app.cleanup(); !errors.Is(err, out.flushErr) {
+		t.Fatal(err)
 	}
 	if strings.Count(string(out.text), "\x1b[<u") != 1 {
 		t.Fatalf("repeated keyboard pops=%q", out.text)
