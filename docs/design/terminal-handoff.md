@@ -1,6 +1,6 @@
 # Terminal handoff
 
-Status: Draft · Author: Codex · Date: 2026-09-30\
+Status: Accepted · Author: Codex · Date: 2026-09-30\
 Workflow: spec, independent PRD review, then build.
 
 ## Context and contract

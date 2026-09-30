@@ -1,7 +1,7 @@
 # Give an interactive child sole terminal ownership
 
-Status: Draft\
-PRD PR: Not opened · Implementation PR: Not opened · Updated: 2026-09-30
+Status: Approved\
+PRD PR: [#63](https://github.com/deepnoodle-ai/wonton/pull/63) · Implementation PR: Not opened · Updated: 2026-09-30
 
 ## Problem and context
 
