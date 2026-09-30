@@ -77,6 +77,17 @@ func (a *handoffPTYApplication) HandleEvent(event Event) []Cmd {
 			if !reflect.DeepEqual(plain, a.before) {
 				return fmt.Errorf("child attributes=%#v original=%#v", plain, a.before)
 			}
+			if a.scenario == "full-queue" {
+				events := a.inlineEvents()
+			fillQueue:
+				for {
+					select {
+					case events <- TickEvent{}:
+					default:
+						break fillQueue
+					}
+				}
+			}
 			a.send("released", "", nil)
 			if a.scenario == "stop" {
 				var signal [1]byte
@@ -194,7 +205,7 @@ func TestHandoffPTYHelper(t *testing.T) {
 
 func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 	for _, mode := range []string{"fullscreen", "inline"} {
-		for _, scenario := range []string{"normal", "stop", "error", "panic"} {
+		for _, scenario := range []string{"normal", "full-queue", "stop", "error", "panic"} {
 			t.Run(mode+"/"+scenario, func(t *testing.T) {
 				readReport, writeReport, err := os.Pipe()
 				if err != nil {

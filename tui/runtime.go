@@ -83,6 +83,8 @@ type Runtime struct {
 	outputMu      sync.Mutex
 	handoffActive bool
 	handoffErr    error
+	resizeMu      sync.Mutex
+	resizeEvents  chan ResizeEvent
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -101,6 +103,7 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 	r := &Runtime{
 		terminal:      terminal,
 		app:           app,
+		resizeEvents:  make(chan ResizeEvent, 1),
 		events:        make(chan Event, 100), // Buffered to prevent blocking
 		cmds:          make(chan Cmd, 100),
 		done:          make(chan struct{}),
@@ -217,13 +220,9 @@ func (r *Runtime) Run() error {
 	}
 
 	// Register resize handler
-	r.resizeUnsub = r.terminal.OnResize(func(width, height int) {
-		// Send resize event to event loop
-		r.events <- ResizeEvent{
-			Time:   time.Now(),
-			Width:  width,
-			Height: height,
-		}
+	r.resizeUnsub = r.terminal.OnResize(func(_, _ int) {
+		width, height := r.terminal.Size()
+		r.queueResize(ResizeEvent{Time: time.Now(), Width: width, Height: height})
 	})
 
 	// Start watching for resize signals
@@ -368,6 +367,14 @@ func (r *Runtime) eventLoop() {
 		case <-r.stopRequested:
 			r.closeDone()
 			return
+		case resize := <-r.resizeEvents:
+			if r.processEventWithQuitCheck(resize) {
+				r.closeDone()
+				return
+			}
+			if !r.shouldThrottleResize(true, time.Now()) {
+				r.render()
+			}
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			_, resizeOnly := event.(ResizeEvent)
@@ -890,5 +897,28 @@ func (r *Runtime) SendEvent(event Event) {
 	case r.events <- event:
 	case <-r.done:
 		// Runtime stopped, ignore event
+	}
+}
+
+// Resize notifications must not wait on the application queue: restoration
+// can refresh size synchronously from the event-loop handler itself.
+func (r *Runtime) queueResize(event ResizeEvent) {
+	r.resizeMu.Lock()
+	defer r.resizeMu.Unlock()
+	if r.stopping() {
+		return
+	}
+	select {
+	case <-r.done:
+		return
+	default:
+	}
+	select {
+	case <-r.resizeEvents:
+	default:
+	}
+	select {
+	case r.resizeEvents <- event:
+	default:
 	}
 }
