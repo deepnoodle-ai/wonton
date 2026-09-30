@@ -418,3 +418,32 @@ func TestInputState_Completion_ArrowsCycleBeforeHistory(t *testing.T) {
 	assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyArrowUp}))
 	assert.Equal(t, "/hello", text)
 }
+
+func TestInputStateCtrlDDeletesWholeGraphemeAndBubblesWhenEmpty(t *testing.T) {
+	for _, initial := range []string{"e\u0301x", "👩‍💻x", "界x"} {
+		text := initial
+		changes := 0
+		state := newTestInputState(t, inputConfig{binding: &text, onChange: func(string) { changes++ }})
+		state.HandleKeyEvent(KeyEvent{Key: KeyHome})
+		if !state.HandleKeyEvent(KeyEvent{Key: KeyCtrlD, Ctrl: true}) || text != "x" || changes != 1 {
+			t.Fatalf("%q: text=%q changes=%d", initial, text, changes)
+		}
+		state.HandleKeyEvent(KeyEvent{Key: KeyEnd})
+		if !state.HandleKeyEvent(KeyEvent{Key: KeyCtrlD, Ctrl: true}) || text != "x" || changes != 1 {
+			t.Fatal("nonempty end must consume without edit")
+		}
+		state.HandleKeyEvent(KeyEvent{Key: KeyHome})
+		state.HandleKeyEvent(KeyEvent{Key: KeyCtrlD, Ctrl: true})
+		if state.HandleKeyEvent(KeyEvent{Key: KeyCtrlD, Ctrl: true}) || text != "" || changes != 2 {
+			t.Fatal("empty Ctrl-D must bubble")
+		}
+	}
+}
+func TestInputStateCtrlDHookPrecedesForwardDelete(t *testing.T) {
+	text := "draft"
+	state := newTestInputState(t, inputConfig{binding: &text, onKey: func(e KeyEvent) bool { return e.Key == KeyCtrlD }})
+	state.HandleKeyEvent(KeyEvent{Key: KeyHome})
+	if !state.HandleKeyEvent(KeyEvent{Key: KeyCtrlD, Ctrl: true}) || text != "draft" {
+		t.Fatal("OnKey did not intercept Ctrl-D")
+	}
+}

@@ -75,7 +75,7 @@ type textInput struct {
 // newTextInput creates a new text input widget
 func newTextInput() *textInput {
 	t := &textInput{
-		CursorPos:        0,
+		CursorPos: 0,
 		// ColorDefault (not ColorWhite) so typed text inherits the terminal's
 		// own foreground instead of ANSI white, which renders as dim gray in
 		// most terminal themes.
@@ -1018,7 +1018,12 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 			}
 		}
 		return true
-	case KeyDelete:
+	case KeyDelete, KeyCtrlD:
+		// Empty Ctrl-D belongs to the application (usually exit). A nonempty
+		// draft consumes it even at the end, where forward delete is a no-op.
+		if event.Key == KeyCtrlD && t.Value() == "" {
+			return false
+		}
 		if t.deleteForward() {
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
