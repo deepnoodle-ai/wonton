@@ -655,3 +655,81 @@ func TestSourceDecodedUnicodeSpaceSeparatesWords(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceExpandedTokenSelectionCoordinates(t *testing.T) {
+	for _, tc := range []struct {
+		source     string
+		markdown   bool
+		start, end int
+	}{
+		{"a\tb", false, 3, 7},
+		{"&fjlig; next", true, 2, 4},
+	} {
+		for _, reverse := range []bool{false, true} {
+			s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+			from, to := tc.start, tc.start+1
+			if reverse {
+				from, to = to, from
+			}
+			s.BeginSelection(from, 0)
+			s.ExtendSelection(to, 0)
+			s.EndSelection()
+			for n := 0; n < 100; n++ {
+				start, end, ok := s.Selection()
+				if !ok || start != (SelectionPoint{0, 0, tc.start}) || end != (SelectionPoint{0, 0, tc.end}) {
+					t.Fatalf("%q reverse=%v: start=%+v end=%+v ok=%v", tc.source, reverse, start, end, ok)
+				}
+			}
+		}
+	}
+}
+func TestSourceSelectionRemovedItemClearsWithoutCallingSource(t *testing.T) {
+	s, v := newSourceViewport(t, "selected", false, 30)
+	s.SelectLine(2, 0)
+	v.text = nil
+	s.Invalidate(0)
+	if _, _, ok := s.Selection(); ok || s.HasSelection() {
+		t.Fatal("removed item retained selection")
+	}
+}
+func TestSourceMarkdownWordStaysInTableCell(t *testing.T) {
+	s, _ := newSourceViewport(t, "| name | value |\n| --- | --- |\n| alpha | beta |", true, 40)
+	l, _ := s.sourceLayout(0)
+	for _, cell := range l.cells {
+		if cell.start == strings.Index(l.source, "name") {
+			s.SelectWord(cell.x, cell.y)
+			if got := s.SelectedText(); got != "name" {
+				t.Fatalf("table word=%q", got)
+			}
+			return
+		}
+	}
+	t.Fatal("name cell missing")
+}
+func TestSourceHighlightedCRLFFenceRemainsVisibleAndSelectable(t *testing.T) {
+	for _, source := range []string{"```go\r\nvar answer = 42\r\n```", "```python\nprint('answer')\n```"} {
+		s, _ := newSourceViewport(t, source, true, 40)
+		l, _ := s.sourceLayout(0)
+		if !l.valid || len(l.cells) == 0 {
+			t.Fatalf("code disappeared: %q", source)
+		}
+		for _, cell := range l.cells {
+			s.SelectLine(cell.x, cell.y)
+			if got := s.SelectedText(); !strings.Contains(got, "answer") {
+				t.Fatalf("code line=%q", got)
+			}
+			break
+		}
+	}
+}
+func TestSourceDragCanStartInPaddingOrPastLineEnd(t *testing.T) {
+	for _, endpoints := range [][2]int{{0, 5}, {20, 2}} {
+		s, _ := newSourceViewport(t, "abc", false, 30)
+		s.BeginSelection(endpoints[0], 0)
+		s.ExtendSelection(endpoints[1], 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != "abc" {
+			t.Fatalf("%v: %q", endpoints, got)
+		}
+	}
+}

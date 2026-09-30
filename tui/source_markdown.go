@@ -121,12 +121,13 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 	if language != "" {
 		highlighted := mr.highlightCode(code.Text, language)
 		at := 0
+	highlight:
 		for _, row := range highlighted {
 			for _, seg := range row {
 				end := at + len(seg.Text)
 				if end > len(code.Text) || code.Text[at:end] != seg.Text {
-					ctx.result.sourceValid = false
-					return
+					styled = nil
+					break highlight
 				}
 				part := segmentSlice(code, at, end)
 				part.Style = seg.Style

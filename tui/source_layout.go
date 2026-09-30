@@ -73,25 +73,6 @@ func (l *sourceLayout) bind(content string, offset int) {
 	l.bindings = append(l.bindings, sourceBinding{offset, end})
 }
 func (l *sourceLayout) complete() bool { return l.valid && (l.source == "" || len(l.bindings) > 0) }
-func sourceBoundary(source string, offset int) bool {
-	if offset == 0 || offset == len(source) {
-		return true
-	}
-	if offset < 0 || offset > len(source) {
-		return false
-	}
-	n := 0
-	for g := range runewidth.Graphemes(source) {
-		n += len(g)
-		if n == offset {
-			return true
-		}
-		if n > offset {
-			return false
-		}
-	}
-	return false
-}
 func sourceLine(source string, at int) (int, int) {
 	at = min(max(at, 0), len(source))
 	start := strings.LastIndex(source[:at], "\n") + 1
@@ -105,16 +86,6 @@ func sourceLine(source string, at int) (int, int) {
 	return start, end
 }
 
-// originalSegment carries positions before wrapping, decoding, or styling.
-func originalSegment(text string, start int, style Style) StyledSegment {
-	seg := StyledSegment{Text: text, Style: style}
-	n := 0
-	for g := range runewidth.Graphemes(text) {
-		seg.source = append(seg.source, sourceToken{lo: n, hi: n + len(g), start: start + n, end: start + n + len(g)})
-		n += len(g)
-	}
-	return seg
-}
 func segmentSlice(seg StyledSegment, lo, hi int) StyledSegment {
 	out := seg
 	out.Text = seg.Text[lo:hi]
@@ -275,10 +246,10 @@ func (l *sourceLayout) point(offset int, end bool) (line, col int) {
 				inside = &t
 			}
 		}
-		if t.start >= offset && (first == nil || t.start < first.start) {
+		if t.start >= offset && (first == nil || t.start < first.start || t.start == first.start && (t.y < first.y || t.y == first.y && t.x < first.x)) {
 			first = &t
 		}
-		if t.end <= offset && (last == nil || t.end > last.end) {
+		if t.end <= offset && (last == nil || t.end > last.end || t.end == last.end && (t.y > last.y || t.y == last.y && t.x > last.x)) {
 			last = &t
 		}
 	}
@@ -298,7 +269,7 @@ func (l *sourceLayout) point(offset int, end bool) (line, col int) {
 }
 func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 	items, ok := s.items.(ViewportSourceItems)
-	if !ok {
+	if !ok || item < 0 || item >= s.len() {
 		return nil, false
 	}
 	e := s.entry(item)
@@ -384,7 +355,7 @@ func (s *ViewportState) validateSourceSelection() bool {
 			continue
 		}
 		l, aware := s.sourceLayout(p.item)
-		if !aware || !l.valid || !strings.HasPrefix(l.source, p.source) || !sourceBoundary(l.source, p.offset) {
+		if !aware || !l.valid || !strings.HasPrefix(l.source, p.source) || !l.boundary(p.offset) {
 			s.ClearSelection()
 			return false
 		}
@@ -468,10 +439,21 @@ func (s *ViewportState) sourceSelectRun(p SelectionPoint, line bool) bool {
 			return true
 		}
 		first, last := at, at
-		for first > 0 && isWordRune(words[first-1].text) {
+		gapIsWord := func(a, b word) bool {
+			if a.end > b.start {
+				return false
+			}
+			for g := range runewidth.Graphemes(l.source[a.end:b.start]) {
+				if !isWordRune(g) {
+					return false
+				}
+			}
+			return true
+		}
+		for first > 0 && isWordRune(words[first-1].text) && gapIsWord(words[first-1], words[first]) {
 			first--
 		}
-		for last+1 < len(words) && isWordRune(words[last+1].text) {
+		for last+1 < len(words) && isWordRune(words[last+1].text) && gapIsWord(words[last], words[last+1]) {
 			last++
 		}
 		lo, hi = words[first].start, words[last].end

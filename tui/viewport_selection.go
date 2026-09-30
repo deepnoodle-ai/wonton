@@ -50,8 +50,12 @@ func (s *ViewportState) Selection() (start, end SelectionPoint, ok bool) {
 	if !s.hasSelection || !s.validateSourceSelection() {
 		return SelectionPoint{}, SelectionPoint{}, false
 	}
-	anchor := s.sourceSelectionPoint(s.selAnchor, s.sourceAnchor, false)
-	cursor := s.sourceSelectionPoint(s.selCursor, s.sourceCursor, true)
+	anchorEnd := s.selCursor.before(s.selAnchor)
+	if s.sourceAnchor != nil && s.sourceCursor != nil {
+		anchorEnd = s.sourceCursor.item < s.sourceAnchor.item || s.sourceCursor.item == s.sourceAnchor.item && s.sourceCursor.offset < s.sourceAnchor.offset
+	}
+	anchor := s.sourceSelectionPoint(s.selAnchor, s.sourceAnchor, anchorEnd)
+	cursor := s.sourceSelectionPoint(s.selCursor, s.sourceCursor, !anchorEnd)
 	if cursor.before(anchor) {
 		return cursor, anchor, true
 	}
@@ -90,8 +94,11 @@ func (s *ViewportState) BeginSelection(x, y int) {
 	if !ok {
 		return
 	}
-	source, valid := s.sourceHit(p, false, true)
+	oldAnchor := s.selAnchor
+	s.selAnchor = p
+	source, valid := s.sourceHit(p, true, true)
 	if !valid {
+		s.selAnchor = oldAnchor
 		return
 	}
 	s.sourceAnchor, s.sourceCursor = source, source
