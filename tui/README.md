@@ -1012,6 +1012,49 @@ a.running = false   // LiveView() will now return the short view
 a.printResults()    // Print() → UpdateNoSync(LiveView()) sees running=false (short view)
 ```
 
+## Interactive terminal children
+
+`Runtime.Handoff` and `InlineApp.Handoff` give a child exclusive terminal input and output. Call synchronously from `HandleEvent`; the callback must wait for every child reader/writer before returning. It cannot call runner printing, rendering, `Suspend`, or `Handoff`. Nil callbacks do nothing. Nested transitions return `ErrHandoffReentrant`.
+
+```go
+package main
+
+import (
+    "os"
+    "os/exec"
+    "github.com/deepnoodle-ai/wonton/tui"
+)
+
+// Call from HandleEvent. InlineApp uses the same Handoff signature.
+func editDraft(runner *tui.Runtime, draftPath string, notice *string) []tui.Cmd {
+    operationErr, restoreErr := runner.Handoff(func() error {
+        child := exec.Command("vi", draftPath)
+        child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stdout
+        return child.Run()
+    })
+    if restoreErr != nil {
+        return nil // Run returns this fatal error after cleanup.
+    }
+    if operationErr != nil {
+        *notice = operationErr.Error() // Preserve the existing draft.
+    }
+    return nil
+}
+func main() {}
+```
+
+| Input/output | Handoff |
+| --- | --- |
+| Darwin/Linux managed `os.Stdin` and `os.Stdout`, same terminal device | Supported |
+| Explicit inline `os.Stdout`, same managed terminal input | Supported |
+| Custom sources, opaque writers, redirected or different terminals | `ErrHandoffUnsupported`, callback skipped |
+| Other platforms or test terminals | `ErrHandoffUnsupported`, callback skipped |
+| Outside an active event loop | `ErrHandoffNotRunning`, callback skipped |
+
+Handoff retains complete application events already read, finalizes incomplete framing, and discards residual child input before resuming the same decoder. It restores exact modes and attributes, remeasures size, and repaints. `Stop` returns immediately during the child callback; cleanup waits for the callback to settle and skips interactive resume. Concurrent inline printing waits for ownership and writes only if restoration succeeds and shutdown has not won. `Suspend` retains its decoded-event contract.
+
+Run `go run ./examples/tui/terminal_handoff` or add `-inline` for a real editor. Ctrl-O edits the draft; editor return never submits it. `-editor` selects one executable without shell parsing. Nonempty Ctrl-D uses forward deletion; empty Ctrl-D remains available to the application's exit handler.
+
 ## Related Packages
 
 - [terminal](../terminal) - Low-level terminal control and ANSI sequences

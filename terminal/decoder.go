@@ -2,10 +2,13 @@ package terminal
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/deepnoodle-ai/wonton/internal/terminalinput"
 )
 
 // KeyDecoder handles low-level decoding of terminal input into structured events.
@@ -843,6 +846,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 	for {
 		b, err := kd.reader.ReadByte()
 		if err != nil {
+			if errors.Is(err, terminalinput.Boundary) {
+				return kd.boundaryPaste(content)
+			}
 			// EOF or error while reading paste content
 			// Return what we have so far (with normalized line endings)
 			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, err
@@ -853,6 +859,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 			// Peek ahead to check for [ 2 0 1 ~
 			next1, err1 := kd.reader.ReadByte()
 			if err1 != nil {
+				if errors.Is(err1, terminalinput.Boundary) {
+					return kd.boundaryPaste(content)
+				}
 				content = append(content, b)
 				break
 			}
@@ -860,6 +869,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 			if next1 == '[' {
 				next2, err2 := kd.reader.ReadByte()
 				if err2 != nil {
+					if errors.Is(err2, terminalinput.Boundary) {
+						return kd.boundaryPaste(content)
+					}
 					content = append(content, b, next1)
 					break
 				}
@@ -867,6 +879,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 				if next2 == '2' {
 					next3, err3 := kd.reader.ReadByte()
 					if err3 != nil {
+						if errors.Is(err3, terminalinput.Boundary) {
+							return kd.boundaryPaste(content)
+						}
 						content = append(content, b, next1, next2)
 						break
 					}
@@ -874,6 +889,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 					if next3 == '0' {
 						next4, err4 := kd.reader.ReadByte()
 						if err4 != nil {
+							if errors.Is(err4, terminalinput.Boundary) {
+								return kd.boundaryPaste(content)
+							}
 							content = append(content, b, next1, next2, next3)
 							break
 						}
@@ -881,6 +899,9 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 						if next4 == '1' {
 							next5, err5 := kd.reader.ReadByte()
 							if err5 != nil {
+								if errors.Is(err5, terminalinput.Boundary) {
+									return kd.boundaryPaste(content)
+								}
 								content = append(content, b, next1, next2, next3, next4)
 								break
 							}
@@ -911,4 +932,26 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 
 	// If we reach here, we hit EOF or error
 	return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
+}
+
+// boundaryPaste ends incomplete framing at an acknowledged ownership cutoff.
+// A partial end marker belongs to framing, and an incomplete UTF-8 suffix has
+// no complete scalar value to retain. Ordinary EOF behavior stays unchanged.
+func (kd *KeyDecoder) boundaryPaste(content []byte) (KeyEvent, error) {
+	end := []byte("\x1b[201~")
+	for n := len(end) - 1; n > 0; n-- {
+		if strings.HasSuffix(string(content), string(end[:n])) {
+			content = content[:len(content)-n]
+			break
+		}
+	}
+	for i := 0; i < len(content); {
+		if !utf8.FullRune(content[i:]) {
+			content = content[:i]
+			break
+		}
+		_, size := utf8.DecodeRune(content[i:])
+		i += size
+	}
+	return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, terminalinput.Boundary
 }

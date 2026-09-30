@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
 	"sync"
 	"time"
+
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
 
 	"golang.org/x/term"
 )
@@ -22,16 +25,18 @@ import (
 // This design eliminates race conditions in application code while maintaining
 // responsive UI through non-blocking async operations.
 type Runtime struct {
-	terminal   *Terminal
-	app        any // Application
-	events     chan Event
-	cmds       chan Cmd
-	done       chan struct{}
-	doneOnce   sync.Once
-	ticker     *time.Ticker
-	fps        int
-	lastRender time.Time // when render() last ran, for throttling resize repaints
-	frame      uint64    // Frame counter for TickEvents
+	terminal      *Terminal
+	app           any // Application
+	events        chan Event
+	cmds          chan Cmd
+	done          chan struct{}
+	doneOnce      sync.Once
+	stopOnce      sync.Once
+	stopRequested chan struct{}
+	ticker        *time.Ticker
+	fps           int
+	lastRender    time.Time // when render() last ran, for throttling resize repaints
+	frame         uint64    // Frame counter for TickEvents
 
 	// Panic capture: a panic in any runtime-managed goroutine (event loop,
 	// input reader, command goroutines) is recorded here so Run can restore
@@ -74,8 +79,14 @@ type Runtime struct {
 
 	// Suspend state. suspendKeys is non-nil exactly while Suspend is running
 	// fn; the input reader diverts events into it instead of the event loop.
-	suspendMu   sync.Mutex
-	suspendKeys chan Event
+	suspendMu     sync.Mutex
+	suspendKeys   chan Event
+	managedInput  *managedInput
+	outputMu      sync.Mutex
+	handoffActive bool
+	handoffErr    error
+	resizeMu      sync.Mutex
+	resizeEvents  chan ResizeEvent
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -94,9 +105,11 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 	r := &Runtime{
 		terminal:      terminal,
 		app:           app,
+		resizeEvents:  make(chan ResizeEvent, 1),
 		events:        make(chan Event, 100), // Buffered to prevent blocking
 		cmds:          make(chan Cmd, 100),
 		done:          make(chan struct{}),
+		stopRequested: make(chan struct{}),
 		fps:           fps,
 		frame:         0,
 		pasteTabWidth: 0, // Default: preserve tabs
@@ -178,6 +191,8 @@ func (r *Runtime) Run() error {
 		}
 	}
 
+	rawWasEnabled, kittyWasEnabled := r.terminal.IsRawMode(), r.terminal.IsKittyProtocolEnabled()
+
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
@@ -200,14 +215,21 @@ func (r *Runtime) Run() error {
 		}
 	}
 
-	// Register resize handler
-	r.resizeUnsub = r.terminal.OnResize(func(width, height int) {
-		// Send resize event to event loop
-		r.events <- ResizeEvent{
-			Time:   time.Now(),
-			Width:  width,
-			Height: height,
+	if err := r.initializeManagedInput(); err != nil {
+		var cleanupErr error
+		if access, ok := terminalstate.Inspect(r.terminal); ok {
+			cleanupErr = access.CleanupRuntime(!rawWasEnabled, !kittyWasEnabled)
 		}
+		r.mu.Lock()
+		r.running = false
+		r.mu.Unlock()
+		return errors.Join(fmt.Errorf("initialize terminal input: %w", err), cleanupErr)
+	}
+
+	// Register resize handler
+	r.resizeUnsub = r.terminal.OnResize(func(_, _ int) {
+		width, height := r.terminal.Size()
+		r.queueResize(ResizeEvent{Time: time.Now(), Width: width, Height: height})
 	})
 
 	// Start watching for resize signals
@@ -258,9 +280,8 @@ func (r *Runtime) Run() error {
 	if r.resizeUnsub != nil {
 		r.resizeUnsub()
 	}
-	if r.terminal.IsKittyProtocolEnabled() {
-		r.terminal.DisableEnhancedKeyboard()
-	}
+	// Disable also cancels an incomplete enable without popping a keyboard stack.
+	r.terminal.DisableEnhancedKeyboard()
 	r.terminal.DisableRawMode()
 
 	// Call Destroy if implemented
@@ -284,7 +305,10 @@ func (r *Runtime) Run() error {
 		panic(fmt.Sprintf("tui: application panic: %v\n\noriginal stack:\n%s", pv, ps))
 	}
 
-	return nil
+	r.mu.Lock()
+	handoffErr := r.handoffErr
+	r.mu.Unlock()
+	return handoffErr
 }
 
 // closeDone signals shutdown to all runtime goroutines. Safe to call multiple
@@ -320,13 +344,19 @@ func (r *Runtime) capturePanic() {
 	r.closeDone()
 }
 
-// Stop gracefully stops the runtime by sending a QuitEvent.
-// This can be called from application code or externally.
+// Stop requests shutdown without waiting for event dispatch or cleanup.
+// Safe to call repeatedly from any goroutine. The current handler settles
+// before the event loop stops and Run restores the terminal.
 func (r *Runtime) Stop() {
+	r.stopOnce.Do(func() { close(r.stopRequested) })
+}
+
+func (r *Runtime) stopping() bool {
 	select {
-	case r.events <- QuitEvent{Time: time.Now()}:
-	case <-r.done:
-		// Already stopped
+	case <-r.stopRequested:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -335,7 +365,22 @@ func (r *Runtime) Stop() {
 // Events are batched: all pending events are processed before rendering once.
 func (r *Runtime) eventLoop() {
 	for {
+		if r.stopping() {
+			r.closeDone()
+			return
+		}
 		select {
+		case <-r.stopRequested:
+			r.closeDone()
+			return
+		case resize := <-r.resizeEvents:
+			if r.processEventWithQuitCheck(resize) {
+				r.closeDone()
+				return
+			}
+			if !r.shouldThrottleResize(true, time.Now()) {
+				r.render()
+			}
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			_, resizeOnly := event.(ResizeEvent)
@@ -374,16 +419,28 @@ func (r *Runtime) eventLoop() {
 			}
 
 			// Render once after processing all pending events
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-r.ticker.C:
 			// Send tick event for animations
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.frame++
 			tickEvent := TickEvent{
 				Time:  time.Now(),
 				Frame: r.frame,
 			}
 			r.processEvent(tickEvent)
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-r.done:
@@ -394,6 +451,9 @@ func (r *Runtime) eventLoop() {
 
 // processEventWithQuitCheck processes an event and returns true if it's a quit event
 func (r *Runtime) processEventWithQuitCheck(event Event) bool {
+	if r.stopping() {
+		return true
+	}
 	// Check for quit event
 	if _, isQuit := event.(QuitEvent); isQuit {
 		return true
@@ -402,6 +462,9 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 	// Handle batch events by unpacking them
 	if batch, isBatch := event.(BatchEvent); isBatch {
 		for _, e := range batch.Events {
+			if r.stopping() {
+				return true
+			}
 			if _, isQuit := e.(QuitEvent); isQuit {
 				return true
 			}
@@ -462,6 +525,8 @@ func (r *Runtime) processEvent(event Event) {
 			case r.cmds <- cmd:
 			case <-r.done:
 				return
+			case <-r.stopRequested:
+				return
 			}
 		}
 	}
@@ -485,16 +550,25 @@ func (r *Runtime) frameInterval() time.Duration {
 }
 
 func (r *Runtime) render() {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
+	if r.stopping() {
+		return
+	}
+	_ = r.renderChecked()
+}
+
+// renderChecked is called with the output gate held.
+func (r *Runtime) renderChecked() (err error) {
 	r.lastRender = time.Now()
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
-		// Terminal not ready, skip this frame
-		return
+		return err
 	}
 	// Deferred so a panic in View()/render releases the terminal's frame lock
 	// (BeginFrame holds it until EndFrame); otherwise cleanup would deadlock.
 	// Flush to screen (diffs and sends only dirty regions).
-	defer r.terminal.EndFrame(frame)
+	defer func() { err = errors.Join(err, r.terminal.EndFrame(frame)) }()
 
 	if app, ok := r.app.(Application); ok {
 		// Application interface - use declarative View() rendering
@@ -523,6 +597,7 @@ func (r *Runtime) render() {
 		// Prune TextArea state for IDs that weren't rendered this frame
 		r.reg.textAreas.Prune()
 	}
+	return nil
 }
 
 // SetInputSource sets the input source for the runtime.
@@ -554,6 +629,10 @@ func (d *defaultInputSource) SetPasteTabWidth(w int) {
 // embedded use), be aware that stopped runtimes may leave a blocked goroutine
 // until the next stdin input or process exit.
 func (r *Runtime) inputReader() {
+	if r.managedInput != nil {
+		r.managedInput.run()
+		return
+	}
 	var source InputSource
 	if r.inputSource != nil {
 		source = r.inputSource
@@ -824,5 +903,28 @@ func (r *Runtime) SendEvent(event Event) {
 	case r.events <- event:
 	case <-r.done:
 		// Runtime stopped, ignore event
+	}
+}
+
+// Resize notifications must not wait on the application queue: restoration
+// can refresh size synchronously from the event-loop handler itself.
+func (r *Runtime) queueResize(event ResizeEvent) {
+	r.resizeMu.Lock()
+	defer r.resizeMu.Unlock()
+	if r.stopping() {
+		return
+	}
+	select {
+	case <-r.done:
+		return
+	default:
+	}
+	select {
+	case <-r.resizeEvents:
+	default:
+	}
+	select {
+	case r.resizeEvents <- event:
+	default:
 	}
 }

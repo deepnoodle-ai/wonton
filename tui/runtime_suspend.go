@@ -44,12 +44,14 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) (err error) {
 
 	keys := make(chan Event, 16)
 	r.suspendMu.Lock()
-	if r.suspendKeys != nil {
+	if r.suspendKeys != nil || r.handoffActive {
 		r.suspendMu.Unlock()
 		return ErrSuspendReentrant
 	}
 	r.suspendKeys = keys
 	r.suspendMu.Unlock()
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
 
 	// Remember what to put back. The terminal's own guards make each of these
 	// idempotent, so restoring something that was never on is harmless.
@@ -103,7 +105,7 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) (err error) {
 		// describes what used to be on it, so a diffing flush would send
 		// almost nothing. Force the next frame to redraw every cell.
 		r.terminal.Invalidate()
-		r.render()
+		_ = r.renderChecked()
 	}()
 
 	fn(keys)

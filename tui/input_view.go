@@ -131,7 +131,7 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 // syncBinding copies the input value back to the bound string and fires
 // OnChange.
 func (s *inputState) syncBinding() {
-	if s.binding != nil {
+	if s.binding != nil && *s.binding != s.input.Value() {
 		*s.binding = s.input.Value()
 		if s.onChange != nil {
 			s.onChange(*s.binding)

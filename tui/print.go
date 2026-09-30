@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -384,6 +385,7 @@ func (lp *LivePrinter) UpdateNoSync(view View) error {
 
 // update is the internal implementation shared by Update, UpdateWithFocus, and UpdateNoSync.
 func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
+	checked := &checkedLiveOutput{destination: lp.config.Output}
 	// Measure the view
 	_, viewHeight := view.size(lp.config.Width, 0)
 	if viewHeight == 0 {
@@ -401,15 +403,15 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		// After rendering N lines (with newlines between but not at end),
 		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
 		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
+			fmt.Fprintf(checked, "\033[%dA", lp.lastHeight-1)
 		}
 		// Move to beginning of line
-		fmt.Fprint(lp.config.Output, "\r")
+		fmt.Fprint(checked, "\r")
 	}
 
 	// Hide cursor on first update for cleaner display
 	if !lp.started {
-		fmt.Fprint(lp.config.Output, "\033[?25l")
+		fmt.Fprint(checked, "\033[?25l")
 		lp.hiddenCursor = true
 		lp.started = true
 	}
@@ -512,8 +514,8 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		finalOutput = output.String()
 	}
 
-	_, err = io.WriteString(lp.config.Output, finalOutput)
-	return err
+	_, err = io.WriteString(checked, finalOutput)
+	return errors.Join(err, checked.err)
 }
 
 // Stop finalizes the live region, moving the cursor below the content
@@ -532,16 +534,28 @@ func (lp *LivePrinter) Stop() {
 
 // Clear removes the live region content and resets state.
 func (lp *LivePrinter) Clear() {
+	_ = lp.clearChecked()
+}
+
+func (lp *LivePrinter) clearChecked() error {
+	var output strings.Builder
 	if lp.started && lp.lastHeight > 0 {
 		// Move up and clear
 		if lp.lastHeight > 1 {
-			fmt.Fprintf(lp.config.Output, "\033[%dA", lp.lastHeight-1)
+			fmt.Fprintf(&output, "\033[%dA", lp.lastHeight-1)
 		}
-		fmt.Fprint(lp.config.Output, "\r\033[0J")
+		fmt.Fprint(&output, "\r\033[0J")
+	}
+	if output.Len() > 0 {
+		checked := &checkedLiveOutput{destination: lp.config.Output}
+		if _, err := io.WriteString(checked, output.String()); err != nil {
+			return err
+		}
 	}
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state
 	lp.started = false
+	return nil
 }
 
 // renderToANSILive is like renderToANSI but clears each line for live updates.
@@ -722,4 +736,20 @@ func Live(fn func(update func(View)), opts ...PrintOption) error {
 
 	fn(update)
 	return lastErr
+}
+
+// checkedLiveOutput retains failures from cursor/protocol writes that precede
+// the cell frame, including writers that report a short write without an error.
+type checkedLiveOutput struct {
+	destination io.Writer
+	err         error
+}
+
+func (w *checkedLiveOutput) Write(data []byte) (int, error) {
+	n, err := w.destination.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	w.err = errors.Join(w.err, err)
+	return n, err
 }
