@@ -1053,7 +1053,7 @@ func main() {}
 
 Handoff retains complete application events already read, finalizes incomplete framing, and discards residual child input before resuming the same decoder. It restores exact modes and attributes, remeasures size, and repaints. `Stop` returns immediately during the child callback; cleanup waits for the callback to settle and skips interactive resume. Concurrent inline printing waits for ownership and writes only if restoration succeeds and shutdown has not won. `Suspend` retains its decoded-event contract.
 
-Run `go run ./examples/tui/terminal_handoff` or add `-inline` for a real editor. Ctrl-G edits the draft; editor return never submits it. `-editor` selects one executable without shell parsing. Nonempty Ctrl-D uses forward deletion; empty Ctrl-D remains available to the application's exit handler.
+Run `go run ./examples/tui/terminal_handoff` or add `-inline` for a real editor. Ctrl-O edits the draft; editor return never submits it. `-editor` selects one executable without shell parsing. Nonempty Ctrl-D uses forward deletion; empty Ctrl-D remains available to the application's exit handler.
 
 ## Related Packages
 

@@ -21,7 +21,7 @@ type editorApp struct {
 
 func (a *editorApp) View() tui.View {
 	return tui.Stack(
-		tui.Text("Draft · Ctrl-G editor · Ctrl-C quit"),
+		tui.Text("Draft · Ctrl-O editor · Ctrl-C quit"),
 		tui.InputField(&a.draft).ID("draft").Multiline(true).MaxHeight(8).Placeholder("Type a draft"),
 		tui.Text("%s", a.notice),
 	)
@@ -35,7 +35,7 @@ func (a *editorApp) HandleEvent(event tui.Event) []tui.Cmd {
 	if key.Key == tui.KeyCtrlC {
 		return []tui.Cmd{tui.Quit()}
 	}
-	if key.Key != tui.KeyCtrlG {
+	if key.Key != tui.KeyCtrlO {
 		return nil
 	}
 	file, err := os.CreateTemp("", "wonton-draft-*.txt")
