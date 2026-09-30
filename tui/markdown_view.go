@@ -160,7 +160,6 @@ func (m *MarkdownView) render(ctx *RenderContext) {
 	}
 
 	if m.sourceMarked && ctx.source != nil {
-		ctx.source.bind(m.content, m.sourceOffset)
 		ctx.source.addWords(m.rendered.words, m.sourceOffset)
 		if !m.rendered.sourceValid {
 			ctx.source.valid = false

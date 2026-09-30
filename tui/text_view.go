@@ -241,7 +241,6 @@ func (t *TextView) render(ctx *RenderContext) {
 		ctx.Fill(' ', t.style)
 	}
 	if t.sourceMarked && ctx.source != nil {
-		ctx.source.bind(t.content, t.sourceOffset)
 		for _, row := range sourceTextLines(t.content, t.sourceOffset, 0, false) {
 			ctx.source.addWords(segmentWords(row), 0)
 		}

@@ -154,8 +154,6 @@ func (s *ViewportState) SelectLine(x, y int) {
 	if s.sourceSelectRun(p, true) {
 		return
 	}
-	s.sourceAnchor, s.sourceCursor = nil, nil
-	s.sourceSnapshots = nil
 	line := s.itemLine(p.Item, p.Line)
 	if line.end == 0 {
 		// A blank line selects nothing. Returning before suspendFollow matters:
@@ -163,6 +161,8 @@ func (s *ViewportState) SelectLine(x, y int) {
 		// it and nothing to dismiss, and a chat would just stop following.
 		return
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	s.suspendFollow()
 	s.selAnchor = SelectionPoint{Item: p.Item, Line: p.Line, Col: 0}
 	s.selCursor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.end}
@@ -180,8 +180,6 @@ func (s *ViewportState) selectRun(x, y int, keep func(string) bool) {
 	if s.sourceSelectRun(p, false) {
 		return
 	}
-	s.sourceAnchor, s.sourceCursor = nil, nil
-	s.sourceSnapshots = nil
 	line := s.itemLine(p.Item, p.Line)
 	i := line.indexAt(p.Col)
 	if i >= len(line.text) || !keep(line.text[i]) {
@@ -194,6 +192,8 @@ func (s *ViewportState) selectRun(x, y int, keep func(string) bool) {
 	for last < len(line.text) && keep(line.text[last]) {
 		last++
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	s.suspendFollow()
 	s.selAnchor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.col[first]}
 	s.selCursor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.col[last]}

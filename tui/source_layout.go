@@ -315,6 +315,7 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 			l.valid = false
 		}
 	}
+	collectSourceBindings(view, l)
 	if !l.complete() {
 		l.valid = false
 	}
@@ -330,8 +331,12 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp bool) (*sourceEndpoint
 	if !l.valid {
 		return nil, false
 	}
-	if l.source == "" && clamp {
-		return nil, true
+	if clamp && len(l.cells) == 0 {
+		offset := len(l.source)
+		if p.Item < s.selAnchor.Item {
+			offset = 0
+		}
+		return &sourceEndpoint{item: p.Item, offset: offset, source: l.source}, true
 	}
 	offset, ok := l.hit(p.Col, p.Line, clamp)
 	if ok && !clamp {
@@ -370,7 +375,7 @@ func (s *ViewportState) validateSourceSelection() bool {
 		}
 		if aware {
 			old, selected := s.sourceSnapshots[i]
-			if !l.valid || selected && !strings.HasPrefix(l.source, old) || selected && i > start && i < end && !l.boundary(len(old)) {
+			if !selected || !l.valid || selected && !strings.HasPrefix(l.source, old) || selected && i > start && i < end && !l.boundary(len(old)) {
 				s.ClearSelection()
 				return false
 			}

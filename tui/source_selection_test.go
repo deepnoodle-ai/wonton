@@ -412,3 +412,93 @@ func TestSourceAnnotationKeepsDecodedMarkdownLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceUnsuccessfulLegacyGestureKeepsExactSelection(t *testing.T) {
+	for _, line := range []bool{false, true} {
+		v := &sourceItems{text: []string{"one two", "()"}, legacy: map[int]bool{1: true}}
+		if line {
+			v.text[1] = "\n"
+		}
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, v, 30, 10, 0)
+		s.SelectWord(2, 0)
+		if line {
+			s.SelectLine(2, 1)
+		} else {
+			s.SelectWord(2, 1)
+		}
+		if got := s.SelectedText(); got != "one" {
+			t.Fatalf("line=%v: %q", line, got)
+		}
+	}
+}
+func TestSourceLegacyToSourceModeClearsSelection(t *testing.T) {
+	v := &sourceItems{text: []string{"one two"}, legacy: map[int]bool{0: true}}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, v, 30, 10, 0)
+	s.SelectWord(0, 0)
+	if s.SelectedText() != "one" {
+		t.Fatal("legacy selection missing")
+	}
+	delete(v.legacy, 0)
+	s.Invalidate(0)
+	renderViewport(t, s, v, 30, 10, 0)
+	if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+		t.Fatalf("mode change retained selection %q", got)
+	}
+}
+
+type clippedSourceItems struct{ conflict bool }
+
+func (v clippedSourceItems) Len() int { return 3 }
+func (v clippedSourceItems) Source(i int) (string, bool) {
+	return []string{"first", "middle", "last"}[i], true
+}
+func (v clippedSourceItems) Item(i int) View {
+	source, _ := v.Source(i)
+	if i != 1 {
+		return Text("%s", source).SourceOffset(0)
+	}
+	if v.conflict {
+		return Group(Text("%s", source).SourceOffset(0), Text("long decoration"), Text("wrong").SourceOffset(0))
+	}
+	return Group(Text("long decoration"), Padding(1, Text("%s", source).SourceOffset(0)))
+}
+func TestSourceClippedDeclarationsStillValidate(t *testing.T) {
+	for _, conflict := range []bool{false, true} {
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, clippedSourceItems{conflict}, 10, 10, 0)
+		s.BeginSelection(0, 0)
+		s.ExtendSelection(4, 9)
+		s.EndSelection()
+		got := s.SelectedText()
+		if conflict {
+			if got != "" || s.HasSelection() {
+				t.Fatalf("conflict escaped: %q", got)
+			}
+		} else if got != "first\nmiddle\nlast" {
+			t.Fatalf("valid clipped declaration: %q", got)
+		}
+	}
+}
+func TestSourceBlankItemDoesNotStopDrag(t *testing.T) {
+	for _, blank := range []string{"", "\n", "\r\n", "\n\n"} {
+		s := &ViewportState{Follow: true}
+		v := &sourceItems{text: []string{"first", blank, "last"}}
+		renderViewport(t, s, v, 20, 10, 0)
+		s.BeginSelection(2, 0)
+		s.ExtendSelection(2, 1)
+		if !s.SelectionActive() {
+			t.Fatalf("blank %q ended drag", blank)
+		}
+		s.ExtendSelection(6, 9)
+		s.EndSelection()
+		want := "first\nlast"
+		if blank != "" {
+			want = "first\n" + blank + "\nlast"
+		}
+		if got := s.SelectedText(); got != want {
+			t.Fatalf("blank %q: %q", blank, got)
+		}
+	}
+}
