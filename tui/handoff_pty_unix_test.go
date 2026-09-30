@@ -4,6 +4,7 @@ package tui
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -234,7 +236,21 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 						_ = cmd.Wait()
 					}
 				}()
-				go io.Copy(io.Discard, master)
+				var output bytes.Buffer
+				outputDone := make(chan struct{})
+				go func() { defer close(outputDone); _, _ = io.Copy(&output, master) }()
+				finish := func() {
+					t.Helper()
+					if err := cmd.Wait(); err != nil {
+						t.Fatal(err)
+					}
+					select {
+					case <-outputDone:
+					case <-time.After(time.Second):
+						t.Fatal("terminal output did not settle")
+					}
+					assertHandoffKeyboardStacks(t, output.String())
+				}
 				messages := make(chan handoffPTYMessage, 16)
 				go func() {
 					scanner := bufio.NewScanner(readReport)
@@ -283,9 +299,7 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 					if message := wait("run-panic"); !strings.Contains(message.Text, "fixture child panic") {
 						t.Fatalf("panic=%q", message.Text)
 					}
-					if err := cmd.Wait(); err != nil {
-						t.Fatal(err)
-					}
+					finish()
 					return
 				}
 				wait("restored")
@@ -293,9 +307,7 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 					if message := wait("run-done"); message.Text != "" {
 						t.Fatalf("pending events dispatched after stop: %q", message.Text)
 					}
-					if err := cmd.Wait(); err != nil {
-						t.Fatal(err)
-					}
+					finish()
 					return
 				}
 				if _, err = master.Write([]byte("x\r\x03")); err != nil {
@@ -305,9 +317,7 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 					t.Fatalf("application keys=%q", keys.Text)
 				}
 				wait("run-done")
-				if err = cmd.Wait(); err != nil {
-					t.Fatal(err)
-				}
+				finish()
 			})
 		}
 	}
@@ -332,5 +342,39 @@ func TestHandoffUnsupportedAndNotRunningDoNotInvokeCallback(t *testing.T) {
 	inline.running = true
 	if operation, restore := inline.Handoff(callback); operation != ErrHandoffUnsupported || restore != nil {
 		t.Fatal(operation, restore)
+	}
+}
+
+// A terminal keeps separate keyboard stacks for main and alternate screens.
+// Start with a shell-owned main-screen setting and verify every runner push
+// returns to it, including Stop/panic cleanup after releasing the terminal.
+func assertHandoffKeyboardStacks(t *testing.T, output string) {
+	t.Helper()
+	main, alternate := []int{4}, []int{0}
+	onAlternate := false
+	commands := regexp.MustCompile("\\x1b\\[(\\?1049[hl]|>1u|<u)").FindAllString(output, -1)
+	for _, command := range commands {
+		switch command {
+		case "\x1b[?1049h":
+			onAlternate = true
+		case "\x1b[?1049l":
+			onAlternate = false
+		default:
+			stack := &main
+			if onAlternate {
+				stack = &alternate
+			}
+			if command == "\x1b[>1u" {
+				*stack = append(*stack, 1)
+			} else {
+				if len(*stack) < 2 {
+					t.Fatalf("keyboard cleanup popped a caller-owned setting: %q", commands)
+				}
+				*stack = (*stack)[:len(*stack)-1]
+			}
+		}
+	}
+	if onAlternate || !reflect.DeepEqual(main, []int{4}) || !reflect.DeepEqual(alternate, []int{0}) {
+		t.Fatalf("keyboard state main=%v alternate=%v onAlternate=%v commands=%q", main, alternate, onAlternate, commands)
 	}
 }

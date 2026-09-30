@@ -195,21 +195,19 @@ func (r *InlineApp) handoffSnapshot() (terminalstate.Transition, error) {
 	plain := func() error {
 		clearErr := r.live.clearChecked()
 		sequence := "\x1b[?25h"
-		if mouse {
+		if r.mouseEnabled {
 			sequence += "\x1b[?1006l\x1b[?1000l"
 		}
-		if kitty {
-			sequence += "\x1b[<u"
-		}
-		if paste {
+		keyboardErr := r.releaseKeyboard()
+		if r.pasteEnabled {
 			sequence += "\x1b[?2004l"
 		}
-		outputErr := checkedHandoffWrite(r.output, sequence)
-		if outputErr == nil {
+		complete, writeErr := terminalstate.WriteControl(r.output, sequence)
+		if complete {
 			r.live.hiddenCursor = false
-			r.pasteEnabled, r.kittyEnabled, r.mouseEnabled = false, false, false
+			r.pasteEnabled, r.mouseEnabled = false, false
 		}
-		return errors.Join(clearErr, outputErr, term.Restore(r.stdinFd, r.oldState))
+		return errors.Join(clearErr, keyboardErr, writeErr, terminalstate.Flush(r.output), term.Restore(r.stdinFd, r.oldState))
 	}
 	return terminalstate.Transition{Release: plain, Restore: func(stopping bool) error {
 		if stopping {
@@ -220,9 +218,7 @@ func (r *InlineApp) handoffSnapshot() (terminalstate.Transition, error) {
 		if paste {
 			sequence += "\x1b[?2004h"
 		}
-		if kitty {
-			sequence += "\x1b[>1u"
-		}
+
 		if mouse {
 			sequence += "\x1b[?1000h\x1b[?1006h"
 		}
@@ -231,15 +227,31 @@ func (r *InlineApp) handoffSnapshot() (terminalstate.Transition, error) {
 		} else {
 			sequence += "\x1b[?25h"
 		}
-		outputErr := checkedHandoffWrite(r.output, sequence)
-		if outputErr == nil {
+		complete, writeErr := terminalstate.WriteControl(r.output, sequence)
+		if complete {
 			r.live.hiddenCursor = hidden
-			r.pasteEnabled, r.kittyEnabled, r.mouseEnabled = paste, kitty, mouse
+			r.pasteEnabled, r.mouseEnabled = paste, mouse
 		}
-		return errors.Join(attributeErr, outputErr)
+		var keyboardErr error
+		if complete && kitty && !r.kittyEnabled {
+			r.kittyEnabled = true
+			_, keyboardErr = terminalstate.WriteControl(r.output, "\x1b[>1u")
+		}
+		return errors.Join(attributeErr, writeErr, keyboardErr, terminalstate.Flush(r.output))
 	}}, nil
 }
 
 func checkedHandoffWrite(out io.Writer, sequence string) error {
 	return terminalstate.Write(out, sequence)
+}
+
+func (r *InlineApp) releaseKeyboard() error {
+	if !r.kittyEnabled {
+		return nil
+	}
+	complete, err := terminalstate.WriteControl(r.output, "\x1b[<u")
+	if complete {
+		r.kittyEnabled = false
+	}
+	return err
 }

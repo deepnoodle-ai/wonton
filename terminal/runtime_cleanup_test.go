@@ -25,3 +25,27 @@ func TestRuntimeCleanupReportsProtocolAndAttributeFailures(t *testing.T) {
 		t.Fatalf("retry cleanup=%v", err)
 	}
 }
+
+type cleanupFlushWriter struct {
+	output []byte
+	err    error
+}
+
+func (w *cleanupFlushWriter) Write(data []byte) (int, error) {
+	w.output = append(w.output, data...)
+	return len(data), nil
+}
+func (w *cleanupFlushWriter) Flush() error { return w.err }
+func TestRuntimeCleanupDoesNotRepeatCompletedKeyboardPopAfterFlushFailure(t *testing.T) {
+	out := &cleanupFlushWriter{err: errors.New("flush failed")}
+	terminal := &Terminal{out: out, kittyEnabled: true}
+	if err := terminal.cleanupRuntime(false, true); !errors.Is(err, out.err) {
+		t.Fatal(err)
+	}
+	if err := terminal.cleanupRuntime(false, true); err != nil {
+		t.Fatal(err)
+	}
+	if string(out.output) != "\x1b[<u" {
+		t.Fatalf("repeated keyboard pop=%q", out.output)
+	}
+}

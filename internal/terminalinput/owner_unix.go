@@ -71,6 +71,12 @@ func (o *Owner) Read(dst []byte) (int, error) {
 		count, err := availableBytes(o.fd)
 		if err != nil {
 			o.mu.Unlock()
+			if errors.Is(err, unix.EIO) {
+				state := []unix.PollFd{{Fd: int32(o.fd), Events: unix.POLLIN}}
+				if _, pollErr := unix.Poll(state, 0); pollErr == nil && state[0].Revents&(unix.POLLHUP|unix.POLLERR) != 0 {
+					return 0, io.EOF
+				}
+			}
 			return 0, err
 		}
 		if count > 0 {

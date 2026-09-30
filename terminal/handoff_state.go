@@ -36,15 +36,29 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		// Attempt all plain-terminal cleanup even if a protocol write fails.
-		outputErr := terminalstate.Write(t.out, plainModes(alt, paste, kitty, mouse))
+		var keyboardErr error
+		if t.kittyEnabled {
+			complete, err := terminalstate.WriteControl(t.out, "\x1b[<u")
+			keyboardErr = err
+			if complete {
+				t.kittyEnabled = false
+			}
+		}
+		// Keep the active screen until its keyboard push has been removed.
+		leaveAlt := t.altScreen && !t.kittyEnabled
+		complete, writeErr := terminalstate.WriteControl(t.out, plainModes(leaveAlt, t.bracketedPaste, false, t.mouseMode))
+		if complete {
+			if leaveAlt {
+				t.altScreen = false
+			}
+			t.cursorHidden, t.bracketedPaste, t.mouseMode = false, false, MouseModeOff
+		}
+		outputErr := errors.Join(keyboardErr, writeErr, terminalstate.Flush(t.out))
 		var attributeErr error
 		if raw && oldState != nil {
 			attributeErr = term.Restore(t.fd, oldState)
 		} else {
 			attributeErr = term.Restore(t.fd, attributes)
-		}
-		if outputErr == nil {
-			t.altScreen, t.cursorHidden, t.bracketedPaste, t.kittyEnabled, t.mouseMode = false, false, false, false, MouseModeOff
 		}
 		if attributeErr == nil {
 			t.rawMode = false
@@ -61,13 +75,20 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 			t.mu.Lock()
 			defer t.mu.Unlock()
 			attributeErr := term.Restore(t.fd, attributes)
-			outputErr := terminalstate.Write(t.out, activeModes(alt, hidden, paste, kitty, mouse))
+			complete, writeErr := terminalstate.WriteControl(t.out, activeModes(alt, hidden, paste, false, mouse))
+			if complete {
+				t.altScreen, t.cursorHidden, t.bracketedPaste, t.mouseMode = alt, hidden, paste, mouse
+			}
+			var keyboardErr error
+			if complete && kitty && !t.kittyEnabled {
+				// Track an attempted push too: cleanup must terminate a partial enable.
+				t.kittyEnabled = true
+				_, keyboardErr = terminalstate.WriteControl(t.out, "\x1b[>1u")
+			}
+			outputErr := errors.Join(writeErr, keyboardErr, terminalstate.Flush(t.out))
 			if attributeErr == nil {
 				t.rawMode = raw
 				t.oldState = oldState
-			}
-			if outputErr == nil {
-				t.altScreen, t.cursorHidden, t.bracketedPaste, t.kittyEnabled, t.mouseMode = alt, hidden, paste, kitty, mouse
 			}
 			return errors.Join(attributeErr, outputErr)
 		},
@@ -125,10 +146,11 @@ func (t *Terminal) cleanupRuntime(raw, kitty bool) error {
 	defer t.mu.Unlock()
 	var outputErr, rawErr error
 	if kitty && t.kittyEnabled {
-		outputErr = terminalstate.Write(t.out, "\x1b[<u")
-		if outputErr == nil {
+		complete, writeErr := terminalstate.WriteControl(t.out, "\x1b[<u")
+		if complete {
 			t.kittyEnabled = false
 		}
+		outputErr = errors.Join(writeErr, terminalstate.Flush(t.out))
 	}
 	if raw && t.rawMode && t.oldState != nil {
 		rawErr = term.Restore(t.fd, t.oldState)

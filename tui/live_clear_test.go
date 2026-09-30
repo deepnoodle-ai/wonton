@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +36,29 @@ func TestLiveClearChecksWritesWithoutDraining(t *testing.T) {
 	out.short = true
 	if err := printer.clearChecked(); !errors.Is(err, io.ErrShortWrite) || !printer.started {
 		t.Fatalf("short clear: %v", err)
+	}
+}
+
+type cleanupOutputProbe struct {
+	text     []byte
+	flushErr error
+}
+
+func (w *cleanupOutputProbe) Write(data []byte) (int, error) {
+	w.text = append(w.text, data...)
+	return len(data), nil
+}
+func (w *cleanupOutputProbe) Flush() error { return w.flushErr }
+func TestInlineCleanupDoesNotRepeatCompletedKeyboardPop(t *testing.T) {
+	out := &cleanupOutputProbe{flushErr: errors.New("flush failed")}
+	app := NewInlineApp(WithInlineOutput(out), WithInlineKittyKeyboard(true))
+	app.kittyEnabled = true // Includes an attempted startup enable.
+	for range 2 {
+		if err := app.cleanup(); !errors.Is(err, out.flushErr) {
+			t.Fatal(err)
+		}
+	}
+	if strings.Count(string(out.text), "\x1b[<u") != 1 {
+		t.Fatalf("repeated keyboard pops=%q", out.text)
 	}
 }

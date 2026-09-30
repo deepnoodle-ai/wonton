@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
 	"github.com/deepnoodle-ai/wonton/terminal"
 	"golang.org/x/term"
 )
@@ -395,7 +396,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		return fmt.Errorf("failed to enable raw mode: %w", err)
 	}
 
-	// Enable only successfully written terminal features.
+	// Track attempted enables so failed startup also terminates partial sequences.
 	features := []struct {
 		wanted   bool
 		sequence string
@@ -409,6 +410,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		if !feature.wanted {
 			continue
 		}
+		*feature.enabled = true
 		if err := checkedHandoffWrite(r.output, feature.sequence); err != nil {
 			cleanupErr := r.cleanup()
 			r.mu.Lock()
@@ -416,7 +418,6 @@ func (r *InlineApp) Run(app InlineApplication) error {
 			r.mu.Unlock()
 			return errors.Join(fmt.Errorf("enable terminal features: %w", err), cleanupErr)
 		}
-		*feature.enabled = true
 	}
 
 	if err := r.initializeManagedInput(); err != nil {
@@ -548,20 +549,19 @@ func (r *InlineApp) cleanup() error {
 	if r.live.started && r.live.lastHeight > 0 {
 		sequence += "\r\n"
 	}
-	if r.config.MouseTracking {
+	if r.mouseEnabled {
 		sequence += "\x1b[?1006l\x1b[?1000l"
 	}
-	if r.config.KittyKeyboard {
-		sequence += "\x1b[<u"
-	}
-	if r.config.BracketedPaste {
+	keyboardErr := r.releaseKeyboard()
+	if r.pasteEnabled {
 		sequence += "\x1b[?2004l"
 	}
-	outputErr := checkedHandoffWrite(r.output, sequence)
-	if outputErr == nil {
+	complete, writeErr := terminalstate.WriteControl(r.output, sequence)
+	if complete {
 		r.live.hiddenCursor = false
-		r.pasteEnabled, r.kittyEnabled, r.mouseEnabled = false, false, false
+		r.pasteEnabled, r.mouseEnabled = false, false
 	}
+	outputErr := errors.Join(keyboardErr, writeErr, terminalstate.Flush(r.output))
 	var attributeErr error
 	if r.oldState != nil {
 		attributeErr = term.Restore(r.stdinFd, r.oldState)
