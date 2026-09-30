@@ -2,16 +2,19 @@ package tui
 
 import (
 	"fmt"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // TextView displays styled text
 type TextView struct {
-	content    string
-	style      Style
-	wrap       bool
-	align      Alignment
-	fillBg     bool
-	flexFactor int
+	content      string
+	style        Style
+	wrap         bool
+	align        Alignment
+	fillBg       bool
+	flexFactor   int
+	sourceOffset int
+	sourceMarked bool
 }
 
 // Text creates a text view with optional Printf-style formatting.
@@ -221,7 +224,74 @@ func (t *TextView) Animate(animation TextAnimation) *AnimatedTextView {
 	}
 }
 
+// SourceOffset marks this leaf as the source slice beginning at offset in
+// ViewportSourceItems.Source. Unmarked leaves remain decorations. The viewport
+// validates the binding; invalid bindings never fall back to rendered text.
+func (t *TextView) SourceOffset(offset int) *TextView {
+	t.sourceMarked = true
+	t.sourceOffset = offset
+	return t
+}
+func (t *TextView) sourceRender(ctx *RenderContext) {
+	width, height := ctx.Size()
+	if ctx.source != nil {
+		ctx.source.bind(t.content, t.sourceOffset)
+	}
+	if t.fillBg {
+		ctx.Fill(' ', t.style)
+	}
+	rows := sourceTextLines(t.content, t.sourceOffset, width, t.wrap)
+	if !t.wrap && len(rows) > 1 {
+		rows = rows[:1]
+	}
+	for y, row := range rows {
+		if y >= height {
+			break
+		}
+		x, total := 0, 0
+		for _, seg := range row {
+			total += runewidth.StringWidth(seg.Text)
+		}
+		if t.align == AlignCenter {
+			x = max(0, (width-total)/2)
+		} else if t.align == AlignRight {
+			x = max(0, width-total)
+		}
+		for _, seg := range row {
+			ctx.PrintTruncated(x, y, seg.Text, t.style)
+			ctx.recordSegment(x, y, seg, 0)
+			x += runewidth.StringWidth(seg.Text)
+		}
+	}
+}
+func (t *TextView) sourceSize(maxWidth, maxHeight int) (int, int) {
+	rows := sourceTextLines(t.content, t.sourceOffset, maxWidth, t.wrap)
+	if !t.wrap && len(rows) > 1 {
+		rows = rows[:1]
+	}
+	w := 0
+	for _, row := range rows {
+		n := 0
+		for _, seg := range row {
+			n += runewidth.StringWidth(seg.Text)
+		}
+		w = max(w, n)
+	}
+	h := len(rows)
+	if maxWidth > 0 {
+		w = min(w, maxWidth)
+	}
+	if maxHeight > 0 {
+		h = min(h, maxHeight)
+	}
+	return w, h
+}
+
 func (t *TextView) render(ctx *RenderContext) {
+	if t.sourceMarked {
+		t.sourceRender(ctx)
+		return
+	}
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -262,6 +332,9 @@ func (t *TextView) render(ctx *RenderContext) {
 }
 
 func (t *TextView) size(maxWidth, maxHeight int) (int, int) {
+	if t.sourceMarked {
+		return t.sourceSize(maxWidth, maxHeight)
+	}
 	w, h := MeasureText(t.content)
 
 	// For wrapped text, expand to fill available width

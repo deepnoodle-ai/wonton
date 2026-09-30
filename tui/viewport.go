@@ -47,6 +47,9 @@ type ViewportState struct {
 	anchorItem int // item at the top of the viewport
 	anchorLine int // line within that item shown on the viewport's first row
 
+	sourceAnchor       *sourceEndpoint
+	sourceCursor       *sourceEndpoint
+	sourceSnapshots    map[int]string
 	selAnchor          SelectionPoint // where the drag started
 	selCursor          SelectionPoint // where it has been dragged to
 	hasSelection       bool
@@ -72,8 +75,10 @@ type viewportEntry struct {
 	// lines is what itemLines produced for this item, or nil until something
 	// asks. It hangs off the same entry as the height so it is dropped by the
 	// same Invalidate, InvalidateAll and width change.
-	lines      []itemLine
-	linesValid bool
+	lines       []itemLine
+	linesValid  bool
+	source      *sourceLayout
+	sourceValid bool
 }
 
 // Invalidate drops the cached view and height for item i. Call it whenever an
@@ -87,6 +92,9 @@ func (s *ViewportState) Invalidate(i int) {
 // InvalidateAll drops every cached view and height. Call it when the list is
 // replaced wholesale, so indices no longer mean what they did.
 func (s *ViewportState) InvalidateAll() {
+	if s.sourceAnchor != nil || s.sourceCursor != nil || len(s.sourceSnapshots) > 0 {
+		s.ClearSelection()
+	}
 	s.cache = s.cache[:0]
 }
 
@@ -462,7 +470,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.gap = v.gap
 	if width != s.width {
 		// Every cached height was measured at the old width and is now wrong.
-		s.InvalidateAll()
+		s.cache = s.cache[:0]
 		s.width = width
 	}
 	s.Width, s.Height = width, height

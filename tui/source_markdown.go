@@ -1,0 +1,148 @@
+package tui
+
+import (
+	"html"
+	"strings"
+	"unicode"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
+	"github.com/yuin/goldmark/text"
+)
+
+// SourceOffset declares the position of this Markdown source in the canonical
+// ViewportSourceItems.Source. Surrounding unmarked views are decorations.
+func (m *MarkdownView) SourceOffset(offset int) *MarkdownView {
+	m.sourceMarked = true
+	m.sourceOffset = offset
+	m.renderer.sourceMarked = true
+	m.rendered = nil
+	return m
+}
+
+func sourceSegment(source []byte, segment text.Segment, style Style, decode bool) StyledSegment {
+	// Goldmark padding and EOF newlines are presentation, not original bytes.
+	raw := string(source[segment.Start:segment.Stop])
+	seg := StyledSegment{Style: style}
+	if segment.Padding > 0 {
+		seg.Text = strings.Repeat(" ", segment.Padding)
+	}
+	for at := 0; at < len(raw); {
+		size := 0
+		shown := ""
+		if decode && raw[at] == '\\' && at+1 < len(raw) && strings.ContainsRune("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", rune(raw[at+1])) {
+			shown = raw[at+1 : at+2]
+			size = 2
+		} else if decode && raw[at] == '&' {
+			if end := strings.IndexByte(raw[at:], ';'); end >= 0 && end <= 32 {
+				token := raw[at : at+end+1]
+				decoded := html.UnescapeString(token)
+				if decoded != token {
+					shown = decoded
+					size = len(token)
+				}
+			}
+		}
+		if size == 0 {
+			for g := range runewidth.Graphemes(raw[at:]) {
+				shown = g
+				size = len(g)
+				break
+			}
+		}
+		if shown != "\n" && shown != "\r\n" && shown != "\t" {
+			for _, r := range shown {
+				if unicode.IsControl(r) || r == 0x202d || r == 0x202e || r >= 0x2066 && r <= 0x2069 {
+					shown = "�"
+					break
+				}
+			}
+		}
+		start := len(seg.Text)
+		seg.Text += shown
+		seg.source = append(seg.source, sourceToken{start, len(seg.Text), segment.Start + at, segment.Start + at + size})
+		at += size
+	}
+	if segment.ForceNewline && !strings.HasSuffix(seg.Text, "\n") {
+		seg.Text += "\n"
+	}
+	return seg
+}
+
+// Literal layout preserves code whitespace while wrapping styled graphemes.
+func wrapLiteralSegments(segments []StyledSegment, width int) [][]StyledSegment {
+	var rows [][]StyledSegment
+	var row []StyledSegment
+	col := 0
+	for _, seg := range segments {
+		at := 0
+		for g, w := range runewidth.Graphemes(seg.Text) {
+			part := segmentSlice(seg, at, at+len(g))
+			at += len(g)
+			if g == "\n" || g == "\r\n" {
+				rows = append(rows, row)
+				row = nil
+				col = 0
+				continue
+			}
+			if g == "\t" {
+				part.Text = "    "
+				w = 4
+				for i := range part.source {
+					part.source[i].lo = 0
+					part.source[i].hi = 4
+				}
+			}
+			if width > 0 && col+w > width && col > 0 {
+				rows = append(rows, row)
+				row = nil
+				col = 0
+			}
+			row = append(row, part)
+			col += w
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language string, ctx *renderContext) {
+	code := StyledSegment{Style: mr.Theme.CodeBlockStyle}
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		code = appendSegment(code, sourceSegment(ctx.source, line, mr.Theme.CodeBlockStyle, false))
+	}
+	var styled []StyledSegment
+	if language != "" {
+		highlighted := mr.highlightCode(code.Text, language)
+		at := 0
+		for _, row := range highlighted {
+			for _, seg := range row {
+				end := at + len(seg.Text)
+				if end > len(code.Text) || code.Text[at:end] != seg.Text {
+					ctx.result.sourceValid = false
+					return
+				}
+				part := segmentSlice(code, at, end)
+				part.Style = seg.Style
+				styled = append(styled, part)
+				at = end
+			}
+			if at < len(code.Text) && code.Text[at] == '\n' {
+				styled = append(styled, segmentSlice(code, at, at+1))
+				at++
+			}
+		}
+		if at != len(code.Text) {
+			styled = nil
+		}
+	}
+	if styled == nil {
+		styled = []StyledSegment{code}
+	}
+	for _, row := range wrapLiteralSegments(styled, mr.MaxWidth-ctx.indent-mr.TabWidth) {
+		ctx.result.Lines = append(ctx.result.Lines, StyledLine{Segments: row, Indent: ctx.indent + mr.TabWidth})
+	}
+	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+}

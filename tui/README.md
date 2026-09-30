@@ -1017,3 +1017,5 @@ a.printResults()    // Print() → UpdateNoSync(LiveView()) sees running=false (
 - [terminal](../terminal) - Low-level terminal control and ANSI sequences
 - [termsession](../termsession) - Terminal session recording and playback
 - [termtest](../termtest) - Terminal output testing with screen simulation
+
+Source-aware transcript selection can preserve original text across Markdown and wrapping. See [source selection](../docs/source-selection.md) and `ExampleViewportSourceItems`.

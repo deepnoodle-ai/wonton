@@ -11,11 +11,13 @@ import "image"
 // Views should use SubContext() when rendering children to properly scope
 // the drawing area while preserving context information.
 type RenderContext struct {
-	frame      RenderFrame
-	frameCount uint64
-	bounds     image.Rectangle
-	focusMgr   *FocusManager
-	reg        *registries
+	frame        RenderFrame
+	frameCount   uint64
+	bounds       image.Rectangle
+	focusMgr     *FocusManager
+	reg          *registries
+	source       *sourceLayout
+	sourceOrigin image.Point
 }
 
 // NewRenderContext creates a new render context.
@@ -32,11 +34,13 @@ func NewRenderContext(frame RenderFrame, frameCount uint64) *RenderContext {
 // WithFocusManager returns a new context with the given focus manager.
 func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
 	return &RenderContext{
-		frame:      c.frame,
-		frameCount: c.frameCount,
-		bounds:     c.bounds,
-		focusMgr:   fm,
-		reg:        c.reg,
+		frame:        c.frame,
+		frameCount:   c.frameCount,
+		bounds:       c.bounds,
+		focusMgr:     fm,
+		reg:          c.reg,
+		source:       c.source,
+		sourceOrigin: c.sourceOrigin,
 	}
 }
 
@@ -45,11 +49,13 @@ func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
 // interactive state with the runtime that is rendering them.
 func (c *RenderContext) withRegistries(reg *registries) *RenderContext {
 	return &RenderContext{
-		frame:      c.frame,
-		frameCount: c.frameCount,
-		bounds:     c.bounds,
-		focusMgr:   c.focusMgr,
-		reg:        reg,
+		frame:        c.frame,
+		frameCount:   c.frameCount,
+		bounds:       c.bounds,
+		focusMgr:     c.focusMgr,
+		reg:          reg,
+		source:       c.source,
+		sourceOrigin: c.sourceOrigin,
 	}
 }
 
@@ -100,11 +106,13 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 	clippedBounds := absoluteBounds.Intersect(c.bounds)
 
 	return &RenderContext{
-		frame:      c.frame.SubFrame(clippedBounds),
-		frameCount: c.frameCount,
-		bounds:     image.Rect(0, 0, clippedBounds.Dx(), clippedBounds.Dy()),
-		focusMgr:   c.focusMgr,
-		reg:        c.reg,
+		frame:        c.frame.SubFrame(clippedBounds),
+		frameCount:   c.frameCount,
+		bounds:       image.Rect(0, 0, clippedBounds.Dx(), clippedBounds.Dy()),
+		focusMgr:     c.focusMgr,
+		reg:          c.reg,
+		source:       c.source,
+		sourceOrigin: c.sourceOrigin.Add(clippedBounds.Min),
 	}
 }
 
@@ -112,6 +120,7 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 
 // SetCell sets a character at the given position with a style.
 func (c *RenderContext) SetCell(x, y int, char rune, style Style) {
+	c.clearSource(x, y, 1, 1)
 	c.frame.SetCell(x, y, char, style)
 }
 
@@ -139,26 +148,32 @@ func (c *RenderContext) RestyleCell(x, y int, style Style) {
 // PrintStyled prints text at the given position with a style.
 // Text wraps at the frame edge.
 func (c *RenderContext) PrintStyled(x, y int, text string, style Style) {
+	c.clearSourceText(x, y, text, true)
 	c.frame.PrintStyled(x, y, text, style)
 }
 
 // PrintTruncated prints text at the given position, truncating at the frame edge.
 func (c *RenderContext) PrintTruncated(x, y int, text string, style Style) {
+	c.clearSourceText(x, y, text, false)
 	c.frame.PrintTruncated(x, y, text, style)
 }
 
 // FillStyled fills a rectangular area with a character and style.
 func (c *RenderContext) FillStyled(x, y, width, height int, char rune, style Style) {
+	c.clearSource(x, y, width, height)
 	c.frame.FillStyled(x, y, width, height, char, style)
 }
 
 // Fill fills the entire context area with a character and style.
 func (c *RenderContext) Fill(char rune, style Style) {
+	w, h := c.Size()
+	c.clearSource(0, 0, w, h)
 	c.frame.Fill(char, style)
 }
 
 // PrintHyperlink prints a clickable hyperlink.
 func (c *RenderContext) PrintHyperlink(x, y int, link Hyperlink) {
+	c.clearSourceText(x, y, link.Text, false)
 	c.frame.PrintHyperlink(x, y, link)
 }
 
@@ -178,11 +193,17 @@ func (c *RenderContext) AbsoluteBounds() image.Rectangle {
 // custom frame wrappers (like scroll views).
 func (c *RenderContext) WithFrame(frame RenderFrame) *RenderContext {
 	w, h := frame.Size()
+	origin := c.sourceOrigin
+	if offset, ok := frame.(*scrollRenderFrame); ok {
+		origin = origin.Add(image.Pt(offset.offsetX, -offset.offsetY))
+	}
 	return &RenderContext{
-		frame:      frame,
-		frameCount: c.frameCount,
-		bounds:     image.Rect(0, 0, w, h),
-		focusMgr:   c.focusMgr,
-		reg:        c.reg,
+		frame:        frame,
+		frameCount:   c.frameCount,
+		bounds:       image.Rect(0, 0, w, h),
+		focusMgr:     c.focusMgr,
+		reg:          c.reg,
+		source:       c.source,
+		sourceOrigin: origin,
 	}
 }

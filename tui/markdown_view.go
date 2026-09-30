@@ -6,14 +6,16 @@ import (
 
 // MarkdownView displays rendered markdown content.
 type MarkdownView struct {
-	content   string
-	scrollY   *int
-	theme     MarkdownTheme
-	maxWidth  int
-	height    int
-	renderer  *MarkdownRenderer
-	rendered  *RenderedMarkdown
-	lastWidth int // track last render width for cache invalidation
+	content      string
+	scrollY      *int
+	theme        MarkdownTheme
+	maxWidth     int
+	height       int
+	renderer     *MarkdownRenderer
+	rendered     *RenderedMarkdown
+	sourceMarked bool
+	sourceOffset int
+	lastWidth    int // track last render width for cache invalidation
 }
 
 // Markdown creates a markdown view with the given content.
@@ -157,6 +159,12 @@ func (m *MarkdownView) render(ctx *RenderContext) {
 		*m.scrollY = scrollY
 	}
 
+	if m.sourceMarked && ctx.source != nil {
+		ctx.source.bind(m.content, m.sourceOffset)
+		if !m.rendered.sourceValid {
+			ctx.source.valid = false
+		}
+	}
 	// Render visible lines
 	endLine := scrollY + height
 	if endLine > len(m.rendered.Lines) {
@@ -183,6 +191,9 @@ func (m *MarkdownView) render(ctx *RenderContext) {
 				ctx.PrintTruncated(x, y, seg.Text, seg.Style)
 			}
 
+			if m.sourceMarked {
+				ctx.recordSegment(x, y, seg, m.sourceOffset)
+			}
 			x += runewidth.StringWidth(seg.Text)
 
 			// Check if we've exceeded the width
