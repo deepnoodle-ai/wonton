@@ -280,9 +280,8 @@ func (r *Runtime) Run() error {
 	if r.resizeUnsub != nil {
 		r.resizeUnsub()
 	}
-	if r.terminal.IsKittyProtocolEnabled() {
-		r.terminal.DisableEnhancedKeyboard()
-	}
+	// Disable also cancels an incomplete enable without popping a keyboard stack.
+	r.terminal.DisableEnhancedKeyboard()
 	r.terminal.DisableRawMode()
 
 	// Call Destroy if implemented

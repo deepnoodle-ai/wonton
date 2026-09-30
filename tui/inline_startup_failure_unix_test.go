@@ -70,27 +70,50 @@ func TestInlineStartupFailurePTYHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fullscreen := strings.HasPrefix(scenario, "fullscreen-")
+	scenario = strings.TrimPrefix(scenario, "fullscreen-")
 	out := &startupFailureOutput{scenario: scenario}
-	app := NewInlineApp(WithInlineOutput(out), WithInlineBracketedPaste(true), WithInlineKittyKeyboard(true), WithInlineMouseTracking(true))
-	runErr := app.Run(&handoffPTYApplication{})
+	var runErr error
+	var running, keyboardEnabled, keyboardFraming bool
+	if fullscreen {
+		terminal := NewTestTerminal(80, 24, out)
+		runtime := NewRuntime(terminal, &handoffPTYApplication{}, 30)
+		runtime.SetKittyKeyboard(true)
+		source := NewMockInputSource()
+		source.Close()
+		runtime.SetInputSource(source)
+		runtime.Stop()
+		runErr = runtime.Run()
+		running, keyboardEnabled = runtime.running, terminal.IsKittyProtocolEnabled()
+		if terminal.IsRawMode() {
+			t.Fatal("Run returned in raw mode")
+		}
+		if (scenario == "zero" || scenario == "short") && strings.Count(out.text.String(), "\x18") != 1 {
+			t.Fatalf("Run did not cancel incomplete framing: %q", out.text.String())
+		}
+		// Cleanup belongs to Run. No Terminal.Close call supplies a missing CAN.
+	} else {
+		app := NewInlineApp(WithInlineOutput(out), WithInlineBracketedPaste(true), WithInlineKittyKeyboard(true), WithInlineMouseTracking(true))
+		runErr = app.Run(&handoffPTYApplication{})
+		running, keyboardEnabled, keyboardFraming = app.running, app.kittyEnabled, app.kittyFraming
+		if err := app.cleanup(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	after, err := handoffTestAttributes(int(os.Stdin.Fd()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !errors.Is(runErr, startupWriteFailure) || !reflect.DeepEqual(before, after) || app.running || app.kittyEnabled || app.kittyFraming {
-		t.Fatalf("startup=%v original=%#v final=%#v modes=%v/%v", runErr, before, after, app.kittyEnabled, app.kittyFraming)
+	if (!fullscreen && !errors.Is(runErr, startupWriteFailure)) || (fullscreen && runErr != nil) || !reflect.DeepEqual(before, after) || running || keyboardEnabled || keyboardFraming {
+		t.Fatalf("startup=%v original=%#v final=%#v modes=%v/%v", runErr, before, after, keyboardEnabled, keyboardFraming)
 	}
 	assertHandoffKeyboardStacks(t, out.text.String())
-	// Cleanup is also safe before watcher setup and after a previous cleanup.
-	if err := app.cleanup(); err != nil {
-		t.Fatal(err)
-	}
 	if err := json.NewEncoder(report).Encode("restored"); err != nil {
 		t.Fatal(err)
 	}
 }
 func TestInlineStartupOutputFailuresRestoreTerminal(t *testing.T) {
-	for _, scenario := range []string{"paste", "zero", "short", "full-error", "flush", "mouse"} {
+	for _, scenario := range []string{"paste", "zero", "short", "full-error", "flush", "mouse", "fullscreen-zero", "fullscreen-short", "fullscreen-full-error"} {
 		t.Run(scenario, func(t *testing.T) {
 			readReport, writeReport, err := os.Pipe()
 			if err != nil {
