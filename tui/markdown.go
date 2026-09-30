@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
@@ -91,6 +92,7 @@ type MarkdownRenderer struct {
 	TableMaxWidth int // Maximum width for tables (0 = use MaxWidth)
 	TabWidth      int // Width of tab character in spaces
 	parser        goldmark.Markdown
+	sourceMarked  bool
 }
 
 // NewMarkdownRenderer creates a new markdown renderer with the default theme
@@ -126,11 +128,14 @@ type StyledSegment struct {
 	Text      string
 	Style     Style
 	Hyperlink *Hyperlink // Optional hyperlink
+	source    []sourceToken
 }
 
 // RenderedMarkdown contains the fully rendered markdown content
 type RenderedMarkdown struct {
-	Lines []StyledLine
+	Lines       []StyledLine
+	sourceValid bool
+	words       []sourceWordToken
 }
 
 // Render parses and renders markdown content
@@ -141,7 +146,7 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 	doc := mr.parser.Parser().Parse(reader)
 
 	result := &RenderedMarkdown{
-		Lines: []StyledLine{},
+		Lines: []StyledLine{}, sourceValid: true,
 	}
 
 	ctx := &renderContext{
@@ -367,6 +372,10 @@ func (mr *MarkdownRenderer) renderListItem(node *ast.ListItem, ctx *renderContex
 }
 
 func (mr *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, ctx *renderContext) {
+	if mr.sourceMarked {
+		mr.renderSourceCode(node.Lines(), "", ctx)
+		return
+	}
 	lines := node.Lines()
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
@@ -386,6 +395,10 @@ func (mr *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, ctx *renderCont
 }
 
 func (mr *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, ctx *renderContext) {
+	if mr.sourceMarked {
+		mr.renderSourceCode(node.Lines(), string(node.Language(ctx.source)), ctx)
+		return
+	}
 	// Get language for syntax highlighting
 	language := string(node.Language(ctx.source))
 
@@ -473,6 +486,9 @@ func (mr *MarkdownRenderer) extractInlineSegments(node ast.Node, ctx *renderCont
 	// This fixes cases where goldmark splits text at underscore boundaries
 	// (e.g., "read_file" becomes ["read_", "file"]) even when no emphasis
 	// is applied.
+	if mr.sourceMarked {
+		ctx.result.words = append(ctx.result.words, segmentWords(segments)...)
+	}
 	segments = mergeAdjacentSegments(segments)
 
 	return segments
@@ -495,7 +511,7 @@ func mergeAdjacentSegments(segments []StyledSegment) []StyledSegment {
 
 		// Merge if same style and neither has a hyperlink
 		if current.Style == next.Style && current.Hyperlink == nil && next.Hyperlink == nil {
-			current.Text += next.Text
+			current = appendSegment(current, next)
 		} else {
 			result = append(result, current)
 			current = next
@@ -509,11 +525,7 @@ func mergeAdjacentSegments(segments []StyledSegment) []StyledSegment {
 func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderContext, currentStyle Style, segments *[]StyledSegment) {
 	switch n := node.(type) {
 	case *ast.Text:
-		text := string(n.Segment.Value(ctx.source))
-		*segments = append(*segments, StyledSegment{
-			Text:  text,
-			Style: currentStyle,
-		})
+		*segments = append(*segments, sourceSegment(ctx.source, n.Segment, currentStyle, true, mr.sourceMarked))
 		// Check if this text node ends with a soft line break (becomes a space)
 		if n.SoftLineBreak() {
 			*segments = append(*segments, StyledSegment{
@@ -530,24 +542,21 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		}
 
 	case *ast.String:
+		if mr.sourceMarked {
+			ctx.result.sourceValid = false
+		}
 		*segments = append(*segments, StyledSegment{
 			Text:  string(n.Value),
 			Style: currentStyle,
 		})
 
 	case *ast.CodeSpan:
-		// CodeSpan contains Text children - extract their content
-		var codeText strings.Builder
+		style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			if textNode, ok := child.(*ast.Text); ok {
-				codeText.Write(textNode.Segment.Value(ctx.source))
+			if t, ok := child.(*ast.Text); ok {
+				*segments = append(*segments, sourceSegment(ctx.source, t.Segment, style, false, mr.sourceMarked))
 			}
 		}
-		style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
-		*segments = append(*segments, StyledSegment{
-			Text:  codeText.String(),
-			Style: style,
-		})
 
 	case *ast.Emphasis:
 		style := currentStyle
@@ -562,27 +571,23 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		}
 
 	case *ast.Link:
-		dest := string(n.Destination)
-
-		// Extract link text
-		var linkText strings.Builder
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			if text, ok := child.(*ast.Text); ok {
-				linkText.Write(text.Segment.Value(ctx.source))
-			}
-		}
-
 		style := mr.mergeStyles(currentStyle, mr.Theme.LinkStyle)
-
-		*segments = append(*segments, StyledSegment{
-			Text:  linkText.String(),
-			Style: style,
-			Hyperlink: &Hyperlink{
-				URL:   dest,
-				Text:  linkText.String(),
-				Style: style,
-			},
-		})
+		var leaves []StyledSegment
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			mr.extractInlineSegmentsRec(child, ctx, style, &leaves)
+		}
+		destination := strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return -1
+			}
+			return r
+		}, string(n.Destination))
+		// Goldmark can split one link label at delimiter boundaries. Merge
+		// equal styles before wrapping so those boundaries add no spaces.
+		for _, seg := range mergeAdjacentSegments(leaves) {
+			seg.Hyperlink = &Hyperlink{URL: destination, Text: seg.Text, Style: style}
+			*segments = append(*segments, seg)
+		}
 
 	default:
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
@@ -691,11 +696,11 @@ func splitSegmentsAtNewlines(segments []StyledSegment) [][]StyledSegment {
 				currentLine = nil
 			}
 			if part != "" {
-				currentLine = append(currentLine, StyledSegment{
-					Text:      part,
-					Style:     seg.Style,
-					Hyperlink: seg.Hyperlink,
-				})
+				lo := 0
+				for j := 0; j < i; j++ {
+					lo += len(parts[j]) + 1
+				}
+				currentLine = append(currentLine, segmentSlice(seg, lo, lo+len(part)))
 			}
 		}
 	}
@@ -712,114 +717,56 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 	if maxWidth <= 0 {
 		return splitSegmentsAtNewlines(segments)
 	}
-
 	var lines [][]StyledSegment
-	var currentLine []StyledSegment
-	currentWidth := 0
-
+	var current []StyledSegment
+	width := 0
 	for _, seg := range segments {
-		// Check for hard line breaks (newline characters)
-		if strings.Contains(seg.Text, "\n") {
-			// Split the segment at newlines
-			parts := strings.Split(seg.Text, "\n")
-			for i, part := range parts {
-				// Process the text before the newline
-				words := strings.Fields(part)
-				for _, word := range words {
-					wordWidth := runewidth.StringWidth(word)
-					spaceWidth := 1
-
-					// Don't count space for punctuation since we won't add one
-					spaceNeeded := spaceWidth
-					if isPunctuation(word) {
-						spaceNeeded = 0
-					}
-
-					if currentWidth+wordWidth+spaceNeeded > maxWidth && len(currentLine) > 0 {
-						lines = append(lines, currentLine)
-						currentLine = nil
-						currentWidth = 0
-					}
-
-					// Add space before word if not at start of line
-					// but not before closing punctuation or after opening punctuation
-					needsSpace := len(currentLine) > 0 && !isPunctuation(word) && !lastSegmentEndsWithOpening(currentLine)
-					if needsSpace {
-						currentLine = append(currentLine, StyledSegment{
-							Text:  " ",
-							Style: seg.Style,
-						})
-						currentWidth++
-					}
-
-					currentLine = append(currentLine, StyledSegment{
-						Text:      word,
-						Style:     seg.Style,
-						Hyperlink: seg.Hyperlink,
-					})
-					currentWidth += wordWidth
+		at := 0
+		for _, part := range strings.Split(seg.Text, "\n") {
+			if at > 0 {
+				lines = append(lines, current)
+				current = nil
+				width = 0
+			}
+			// FieldsFunc records positions during tokenization, before formatting.
+			start := -1
+			emit := func(end int) {
+				if start < 0 {
+					return
 				}
-
-				// If this isn't the last part, we hit a newline - force a line break
-				if i < len(parts)-1 {
-					if len(currentLine) > 0 {
-						lines = append(lines, currentLine)
-					} else {
-						// Empty line from consecutive newlines
-						lines = append(lines, []StyledSegment{})
-					}
-					currentLine = nil
-					currentWidth = 0
+				word := segmentSlice(seg, at+start, at+end)
+				w := runewidth.StringWidth(word.Text)
+				space := 1
+				if isPunctuation(word.Text) {
+					space = 0
+				}
+				if width+w+space > maxWidth && len(current) > 0 {
+					lines = append(lines, current)
+					current = nil
+					width = 0
+				}
+				if len(current) > 0 && !isPunctuation(word.Text) && !lastSegmentEndsWithOpening(current) {
+					current = append(current, StyledSegment{Text: " ", Style: seg.Style})
+					width++
+				}
+				current = append(current, word)
+				width += w
+				start = -1
+			}
+			for pos, r := range part {
+				if unicode.IsSpace(r) {
+					emit(pos)
+				} else if start < 0 {
+					start = pos
 				}
 			}
-			continue
-		}
-
-		// Normal text without newlines
-		words := strings.Fields(seg.Text)
-
-		for _, word := range words {
-			wordWidth := runewidth.StringWidth(word)
-			spaceWidth := 1
-
-			// Check if adding this word would exceed the limit
-			// Don't count space for punctuation since we won't add one
-			spaceNeeded := spaceWidth
-			if isPunctuation(word) {
-				spaceNeeded = 0
-			}
-			if currentWidth+wordWidth+spaceNeeded > maxWidth && len(currentLine) > 0 {
-				// Start a new line
-				lines = append(lines, currentLine)
-				currentLine = nil
-				currentWidth = 0
-			}
-
-			// Add space before word if not at start of line
-			// but not before closing punctuation or after opening punctuation
-			needsSpace := len(currentLine) > 0 && !isPunctuation(word) && !lastSegmentEndsWithOpening(currentLine)
-			if needsSpace {
-				currentLine = append(currentLine, StyledSegment{
-					Text:  " ",
-					Style: seg.Style,
-				})
-				currentWidth++
-			}
-
-			// Add the word
-			currentLine = append(currentLine, StyledSegment{
-				Text:      word,
-				Style:     seg.Style,
-				Hyperlink: seg.Hyperlink,
-			})
-			currentWidth += wordWidth
+			emit(len(part))
+			at += len(part) + 1
 		}
 	}
-
-	if len(currentLine) > 0 {
-		lines = append(lines, currentLine)
+	if len(current) > 0 {
+		lines = append(lines, current)
 	}
-
 	return lines
 }
 
@@ -1076,20 +1023,15 @@ func (mr *MarkdownRenderer) truncateSegments(segments []StyledSegment, maxWidth 
 			if remaining > 0 {
 				var truncText strings.Builder
 				w := 0
-				for _, r := range seg.Text {
-					rw := runewidth.RuneWidth(r)
+				for cluster, rw := range runewidth.Graphemes(seg.Text) {
 					if w+rw > remaining {
 						break
 					}
-					truncText.WriteRune(r)
+					truncText.WriteString(cluster)
 					w += rw
 				}
 				if truncText.Len() > 0 {
-					result = append(result, StyledSegment{
-						Text:      truncText.String(),
-						Style:     seg.Style,
-						Hyperlink: seg.Hyperlink,
-					})
+					result = append(result, segmentSlice(seg, 0, truncText.Len()))
 				}
 			}
 			break
@@ -1198,6 +1140,7 @@ func (mr *MarkdownRenderer) renderTableRow(ctx *renderContext, cells []tableCell
 				Text:      seg.Text,
 				Style:     mergedStyle,
 				Hyperlink: seg.Hyperlink,
+				source:    seg.source,
 			})
 		}
 

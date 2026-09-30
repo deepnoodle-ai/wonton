@@ -1,0 +1,775 @@
+package tui
+
+import (
+	"fmt"
+	"github.com/deepnoodle-ai/wonton/runewidth"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+type sourceItems struct {
+	text     []string
+	markdown bool
+	broken   map[int]bool
+	legacy   map[int]bool
+	builds   int
+}
+
+func (v *sourceItems) Len() int                    { return len(v.text) }
+func (v *sourceItems) Source(i int) (string, bool) { return v.text[i], !v.legacy[i] }
+func (v *sourceItems) Item(i int) View {
+	v.builds++
+	if v.broken[i] {
+		return Text("unbound source")
+	}
+	if v.text[i] == "" {
+		return Text("decoration")
+	}
+	if v.legacy[i] {
+		return Text("%s", v.text[i])
+	}
+	var body View = Text("%s", v.text[i]).SourceOffset(0).Wrap()
+	if v.markdown {
+		body = Markdown(v.text[i], nil).SourceOffset(0)
+	}
+	return PaddingLTRB(2, 0, 0, 0, body)
+}
+func newSourceViewport(t *testing.T, source string, markdown bool, width int) (*ViewportState, *sourceItems) {
+	t.Helper()
+	v := &sourceItems{text: []string{source}, markdown: markdown}
+	s := &ViewportState{}
+	renderViewport(t, s, v, width, 20, 0)
+	return s, v
+}
+func TestSourceLogicalLinePreservesWhitespaceAndWraps(t *testing.T) {
+	source := "  世界\t  " + strings.Repeat("source ", 28) + "END  "
+	for _, markdown := range []bool{false, true} {
+		s, _ := newSourceViewport(t, source, markdown, 30)
+		s.SelectLine(2, 0)
+		if got := s.SelectedText(); got != source {
+			t.Fatalf("markdown=%v: want %q; got %q", markdown, source, got)
+		}
+	}
+}
+func TestSourceDragAndReversePreserveOriginalBytes(t *testing.T) {
+	s, _ := newSourceViewport(t, "a  b\t c\r\nd  e  ", false, 7)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(6, 3)
+	s.EndSelection()
+	got := s.SelectedText()
+	if !strings.Contains(got, "\t") || !strings.Contains(got, "\r\n") || strings.Contains(got, "assistant") {
+		t.Fatalf("source bytes lost: %q", got)
+	}
+	s.BeginSelection(6, 3)
+	s.ExtendSelection(2, 0)
+	s.EndSelection()
+	if reverse := s.SelectedText(); reverse != got {
+		t.Fatalf("reverse %q != %q", reverse, got)
+	}
+}
+func TestSourceMarkdownHiddenSyntaxAndEntity(t *testing.T) {
+	s, _ := newSourceViewport(t, "**bold**", true, 30)
+	s.SelectWord(3, 0)
+	if got := s.SelectedText(); got != "bold" {
+		t.Fatalf("word=%q", got)
+	}
+	s.SelectLine(3, 0)
+	if got := s.SelectedText(); got != "**bold**" {
+		t.Fatalf("line=%q", got)
+	}
+	s, _ = newSourceViewport(t, "[docs](url) next", true, 40)
+	s.SelectWord(3, 0)
+	if got := s.SelectedText(); got != "docs" {
+		t.Fatalf("link word=%q", got)
+	}
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(11, 0)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "docs](url) next" {
+		t.Fatalf("link drag=%q", got)
+	}
+	s, _ = newSourceViewport(t, "&amp;", true, 30)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(3, 0)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "&amp;" {
+		t.Fatalf("entity=%q", got)
+	}
+}
+func TestSourceSelectionSurvivesReflowAndPrefixAppend(t *testing.T) {
+	s, v := newSourceViewport(t, "one two three four", false, 12)
+	s.SelectLine(3, 0)
+	want := s.SelectedText()
+	renderViewport(t, s, v, 7, 20, 0)
+	if got := s.SelectedText(); got != want {
+		t.Fatalf("reflow %q", got)
+	}
+	v.text[0] += " more"
+	s.Invalidate(0)
+	renderViewport(t, s, v, 7, 20, 0)
+	if got := s.SelectedText(); got != want {
+		t.Fatalf("append %q", got)
+	}
+	v.text[0] = "replacement"
+	s.Invalidate(0)
+	renderViewport(t, s, v, 7, 20, 0)
+	if got := s.SelectedText(); got != "" || s.HasSelection() {
+		t.Fatalf("replacement kept %q", got)
+	}
+}
+func TestSourceAppendChangedGraphemeClearsSelection(t *testing.T) {
+	for _, pair := range [][2]string{{"e", "\u0301"}, {"👍", "🏽"}, {"👩", "\u200d💻"}} {
+		t.Run(fmt.Sprintf("%q", pair[0]), func(t *testing.T) {
+			s, v := newSourceViewport(t, pair[0], false, 20)
+			s.Follow = true
+			s.SelectLine(2, 0)
+			if s.SelectedText() != pair[0] {
+				t.Fatal("selection missing")
+			}
+			v.text[0] += pair[1]
+			s.Invalidate(0)
+			renderViewport(t, s, v, 20, 20, 0)
+			if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+				t.Fatalf("grapheme append retained %q follow=%v", got, s.Follow)
+			}
+		})
+	}
+}
+func TestSourceIntermediateFailureAndDecoration(t *testing.T) {
+	v := &sourceItems{text: []string{"first", "", "second"}}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, v, 20, 20, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(8, 2)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "first\nsecond" {
+		t.Fatalf("decoration separator: %q", got)
+	}
+	v.text[1] = "invalid"
+	v.broken = map[int]bool{1: true}
+	s.Invalidate(1)
+	renderViewport(t, s, v, 20, 20, 0)
+	if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+		t.Fatalf("failed layout copied %q", got)
+	}
+}
+func TestSourcePrefixesAreDecorationAndCachesAreReused(t *testing.T) {
+	s, v := newSourceViewport(t, "content", false, 20)
+	s.SelectLine(0, 0)
+	if s.HasSelection() {
+		t.Fatal("decoration selected source")
+	}
+	s.SelectLine(3, 0)
+	for range 4 {
+		renderViewport(t, s, v, 20, 20, 0)
+		if s.SelectedText() != "content" {
+			t.Fatal("copy changed")
+		}
+	}
+	if v.builds != 1 {
+		t.Fatalf("rebuilt unchanged item %d times", v.builds)
+	}
+	s.InvalidateAll()
+	renderViewport(t, s, v, 20, 20, 0)
+	if s.HasSelection() {
+		t.Fatal("wholesale replacement kept source selection")
+	}
+}
+func TestSourceUnicodeCompleteGraphemes(t *testing.T) {
+	for _, g := range []string{"世", "e\u0301", "👩\u200d💻", "👍🏽"} {
+		s, _ := newSourceViewport(t, g+" next", false, 30)
+		s.BeginSelection(2, 0)
+		s.ExtendSelection(3, 0)
+		s.EndSelection()
+		got := s.SelectedText()
+		if got != g {
+			t.Fatalf("%q split as %q", g, got)
+		}
+	}
+}
+
+func TestSourceMarkdownStructuresRetainLogicalLines(t *testing.T) {
+	cases := []struct{ source, line string }{
+		{"# heading", "# heading"},
+		{"- repeated repeated", "- repeated repeated"},
+		{"> quoted **word**", "> quoted **word**"},
+		{"`inline code`", "`inline code`"},
+		{"\\*escaped*", "\\*escaped*"},
+		{"```go\nvar answer = 42\n```", "var answer = 42"},
+		{"```text\n" + strings.Repeat("long", 50), strings.Repeat("long", 50)},
+		{"| name | value |\n| --- | --- |\n| same | same |", "| name | value |"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.line[:min(len(tc.line), 25)], func(t *testing.T) {
+			s, v := newSourceViewport(t, tc.source, true, 30)
+			l, aware := s.sourceLayout(0)
+			if !aware || !l.valid || len(l.cells) == 0 {
+				t.Fatalf("missing provenance for %q: %+v", tc.source, l)
+			}
+			var first sourceCell
+			found := false
+			for _, cell := range l.cells {
+				if !found || cell.y < first.y || cell.y == first.y && cell.x < first.x {
+					first = cell
+					found = true
+				}
+			}
+			s.SelectLine(first.x, first.y)
+			if got := s.SelectedText(); got != tc.line {
+				t.Fatalf("want %q; got %q", tc.line, got)
+			}
+			renderViewport(t, s, v, 12, 20, 0)
+			if got := s.SelectedText(); got != tc.line {
+				t.Fatalf("narrow changed line to %q", got)
+			}
+		})
+	}
+}
+
+type disjointSourceItems struct {
+	source string
+	bad    bool
+}
+
+func (d disjointSourceItems) Len() int                  { return 1 }
+func (d disjointSourceItems) Source(int) (string, bool) { return d.source, true }
+func (d disjointSourceItems) Item(int) View {
+	offset := 6
+	if d.bad {
+		offset = 0
+	}
+	return Stack(Text("first").SourceOffset(0), Group(Text("! "), Text("second").SourceOffset(offset))).Gap(0)
+}
+func TestSourceDisjointLeavesAndFailedDeclarations(t *testing.T) {
+	items := disjointSourceItems{source: "first\nsecond"}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, items, 30, 20, 0)
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(8, 1)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "first\nsecond" {
+		t.Fatalf("disjoint leaves: %q", got)
+	}
+	items.bad = true
+	s.Invalidate(0)
+	renderViewport(t, s, items, 30, 20, 0)
+	if got := s.SelectedText(); got != "" || s.HasSelection() {
+		t.Fatalf("invalid binding copied %q", got)
+	}
+}
+func TestSourceMixedLegacySelection(t *testing.T) {
+	v := &sourceItems{text: []string{"source  ", "legacy  ", "last"}, legacy: map[int]bool{1: true}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 20, 20, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(6, 2)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "source  \nlegacy\nlast" {
+		t.Fatalf("mixed copy %q", got)
+	}
+}
+func TestSourceControlPresentationIsInert(t *testing.T) {
+	for _, md := range []bool{false, true} {
+		s, _ := newSourceViewport(t, "before\x1b[31mafter", md, 40)
+		l, _ := s.sourceLayout(0)
+		if !l.valid {
+			t.Fatal("control source lost provenance")
+		}
+		s.SelectLine(3, 0)
+		if got := s.SelectedText(); got != "before\x1b[31mafter" {
+			t.Fatalf("inert source bytes changed: %q", got)
+		}
+	}
+}
+
+func TestSourceIntermediateAppendDoesNotExtendCopiedRange(t *testing.T) {
+	v := &sourceItems{text: []string{"first", "middle", "last"}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 30, 20, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(6, 2)
+	s.EndSelection()
+	want := s.SelectedText()
+	v.text[1] += " appended"
+	s.Invalidate(1)
+	renderViewport(t, s, v, 30, 20, 0)
+	if got := s.SelectedText(); got != want {
+		t.Fatalf("intermediate append extended copy: %q => %q", want, got)
+	}
+}
+func TestSourceWordSelectionCrossesVisualWraps(t *testing.T) {
+	source := strings.Repeat("a", 50) + " trailing"
+	s, _ := newSourceViewport(t, source, false, 12)
+	s.SelectWord(3, 2)
+	if got := s.SelectedText(); got != strings.Repeat("a", 50) {
+		t.Fatalf("wrapped word %q", got)
+	}
+}
+func TestSourceDragAutoScrollAndHighlightAfterResize(t *testing.T) {
+	v := &sourceItems{text: []string{strings.Repeat("row 世界\n", 60)}}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, v, 20, 5, 0)
+	s.ScrollToTop()
+	renderViewport(t, s, v, 20, 5, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(8, 6)
+	for range 15 {
+		s.DragAutoScroll()
+		renderViewport(t, s, v, 20, 5, 0)
+	}
+	s.EndSelection()
+	got := s.SelectedText()
+	if strings.Count(got, "\n") < 10 {
+		t.Fatalf("auto-scroll did not grow source selection: %q", got)
+	}
+	screen := renderViewport(t, s, v, 12, 5, 0)
+	if s.SelectedText() != got || len(reversedRuns(screen, 12, 5)) == 0 {
+		t.Fatal("resize lost source or highlight")
+	}
+}
+
+func TestSourceAnnotationKeepsLayout(t *testing.T) {
+	for _, text := range []string{"alpha beta gamma", strings.Repeat("x", 40), "repeated  words", "世界 👩\u200d💻 words"} {
+		for _, align := range []Alignment{AlignLeft, AlignCenter, AlignRight} {
+			legacy := SprintScreen(Text("%s", text).Wrap().Align(align), WithWidth(8)).Text()
+			marked := SprintScreen(Text("%s", text).Wrap().Align(align).SourceOffset(0), WithWidth(8)).Text()
+			if legacy != marked {
+				t.Fatalf("annotation changed text layout: %q vs %q", legacy, marked)
+			}
+		}
+	}
+	source := "```text\n" + strings.Repeat("code", 20) + "\n```"
+	if a, b := SprintScreen(Markdown(source, nil), WithWidth(20)).Text(), SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(20)).Text(); a != b {
+		t.Fatalf("annotation changed code layout: %q vs %q", a, b)
+	}
+}
+func TestSourceAndLegacySelectionTransitions(t *testing.T) {
+	v := &sourceItems{text: []string{"source", "legacy"}, legacy: map[int]bool{1: true}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 20, 10, 0)
+	for _, line := range []bool{false, true} {
+		s.SelectLine(3, 0)
+		if line {
+			s.SelectLine(2, 1)
+		} else {
+			s.SelectWord(2, 1)
+		}
+		if got := s.SelectedText(); got != "legacy" {
+			t.Fatalf("source endpoints survived legacy selection: %q", got)
+		}
+		s.SelectLine(3, 0)
+		if got := s.SelectedText(); got != "source" {
+			t.Fatalf("legacy endpoints survived source selection: %q", got)
+		}
+	}
+}
+func TestSourceWideDragBothDirections(t *testing.T) {
+	s, _ := newSourceViewport(t, "世 next", false, 20)
+	for _, pair := range [][2]int{{2, 3}, {3, 2}} {
+		s.BeginSelection(pair[0], 0)
+		s.ExtendSelection(pair[1], 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != "世" {
+			t.Fatalf("drag %v copied %q", pair, got)
+		}
+	}
+}
+func TestSourceDecorationDoesNotStopDrag(t *testing.T) {
+	v := &sourceItems{text: []string{"first", "", "second"}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 20, 10, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(4, 1)
+	if !s.SelectionActive() || !s.HasSelection() || s.SelectedText() != "first" {
+		t.Fatalf("decoration stopped drag: %q", s.SelectedText())
+	}
+	s.ExtendSelection(8, 2)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "first\nsecond" {
+		t.Fatalf("drag did not continue: %q", got)
+	}
+}
+func TestSourceWordPolicyUsesDisplayedSeparators(t *testing.T) {
+	for _, text := range []string{"foo&apos;bar", "foo\\[bar"} {
+		s, _ := newSourceViewport(t, text, true, 40)
+		s.SelectWord(3, 0)
+		if got := s.SelectedText(); got != "foo" {
+			t.Fatalf("word ignored decoded separator: %q", got)
+		}
+	}
+	s, _ := newSourceViewport(t, "foo**bar**", true, 40)
+	s.SelectWord(3, 0)
+	if got := s.SelectedText(); got != "foo**bar" {
+		t.Fatalf("hidden syntax split visible word: %q", got)
+	}
+}
+
+func TestSourceAnnotationKeepsDecodedMarkdownLayout(t *testing.T) {
+	for _, source := range []string{"foo&apos;bar", "foo\\[bar", "[**nested**](url) next", "inline `a b` code"} {
+		a := SprintScreen(Markdown(source, nil), WithWidth(10)).Text()
+		b := SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(10)).Text()
+		if a != b {
+			t.Fatalf("annotation changed decoded markdown: %q vs %q", a, b)
+		}
+	}
+}
+
+func TestSourceUnsuccessfulLegacyGestureKeepsExactSelection(t *testing.T) {
+	for _, line := range []bool{false, true} {
+		v := &sourceItems{text: []string{"one two", "()"}, legacy: map[int]bool{1: true}}
+		if line {
+			v.text[1] = "\n"
+		}
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, v, 30, 10, 0)
+		s.SelectWord(2, 0)
+		if line {
+			s.SelectLine(2, 1)
+		} else {
+			s.SelectWord(2, 1)
+		}
+		if got := s.SelectedText(); got != "one" {
+			t.Fatalf("line=%v: %q", line, got)
+		}
+	}
+}
+func TestSourceLegacyToSourceModeClearsSelection(t *testing.T) {
+	v := &sourceItems{text: []string{"one two"}, legacy: map[int]bool{0: true}}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, v, 30, 10, 0)
+	s.SelectWord(0, 0)
+	if s.SelectedText() != "one" {
+		t.Fatal("legacy selection missing")
+	}
+	delete(v.legacy, 0)
+	s.Invalidate(0)
+	renderViewport(t, s, v, 30, 10, 0)
+	if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+		t.Fatalf("mode change retained selection %q", got)
+	}
+}
+
+type clippedSourceItems struct{ conflict bool }
+
+func (v clippedSourceItems) Len() int { return 3 }
+func (v clippedSourceItems) Source(i int) (string, bool) {
+	return []string{"first", "middle", "last"}[i], true
+}
+func (v clippedSourceItems) Item(i int) View {
+	source, _ := v.Source(i)
+	if i != 1 {
+		return Text("%s", source).SourceOffset(0)
+	}
+	if v.conflict {
+		return Group(Text("%s", source).SourceOffset(0), Text("long decoration"), Text("wrong").SourceOffset(0))
+	}
+	return Group(Text("long decoration"), Padding(1, Text("%s", source).SourceOffset(0)))
+}
+func TestSourceClippedDeclarationsStillValidate(t *testing.T) {
+	for _, conflict := range []bool{false, true} {
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, clippedSourceItems{conflict}, 10, 10, 0)
+		s.BeginSelection(0, 0)
+		s.ExtendSelection(4, 9)
+		s.EndSelection()
+		got := s.SelectedText()
+		if conflict {
+			if got != "" || s.HasSelection() {
+				t.Fatalf("conflict escaped: %q", got)
+			}
+		} else if got != "first\nmiddle\nlast" {
+			t.Fatalf("valid clipped declaration: %q", got)
+		}
+	}
+}
+func TestSourceBlankItemDoesNotStopDrag(t *testing.T) {
+	for _, blank := range []string{"", "\n", "\r\n", "\n\n"} {
+		s := &ViewportState{Follow: true}
+		v := &sourceItems{text: []string{"first", blank, "last"}}
+		renderViewport(t, s, v, 20, 10, 0)
+		s.BeginSelection(2, 0)
+		s.ExtendSelection(2, 1)
+		if !s.SelectionActive() {
+			t.Fatalf("blank %q ended drag", blank)
+		}
+		s.ExtendSelection(6, 9)
+		s.EndSelection()
+		want := "first\nlast"
+		if blank != "" {
+			want = "first\n" + blank + "\nlast"
+		}
+		if got := s.SelectedText(); got != want {
+			t.Fatalf("blank %q: %q", blank, got)
+		}
+	}
+}
+
+func TestSourceDirectionControlsAreInertButCopiedAsData(t *testing.T) {
+	for _, markdown := range []bool{false, true} {
+		for _, r := range []rune{0x200e, 0x200f, 0x2028, 0x2029, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069} {
+			source := "before" + string(r) + "after"
+			s, v := newSourceViewport(t, source, markdown, 40)
+			view := v.Item(0)
+			shown := Sprint(view, WithWidth(40))
+			if strings.ContainsRune(shown, r) {
+				t.Fatalf("markdown=%v: rendered control U+%04X", markdown, r)
+			}
+			s.SelectLine(3, 0)
+			if got := s.SelectedText(); got != source {
+				t.Fatalf("control source changed: %q", got)
+			}
+		}
+	}
+}
+
+func TestSourcePartialExpandedTokenCopiesWholeOriginalToken(t *testing.T) {
+	for _, tc := range []struct {
+		source     string
+		markdown   bool
+		start, end int
+		want       string
+	}{
+		{"a\tb", false, 3, 4, "\t"},
+		{"&fjlig; next", true, 2, 3, "&fjlig;"},
+	} {
+		s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+		s.BeginSelection(tc.start, 0)
+		s.ExtendSelection(tc.end, 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != tc.want {
+			t.Fatalf("%q: %q", tc.source, got)
+		}
+		s.BeginSelection(tc.end, 0)
+		s.ExtendSelection(tc.start, 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != tc.want {
+			t.Fatalf("reverse %q: %q", tc.source, got)
+		}
+	}
+}
+
+func TestSourceEveryExpandedTokenCellCopiesWholeToken(t *testing.T) {
+	for _, tc := range []struct {
+		source      string
+		markdown    bool
+		from, cells int
+		want        string
+	}{
+		{"a\tb", false, 3, 4, "\t"},
+		{"&fjlig; next", true, 2, 2, "&fjlig;"},
+	} {
+		for col := tc.from; col < tc.from+tc.cells; col++ {
+			s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+			s.BeginSelection(col, 0)
+			s.ExtendSelection(col+1, 0)
+			s.EndSelection()
+			if got := s.SelectedText(); got != tc.want {
+				t.Fatalf("%q cell %d: %q", tc.source, col, got)
+			}
+			s.BeginSelection(col+1, 0)
+			s.ExtendSelection(col, 0)
+			s.EndSelection()
+			if got := s.SelectedText(); got != tc.want {
+				t.Fatalf("reverse %q cell %d: %q", tc.source, col, got)
+			}
+		}
+	}
+}
+func BenchmarkViewportLongTextUnchanged(b *testing.B) {
+	for _, aware := range []bool{false, true} {
+		b.Run(fmt.Sprintf("source=%v", aware), func(b *testing.B) {
+			items := benchmarkSourceItems{&sourceItems{text: []string{strings.Repeat("word ", 10000)}, legacy: map[int]bool{0: !aware}}}
+			state := &ViewportState{}
+			view := Height(6, Viewport(state, items).Gap(0))
+			Sprint(view, WithWidth(80))
+			b.ResetTimer()
+			for b.Loop() {
+				Sprint(view, WithWidth(80))
+			}
+		})
+	}
+}
+
+type benchmarkSourceItems struct{ *sourceItems }
+
+func (v benchmarkSourceItems) Item(i int) View {
+	source, aware := v.Source(i)
+	text := Text("%s", source).Wrap()
+	if aware {
+		text.SourceOffset(0)
+	}
+	return text
+}
+
+func TestSourceActiveDragAnchorSurvivesReflow(t *testing.T) {
+	s, v := newSourceViewport(t, "one two three four five six", false, 10)
+	s.BeginSelection(2, 1)
+	s.ExtendSelection(7, 1)
+	if got := s.SelectedText(); got != "three" {
+		t.Fatalf("initial: %q", got)
+	}
+	renderViewport(t, s, v, 22, 20, 0)
+	if got := s.SelectedText(); got != "three" {
+		t.Fatalf("reflow: %q", got)
+	}
+	s.ExtendSelection(20, 0)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "three four" {
+		t.Fatalf("continued drag moved anchor: %q", got)
+	}
+}
+
+func TestSourceCrossItemAppendedGraphemeClearsWholeSelection(t *testing.T) {
+	for _, pair := range [][2]string{{"e", "\u0301"}, {"👍", "🏽"}, {"👩", "\u200d💻"}} {
+		v := &sourceItems{text: []string{pair[0], "last"}}
+		s := &ViewportState{Follow: true}
+		renderViewport(t, s, v, 30, 10, 0)
+		s.BeginSelection(2, 0)
+		s.ExtendSelection(6, 1)
+		s.EndSelection()
+		if got := s.SelectedText(); got != pair[0]+"\nlast" {
+			t.Fatalf("initial %q", got)
+		}
+		v.text[0] += pair[1]
+		s.Invalidate(0)
+		renderViewport(t, s, v, 30, 10, 0)
+		if got := s.SelectedText(); got != "" || s.HasSelection() || !s.Follow {
+			t.Fatalf("changed grapheme retained %q", got)
+		}
+	}
+}
+
+func TestSourceDecodedUnicodeSpaceSeparatesWords(t *testing.T) {
+	for _, source := range []string{"&nbsp; next", "&ThickSpace; next", "left\u2009right"} {
+		s, _ := newSourceViewport(t, source, true, 40)
+		// Locate the word through source-aware glyphs, independent of decoration.
+		layout, _ := s.sourceLayout(0)
+		at := strings.Index(source, "next")
+		want := "next"
+		if at < 0 {
+			at, want = strings.Index(source, "right"), "right"
+		}
+		line, col := layout.point(at, false)
+		s.SelectWord(col, line)
+		if got := s.SelectedText(); got != want {
+			t.Fatalf("%q word = %q", source, got)
+		}
+	}
+}
+
+func TestSourceExpandedTokenSelectionCoordinates(t *testing.T) {
+	for _, tc := range []struct {
+		source     string
+		markdown   bool
+		start, end int
+	}{
+		{"a\tb", false, 3, 7},
+		{"&fjlig; next", true, 2, 4},
+	} {
+		for _, reverse := range []bool{false, true} {
+			s, _ := newSourceViewport(t, tc.source, tc.markdown, 40)
+			from, to := tc.start, tc.start+1
+			if reverse {
+				from, to = to, from
+			}
+			s.BeginSelection(from, 0)
+			s.ExtendSelection(to, 0)
+			s.EndSelection()
+			for n := 0; n < 100; n++ {
+				start, end, ok := s.Selection()
+				if !ok || start != (SelectionPoint{0, 0, tc.start}) || end != (SelectionPoint{0, 0, tc.end}) {
+					t.Fatalf("%q reverse=%v: start=%+v end=%+v ok=%v", tc.source, reverse, start, end, ok)
+				}
+			}
+		}
+	}
+}
+func TestSourceSelectionRemovedItemClearsWithoutCallingSource(t *testing.T) {
+	s, v := newSourceViewport(t, "selected", false, 30)
+	s.SelectLine(2, 0)
+	v.text = nil
+	s.Invalidate(0)
+	if _, _, ok := s.Selection(); ok || s.HasSelection() {
+		t.Fatal("removed item retained selection")
+	}
+}
+func TestSourceMarkdownWordStaysInTableCell(t *testing.T) {
+	s, _ := newSourceViewport(t, "| name | value |\n| --- | --- |\n| alpha | beta |", true, 40)
+	l, _ := s.sourceLayout(0)
+	for _, cell := range l.cells {
+		if cell.start == strings.Index(l.source, "name") {
+			s.SelectWord(cell.x, cell.y)
+			if got := s.SelectedText(); got != "name" {
+				t.Fatalf("table word=%q", got)
+			}
+			return
+		}
+	}
+	t.Fatal("name cell missing")
+}
+func TestSourceHighlightedCRLFFenceRemainsVisibleAndSelectable(t *testing.T) {
+	for _, source := range []string{"```go\r\nvar answer = 42\r\n```", "```python\nprint('answer')\n```"} {
+		s, _ := newSourceViewport(t, source, true, 40)
+		l, _ := s.sourceLayout(0)
+		if !l.valid || len(l.cells) == 0 {
+			t.Fatalf("code disappeared: %q", source)
+		}
+		for _, cell := range l.cells {
+			s.SelectLine(cell.x, cell.y)
+			if got := s.SelectedText(); !strings.Contains(got, "answer") {
+				t.Fatalf("code line=%q", got)
+			}
+			break
+		}
+	}
+}
+func TestSourceDragCanStartInPaddingOrPastLineEnd(t *testing.T) {
+	for _, endpoints := range [][2]int{{0, 5}, {20, 2}} {
+		s, _ := newSourceViewport(t, "abc", false, 30)
+		s.BeginSelection(endpoints[0], 0)
+		s.ExtendSelection(endpoints[1], 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != "abc" {
+			t.Fatalf("%v: %q", endpoints, got)
+		}
+	}
+}
+
+func TestSourceCodeHighlightingMatchesLegacyWithCRLF(t *testing.T) {
+	for _, source := range []string{"```go\r\nvar answer = 42\r\n```", "```go\nvar answer = 42\n```", "```python\r\nprint('answer')\r\n```"} {
+		plain, err := NewMarkdownRenderer().WithMaxWidth(40).Render(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		marked := Markdown(source, nil).SourceOffset(0)
+		actual, err := marked.renderer.WithMaxWidth(40).Render(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(plain.Lines) != len(actual.Lines) {
+			t.Fatalf("%q: line count changed", source)
+		}
+		for row, want := range plain.Lines {
+			got := actual.Lines[row]
+			// Segment boundaries may carry extra source metadata; the displayed
+			// text and style of each grapheme must still match.
+			type glyph struct {
+				text  string
+				style Style
+			}
+			flatten := func(line StyledLine) []glyph {
+				var out []glyph
+				for _, seg := range line.Segments {
+					for g := range runewidth.Graphemes(seg.Text) {
+						out = append(out, glyph{g, seg.Style})
+					}
+				}
+				return out
+			}
+			if want.Indent != got.Indent || !reflect.DeepEqual(flatten(want), flatten(got)) {
+				t.Fatalf("%q row %d: styled presentation changed", source, row)
+			}
+		}
+	}
+}

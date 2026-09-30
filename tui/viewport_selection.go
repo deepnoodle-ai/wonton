@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // SelectionPoint is one end of a selection, addressed the same way the scroll
 // anchor is: an item, a line within that item, and a column.
@@ -44,13 +47,19 @@ func (s *ViewportState) HasSelection() bool { return s.hasSelection }
 // Selection returns the selection in content order, earliest point first. The
 // second return is false when there is no selection.
 func (s *ViewportState) Selection() (start, end SelectionPoint, ok bool) {
-	if !s.hasSelection {
+	if !s.hasSelection || !s.validateSourceSelection() {
 		return SelectionPoint{}, SelectionPoint{}, false
 	}
-	if s.selCursor.before(s.selAnchor) {
-		return s.selCursor, s.selAnchor, true
+	anchorEnd := s.selCursor.before(s.selAnchor)
+	if s.sourceAnchor != nil && s.sourceCursor != nil {
+		anchorEnd = s.sourceCursor.item < s.sourceAnchor.item || s.sourceCursor.item == s.sourceAnchor.item && s.sourceCursor.offset < s.sourceAnchor.offset
 	}
-	return s.selAnchor, s.selCursor, true
+	anchor := s.sourceSelectionPoint(s.selAnchor, s.sourceAnchor, anchorEnd)
+	cursor := s.sourceSelectionPoint(s.selCursor, s.sourceCursor, !anchorEnd)
+	if cursor.before(anchor) {
+		return cursor, anchor, true
+	}
+	return anchor, cursor, true
 }
 
 // ClearSelection drops the selection and restores whatever Follow was before
@@ -62,6 +71,8 @@ func (s *ViewportState) ClearSelection() {
 		s.followSuspended = false
 	}
 	s.hasSelection = false
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	s.selecting = false
 	s.dragEdge = 0
 }
@@ -83,10 +94,19 @@ func (s *ViewportState) BeginSelection(x, y int) {
 	if !ok {
 		return
 	}
+	oldAnchor := s.selAnchor
+	s.selAnchor = p
+	source, valid := s.sourceHit(p, true, true)
+	if !valid {
+		s.selAnchor = oldAnchor
+		return
+	}
+	s.sourceAnchor, s.sourceCursor = source, source
 	// Follow would drag the content out from under the pointer as the reply
 	// streams. Remember what it was so dismissing the selection can put it back.
 	s.suspendFollow()
 	s.selAnchor, s.selCursor = p, p
+	s.captureSourceSelection()
 	s.selecting = true
 	// One press is not yet a selection: it becomes one when the drag moves off
 	// the starting cell. Otherwise every click would leave a zero-width
@@ -103,8 +123,18 @@ func (s *ViewportState) ExtendSelection(x, y int) {
 	if !ok {
 		return
 	}
+	source, valid := s.sourceDragHit(p)
+	if !valid {
+		s.ClearSelection()
+		return
+	}
+	s.sourceCursor = source
 	s.selCursor = p
+	s.captureSourceSelection()
 	s.hasSelection = p != s.selAnchor
+	if source != nil && s.sourceAnchor != nil {
+		s.hasSelection = source.item != s.sourceAnchor.item || source.offset != s.sourceAnchor.offset
+	}
 	s.dragEdge = s.edgeOf(y)
 }
 
@@ -131,6 +161,9 @@ func (s *ViewportState) SelectLine(x, y int) {
 	if !ok {
 		return
 	}
+	if s.sourceSelectRun(p, true) {
+		return
+	}
 	line := s.itemLine(p.Item, p.Line)
 	if line.end == 0 {
 		// A blank line selects nothing. Returning before suspendFollow matters:
@@ -138,6 +171,8 @@ func (s *ViewportState) SelectLine(x, y int) {
 		// it and nothing to dismiss, and a chat would just stop following.
 		return
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	s.suspendFollow()
 	s.selAnchor = SelectionPoint{Item: p.Item, Line: p.Line, Col: 0}
 	s.selCursor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.end}
@@ -152,6 +187,9 @@ func (s *ViewportState) selectRun(x, y int, keep func(string) bool) {
 	if !ok {
 		return
 	}
+	if s.sourceSelectRun(p, false) {
+		return
+	}
 	line := s.itemLine(p.Item, p.Line)
 	i := line.indexAt(p.Col)
 	if i >= len(line.text) || !keep(line.text[i]) {
@@ -164,6 +202,8 @@ func (s *ViewportState) selectRun(x, y int, keep func(string) bool) {
 	for last < len(line.text) && keep(line.text[last]) {
 		last++
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	s.suspendFollow()
 	s.selAnchor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.col[first]}
 	s.selCursor = SelectionPoint{Item: p.Item, Line: p.Line, Col: line.col[last]}
@@ -183,7 +223,7 @@ func isWordRune(g string) bool {
 	case '_', '-', '.', '/', ':', '@', '~', '+':
 		return true
 	}
-	return r > ' ' && r != '"' && r != '\'' && r != '`' &&
+	return r > ' ' && !unicode.IsSpace(r) && r != '"' && r != '\'' && r != '`' &&
 		r != '(' && r != ')' && r != '[' && r != ']' && r != '{' && r != '}' &&
 		r != ',' && r != ';' && r != '<' && r != '>' && r != '|' && r != '='
 }
@@ -291,8 +331,18 @@ func (s *ViewportState) DragAutoScroll() bool {
 		item, line = s.moveDown(item, line, s.Height-1)
 	}
 	p := SelectionPoint{Item: item, Line: line, Col: s.selCursor.Col}
+	source, valid := s.sourceDragHit(p)
+	if !valid {
+		s.ClearSelection()
+		return false
+	}
+	s.sourceCursor = source
 	s.selCursor = p
+	s.captureSourceSelection()
 	s.hasSelection = p != s.selAnchor
+	if source != nil && s.sourceAnchor != nil {
+		s.hasSelection = source.item != s.sourceAnchor.item || source.offset != s.sourceAnchor.offset
+	}
 	return true
 }
 
@@ -343,8 +393,9 @@ func (s *ViewportState) spanFor(item int) (viewportSpan, bool) {
 	return viewportSpan{}, false
 }
 
-// SelectedText returns the selected text, one line per line of content, with
-// trailing spaces removed.
+// SelectedText returns original source slices for opted-in source items.
+// Legacy items return rendered lines with trailing spaces removed.
+// Invalid selected source bindings clear selection and return an empty string.
 //
 // The text comes from re-rendering the selected items rather than from reading
 // the screen, so a selection that runs off the top or bottom of the viewport —
@@ -358,6 +409,13 @@ func (s *ViewportState) SelectedText() string {
 	var out []string
 	for item := start.Item; item <= end.Item; item++ {
 		if item < 0 || item >= s.len() {
+			continue
+		}
+		if l, aware := s.sourceLayout(item); aware {
+			lo, hi := s.sourceBounds(item, start.Item, end.Item, len(l.source))
+			if lo < hi {
+				out = append(out, l.source[lo:hi])
+			}
 			continue
 		}
 		lines := s.itemLines(item)
@@ -516,6 +574,16 @@ func (s *ViewportState) paintSelection(ctx *RenderContext) {
 
 	for _, span := range s.layout {
 		if span.item < start.Item || span.item > end.Item {
+			continue
+		}
+		if l, aware := s.sourceLayout(span.item); aware {
+			lo, hi := s.sourceBounds(span.item, start.Item, end.Item, len(l.source))
+			for _, cell := range l.cells {
+				y := span.top + cell.y
+				if cell.start < hi && cell.end > lo && y >= 0 && y < s.Height {
+					ctx.RestyleCell(cell.x, y, style)
+				}
+			}
 			continue
 		}
 		for line := range span.height {

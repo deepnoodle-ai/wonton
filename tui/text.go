@@ -12,55 +12,16 @@ func WrapText(text string, width int) string {
 	if width <= 0 {
 		return text
 	}
-
-	var sb strings.Builder
-	lines := strings.Split(text, "\n")
-
-	for i, line := range lines {
-		if i > 0 {
-			sb.WriteRune('\n')
+	rows := plainLogicalRows(text, 0, width, true, false)
+	var out []string
+	for _, row := range rows {
+		var line strings.Builder
+		for _, seg := range row {
+			line.WriteString(seg.Text)
 		}
-
-		if runewidth.StringWidth(line) <= width {
-			sb.WriteString(line)
-			continue
-		}
-
-		words := strings.Fields(line)
-		if len(words) == 0 {
-			continue
-		}
-
-		currentLineLen := 0
-		for _, word := range words {
-			wordLen := runewidth.StringWidth(word)
-
-			// If a single word is too long, it might overflow or split (simple behavior here: overflow)
-			// A better approach for very long words is to split them, but keeping it simple for now.
-
-			spaceLen := 0
-			if currentLineLen > 0 {
-				spaceLen = 1
-			}
-
-			if currentLineLen+spaceLen+wordLen > width {
-				if currentLineLen > 0 {
-					sb.WriteRune('\n')
-					currentLineLen = 0
-				}
-			}
-
-			if currentLineLen > 0 {
-				sb.WriteRune(' ')
-				currentLineLen++
-			}
-
-			sb.WriteString(word)
-			currentLineLen += wordLen
-		}
+		out = append(out, line.String())
 	}
-
-	return sb.String()
+	return strings.Join(out, "\n")
 }
 
 // AlignText aligns the given text within the specified width.
