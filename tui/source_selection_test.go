@@ -637,3 +637,21 @@ func TestSourceCrossItemAppendedGraphemeClearsWholeSelection(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceDecodedUnicodeSpaceSeparatesWords(t *testing.T) {
+	for _, source := range []string{"&nbsp; next", "&ThickSpace; next", "left\u2009right"} {
+		s, _ := newSourceViewport(t, source, true, 40)
+		// Locate the word through source-aware glyphs, independent of decoration.
+		layout, _ := s.sourceLayout(0)
+		at := strings.Index(source, "next")
+		want := "next"
+		if at < 0 {
+			at, want = strings.Index(source, "right"), "right"
+		}
+		line, col := layout.point(at, false)
+		s.SelectWord(col, line)
+		if got := s.SelectedText(); got != want {
+			t.Fatalf("%q word = %q", source, got)
+		}
+	}
+}

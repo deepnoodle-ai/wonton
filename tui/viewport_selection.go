@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // SelectionPoint is one end of a selection, addressed the same way the scroll
 // anchor is: an item, a line within that item, and a column.
@@ -213,7 +216,7 @@ func isWordRune(g string) bool {
 	case '_', '-', '.', '/', ':', '@', '~', '+':
 		return true
 	}
-	return r > ' ' && r != '"' && r != '\'' && r != '`' &&
+	return r > ' ' && !unicode.IsSpace(r) && r != '"' && r != '\'' && r != '`' &&
 		r != '(' && r != ')' && r != '[' && r != ']' && r != '{' && r != '}' &&
 		r != ',' && r != ';' && r != '<' && r != '>' && r != '|' && r != '='
 }
