@@ -46,6 +46,7 @@ type sourceLayout struct {
 type sourceEndpoint struct {
 	item, offset int
 	source       string
+	continuation *sourceBinding
 }
 
 func newSourceLayout(source string, width, height int) *sourceLayout {
@@ -265,12 +266,14 @@ func (l *sourceLayout) hit(x, y int, clamp bool) (int, bool) {
 	return after.start, true
 }
 func (l *sourceLayout) point(offset int, end bool) (line, col int) {
-	var first, last *sourceCell
+	var first, last, inside *sourceCell
 	for _, value := range l.cells {
 		t := value
 
 		if t.start <= offset && offset < t.end {
-			return t.y, t.x
+			if inside == nil || t.y < inside.y || t.y == inside.y && t.x < inside.x {
+				inside = &t
+			}
 		}
 		if t.start >= offset && (first == nil || t.start < first.start) {
 			first = &t
@@ -278,6 +281,9 @@ func (l *sourceLayout) point(offset int, end bool) (line, col int) {
 		if t.end <= offset && (last == nil || t.end > last.end) {
 			last = &t
 		}
+	}
+	if inside != nil {
+		return inside.y, inside.x
 	}
 	if end && last != nil {
 		return last.y, last.x + last.width
@@ -343,6 +349,7 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp, continuationEnd bool)
 		return &sourceEndpoint{item: p.Item, offset: offset, source: l.source}, true
 	}
 	offset, ok := l.hit(p.Col, p.Line, clamp)
+	var continued *sourceBinding
 	if ok {
 		for _, cell := range l.cells {
 			if cell.y != p.Line || p.Col < cell.x || p.Col >= cell.x+cell.width {
@@ -357,6 +364,7 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp, continuationEnd bool)
 				}
 			}
 			if continuation {
+				continued = &sourceBinding{cell.start, cell.end}
 				offset = cell.start
 				if continuationEnd {
 					offset = cell.end
@@ -368,7 +376,7 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp, continuationEnd bool)
 	if !ok {
 		return nil, false
 	}
-	return &sourceEndpoint{item: p.Item, offset: offset, source: l.source}, true
+	return &sourceEndpoint{item: p.Item, offset: offset, source: l.source, continuation: continued}, true
 }
 func (s *ViewportState) validateSourceSelection() bool {
 	for _, p := range []*sourceEndpoint{s.sourceAnchor, s.sourceCursor} {
@@ -472,8 +480,8 @@ func (s *ViewportState) sourceSelectRun(p SelectionPoint, line bool) bool {
 	}
 	s.suspendFollow()
 	s.selAnchor, s.selCursor = p, p
-	s.sourceAnchor = &sourceEndpoint{p.Item, lo, l.source}
-	s.sourceCursor = &sourceEndpoint{p.Item, hi, l.source}
+	s.sourceAnchor = &sourceEndpoint{item: p.Item, offset: lo, source: l.source}
+	s.sourceCursor = &sourceEndpoint{item: p.Item, offset: hi, source: l.source}
 	s.selecting = false
 	s.hasSelection = true
 	s.captureSourceSelection()
@@ -585,4 +593,31 @@ func (l *sourceLayout) addWords(words []sourceWordToken, base int) {
 func sourceUnsafeRune(r rune) bool {
 	return unicode.IsControl(r) || r >= 0x202a && r <= 0x202e ||
 		r >= 0x2066 && r <= 0x2069 || r == 0x2028 || r == 0x2029 || r == 0x200e || r == 0x200f
+}
+
+// The anchor belongs to the source, not to a former wrapped row. Only a press
+// within an expanded token can choose its start or end as direction changes.
+func (s *ViewportState) sourceDragHit(p SelectionPoint) (*sourceEndpoint, bool) {
+	anchorPoint := s.selAnchor
+	if anchor := s.sourceAnchor; anchor != nil {
+		offset := anchor.offset
+		if anchor.continuation != nil {
+			offset = anchor.continuation.end
+		}
+		layout, aware := s.sourceLayout(anchor.item)
+		if !aware || !layout.valid {
+			return nil, false
+		}
+		line, col := layout.point(offset, anchor.continuation != nil)
+		anchorPoint = SelectionPoint{anchor.item, line, col}
+	}
+	reverse := p.before(anchorPoint)
+	cursor, valid := s.sourceHit(p, true, !reverse)
+	if valid && s.sourceAnchor != nil && s.sourceAnchor.continuation != nil {
+		s.sourceAnchor.offset = s.sourceAnchor.continuation.start
+		if reverse {
+			s.sourceAnchor.offset = s.sourceAnchor.continuation.end
+		}
+	}
+	return cursor, valid
 }

@@ -599,3 +599,21 @@ func (v benchmarkSourceItems) Item(i int) View {
 	}
 	return text
 }
+
+func TestSourceActiveDragAnchorSurvivesReflow(t *testing.T) {
+	s, v := newSourceViewport(t, "one two three four five six", false, 10)
+	s.BeginSelection(2, 1)
+	s.ExtendSelection(7, 1)
+	if got := s.SelectedText(); got != "three" {
+		t.Fatalf("initial: %q", got)
+	}
+	renderViewport(t, s, v, 22, 20, 0)
+	if got := s.SelectedText(); got != "three" {
+		t.Fatalf("reflow: %q", got)
+	}
+	s.ExtendSelection(20, 0)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "three four" {
+		t.Fatalf("continued drag moved anchor: %q", got)
+	}
+}

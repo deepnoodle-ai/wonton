@@ -113,19 +113,10 @@ func (s *ViewportState) ExtendSelection(x, y int) {
 	if !ok {
 		return
 	}
-	reverse := p.before(s.selAnchor)
-	source, valid := s.sourceHit(p, true, !reverse)
+	source, valid := s.sourceDragHit(p)
 	if !valid {
 		s.ClearSelection()
 		return
-	}
-	if s.sourceAnchor != nil {
-		anchor, valid := s.sourceHit(s.selAnchor, false, reverse)
-		if !valid {
-			s.ClearSelection()
-			return
-		}
-		s.sourceAnchor = anchor
 	}
 	s.sourceCursor = source
 	s.selCursor = p
@@ -330,8 +321,7 @@ func (s *ViewportState) DragAutoScroll() bool {
 		item, line = s.moveDown(item, line, s.Height-1)
 	}
 	p := SelectionPoint{Item: item, Line: line, Col: s.selCursor.Col}
-	reverse := p.before(s.selAnchor)
-	source, valid := s.sourceHit(p, true, !reverse)
+	source, valid := s.sourceDragHit(p)
 	if !valid {
 		s.ClearSelection()
 		return false

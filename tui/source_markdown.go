@@ -18,12 +18,13 @@ func (m *MarkdownView) SourceOffset(offset int) *MarkdownView {
 	return m
 }
 
-func sourceSegment(source []byte, segment text.Segment, style Style, decode bool) StyledSegment {
+func sourceSegment(source []byte, segment text.Segment, style Style, decode, marked bool) StyledSegment {
 	// Goldmark padding and EOF newlines are presentation, not original bytes.
 	raw := string(source[segment.Start:segment.Stop])
 	seg := StyledSegment{Style: style}
+	var shownText strings.Builder
 	if segment.Padding > 0 {
-		seg.Text = strings.Repeat(" ", segment.Padding)
+		shownText.WriteString(strings.Repeat(" ", segment.Padding))
 	}
 	for at := 0; at < len(raw); {
 		size := 0
@@ -32,7 +33,7 @@ func sourceSegment(source []byte, segment text.Segment, style Style, decode bool
 			shown = raw[at+1 : at+2]
 			size = 2
 		} else if decode && raw[at] == '&' {
-			if end := strings.IndexByte(raw[at:], ';'); end >= 0 && end <= 32 {
+			if end := strings.IndexByte(raw[at:min(len(raw), at+33)], ';'); end >= 0 && end <= 32 {
 				token := raw[at : at+end+1]
 				decoded := html.UnescapeString(token)
 				if decoded != token {
@@ -56,11 +57,14 @@ func sourceSegment(source []byte, segment text.Segment, style Style, decode bool
 				}
 			}
 		}
-		start := len(seg.Text)
-		seg.Text += shown
-		seg.source = append(seg.source, sourceToken{start, len(seg.Text), segment.Start + at, segment.Start + at + size})
+		start := shownText.Len()
+		shownText.WriteString(shown)
+		if marked {
+			seg.source = append(seg.source, sourceToken{start, shownText.Len(), segment.Start + at, segment.Start + at + size})
+		}
 		at += size
 	}
+	seg.Text = shownText.String()
 	if segment.ForceNewline && !strings.HasSuffix(seg.Text, "\n") {
 		seg.Text += "\n"
 	}
@@ -110,7 +114,7 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 	code := StyledSegment{Style: mr.Theme.CodeBlockStyle}
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
-		code = appendSegment(code, sourceSegment(ctx.source, line, mr.Theme.CodeBlockStyle, false))
+		code = appendSegment(code, sourceSegment(ctx.source, line, mr.Theme.CodeBlockStyle, false, true))
 	}
 	ctx.result.words = append(ctx.result.words, segmentWords([]StyledSegment{code})...)
 	var styled []StyledSegment

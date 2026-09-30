@@ -525,7 +525,7 @@ func mergeAdjacentSegments(segments []StyledSegment) []StyledSegment {
 func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderContext, currentStyle Style, segments *[]StyledSegment) {
 	switch n := node.(type) {
 	case *ast.Text:
-		*segments = append(*segments, sourceSegment(ctx.source, n.Segment, currentStyle, true))
+		*segments = append(*segments, sourceSegment(ctx.source, n.Segment, currentStyle, true, mr.sourceMarked))
 		// Check if this text node ends with a soft line break (becomes a space)
 		if n.SoftLineBreak() {
 			*segments = append(*segments, StyledSegment{
@@ -554,7 +554,7 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			if t, ok := child.(*ast.Text); ok {
-				*segments = append(*segments, sourceSegment(ctx.source, t.Segment, style, false))
+				*segments = append(*segments, sourceSegment(ctx.source, t.Segment, style, false, mr.sourceMarked))
 			}
 		}
 
