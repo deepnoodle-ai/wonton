@@ -22,16 +22,18 @@ import (
 // This design eliminates race conditions in application code while maintaining
 // responsive UI through non-blocking async operations.
 type Runtime struct {
-	terminal   *Terminal
-	app        any // Application
-	events     chan Event
-	cmds       chan Cmd
-	done       chan struct{}
-	doneOnce   sync.Once
-	ticker     *time.Ticker
-	fps        int
-	lastRender time.Time // when render() last ran, for throttling resize repaints
-	frame      uint64    // Frame counter for TickEvents
+	terminal      *Terminal
+	app           any // Application
+	events        chan Event
+	cmds          chan Cmd
+	done          chan struct{}
+	doneOnce      sync.Once
+	stopOnce      sync.Once
+	stopRequested chan struct{}
+	ticker        *time.Ticker
+	fps           int
+	lastRender    time.Time // when render() last ran, for throttling resize repaints
+	frame         uint64    // Frame counter for TickEvents
 
 	// Panic capture: a panic in any runtime-managed goroutine (event loop,
 	// input reader, command goroutines) is recorded here so Run can restore
@@ -97,6 +99,7 @@ func NewRuntime(terminal *Terminal, app Application, fps int) *Runtime {
 		events:        make(chan Event, 100), // Buffered to prevent blocking
 		cmds:          make(chan Cmd, 100),
 		done:          make(chan struct{}),
+		stopRequested: make(chan struct{}),
 		fps:           fps,
 		frame:         0,
 		pasteTabWidth: 0, // Default: preserve tabs
@@ -320,13 +323,19 @@ func (r *Runtime) capturePanic() {
 	r.closeDone()
 }
 
-// Stop gracefully stops the runtime by sending a QuitEvent.
-// This can be called from application code or externally.
+// Stop requests shutdown without waiting for event dispatch or cleanup.
+// Safe to call repeatedly from any goroutine. The current handler settles
+// before the event loop stops and Run restores the terminal.
 func (r *Runtime) Stop() {
+	r.stopOnce.Do(func() { close(r.stopRequested) })
+}
+
+func (r *Runtime) stopping() bool {
 	select {
-	case r.events <- QuitEvent{Time: time.Now()}:
-	case <-r.done:
-		// Already stopped
+	case <-r.stopRequested:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -335,7 +344,14 @@ func (r *Runtime) Stop() {
 // Events are batched: all pending events are processed before rendering once.
 func (r *Runtime) eventLoop() {
 	for {
+		if r.stopping() {
+			r.closeDone()
+			return
+		}
 		select {
+		case <-r.stopRequested:
+			r.closeDone()
+			return
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			_, resizeOnly := event.(ResizeEvent)
@@ -374,16 +390,28 @@ func (r *Runtime) eventLoop() {
 			}
 
 			// Render once after processing all pending events
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-r.ticker.C:
 			// Send tick event for animations
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.frame++
 			tickEvent := TickEvent{
 				Time:  time.Now(),
 				Frame: r.frame,
 			}
 			r.processEvent(tickEvent)
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-r.done:
@@ -394,6 +422,9 @@ func (r *Runtime) eventLoop() {
 
 // processEventWithQuitCheck processes an event and returns true if it's a quit event
 func (r *Runtime) processEventWithQuitCheck(event Event) bool {
+	if r.stopping() {
+		return true
+	}
 	// Check for quit event
 	if _, isQuit := event.(QuitEvent); isQuit {
 		return true
@@ -402,6 +433,9 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 	// Handle batch events by unpacking them
 	if batch, isBatch := event.(BatchEvent); isBatch {
 		for _, e := range batch.Events {
+			if r.stopping() {
+				return true
+			}
 			if _, isQuit := e.(QuitEvent); isQuit {
 				return true
 			}

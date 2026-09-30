@@ -248,13 +248,15 @@ type InlineApp struct {
 	config inlineConfig
 
 	// Runtime state
-	app      any
-	events   chan Event
-	cmds     chan Cmd
-	done     chan struct{}
-	doneOnce sync.Once
-	ticker   *time.Ticker
-	frame    uint64
+	app           any
+	events        chan Event
+	cmds          chan Cmd
+	done          chan struct{}
+	doneOnce      sync.Once
+	stopOnce      sync.Once
+	stopRequested chan struct{}
+	ticker        *time.Ticker
+	frame         uint64
 
 	// Panic capture: a panic in any runtime-managed goroutine is recorded here
 	// so Run can restore the terminal before re-panicking with the original
@@ -322,14 +324,15 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 	live.reg = reg
 
 	return &InlineApp{
-		config:   cfg,
-		events:   make(chan Event, 100),
-		cmds:     make(chan Cmd, 100),
-		done:     make(chan struct{}),
-		output:   cfg.Output,
-		live:     live,
-		focusMgr: NewFocusManager(),
-		reg:      reg,
+		config:        cfg,
+		events:        make(chan Event, 100),
+		cmds:          make(chan Cmd, 100),
+		done:          make(chan struct{}),
+		stopRequested: make(chan struct{}),
+		output:        cfg.Output,
+		live:          live,
+		focusMgr:      NewFocusManager(),
+		reg:           reg,
 	}
 }
 
@@ -536,7 +539,14 @@ func (r *InlineApp) cleanup() {
 // It processes events sequentially, ensuring no race conditions.
 func (r *InlineApp) eventLoop() {
 	for {
+		if r.stopping() {
+			r.closeDone()
+			return
+		}
 		select {
+		case <-r.stopRequested:
+			r.closeDone()
+			return
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			if r.processEventWithQuitCheck(event) {
@@ -559,6 +569,10 @@ func (r *InlineApp) eventLoop() {
 			}
 
 			// Render once after processing all pending events
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-func() <-chan time.Time {
@@ -568,12 +582,20 @@ func (r *InlineApp) eventLoop() {
 			return nil
 		}():
 			// Send tick event for animations
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.frame++
 			tickEvent := TickEvent{
 				Time:  time.Now(),
 				Frame: r.frame,
 			}
 			r.processEvent(tickEvent)
+			if r.stopping() {
+				r.closeDone()
+				return
+			}
 			r.render()
 
 		case <-r.done:
@@ -584,6 +606,9 @@ func (r *InlineApp) eventLoop() {
 
 // processEventWithQuitCheck processes an event and returns true if it's a quit event
 func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
+	if r.stopping() {
+		return true
+	}
 	// Check for quit event
 	if _, isQuit := event.(QuitEvent); isQuit {
 		return true
@@ -592,6 +617,9 @@ func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
 	// Handle batch events by unpacking them
 	if batch, isBatch := event.(BatchEvent); isBatch {
 		for _, e := range batch.Events {
+			if r.stopping() {
+				return true
+			}
 			if _, isQuit := e.(QuitEvent); isQuit {
 				return true
 			}
@@ -925,13 +953,19 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	}
 }
 
-// Stop gracefully stops the inline application by sending a QuitEvent.
-// This can be called from any goroutine.
+// Stop requests shutdown without waiting for event dispatch or cleanup.
+// Safe to call repeatedly from any goroutine. The current handler settles
+// before the event loop stops and Run restores the terminal.
 func (r *InlineApp) Stop() {
+	r.stopOnce.Do(func() { close(r.stopRequested) })
+}
+
+func (r *InlineApp) stopping() bool {
 	select {
-	case r.events <- QuitEvent{Time: time.Now()}:
-	case <-r.done:
-		// Already stopped
+	case <-r.stopRequested:
+		return true
+	default:
+		return false
 	}
 }
 
