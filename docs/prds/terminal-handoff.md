@@ -22,7 +22,7 @@ Call the matching method from `HandleEvent`, between frames:
 ```go
 operationErr, restoreErr := runner.Handoff(func() error {
     cmd := exec.Command("vi", draftPath)
-    cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+    cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stdout
     return cmd.Run()
 })
 // Handle restoreErr first: unsafe restoration ends the runner.
@@ -33,8 +33,8 @@ Acceptance:
 
 - [ ] Both runners export `Handoff(fn func() error) (operationErr, restoreErr error)`. A nil callback is a no-op. Callers use the event-loop goroutine. Nested handoffs, including overlap with `Runtime.Suspend`, reject without calling the callback.
 - [ ] The callback starts only after Wonton acknowledges that no terminal read is outstanding. The child receives normal terminal input/output. Application input dispatch and rendering remain suspended throughout the callback.
-- [ ] Wonton retains the same decoder, its partial/buffered bytes, and already-owned events in order. Unread terminal bytes at release join application-owned storage and cannot reach the child. Input after release belongs to the child, including the launch interval.
-- [ ] On callback return, Wonton discards residual child input before resuming its reader. Child input cannot complete an application escape, paste, or UTF-8 sequence. Pre-handoff application input returns exactly once.
+- [ ] Before release, Wonton captures unread terminal bytes and finalizes that finite application input stream. It retains complete events in order, exactly once. Incomplete UTF-8/control suffixes are discarded. An unterminated paste retains its complete UTF-8 payload as one paste event, excluding incomplete terminator framing.
+- [ ] The same decoder releases all incomplete framing before the callback. Input after release belongs to the child, including launch delay. On return, Wonton discards residual child input and resumes in neutral parsing state. Missing UTF-8, CSI, or paste suffixes never consume resumed typing, Enter, or the application quit key.
 - [ ] Successful child exit, cancellation, and launch/nonzero errors restore prior raw mode, alternate-screen mode, mouse mode, bracketed paste, enhanced keyboard, and cursor visibility. A full repaint uses the current terminal size. Inline scrollback persists and its live region returns without ghost rows.
 - [ ] Inline `Print`, `Printf`, and `PrintRaw` cannot write or redraw during the callback. Concurrent calls wait until restoration completes, then print normally. The callback must not call these methods.
 
@@ -44,7 +44,8 @@ Call handoff with unsupported input, or encounter a release/restoration failure.
 
 Acceptance:
 
-- [ ] Initial support covers managed terminal stdin on macOS and Linux. Custom `InputSource`/inline readers, redirected input, Windows, and other unqualified platforms return `ErrHandoffUnsupported` before the callback or terminal mutation. Existing custom-input use remains supported outside handoff.
+- [ ] Initial support requires managed stdin and runner output through `os.Stdout`, both on the same terminal, on macOS/Linux. Custom input/output, redirected streams, mismatched terminals, and unqualified platforms return `ErrHandoffUnsupported` before callback or terminal mutation. Existing custom-stream use remains supported outside handoff.
+- [ ] The caller attaches the child's stdin and interactive output to that qualified terminal, as in UC-1. Handoff does not rewrite the callback's child configuration. Acceptance includes rejecting custom, redirected, and different-terminal output without starting a child.
 - [ ] A runner that is not running returns `ErrHandoffNotRunning`. Reentry returns `ErrHandoffReentrant`. Errors name the failed phase and preserve underlying causes for `errors.Is`/`errors.As`.
 - [ ] Qualification/release failures and the callback result use `operationErr`. Restoration failures use `restoreErr` independently, including when the callback also fails. Failed release attempts restoration after any mutation and never start the callback.
 - [ ] Restoration, input-resume, or repaint failure stops input admission and rendering. `Run` returns that failure after best-effort terminal cleanup. The runner never continues interactively with uncertain ownership.
@@ -57,9 +58,9 @@ Acceptance:
 
 ## Decisions and boundaries
 
-Use a callback API to pair release and restoration, rather than public Pause/Resume methods that callers can leave unbalanced. Keep one internal pauseable reader shared by both runners. Reject another stdin reader and decoder replacement because either loses sole ownership or buffered application input. Define release as the ownership boundary, rather than child process startup, so launch latency has one explicit owner.
+Use a callback API to pair release and restoration, rather than public Pause/Resume methods that callers can leave unbalanced. Keep one internal pauseable reader shared by both runners. Reject another stdin reader and decoder replacement because either loses sole ownership or buffered application input. Finalize incomplete framing at release. Reject preserving it across ownership because a child-owned suffix may never return. Define release as the boundary, so launch latency has one explicit owner.
 
-Qualify macOS/Linux first. Reject generic-reader cancellation claims without a low-level acknowledgment. Keep separate errors because child failure can be recoverable while restoration failure is fatal. Reuse existing Delete semantics and hooks rather than adding a composer widget.
+Qualify macOS/Linux with stdin/stdout on one terminal first. Reject generic-reader cancellation and opaque output writers because their ownership cannot be checked. Keep separate errors because child failure can be recoverable while restoration failure is fatal. Reuse existing Delete semantics and hooks rather than adding a composer widget.
 
 Editor selection, temporary files, draft replacement, subprocess cancellation, background execution, configurable keymaps, public input-owner interfaces, and a general input framework are outside this track. The [technical spec](../design/terminal-handoff.md) defines the reader and restoration contract.
 
