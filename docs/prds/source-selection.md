@@ -1,7 +1,7 @@
 # Copy original text from a styled transcript
 
 Status: Approved\
-PRD PR: [#61](https://github.com/deepnoodle-ai/wonton/pull/61) · Implementation PR: Not opened · Updated: 2026-09-30
+PRD PR: [#61](https://github.com/deepnoodle-ai/wonton/pull/61) · Implementation PR: [#62](https://github.com/deepnoodle-ai/wonton/pull/62) · Updated: 2026-09-30
 
 ## Problem and context
 
