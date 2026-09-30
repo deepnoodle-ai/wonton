@@ -1,6 +1,6 @@
 # Source selection through existing layouts
 
-Status: In Review · Author: Codex · Date: 2026-09-30\
+Status: Accepted · Author: Codex · Date: 2026-09-30\
 Workflow: Spec → root checkpoint → build. Requirements: [source-selection PRD](../prds/source-selection.md).
 
 ## Context and scope
@@ -69,4 +69,4 @@ The cost is mapping metadata proportional to laid-out text and explicit invalida
 
 Ship additively with public example tests and updated viewport/Markdown documentation. Test exact slices, reverse drag, auto-scroll, Unicode, entities, logical lines, long clipped code, repeated text, links/tables, composed prefixes, disjoint leaves, empty/failed layouts, mixed legacy items, source/decoration/source, reflow, cache reuse, and all three grapheme-changing append cases. Preserve the existing selection suite. Capture terminal evidence and obtain independent implementation/taste review before the implementation PR.
 
-There are no unresolved behavioral decisions. Root's checkpoint must confirm the public signatures and fail-closed composition contract before implementation.
+There are no unresolved behavioral decisions. Root's checkpoint accepted the public signatures and fail-closed composition contract before implementation.

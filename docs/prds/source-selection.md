@@ -1,6 +1,6 @@
 # Copy original text from a styled transcript
 
-Status: Draft\
+Status: Approved\
 PRD PR: Not opened · Implementation PR: Not opened · Updated: 2026-09-30
 
 ## Problem and context
@@ -80,7 +80,7 @@ Acceptance:
 - Copy exact slices, including hidden syntax between endpoints. Reject reconstructed Markdown and normalized whitespace because either changes the user's original text.
 - Produce provenance during existing layout and Goldmark traversal. Reject rendered-to-source matching, unsafe access, module-cache modification, and a second Markdown parser.
 - Source means the caller-supplied text, including any sanitization the caller already applied. Rendering controls must not execute. Their visible replacement must have explicit provenance. Copied strings remain inert data and never replay unsanitized controls to native scrollback.
-- Extend existing composition and caches only as needed for transcript text. Public names and data shapes belong in the technical spec after this PRD review.
+- Extend existing composition and caches only as needed for transcript text. The [technical spec](../design/source-selection.md) defines the public signatures and layout contract.
 
 Clipboard transports, Dashi commands, terminal mouse-capture toggles, arbitrary Canvas provenance, editing, and a general source-change transaction system are outside this track.
 
