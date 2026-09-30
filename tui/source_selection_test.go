@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"github.com/deepnoodle-ai/wonton/runewidth"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -730,6 +732,44 @@ func TestSourceDragCanStartInPaddingOrPastLineEnd(t *testing.T) {
 		s.EndSelection()
 		if got := s.SelectedText(); got != "abc" {
 			t.Fatalf("%v: %q", endpoints, got)
+		}
+	}
+}
+
+func TestSourceCodeHighlightingMatchesLegacyWithCRLF(t *testing.T) {
+	for _, source := range []string{"```go\r\nvar answer = 42\r\n```", "```go\nvar answer = 42\n```", "```python\r\nprint('answer')\r\n```"} {
+		plain, err := NewMarkdownRenderer().WithMaxWidth(40).Render(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		marked := Markdown(source, nil).SourceOffset(0)
+		actual, err := marked.renderer.WithMaxWidth(40).Render(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(plain.Lines) != len(actual.Lines) {
+			t.Fatalf("%q: line count changed", source)
+		}
+		for row, want := range plain.Lines {
+			got := actual.Lines[row]
+			// Segment boundaries may carry extra source metadata; the displayed
+			// text and style of each grapheme must still match.
+			type glyph struct {
+				text  string
+				style Style
+			}
+			flatten := func(line StyledLine) []glyph {
+				var out []glyph
+				for _, seg := range line.Segments {
+					for g := range runewidth.Graphemes(seg.Text) {
+						out = append(out, glyph{g, seg.Style})
+					}
+				}
+				return out
+			}
+			if want.Indent != got.Indent || !reflect.DeepEqual(flatten(want), flatten(got)) {
+				t.Fatalf("%q row %d: styled presentation changed", source, row)
+			}
 		}
 	}
 }

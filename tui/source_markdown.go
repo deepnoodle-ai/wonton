@@ -134,7 +134,15 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 				styled = append(styled, part)
 				at = end
 			}
-			if at < len(code.Text) && code.Text[at] == '\n' {
+			if strings.HasPrefix(code.Text[at:], "\r\n") {
+				newline := segmentSlice(code, at, at+2)
+				newline.Text = "\n"
+				for i := range newline.source {
+					newline.source[i].lo, newline.source[i].hi = 0, 1
+				}
+				styled = append(styled, newline)
+				at += 2
+			} else if at < len(code.Text) && code.Text[at] == '\n' {
 				styled = append(styled, segmentSlice(code, at, at+1))
 				at++
 			}
