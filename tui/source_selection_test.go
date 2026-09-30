@@ -502,3 +502,21 @@ func TestSourceBlankItemDoesNotStopDrag(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceDirectionControlsAreInertButCopiedAsData(t *testing.T) {
+	for _, markdown := range []bool{false, true} {
+		for _, r := range []rune{0x200e, 0x200f, 0x2028, 0x2029, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069} {
+			source := "before" + string(r) + "after"
+			s, v := newSourceViewport(t, source, markdown, 40)
+			view := v.Item(0)
+			shown := Sprint(view, WithWidth(40))
+			if strings.ContainsRune(shown, r) {
+				t.Fatalf("markdown=%v: rendered control U+%04X", markdown, r)
+			}
+			s.SelectLine(3, 0)
+			if got := s.SelectedText(); got != source {
+				t.Fatalf("control source changed: %q", got)
+			}
+		}
+	}
+}

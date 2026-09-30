@@ -3,7 +3,6 @@ package tui
 import (
 	"html"
 	"strings"
-	"unicode"
 
 	"github.com/deepnoodle-ai/wonton/runewidth"
 	"github.com/yuin/goldmark/text"
@@ -51,7 +50,7 @@ func sourceSegment(source []byte, segment text.Segment, style Style, decode bool
 		}
 		if shown != "\n" && shown != "\r\n" && shown != "\t" {
 			for _, r := range shown {
-				if unicode.IsControl(r) || r == 0x202d || r == 0x202e || r >= 0x2066 && r <= 0x2069 {
+				if sourceUnsafeRune(r) {
 					shown = "�"
 					break
 				}

@@ -164,7 +164,7 @@ func sourceTextLines(text string, offset, width int, wrap bool) [][]StyledSegmen
 			w = 4
 		} else {
 			for _, r := range g {
-				if unicode.IsControl(r) || r == 0x202e || r == 0x202d || r >= 0x2066 && r <= 0x2069 {
+				if sourceUnsafeRune(r) {
 					shown = "�"
 					w = 1
 					break
@@ -560,4 +560,11 @@ func (l *sourceLayout) addWords(words []sourceWordToken, base int) {
 		word.start, word.end = lo, hi
 		l.words = append(l.words, word)
 	}
+}
+
+// Direction and paragraph controls can make visible approval or transcript text
+// misleading. Source copying retains them as data; rendering replaces them.
+func sourceUnsafeRune(r rune) bool {
+	return unicode.IsControl(r) || r >= 0x202a && r <= 0x202e ||
+		r >= 0x2066 && r <= 0x2069 || r == 0x2028 || r == 0x2029 || r == 0x200e || r == 0x200f
 }
