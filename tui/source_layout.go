@@ -25,12 +25,20 @@ type sourceToken struct {
 	lo, hi     int // byte interval in displayed segment
 	start, end int // byte interval in canonical source
 }
-type sourceCell struct{ x, y, width, start, end int }
+type sourceCell struct {
+	x, y, width, start, end int
+	text                    string
+}
+type sourceWordToken struct {
+	start, end int
+	text       string
+}
 type sourceBinding struct{ start, end int }
 type sourceLayout struct {
 	source     string
 	cells      map[image.Point]sourceCell
 	bindings   []sourceBinding
+	words      []sourceWordToken
 	valid      bool
 	bounds     image.Rectangle
 	boundaries []int
@@ -126,7 +134,7 @@ func segmentSlice(seg StyledSegment, lo, hi int) StyledSegment {
 func appendSegment(a, b StyledSegment) StyledSegment {
 	n := len(a.Text)
 	a.Text += b.Text
-	a.source = append([]sourceToken(nil), a.source...)
+
 	for _, t := range b.source {
 		t.lo += n
 		t.hi += n
@@ -210,7 +218,7 @@ func (c *RenderContext) recordSegment(x, y int, seg StyledSegment, base int) {
 					lo, hi = c.source.cluster(lo, hi)
 					point := image.Pt(col, y).Add(c.sourceOrigin)
 					if point.In(c.source.bounds) && point.X+w <= c.source.bounds.Max.X {
-						cell := sourceCell{point.X, point.Y, max(w, 1), lo, hi}
+						cell := sourceCell{point.X, point.Y, max(w, 1), lo, hi, g}
 						for col := point.X; col < point.X+max(w, 1); col++ {
 							c.source.cells[image.Pt(col, point.Y)] = cell
 						}
@@ -322,7 +330,18 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp bool) (*sourceEndpoint
 	if !l.valid {
 		return nil, false
 	}
+	if l.source == "" && clamp {
+		return nil, true
+	}
 	offset, ok := l.hit(p.Col, p.Line, clamp)
+	if ok && !clamp {
+		for _, cell := range l.cells {
+			if cell.y == p.Line && p.Col > cell.x && p.Col < cell.x+cell.width {
+				offset = cell.end
+				break
+			}
+		}
+	}
 	if !ok {
 		return nil, false
 	}
@@ -397,12 +416,12 @@ func (s *ViewportState) sourceSelectRun(p SelectionPoint, line bool) bool {
 		}
 		var words []word
 		seen := map[int]bool{}
-		for _, cell := range l.cells {
-			if cell.start < lo || cell.end > hi || seen[cell.start] {
+		for _, token := range l.words {
+			if token.start < lo || token.end > hi || seen[token.start] {
 				continue
 			}
-			seen[cell.start] = true
-			words = append(words, word{cell.start, cell.end, l.source[cell.start:cell.end]})
+			seen[token.start] = true
+			words = append(words, word{token.start, token.end, token.text})
 		}
 		// Layout cell order can differ from source order (tables and wrapping).
 		slices.SortFunc(words, func(a, b word) int { return cmp.Compare(a.start, b.start) })
@@ -417,10 +436,10 @@ func (s *ViewportState) sourceSelectRun(p SelectionPoint, line bool) bool {
 			return true
 		}
 		first, last := at, at
-		for first > 0 && words[first-1].end == words[first].start && isWordRune(words[first-1].text) {
+		for first > 0 && isWordRune(words[first-1].text) {
 			first--
 		}
-		for last+1 < len(words) && words[last].end == words[last+1].start && isWordRune(words[last+1].text) {
+		for last+1 < len(words) && isWordRune(words[last+1].text) {
 			last++
 		}
 		lo, hi = words[first].start, words[last].end
@@ -514,4 +533,26 @@ func (s *ViewportState) sourceBounds(item, startItem, endItem, length int) (int,
 		}
 	}
 	return lo, hi
+}
+
+func segmentWords(segments []StyledSegment) []sourceWordToken {
+	var out []sourceWordToken
+	for _, seg := range segments {
+		for _, token := range seg.source {
+			out = append(out, sourceWordToken{token.start, token.end, seg.Text[token.lo:token.hi]})
+		}
+	}
+	return out
+}
+func (l *sourceLayout) addWords(words []sourceWordToken, base int) {
+	for _, word := range words {
+		lo, hi := word.start+base, word.end+base
+		if lo < 0 || hi > len(l.source) || lo >= hi {
+			l.valid = false
+			continue
+		}
+		lo, hi = l.cluster(lo, hi)
+		word.start, word.end = lo, hi
+		l.words = append(l.words, word)
+	}
 }

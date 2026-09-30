@@ -21,6 +21,9 @@ func (v *sourceItems) Item(i int) View {
 	if v.broken[i] {
 		return Text("unbound source")
 	}
+	if v.text[i] == "" {
+		return Text("decoration")
+	}
 	if v.legacy[i] {
 		return Text("%s", v.text[i])
 	}
@@ -321,5 +324,91 @@ func TestSourceDragAutoScrollAndHighlightAfterResize(t *testing.T) {
 	screen := renderViewport(t, s, v, 12, 5, 0)
 	if s.SelectedText() != got || len(reversedRuns(screen, 12, 5)) == 0 {
 		t.Fatal("resize lost source or highlight")
+	}
+}
+
+func TestSourceAnnotationKeepsLayout(t *testing.T) {
+	for _, text := range []string{"alpha beta gamma", strings.Repeat("x", 40), "repeated  words", "世界 👩\u200d💻 words"} {
+		for _, align := range []Alignment{AlignLeft, AlignCenter, AlignRight} {
+			legacy := SprintScreen(Text("%s", text).Wrap().Align(align), WithWidth(8)).Text()
+			marked := SprintScreen(Text("%s", text).Wrap().Align(align).SourceOffset(0), WithWidth(8)).Text()
+			if legacy != marked {
+				t.Fatalf("annotation changed text layout: %q vs %q", legacy, marked)
+			}
+		}
+	}
+	source := "```text\n" + strings.Repeat("code", 20) + "\n```"
+	if a, b := SprintScreen(Markdown(source, nil), WithWidth(20)).Text(), SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(20)).Text(); a != b {
+		t.Fatalf("annotation changed code layout: %q vs %q", a, b)
+	}
+}
+func TestSourceAndLegacySelectionTransitions(t *testing.T) {
+	v := &sourceItems{text: []string{"source", "legacy"}, legacy: map[int]bool{1: true}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 20, 10, 0)
+	for _, line := range []bool{false, true} {
+		s.SelectLine(3, 0)
+		if line {
+			s.SelectLine(2, 1)
+		} else {
+			s.SelectWord(2, 1)
+		}
+		if got := s.SelectedText(); got != "legacy" {
+			t.Fatalf("source endpoints survived legacy selection: %q", got)
+		}
+		s.SelectLine(3, 0)
+		if got := s.SelectedText(); got != "source" {
+			t.Fatalf("legacy endpoints survived source selection: %q", got)
+		}
+	}
+}
+func TestSourceWideDragBothDirections(t *testing.T) {
+	s, _ := newSourceViewport(t, "世 next", false, 20)
+	for _, pair := range [][2]int{{2, 3}, {3, 2}} {
+		s.BeginSelection(pair[0], 0)
+		s.ExtendSelection(pair[1], 0)
+		s.EndSelection()
+		if got := s.SelectedText(); got != "世" {
+			t.Fatalf("drag %v copied %q", pair, got)
+		}
+	}
+}
+func TestSourceDecorationDoesNotStopDrag(t *testing.T) {
+	v := &sourceItems{text: []string{"first", "", "second"}}
+	s := &ViewportState{}
+	renderViewport(t, s, v, 20, 10, 0)
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(4, 1)
+	if !s.SelectionActive() || !s.HasSelection() || s.SelectedText() != "first" {
+		t.Fatalf("decoration stopped drag: %q", s.SelectedText())
+	}
+	s.ExtendSelection(8, 2)
+	s.EndSelection()
+	if got := s.SelectedText(); got != "first\nsecond" {
+		t.Fatalf("drag did not continue: %q", got)
+	}
+}
+func TestSourceWordPolicyUsesDisplayedSeparators(t *testing.T) {
+	for _, text := range []string{"foo&apos;bar", "foo\\[bar"} {
+		s, _ := newSourceViewport(t, text, true, 40)
+		s.SelectWord(3, 0)
+		if got := s.SelectedText(); got != "foo" {
+			t.Fatalf("word ignored decoded separator: %q", got)
+		}
+	}
+	s, _ := newSourceViewport(t, "foo**bar**", true, 40)
+	s.SelectWord(3, 0)
+	if got := s.SelectedText(); got != "foo**bar" {
+		t.Fatalf("hidden syntax split visible word: %q", got)
+	}
+}
+
+func TestSourceAnnotationKeepsDecodedMarkdownLayout(t *testing.T) {
+	for _, source := range []string{"foo&apos;bar", "foo\\[bar", "[**nested**](url) next", "inline `a b` code"} {
+		a := SprintScreen(Markdown(source, nil), WithWidth(10)).Text()
+		b := SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(10)).Text()
+		if a != b {
+			t.Fatalf("annotation changed decoded markdown: %q vs %q", a, b)
+		}
 	}
 }

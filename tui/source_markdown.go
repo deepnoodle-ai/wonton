@@ -113,6 +113,7 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 		line := lines.At(i)
 		code = appendSegment(code, sourceSegment(ctx.source, line, mr.Theme.CodeBlockStyle, false))
 	}
+	ctx.result.words = append(ctx.result.words, segmentWords([]StyledSegment{code})...)
 	var styled []StyledSegment
 	if language != "" {
 		highlighted := mr.highlightCode(code.Text, language)
@@ -141,7 +142,7 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 	if styled == nil {
 		styled = []StyledSegment{code}
 	}
-	for _, row := range wrapLiteralSegments(styled, mr.MaxWidth-ctx.indent-mr.TabWidth) {
+	for _, row := range splitSegmentsAtNewlines(styled) {
 		ctx.result.Lines = append(ctx.result.Lines, StyledLine{Segments: row, Indent: ctx.indent + mr.TabWidth})
 	}
 	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})

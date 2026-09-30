@@ -135,6 +135,7 @@ type StyledSegment struct {
 type RenderedMarkdown struct {
 	Lines       []StyledLine
 	sourceValid bool
+	words       []sourceWordToken
 }
 
 // Render parses and renders markdown content
@@ -485,6 +486,9 @@ func (mr *MarkdownRenderer) extractInlineSegments(node ast.Node, ctx *renderCont
 	// This fixes cases where goldmark splits text at underscore boundaries
 	// (e.g., "read_file" becomes ["read_", "file"]) even when no emphasis
 	// is applied.
+	if mr.sourceMarked {
+		ctx.result.words = append(ctx.result.words, segmentWords(segments)...)
+	}
 	segments = mergeAdjacentSegments(segments)
 
 	return segments
@@ -521,11 +525,7 @@ func mergeAdjacentSegments(segments []StyledSegment) []StyledSegment {
 func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderContext, currentStyle Style, segments *[]StyledSegment) {
 	switch n := node.(type) {
 	case *ast.Text:
-		if mr.sourceMarked {
-			*segments = append(*segments, sourceSegment(ctx.source, n.Segment, currentStyle, true))
-		} else {
-			*segments = append(*segments, StyledSegment{Text: string(n.Segment.Value(ctx.source)), Style: currentStyle})
-		}
+		*segments = append(*segments, sourceSegment(ctx.source, n.Segment, currentStyle, true))
 		// Check if this text node ends with a soft line break (becomes a space)
 		if n.SoftLineBreak() {
 			*segments = append(*segments, StyledSegment{
@@ -551,27 +551,12 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		})
 
 	case *ast.CodeSpan:
-		if mr.sourceMarked {
-			style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
-			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-				if t, ok := child.(*ast.Text); ok {
-					*segments = append(*segments, sourceSegment(ctx.source, t.Segment, style, false))
-				}
-			}
-			return
-		}
-		// CodeSpan contains Text children - extract their content
-		var codeText strings.Builder
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			if textNode, ok := child.(*ast.Text); ok {
-				codeText.Write(textNode.Segment.Value(ctx.source))
-			}
-		}
 		style := mr.mergeStyles(currentStyle, mr.Theme.CodeStyle)
-		*segments = append(*segments, StyledSegment{
-			Text:  codeText.String(),
-			Style: style,
-		})
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			if t, ok := child.(*ast.Text); ok {
+				*segments = append(*segments, sourceSegment(ctx.source, t.Segment, style, false))
+			}
+		}
 
 	case *ast.Emphasis:
 		style := currentStyle
@@ -586,39 +571,23 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		}
 
 	case *ast.Link:
-		if mr.sourceMarked {
-			style := mr.mergeStyles(currentStyle, mr.Theme.LinkStyle)
-			var leaves []StyledSegment
-			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-				mr.extractInlineSegmentsRec(child, ctx, style, &leaves)
-			}
-			for _, seg := range leaves {
-				seg.Hyperlink = &Hyperlink{URL: string(n.Destination), Text: seg.Text, Style: style}
-				*segments = append(*segments, seg)
-			}
-			return
-		}
-		dest := string(n.Destination)
-
-		// Extract link text
-		var linkText strings.Builder
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			if text, ok := child.(*ast.Text); ok {
-				linkText.Write(text.Segment.Value(ctx.source))
-			}
-		}
-
 		style := mr.mergeStyles(currentStyle, mr.Theme.LinkStyle)
-
-		*segments = append(*segments, StyledSegment{
-			Text:  linkText.String(),
-			Style: style,
-			Hyperlink: &Hyperlink{
-				URL:   dest,
-				Text:  linkText.String(),
-				Style: style,
-			},
-		})
+		var leaves []StyledSegment
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			mr.extractInlineSegmentsRec(child, ctx, style, &leaves)
+		}
+		destination := strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return -1
+			}
+			return r
+		}, string(n.Destination))
+		// Goldmark can split one link label at delimiter boundaries. Merge
+		// equal styles before wrapping so those boundaries add no spaces.
+		for _, seg := range mergeAdjacentSegments(leaves) {
+			seg.Hyperlink = &Hyperlink{URL: destination, Text: seg.Text, Style: style}
+			*segments = append(*segments, seg)
+		}
 
 	default:
 		for child := node.FirstChild(); child != nil; child = child.NextSibling() {

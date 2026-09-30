@@ -232,43 +232,36 @@ func (t *TextView) SourceOffset(offset int) *TextView {
 	t.sourceOffset = offset
 	return t
 }
-func (t *TextView) sourceRender(ctx *RenderContext) {
+func (t *TextView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
-	if ctx.source != nil {
-		ctx.source.bind(t.content, t.sourceOffset)
+	if width == 0 || height == 0 {
+		return
 	}
 	if t.fillBg {
 		ctx.Fill(' ', t.style)
 	}
-	rows := sourceTextLines(t.content, t.sourceOffset, width, t.wrap)
-	if !t.wrap && len(rows) > 1 {
-		rows = rows[:1]
+	if t.sourceMarked && ctx.source != nil {
+		ctx.source.bind(t.content, t.sourceOffset)
+		for _, row := range sourceTextLines(t.content, t.sourceOffset, 0, false) {
+			ctx.source.addWords(segmentWords(row), 0)
+		}
 	}
-	for y, row := range rows {
+	for y, row := range t.textRows(width) {
 		if y >= height {
 			break
 		}
-		x, total := 0, 0
-		for _, seg := range row {
-			total += runewidth.StringWidth(seg.Text)
-		}
-		if t.align == AlignCenter {
-			x = max(0, (width-total)/2)
-		} else if t.align == AlignRight {
-			x = max(0, width-total)
-		}
+		x := 0
 		for _, seg := range row {
 			ctx.PrintTruncated(x, y, seg.Text, t.style)
-			ctx.recordSegment(x, y, seg, 0)
+			if t.sourceMarked {
+				ctx.recordSegment(x, y, seg, 0)
+			}
 			x += runewidth.StringWidth(seg.Text)
 		}
 	}
 }
-func (t *TextView) sourceSize(maxWidth, maxHeight int) (int, int) {
-	rows := sourceTextLines(t.content, t.sourceOffset, maxWidth, t.wrap)
-	if !t.wrap && len(rows) > 1 {
-		rows = rows[:1]
-	}
+func (t *TextView) size(maxWidth, maxHeight int) (int, int) {
+	rows := t.textRows(maxWidth)
 	w := 0
 	for _, row := range rows {
 		n := 0
@@ -278,83 +271,14 @@ func (t *TextView) sourceSize(maxWidth, maxHeight int) (int, int) {
 		w = max(w, n)
 	}
 	h := len(rows)
+	if t.wrap && t.content == "" {
+		h = 0
+	}
 	if maxWidth > 0 {
 		w = min(w, maxWidth)
 	}
 	if maxHeight > 0 {
 		h = min(h, maxHeight)
-	}
-	return w, h
-}
-
-func (t *TextView) render(ctx *RenderContext) {
-	if t.sourceMarked {
-		t.sourceRender(ctx)
-		return
-	}
-	width, height := ctx.Size()
-	if width == 0 || height == 0 {
-		return
-	}
-
-	// Fill background if requested
-	if t.fillBg {
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				ctx.SetCell(x, y, ' ', t.style)
-			}
-		}
-	}
-
-	// Process text
-	displayText := t.content
-	if t.wrap && width > 0 {
-		displayText = WrapText(displayText, width)
-	}
-
-	// Align text if alignment is set
-	if t.align != AlignLeft && width > 0 {
-		displayText = AlignText(displayText, width, t.align)
-	}
-
-	// Render
-	if t.wrap {
-		lines := splitLinesSimple(displayText)
-		for y, line := range lines {
-			if y >= height {
-				break
-			}
-			ctx.PrintStyled(0, y, line, t.style)
-		}
-	} else {
-		ctx.PrintTruncated(0, 0, displayText, t.style)
-	}
-}
-
-func (t *TextView) size(maxWidth, maxHeight int) (int, int) {
-	if t.sourceMarked {
-		return t.sourceSize(maxWidth, maxHeight)
-	}
-	w, h := MeasureText(t.content)
-
-	// For wrapped text, expand to fill available width
-	if t.wrap && maxWidth > 0 && w > maxWidth {
-		w = maxWidth
-	}
-
-	// Calculate height based on wrapped lines
-	if t.wrap && maxWidth > 0 {
-		wrapped := WrapText(t.content, maxWidth)
-		lines := splitLinesSimple(wrapped)
-		h = len(lines)
-	}
-
-	// Apply constraints
-	if maxWidth > 0 && w > maxWidth {
-		w = maxWidth
-	}
-	if maxHeight > 0 && h > maxHeight {
-		h = maxHeight
 	}
 	return w, h
 }

@@ -154,6 +154,8 @@ func (s *ViewportState) SelectLine(x, y int) {
 	if s.sourceSelectRun(p, true) {
 		return
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	line := s.itemLine(p.Item, p.Line)
 	if line.end == 0 {
 		// A blank line selects nothing. Returning before suspendFollow matters:
@@ -178,6 +180,8 @@ func (s *ViewportState) selectRun(x, y int, keep func(string) bool) {
 	if s.sourceSelectRun(p, false) {
 		return
 	}
+	s.sourceAnchor, s.sourceCursor = nil, nil
+	s.sourceSnapshots = nil
 	line := s.itemLine(p.Item, p.Line)
 	i := line.indexAt(p.Col)
 	if i >= len(line.text) || !keep(line.text[i]) {
