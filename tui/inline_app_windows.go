@@ -17,5 +17,9 @@ func (r *InlineApp) setupResizeWatcher() {
 
 // cleanupResizeWatcher stops resize signal handling (Windows).
 func (r *InlineApp) cleanupResizeWatcher() {
+	if r.resizeChan == nil {
+		return
+	}
 	close(r.resizeChan)
+	r.resizeChan = nil
 }

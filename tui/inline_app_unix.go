@@ -16,6 +16,10 @@ func (r *InlineApp) setupResizeWatcher() {
 
 // cleanupResizeWatcher stops resize signal handling (Unix).
 func (r *InlineApp) cleanupResizeWatcher() {
+	if r.resizeChan == nil {
+		return
+	}
 	signal.Stop(r.resizeChan)
 	close(r.resizeChan)
+	r.resizeChan = nil
 }

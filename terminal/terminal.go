@@ -505,6 +505,7 @@ type Terminal struct {
 	// Kitty keyboard protocol support
 	kittySupported bool
 	kittyEnabled   bool
+	kittyFraming   bool
 
 	// Cursor visibility state
 	cursorHidden bool
@@ -1200,26 +1201,12 @@ func (t *Terminal) EnableEnhancedKeyboard() {
 	if t.kittyEnabled {
 		return
 	}
-	// Enable kitty keyboard protocol with flags:
-	// Bit 0 (1): Disambiguate escape codes - report modifier keys with special keys
-	// Bit 1 (2): Report event types (press, repeat, release)
-	// Bit 2 (4): Report alternate keys
-	// Bit 3 (8): Report all keys as escape codes
-	// Bit 4 (16): Report associated text
-	// We use flag 1 for basic modifier detection (e.g., Shift+Enter)
-	fmt.Fprint(t.out, "\033[>1u")
-	t.kittyEnabled = true
+	_ = t.enableKeyboard()
 }
 
 // DisableEnhancedKeyboard disables enhanced keyboard mode.
 // This restores normal keyboard reporting.
-func (t *Terminal) DisableEnhancedKeyboard() {
-	if !t.kittyEnabled {
-		return
-	}
-	fmt.Fprint(t.out, "\033[<u")
-	t.kittyEnabled = false
-}
+func (t *Terminal) DisableEnhancedKeyboard() { _ = t.releaseKeyboard() }
 
 // IsKittyProtocolSupported returns true if Kitty keyboard protocol is supported.
 // Only valid after DetectKittyProtocol() has been called.

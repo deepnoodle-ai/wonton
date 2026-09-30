@@ -227,15 +227,13 @@ func (r *InlineApp) handoffSnapshot() (terminalstate.Transition, error) {
 		} else {
 			sequence += "\x1b[?25h"
 		}
+		// These idempotent modes may have been enabled by a completed prefix.
+		r.live.hiddenCursor = hidden
+		r.pasteEnabled, r.mouseEnabled = paste, mouse
 		complete, writeErr := terminalstate.WriteControl(r.output, sequence)
-		if complete {
-			r.live.hiddenCursor = hidden
-			r.pasteEnabled, r.mouseEnabled = paste, mouse
-		}
 		var keyboardErr error
 		if complete && kitty && !r.kittyEnabled {
-			r.kittyEnabled = true
-			_, keyboardErr = terminalstate.WriteControl(r.output, "\x1b[>1u")
+			keyboardErr = r.enableKeyboard()
 		}
 		return errors.Join(attributeErr, writeErr, keyboardErr, terminalstate.Flush(r.output))
 	}}, nil
@@ -245,13 +243,26 @@ func checkedHandoffWrite(out io.Writer, sequence string) error {
 	return terminalstate.Write(out, sequence)
 }
 
-func (r *InlineApp) releaseKeyboard() error {
-	if !r.kittyEnabled {
-		return nil
-	}
-	complete, err := terminalstate.WriteControl(r.output, "\x1b[<u")
-	if complete {
-		r.kittyEnabled = false
-	}
+func (r *InlineApp) enableKeyboard() error {
+	complete, err := terminalstate.WriteControl(r.output, "\x1b[>1u")
+	r.kittyEnabled, r.kittyFraming = complete, !complete
 	return err
+}
+func (r *InlineApp) releaseKeyboard() error {
+	var framingErr, popErr error
+	if r.kittyFraming {
+		complete, err := terminalstate.WriteControl(r.output, "\x18")
+		if complete {
+			r.kittyFraming = false
+		}
+		framingErr = err
+	}
+	if r.kittyEnabled {
+		complete, err := terminalstate.WriteControl(r.output, "\x1b[<u")
+		if complete {
+			r.kittyEnabled = false
+		}
+		popErr = err
+	}
+	return errors.Join(framingErr, popErr)
 }

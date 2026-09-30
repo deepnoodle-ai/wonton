@@ -290,6 +290,7 @@ type InlineApp struct {
 	oldState                                 *term.State
 	stdinFd                                  int
 	pasteEnabled, kittyEnabled, mouseEnabled bool
+	kittyFraming                             bool
 
 	// Resize handling
 	resizeChan chan os.Signal
@@ -410,8 +411,14 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		if !feature.wanted {
 			continue
 		}
-		*feature.enabled = true
-		if err := checkedHandoffWrite(r.output, feature.sequence); err != nil {
+		var enableErr error
+		if feature.enabled == &r.kittyEnabled {
+			enableErr = errors.Join(r.enableKeyboard(), terminalstate.Flush(r.output))
+		} else {
+			*feature.enabled = true
+			enableErr = checkedHandoffWrite(r.output, feature.sequence)
+		}
+		if err := enableErr; err != nil {
 			cleanupErr := r.cleanup()
 			r.mu.Lock()
 			r.running = false

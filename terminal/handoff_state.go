@@ -36,14 +36,7 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		// Attempt all plain-terminal cleanup even if a protocol write fails.
-		var keyboardErr error
-		if t.kittyEnabled {
-			complete, err := terminalstate.WriteControl(t.out, "\x1b[<u")
-			keyboardErr = err
-			if complete {
-				t.kittyEnabled = false
-			}
-		}
+		keyboardErr := t.releaseKeyboard()
 		// Keep the active screen until its keyboard push has been removed.
 		leaveAlt := t.altScreen && !t.kittyEnabled
 		complete, writeErr := terminalstate.WriteControl(t.out, plainModes(leaveAlt, t.bracketedPaste, false, t.mouseMode))
@@ -75,15 +68,22 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 			t.mu.Lock()
 			defer t.mu.Unlock()
 			attributeErr := term.Restore(t.fd, attributes)
-			complete, writeErr := terminalstate.WriteControl(t.out, activeModes(alt, hidden, paste, false, mouse))
-			if complete {
-				t.altScreen, t.cursorHidden, t.bracketedPaste, t.mouseMode = alt, hidden, paste, mouse
+			var writeErr error
+			if alt && !t.altScreen {
+				complete, err := terminalstate.WriteControl(t.out, "\x1b[?1049h")
+				if complete {
+					t.altScreen = true
+				}
+				writeErr = err
+			}
+			if writeErr == nil {
+				// These modes can be reset without destructive stack operations.
+				t.cursorHidden, t.bracketedPaste, t.mouseMode = hidden, paste, mouse
+				_, writeErr = terminalstate.WriteControl(t.out, activeModes(false, hidden, paste, false, mouse))
 			}
 			var keyboardErr error
-			if complete && kitty && !t.kittyEnabled {
-				// Track an attempted push too: cleanup must terminate a partial enable.
-				t.kittyEnabled = true
-				_, keyboardErr = terminalstate.WriteControl(t.out, "\x1b[>1u")
+			if writeErr == nil && kitty && !t.kittyEnabled {
+				keyboardErr = t.enableKeyboard()
 			}
 			outputErr := errors.Join(writeErr, keyboardErr, terminalstate.Flush(t.out))
 			if attributeErr == nil {
@@ -145,12 +145,8 @@ func (t *Terminal) cleanupRuntime(raw, kitty bool) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var outputErr, rawErr error
-	if kitty && t.kittyEnabled {
-		complete, writeErr := terminalstate.WriteControl(t.out, "\x1b[<u")
-		if complete {
-			t.kittyEnabled = false
-		}
-		outputErr = errors.Join(writeErr, terminalstate.Flush(t.out))
+	if kitty && (t.kittyEnabled || t.kittyFraming) {
+		outputErr = errors.Join(t.releaseKeyboard(), terminalstate.Flush(t.out))
 	}
 	if raw && t.rawMode && t.oldState != nil {
 		rawErr = term.Restore(t.fd, t.oldState)
@@ -160,4 +156,28 @@ func (t *Terminal) cleanupRuntime(raw, kitty bool) error {
 		}
 	}
 	return errors.Join(outputErr, rawErr)
+}
+
+func (t *Terminal) enableKeyboard() error {
+	complete, err := terminalstate.WriteControl(t.out, "\x1b[>1u")
+	t.kittyEnabled, t.kittyFraming = complete, !complete
+	return err
+}
+func (t *Terminal) releaseKeyboard() error {
+	var framingErr, popErr error
+	if t.kittyFraming {
+		complete, err := terminalstate.WriteControl(t.out, "\x18") // CAN cancels incomplete CSI without a stack pop.
+		if complete {
+			t.kittyFraming = false
+		}
+		framingErr = err
+	}
+	if t.kittyEnabled {
+		complete, err := terminalstate.WriteControl(t.out, "\x1b[<u")
+		if complete {
+			t.kittyEnabled = false
+		}
+		popErr = err
+	}
+	return errors.Join(framingErr, popErr)
 }
