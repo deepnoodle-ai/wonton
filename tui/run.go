@@ -221,7 +221,7 @@ func Run(app Application, opts ...RunOption) error {
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 	runtime.SetBackslashEnter(cfg.backslashEnter)
 
-	// Ensure these modes are disabled on cleanup (terminal.Close doesn't handle this)
+	// Reset requested modes before the deferred terminal.Close cleanup.
 	if cfg.mouseMode != mouseOff {
 		defer terminal.DisableMouseTracking()
 	}

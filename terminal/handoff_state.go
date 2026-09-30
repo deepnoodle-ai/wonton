@@ -14,7 +14,7 @@ func init() {
 		if !ok || t == nil || t.fd < 0 || t.closed {
 			return terminalstate.Access{}, false
 		}
-		return terminalstate.Access{FD: t.fd, Output: t.out, Snapshot: t.handoffSnapshot}, true
+		return terminalstate.Access{FD: t.fd, Output: t.out, Snapshot: t.handoffSnapshot, CleanupRuntime: t.cleanupRuntime}, true
 	}
 }
 
@@ -117,4 +117,25 @@ func activeModes(alt, hidden, paste, kitty bool, mouse MouseMode) string {
 		b.WriteString("\x1b[?25h")
 	}
 	return b.String()
+}
+
+// cleanupRuntime restores only modes enabled by a failed runner startup.
+func (t *Terminal) cleanupRuntime(raw, kitty bool) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var outputErr, rawErr error
+	if kitty && t.kittyEnabled {
+		outputErr = terminalstate.Write(t.out, "\x1b[<u")
+		if outputErr == nil {
+			t.kittyEnabled = false
+		}
+	}
+	if raw && t.rawMode && t.oldState != nil {
+		rawErr = term.Restore(t.fd, t.oldState)
+		if rawErr == nil {
+			t.rawMode = false
+			t.oldState = nil
+		}
+	}
+	return errors.Join(outputErr, rawErr)
 }

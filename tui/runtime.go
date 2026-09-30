@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
+
 	"golang.org/x/term"
 )
 
@@ -189,6 +191,8 @@ func (r *Runtime) Run() error {
 		}
 	}
 
+	rawWasEnabled, kittyWasEnabled := r.terminal.IsRawMode(), r.terminal.IsKittyProtocolEnabled()
+
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
@@ -212,11 +216,14 @@ func (r *Runtime) Run() error {
 	}
 
 	if err := r.initializeManagedInput(); err != nil {
-		_ = r.terminal.DisableRawMode()
+		var cleanupErr error
+		if access, ok := terminalstate.Inspect(r.terminal); ok {
+			cleanupErr = access.CleanupRuntime(!rawWasEnabled, !kittyWasEnabled)
+		}
 		r.mu.Lock()
 		r.running = false
 		r.mu.Unlock()
-		return fmt.Errorf("initialize terminal input: %w", err)
+		return errors.Join(fmt.Errorf("initialize terminal input: %w", err), cleanupErr)
 	}
 
 	// Register resize handler

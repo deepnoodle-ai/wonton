@@ -546,8 +546,11 @@ func (lp *LivePrinter) clearChecked() error {
 		}
 		fmt.Fprint(&output, "\r\033[0J")
 	}
-	if err := checkedHandoffWrite(lp.config.Output, output.String()); err != nil {
-		return err
+	if output.Len() > 0 {
+		checked := &checkedLiveOutput{destination: lp.config.Output}
+		if _, err := io.WriteString(checked, output.String()); err != nil {
+			return err
+		}
 	}
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state

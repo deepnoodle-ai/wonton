@@ -12,13 +12,13 @@ import (
 	"golang.org/x/term"
 )
 
-// Owner keeps terminal reads nonblocking while the application owns input.
-// It restores the original file flags before acknowledging release. Poll uses
-// a separate wake pipe; neither pause nor shutdown closes the terminal file.
+// Owner polls a raw terminal and reads only bytes already available. It never
+// changes the terminal file flags, which may be shared with output descriptors.
+// A private wake pipe interrupts idle polls without closing the terminal.
 type Owner struct {
 	mu                      sync.Mutex
 	readMu                  sync.Mutex
-	fd, originalFlags       int
+	fd                      int
 	wakeRead, wakeWrite     int
 	paused, stopped, closed bool
 	captured                []byte
@@ -29,10 +29,6 @@ func New(file *os.File) (*Owner, error) {
 		return nil, ErrUnsupported
 	}
 	fd := int(file.Fd())
-	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
-	if err != nil {
-		return nil, err
-	}
 	pipe := make([]int, 2)
 	if err := unix.Pipe(pipe); err != nil {
 		return nil, err
@@ -45,12 +41,7 @@ func New(file *os.File) (*Owner, error) {
 			return nil, err
 		}
 	}
-	if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFL, flags|unix.O_NONBLOCK); err != nil {
-		unix.Close(pipe[0])
-		unix.Close(pipe[1])
-		return nil, err
-	}
-	return &Owner{fd: fd, originalFlags: flags, wakeRead: pipe[0], wakeWrite: pipe[1]}, nil
+	return &Owner{fd: fd, wakeRead: pipe[0], wakeWrite: pipe[1]}, nil
 }
 
 // Read never leaves an uninterruptible OS read outstanding. The mutex protects
@@ -77,17 +68,28 @@ func (o *Owner) Read(dst []byte) (int, error) {
 			o.mu.Unlock()
 			return 0, Boundary
 		}
-		n, err := unix.Read(o.fd, dst)
-		o.mu.Unlock()
-		if n > 0 {
-			return n, nil
-		}
-		if err == nil {
-			return 0, io.EOF
-		}
-		if !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
+		count, err := availableBytes(o.fd)
+		if err != nil {
+			o.mu.Unlock()
 			return 0, err
 		}
+		if count > 0 {
+			// The owner is the sole input reader while active; raw mode has
+			// VMIN=1, so a read bounded by this count cannot wait for more bytes.
+			n, readErr := unix.Read(o.fd, dst[:min(count, len(dst))])
+			o.mu.Unlock()
+			if n > 0 {
+				return n, nil
+			}
+			if readErr == nil {
+				return 0, io.EOF
+			}
+			if !errors.Is(readErr, unix.EINTR) && !errors.Is(readErr, unix.EAGAIN) {
+				return 0, readErr
+			}
+			continue
+		}
+		o.mu.Unlock()
 		descriptors := []unix.PollFd{{Fd: int32(o.fd), Events: unix.POLLIN}, {Fd: int32(o.wakeRead), Events: unix.POLLIN}}
 		if _, err := unix.Poll(descriptors, -1); err != nil {
 			if errors.Is(err, unix.EINTR) {
@@ -102,13 +104,20 @@ func (o *Owner) Read(dst []byte) (int, error) {
 		if descriptors[0].Revents&unix.POLLNVAL != 0 {
 			return 0, unix.EBADF
 		}
+		if descriptors[0].Revents&(unix.POLLHUP|unix.POLLERR) != 0 {
+			// Drain any final queued input before reporting a hung-up terminal.
+			count, err := availableBytes(o.fd)
+			if err != nil || count == 0 {
+				return 0, io.EOF
+			}
+		}
 	}
 }
 
 func (o *Owner) wakeLocked() { _, _ = unix.Write(o.wakeWrite, []byte{1}) }
 
-// Pause captures only the bytes readable at its cutoff, restores file flags,
-// and acknowledges that no OS read can run until Resume. The decoder can still
+// Pause captures only the bytes readable at its cutoff and acknowledges that
+// no OS read can run until Resume. The decoder can still
 // consume this captured finite stream before it observes Boundary.
 func (o *Owner) Pause() error {
 	o.mu.Lock()
@@ -144,8 +153,7 @@ func (o *Owner) Pause() error {
 			}
 		}
 	}
-	_, flagErr := unix.FcntlInt(uintptr(o.fd), unix.F_SETFL, o.originalFlags)
-	return errors.Join(err, flagErr)
+	return err
 }
 
 func (o *Owner) DiscardResidual() error {
@@ -170,9 +178,6 @@ func (o *Owner) Resume() error {
 	if len(o.captured) != 0 {
 		return errors.New("pre-release input has not been drained")
 	}
-	if _, err := unix.FcntlInt(uintptr(o.fd), unix.F_SETFL, o.originalFlags|unix.O_NONBLOCK); err != nil {
-		return err
-	}
 	o.paused = false
 	o.wakeLocked()
 	return nil
@@ -188,7 +193,7 @@ func (o *Owner) Stop() {
 	}
 }
 
-// Close waits for a low-level read to settle, restores flags, and closes only
+// Close waits for a low-level read to settle and closes only
 // private wake descriptors. The terminal remains open for its original owner.
 func (o *Owner) Close() error {
 	o.Stop()
@@ -200,6 +205,5 @@ func (o *Owner) Close() error {
 		return nil
 	}
 	o.closed = true
-	_, err := unix.FcntlInt(uintptr(o.fd), unix.F_SETFL, o.originalFlags)
-	return errors.Join(err, unix.Close(o.wakeRead), unix.Close(o.wakeWrite))
+	return errors.Join(unix.Close(o.wakeRead), unix.Close(o.wakeWrite))
 }

@@ -6,9 +6,10 @@ package terminalstate
 import "io"
 
 type Access struct {
-	FD       int
-	Output   io.Writer
-	Snapshot func() (Transition, error)
+	FD             int
+	Output         io.Writer
+	Snapshot       func() (Transition, error)
+	CleanupRuntime func(raw, kitty bool) error
 }
 type Transition struct {
 	Release func() error

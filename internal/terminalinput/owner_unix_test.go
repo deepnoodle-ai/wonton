@@ -35,6 +35,10 @@ func TestIdleReadAcknowledgesPauseWithoutClosingTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer owner.Close()
+	activeFlags, flagErr := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
+	if flagErr != nil || activeFlags != original {
+		t.Fatalf("active flags=%x original=%x error=%v", activeFlags, original, flagErr)
+	}
 	reading := make(chan struct{})
 	result := make(chan error, 1)
 	go func() { close(reading); var buf [16]byte; _, err := owner.Read(buf[:]); result <- err }()
@@ -150,5 +154,34 @@ func TestPauseCapturesFinitePreownedBytesAndStopWakesRead(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("stop did not wake idle read")
+	}
+}
+
+func TestOwnerHangupWakesIdleRead(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slave.Close()
+	state, err := term.MakeRaw(int(slave.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Restore(int(slave.Fd()), state)
+	owner, err := New(slave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	result := make(chan error, 1)
+	go func() { var data [1]byte; _, err := owner.Read(data[:]); result <- err }()
+	master.Close()
+	select {
+	case err := <-result:
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("hangup=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("hung-up input did not settle")
 	}
 }
