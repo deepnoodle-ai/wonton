@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -277,12 +278,17 @@ type InlineApp struct {
 	output io.Writer
 
 	// Synchronization
-	mu      sync.Mutex // Protects Print operations and running state
-	running bool
+	mu            sync.Mutex // Protects Print operations and running state
+	running       bool
+	managedInput  *managedInput
+	outputMu      sync.Mutex
+	handoffActive bool
+	handoffErr    error
 
 	// Terminal state (for cleanup)
-	oldState *term.State
-	stdinFd  int
+	oldState                                 *term.State
+	stdinFd                                  int
+	pasteEnabled, kittyEnabled, mouseEnabled bool
 
 	// Resize handling
 	resizeChan chan os.Signal
@@ -389,16 +395,36 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		return fmt.Errorf("failed to enable raw mode: %w", err)
 	}
 
-	// Enable terminal features
-	if r.config.BracketedPaste {
-		fmt.Fprint(r.output, "\033[?2004h")
+	// Enable only successfully written terminal features.
+	features := []struct {
+		wanted   bool
+		sequence string
+		enabled  *bool
+	}{
+		{r.config.BracketedPaste, "\x1b[?2004h", &r.pasteEnabled},
+		{r.config.KittyKeyboard, "\x1b[>1u", &r.kittyEnabled},
+		{r.config.MouseTracking, "\x1b[?1000h\x1b[?1006h", &r.mouseEnabled},
 	}
-	if r.config.KittyKeyboard {
-		fmt.Fprint(r.output, "\033[>1u")
+	for _, feature := range features {
+		if !feature.wanted {
+			continue
+		}
+		if err := checkedHandoffWrite(r.output, feature.sequence); err != nil {
+			cleanupErr := r.cleanup()
+			r.mu.Lock()
+			r.running = false
+			r.mu.Unlock()
+			return errors.Join(fmt.Errorf("enable terminal features: %w", err), cleanupErr)
+		}
+		*feature.enabled = true
 	}
-	if r.config.MouseTracking {
-		// Enable mouse tracking (SGR mode for better coordinates)
-		fmt.Fprint(r.output, "\033[?1000h\033[?1006h")
+
+	if err := r.initializeManagedInput(); err != nil {
+		cleanupErr := r.cleanup()
+		r.mu.Lock()
+		r.running = false
+		r.mu.Unlock()
+		return errors.Join(fmt.Errorf("initialize terminal input: %w", err), cleanupErr)
 	}
 
 	// Start ticker if FPS > 0
@@ -448,7 +474,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 	wg.Wait()
 
 	// Cleanup
-	r.cleanup()
+	cleanupErr := r.cleanup()
 
 	// Call Destroy if implemented
 	if destroy, ok := app.(Destroyable); ok {
@@ -470,7 +496,10 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		panic(fmt.Sprintf("tui: application panic: %v\n\noriginal stack:\n%s", pv, ps))
 	}
 
-	return nil
+	r.mu.Lock()
+	handoffErr := r.handoffErr
+	r.mu.Unlock()
+	return errors.Join(handoffErr, cleanupErr)
 }
 
 // closeDone signals shutdown to all goroutines. Safe to call multiple times
@@ -507,32 +536,37 @@ func (r *InlineApp) capturePanic() {
 }
 
 // cleanup restores terminal state
-func (r *InlineApp) cleanup() {
+func (r *InlineApp) cleanup() error {
 	if r.ticker != nil {
 		r.ticker.Stop()
 	}
-
-	// Stop resize listener (platform-specific)
 	r.cleanupResizeWatcher()
-
-	// Stop live printer
-	r.live.Stop()
-
-	// Disable terminal features (reverse order)
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
+	// Cleanup must attempt all protocols, including an incompletely written enable.
+	sequence := "\x1b[?25h"
+	if r.live.started && r.live.lastHeight > 0 {
+		sequence += "\r\n"
+	}
 	if r.config.MouseTracking {
-		fmt.Fprint(r.output, "\033[?1006l\033[?1000l")
+		sequence += "\x1b[?1006l\x1b[?1000l"
 	}
 	if r.config.KittyKeyboard {
-		fmt.Fprint(r.output, "\033[<u")
+		sequence += "\x1b[<u"
 	}
 	if r.config.BracketedPaste {
-		fmt.Fprint(r.output, "\033[?2004l")
+		sequence += "\x1b[?2004l"
 	}
-
-	// Restore terminal state
+	outputErr := checkedHandoffWrite(r.output, sequence)
+	if outputErr == nil {
+		r.live.hiddenCursor = false
+		r.pasteEnabled, r.kittyEnabled, r.mouseEnabled = false, false, false
+	}
+	var attributeErr error
 	if r.oldState != nil {
-		term.Restore(r.stdinFd, r.oldState)
+		attributeErr = term.Restore(r.stdinFd, r.oldState)
 	}
+	return errors.Join(outputErr, attributeErr)
 }
 
 // eventLoop is the main event processing loop (Goroutine 1).
@@ -686,6 +720,8 @@ func (r *InlineApp) processEvent(event Event) {
 		for _, cmd := range cmds {
 			select {
 			case r.cmds <- cmd:
+			case <-r.stopRequested:
+				return
 			case <-r.done:
 				return
 			}
@@ -695,6 +731,15 @@ func (r *InlineApp) processEvent(event Event) {
 
 // render calls the application's LiveView() and updates the live region.
 func (r *InlineApp) render() {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
+	if r.stopping() {
+		return
+	}
+	_ = r.renderChecked()
+}
+
+func (r *InlineApp) renderChecked() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -708,15 +753,22 @@ func (r *InlineApp) render() {
 		view := buildViews(r.reg, app.LiveView)
 
 		// Render the view using LivePrinter with focus manager
-		r.live.UpdateWithFocus(view, r.focusMgr)
+		if err := r.live.UpdateWithFocus(view, r.focusMgr); err != nil {
+			return err
+		}
 
 		// Prune TextArea state for IDs that weren't rendered
 		r.reg.textAreas.Prune()
 	}
+	return nil
 }
 
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
 func (r *InlineApp) inputReader() {
+	if r.managedInput != nil {
+		r.managedInput.run()
+		return
+	}
 	decoder := terminal.NewKeyDecoder(r.config.Input)
 	decoder.SetPasteTabWidth(r.config.PasteTabWidth)
 
@@ -902,8 +954,13 @@ func (r *InlineApp) commandExecutor() {
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
 func (r *InlineApp) Print(view View) {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.stopping() || r.handoffErr != nil || r.finished() {
+		return
+	}
 
 	// Wrap entire operation in synchronized output mode to prevent flicker.
 	// This ensures clear + print + re-render appears as one atomic update.
@@ -939,8 +996,13 @@ func (r *InlineApp) Printf(format string, args ...any) {
 //
 // Thread-safe: Can be called from HandleEvent or from a Cmd goroutine.
 func (r *InlineApp) PrintRaw(data []byte) {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.stopping() || r.handoffErr != nil || r.finished() {
+		return
+	}
 
 	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
@@ -984,9 +1046,14 @@ func (r *InlineApp) SendEvent(event Event) {
 // This sends the ANSI escape sequence to clear the scrollback buffer.
 // Safe to call from HandleEvent.
 func (r *InlineApp) ClearScrollback() {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.stopping() || r.handoffErr != nil || r.finished() {
+		return
+	}
 	// Clear live region first
 	r.live.Clear()
 
@@ -1013,4 +1080,13 @@ func (r *InlineApp) ClearScrollback() {
 //	err := runner.Run(app)
 func RunInline(app InlineApplication, opts ...InlineOption) error {
 	return NewInlineApp(opts...).Run(app)
+}
+
+func (r *InlineApp) finished() bool {
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
 }

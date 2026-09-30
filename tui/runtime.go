@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -76,8 +77,12 @@ type Runtime struct {
 
 	// Suspend state. suspendKeys is non-nil exactly while Suspend is running
 	// fn; the input reader diverts events into it instead of the event loop.
-	suspendMu   sync.Mutex
-	suspendKeys chan Event
+	suspendMu     sync.Mutex
+	suspendKeys   chan Event
+	managedInput  *managedInput
+	outputMu      sync.Mutex
+	handoffActive bool
+	handoffErr    error
 }
 
 // NewRuntime creates a new Runtime for the given application.
@@ -203,6 +208,14 @@ func (r *Runtime) Run() error {
 		}
 	}
 
+	if err := r.initializeManagedInput(); err != nil {
+		_ = r.terminal.DisableRawMode()
+		r.mu.Lock()
+		r.running = false
+		r.mu.Unlock()
+		return fmt.Errorf("initialize terminal input: %w", err)
+	}
+
 	// Register resize handler
 	r.resizeUnsub = r.terminal.OnResize(func(width, height int) {
 		// Send resize event to event loop
@@ -287,7 +300,10 @@ func (r *Runtime) Run() error {
 		panic(fmt.Sprintf("tui: application panic: %v\n\noriginal stack:\n%s", pv, ps))
 	}
 
-	return nil
+	r.mu.Lock()
+	handoffErr := r.handoffErr
+	r.mu.Unlock()
+	return handoffErr
 }
 
 // closeDone signals shutdown to all runtime goroutines. Safe to call multiple
@@ -496,6 +512,8 @@ func (r *Runtime) processEvent(event Event) {
 			case r.cmds <- cmd:
 			case <-r.done:
 				return
+			case <-r.stopRequested:
+				return
 			}
 		}
 	}
@@ -519,16 +537,25 @@ func (r *Runtime) frameInterval() time.Duration {
 }
 
 func (r *Runtime) render() {
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
+	if r.stopping() {
+		return
+	}
+	_ = r.renderChecked()
+}
+
+// renderChecked is called with the output gate held.
+func (r *Runtime) renderChecked() (err error) {
 	r.lastRender = time.Now()
 	frame, err := r.terminal.BeginFrame()
 	if err != nil {
-		// Terminal not ready, skip this frame
-		return
+		return err
 	}
 	// Deferred so a panic in View()/render releases the terminal's frame lock
 	// (BeginFrame holds it until EndFrame); otherwise cleanup would deadlock.
 	// Flush to screen (diffs and sends only dirty regions).
-	defer r.terminal.EndFrame(frame)
+	defer func() { err = errors.Join(err, r.terminal.EndFrame(frame)) }()
 
 	if app, ok := r.app.(Application); ok {
 		// Application interface - use declarative View() rendering
@@ -557,6 +584,7 @@ func (r *Runtime) render() {
 		// Prune TextArea state for IDs that weren't rendered this frame
 		r.reg.textAreas.Prune()
 	}
+	return nil
 }
 
 // SetInputSource sets the input source for the runtime.
@@ -588,6 +616,10 @@ func (d *defaultInputSource) SetPasteTabWidth(w int) {
 // embedded use), be aware that stopped runtimes may leave a blocked goroutine
 // until the next stdin input or process exit.
 func (r *Runtime) inputReader() {
+	if r.managedInput != nil {
+		r.managedInput.run()
+		return
+	}
 	var source InputSource
 	if r.inputSource != nil {
 		source = r.inputSource
