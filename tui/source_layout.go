@@ -644,9 +644,12 @@ func (s *ViewportState) sourceDragHit(p SelectionPoint) (*sourceEndpoint, bool) 
 			s.sourceAnchor.offset = s.sourceAnchor.between.back
 		}
 	}
-	if valid && cursor != nil && s.sourceAnchor != nil && cursor.item == s.sourceAnchor.item {
+	if valid && cursor != nil && cursor.between != nil && s.sourceAnchor != nil &&
+		s.sourceAnchor.between != nil && cursor.item == s.sourceAnchor.item {
 		// Both ends snapped off decoration toward each other and crossed:
-		// the drag covers no text.
+		// the drag covers no text. Only snapped ends are compared. Text a
+		// view draws out of source order maps to offsets that can run
+		// against the drag, and those still select the bytes between them.
 		if !reverse && cursor.offset < s.sourceAnchor.offset || reverse && cursor.offset > s.sourceAnchor.offset {
 			cursor.offset = s.sourceAnchor.offset
 		}

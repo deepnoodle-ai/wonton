@@ -134,3 +134,27 @@ func TestSourceDragFromDecorationSnapsIntoTheSelection(t *testing.T) {
 	s.EndSelection()
 	assert.False(t, s.HasSelection(), "decoration alone is not a selection")
 }
+
+// reorderedSourceItems draws its source "first second" as "secondfirst":
+// valid bindings, displayed out of source order.
+type reorderedSourceItems struct{}
+
+func (reorderedSourceItems) Len() int                  { return 1 }
+func (reorderedSourceItems) Source(int) (string, bool) { return "first second", true }
+func (reorderedSourceItems) Item(int) View {
+	return Group(Text("second").SourceOffset(6), Text("first").SourceOffset(0))
+}
+
+// Text drawn out of source order still selects the bytes between its ends.
+// A forward drag from "second" onto "first" runs backward in the source, and
+// only ends that snapped off decoration are clamped when they cross.
+func TestSourceDragAcrossReorderedTextKeepsTheSelection(t *testing.T) {
+	s := &ViewportState{}
+	renderViewport(t, s, reorderedSourceItems{}, 30, 5, 0)
+	// Row 0 is "secondfirst": "second" at 0–5, "first" at 6–10.
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(8, 0)
+	s.EndSelection()
+	assert.True(t, s.HasSelection(), "reordered drag kept")
+	assert.Equal(t, s.SelectedText(), "rst ")
+}
