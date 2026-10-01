@@ -4,11 +4,54 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Wonton is pre-1.0; pin your version.
 
-Versions through `0.0.40` incremented the patch number for every release. From
-`0.1.0` on, the minor number carries anything that can break a build and the
-patch number carries the rest, which is what SemVer means by `0.y.z`.
+Versions through `0.0.40` incremented the patch number for every release.
+Starting with `0.3.0`, minor releases introduce new features or incompatible
+API changes while Wonton is pre-1.0. Patch releases contain backward-compatible
+bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-09-30
+
+### Added
+
+- `tui.ViewportSourceItems` and `TextView.SourceOffset` /
+  `MarkdownView.SourceOffset` let viewport selections copy original UTF-8
+  source through styled text, Markdown, and wrapping. Selections preserve
+  whitespace, hidden Markdown syntax, and whole Unicode graphemes across
+  resizing and compatible streaming appends. Ordinary viewport items retain
+  rendered-cell copying.
+- `tui.Runtime.Handoff` and `tui.InlineApp.Handoff` give an interactive child
+  exclusive terminal ownership, then restore input, terminal modes, size,
+  and rendering. Call synchronously from `HandleEvent` and wait for the child
+  inside the callback. Initial support requires native stdin/stdout on the
+  same terminal on macOS or Linux. Operation and restoration errors are
+  returned separately; restoration failure stops the runner.
+- Source-selection documentation and runnable examples for source copying
+  and fullscreen/inline editor handoff.
+
+### Changed
+
+- Ctrl-D deletes the next grapheme or paste unit in nonempty text inputs.
+  Empty Ctrl-D remains available to the application, and key hooks retain
+  precedence over the default binding.
+- Input bindings call `OnChange` only when the bound value changes.
+
+### Fixed
+
+- Wrapped text now measures every physical row of long words. Source-aware
+  text renders terminal controls as inert replacements while preserving the
+  original copied bytes. Sanitize copied source before printing it to a
+  terminal.
+- Terminal handoff retains complete application input, discards incomplete
+  protocol framing and residual child input, and prevents application output
+  from interfering with the child.
+- Runner startup and shutdown restore terminal modes after failures, preserve
+  caller-owned enhanced keyboard state, and report cleanup errors. Partial
+  control-sequence writes no longer cause repeated keyboard pops.
+- Stop requests remain responsive when an event handler or handoff is active
+  and the event queue is full. Terminal cleanup waits until the child callback
+  returns.
 
 ## [0.2.1] - 2026-09-03
 
