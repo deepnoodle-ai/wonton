@@ -1,9 +1,3 @@
-- A viewport selection drag now auto-scrolls when held on the viewport's
-  first or last row, but only when that row is also the screen's first or last
-  row. Terminals keep mouse positions inside the window, so a viewport touching
-  the top or bottom of the screen could never be scrolled by dragging. Where a
-  row outside the viewport is reachable, only that row scrolls, as before.
-  Call `DragAutoScroll` once a frame as before.
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -19,21 +13,28 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ### Added
 
+- `tui.InputFieldView.Highlight` and `tui.InputView.Highlight` style parts of
+  the typed text, such as a recognized slash command. The function receives
+  the current value on every render and returns `tui.TextRange` byte ranges
+  whose styles merge over the text style. Paste placeholders keep their own
+  style.
 - `tui.ViewportState.X` and `Y` record the viewport's top-left corner on
   screen at the last render. `HandleMouse` takes viewport coordinates, so
   subtract them from a mouse event before passing it in.
 
 ### Fixed
 
+- `TextStyle`, `Placeholder`, and `PlaceholderStyle` on inputs now take effect
+  on every render. Before, the input kept the values from its first render.
 - The viewport example passed screen coordinates to `HandleMouse`, so a
   selection landed four rows below the pointer (and two columns right). It
   now converts to viewport coordinates.
-
-- A viewport selection drag held on the viewport's first or last row now
-  auto-scrolls when there is content beyond that row. Terminals keep mouse
-  positions inside the window, so a viewport touching the top or bottom of the
-  screen could never be scrolled by dragging there. Call `DragAutoScroll` once
-  a frame as before.
+- A viewport selection drag now auto-scrolls when held on the viewport's
+  first or last row, but only when that row is also the screen's first or last
+  row. Terminals keep mouse positions inside the window, so a viewport touching
+  the top or bottom of the screen could never be scrolled by dragging. Where a
+  row outside the viewport is reachable, only that row scrolls, as before.
+  Call `DragAutoScroll` once a frame as before.
 
 ## [0.4.0] - 2026-10-01
 

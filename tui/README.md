@@ -167,6 +167,23 @@ when the cursor is on the first/last visual line (like zsh/fish). While
 `OnComplete` is set the field claims Tab, so Tab no longer cycles focus
 while it is focused. See `examples/tui/input_repl` for a runnable demo.
 
+`Highlight` styles parts of the typed text, such as a recognized slash
+command. It receives the current value on every render and returns byte
+ranges with styles that merge over the `TextStyle`:
+
+```go
+commands := map[string]bool{"/effort": true, "/help": true}
+var input string
+tui.InputField(&input).Highlight(func(value string) []tui.TextRange {
+	cmd, _, _ := strings.Cut(value, " ")
+	if !commands[cmd] {
+		return nil
+	}
+	return []tui.TextRange{{Start: 0, End: len(cmd),
+		Style: tui.NewStyle().WithForeground(tui.ColorCyan).WithBold()}}
+})
+```
+
 ### Prompt Choice (Claude Code Style)
 
 A selection widget with numbered options where one option can accept inline text input. Similar to confirmation prompts in Claude Code.
@@ -670,6 +687,7 @@ Views support fluent modifier methods:
 | `.History([]string)` | Up/Down recall (inputs)     | `tui.InputField(&s).History(app.history)`   |
 | `.OnComplete(fn)` | Tab completion (inputs)        | `tui.InputField(&s).OnComplete(complete)`   |
 | `.OnKey(fn)`      | Pre-input key hook (inputs)    | `tui.InputField(&s).OnKey(handleKey)`       |
+| `.Highlight(fn)`  | Style parts of typed text      | `tui.InputField(&s).Highlight(hl)`          |
 
 ### Text Style Modifiers
 

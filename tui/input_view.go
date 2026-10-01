@@ -296,6 +296,7 @@ type inputConfig struct {
 	onKey            func(KeyEvent) bool
 	onPaste          PasteHandler
 	onComplete       func(string) []string
+	highlight        func(string) []TextRange
 	history          []string
 }
 
@@ -310,15 +311,6 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 		ti := newTextInput()
 		if cfg.mask != 0 {
 			ti.WithMask(cfg.mask)
-		}
-		if cfg.placeholder != "" {
-			ti.WithPlaceholder(cfg.placeholder)
-		}
-		if cfg.placeholderStyle != nil {
-			ti.PlaceholderStyle = *cfg.placeholderStyle
-		}
-		if cfg.textStyle != nil {
-			ti.Style = *cfg.textStyle
 		}
 		if cfg.pastePlaceholder {
 			ti.WithPastePlaceholderMode(true)
@@ -360,6 +352,20 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 	state.onComplete = cfg.onComplete
 	state.history = cfg.history
 	state.binding = cfg.binding
+
+	// Sync appearance on every render so builder changes take effect.
+	state.input.Placeholder = cfg.placeholder
+	state.placeholder = cfg.placeholder
+	state.input.PlaceholderStyle = defaultPlaceholderStyle
+	if cfg.placeholderStyle != nil {
+		state.input.PlaceholderStyle = *cfg.placeholderStyle
+	}
+	state.placeholderStyle = cfg.placeholderStyle
+	state.input.Style = NewStyle()
+	if cfg.textStyle != nil {
+		state.input.Style = *cfg.textStyle
+	}
+	state.input.Highlight = cfg.highlight
 
 	// Sync multiline mode (in case it changed)
 	state.input.MultilineMode = cfg.multiline
@@ -422,6 +428,7 @@ type InputView struct {
 	onKey            func(KeyEvent) bool
 	onPaste          PasteHandler
 	onComplete       func(string) []string
+	highlight        func(string) []TextRange
 	history          []string
 	width            int
 	maxHeight        int // Maximum height in lines (0 = unlimited)
@@ -530,6 +537,12 @@ func (i *InputView) History(items []string) *InputView {
 // focus while this input is focused.
 func (i *InputView) OnComplete(fn func(value string) []string) *InputView {
 	i.onComplete = fn
+	return i
+}
+
+// Highlight styles parts of the typed text. See InputFieldView.Highlight.
+func (i *InputView) Highlight(fn func(value string) []TextRange) *InputView {
+	i.highlight = fn
 	return i
 }
 
@@ -660,6 +673,7 @@ func (i *InputView) render(ctx *RenderContext) {
 		onKey:            i.onKey,
 		onPaste:          i.onPaste,
 		onComplete:       i.onComplete,
+		highlight:        i.highlight,
 		history:          i.history,
 	}, fm)
 
