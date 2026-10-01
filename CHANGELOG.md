@@ -11,6 +11,19 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `tui.InputFieldView.Highlight` and `tui.InputView.Highlight` style parts of
+  the typed text, such as a recognized slash command. The function receives
+  the current value on every render and returns `tui.TextRange` byte ranges
+  whose styles merge over the text style. Paste placeholders keep their own
+  style.
+
+### Fixed
+
+- `TextStyle`, `Placeholder`, and `PlaceholderStyle` on inputs now take effect
+  on every render. Before, the input kept the values from its first render.
+
 ## [0.4.0] - 2026-10-01
 
 ### Added
