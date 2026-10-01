@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image"
 	"strings"
 	"unicode"
 )
@@ -441,6 +442,11 @@ func (s *ViewportState) spanFor(item int) (viewportSpan, bool) {
 // Legacy items return rendered lines with trailing spaces removed.
 // Invalid selected source bindings clear selection and return an empty string.
 //
+// Items are separated the way they are on screen: one line break, plus a
+// blank line for each row of the viewport's gap. An item the selection only
+// touches at its edge, such as the one above a gap row a drag ended on, adds
+// nothing.
+//
 // The text comes from re-rendering the selected items rather than from reading
 // the screen, so a selection that runs off the top or bottom of the viewport —
 // which auto-scrolling during a drag makes easy — copies in full.
@@ -470,6 +476,7 @@ func (s *ViewportState) SelectedText() string {
 		if item == end.Item {
 			to = end.Line
 		}
+		var text []string
 		for line := max(from, 0); line <= to && line < len(lines); line++ {
 			lo, hi := 0, lines[line].end
 			if item == start.Item && line == start.Line {
@@ -478,10 +485,15 @@ func (s *ViewportState) SelectedText() string {
 			if item == end.Item && line == end.Line {
 				hi = end.Col
 			}
-			out = append(out, strings.TrimRight(lines[line].slice(lo, hi), " "))
+			text = append(text, strings.TrimRight(lines[line].slice(lo, hi), " "))
 		}
+		piece := strings.Join(text, "\n")
+		if piece == "" && (item == start.Item || item == end.Item) {
+			continue
+		}
+		out = append(out, piece)
 	}
-	return strings.Join(out, "\n")
+	return strings.Join(out, strings.Repeat("\n", s.gap+1))
 }
 
 // itemLine is one rendered row of an item: the graphemes on it, and the screen
@@ -622,10 +634,39 @@ func (s *ViewportState) paintSelection(ctx *RenderContext) {
 		}
 		if l, aware := s.sourceLayout(span.item); aware {
 			lo, hi := s.sourceBounds(span.item, start.Item, end.Item, len(l.source))
+			// Each row is highlighted as one band, from its first selected
+			// cell to its last. Cells in between that carry no source of
+			// their own, such as the spaces Markdown draws between words,
+			// are inside the selection on screen and in the copied text.
+			// Decoration before or after the band stays unhighlighted.
+			band := map[int][2]int{}
 			for _, cell := range l.cells {
-				y := span.top + cell.y
-				if cell.start < hi && cell.end > lo && y >= 0 && y < s.Height {
-					ctx.RestyleCell(cell.x, y, style)
+				if cell.start >= hi || cell.end <= lo {
+					continue
+				}
+				b, seen := band[cell.y]
+				if !seen {
+					b = [2]int{cell.x, cell.x + cell.width}
+				}
+				b[0], b[1] = min(b[0], cell.x), max(b[1], cell.x+cell.width)
+				band[cell.y] = b
+			}
+			for row, b := range band {
+				y := span.top + row
+				if y < 0 || y >= s.Height {
+					continue
+				}
+				for x := b[0]; x < b[1]; x++ {
+					// Text outside the selection keeps its look even inside
+					// the band, as a table laid out out of source order can
+					// put it there.
+					if cell, ok := l.cells[image.Pt(x, row)]; ok && (cell.start >= hi || cell.end <= lo) {
+						continue
+					}
+					if ctx.Cell(x, y).Continuation {
+						continue
+					}
+					ctx.RestyleCell(x, y, style)
 				}
 			}
 			continue

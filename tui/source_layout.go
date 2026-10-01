@@ -47,7 +47,13 @@ type sourceEndpoint struct {
 	item, offset int
 	source       string
 	continuation *sourceBinding
+	// between is set when the point fell on a cell with no source.
+	between *sourceGap
 }
+
+// sourceGap is where the text ends before a cell with no source (back) and
+// starts after it (ahead).
+type sourceGap struct{ back, ahead int }
 
 func newSourceLayout(source string, width, height int) *sourceLayout {
 	l := &sourceLayout{source: source, valid: utf8.ValidString(source), cells: make(map[image.Point]sourceCell), bounds: image.Rect(0, 0, width, height), boundaries: []int{0}}
@@ -72,7 +78,6 @@ func (l *sourceLayout) bind(content string, offset int) {
 	}
 	l.bindings = append(l.bindings, sourceBinding{offset, end})
 }
-func (l *sourceLayout) complete() bool { return l.valid && (l.source == "" || len(l.bindings) > 0) }
 func sourceLine(source string, at int) (int, int) {
 	at = min(max(at, 0), len(source))
 	start := strings.LastIndex(source[:at], "\n") + 1
@@ -219,6 +224,14 @@ func (l *sourceLayout) hit(x, y int, clamp bool) (int, bool) {
 	if !clamp || len(l.cells) == 0 {
 		return 0, false
 	}
+	back, _ := l.around(x, y)
+	return back, true
+}
+
+// around is where the text nearest a cell with no source ends before it and
+// starts after it, in row-major order. A point with text on only one side
+// gets that side for both. It needs at least one cell.
+func (l *sourceLayout) around(x, y int) (back, ahead int) {
 	var before, after *sourceCell
 	for _, value := range l.cells {
 		t := value
@@ -231,10 +244,13 @@ func (l *sourceLayout) hit(x, y int, clamp bool) (int, bool) {
 			after = &t
 		}
 	}
-	if before != nil {
-		return before.end, true
+	switch {
+	case before == nil:
+		return after.start, after.start
+	case after == nil:
+		return before.end, before.end
 	}
-	return after.start, true
+	return before.end, after.start
 }
 func (l *sourceLayout) point(offset int, end bool) (line, col int) {
 	var first, last, inside *sourceCell
@@ -297,8 +313,12 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 		}
 	}
 	collectSourceBindings(view, l)
-	if !l.complete() {
-		l.valid = false
+	if l.valid && l.source != "" && len(l.bindings) == 0 {
+		// The item has source text but its view marks no leaf, so nothing
+		// on screen maps to it. That is an application mistake, but it must
+		// not wipe a selection that only passes over the item: treat the
+		// item as decoration only, as if its source were empty.
+		l = newSourceLayout("", s.width, height)
 	}
 	e = s.entry(item)
 	e.source, e.sourceValid = l, true
@@ -318,6 +338,19 @@ func (s *ViewportState) sourceHit(p SelectionPoint, clamp, continuationEnd bool)
 			offset = 0
 		}
 		return &sourceEndpoint{item: p.Item, offset: offset, source: l.source}, true
+	}
+	if _, exact := l.hit(p.Col, p.Line, false); !exact && clamp {
+		// The point is on decoration or blank space. It belongs to the text
+		// on whichever side keeps it inside the selection: the end of a
+		// selection stops at the text before it, the start begins at the
+		// text after it. The anchor's side is settled once the drag shows
+		// its direction.
+		back, ahead := l.around(p.Col, p.Line)
+		offset := ahead
+		if continuationEnd {
+			offset = back
+		}
+		return &sourceEndpoint{item: p.Item, offset: offset, source: l.source, between: &sourceGap{back, ahead}}, true
 	}
 	offset, ok := l.hit(p.Col, p.Line, clamp)
 	var continued *sourceBinding
@@ -583,15 +616,19 @@ func sourceUnsafeRune(r rune) bool {
 func (s *ViewportState) sourceDragHit(p SelectionPoint) (*sourceEndpoint, bool) {
 	anchorPoint := s.selAnchor
 	if anchor := s.sourceAnchor; anchor != nil {
-		offset := anchor.offset
-		if anchor.continuation != nil {
-			offset = anchor.continuation.end
+		offset, end := anchor.offset, false
+		switch {
+		case anchor.continuation != nil:
+			offset, end = anchor.continuation.end, true
+		case anchor.between != nil:
+			// A press on decoration sits just after the text before it.
+			offset, end = anchor.between.back, true
 		}
 		layout, aware := s.sourceLayout(anchor.item)
 		if !aware || !layout.valid {
 			return nil, false
 		}
-		line, col := layout.point(offset, anchor.continuation != nil)
+		line, col := layout.point(offset, end)
 		anchorPoint = SelectionPoint{anchor.item, line, col}
 	}
 	reverse := p.before(anchorPoint)
@@ -600,6 +637,24 @@ func (s *ViewportState) sourceDragHit(p SelectionPoint) (*sourceEndpoint, bool) 
 		s.sourceAnchor.offset = s.sourceAnchor.continuation.start
 		if reverse {
 			s.sourceAnchor.offset = s.sourceAnchor.continuation.end
+		}
+	}
+	if valid && s.sourceAnchor != nil && s.sourceAnchor.between != nil {
+		// Forward, the anchor is the start and begins at the text after the
+		// decoration; backward, it is the end and stops at the text before.
+		s.sourceAnchor.offset = s.sourceAnchor.between.ahead
+		if reverse {
+			s.sourceAnchor.offset = s.sourceAnchor.between.back
+		}
+	}
+	if valid && cursor != nil && cursor.between != nil && s.sourceAnchor != nil &&
+		s.sourceAnchor.between != nil && cursor.item == s.sourceAnchor.item {
+		// Both ends snapped off decoration toward each other and crossed:
+		// the drag covers no text. Only snapped ends are compared. Text a
+		// view draws out of source order maps to offsets that can run
+		// against the drag, and those still select the bytes between them.
+		if !reverse && cursor.offset < s.sourceAnchor.offset || reverse && cursor.offset > s.sourceAnchor.offset {
+			cursor.offset = s.sourceAnchor.offset
 		}
 	}
 	return cursor, valid
