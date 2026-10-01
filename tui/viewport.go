@@ -36,6 +36,7 @@ type ViewportState struct {
 	Follow bool
 
 	// Written by the view on every render; read them from HandleEvent.
+	X, Y          int  // the viewport's top-left corner on screen at the last render
 	Width, Height int  // the viewport's size at the last render
 	AtBottom      bool // nothing below the viewport
 	LinesBelow    int  // content lines below the viewport, 0 when AtBottom
@@ -474,6 +475,8 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		s.width = width
 	}
 	s.Width, s.Height = width, height
+	origin := ctx.AbsoluteBounds().Min
+	s.X, s.Y = origin.X, origin.Y
 
 	if s.Follow {
 		s.anchorItem, s.anchorLine = s.maxAnchor()

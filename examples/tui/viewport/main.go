@@ -62,7 +62,14 @@ func (a *app) HandleEvent(event tui.Event) []tui.Cmd {
 		// for anything it did not consume — the wheel, and a plain click with
 		// no selection to dismiss — which is what leaves room for an
 		// application's own click targets inside a viewport.
-		if a.viewport.HandleMouse(e) {
+		//
+		// Mouse events arrive in screen coordinates, and the viewport works in
+		// its own: it sits below the header and inside a border, so subtract
+		// the corner it was drawn at.
+		local := e
+		local.X -= a.viewport.X
+		local.Y -= a.viewport.Y
+		if a.viewport.HandleMouse(local) {
 			return nil
 		}
 		switch e.Button {

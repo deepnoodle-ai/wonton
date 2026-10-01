@@ -11,7 +11,17 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `tui.ViewportState.X` and `Y` record the viewport's top-left corner on
+  screen at the last render. `HandleMouse` takes viewport coordinates, so
+  subtract them from a mouse event before passing it in.
+
 ### Fixed
+
+- The viewport example passed screen coordinates to `HandleMouse`, so a
+  selection landed four rows below the pointer (and two columns right). It
+  now converts to viewport coordinates.
 
 - A viewport selection drag held on the viewport's first or last row now
   auto-scrolls when there is content beyond that row. Terminals keep mouse

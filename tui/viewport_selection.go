@@ -237,6 +237,15 @@ func isWordRune(g string) bool {
 // a line. A press with no drag clears the selection, which is how a user
 // dismisses one.
 //
+// Event positions are in the viewport's own coordinates, where (0, 0) is its
+// top-left cell. Mouse events arrive in screen coordinates, so subtract the
+// viewport's X and Y first unless it is drawn at the screen's top-left corner:
+//
+//	local := e
+//	local.X -= state.X
+//	local.Y -= state.Y
+//	state.HandleMouse(local)
+//
 // A plain left click that neither dismissed a selection nor made one returns
 // false. A press has to be taken to anchor a drag that may yet happen, but the
 // click that follows it is the application's: without the fall-through no
