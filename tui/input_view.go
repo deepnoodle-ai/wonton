@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"image"
+	"strings"
 	"sync"
 
 	"github.com/deepnoodle-ai/wonton/runewidth"
@@ -25,6 +26,7 @@ type inputState struct {
 	onChange         func(string)
 	onSubmit         func(string)
 	onKey            func(KeyEvent) bool
+	onPaste          PasteHandler
 	onComplete       func(string) []string
 	placeholder      string
 	placeholderStyle *Style
@@ -70,7 +72,7 @@ func (s *inputState) FocusBounds() image.Rectangle {
 
 // HandleKeyEvent processes a key event for a focused input. Dispatch order:
 //
-//  1. OnKey hook — the application sees every key first and may consume it.
+//  1. OnKey hook — the application sees each non-paste key first and may consume it.
 //  2. Completion — Tab starts/cycles candidates; while cycling, arrows also
 //     cycle, Esc restores the original text, and any other key accepts the
 //     current candidate and is then processed normally.
@@ -83,10 +85,25 @@ func (s *inputState) FocusBounds() image.Rectangle {
 // Returns false for keys the input doesn't use, so they propagate to the
 // application's HandleEvent.
 func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
-	// Paste events go straight to the input; OnKey is for keystrokes.
+	// Paste bypasses OnKey; an optional handler owns only the inserted text.
 	if event.Paste != "" {
+		content := event.Paste
+		if s.onPaste != nil {
+			decision, replacement := s.onPaste(PasteInfo{
+				Content: content, LineCount: strings.Count(content, "\n") + 1, ByteCount: len(content),
+			})
+			switch decision {
+			case PasteReject:
+				return true
+			case PasteModified:
+				content = replacement
+				if content == "" {
+					return true
+				}
+			}
+		}
 		s.completions = nil // a paste accepts any in-progress completion
-		handled := s.input.HandlePaste(event.Paste)
+		handled := s.input.HandlePaste(content)
 		if handled {
 			s.syncBinding()
 		}
@@ -277,6 +294,7 @@ type inputConfig struct {
 	onChange         func(string)
 	onSubmit         func(string)
 	onKey            func(KeyEvent) bool
+	onPaste          PasteHandler
 	onComplete       func(string) []string
 	history          []string
 }
@@ -338,6 +356,7 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 	state.onChange = cfg.onChange
 	state.onSubmit = cfg.onSubmit
 	state.onKey = cfg.onKey
+	state.onPaste = cfg.onPaste
 	state.onComplete = cfg.onComplete
 	state.history = cfg.history
 	state.binding = cfg.binding
@@ -401,6 +420,7 @@ type InputView struct {
 	onChange         func(string)
 	onSubmit         func(string)
 	onKey            func(KeyEvent) bool
+	onPaste          PasteHandler
 	onComplete       func(string) []string
 	history          []string
 	width            int
@@ -470,12 +490,21 @@ func (i *InputView) OnSubmit(fn func(string)) *InputView {
 	return i
 }
 
-// OnKey sets a hook that sees every key event before the input's own
+// OnKey sets a hook that sees each non-paste key event before the input's own
 // handling (completion, history, submit, editing). Return true to consume
 // the event; return false to let the input process it normally. Use this to
 // claim specific keys for application shortcuts while the input is focused.
 func (i *InputView) OnKey(fn func(KeyEvent) bool) *InputView {
 	i.onKey = fn
+	return i
+}
+
+// OnPaste inspects bracketed paste before native insertion. Accept preserves
+// the inserted text; modification replaces it; rejection or an empty
+// replacement consumes it without changing the value or cursor. A nil handler
+// preserves ordinary paste. Typing and recall do not invoke the handler.
+func (i *InputView) OnPaste(fn PasteHandler) *InputView {
+	i.onPaste = fn
 	return i
 }
 
@@ -629,6 +658,7 @@ func (i *InputView) render(ctx *RenderContext) {
 		onChange:         i.onChange,
 		onSubmit:         i.onSubmit,
 		onKey:            i.onKey,
+		onPaste:          i.onPaste,
 		onComplete:       i.onComplete,
 		history:          i.history,
 	}, fm)

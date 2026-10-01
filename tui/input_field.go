@@ -20,6 +20,7 @@ type InputFieldView struct {
 	onChange         func(string)
 	onSubmit         func(string)
 	onKey            func(KeyEvent) bool
+	onPaste          PasteHandler
 	onComplete       func(string) []string
 	history          []string
 	width            int
@@ -141,7 +142,7 @@ func (f *InputFieldView) OnSubmit(fn func(string)) *InputFieldView {
 	return f
 }
 
-// OnKey sets a hook that sees every key event before the input's own
+// OnKey sets a hook that sees each non-paste key event before the input's own
 // handling (completion, history, submit, editing). Return true to consume
 // the event; return false to let the input process it normally. Use this to
 // claim specific keys for application shortcuts while the input is focused.
@@ -155,6 +156,15 @@ func (f *InputFieldView) OnSubmit(fn func(string)) *InputFieldView {
 //	    })
 func (f *InputFieldView) OnKey(fn func(KeyEvent) bool) *InputFieldView {
 	f.onKey = fn
+	return f
+}
+
+// OnPaste inspects bracketed paste before native insertion. The handler can
+// accept, replace, or reject the inserted text. Rejection and an empty
+// replacement consume the paste without changing the value or cursor.
+// A nil handler preserves ordinary paste. Typing and recall do not invoke it.
+func (f *InputFieldView) OnPaste(fn PasteHandler) *InputFieldView {
+	f.onPaste = fn
 	return f
 }
 
@@ -628,6 +638,7 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 		onChange:         f.onChange,
 		onSubmit:         f.onSubmit,
 		onKey:            f.onKey,
+		onPaste:          f.onPaste,
 		onComplete:       f.onComplete,
 		history:          f.history,
 	}, ctx.FocusManager())
