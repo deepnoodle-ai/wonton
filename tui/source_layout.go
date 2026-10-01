@@ -78,7 +78,6 @@ func (l *sourceLayout) bind(content string, offset int) {
 	}
 	l.bindings = append(l.bindings, sourceBinding{offset, end})
 }
-func (l *sourceLayout) complete() bool { return l.valid && (l.source == "" || len(l.bindings) > 0) }
 func sourceLine(source string, at int) (int, int) {
 	at = min(max(at, 0), len(source))
 	start := strings.LastIndex(source[:at], "\n") + 1
@@ -314,8 +313,12 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 		}
 	}
 	collectSourceBindings(view, l)
-	if !l.complete() {
-		l.valid = false
+	if l.valid && l.source != "" && len(l.bindings) == 0 {
+		// The item has source text but its view marks no leaf, so nothing
+		// on screen maps to it. That is an application mistake, but it must
+		// not wipe a selection that only passes over the item: treat the
+		// item as decoration only, as if its source were empty.
+		l = newSourceLayout("", s.width, height)
 	}
 	e = s.entry(item)
 	e.source, e.sourceValid = l, true

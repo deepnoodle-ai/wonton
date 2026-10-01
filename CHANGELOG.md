@@ -29,6 +29,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
   before it. Before, both ends snapped to the text before, so a forward drag
   from a bullet copied the previous line's break and the list syntax without
   highlighting them.
+- A viewport item whose `Source` is not empty but whose view marks no leaf
+  with `SourceOffset` now acts as decoration only. Before, it made the layout
+  invalid, and any selection that reached it was cleared. Now a drag across
+  it keeps the selection and copies the items around it.
 
 ## [0.5.0] - 2026-10-01
 

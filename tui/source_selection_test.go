@@ -12,6 +12,7 @@ type sourceItems struct {
 	text     []string
 	markdown bool
 	broken   map[int]bool
+	unmapped map[int]bool
 	legacy   map[int]bool
 	builds   int
 }
@@ -21,7 +22,10 @@ func (v *sourceItems) Source(i int) (string, bool) { return v.text[i], !v.legacy
 func (v *sourceItems) Item(i int) View {
 	v.builds++
 	if v.broken[i] {
-		return Text("unbound source")
+		return Text("mismatched source").SourceOffset(0)
+	}
+	if v.unmapped[i] {
+		return Text("%s", v.text[i])
 	}
 	if v.text[i] == "" {
 		return Text("decoration")

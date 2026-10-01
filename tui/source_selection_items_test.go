@@ -158,3 +158,24 @@ func TestSourceDragAcrossReorderedTextKeepsTheSelection(t *testing.T) {
 	assert.True(t, s.HasSelection(), "reordered drag kept")
 	assert.Equal(t, s.SelectedText(), "rst ")
 }
+
+// An item with source text whose view marks no leaf is an application
+// mistake. It acts as decoration: a drag across it keeps the selection and
+// copies the items around it.
+func TestSourceDragAcrossUnmappedItemKeepsTheSelection(t *testing.T) {
+	v := &sourceItems{text: []string{"first", "unmapped", "second"}, unmapped: map[int]bool{1: true}}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, v, 20, 10, 1)
+	// Rows: 0 "first", 2 "unmapped", 4 "second".
+	s.BeginSelection(2, 0)
+	s.ExtendSelection(8, 4)
+	s.EndSelection()
+	assert.True(t, s.HasSelection(), "selection across an unmapped item")
+	assert.Equal(t, s.SelectedText(), "first\n\nsecond")
+
+	// A drag that starts on the unmapped item selects from the next text.
+	s.BeginSelection(3, 2)
+	s.ExtendSelection(8, 4)
+	s.EndSelection()
+	assert.Equal(t, s.SelectedText(), "second")
+}
