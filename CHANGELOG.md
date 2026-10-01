@@ -33,6 +33,7 @@ bug fixes. Release notes identify incompatible changes explicitly.
 ### Changed
 
 - Ctrl-D deletes the next grapheme or paste unit in nonempty text inputs.
+  At the end of the input, it is consumed without changing the text.
   Empty Ctrl-D remains available to the application, and key hooks retain
   precedence over the default binding.
 - Input bindings call `OnChange` only when the bound value changes.
