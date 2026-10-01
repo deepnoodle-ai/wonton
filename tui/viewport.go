@@ -1,5 +1,7 @@
 package tui
 
+import "image"
+
 // ViewportItems is the application's list of items. It is read every frame, so
 // items may be appended, replaced, or removed between frames.
 //
@@ -477,10 +479,10 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		s.width = width
 	}
 	s.Width, s.Height = width, height
-	abs := ctx.AbsoluteBounds()
-	s.X, s.Y = abs.Min.X, abs.Min.Y
-	s.touchesTop = abs.Min.Y <= ctx.screen.Min.Y
-	s.touchesBottom = abs.Min.Y+height >= ctx.screen.Max.Y
+	origin := screenOrigin(ctx.RenderFrame())
+	s.X, s.Y = origin.X, origin.Y
+	s.touchesTop = origin.Y <= ctx.screen.Min.Y
+	s.touchesBottom = origin.Y+height >= ctx.screen.Max.Y
 
 	if s.Follow {
 		s.anchorItem, s.anchorLine = s.maxAnchor()
@@ -514,6 +516,16 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.paintSelection(ctx)
 
 	s.updatePosition()
+}
+
+// screenOrigin returns the screen position of a frame's (0, 0). A frame inside
+// a Scroll reports bounds starting at (0, 0), so add each scroll frame's offset
+// to the position of the frame it draws into.
+func screenOrigin(f RenderFrame) image.Point {
+	if sf, ok := f.(*scrollRenderFrame); ok {
+		return screenOrigin(sf.inner).Add(image.Pt(sf.offsetX, -sf.offsetY))
+	}
+	return f.GetBounds().Min
 }
 
 // updatePosition refreshes the AtBottom and LinesBelow an application reads to

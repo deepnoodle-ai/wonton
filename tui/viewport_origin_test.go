@@ -126,3 +126,27 @@ func TestEdgeRowsScrollOnlyWhenThePointerCannotLeave(t *testing.T) {
 	assert.Equal(t, dragScrolls(t, bottom, 5, 1), 0, "first row below the header does not")
 	assert.Equal(t, dragScrolls(t, bottom, 5, 0), -1, "the header row does")
 }
+
+func TestViewportInsideAScrollRecordsItsScreenPosition(t *testing.T) {
+	// Three header rows, then a Scroll scrolled down one row whose content
+	// is two rows of text and the viewport. The viewport starts at content
+	// row 2, which is screen row 3 + 2 - 1 = 4.
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	offset := 1
+	a := &layoutViewportApp{items: &textItems{text: lines}, layout: func(v View) View {
+		return Stack(
+			Text("h1"), Text("h2"), Text("h3"),
+			Scroll(Stack(Text("pre1"), Text("pre2"), Height(12, v)), &offset),
+		)
+	}}
+	r := NewRuntime(NewTestTerminal(30, 12, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+
+	assert.Equal(t, [2]int{a.vp.X, a.vp.Y}, [2]int{0, 4})
+	r.processEvent(MouseEvent{X: 0, Y: 5, Button: MouseButtonLeft, Type: MousePress})
+	r.processEvent(MouseEvent{X: 2, Y: 6, Button: MouseButtonLeft, Type: MouseDrag})
+	assert.Equal(t, a.vp.SelectedText(), "L01\nL0", "the drag selects the rows under the pointer")
+}

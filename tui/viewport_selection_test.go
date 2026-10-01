@@ -701,3 +701,30 @@ func TestEdgeRowScrollingStopsInsideOrOnRelease(t *testing.T) {
 	s.EndSelection()
 	assert.False(t, s.DragAutoScroll(), "releasing stops the scroll")
 }
+
+func TestOneRowViewportKeepsItsDragDirection(t *testing.T) {
+	// A one-row viewport that fills the screen: its only row is both the top
+	// and the bottom edge. Once a drag starts scrolling one way, more drag
+	// events on that row must not turn it around, even after content
+	// appears behind it or the scroll reaches the end.
+	var lines []string
+	for i := range 6 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	items := &textItems{text: lines}
+	s := &ViewportState{}
+	renderViewport(t, s, items, 20, 1, 0)
+
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(2, 0) // at the first item: only content below
+	prev, _ := s.Anchor()
+	for frame := range 12 {
+		s.DragAutoScroll()
+		renderViewport(t, s, items, 20, 1, 0)
+		s.ExtendSelection(2, 0) // the pointer jiggles on the same row
+		item, _ := s.Anchor()
+		assert.True(t, item >= prev, "frame %d scrolled back up: %d after %d", frame, item, prev)
+		prev = item
+	}
+	assert.Equal(t, prev, 5, "the drag reached the end and stayed there")
+}

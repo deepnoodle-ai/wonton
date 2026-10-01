@@ -108,6 +108,7 @@ func (s *ViewportState) BeginSelection(x, y int) {
 	s.selAnchor, s.selCursor = p, p
 	s.captureSourceSelection()
 	s.selecting = true
+	s.dragEdge = 0
 	// One press is not yet a selection: it becomes one when the drag moves off
 	// the starting cell. Otherwise every click would leave a zero-width
 	// highlight behind.
@@ -299,7 +300,16 @@ func (s *ViewportState) HandleMouse(e MouseEvent) bool {
 // the window, though, so when the viewport touches the top or bottom of the
 // screen nothing can land beyond it. There the edge row itself pulls, as long
 // as there is content beyond it.
+//
+// A one-row viewport that fills the screen has a single row that is both
+// edges. A drag held there keeps the direction it already has, so it cannot
+// turn around once content appears behind it or the scroll reaches the end.
+// A new drag there goes up if there is content above, otherwise down.
 func (s *ViewportState) edgeOf(y int) int {
+	bothEdges := s.Height == 1 && s.touchesTop && s.touchesBottom
+	if y == 0 && bothEdges && s.dragEdge != 0 {
+		return s.dragEdge
+	}
 	switch {
 	case y < 0, y == 0 && s.touchesTop && s.contentAbove():
 		return -1
