@@ -96,9 +96,16 @@ func (a *handoffPTYApplication) HandleEvent(event Event) []Cmd {
 				if _, err := io.ReadFull(a.control, signal[:]); err != nil {
 					return err
 				}
+				// The resize listener stays live during a handoff and may
+				// take the last slot, so never block on a full queue.
 				events := a.inlineEvents()
-				for len(events) < cap(events) {
-					events <- KeyEvent{Rune: 'q'}
+			fillStopQueue:
+				for {
+					select {
+					case events <- KeyEvent{Rune: 'q'}:
+					default:
+						break fillStopQueue
+					}
 				}
 				if a.fullscreen != nil {
 					a.fullscreen.Stop()
