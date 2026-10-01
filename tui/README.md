@@ -172,9 +172,11 @@ command. It receives the current value on every render and returns byte
 ranges with styles that merge over the `TextStyle`:
 
 ```go
-tui.InputField(&a.input).Highlight(func(value string) []tui.TextRange {
+commands := map[string]bool{"/effort": true, "/help": true}
+var input string
+tui.InputField(&input).Highlight(func(value string) []tui.TextRange {
 	cmd, _, _ := strings.Cut(value, " ")
-	if !a.isCommand(cmd) {
+	if !commands[cmd] {
 		return nil
 	}
 	return []tui.TextRange{{Start: 0, End: len(cmd),
