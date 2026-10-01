@@ -18,6 +18,7 @@ type RenderContext struct {
 	reg          *registries
 	source       *sourceLayout
 	sourceOrigin image.Point
+	screen       image.Rectangle // absolute bounds of the root frame
 }
 
 // NewRenderContext creates a new render context.
@@ -28,6 +29,7 @@ func NewRenderContext(frame RenderFrame, frameCount uint64) *RenderContext {
 		frame:      frame,
 		frameCount: frameCount,
 		bounds:     image.Rect(0, 0, w, h),
+		screen:     frame.GetBounds(),
 	}
 }
 
@@ -41,6 +43,7 @@ func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
 		reg:          c.reg,
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin,
+		screen:       c.screen,
 	}
 }
 
@@ -56,6 +59,7 @@ func (c *RenderContext) withRegistries(reg *registries) *RenderContext {
 		reg:          reg,
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin,
+		screen:       c.screen,
 	}
 }
 
@@ -113,6 +117,7 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 		reg:          c.reg,
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin.Add(clippedBounds.Min),
+		screen:       c.screen,
 	}
 }
 
@@ -205,5 +210,6 @@ func (c *RenderContext) WithFrame(frame RenderFrame) *RenderContext {
 		reg:          c.reg,
 		source:       c.source,
 		sourceOrigin: origin,
+		screen:       c.screen,
 	}
 }

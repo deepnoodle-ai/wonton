@@ -58,6 +58,8 @@ type ViewportState struct {
 	followBeforeSelect bool           // Follow as it was when the selection started
 	followSuspended    bool           // Follow is pinned for the life of the selection
 	dragEdge           int            // -1, 0 or +1: which edge a drag is being held at
+	touchesTop         bool           // the first row is the screen's first row
+	touchesBottom      bool           // the last row is the screen's last row
 	layout             []viewportSpan // where each item landed in the last render
 
 	items ViewportItems
@@ -475,8 +477,10 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		s.width = width
 	}
 	s.Width, s.Height = width, height
-	origin := ctx.AbsoluteBounds().Min
-	s.X, s.Y = origin.X, origin.Y
+	abs := ctx.AbsoluteBounds()
+	s.X, s.Y = abs.Min.X, abs.Min.Y
+	s.touchesTop = abs.Min.Y <= ctx.screen.Min.Y
+	s.touchesBottom = abs.Min.Y+height >= ctx.screen.Max.Y
 
 	if s.Follow {
 		s.anchorItem, s.anchorLine = s.maxAnchor()

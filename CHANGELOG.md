@@ -1,3 +1,9 @@
+- A viewport selection drag now auto-scrolls when held on the viewport's
+  first or last row, but only when that row is also the screen's first or last
+  row. Terminals keep mouse positions inside the window, so a viewport touching
+  the top or bottom of the screen could never be scrolled by dragging. Where a
+  row outside the viewport is reachable, only that row scrolls, as before.
+  Call `DragAutoScroll` once a frame as before.
 # Changelog
 
 All notable changes to this project will be documented in this file.
