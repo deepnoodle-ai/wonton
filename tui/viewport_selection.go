@@ -108,6 +108,7 @@ func (s *ViewportState) BeginSelection(x, y int) {
 	s.selAnchor, s.selCursor = p, p
 	s.captureSourceSelection()
 	s.selecting = true
+	s.dragEdge = 0
 	// One press is not yet a selection: it becomes one when the drag moves off
 	// the starting cell. Otherwise every click would leave a zero-width
 	// highlight behind.
@@ -237,6 +238,15 @@ func isWordRune(g string) bool {
 // a line. A press with no drag clears the selection, which is how a user
 // dismisses one.
 //
+// Event positions are in the viewport's own coordinates, where (0, 0) is its
+// top-left cell. Mouse events arrive in screen coordinates, so subtract the
+// viewport's X and Y first unless it is drawn at the screen's top-left corner:
+//
+//	local := e
+//	local.X -= state.X
+//	local.Y -= state.Y
+//	state.HandleMouse(local)
+//
 // A plain left click that neither dismissed a selection nor made one returns
 // false. A press has to be taken to anchor a drag that may yet happen, but the
 // click that follows it is the application's: without the fall-through no
@@ -283,24 +293,57 @@ func (s *ViewportState) HandleMouse(e MouseEvent) bool {
 	return false
 }
 
-// edgeOf reports which way a drag at screen row y is pulling: -1 above the
-// viewport, +1 below, 0 inside it.
+// edgeOf reports which way a drag at viewport row y is pulling: -1 toward
+// earlier content, +1 toward later content, 0 not at all.
+//
+// A row outside the viewport pulls. Terminals never report a position outside
+// the window, though, so when the viewport touches the top or bottom of the
+// screen nothing can land beyond it. There the edge row itself pulls, as long
+// as there is content beyond it.
+//
+// Rows hidden by a parent Scroll count as outside the viewport, and the edge
+// rows are the first and last visible ones.
+//
+// A one-row viewport that fills the screen has a single row that is both
+// edges. A drag held there keeps the direction it already has, so it cannot
+// turn around once content appears behind it or the scroll reaches the end.
+// A new drag there goes up if there is content above, otherwise down.
 func (s *ViewportState) edgeOf(y int) int {
+	top, bottom := s.visibleRows()
+	bothEdges := bottom-top == 1 && s.touchesTop && s.touchesBottom
+	if y == top && bothEdges && s.dragEdge != 0 {
+		return s.dragEdge
+	}
 	switch {
-	case y < 0:
+	case y < top, y == top && s.touchesTop && s.contentAbove():
 		return -1
-	case y >= s.Height:
+	case y >= bottom, y == bottom-1 && s.touchesBottom && !s.atBottom():
 		return 1
 	default:
 		return 0
 	}
 }
 
-// DragAutoScroll scrolls the viewport when a drag is being held past its top or
-// bottom edge, and reports whether it moved anything.
+// visibleRows returns the rows of the viewport the user can see, [top,
+// bottom). It is every row unless a parent Scroll hides some of them.
+func (s *ViewportState) visibleRows() (top, bottom int) {
+	if s.visibleBottom <= s.visibleTop {
+		return 0, s.Height
+	}
+	return s.visibleTop, s.visibleBottom
+}
+
+// contentAbove reports whether the viewport is scrolled away from the start.
+func (s *ViewportState) contentAbove() bool {
+	return anchorLess(s.firstVisible(), 0, s.anchorItem, s.anchorLine)
+}
+
+// DragAutoScroll scrolls the viewport when a drag is held at its top or bottom
+// edge, and reports whether it moved anything. The edge is anywhere beyond the
+// viewport, or its first or last row when that row is also the screen's.
 //
-// Call it once per frame while SelectionActive: a pointer held still outside
-// the viewport sends no further mouse events, so without a per-frame nudge the
+// Call it once per frame while SelectionActive: a pointer held still at the
+// edge sends no further mouse events, so without a per-frame nudge the
 // selection would stop growing the moment the user stopped moving.
 func (s *ViewportState) DragAutoScroll() bool {
 	if !s.selecting || s.dragEdge == 0 {
@@ -326,9 +369,10 @@ func (s *ViewportState) DragAutoScroll() bool {
 	// just invalidated it. Going through it left the endpoint one row behind the
 	// edge on every step — and since the scroll stops before the endpoint
 	// catches up, the last line could never be reached by dragging at all.
-	item, line = s.anchorItem, s.anchorLine
+	top, bottom := s.visibleRows()
+	item, line = s.moveDown(s.anchorItem, s.anchorLine, top)
 	if s.dragEdge > 0 {
-		item, line = s.moveDown(item, line, s.Height-1)
+		item, line = s.moveDown(s.anchorItem, s.anchorLine, bottom-1)
 	}
 	p := SelectionPoint{Item: item, Line: line, Col: s.selCursor.Col}
 	source, valid := s.sourceDragHit(p)

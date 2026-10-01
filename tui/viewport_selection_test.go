@@ -584,3 +584,147 @@ func TestADragThatSelectsNothingRestoresFollow(t *testing.T) {
 	assert.False(t, s.HasSelection())
 	assert.True(t, s.Follow, "and releasing with nothing selected unpins it")
 }
+
+// newNumberedViewport renders twenty one-line items, L00 to L19, in a
+// five-row viewport.
+func newNumberedViewport(t *testing.T) (*ViewportState, *textItems) {
+	t.Helper()
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	items := &textItems{text: lines}
+	s := &ViewportState{}
+	renderViewport(t, s, items, 20, 5, 0)
+	return s, items
+}
+
+// autoScrollAll calls DragAutoScroll once a frame until it stops moving, and
+// reports how many steps it took.
+func autoScrollAll(t *testing.T, s *ViewportState, items *textItems) int {
+	t.Helper()
+	steps := 0
+	for range 40 {
+		if !s.DragAutoScroll() {
+			break
+		}
+		steps++
+		renderViewport(t, s, items, 20, 5, 0)
+	}
+	return steps
+}
+
+func TestDragHeldOnTheTopRowScrollsUp(t *testing.T) {
+	// Terminals never report a row above the window, so for a viewport at the
+	// top of the screen the first row is as far up as a drag can go.
+	s, items := newNumberedViewport(t)
+	s.ScrollToBottom()
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.HandleMouse(MouseEvent{X: 2, Y: 4, Button: MouseButtonLeft, Type: MousePress})
+	s.HandleMouse(MouseEvent{X: 1, Y: 0, Button: MouseButtonLeft, Type: MouseDrag})
+	assert.Equal(t, s.SelectedText(), "15\nL16\nL17\nL18\nL1")
+
+	assert.True(t, s.DragAutoScroll(), "the first row pulls while there is content above")
+	assert.Equal(t, s.SelectedText(), "14\nL15\nL16\nL17\nL18\nL1",
+		"the selection grows by one row and keeps the pointer's column")
+	renderViewport(t, s, items, 20, 5, 0)
+
+	assert.Equal(t, autoScrollAll(t, s, items), 14, "and keeps going to the start")
+	item, line := s.Anchor()
+	assert.Equal(t, [2]int{item, line}, [2]int{0, 0})
+	assert.True(t, strings.HasPrefix(s.SelectedText(), "00\nL01\n"), "got %q", s.SelectedText())
+}
+
+func TestDragHeldOnTheBottomRowScrollsDown(t *testing.T) {
+	s, items := newNumberedViewport(t)
+
+	s.HandleMouse(MouseEvent{X: 1, Y: 0, Button: MouseButtonLeft, Type: MousePress})
+	s.HandleMouse(MouseEvent{X: 2, Y: 4, Button: MouseButtonLeft, Type: MouseDrag})
+	assert.Equal(t, s.SelectedText(), "00\nL01\nL02\nL03\nL0")
+
+	assert.True(t, s.DragAutoScroll(), "the last row pulls while there is content below")
+	assert.Equal(t, s.SelectedText(), "00\nL01\nL02\nL03\nL04\nL0")
+	renderViewport(t, s, items, 20, 5, 0)
+
+	assert.Equal(t, autoScrollAll(t, s, items), 14, "and keeps going to the end")
+	assert.True(t, s.AtBottom)
+	assert.True(t, strings.HasSuffix(s.SelectedText(), "\nL18\nL1"), "got %q", s.SelectedText())
+}
+
+func TestEdgeRowsDoNotScrollPastTheContent(t *testing.T) {
+	s, items := newNumberedViewport(t)
+
+	// Already at the start: the first row is an ordinary row.
+	s.BeginSelection(3, 2)
+	s.ExtendSelection(1, 0)
+	assert.False(t, s.DragAutoScroll())
+	assert.Equal(t, s.SelectedText(), "00\nL01\nL02")
+	s.EndSelection()
+	s.ClearSelection()
+
+	// Already at the end: the last row is an ordinary row.
+	s.ScrollToBottom()
+	renderViewport(t, s, items, 20, 5, 0)
+	s.BeginSelection(1, 2)
+	s.ExtendSelection(2, 4)
+	assert.False(t, s.DragAutoScroll())
+	assert.Equal(t, s.SelectedText(), "17\nL18\nL1")
+	s.EndSelection()
+
+	// Content shorter than the viewport has nowhere to go either way.
+	short, _, _ := newTextViewport(t, []string{"one", "two", "three"}, 20, 3)
+	short.BeginSelection(1, 1)
+	short.ExtendSelection(1, 0)
+	assert.False(t, short.DragAutoScroll())
+	short.ExtendSelection(2, 2)
+	assert.False(t, short.DragAutoScroll())
+}
+
+func TestEdgeRowScrollingStopsInsideOrOnRelease(t *testing.T) {
+	s, items := newNumberedViewport(t)
+	s.ScrollToItem(10)
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.BeginSelection(0, 2)
+	s.ExtendSelection(0, 0)
+	assert.True(t, s.DragAutoScroll())
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.ExtendSelection(0, 2) // back inside
+	assert.False(t, s.DragAutoScroll(), "returning inside stops the scroll")
+
+	s.ExtendSelection(0, 4)
+	assert.True(t, s.DragAutoScroll(), "the bottom row pulls the other way")
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.EndSelection()
+	assert.False(t, s.DragAutoScroll(), "releasing stops the scroll")
+}
+
+func TestOneRowViewportKeepsItsDragDirection(t *testing.T) {
+	// A one-row viewport that fills the screen: its only row is both the top
+	// and the bottom edge. Once a drag starts scrolling one way, more drag
+	// events on that row must not turn it around, even after content
+	// appears behind it or the scroll reaches the end.
+	var lines []string
+	for i := range 6 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	items := &textItems{text: lines}
+	s := &ViewportState{}
+	renderViewport(t, s, items, 20, 1, 0)
+
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(2, 0) // at the first item: only content below
+	prev, _ := s.Anchor()
+	for frame := range 12 {
+		s.DragAutoScroll()
+		renderViewport(t, s, items, 20, 1, 0)
+		s.ExtendSelection(2, 0) // the pointer jiggles on the same row
+		item, _ := s.Anchor()
+		assert.True(t, item >= prev, "frame %d scrolled back up: %d after %d", frame, item, prev)
+		prev = item
+	}
+	assert.Equal(t, prev, 5, "the drag reached the end and stayed there")
+}

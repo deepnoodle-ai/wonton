@@ -1,5 +1,7 @@
 package tui
 
+import "image"
+
 // ViewportItems is the application's list of items. It is read every frame, so
 // items may be appended, replaced, or removed between frames.
 //
@@ -36,6 +38,7 @@ type ViewportState struct {
 	Follow bool
 
 	// Written by the view on every render; read them from HandleEvent.
+	X, Y          int  // the viewport's top-left corner on screen at the last render
 	Width, Height int  // the viewport's size at the last render
 	AtBottom      bool // nothing below the viewport
 	LinesBelow    int  // content lines below the viewport, 0 when AtBottom
@@ -56,7 +59,11 @@ type ViewportState struct {
 	selecting          bool           // a drag is in progress
 	followBeforeSelect bool           // Follow as it was when the selection started
 	followSuspended    bool           // Follow is pinned for the life of the selection
-	dragEdge           int            // -1, 0 or +1: which edge a drag is being held past
+	dragEdge           int            // -1, 0 or +1: which edge a drag is being held at
+	visibleTop         int            // first row not hidden by a parent Scroll
+	visibleBottom      int            // one past the last row not hidden by a parent Scroll
+	touchesTop         bool           // the first visible row is the screen's first row
+	touchesBottom      bool           // the last visible row is the screen's last row
 	layout             []viewportSpan // where each item landed in the last render
 
 	items ViewportItems
@@ -474,6 +481,17 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		s.width = width
 	}
 	s.Width, s.Height = width, height
+	origin, clip := screenArea(ctx.RenderFrame())
+	s.X, s.Y = origin.X, origin.Y
+	// A parent Scroll can hide rows of the viewport. Edge rows are the first
+	// and last rows the user can see.
+	visible := image.Rect(0, 0, width, height).Add(origin).Intersect(clip)
+	s.visibleTop, s.visibleBottom = 0, height
+	if !visible.Empty() {
+		s.visibleTop, s.visibleBottom = visible.Min.Y-origin.Y, visible.Max.Y-origin.Y
+	}
+	s.touchesTop = origin.Y+s.visibleTop <= ctx.screen.Min.Y
+	s.touchesBottom = origin.Y+s.visibleBottom >= ctx.screen.Max.Y
 
 	if s.Follow {
 		s.anchorItem, s.anchorLine = s.maxAnchor()
@@ -507,6 +525,21 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.paintSelection(ctx)
 
 	s.updatePosition()
+}
+
+// screenArea returns the screen position of a frame's (0, 0) and the part of
+// the screen it can draw on. A frame inside a Scroll reports bounds starting
+// at (0, 0), so add each scroll frame's offset to the position of the frame it
+// draws into, and clip to the rows and columns that scroll shows.
+func screenArea(f RenderFrame) (origin image.Point, clip image.Rectangle) {
+	sf, ok := f.(*scrollRenderFrame)
+	if !ok {
+		b := f.GetBounds()
+		return b.Min, b
+	}
+	innerOrigin, innerClip := screenArea(sf.inner)
+	shown := image.Rect(0, 0, sf.clipW, sf.clipH).Add(innerOrigin)
+	return innerOrigin.Add(image.Pt(sf.offsetX, -sf.offsetY)), shown.Intersect(innerClip)
 }
 
 // updatePosition refreshes the AtBottom and LinesBelow an application reads to
