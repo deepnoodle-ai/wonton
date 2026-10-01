@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-01
+
 ### Changed
 
 - `tui.ViewportState.SelectedText` separates items as the screen does: one
