@@ -11,6 +11,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `tui.InputFieldView.OnPaste` and `tui.InputView.OnPaste` inspect bracketed
+  paste before insertion. Reuse `PasteHandler` to accept, reject, transform,
+  or consume the pasted segment while retaining the native input cursor.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added
