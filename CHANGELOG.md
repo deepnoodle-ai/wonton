@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### Added
 
 - `tui.InputFieldView.OnPaste` and `tui.InputView.OnPaste` inspect bracketed
