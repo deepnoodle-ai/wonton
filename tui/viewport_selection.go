@@ -283,24 +283,35 @@ func (s *ViewportState) HandleMouse(e MouseEvent) bool {
 	return false
 }
 
-// edgeOf reports which way a drag at screen row y is pulling: -1 above the
-// viewport, +1 below, 0 inside it.
+// edgeOf reports which way a drag at screen row y is pulling: -1 toward
+// earlier content, +1 toward later content, 0 not at all.
+//
+// A row outside the viewport pulls. So do the first and last rows when there
+// is content beyond them: terminals keep reported mouse positions inside the
+// window, so for a viewport touching the top or bottom of the screen the edge
+// row is as far as the pointer can go.
 func (s *ViewportState) edgeOf(y int) int {
 	switch {
-	case y < 0:
+	case y < 0, y == 0 && s.contentAbove():
 		return -1
-	case y >= s.Height:
+	case y >= s.Height, y == s.Height-1 && !s.atBottom():
 		return 1
 	default:
 		return 0
 	}
 }
 
-// DragAutoScroll scrolls the viewport when a drag is being held past its top or
-// bottom edge, and reports whether it moved anything.
+// contentAbove reports whether the viewport is scrolled away from the start.
+func (s *ViewportState) contentAbove() bool {
+	return anchorLess(s.firstVisible(), 0, s.anchorItem, s.anchorLine)
+}
+
+// DragAutoScroll scrolls the viewport when a drag is held at its top or bottom
+// edge, and reports whether it moved anything. The edge is the first or last
+// row, or anywhere beyond it.
 //
-// Call it once per frame while SelectionActive: a pointer held still outside
-// the viewport sends no further mouse events, so without a per-frame nudge the
+// Call it once per frame while SelectionActive: a pointer held still at the
+// edge sends no further mouse events, so without a per-frame nudge the
 // selection would stop growing the moment the user stopped moving.
 func (s *ViewportState) DragAutoScroll() bool {
 	if !s.selecting || s.dragEdge == 0 {

@@ -56,7 +56,7 @@ type ViewportState struct {
 	selecting          bool           // a drag is in progress
 	followBeforeSelect bool           // Follow as it was when the selection started
 	followSuspended    bool           // Follow is pinned for the life of the selection
-	dragEdge           int            // -1, 0 or +1: which edge a drag is being held past
+	dragEdge           int            // -1, 0 or +1: which edge a drag is being held at
 	layout             []viewportSpan // where each item landed in the last render
 
 	items ViewportItems

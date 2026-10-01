@@ -11,6 +11,14 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- A viewport selection drag held on the viewport's first or last row now
+  auto-scrolls when there is content beyond that row. Terminals keep mouse
+  positions inside the window, so a viewport touching the top or bottom of the
+  screen could never be scrolled by dragging there. Call `DragAutoScroll` once
+  a frame as before.
+
 ## [0.4.0] - 2026-10-01
 
 ### Added

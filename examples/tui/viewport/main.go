@@ -73,9 +73,9 @@ func (a *app) HandleEvent(event tui.Event) []tui.Cmd {
 		}
 
 	case tui.TickEvent:
-		// A pointer held still outside the viewport sends no further mouse
-		// events, so a drag past the edge only keeps growing if something
-		// nudges it once a frame.
+		// A pointer held still at the viewport's edge sends no further mouse
+		// events, so a drag there only keeps growing if something nudges it
+		// once a frame.
 		a.viewport.DragAutoScroll()
 		a.stream()
 
