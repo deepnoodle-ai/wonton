@@ -301,23 +301,36 @@ func (s *ViewportState) HandleMouse(e MouseEvent) bool {
 // screen nothing can land beyond it. There the edge row itself pulls, as long
 // as there is content beyond it.
 //
+// Rows hidden by a parent Scroll count as outside the viewport, and the edge
+// rows are the first and last visible ones.
+//
 // A one-row viewport that fills the screen has a single row that is both
 // edges. A drag held there keeps the direction it already has, so it cannot
 // turn around once content appears behind it or the scroll reaches the end.
 // A new drag there goes up if there is content above, otherwise down.
 func (s *ViewportState) edgeOf(y int) int {
-	bothEdges := s.Height == 1 && s.touchesTop && s.touchesBottom
-	if y == 0 && bothEdges && s.dragEdge != 0 {
+	top, bottom := s.visibleRows()
+	bothEdges := bottom-top == 1 && s.touchesTop && s.touchesBottom
+	if y == top && bothEdges && s.dragEdge != 0 {
 		return s.dragEdge
 	}
 	switch {
-	case y < 0, y == 0 && s.touchesTop && s.contentAbove():
+	case y < top, y == top && s.touchesTop && s.contentAbove():
 		return -1
-	case y >= s.Height, y == s.Height-1 && s.touchesBottom && !s.atBottom():
+	case y >= bottom, y == bottom-1 && s.touchesBottom && !s.atBottom():
 		return 1
 	default:
 		return 0
 	}
+}
+
+// visibleRows returns the rows of the viewport the user can see, [top,
+// bottom). It is every row unless a parent Scroll hides some of them.
+func (s *ViewportState) visibleRows() (top, bottom int) {
+	if s.visibleBottom <= s.visibleTop {
+		return 0, s.Height
+	}
+	return s.visibleTop, s.visibleBottom
 }
 
 // contentAbove reports whether the viewport is scrolled away from the start.
@@ -356,9 +369,10 @@ func (s *ViewportState) DragAutoScroll() bool {
 	// just invalidated it. Going through it left the endpoint one row behind the
 	// edge on every step — and since the scroll stops before the endpoint
 	// catches up, the last line could never be reached by dragging at all.
-	item, line = s.anchorItem, s.anchorLine
+	top, bottom := s.visibleRows()
+	item, line = s.moveDown(s.anchorItem, s.anchorLine, top)
 	if s.dragEdge > 0 {
-		item, line = s.moveDown(item, line, s.Height-1)
+		item, line = s.moveDown(s.anchorItem, s.anchorLine, bottom-1)
 	}
 	p := SelectionPoint{Item: item, Line: line, Col: s.selCursor.Col}
 	source, valid := s.sourceDragHit(p)

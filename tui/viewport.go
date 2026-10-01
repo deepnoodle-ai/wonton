@@ -60,8 +60,10 @@ type ViewportState struct {
 	followBeforeSelect bool           // Follow as it was when the selection started
 	followSuspended    bool           // Follow is pinned for the life of the selection
 	dragEdge           int            // -1, 0 or +1: which edge a drag is being held at
-	touchesTop         bool           // the first row is the screen's first row
-	touchesBottom      bool           // the last row is the screen's last row
+	visibleTop         int            // first row not hidden by a parent Scroll
+	visibleBottom      int            // one past the last row not hidden by a parent Scroll
+	touchesTop         bool           // the first visible row is the screen's first row
+	touchesBottom      bool           // the last visible row is the screen's last row
 	layout             []viewportSpan // where each item landed in the last render
 
 	items ViewportItems
@@ -479,10 +481,17 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		s.width = width
 	}
 	s.Width, s.Height = width, height
-	origin := screenOrigin(ctx.RenderFrame())
+	origin, clip := screenArea(ctx.RenderFrame())
 	s.X, s.Y = origin.X, origin.Y
-	s.touchesTop = origin.Y <= ctx.screen.Min.Y
-	s.touchesBottom = origin.Y+height >= ctx.screen.Max.Y
+	// A parent Scroll can hide rows of the viewport. Edge rows are the first
+	// and last rows the user can see.
+	visible := image.Rect(0, 0, width, height).Add(origin).Intersect(clip)
+	s.visibleTop, s.visibleBottom = 0, height
+	if !visible.Empty() {
+		s.visibleTop, s.visibleBottom = visible.Min.Y-origin.Y, visible.Max.Y-origin.Y
+	}
+	s.touchesTop = origin.Y+s.visibleTop <= ctx.screen.Min.Y
+	s.touchesBottom = origin.Y+s.visibleBottom >= ctx.screen.Max.Y
 
 	if s.Follow {
 		s.anchorItem, s.anchorLine = s.maxAnchor()
@@ -518,14 +527,19 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.updatePosition()
 }
 
-// screenOrigin returns the screen position of a frame's (0, 0). A frame inside
-// a Scroll reports bounds starting at (0, 0), so add each scroll frame's offset
-// to the position of the frame it draws into.
-func screenOrigin(f RenderFrame) image.Point {
-	if sf, ok := f.(*scrollRenderFrame); ok {
-		return screenOrigin(sf.inner).Add(image.Pt(sf.offsetX, -sf.offsetY))
+// screenArea returns the screen position of a frame's (0, 0) and the part of
+// the screen it can draw on. A frame inside a Scroll reports bounds starting
+// at (0, 0), so add each scroll frame's offset to the position of the frame it
+// draws into, and clip to the rows and columns that scroll shows.
+func screenArea(f RenderFrame) (origin image.Point, clip image.Rectangle) {
+	sf, ok := f.(*scrollRenderFrame)
+	if !ok {
+		b := f.GetBounds()
+		return b.Min, b
 	}
-	return f.GetBounds().Min
+	innerOrigin, innerClip := screenArea(sf.inner)
+	shown := image.Rect(0, 0, sf.clipW, sf.clipH).Add(innerOrigin)
+	return innerOrigin.Add(image.Pt(sf.offsetX, -sf.offsetY)), shown.Intersect(innerClip)
 }
 
 // updatePosition refreshes the AtBottom and LinesBelow an application reads to

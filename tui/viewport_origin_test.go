@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -149,4 +150,63 @@ func TestViewportInsideAScrollRecordsItsScreenPosition(t *testing.T) {
 	r.processEvent(MouseEvent{X: 0, Y: 5, Button: MouseButtonLeft, Type: MousePress})
 	r.processEvent(MouseEvent{X: 2, Y: 6, Button: MouseButtonLeft, Type: MouseDrag})
 	assert.Equal(t, a.vp.SelectedText(), "L01\nL0", "the drag selects the rows under the pointer")
+}
+
+// clippedDrag puts a 12-row viewport inside a Scroll that shows only part of
+// it, scrolls the viewport to the middle of 40 items, drags from screen row
+// from to screen row to, and returns which way one auto-scroll step moved the
+// viewport and the selected text.
+func clippedDrag(t *testing.T, offset, from, to int) (int, string) {
+	t.Helper()
+	var lines []string
+	for i := range 40 {
+		lines = append(lines, fmt.Sprintf("L%02d", i))
+	}
+	a := &layoutViewportApp{items: &textItems{text: lines}, layout: func(v View) View {
+		return Stack(
+			Text("h1"), Text("h2"), Text("h3"),
+			Scroll(Stack(Text("pre1"), Text("pre2"), Height(12, v)), &offset),
+		)
+	}}
+	r := NewRuntime(NewTestTerminal(30, 12, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+	a.vp.ScrollToItem(20)
+	assert.NoError(t, r.renderChecked())
+
+	before, _ := a.vp.Anchor()
+	r.processEvent(MouseEvent{X: 0, Y: from, Button: MouseButtonLeft, Type: MousePress})
+	r.processEvent(MouseEvent{X: 1, Y: to, Button: MouseButtonLeft, Type: MouseDrag})
+	a.vp.DragAutoScroll()
+	after, _ := a.vp.Anchor()
+	dir := 0
+	switch {
+	case after < before:
+		dir = -1
+	case after > before:
+		dir = 1
+	}
+	return dir, a.vp.SelectedText()
+}
+
+func TestEdgeRowsUseTheVisiblePartOfAClippedViewport(t *testing.T) {
+	// Offset 1: the viewport starts at screen row 4 and its bottom is cut
+	// off by the screen, so screen row 11 (local row 7) is its last visible
+	// row. Holding there scrolls down and selects through that row.
+	dir, text := clippedDrag(t, 1, 6, 11)
+	assert.Equal(t, dir, 1, "the last visible row at the screen bottom pulls")
+	assert.Equal(t, text, "L22\nL23\nL24\nL25\nL26\nL27\nL",
+		"the selection ends on the last visible row, not a hidden one")
+	dir, _ = clippedDrag(t, 1, 6, 10)
+	assert.Equal(t, dir, 0, "the row above it does not")
+
+	// Offset 5: the Scroll hides the viewport's first three rows behind the
+	// header, so screen row 3 (local row 3) is its first visible row. The
+	// header row above is reachable, so it pulls and the first visible row
+	// does not.
+	dir, _ = clippedDrag(t, 5, 6, 3)
+	assert.Equal(t, dir, 0, "the first visible row below a header does not pull")
+	dir, text = clippedDrag(t, 5, 6, 2)
+	assert.Equal(t, dir, -1, "the header row above it does")
+	assert.True(t, strings.HasPrefix(text, "22\nL23\n"),
+		"the selection starts on the first visible row, got %q", text)
 }
