@@ -67,10 +67,17 @@ type textInput struct {
 	CursorShape         InputCursorStyle // Shape of the cursor (block, underline, bar)
 	CursorColor         *Color           // Custom cursor color (nil = use default style)
 
+	// Highlight, when set, returns ranges of the value to draw with extra
+	// styles. It is called once per Draw with the current value.
+	Highlight func(value string) []TextRange
+
 	// Internal
 	focused  bool
 	segments []inputSegment // Segments of typed text and paste placeholders
 }
+
+// defaultPlaceholderStyle is the placeholder style when none is configured.
+var defaultPlaceholderStyle = NewStyle().WithForeground(ColorBrightBlack)
 
 // newTextInput creates a new text input widget
 func newTextInput() *textInput {
@@ -80,7 +87,7 @@ func newTextInput() *textInput {
 		// own foreground instead of ANSI white, which renders as dim gray in
 		// most terminal themes.
 		Style:            NewStyle(),
-		PlaceholderStyle: NewStyle().WithForeground(ColorBrightBlack),
+		PlaceholderStyle: defaultPlaceholderStyle,
 		CursorStyle:      NewStyle().WithBackground(ColorWhite).WithForeground(ColorBlack),
 		PasteStyle:       NewStyle().WithForeground(ColorBrightBlack).WithItalic(),
 		OverflowStyle:    NewStyle().WithForeground(ColorBrightBlack),
@@ -281,8 +288,12 @@ func (t *textInput) Draw(frame RenderFrame) {
 		// Draw segments with appropriate styles, handling newlines and scrolling
 		x := drawX
 		visualLine := 0
+		highlights := t.highlightRanges()
+		valueOffset := 0 // byte offset of the current segment in Value()
 
 		for _, seg := range t.segments {
+			segStart := valueOffset
+			valueOffset += len(seg.actual)
 			style := t.Style
 			if seg.isPaste {
 				style = t.PasteStyle
@@ -292,7 +303,10 @@ func (t *textInput) Draw(frame RenderFrame) {
 			// Iterate by grapheme cluster so multi-rune sequences (emoji with
 			// modifiers, ZWJ families, keycaps, combining marks) are drawn as
 			// a single visual unit at the correct column.
+			clusterOffset := segStart
 			for cluster, cw := range runewidth.Graphemes(seg.display) {
+				offset := clusterOffset
+				clusterOffset += len(cluster)
 				if cluster == "\n" {
 					// Move to next line
 					visualLine++
@@ -313,7 +327,11 @@ func (t *textInput) Draw(frame RenderFrame) {
 				// Only draw if within visible range
 				if visualLine >= t.ScrollOffset && visualLine < t.ScrollOffset+height {
 					screenY := drawY + (visualLine - t.ScrollOffset)
-					frame.PrintStyled(x, screenY, cluster, style)
+					cellStyle := style
+					if !seg.isPaste {
+						cellStyle = highlightStyle(style, highlights, offset)
+					}
+					frame.PrintStyled(x, screenY, cluster, cellStyle)
 				}
 				x += cw
 			}
@@ -419,6 +437,35 @@ func (t *textInput) Draw(frame RenderFrame) {
 			}
 		}
 	}
+}
+
+// highlightRanges returns the Highlight ranges for the current value,
+// clipped to the value and with empty or inverted ranges removed.
+func (t *textInput) highlightRanges() []TextRange {
+	if t.Highlight == nil {
+		return nil
+	}
+	value := t.Value()
+	var ranges []TextRange
+	for _, r := range t.Highlight(value) {
+		r.Start = max(r.Start, 0)
+		r.End = min(r.End, len(value))
+		if r.Start < r.End {
+			ranges = append(ranges, r)
+		}
+	}
+	return ranges
+}
+
+// highlightStyle merges into base the style of every range that covers the
+// byte at offset, in slice order.
+func highlightStyle(base Style, ranges []TextRange, offset int) Style {
+	for _, r := range ranges {
+		if offset >= r.Start && offset < r.End {
+			base = base.Merge(r.Style)
+		}
+	}
+	return base
 }
 
 // getCursorXY calculates the visual x,y position of the cursor

@@ -22,6 +22,7 @@ type InputFieldView struct {
 	onKey            func(KeyEvent) bool
 	onPaste          PasteHandler
 	onComplete       func(string) []string
+	highlight        func(string) []TextRange
 	history          []string
 	width            int
 	maxHeight        int
@@ -121,6 +122,41 @@ func (f *InputFieldView) PlaceholderStyle(s Style) *InputFieldView {
 // ColorDefault (the terminal's own foreground) if unset.
 func (f *InputFieldView) TextStyle(s Style) *InputFieldView {
 	f.textStyle = &s
+	return f
+}
+
+// TextRange marks part of an input's value for extra styling. Start and End
+// are byte offsets into the value, with End exclusive, like a slice
+// value[Start:End].
+type TextRange struct {
+	Start int
+	End   int
+	Style Style
+}
+
+// Highlight styles parts of the typed text. The function receives the
+// current value each time the input is drawn and returns the ranges to
+// style. Each character is drawn with the TextStyle merged with the style of
+// every range that covers it, in order. Ranges may be unsorted or overlap;
+// parts outside the value are ignored. Paste placeholders, the empty-value
+// placeholder, and masked text are not highlighted.
+//
+// Like the other callbacks, pass the function on every render so it can
+// read current application state.
+//
+// Example: show a known slash command in bold cyan.
+//
+//	InputField(&app.input).
+//	    Highlight(func(value string) []tui.TextRange {
+//	        cmd, _, _ := strings.Cut(value, " ")
+//	        if !app.isCommand(cmd) {
+//	            return nil
+//	        }
+//	        style := tui.NewStyle().WithForeground(tui.ColorCyan).WithBold()
+//	        return []tui.TextRange{{Start: 0, End: len(cmd), Style: style}}
+//	    })
+func (f *InputFieldView) Highlight(fn func(value string) []TextRange) *InputFieldView {
+	f.highlight = fn
 	return f
 }
 
@@ -640,6 +676,7 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 		onKey:            f.onKey,
 		onPaste:          f.onPaste,
 		onComplete:       f.onComplete,
+		highlight:        f.highlight,
 		history:          f.history,
 	}, ctx.FocusManager())
 
