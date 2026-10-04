@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/termtest"
 	"golang.org/x/term"
 )
@@ -18,6 +19,7 @@ type printConfig struct {
 	Height  int       // 0 = auto (based on view size). Positive values set a fixed height.
 	Output  io.Writer // nil = os.Stdout. Specify where to write output.
 	RawMode bool      // false = use \n line endings. true = use \r\n for raw terminal mode.
+	Color   *bool     // nil = color.Enabled. false = plain text with no escape codes.
 }
 
 // PrintOption is a functional option for the printing functions:
@@ -25,7 +27,7 @@ type printConfig struct {
 type PrintOption func(*printConfig)
 
 // WithWidth sets the rendering width in columns.
-// Default is the terminal width, or 80 when not attached to a terminal.
+// Default is the width of the output when it is a terminal, or 80 otherwise.
 func WithWidth(width int) PrintOption {
 	return func(c *printConfig) {
 		c.Width = width
@@ -56,6 +58,17 @@ func WithRawMode(enabled bool) PrintOption {
 	}
 }
 
+// WithColor controls whether Print, Fprint, and Sprint write styles as ANSI
+// escape codes. When disabled, the output is plain text. Default is
+// color.Enabled, which is off when stdout is not a terminal or when NO_COLOR
+// or CLICOLOR=0 is set. SprintScreen defaults to on, since it exists to
+// inspect styles in tests. LivePrinter ignores this option.
+func WithColor(enabled bool) PrintOption {
+	return func(c *printConfig) {
+		c.Color = &enabled
+	}
+}
+
 func newPrintConfig(opts []PrintOption) printConfig {
 	var cfg printConfig
 	for _, opt := range opts {
@@ -65,16 +78,24 @@ func newPrintConfig(opts []PrintOption) printConfig {
 }
 
 func (c printConfig) withDefaults() printConfig {
+	if c.Output == nil {
+		c.Output = os.Stdout
+	}
 	if c.Width == 0 {
 		c.Width = 80
-		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-				c.Width = w
+		// Measure the destination, not stdout: a file or buffer gets the
+		// default width even when stdout is a terminal.
+		if f, ok := c.Output.(*os.File); ok {
+			if fd := int(f.Fd()); term.IsTerminal(fd) {
+				if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+					c.Width = w
+				}
 			}
 		}
 	}
-	if c.Output == nil {
-		c.Output = os.Stdout
+	if c.Color == nil {
+		enabled := color.Enabled
+		c.Color = &enabled
 	}
 	return c
 }
@@ -102,6 +123,10 @@ func (c printConfig) withDefaults() printConfig {
 // With configuration:
 //
 //	tui.Print(view, tui.WithWidth(60))
+//
+// Styles are written as ANSI escape codes only when color is enabled; see
+// WithColor. Print leaves the cursor at the end of the last line. Use Println
+// to end the output with a newline.
 func Print(view View, opts ...PrintOption) error {
 	return printWith(view, newPrintConfig(opts))
 }
@@ -143,7 +168,7 @@ func printWith(view View, cfg printConfig) error {
 	terminal.EndFrame(frame)
 
 	// Convert buffer to ANSI output
-	output := renderToANSI(terminal, cfg.Width, height, cfg.RawMode)
+	output := renderToANSI(terminal, cfg.Width, height, cfg.RawMode, *cfg.Color)
 
 	// Write to output
 	_, err = io.WriteString(cfg.Output, output)
@@ -152,8 +177,9 @@ func printWith(view View, cfg printConfig) error {
 
 // renderToANSI converts the terminal buffer to a string with ANSI escape codes.
 // If rawMode is true, uses \r\n line endings (required in raw terminal mode where
-// \n alone only moves down without returning to column 0).
-func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
+// \n alone only moves down without returning to column 0). If useColor is
+// false, styles are dropped and the result is plain text.
+func renderToANSI(t *Terminal, width, height int, rawMode, useColor bool) string {
 	var output strings.Builder
 
 	var currentStyle Style
@@ -169,10 +195,11 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 		lineHasContent := false
 		lastContentX := -1
 
-		// Find the last non-space character on this line
+		// Find the last non-space character on this line. Styled spaces count
+		// as content only when they're visible, i.e. when color is on.
 		for x := width - 1; x >= 0; x-- {
 			cell := t.GetCell(x, y)
-			if cell.Char != ' ' || cell.Style != NewStyle() {
+			if (cell.Char != ' ' && cell.Char != 0) || (useColor && cell.Style != NewStyle()) {
 				lastContentX = x
 				break
 			}
@@ -191,7 +218,7 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 			}
 
 			// Update style if needed
-			if !styleSet || cell.Style != currentStyle {
+			if useColor && (!styleSet || cell.Style != currentStyle) {
 				// Reset then apply new style
 				if styleSet {
 					output.WriteString("\033[0m")
@@ -229,14 +256,46 @@ func renderToANSI(t *Terminal, width, height int, rawMode bool) string {
 	return output.String()
 }
 
-// Fprint renders a view to the specified writer.
+// Fprint renders a view to the specified writer. The width defaults to the
+// writer's terminal width when w is a terminal, or 80 otherwise.
 func Fprint(w io.Writer, view View, opts ...PrintOption) error {
 	cfg := newPrintConfig(opts)
 	cfg.Output = w
 	return printWith(view, cfg)
 }
 
-// Sprint renders a view to a string with ANSI escape codes.
+// Println is like Print but ends the output with a newline, which is what
+// CLI output usually wants.
+func Println(view View, opts ...PrintOption) error {
+	return printlnWith(view, newPrintConfig(opts))
+}
+
+// Fprintln is like Fprint but ends the output with a newline.
+//
+// Example:
+//
+//	tui.Fprintln(w, tui.Table(columns, nil).Rows(rows))
+func Fprintln(w io.Writer, view View, opts ...PrintOption) error {
+	cfg := newPrintConfig(opts)
+	cfg.Output = w
+	return printlnWith(view, cfg)
+}
+
+func printlnWith(view View, cfg printConfig) error {
+	cfg = cfg.withDefaults()
+	if err := printWith(view, cfg); err != nil {
+		return err
+	}
+	lineEnding := "\n"
+	if cfg.RawMode {
+		lineEnding = "\r\n"
+	}
+	_, err := io.WriteString(cfg.Output, lineEnding)
+	return err
+}
+
+// Sprint renders a view to a string. Styles are included as ANSI escape codes
+// only when color is enabled; see WithColor.
 func Sprint(view View, opts ...PrintOption) string {
 	var buf strings.Builder
 	cfg := newPrintConfig(opts)
@@ -257,7 +316,14 @@ func Sprint(view View, opts ...PrintOption) string {
 //	    termtest.AssertRowContains(t, screen, 0, "Submit")
 //	}
 func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
-	cfg := newPrintConfig(opts).withDefaults()
+	var buf strings.Builder
+	cfg := newPrintConfig(opts)
+	cfg.Output = &buf
+	if cfg.Color == nil {
+		enabled := true
+		cfg.Color = &enabled
+	}
+	cfg = cfg.withDefaults()
 
 	// Get view dimensions
 	_, viewHeight := view.size(cfg.Width, 0)
@@ -272,10 +338,7 @@ func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
 	}
 
 	// Render to string
-	var buf strings.Builder
-	renderCfg := cfg
-	renderCfg.Output = &buf
-	printWith(view, renderCfg)
+	printWith(view, cfg)
 	output := buf.String()
 
 	// Create screen and write output

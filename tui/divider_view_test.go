@@ -237,7 +237,7 @@ func TestDivider_Render_Colored(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Fg(ColorRed)
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, WithWidth(20), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -249,7 +249,7 @@ func TestDivider_Render_Bold(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Bold()
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, WithWidth(20), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -261,7 +261,7 @@ func TestDivider_Render_Dim(t *testing.T) {
 	var buf strings.Builder
 	d := Divider().Dim()
 
-	err := Print(d, WithWidth(20), WithOutput(&buf))
+	err := Print(d, WithWidth(20), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -316,7 +316,7 @@ func TestDivider_Render_Styled(t *testing.T) {
 	style := NewStyle().WithForeground(ColorMagenta).WithBold()
 	d := Divider().Style(style).Title("Styled")
 
-	err := Print(d, WithWidth(40), WithOutput(&buf))
+	err := Print(d, WithWidth(40), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()

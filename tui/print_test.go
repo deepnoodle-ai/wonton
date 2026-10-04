@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/color"
 )
 
 func TestPrint_SimpleText(t *testing.T) {
@@ -22,7 +25,7 @@ func TestPrint_StyledText(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Bold").Bold()
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, WithWidth(80), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -35,7 +38,7 @@ func TestPrint_ColoredText(t *testing.T) {
 	var buf strings.Builder
 	view := Text("Red").Fg(ColorRed)
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, WithWidth(80), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -321,4 +324,75 @@ func TestLivePrinter_MultipleWidthChanges(t *testing.T) {
 	}
 
 	lp.Stop()
+}
+
+func setColorEnabled(t *testing.T, enabled bool) {
+	t.Helper()
+	original := color.Enabled
+	color.Enabled = enabled
+	t.Cleanup(func() { color.Enabled = original })
+}
+
+func TestPrint_ColorDisabledWritesPlainText(t *testing.T) {
+	setColorEnabled(t, false)
+	view := Stack(
+		Text("Bold").Bold(),
+		Text("Red").Fg(ColorRed),
+	)
+
+	output := Sprint(view, WithWidth(20))
+	assert.Equal(t, "Bold\nRed", output)
+}
+
+func TestPrint_FollowsColorEnabled(t *testing.T) {
+	setColorEnabled(t, true)
+	output := Sprint(Text("Bold").Bold(), WithWidth(20))
+	assert.True(t, strings.Contains(output, "\033["), "output should contain ANSI escape code")
+}
+
+func TestPrint_WithColorOverridesColorEnabled(t *testing.T) {
+	setColorEnabled(t, false)
+	output := Sprint(Text("Bold").Bold(), WithWidth(20), WithColor(true))
+	assert.True(t, strings.Contains(output, "\033["), "WithColor(true) should force escape codes")
+
+	color.Enabled = true
+	output = Sprint(Text("Bold").Bold(), WithWidth(20), WithColor(false))
+	assert.Equal(t, "Bold", output)
+}
+
+func TestPrint_ColorDisabledTrimsStyledPadding(t *testing.T) {
+	setColorEnabled(t, false)
+	// A background fill pads the line with styled spaces that are invisible
+	// without color, so they should not appear as trailing whitespace.
+	output := Sprint(Text("Hi").Bg(ColorBlue).Width(10), WithWidth(20))
+	assert.Equal(t, "Hi", output)
+}
+
+func TestPrint_TableWithoutSelectionIsPlain(t *testing.T) {
+	setColorEnabled(t, false)
+	table := Table([]TableColumn{{Title: "Name"}, {Title: "Age"}}, nil).
+		Rows([][]string{{"Alice", "30"}, {"Bob", "25"}})
+
+	var buf strings.Builder
+	assert.NoError(t, Fprintln(&buf, table, WithWidth(40)))
+	output := buf.String()
+	assert.False(t, strings.Contains(output, "\033"), "output should have no escape codes")
+	assert.True(t, strings.HasSuffix(output, "\n"), "Fprintln should end with a newline")
+	assert.True(t, strings.Contains(output, "Alice"), "output should contain rows")
+}
+
+func TestFprintln_RawModeLineEnding(t *testing.T) {
+	var buf strings.Builder
+	assert.NoError(t, Fprintln(&buf, Text("Hi"), WithWidth(20), WithRawMode(true), WithColor(false)))
+	assert.Equal(t, "Hi\r\n", buf.String())
+}
+
+func TestFprint_WidthFromNonTerminalFile(t *testing.T) {
+	f, err := os.Create(filepath.Join(t.TempDir(), "out.txt"))
+	assert.NoError(t, err)
+	defer f.Close()
+
+	cfg := newPrintConfig(nil)
+	cfg.Output = f
+	assert.Equal(t, 80, cfg.withDefaults().Width)
 }

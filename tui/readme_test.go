@@ -135,6 +135,7 @@ func renderSnippet(code string) string {
 		{"tui.", "tui \"github.com/deepnoodle-ai/wonton/tui\"", "var _ = tui.Text"},
 		{"fmt.", "\"fmt\"", "var _ = fmt.Println"},
 		{"log.", "\"log\"", "var _ = log.Println"},
+		{"os.", "\"os\"", "var _ = os.Stdout"},
 		{"time.", "\"time\"", "var _ = time.Now"},
 		{"strings.", "\"strings\"", "var _ = strings.Join"},
 		{"testing.", "\"testing\"", "var _ testing.TB"},

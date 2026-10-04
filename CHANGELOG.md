@@ -11,6 +11,25 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `tui.WithColor` turns ANSI styling on or off for `tui.Print`, `tui.Fprint`,
+  and `tui.Sprint`.
+- `tui.Println` and `tui.Fprintln` print a view and end it with a newline.
+
+### Changed
+
+- `tui.Print`, `tui.Fprint`, and `tui.Sprint` follow `color.Enabled` by
+  default. When stdout is not a terminal, or `NO_COLOR` or `CLICOLOR=0` is
+  set, they write plain text with no escape codes. Before, they always wrote
+  escape codes. Pass `tui.WithColor(true)` to keep the old behavior.
+  `tui.SprintScreen` still renders styles by default.
+- The printing functions measure the width of the writer they print to, not
+  of stdout. A file, pipe, or buffer gets a width of 80 even when stdout is a
+  terminal. Pass `tui.WithWidth` to choose a width.
+- A `tui.Table` with a nil selection pointer highlights no row. Before, row 0
+  was drawn with the selected style.
+
 ## [0.6.0] - 2026-10-01
 
 ### Changed

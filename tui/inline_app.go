@@ -977,7 +977,9 @@ func (r *InlineApp) Print(view View) {
 	r.live.Clear()
 
 	// Print to scrollback with raw mode line endings
-	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true))
+	// Always styled: the scrollback belongs to the same interactive screen as
+	// the live region, which LivePrinter always draws in color.
+	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Re-render live region (skip its internal sync since we're already in one)

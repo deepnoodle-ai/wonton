@@ -925,6 +925,20 @@ The `Print` family of functions renders views without:
 
 This is perfect for command-line tools that want rich formatting without a full TUI.
 
+`Print`, `Fprint`, and `Sprint` follow `color.Enabled`: when stdout is not a
+terminal, or `NO_COLOR` or `CLICOLOR=0` is set, they write plain text with no
+escape codes. Override this per call with `tui.WithColor(bool)`. The width
+defaults to the destination's terminal width, or 80 when it is a file, pipe,
+or buffer. `Println` and `Fprintln` end the output with a newline:
+
+```go
+columns := []tui.TableColumn{{Title: "Name"}, {Title: "Role"}}
+rows := [][]string{{"Alice", "Admin"}, {"Bob", "Viewer"}}
+
+// A display-only table: a nil selection highlights no row.
+tui.Fprintln(os.Stdout, tui.Table(columns, nil).Rows(rows))
+```
+
 ## Inline Applications
 
 For applications that need both scrollback output and live updating regions, use `InlineApp`. This is ideal for chat interfaces, build tools with logs, REPLs, and similar applications.
