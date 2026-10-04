@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -235,4 +236,20 @@ func ExampleBatch() {
 
 	fmt.Printf("Queued %d commands", len(cmds))
 	// Output: Queued 2 commands
+}
+
+// ExampleFprintln prints a display-only table for CLI output. With color off,
+// as when stdout is piped or NO_COLOR is set, the output is plain text.
+func ExampleFprintln() {
+	columns := []tui.TableColumn{{Title: "Name"}, {Title: "Role"}}
+	rows := [][]string{{"Alice", "Admin"}, {"Bob", "Viewer"}}
+
+	// A nil selection pointer highlights no row.
+	table := tui.Table(columns, nil).Rows(rows)
+	tui.Fprintln(os.Stdout, table, tui.WithColor(false), tui.WithWidth(20))
+	// Output:
+	// Name     Role
+	// ─────────────────
+	// Alice    Admin
+	// Bob      Viewer
 }

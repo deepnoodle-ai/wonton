@@ -68,7 +68,7 @@ func TestIf_WithStyledView(t *testing.T) {
 	var buf strings.Builder
 	view := If(true, Text("Warning").Fg(ColorYellow).Bold())
 
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, WithWidth(80), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -484,7 +484,7 @@ func TestConditionals_WithStyling(t *testing.T) {
 	view := If(hasError, Text("Warning!").Fg(ColorRed).Bold())
 
 	var buf strings.Builder
-	err := Print(view, WithWidth(80), WithOutput(&buf))
+	err := Print(view, WithWidth(80), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()

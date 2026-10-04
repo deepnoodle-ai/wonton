@@ -145,7 +145,7 @@ func TestFill_RenderWithColor(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('*').Fg(ColorRed)
 
-	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -158,7 +158,7 @@ func TestFill_RenderWithBackground(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill(' ').Bg(ColorBlue)
 
-	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -170,7 +170,7 @@ func TestFill_RenderWithBothColors(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('█').Fg(ColorGreen).Bg(ColorBlue)
 
-	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -183,7 +183,7 @@ func TestFill_RenderWithRGB(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill('*').FgRGB(255, 128, 0).BgRGB(0, 64, 128)
 
-	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -305,7 +305,7 @@ func TestFill_AsBackground(t *testing.T) {
 	var buf strings.Builder
 	fill := Fill(' ').BgRGB(32, 32, 32)
 
-	err := Print(fill, WithWidth(20), WithHeight(10), WithOutput(&buf))
+	err := Print(fill, WithWidth(20), WithHeight(10), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -321,7 +321,7 @@ func TestFill_CustomStyle(t *testing.T) {
 		WithBold()
 	fill := Fill('*').Style(customStyle)
 
-	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf))
+	err := Print(fill, WithWidth(10), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()

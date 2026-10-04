@@ -43,6 +43,8 @@ type TableView struct {
 
 // Table creates a new table view with the given columns.
 // selected should be a pointer to the currently selected row index.
+// Pass nil for a display-only table with no highlighted row, such as a
+// table printed with Print or Fprint.
 //
 // The component handles keyboard navigation (arrows, PageUp/PageDown, Home/End, j/k) and selection (Enter)
 // automatically when focused. Use Tab to focus the table.
@@ -594,18 +596,19 @@ func (t *TableView) render(ctx *RenderContext) {
 
 	t.lastHeight = availableHeight
 
-	// Get selected row
-	selectedRow := 0
+	// A table without a selection pointer is display-only: no row is
+	// highlighted and scrolling doesn't follow a selection.
+	selectedRow := -1
 	if t.selected != nil {
 		selectedRow = *t.selected
-	}
 
-	// Adjust scrollY to ensure selected row is visible
-	if selectedRow < t.scrollY {
-		t.scrollY = selectedRow
-	}
-	if selectedRow >= t.scrollY+availableHeight {
-		t.scrollY = selectedRow - availableHeight + 1
+		// Adjust scrollY to ensure selected row is visible
+		if selectedRow < t.scrollY {
+			t.scrollY = selectedRow
+		}
+		if selectedRow >= t.scrollY+availableHeight {
+			t.scrollY = selectedRow - availableHeight + 1
+		}
 	}
 
 	// Clamp scrollY

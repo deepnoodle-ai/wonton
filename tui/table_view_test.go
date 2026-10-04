@@ -213,3 +213,19 @@ func TestTablePrintCompletesWhenColumnsNeedShrinking(t *testing.T) {
 		})
 	}
 }
+
+func TestTable_NilSelectionHighlightsNothing(t *testing.T) {
+	table := Table([]TableColumn{{Title: "Name"}}, nil).
+		Rows([][]string{{"Alice"}, {"Bob"}}).
+		ShowHeader(false)
+
+	screen := SprintScreen(table, WithWidth(20))
+	assert.False(t, screen.Cell(0, 0).Style.Reverse, "row 0 should not be highlighted")
+
+	selected := 0
+	table = Table([]TableColumn{{Title: "Name"}}, &selected).
+		Rows([][]string{{"Alice"}, {"Bob"}}).
+		ShowHeader(false)
+	screen = SprintScreen(table, WithWidth(20))
+	assert.True(t, screen.Cell(0, 0).Style.Reverse, "selected row should be highlighted")
+}

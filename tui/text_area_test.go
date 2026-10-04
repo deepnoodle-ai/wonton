@@ -891,7 +891,7 @@ func TestTextArea_RenderBordered_WithBorderFg(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Test").Size(20, 5).Bordered().BorderFg(ColorRed)
 
-	err := Print(ta, WithWidth(20), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, WithWidth(20), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
@@ -922,7 +922,7 @@ func TestTextArea_Render_WithHighlightCurrentLine(t *testing.T) {
 	var buf strings.Builder
 	ta := TextArea(nil).Content("Line 1\nLine 2\nLine 3").Size(40, 5).HighlightCurrentLine(true)
 
-	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf))
+	err := Print(ta, WithWidth(40), WithHeight(5), WithOutput(&buf), WithColor(true))
 	assert.NoError(t, err)
 
 	output := buf.String()
