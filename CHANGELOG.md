@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-04
+
 ### Fixed
 
 - `PasswordInput.WithMaxLength` counts characters, not bytes, and masked
