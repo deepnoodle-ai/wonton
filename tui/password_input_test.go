@@ -49,6 +49,24 @@ func TestPasswordInput_WithMaxLength(t *testing.T) {
 	assert.Equal(t, 64, pwdInput.maxLength)
 }
 
+func TestPasswordInput_MaxLengthCountsCharacters(t *testing.T) {
+	p := NewPasswordInput(&Terminal{}).WithMaxLength(8)
+	assert.True(t, p.fits([]byte("pässwörd")))
+	assert.False(t, p.fits([]byte("pässwörd!")))
+	assert.True(t, NewPasswordInput(&Terminal{}).fits([]byte("no limit at all")))
+}
+
+func TestPasswordInput_AppendInputStopsAtMaxLength(t *testing.T) {
+	p := NewPasswordInput(&Terminal{}).WithMaxLength(4)
+	buffer := p.appendInput(nil, "ab")
+	buffer = p.appendInput(buffer, "çdef") // a paste longer than the room left
+	assert.Equal(t, "abçd", string(buffer))
+	assert.Equal(t, "abçd", string(p.appendInput(buffer, "é")))
+
+	unlimited := NewPasswordInput(&Terminal{})
+	assert.Equal(t, "pässwörd", string(unlimited.appendInput(nil, "pässwörd")))
+}
+
 func TestPasswordInput_WithMaskChar(t *testing.T) {
 	terminal := &Terminal{}
 	pwdInput := NewPasswordInput(terminal)

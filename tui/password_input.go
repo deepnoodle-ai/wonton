@@ -61,7 +61,7 @@ func (p *PasswordInput) WithPlaceholder(placeholder string) *PasswordInput {
 	return p
 }
 
-// WithMaxLength sets the maximum password length.
+// WithMaxLength sets the maximum password length, in characters.
 func (p *PasswordInput) WithMaxLength(length int) *PasswordInput {
 	p.maxLength = length
 	return p
@@ -160,7 +160,7 @@ func (p *PasswordInput) Read() (*SecureString, error) {
 	p.terminal.Flush()
 
 	// Check max length
-	if p.maxLength > 0 && len(password) > p.maxLength {
+	if !p.fits(password) {
 		// Clear the password
 		for i := range password {
 			password[i] = 0
@@ -195,8 +195,8 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 		// Handle regular character input first (before checking Key)
 		if event.Rune != 0 && event.Key == 0 {
 			// Regular character (UTF-8 encoded; may be multiple bytes)
-			if p.maxLength == 0 || len(buffer) < p.maxLength {
-				buffer = utf8.AppendRune(buffer, event.Rune)
+			if next := p.appendInput(buffer, string(event.Rune)); len(next) > len(buffer) {
+				buffer = next
 				p.updateMaskedDisplay(buffer, firstChar)
 				firstChar = false
 			}
@@ -239,13 +239,33 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 					// TODO: Add visual feedback for rejected paste
 					continue
 				}
-				buffer = append(buffer, []byte(event.Paste)...)
+				buffer = p.appendInput(buffer, event.Paste)
 				p.updateMaskedDisplay(buffer, firstChar)
 				firstChar = false
 			}
 			// Regular characters are handled above before the switch
 		}
 	}
+}
+
+// fits reports whether password is within the maximum length, which
+// counts characters, not bytes.
+func (p *PasswordInput) fits(password []byte) bool {
+	return p.maxLength == 0 || utf8.RuneCount(password) <= p.maxLength
+}
+
+// appendInput appends the characters of text to buffer, stopping at the
+// maximum length.
+func (p *PasswordInput) appendInput(buffer []byte, text string) []byte {
+	n := utf8.RuneCount(buffer)
+	for _, r := range text {
+		if p.maxLength > 0 && n >= p.maxLength {
+			break
+		}
+		buffer = utf8.AppendRune(buffer, r)
+		n++
+	}
+	return buffer
 }
 
 // updateMaskedDisplay updates the display showing masked characters.
