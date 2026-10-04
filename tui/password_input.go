@@ -61,7 +61,8 @@ func (p *PasswordInput) WithPlaceholder(placeholder string) *PasswordInput {
 	return p
 }
 
-// WithMaxLength sets the maximum password length, in characters.
+// WithMaxLength sets the maximum password length, in characters. Zero or
+// less means no limit.
 func (p *PasswordInput) WithMaxLength(length int) *PasswordInput {
 	p.maxLength = length
 	return p
@@ -249,9 +250,9 @@ func (p *PasswordInput) readMasked() ([]byte, error) {
 }
 
 // fits reports whether password is within the maximum length, which
-// counts characters, not bytes.
+// counts characters, not bytes. A length of zero or less means no limit.
 func (p *PasswordInput) fits(password []byte) bool {
-	return p.maxLength == 0 || utf8.RuneCount(password) <= p.maxLength
+	return p.maxLength <= 0 || utf8.RuneCount(password) <= p.maxLength
 }
 
 // appendInput appends the characters of text to buffer, stopping at the

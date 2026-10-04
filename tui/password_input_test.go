@@ -56,6 +56,13 @@ func TestPasswordInput_MaxLengthCountsCharacters(t *testing.T) {
 	assert.True(t, NewPasswordInput(&Terminal{}).fits([]byte("no limit at all")))
 }
 
+func TestPasswordInput_NegativeMaxLengthIsUnlimited(t *testing.T) {
+	p := NewPasswordInput(&Terminal{}).WithMaxLength(-1)
+	assert.True(t, p.fits(nil))
+	assert.True(t, p.fits([]byte("pässwörd")))
+	assert.Equal(t, "pässwörd", string(p.appendInput(nil, "pässwörd")))
+}
+
 func TestPasswordInput_AppendInputStopsAtMaxLength(t *testing.T) {
 	p := NewPasswordInput(&Terminal{}).WithMaxLength(4)
 	buffer := p.appendInput(nil, "ab")
