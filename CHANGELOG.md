@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
 ### Added
 
 - `tui.WithColor` turns ANSI styling on or off for `tui.Print`, `tui.Fprint`,
