@@ -261,3 +261,14 @@ func ExampleRenderFrame_SubFrame() {
 
 	// Output: SubFrame size: 40x10
 }
+
+// Untrusted URLs cannot end the hyperlink sequence early. Control characters
+// are removed, so an injected "set window title" sequence prints as text.
+func ExampleFormat_untrustedURL() {
+	link := terminal.Format("https://example.com/\033\\\033]0;pwned\007", "docs")
+	fmt.Printf("%q\n", link)
+	fmt.Println(terminal.StripOSC8(link))
+	// Output:
+	// "\x1b]8;;https://example.com/\\]0;pwned\x1b\\docs\x1b]8;;\x1b\\"
+	// docs
+}
