@@ -938,59 +938,106 @@ func (t *textInput) deleteForward() bool {
 	return true
 }
 
-// deleteToBeginning deletes everything from cursor to beginning
+// deleteRange removes a display range in one pass. The endpoints must be
+// grapheme boundaries in regular text. Any intersected special segment is
+// removed in full, and the cursor lands at the beginning of the removed range.
+func (t *textInput) deleteRange(start, end int) {
+	if start >= end {
+		return
+	}
+	cursor := start
+	segments := make([]inputSegment, 0, len(t.segments))
+	pos := 0
+	for _, seg := range t.segments {
+		segEnd := pos + len(seg.display)
+		if segEnd <= start || pos >= end {
+			segments = append(segments, seg)
+		} else if seg.isSpecial() {
+			cursor = min(cursor, pos)
+		} else {
+			from := max(0, start-pos)
+			to := min(len(seg.display), end-pos)
+			text := seg.display[:from] + seg.display[to:]
+			if text != "" {
+				segments = append(segments, inputSegment{display: text, actual: text})
+			}
+		}
+		pos = segEnd
+	}
+	t.segments = segments
+	t.CursorPos = cursor
+	t.mergeAdjacentTextSegments()
+}
+
+// deleteToBeginning deletes everything from cursor to beginning.
 func (t *textInput) deleteToBeginning() {
-	if t.CursorPos == 0 {
-		return
-	}
-	// Keep deleting backward until we reach the beginning
-	for t.CursorPos > 0 {
-		t.deleteBackward()
-	}
+	t.deleteRange(0, t.CursorPos)
 }
 
-// deleteToEnd deletes everything from cursor to end
+// deleteToEnd deletes everything from cursor to end.
 func (t *textInput) deleteToEnd() {
-	displayLen := t.displayLen()
-	if t.CursorPos >= displayLen {
-		return
-	}
-	// Keep deleting forward until we reach the end
-	for t.CursorPos < t.displayLen() {
-		t.deleteForward()
-	}
+	t.deleteRange(t.CursorPos, t.displayLen())
 }
 
-// deleteWordBackward deletes the word before the cursor
+// lineDeleteEnd finds the first newline that forward deletion would stop at.
+// Special segments are atomic, and CRLF is one grapheme, so neither stops
+// deletion at an embedded newline.
+func (t *textInput) lineDeleteEnd() int {
+	pos := 0
+	for _, seg := range t.segments {
+		segEnd := pos + len(seg.display)
+		if segEnd > t.CursorPos && !seg.isSpecial() {
+			offset := max(0, t.CursorPos-pos)
+			for cluster, _ := range runewidth.Graphemes(seg.display[offset:]) {
+				if cluster == "\n" {
+					return pos + offset
+				}
+				offset += len(cluster)
+			}
+		}
+		pos = segEnd
+	}
+	return pos
+}
+
+// deleteWordBackward removes trailing non-word graphemes and the preceding
+// word. Word membership follows the last rune in each deletion unit, as with
+// repeated backspace; special segments are one atomic unit.
 func (t *textInput) deleteWordBackward() {
 	if t.CursorPos == 0 {
 		return
 	}
 
-	displayText := t.DisplayText()
-
-	// Skip any trailing whitespace
-	for t.CursorPos > 0 {
-		r, w := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
-		if !isWordChar(r) {
-			t.deleteBackward()
-			displayText = t.DisplayText()
-		} else {
-			_ = w
-			break
+	// The last word run and its non-word suffix form the deletion range.
+	wordStart := 0
+	inWord := false
+	visit := func(text string, pos int) {
+		r, _ := utf8.DecodeLastRuneInString(text)
+		word := isWordChar(r)
+		if word && !inWord {
+			wordStart = pos
 		}
+		inWord = word
 	}
 
-	// Delete word characters
-	for t.CursorPos > 0 {
-		r, _ := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
-		if isWordChar(r) {
-			t.deleteBackward()
-			displayText = t.DisplayText()
-		} else {
+	pos := 0
+	for _, seg := range t.segments {
+		if pos >= t.CursorPos {
 			break
 		}
+		text := seg.display[:min(len(seg.display), t.CursorPos-pos)]
+		if seg.isSpecial() {
+			visit(text, pos)
+		} else {
+			offset := pos
+			for cluster, _ := range runewidth.Graphemes(text) {
+				visit(cluster, offset)
+				offset += len(cluster)
+			}
+		}
+		pos += len(seg.display)
 	}
+	t.deleteRange(wordStart, t.CursorPos)
 }
 
 // isWordChar returns true if r is a word character (alphanumeric or underscore)
@@ -1108,11 +1155,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 				if nl := strings.LastIndex(dt[:cursorPos], "\n"); nl >= 0 {
 					targetPos = nl + 1
 				}
-				for t.CursorPos > targetPos {
-					if !t.deleteBackward() {
-						break
-					}
-				}
+				t.deleteRange(targetPos, cursorPos)
 			} else {
 				t.deleteToBeginning()
 			}
@@ -1125,18 +1168,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		// Delete from cursor to end of line
 		if t.CursorPos < t.displayLen() {
 			if t.MultilineMode {
-				// Delete forward until we hit a newline or end of text
-				for t.CursorPos < t.displayLen() {
-					dt := t.DisplayText()
-					if t.CursorPos < len(dt) {
-						// Check if char at cursor is newline
-						r, _ := utf8.DecodeRuneInString(dt[t.CursorPos:])
-						if r == '\n' {
-							break
-						}
-					}
-					t.deleteForward()
-				}
+				t.deleteRange(t.CursorPos, t.lineDeleteEnd())
 			} else {
 				t.deleteToEnd()
 			}
