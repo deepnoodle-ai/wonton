@@ -11,6 +11,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tui.Input` and `tui.InputField` clear long pasted lines promptly with
+  Ctrl-U and Ctrl-K, while preserving multiline boundaries and paste placeholders.
+
 ## [0.7.1] - 2026-10-04
 
 ### Fixed
