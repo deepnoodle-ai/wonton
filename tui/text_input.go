@@ -1000,36 +1000,44 @@ func (t *textInput) lineDeleteEnd() int {
 	return pos
 }
 
-// deleteWordBackward deletes the word before the cursor
+// deleteWordBackward removes trailing non-word graphemes and the preceding
+// word. Word membership follows the last rune in each deletion unit, as with
+// repeated backspace; special segments are one atomic unit.
 func (t *textInput) deleteWordBackward() {
 	if t.CursorPos == 0 {
 		return
 	}
 
-	displayText := t.DisplayText()
-
-	// Skip any trailing whitespace
-	for t.CursorPos > 0 {
-		r, w := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
-		if !isWordChar(r) {
-			t.deleteBackward()
-			displayText = t.DisplayText()
-		} else {
-			_ = w
-			break
+	// The last word run and its non-word suffix form the deletion range.
+	wordStart := 0
+	inWord := false
+	visit := func(text string, pos int) {
+		r, _ := utf8.DecodeLastRuneInString(text)
+		word := isWordChar(r)
+		if word && !inWord {
+			wordStart = pos
 		}
+		inWord = word
 	}
 
-	// Delete word characters
-	for t.CursorPos > 0 {
-		r, _ := utf8.DecodeLastRuneInString(displayText[:t.CursorPos])
-		if isWordChar(r) {
-			t.deleteBackward()
-			displayText = t.DisplayText()
-		} else {
+	pos := 0
+	for _, seg := range t.segments {
+		if pos >= t.CursorPos {
 			break
 		}
+		text := seg.display[:min(len(seg.display), t.CursorPos-pos)]
+		if seg.isSpecial() {
+			visit(text, pos)
+		} else {
+			offset := pos
+			for cluster, _ := range runewidth.Graphemes(text) {
+				visit(cluster, offset)
+				offset += len(cluster)
+			}
+		}
+		pos += len(seg.display)
 	}
+	t.deleteRange(wordStart, t.CursorPos)
 }
 
 // isWordChar returns true if r is a word character (alphanumeric or underscore)

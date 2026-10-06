@@ -176,3 +176,112 @@ func TestInputStateKillLineCompletionAndHistory(t *testing.T) {
 	assert.Equal(t, "completed", text, "history restores the edited live draft")
 	assert.Equal(t, 5, changes)
 }
+
+func TestTextInputKillWord(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix, suffix, wantPrefix string
+	}{
+		{"word", "keep word", "", "keep "},
+		{"middle", "keep word", "suffix", "keep "},
+		{"whitespace", "keep word \t\n", "suffix", "keep "},
+		{"punctuation", "keep word!?...", "suffix", "keep "},
+		{"underscore and digits", "keep word_123", "!", "keep "},
+		{"punctuation before word", "keep.word", "!", "keep."},
+		{"non-ASCII suffix", "keep word世界👩🏽‍💻", "後", "keep "},
+		{"non-ASCII separator", "keep世界word", "後", "keep世界"},
+		{"combining suffix", "keep cafe\u0301", "後", "keep "},
+		{"combining separator", "keep cafe\u0301word", "後", "keep cafe\u0301"},
+		{"only non-word", "世界👩🏽‍💻 \t\n", "後", ""},
+		{"multiline word", "first\nword", "\nlast", "first\n"},
+		{"cross newline", "first\n", "last", ""},
+		{"empty", "", "unchanged", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := newTextInput().WithMultilineMode(true)
+			input.SetFocused(true)
+			input.SetValue(tc.prefix + tc.suffix)
+			input.CursorPos = len(tc.prefix)
+			input.HandleKey(KeyEvent{Key: KeyCtrlW})
+			assert.Equal(t, tc.wantPrefix+tc.suffix, input.Value())
+			assert.Equal(t, len(tc.wantPrefix), input.CursorPos)
+		})
+	}
+}
+
+func TestTextInputKillWordPasteSegments(t *testing.T) {
+	for _, tc := range []struct {
+		name, suffix, want string
+		inside             bool
+	}{
+		{"trailing punctuation", "!? ", "keep ", false},
+		{"trailing word", "word", "keep beforefirst\npastesecond\npaste", false},
+		{"inside placeholder", "", "keep beforefirst\npaste", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := newTextInput().WithPastePlaceholderMode(true)
+			input.SetFocused(true)
+			input.SetValue("keep before")
+			input.HandlePaste("first\npaste")
+			input.HandlePaste("second\npaste")
+			input.insertAtCursor(tc.suffix)
+			cursor := input.CursorPos
+			input.insertAtCursor("後")
+			input.CursorPos = cursor
+			if tc.inside {
+				input.CursorPos -= len(" lines]")
+			}
+			input.HandleKey(KeyEvent{Key: KeyCtrlW})
+			assert.Equal(t, tc.want+"後", input.Value())
+			if tc.name == "trailing word" {
+				assert.Equal(t, "keep before[pasted 2 lines][pasted 2 lines]後", input.DisplayText())
+				assert.Equal(t, len("keep before[pasted 2 lines][pasted 2 lines]"), input.CursorPos)
+			} else if tc.inside {
+				assert.Equal(t, "keep before[pasted 2 lines]後", input.DisplayText())
+				assert.Equal(t, len("keep before[pasted 2 lines]"), input.CursorPos)
+			} else {
+				assert.Equal(t, len("keep "), input.CursorPos)
+			}
+		})
+	}
+}
+
+func TestInputStateKillLargePastedWord(t *testing.T) {
+	for _, multiline := range []bool{false, true} {
+		t.Run(fmt.Sprint(multiline), func(t *testing.T) {
+			var text string
+			changes := 0
+			state := newTestInputState(t, inputConfig{
+				binding: &text, multiline: multiline,
+				onChange: func(string) { changes++ },
+			})
+			payload := "keep " + strings.Repeat("x", 262144)
+			state.HandleKeyEvent(KeyEvent{Paste: payload + "後"})
+			state.input.CursorPos = len(payload)
+			assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyCtrlW}))
+			assert.Equal(t, "keep 後", text)
+			assert.Equal(t, len("keep "), state.input.CursorPos)
+			assert.Equal(t, 2, changes)
+			state.HandleKeyEvent(KeyEvent{Rune: '✓'})
+			assert.Equal(t, "keep ✓後", text)
+		})
+	}
+}
+
+func BenchmarkTextInputKillWord(b *testing.B) {
+	for _, size := range []int{8192, 16384, 65536, 262144} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			value := "keep " + strings.Repeat("x", size) + "suffix"
+			input := newTextInput().WithMultilineMode(true)
+			input.SetFocused(true)
+			b.ReportAllocs()
+			for b.Loop() {
+				input.SetValue(value)
+				input.CursorPos = len(value) - len("suffix")
+				input.HandleKey(KeyEvent{Key: KeyCtrlW})
+				if input.Value() != "keep suffix" || input.CursorPos != len("keep ") {
+					b.Fatal("word was not cleared")
+				}
+			}
+		})
+	}
+}
