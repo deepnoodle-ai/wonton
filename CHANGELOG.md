@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-06
+
 ### Fixed
 
 - `tui.Input` and `tui.InputField` edit long pasted lines promptly with
