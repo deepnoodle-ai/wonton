@@ -34,19 +34,23 @@ bug fixes. Release notes identify incompatible changes explicitly.
   and the bytes after it ran as terminal commands, such as clearing the
   screen, setting the title, or writing the clipboard with OSC 52.
   - `terminal.Start`, `StartWithID`, `Format`, `FormatWithID`, `Fallback`,
-    `Hyperlink.FormatFallback`, and URLs set with `Style.WithURL` remove
-    control characters from the URL. `StartWithID` also removes `;` and `:`
-    from the link ID.
-  - `Terminal.Print` and `Terminal.PrintStyled` drop control characters from
-    text, except newline and tab. `Terminal.SetCell` and
-    `Terminal.FillStyled` draw a space in place of a control rune.
-  - `ValidateURL` rejects C1 controls and invalid UTF-8.
+    `Hyperlink.Format`, `Hyperlink.FormatFallback`, and URLs set with
+    `Style.WithURL` remove control characters from the URL. `StartWithID`
+    also removes control characters, `;`, and `:` from the link ID.
+  - Every `Terminal` and `RenderFrame` method that prints text (`Print`,
+    `Println`, `PrintAt`, `PrintStyled`, `PrintAtStyled`, `PrintTruncated`)
+    drops control characters other than newline and tab. Every method that
+    sets or fills cells (`SetCell`, `Fill`, `FillStyled`) draws a space in
+    place of a control rune.
+  - `ValidateURL` and `ValidateAbsoluteURL` reject C1 controls and invalid
+    UTF-8. `PrintHyperlink` and `PrintHyperlinkFallback` drop a style URL
+    when the link is invalid.
   - The text argument of `Format`, `FormatWithID`, `Fallback`, and
     `Hyperlink.Format` is still written as given, so styled link text keeps
     working. Clean untrusted link text before passing it.
-- **Behavior change:** raw ANSI codes in text passed to `Terminal.Print` or
-  `Terminal.PrintStyled` in unbuffered mode are no longer written. Use
-  `Style` instead. Buffered mode never showed such codes correctly.
+- **Behavior change:** raw ANSI codes in text passed to any of the print
+  methods above are no longer written in unbuffered mode. Use `Style`
+  instead. Buffered mode never showed such codes correctly.
 
 ## [0.7.2] - 2026-10-06
 
