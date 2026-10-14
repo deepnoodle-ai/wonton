@@ -84,7 +84,8 @@ func (h *HyperlinkView) ShowURL() *HyperlinkView {
 func (h *HyperlinkView) size(maxWidth, maxHeight int) (int, int) {
 	w, _ := MeasureText(h.text)
 	if h.showURL {
-		w += len(" ()") + len(h.url)
+		urlWidth, _ := MeasureText(h.url)
+		w += len(" ()") + urlWidth
 	}
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth

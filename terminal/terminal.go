@@ -1384,6 +1384,10 @@ func (t *Terminal) PrintStyled(text string, style Style) {
 // printInternal is the internal implementation of printing
 // It assumes the lock is already held
 func (t *Terminal) printInternal(startX, startY int, text string, style Style, clipRect image.Rectangle, wrap bool) error {
+	// Text is drawn, never interpreted: drop control characters so it
+	// cannot carry escape sequences to the terminal.
+	text = stripTextControl(text)
+
 	if !t.buffered {
 		// Non-buffered mode doesn't support clipping via buffer, direct print
 		// This will draw outside the clipRect if it's smaller than terminal size
@@ -1576,6 +1580,7 @@ func (t *Terminal) SetCell(x, y int, char rune, style Style) error {
 }
 
 func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
+	char = cellRune(char)
 	if !t.buffered {
 		// Fallback for non-buffered
 		fmt.Fprintf(t.out, "\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
@@ -1653,6 +1658,7 @@ func (t *Terminal) FillStyled(x, y, width, height int, char rune, style Style) {
 }
 
 func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style) error {
+	char = cellRune(char)
 	if !t.buffered {
 		line := strings.Repeat(string(char), width)
 		if !style.IsEmpty() {
@@ -1928,7 +1934,7 @@ func (t *Terminal) flushInternal() error {
 					}
 					// Start new hyperlink if URL is set
 					if cell.Style.URL != "" {
-						output.WriteString(fmt.Sprintf("\033]8;;%s\033\\", cell.Style.URL)) // OSC 8 start
+						output.WriteString(Start(cell.Style.URL)) // OSC 8 start
 						if t.metricsEnabled {
 							ansiCodes++
 						}
@@ -2256,8 +2262,9 @@ func (t *Terminal) Close() error {
 func (tf *terminalRenderFrame) PrintHyperlink(x, y int, link Hyperlink) error {
 	// Validate the hyperlink
 	if err := link.Validate(); err != nil {
-		// Fall back to printing just the text if invalid
-		return tf.PrintStyled(x, y, link.Text, link.Style)
+		// Fall back to printing just the text if invalid, without any URL
+		// the style carries, which was not validated
+		return tf.PrintStyled(x, y, link.Text, link.Style.WithURL(""))
 	}
 
 	// Add the URL to the style and print the text
@@ -2272,8 +2279,9 @@ func (tf *terminalRenderFrame) PrintHyperlink(x, y int, link Hyperlink) error {
 func (tf *terminalRenderFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) error {
 	// Validate the hyperlink
 	if err := link.Validate(); err != nil {
-		// Fall back to printing just the text if invalid
-		return tf.PrintStyled(x, y, link.Text, link.Style)
+		// Fall back to printing just the text if invalid, without any URL
+		// the style carries, which was not validated
+		return tf.PrintStyled(x, y, link.Text, link.Style.WithURL(""))
 	}
 
 	// Print the styled text followed by the URL in parentheses
