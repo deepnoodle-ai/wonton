@@ -164,7 +164,14 @@ func browseRecordings(dir string) error {
 		files:     files,
 	}
 
-	return tui.Run(app)
+	if err := tui.Run(app); err != nil {
+		return err
+	}
+	// Run has restored the terminal, so playback can use it.
+	if app.afterQuit != nil {
+		return app.afterQuit()
+	}
+	return nil
 }
 
 // findCastFiles searches for .cast files in a directory
@@ -199,6 +206,7 @@ type BrowserApp struct {
 	width        int
 	height       int
 	statusMsg    string
+	afterQuit    func() error // playback, run once the TUI has exited
 }
 
 // RecordingPreview holds preview information about a recording
@@ -387,24 +395,12 @@ func (app *BrowserApp) playSelected() []tui.Cmd {
 
 	filename := app.files[app.selected]
 
-	// Quit the TUI and then play
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			// Small delay to ensure terminal is restored
-			time.Sleep(100 * time.Millisecond)
-
-			// Clear screen before playing
-			fmt.Printf("\033[2J\033[H")
-
-			if err := playRecording(filename, 1.0, false, 0.0); err != nil {
-				fmt.Fprintf(os.Stderr, "Error playing recording: %v\n", err)
-			}
-
-			// Return a dummy event (we're quitting anyway)
-			return tui.QuitEvent{Time: time.Now()}
-		},
+	// Quit the TUI; browseRecordings plays the recording after Run returns.
+	app.afterQuit = func() error {
+		fmt.Printf("\033[2J\033[H")
+		return playRecording(filename, 1.0, false, 0.0)
 	}
+	return []tui.Cmd{tui.Quit()}
 }
 
 // showInfoSelected shows detailed info for the selected recording
