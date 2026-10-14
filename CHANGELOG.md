@@ -19,8 +19,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   together now apply in order.
 - `tui.Quit` stops the event loop as soon as `HandleEvent` returns, so keys
   queued behind it are no longer typed into fields or delivered to the app.
-  Commands listed after `Quit()` in the same return are not run; list them
-  before it.
+  Commands listed after `Quit()` in the same return are not run. `Quit` does
+  not wait for other commands to finish, so do work that must happen after
+  the UI exits once `tui.Run` returns.
 
 ## [0.7.2] - 2026-10-06
 

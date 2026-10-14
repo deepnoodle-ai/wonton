@@ -41,7 +41,9 @@ type Cmd func() Event
 // Quit returns a command that triggers application shutdown.
 // The application will clean up and exit gracefully. Quit takes effect as
 // soon as HandleEvent returns: no further events are handled, and commands
-// listed after it are not run.
+// listed after it are not run. Quit does not wait for commands that are
+// still running, and Run does not either. To do work once the UI has
+// exited, such as playing a file the user picked, do it after Run returns.
 //
 // Example:
 //

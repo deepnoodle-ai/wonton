@@ -77,8 +77,8 @@ func TestRuntimeFocusNextAndPrevApplyBeforeNextKey(t *testing.T) {
 }
 
 func TestRuntimeFocusCommandsApplyInOrder(t *testing.T) {
-	// Run concurrently, FocusNext could land before Focus and leave "b"
-	// focused; in order, focus moves to "b" and then on to "c".
+	// If the commands ran concurrently, FocusNext could land before Focus
+	// and leave "b" focused. In order, focus moves to "b" and then to "c".
 	app := runCmdOrderApp(t, Focus("b"), FocusNext())
 	assert.Equal(t, "x", app.c)
 }
