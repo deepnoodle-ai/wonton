@@ -170,14 +170,18 @@ type FocusPrevEvent struct {
 
 ### Focus Commands
 
-Commands produce events that the runtime processes:
+Commands produce events that the runtime processes. Unlike other commands,
+the runtime runs these inline as soon as `HandleEvent` returns rather than on a
+goroutine, so a key already queued behind them reaches the newly focused
+element. To recognize them, each is a method value: every `Focus` command
+shares one function, which the runtime finds by its code pointer. A closure
+would not do, because the compiler copies it into each caller that inlines
+`Focus`.
 
 ```go
 // Focus returns a command that sets focus to the specified element.
 func Focus(id string) Cmd {
-    return func() Event {
-        return FocusSetEvent{ID: id, Time: time.Now()}
-    }
+    return focusSetCmd{id: id}.event
 }
 
 // FocusNext returns a command that moves to the next element.
