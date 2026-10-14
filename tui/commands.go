@@ -1,6 +1,9 @@
 package tui
 
-import "time"
+import (
+	"reflect"
+	"time"
+)
 
 // Cmd is a function that performs async work and returns an event.
 // Commands are executed in separate goroutines by the Runtime,
@@ -9,6 +12,11 @@ import "time"
 // This pattern enables non-blocking async operations (HTTP requests,
 // timers, file I/O) while maintaining the single-threaded event loop
 // guarantee for application state.
+//
+// The built-in commands that only change runtime state (Quit, Focus,
+// FocusNext and FocusPrev) are the exception: the runtime applies them as
+// soon as HandleEvent returns, in the order returned, before handling the
+// next event.
 //
 // Example:
 //
@@ -31,7 +39,11 @@ import "time"
 type Cmd func() Event
 
 // Quit returns a command that triggers application shutdown.
-// The application will clean up and exit gracefully.
+// The application will clean up and exit gracefully. Quit takes effect as
+// soon as HandleEvent returns: no further events are handled, and commands
+// listed after it are not run. Quit does not wait for commands that are
+// still running, and Run does not either. To do work once the UI has
+// exited, such as playing a file the user picked, do it after Run returns.
 //
 // Example:
 //
@@ -42,10 +54,29 @@ type Cmd func() Event
 //	    return nil
 //	}
 func Quit() Cmd {
-	return func() Event {
-		return QuitEvent{Time: time.Now()}
-	}
+	return quitCmd{}.event
 }
+
+type quitCmd struct{}
+
+func (quitCmd) event() Event { return QuitEvent{Time: time.Now()} }
+
+// runtimeCmds holds the code pointers of the built-in commands that only
+// change runtime state. They need no I/O, so the runtime runs them inline
+// instead of on a goroutine; otherwise an event already queued, such as the
+// next key press, would be handled before they take effect.
+var runtimeCmds = map[uintptr]bool{
+	cmdPointer(Quit()):      true,
+	cmdPointer(Focus("")):   true,
+	cmdPointer(FocusNext()): true,
+	cmdPointer(FocusPrev()): true,
+}
+
+func cmdPointer(c Cmd) uintptr { return reflect.ValueOf(c).Pointer() }
+
+// isRuntimeCmd reports whether c was made by Quit, Focus, FocusNext or
+// FocusPrev.
+func isRuntimeCmd(c Cmd) bool { return c != nil && runtimeCmds[cmdPointer(c)] }
 
 // After returns a command that waits for the specified duration and then
 // delivers a TimerEvent carrying the given tag. Handle the TimerEvent in

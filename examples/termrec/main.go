@@ -346,6 +346,7 @@ type InteractiveApp struct {
 	width        int
 	height       int
 	scrollOffset int
+	afterQuit    func() error // play or export, run once the TUI has exited
 }
 
 func runInteractiveTUI(initialFile string) error {
@@ -379,7 +380,14 @@ func runInteractiveTUI(initialFile string) error {
 
 	app.statusMsg = "↑↓ select | Enter play | e export | q quit"
 
-	return tui.Run(app)
+	if err := tui.Run(app); err != nil {
+		return err
+	}
+	// Run has restored the terminal, so the chosen action can use it.
+	if app.afterQuit != nil {
+		return app.afterQuit()
+	}
+	return nil
 }
 
 func (app *InteractiveApp) loadInfo(file string) {
@@ -522,20 +530,11 @@ func (app *InteractiveApp) playSelected() []tui.Cmd {
 	}
 
 	file := app.files[app.selected]
-
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			time.Sleep(100 * time.Millisecond)
-			fmt.Print("\033[2J\033[H")
-
-			if err := playRecording(file, 1.0, false, 0.0); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			}
-
-			return tui.QuitEvent{Time: time.Now()}
-		},
+	app.afterQuit = func() error {
+		fmt.Print("\033[2J\033[H")
+		return playRecording(file, 1.0, false, 0.0)
 	}
+	return []tui.Cmd{tui.Quit()}
 }
 
 func (app *InteractiveApp) exportSelected() []tui.Cmd {
@@ -546,24 +545,11 @@ func (app *InteractiveApp) exportSelected() []tui.Cmd {
 	file := app.files[app.selected]
 	output := strings.TrimSuffix(file, filepath.Ext(file))
 	output = strings.TrimSuffix(output, ".cast") + ".gif"
-
-	return []tui.Cmd{
-		tui.Quit(),
-		func() tui.Event {
-			time.Sleep(100 * time.Millisecond)
-			fmt.Print("\033[2J\033[H")
-
-			if err := exportToGIF(file, output, app.exportOpts); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			}
-
-			fmt.Println("\nPress Enter to continue...")
-			var input string
-			fmt.Scanln(&input)
-
-			return tui.QuitEvent{Time: time.Now()}
-		},
+	app.afterQuit = func() error {
+		fmt.Print("\033[2J\033[H")
+		return exportToGIF(file, output, app.exportOpts)
 	}
+	return []tui.Cmd{tui.Quit()}
 }
 
 // Background context for signal handling

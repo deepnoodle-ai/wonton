@@ -722,16 +722,25 @@ func (r *InlineApp) processEvent(event Event) {
 		cmds = handler.HandleEvent(event)
 	}
 
-	// Queue commands for async execution
-	if len(cmds) > 0 {
-		for _, cmd := range cmds {
-			select {
-			case r.cmds <- cmd:
-			case <-r.stopRequested:
-				return
-			case <-r.done:
+	for _, cmd := range cmds {
+		// Quit and the focus commands take effect now, so an event already
+		// queued (the next key press, say) sees their result.
+		if isRuntimeCmd(cmd) {
+			event := cmd()
+			if _, isQuit := event.(QuitEvent); isQuit {
+				r.Stop()
 				return
 			}
+			r.processEvent(event)
+			continue
+		}
+		// Queue other commands for async execution
+		select {
+		case r.cmds <- cmd:
+		case <-r.stopRequested:
+			return
+		case <-r.done:
+			return
 		}
 	}
 }

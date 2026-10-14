@@ -47,6 +47,8 @@
 //
 // Commands: Async operations are handled through the Cmd system. Commands
 // execute in separate goroutines and send their results back as events.
+// Quit, Focus, FocusNext and FocusPrev are the exception: they take effect
+// as soon as HandleEvent returns, before the next event.
 //
 // # Layout System
 //

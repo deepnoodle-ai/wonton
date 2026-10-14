@@ -241,9 +241,9 @@ func (fm *FocusManager) HandleClick(x, y int) bool {
 }
 
 // FocusSetEvent is produced by the Focus command and processed by the Runtime
-// or InlineApp to set focus to a specific element. This event flows through
-// the command/event system rather than directly manipulating focus state,
-// allowing proper integration with the event loop.
+// or InlineApp to set focus to a specific element. The runtime applies the
+// Focus command directly; a custom Cmd that returns this event is applied
+// when its result arrives, like any other command.
 type FocusSetEvent struct {
 	ID   string    // The ID of the element to focus
 	Time time.Time // When the event was created
@@ -271,8 +271,8 @@ type FocusPrevEvent struct {
 func (e FocusPrevEvent) Timestamp() time.Time { return e.Time }
 
 // Focus returns a command that sets focus to the specified element ID.
-// The command produces a FocusSetEvent that the Runtime or InlineApp processes
-// to update the focus state.
+// The Runtime or InlineApp applies it as soon as HandleEvent returns, before
+// the next event, so a key that follows reaches the newly focused element.
 //
 // Use this in HandleEvent to programmatically focus an element:
 //
@@ -286,28 +286,37 @@ func (e FocusPrevEvent) Timestamp() time.Time { return e.Time }
 // The element ID must match the ID used when creating the focusable component
 // (e.g., Input("id"), Button("id", ...), etc.).
 func Focus(id string) Cmd {
-	return func() Event {
-		return FocusSetEvent{ID: id, Time: time.Now()}
-	}
+	return focusSetCmd{id: id}.event
 }
 
 // FocusNext returns a command that moves focus to the next element in Tab order.
-// The command produces a FocusNextEvent that the Runtime or InlineApp processes.
+// Like Focus, it is applied as soon as HandleEvent returns.
 // This is equivalent to pressing Tab.
 func FocusNext() Cmd {
-	return func() Event {
-		return FocusNextEvent{Time: time.Now()}
-	}
+	return focusNextCmd{}.event
 }
 
 // FocusPrev returns a command that moves focus to the previous element in Tab order.
-// The command produces a FocusPrevEvent that the Runtime or InlineApp processes.
+// Like Focus, it is applied as soon as HandleEvent returns.
 // This is equivalent to pressing Shift+Tab.
 func FocusPrev() Cmd {
-	return func() Event {
-		return FocusPrevEvent{Time: time.Now()}
-	}
+	return focusPrevCmd{}.event
 }
+
+// The focus commands are method values so that every command of one kind
+// shares a single function, which isRuntimeCmd can recognize. A closure
+// would not work: the compiler copies it into each caller that inlines Focus.
+type focusSetCmd struct{ id string }
+
+func (c focusSetCmd) event() Event { return FocusSetEvent{ID: c.id, Time: time.Now()} }
+
+type focusNextCmd struct{}
+
+func (focusNextCmd) event() Event { return FocusNextEvent{Time: time.Now()} }
+
+type focusPrevCmd struct{}
+
+func (focusPrevCmd) event() Event { return FocusPrevEvent{Time: time.Now()} }
 
 // FocusHandler defines callbacks for custom focusable behavior.
 type FocusHandler struct {
