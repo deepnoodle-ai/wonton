@@ -30,6 +30,15 @@ func stripTextControl(s string) string {
 	}, s)
 }
 
+// cellRune returns r, or a space if r is a control character. A cell is
+// drawn, so a control rune in it would reach the terminal as a command.
+func cellRune(r rune) rune {
+	if unicode.IsControl(r) {
+		return ' '
+	}
+	return r
+}
+
 // sanitizeLinkID removes the characters an OSC 8 id cannot contain: control
 // characters, and ';' and ':', which separate the sequence's parameters.
 func sanitizeLinkID(id string) string {

@@ -1580,6 +1580,7 @@ func (t *Terminal) SetCell(x, y int, char rune, style Style) error {
 }
 
 func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
+	char = cellRune(char)
 	if !t.buffered {
 		// Fallback for non-buffered
 		fmt.Fprintf(t.out, "\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
@@ -1657,6 +1658,7 @@ func (t *Terminal) FillStyled(x, y, width, height int, char rune, style Style) {
 }
 
 func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style) error {
+	char = cellRune(char)
 	if !t.buffered {
 		line := strings.Repeat(string(char), width)
 		if !style.IsEmpty() {

@@ -91,7 +91,10 @@ func OSC8End() string {
 
 // Format returns the formatted hyperlink with OSC 8 escape codes.
 // If the terminal supports OSC 8, it will be clickable.
-// The text is styled according to the hyperlink's Style field.
+// The text is styled according to the hyperlink's Style field. Control
+// characters are removed from the URL; the text is written as given, so
+// strip control characters from untrusted text first. PrintHyperlink does
+// this for you.
 func (h Hyperlink) Format() string {
 	var sb strings.Builder
 
@@ -116,6 +119,7 @@ func (h Hyperlink) Format() string {
 // FormatFallback returns a fallback representation for terminals that don't support OSC 8.
 // Format: "Text (URL)"
 // For example: "Click here (https://example.com)"
+// Control characters are removed from the URL; the text is written as given.
 func (h Hyperlink) FormatFallback() string {
 	var sb strings.Builder
 
@@ -130,7 +134,7 @@ func (h Hyperlink) FormatFallback() string {
 
 	// Add URL in parentheses
 	sb.WriteString(" (")
-	sb.WriteString(h.URL)
+	sb.WriteString(stripControl(h.URL))
 	sb.WriteString(")")
 
 	return sb.String()

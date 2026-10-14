@@ -104,3 +104,56 @@ func TestPrintHyperlink_InvalidURLDropsStyleURL(t *testing.T) {
 	})
 	assert.False(t, strings.Contains(out, "style.example"))
 }
+
+func TestHyperlinkFormatFallback_StripsControlCharactersFromURL(t *testing.T) {
+	link := NewHyperlink("https://a.example"+injectedTitle, "text").WithStyle(NewStyle())
+	assert.Equal(t, "text (https://a.example]0;pwned)", link.FormatFallback())
+}
+
+func TestSetCell_ControlRunesNotEmitted(t *testing.T) {
+	// A sequence split across adjacent cells must not reach the terminal.
+	out := renderFrame(t, func(f RenderFrame) {
+		for i, r := range injectedTitle {
+			_ = f.SetCell(i, 0, r, NewStyle())
+		}
+		_ = f.SetCell(0, 1, '\u009b', NewStyle())
+	})
+	assert.False(t, strings.Contains(out, injectedTitle))
+	assert.False(t, strings.Contains(out, "\007"))
+	assert.False(t, strings.Contains(out, "\u009b"))
+	assert.True(t, strings.Contains(out, " ]0;pwned "))
+}
+
+func TestFillStyled_ControlRunesNotEmitted(t *testing.T) {
+	out := renderFrame(t, func(f RenderFrame) {
+		_ = f.FillStyled(0, 0, 3, 1, '\033', NewStyle())
+		_ = f.FillStyled(0, 1, 3, 1, '\007', NewStyle())
+	})
+	assert.False(t, strings.Contains(out, "\007"))
+	assert.False(t, hasBareESC(out))
+}
+
+// hasBareESC reports whether s has an ESC that does not start a CSI or OSC
+// sequence. The terminal writes only those, so any other ESC came from a cell.
+func hasBareESC(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\033' && (i+1 == len(s) || (s[i+1] != '[' && s[i+1] != ']')) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCellWrites_UnbufferedControlRunesNotEmitted(t *testing.T) {
+	var out strings.Builder
+	term := NewTestTerminal(40, 3, &out)
+	term.buffered = false
+	assert.NoError(t, term.SetCell(0, 0, '\033', NewStyle()))
+	term.FillStyled(0, 1, 3, 1, '\007', NewStyle())
+	term.FillStyled(0, 2, 3, 1, '\u009c', NewStyle())
+	got := out.String()
+	assert.False(t, strings.Contains(got, "\007"))
+	assert.False(t, strings.Contains(got, "\u009c"))
+	assert.False(t, hasBareESC(got))
+	assert.Equal(t, "\033[1;1H\033[0m \033[0m\033[2;1H   \033[3;1H   ", got)
+}

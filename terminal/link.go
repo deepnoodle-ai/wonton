@@ -66,6 +66,8 @@ func Format(targetURL, text string) string {
 
 // FormatWithID returns a complete hyperlink with a custom ID.
 // The ID can be used to group multiple hyperlink segments as a single link.
+// As with Format, the text is written as given; strip control characters
+// from untrusted text before passing it.
 func FormatWithID(targetURL, text, id string) string {
 	return StartWithID(targetURL, id) + text + End()
 }
