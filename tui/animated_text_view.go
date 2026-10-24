@@ -1,5 +1,28 @@
 package tui
 
+import "github.com/deepnoodle-ai/wonton/runewidth"
+
+// forEachAnimatedCluster calls fn for each grapheme cluster of text with the
+// cluster's index, the total cluster count, the cluster's column offset from
+// the start of text, and its display width. Animated widgets style text one
+// cluster at a time and must advance by display width, not by rune, so that
+// wide and combined characters stay intact. Iteration stops when fn returns
+// false.
+func forEachAnimatedCluster(text string, fn func(index, total, col int, cluster string, width int) bool) {
+	total := 0
+	for range runewidth.Graphemes(text) {
+		total++
+	}
+	index, col := 0, 0
+	for cluster, w := range runewidth.Graphemes(text) {
+		if !fn(index, total, col, cluster, w) {
+			return
+		}
+		index++
+		col += w
+	}
+}
+
 // AnimatedTextView displays text with per-character animation (declarative view)
 type AnimatedTextView struct {
 	text      string
@@ -37,20 +60,17 @@ func (a *AnimatedTextView) render(ctx *RenderContext) {
 		return
 	}
 
-	runes := []rune(a.text)
-	totalChars := len(runes)
 	frameCount := ctx.Frame()
 
-	for i, r := range runes {
-		if i >= w {
-			break
+	forEachAnimatedCluster(a.text, func(i, total, col int, cluster string, cw int) bool {
+		if col+cw > w {
+			return false
 		}
-		var style Style
+		style := a.style
 		if a.animation != nil {
-			style = a.animation.GetStyle(frameCount, i, totalChars)
-		} else {
-			style = a.style
+			style = a.animation.GetStyle(frameCount, i, total)
 		}
-		ctx.SetCell(i, 0, r, style)
-	}
+		ctx.PrintTruncated(col, 0, cluster, style)
+		return true
+	})
 }

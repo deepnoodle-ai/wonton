@@ -1,6 +1,10 @@
 package tui
 
-import "image"
+import (
+	"image"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
+)
 
 // PanelView displays a filled rectangle with optional border
 type PanelView struct {
@@ -196,11 +200,8 @@ func (b *PanelView) render(ctx *RenderContext) {
 
 		// Title
 		if b.title != "" && width > 4 {
-			titleText := " " + b.title + " "
+			titleText := runewidth.Truncate(" "+b.title+" ", width-2, "")
 			titleW, _ := MeasureText(titleText)
-			if titleW > width-2 {
-				titleW = width - 2
-			}
 			startX := (width - titleW) / 2
 			ctx.PrintTruncated(startX, 0, titleText, borderStyle)
 		}

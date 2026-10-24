@@ -199,9 +199,9 @@ func (s *SlideAnimation) GetStyle(frame uint64, charIndex int, totalChars int) S
 	if distance <= s.width {
 		// Smooth falloff from center
 		intensity := 1.0 - float64(distance)/float64(s.width+1)
-		r := uint8(float64(s.baseColor.R) + float64(s.highlightColor.R-s.baseColor.R)*intensity)
-		g := uint8(float64(s.baseColor.G) + float64(s.highlightColor.G-s.baseColor.G)*intensity)
-		b := uint8(float64(s.baseColor.B) + float64(s.highlightColor.B-s.baseColor.B)*intensity)
+		r := uint8(float64(s.baseColor.R) + (float64(s.highlightColor.R)-float64(s.baseColor.R))*intensity)
+		g := uint8(float64(s.baseColor.G) + (float64(s.highlightColor.G)-float64(s.baseColor.G))*intensity)
+		b := uint8(float64(s.baseColor.B) + (float64(s.highlightColor.B)-float64(s.baseColor.B))*intensity)
 		return NewStyle().WithFgRGB(NewRGB(r, g, b))
 	}
 
@@ -263,9 +263,9 @@ func (s *SparkleAnimation) GetStyle(frame uint64, charIndex int, totalChars int)
 	if isSparkle {
 		// Calculate sparkle intensity (builds up then fades)
 		intensity := 1.0 - float64(posInCycle)/float64(s.density)
-		r := uint8(float64(s.baseColor.R) + float64(s.sparkColor.R-s.baseColor.R)*intensity)
-		g := uint8(float64(s.baseColor.G) + float64(s.sparkColor.G-s.baseColor.G)*intensity)
-		b := uint8(float64(s.baseColor.B) + float64(s.sparkColor.B-s.baseColor.B)*intensity)
+		r := uint8(float64(s.baseColor.R) + (float64(s.sparkColor.R)-float64(s.baseColor.R))*intensity)
+		g := uint8(float64(s.baseColor.G) + (float64(s.sparkColor.G)-float64(s.baseColor.G))*intensity)
+		b := uint8(float64(s.baseColor.B) + (float64(s.sparkColor.B)-float64(s.baseColor.B))*intensity)
 		return NewStyle().WithFgRGB(NewRGB(r, g, b))
 	}
 
@@ -419,9 +419,9 @@ func (g *GlitchAnimation) GetStyle(frame uint64, charIndex int, totalChars int) 
 			b = g.glitchColor.B
 		case 2:
 			// Brighter flash
-			r = min(255, g.glitchColor.R+50)
-			gVal = min(255, g.glitchColor.G+50)
-			b = min(255, g.glitchColor.B+50)
+			r = uint8(min(255, int(g.glitchColor.R)+50))
+			gVal = uint8(min(255, int(g.glitchColor.G)+50))
+			b = uint8(min(255, int(g.glitchColor.B)+50))
 		}
 		return NewStyle().WithFgRGB(NewRGB(r, gVal, b))
 	}

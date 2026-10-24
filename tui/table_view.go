@@ -554,7 +554,7 @@ func (t *TableView) render(ctx *RenderContext) {
 				title += repeatStr(" ", padding)
 			}
 
-			ctx.PrintStyled(currentX, currentY, title, t.headerStyle)
+			ctx.PrintTruncated(currentX, currentY, title, t.headerStyle)
 			currentX += w
 			// Add gap after column (except last)
 			if i < len(t.columns)-1 {
@@ -577,7 +577,7 @@ func (t *TableView) render(ctx *RenderContext) {
 				tableWidth = width
 			}
 			border := repeatStr("─", tableWidth)
-			ctx.PrintStyled(0, currentY, border, t.style)
+			ctx.PrintTruncated(0, currentY, border, t.style)
 			currentY++
 		}
 	}
@@ -655,11 +655,11 @@ func (t *TableView) render(ctx *RenderContext) {
 				paddedCell += repeatStr(" ", padding)
 			}
 
-			ctx.PrintStyled(currentX, currentY+i, paddedCell, style)
+			ctx.PrintTruncated(currentX, currentY+i, paddedCell, style)
 			currentX += w
 			// Add gap after column (except last), filled with row style
 			if colIdx < len(t.columnWidths)-1 && t.columnGap > 0 {
-				ctx.PrintStyled(currentX, currentY+i, repeatStr(" ", t.columnGap), style)
+				ctx.PrintTruncated(currentX, currentY+i, repeatStr(" ", t.columnGap), style)
 				currentX += t.columnGap
 			}
 		}

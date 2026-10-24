@@ -145,11 +145,16 @@ func (a *Animation) Lerp(from, to float64) float64 {
 }
 
 // LerpRGB performs linear interpolation between two RGB colors.
+// Channels are clamped to [0, 255], so easings that overshoot, such as
+// EaseOutBack, saturate instead of wrapping.
 func (a *Animation) LerpRGB(from, to RGB) RGB {
+	channel := func(from, to uint8) uint8 {
+		return uint8(max(0, min(255, a.Lerp(float64(from), float64(to)))))
+	}
 	return RGB{
-		R: uint8(a.Lerp(float64(from.R), float64(to.R))),
-		G: uint8(a.Lerp(float64(from.G), float64(to.G))),
-		B: uint8(a.Lerp(float64(from.B), float64(to.B))),
+		R: channel(from.R, to.R),
+		G: channel(from.G, to.G),
+		B: channel(from.B, to.B),
 	}
 }
 

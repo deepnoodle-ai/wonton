@@ -7,19 +7,20 @@ import (
 
 // FuzzyMatch checks if pattern matches text (subsequence match)
 func FuzzyMatch(pattern, text string) bool {
-	pattern = strings.ToLower(pattern)
+	// Compare runes, not bytes, so a multi-byte rune only matches itself.
+	p := []rune(strings.ToLower(pattern))
 	text = strings.ToLower(text)
 
 	pIdx := 0
-	for i := 0; i < len(text); i++ {
-		if pIdx >= len(pattern) {
+	for _, r := range text {
+		if pIdx >= len(p) {
 			return true
 		}
-		if text[i] == pattern[pIdx] {
+		if r == p[pIdx] {
 			pIdx++
 		}
 	}
-	return pIdx == len(pattern)
+	return pIdx == len(p)
 }
 
 // FuzzySearch returns the top matches for pattern in candidates

@@ -462,7 +462,7 @@ func (mr *MarkdownRenderer) renderHorizontalRule(ctx *renderContext) {
 		width = 80
 	}
 
-	rule := strings.Repeat(mr.Theme.HorizontalRuleChar, width-ctx.indent)
+	rule := strings.Repeat(mr.Theme.HorizontalRuleChar, max(width-ctx.indent, 0))
 
 	ctx.result.Lines = append(ctx.result.Lines, StyledLine{
 		Segments: []StyledSegment{{
@@ -949,6 +949,8 @@ func (mr *MarkdownRenderer) renderTable(node *east.Table, ctx *renderContext) {
 					newWidths[i] = remaining
 				} else {
 					newWidths[i] = colWidths[i] * available / oldTotal
+					// Leave at least 3 columns for each column still to come.
+					newWidths[i] = min(newWidths[i], remaining-(numCols-1-i)*3)
 					if newWidths[i] < 3 {
 						newWidths[i] = 3
 					}

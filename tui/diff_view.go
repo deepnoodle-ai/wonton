@@ -176,19 +176,19 @@ func (d *UnifiedDiffView) render(ctx *RenderContext) {
 			}
 
 			// Old line number
-			ctx.PrintStyled(x, y, line.LineNumOld, lineNumStyle)
+			ctx.PrintTruncated(x, y, line.LineNumOld, lineNumStyle)
 			x += runewidth.StringWidth(line.LineNumOld)
 
 			// Separator
-			ctx.PrintStyled(x, y, " ", lineNumStyle)
+			ctx.PrintTruncated(x, y, " ", lineNumStyle)
 			x++
 
 			// New line number
-			ctx.PrintStyled(x, y, line.LineNumNew, lineNumStyle)
+			ctx.PrintTruncated(x, y, line.LineNumNew, lineNumStyle)
 			x += runewidth.StringWidth(line.LineNumNew)
 
 			// Separator
-			ctx.PrintStyled(x, y, " │ ", lineNumStyle)
+			ctx.PrintTruncated(x, y, " │ ", lineNumStyle)
 			x += 3
 		}
 
@@ -204,7 +204,7 @@ func (d *UnifiedDiffView) render(ctx *RenderContext) {
 				style = style.WithBgRGB(*line.BgColor)
 			}
 
-			ctx.PrintStyled(x, y, seg.Text, style)
+			ctx.PrintTruncated(x, y, seg.Text, style)
 			x += runewidth.StringWidth(seg.Text)
 		}
 
