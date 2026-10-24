@@ -335,7 +335,7 @@ func (c *ClickableView) render(ctx *RenderContext) {
 
 	// Register this clickable for click handling (mouse only)
 	if c.callback != nil {
-		ctx.registries().interactive.RegisterRegion(ctx.AbsoluteBounds(), c.callback)
+		ctx.registerClick(ctx.AbsoluteBounds(), c.callback)
 	}
 
 	// Render the label

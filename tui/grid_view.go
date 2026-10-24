@@ -142,7 +142,7 @@ func (g *GridView) render(ctx *RenderContext) {
 					bounds.Min.Y+cellY+g.cellHeight,
 				)
 				c, r := col, row // capture for closure
-				ctx.registries().interactive.RegisterButton(clickBounds, func() {
+				ctx.registerClick(clickBounds, func() {
 					g.onClick(c, r)
 				})
 			}
@@ -258,7 +258,7 @@ func (g *ColorGridView) render(ctx *RenderContext) {
 				bounds.Min.Y+cellY+g.cellHeight,
 			)
 			c, r := col, row // capture for closure
-			ctx.registries().interactive.RegisterButton(clickBounds, func() {
+			ctx.registerClick(clickBounds, func() {
 				if r < len(g.state) && c < len(g.state[r]) {
 					// render shows an out-of-range state as color 0, so
 					// the click moves on from there.

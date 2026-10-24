@@ -283,7 +283,7 @@ func (l *SelectListView) render(ctx *RenderContext) {
 				bounds.Min.Y+y+1,
 			)
 			clickedItem := item
-			ctx.registries().interactive.RegisterButton(itemBounds, func() {
+			ctx.registerClick(itemBounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}

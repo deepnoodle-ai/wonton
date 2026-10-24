@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -191,4 +192,62 @@ func TestScrollInsideSourceItemDoesNotOverwriteSiblings(t *testing.T) {
 	assert.Equal(t, "Line2", state.SelectedText())
 	state.SelectLine(1, 2)
 	assert.Equal(t, "Footer", state.SelectedText())
+}
+
+func TestDragToTheBottomEndsOnTheLastLineOfATallLastItem(t *testing.T) {
+	// DragAutoScroll walks the endpoint down from the anchor with moveDown,
+	// so a walk that runs past the end of the last item must stop on its last
+	// line, not on the line it started from.
+	items := &heightItems{heights: []int{3, 12}}
+	s := &ViewportState{}
+	renderViewport(t, s, items, 20, 5, 1)
+
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(19, 9) // held below the bottom edge, past the line end
+	for range 40 {
+		if !s.DragAutoScroll() {
+			break
+		}
+		renderViewport(t, s, items, 20, 5, 1)
+	}
+	s.EndSelection()
+
+	assert.True(t, s.AtBottom, "the drag should have scrolled to the end")
+	assert.True(t, strings.HasSuffix(s.SelectedText(), "\n1.11"),
+		"a drag held past the bottom edge ends on the last line, got %q", s.SelectedText())
+}
+
+type quitApp struct {
+	scrollY int
+	clicked []string
+}
+
+func (a *quitApp) View() View {
+	var rows []View
+	for i := range 30 {
+		name := fmt.Sprintf("row%d", i)
+		rows = append(rows, Clickable(name, func() { a.clicked = append(a.clicked, name) }))
+	}
+	return Stack(
+		Height(10, Scroll(Stack(rows...), &a.scrollY)),
+		Clickable("Quit", func() { a.clicked = append(a.clicked, "Quit") }),
+	)
+}
+
+func (a *quitApp) HandleEvent(Event) []Cmd { return nil }
+
+func TestScrolledOutClickablesDoNotTakeClicksBelowTheScroll(t *testing.T) {
+	a := &quitApp{}
+	r := NewRuntime(NewTestTerminal(20, 12, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+	r.processEvent(MouseEvent{X: 0, Y: 10, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, []string{"Quit"}, a.clicked)
+
+	a.scrollY = 5
+	a.clicked = nil
+	assert.NoError(t, r.renderChecked())
+	r.processEvent(MouseEvent{X: 0, Y: 10, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, []string{"Quit"}, a.clicked, "rows scrolled off the top must not shift onto the Quit row")
+	r.processEvent(MouseEvent{X: 0, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, []string{"Quit", "row5"}, a.clicked)
 }

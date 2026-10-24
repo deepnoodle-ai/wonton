@@ -263,7 +263,7 @@ func (r *RadioListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			ctx.registries().interactive.RegisterButton(itemBounds, func() {
+			ctx.registerClick(itemBounds, func() {
 				if r.selected != nil {
 					*r.selected = idx
 				}

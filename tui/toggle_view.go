@@ -173,7 +173,7 @@ func (t *ToggleView) render(ctx *RenderContext) {
 
 	// Register click region
 	if t.value != nil {
-		ctx.registries().interactive.RegisterButton(ctx.AbsoluteBounds(), func() {
+		ctx.registerClick(ctx.AbsoluteBounds(), func() {
 			*t.value = !*t.value
 			if t.onChange != nil {
 				t.onChange(*t.value)
