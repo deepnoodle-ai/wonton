@@ -13,8 +13,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ### Fixed
 
-- `tui.Input` and `tui.InputField` no longer draw their focused style when
-  they render after a focusable with an empty ID, which keeps focus.
+- `tui.Input` and `tui.InputField` no longer draw as focused when they
+  render after a focusable with an empty ID. That earlier focusable holds
+  focus, and keys go to it.
 - `tui.Prompt` no longer panics when an `AutocompleteFunc` returns a byte
   offset inside a multi-byte character.
 - A width-3 or width-4 dash (U+2E3A, U+2E3B) printed or set in a

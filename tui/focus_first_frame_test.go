@@ -52,10 +52,9 @@ func TestFieldAfterEmptyIDFocusableIsNotFocused(t *testing.T) {
 	assert.NotEqual(t, term.GetCell(0, 2).Style.Foreground, ColorCyan)
 
 	focus := NewStyle().WithForeground(ColorRed)
-	first, second := "", ""
-	a, b := Input(&first), Input(&second).ID("second").FocusStyle(focus)
-	renderFirstFrame(t, Stack(TextArea(nil).Content("x").Size(10, 2), a, b))
-	assert.NotEqual(t, b.reg.inputs.inputs["second"].input.Style, focus)
+	in := Input(nil).FocusStyle(focus)
+	renderFirstFrame(t, Stack(TextArea(nil).Content("x").Size(10, 2), in))
+	assert.NotEqual(t, in.reg.inputs.inputs[""].input.Style, focus)
 }
 
 // End scrolls to the bottom even without current-line highlighting.

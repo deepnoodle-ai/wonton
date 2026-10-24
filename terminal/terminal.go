@@ -1773,13 +1773,15 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 			}
 
 			// Handle wide characters
-			if charWidth > 1 && i+1 < width && x+i+1 < t.width {
+			if charWidth == 2 && i+1 < width && x+i+1 < t.width {
 				t.backBuffer[y+j][x+i+1] = Cell{
 					Char:         0,
 					Style:        style,
 					Width:        0,
 					Continuation: true,
 				}
+			} else if charWidth > 2 {
+				t.blankTail(x+i, y+j, charWidth, x+width, style)
 			}
 		}
 	}

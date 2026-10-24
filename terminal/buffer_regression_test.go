@@ -109,17 +109,20 @@ func TestOneColumnSubFrameSkipsWideCharacter(t *testing.T) {
 // runewidth gives U+2E3A width 3, but terminals draw it in one cell. The
 // columns it covers must be blanked, or the text under them stays on screen.
 func TestTripleWidthDashBlanksTheColumnsItCovers(t *testing.T) {
-	term := NewTestTerminal(10, 2, &bytes.Buffer{})
+	term := NewTestTerminal(10, 3, &bytes.Buffer{})
 	drawFrame(t, term, func(f RenderFrame) {
-		f.PrintStyled(0, 0, "abcdef", NewStyle())
-		f.PrintStyled(0, 1, "abcdef", NewStyle())
+		for y := range 3 {
+			f.PrintStyled(0, y, "abcdef", NewStyle())
+		}
 	})
 	drawFrame(t, term, func(f RenderFrame) {
 		f.PrintStyled(0, 0, "\u2e3aX", NewStyle())
 		f.SetCell(0, 1, '\u2e3a', NewStyle())
+		f.FillStyled(0, 2, 3, 1, '\u2e3a', NewStyle())
 	})
 	assert.Equal(t, rowChars(term, 0, 6), "\u2e3a  Xef")
 	assert.Equal(t, rowChars(term, 1, 6), "\u2e3a  def")
+	assert.Equal(t, rowChars(term, 2, 6), "\u2e3a  def")
 }
 
 func TestPrintHyperlinkFallbackDropsStyleURL(t *testing.T) {
