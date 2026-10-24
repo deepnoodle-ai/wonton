@@ -289,6 +289,16 @@ func Time(t time.Time) string {
 //	RelativeTime(future, now)      // "in 5 minutes"
 func RelativeTime(t, ref time.Time) string {
 	d := ref.Sub(t)
+	if d == math.MaxInt64 || d == math.MinInt64 {
+		// Sub saturates for spans over about 292 years. Count the years from
+		// whole seconds instead, which cover the full time.Time range.
+		secs := ref.Unix() - t.Unix()
+		past := secs >= 0
+		if !past {
+			secs = -secs
+		}
+		return relativeString(int(secs/(365*24*60*60)), "year", past)
+	}
 	past := d >= 0
 	d = absDuration(d)
 
@@ -321,10 +331,14 @@ func RelativeTime(t, ref time.Time) string {
 		unit = "year"
 	}
 
+	return relativeString(value, unit, past)
+}
+
+// relativeString formats value and unit as "N units ago" or "in N units".
+func relativeString(value int, unit string, past bool) string {
 	if value != 1 {
 		unit += "s"
 	}
-
 	if past {
 		return fmt.Sprintf("%d %s ago", value, unit)
 	}
