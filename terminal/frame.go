@@ -188,7 +188,7 @@ func (f *Frame) drawTopBorder(t RenderFrame) {
 		titleWithSpaces := " " + f.Title + " "
 		titleLen := runewidth.StringWidth(titleWithSpaces)
 
-		if titleLen < f.Width-2 {
+		if titleLen <= f.Width-2 {
 			var pos int
 			switch f.TitleAlign {
 			case AlignLeft:

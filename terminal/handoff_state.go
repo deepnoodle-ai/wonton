@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"errors"
+	"io"
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
@@ -78,8 +79,15 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 			}
 			if writeErr == nil {
 				// These modes can be reset without destructive stack operations.
-				t.cursorHidden, t.bracketedPaste, t.mouseMode = hidden, paste, mouse
-				_, writeErr = terminalstate.WriteControl(t.out, activeModes(false, hidden, paste, false, mouse))
+				// Record them once any byte of the sequence reached the
+				// terminal: a partial write may have turned some modes on, and
+				// exit must then send their disables. If nothing was written,
+				// the modes are still off, so leave them unrecorded.
+				out := &countingWriter{w: t.out}
+				_, writeErr = terminalstate.WriteControl(out, activeModes(false, hidden, paste, false, mouse))
+				if out.n > 0 {
+					t.cursorHidden, t.bracketedPaste, t.mouseMode = hidden, paste, mouse
+				}
 			}
 			var keyboardErr error
 			if writeErr == nil && kitty && !t.kittyEnabled {
@@ -180,4 +188,16 @@ func (t *Terminal) releaseKeyboard() error {
 		popErr = err
 	}
 	return errors.Join(framingErr, popErr)
+}
+
+// countingWriter counts the bytes written through it.
+type countingWriter struct {
+	w io.Writer
+	n int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += n
+	return n, err
 }
