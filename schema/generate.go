@@ -104,6 +104,20 @@ func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool
 		return &Property{Type: String}, nil
 	}
 
+	// Named slice, array, map, and pointer types can refer to themselves
+	// (type Tree map[string]Tree). Guard them like structs so the recursion
+	// ends with a placeholder instead of overflowing the stack.
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.Ptr:
+		if t.Name() != "" {
+			if seen[t] {
+				return recursivePlaceholder(t), nil
+			}
+			seen[t] = true
+			defer delete(seen, t)
+		}
+	}
+
 	switch t.Kind() {
 	case reflect.String:
 		return &Property{Type: String}, nil
@@ -181,18 +195,33 @@ func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool
 // stack on types like linked-list nodes or tree nodes.
 func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool) (*Property, error) {
 	if seen[t] {
-		additionalProps := true
-		return &Property{
-			Type:                 Object,
-			AdditionalProperties: &additionalProps,
-			Description:          fmt.Sprintf("recursive reference to %s; schema truncated to break cycle", t.String()),
-		}, nil
+		return recursivePlaceholder(t), nil
 	}
 	seen[t] = true
 	defer delete(seen, t)
 
 	properties := make(map[string]*Property)
 	var required []string
+	requiredSet := make(map[string]bool)
+	addRequired := func(name string) {
+		if !requiredSet[name] {
+			requiredSet[name] = true
+			required = append(required, name)
+		}
+	}
+
+	// A field declared directly on the struct shadows a promoted field of
+	// the same JSON name from an embedded struct, wherever it is declared
+	// (as in encoding/json). Collect the direct names first.
+	directNames := make(map[string]bool)
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if !field.IsExported() || (field.Anonymous && shouldFlattenEmbedded(field)) || field.Tag.Get("json") == "-" {
+			continue
+		}
+		name, _ := parseJSONTag(field)
+		directNames[name] = true
+	}
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -211,23 +240,33 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 			if err != nil {
 				return nil, fmt.Errorf("failed to reflect embedded field %s: %w", field.Name, err)
 			}
-			// Merge embedded struct properties
+			// Merge embedded struct properties that are not shadowed by a
+			// direct field or by an earlier embedded struct.
+			added := make(map[string]bool)
 			for name, prop := range embedded.Properties {
+				if directNames[name] || properties[name] != nil {
+					continue
+				}
 				properties[name] = prop
+				added[name] = true
 			}
 			// Only merge required fields if the embedded struct is not a pointer.
 			// Pointer-embedded structs are optional, so their fields shouldn't be required.
 			if field.Type.Kind() != reflect.Ptr {
-				required = append(required, embedded.Required...)
+				for _, name := range embedded.Required {
+					if added[name] {
+						addRequired(name)
+					}
+				}
 			}
 			continue
 		}
 
-		// Parse JSON tag to get field name and options
-		jsonName, isRequired := parseJSONTag(field)
-		if jsonName == "-" {
+		// json:"-" skips the field; json:"-," names it "-".
+		if field.Tag.Get("json") == "-" {
 			continue
 		}
+		jsonName, isRequired := parseJSONTag(field)
 
 		// Generate property schema for the field type
 		prop, err := reflectType(field.Type, opt, seen)
@@ -240,7 +279,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 
 		// Check if field is required (from tag or default behavior)
 		if checkRequired(field, isRequired) {
-			required = append(required, jsonName)
+			addRequired(jsonName)
 		}
 
 		properties[jsonName] = prop
@@ -256,6 +295,21 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		prop.AdditionalProperties = &additionalProps
 	}
 	return prop, nil
+}
+
+// recursivePlaceholder is the permissive schema used where a type refers to
+// itself, to break the cycle.
+func recursivePlaceholder(t reflect.Type) *Property {
+	desc := fmt.Sprintf("recursive reference to %s; schema truncated to break cycle", t.String())
+	switch t.Kind() {
+	case reflect.Struct, reflect.Map:
+		additionalProps := true
+		return &Property{Type: Object, AdditionalProperties: &additionalProps, Description: desc}
+	case reflect.Slice, reflect.Array:
+		return &Property{Type: Array, Description: desc}
+	default:
+		return &Property{Description: desc}
+	}
 }
 
 // shouldFlattenEmbedded reports whether an anonymous struct field's

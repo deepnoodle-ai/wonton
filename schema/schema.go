@@ -50,6 +50,7 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -183,6 +184,11 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 		// Clear both fields first to avoid stale state on reused structs
 		s.AdditionalProperties = nil
 		s.AdditionalPropertiesSchema = nil
+
+		// null means the keyword is unset.
+		if bytes.Equal(bytes.TrimSpace(apRaw), []byte("null")) {
+			return nil
+		}
 
 		// Try to unmarshal as boolean first
 		var boolVal bool
@@ -345,6 +351,11 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 		// Clear both fields first to avoid stale state on reused structs
 		p.AdditionalProperties = nil
 		p.AdditionalPropertiesSchema = nil
+
+		// null means the keyword is unset.
+		if bytes.Equal(bytes.TrimSpace(apRaw), []byte("null")) {
+			return nil
+		}
 
 		// Try to unmarshal as boolean first
 		var boolVal bool
