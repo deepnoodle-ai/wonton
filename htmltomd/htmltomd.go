@@ -69,10 +69,9 @@ import (
 
 // Precompiled regexes for efficiency
 var (
-	whitespaceRegex   = regexp.MustCompile(`\s+`)
-	multiNewlineRegex = regexp.MustCompile(`\n{3,}`)
-	tagStripRegex     = regexp.MustCompile(`<[^>]*>`)
-	listItemPattern   = regexp.MustCompile(`^[-*+][ ]|^\d+\.[ ]`)
+	whitespaceRegex = regexp.MustCompile(`\s+`)
+	tagStripRegex   = regexp.MustCompile(`<[^>]*>`)
+	listItemPattern = regexp.MustCompile(`^[-*+][ ]|^\d+\.[ ]`)
 )
 
 // LinkStyle defines how links are rendered in Markdown.
@@ -486,7 +485,7 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 			refNum = len(c.linkRefs) + 1
 			c.linkRefMap[refKey] = refNum
 			if title != "" {
-				c.linkRefs = append(c.linkRefs, fmt.Sprintf("[%d]: %s \"%s\"", refNum, href, title))
+				c.linkRefs = append(c.linkRefs, fmt.Sprintf("[%d]: %s \"%s\"", refNum, href, escapeTitle(title)))
 			} else {
 				c.linkRefs = append(c.linkRefs, fmt.Sprintf("[%d]: %s", refNum, href))
 			}
@@ -495,16 +494,25 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 	}
 
 	if title != "" {
-		return fmt.Sprintf("[%s](%s \"%s\")", content, href, title)
+		return fmt.Sprintf("[%s](%s \"%s\")", content, href, escapeTitle(title))
 	}
 	return fmt.Sprintf("[%s](%s)", content, href)
 }
 
+// escapeTitle makes a link or image title safe inside double quotes: quotes
+// and backslashes are escaped and line breaks become spaces.
+func escapeTitle(title string) string {
+	title = strings.ReplaceAll(title, "\\", "\\\\")
+	title = strings.ReplaceAll(title, "\"", "\\\"")
+	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(title, " "))
+}
+
 func (c *converter) handleImage(n *html.Node, ctx *context) string {
 	src := getAttr(n, "src")
-	alt := getAttr(n, "alt")
+	// Alt text must stay on one line to remain part of the image syntax.
+	alt := strings.TrimSpace(whitespaceRegex.ReplaceAllString(getAttr(n, "alt"), " "))
 	if title := getAttr(n, "title"); title != "" {
-		return fmt.Sprintf("![%s](%s \"%s\")", alt, src, title)
+		return fmt.Sprintf("![%s](%s \"%s\")", alt, src, escapeTitle(title))
 	}
 	return fmt.Sprintf("![%s](%s)", alt, src)
 }
@@ -548,14 +556,24 @@ func (c *converter) convertListChildren(n *html.Node, ctx *context) string {
 	var items []string
 	var hasListItems bool
 
-	// First pass: check for proper <li> elements
+	// First pass: check for proper <li> elements. A <ul> or <ol> placed
+	// directly in the list (invalid but common in WYSIWYG exports) is
+	// rendered as a nested list under the preceding item.
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		if child.Type == html.ElementNode && strings.ToLower(child.Data) == "li" {
+		if child.Type != html.ElementNode {
+			continue
+		}
+		switch strings.ToLower(child.Data) {
+		case "li":
 			hasListItems = true
 			ctx.listItemNum++
 			item := c.handleListItem(child, ctx)
 			if item != "" {
 				items = append(items, item)
+			}
+		case "ul", "ol":
+			if nested := strings.Trim(c.convertNode(child, ctx), "\n"); nested != "" {
+				items = append(items, nested)
 			}
 		}
 	}
@@ -873,11 +891,15 @@ func (c *converter) extractTableRows(n *html.Node, rows *[][]string) {
 		}
 		tag := strings.ToLower(child.Data)
 		switch tag {
-		case "thead", "tbody":
+		case "thead", "tbody", "tfoot":
 			c.extractTableRows(child, rows)
 		case "tr":
 			row := c.extractTableRow(child)
-			*rows = append(*rows, row)
+			// Skip rows without cells, so an empty leading <tr> does not
+			// become the header row.
+			if len(row) > 0 {
+				*rows = append(*rows, row)
+			}
 		}
 	}
 }
@@ -902,11 +924,24 @@ func (c *converter) extractTableRow(n *html.Node) []string {
 }
 
 func (c *converter) postProcess(s string) string {
-	// Remove lines that are only whitespace (but preserve indented lines like code blocks)
+	// Remove lines that are only whitespace (but preserve indented lines like
+	// code blocks), and collapse runs of blank lines. Lines inside fenced
+	// code blocks are kept exactly as they are.
 	lines := strings.Split(s, "\n")
 	var cleanedLines []string
+	fence := "" // the open code fence, or "" outside code blocks
 	for _, line := range lines {
+		if fence != "" {
+			cleanedLines = append(cleanedLines, line)
+			if t := strings.TrimSpace(line); strings.HasPrefix(t, fence) && strings.Trim(t, "`") == "" {
+				fence = ""
+			}
+			continue
+		}
 		if strings.TrimSpace(line) == "" {
+			if len(cleanedLines) > 0 && cleanedLines[len(cleanedLines)-1] == "" {
+				continue
+			}
 			cleanedLines = append(cleanedLines, "")
 		} else {
 			// Trim trailing whitespace
@@ -933,6 +968,11 @@ func (c *converter) postProcess(s string) string {
 			if !keepIndent {
 				line = trimmed
 			}
+			// An opening fence is 3+ backticks plus an optional info string
+			// without backticks; inline code such as "``` x ```" is not one.
+			if info := strings.TrimLeft(trimmed, "`"); len(trimmed)-len(info) >= 3 && !strings.Contains(info, "`") {
+				fence = trimmed[:len(trimmed)-len(info)]
+			}
 			cleanedLines = append(cleanedLines, line)
 		}
 	}
@@ -943,9 +983,6 @@ func (c *converter) postProcess(s string) string {
 	}
 
 	s = strings.Join(cleanedLines, "\n")
-
-	// Clean up excessive newlines
-	s = multiNewlineRegex.ReplaceAllString(s, "\n\n")
 
 	// Trim trailing newlines
 	s = strings.TrimRight(s, "\n")

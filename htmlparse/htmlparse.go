@@ -199,7 +199,11 @@ func (d *Document) Metadata() Metadata {
 
 		switch tag {
 		case "title":
-			m.Title = getTextContent(n)
+			// The first HTML <title> is the page title. Titles inside SVG
+			// (or MathML) describe that element, not the page.
+			if m.Title == "" && n.Namespace == "" {
+				m.Title = getTextContent(n)
+			}
 		case "meta":
 			name := strings.ToLower(getAttr(n, "name"))
 			property := strings.ToLower(getAttr(n, "property"))
@@ -415,7 +419,11 @@ func (d *Document) FilteredLinks(f LinkFilter) []Link {
 			if err != nil {
 				return true
 			}
-			isInternal := linkURL.Host == "" || linkURL.Host == baseURL.Host
+			// Only web links can be internal: mailto:, tel:, javascript:,
+			// and data: links have no host but do not point at the site.
+			webLink := linkURL.Scheme == "" || strings.EqualFold(linkURL.Scheme, "http") ||
+				strings.EqualFold(linkURL.Scheme, "https")
+			isInternal := webLink && (linkURL.Host == "" || linkURL.Host == baseURL.Host)
 			if f.Internal && !isInternal {
 				return true
 			}
@@ -591,6 +599,7 @@ type TransformOptions struct {
 // renderOpts holds rendering configuration.
 type renderOpts struct {
 	includeSet     map[string]bool
+	includedDepth  int // number of included elements enclosing the current node
 	excludeSet     map[string]bool
 	excludeFilters []ElementFilter
 }
@@ -776,6 +785,10 @@ func (d *Document) renderCompact(buf *strings.Builder, n *html.Node, opts *rende
 
 	switch n.Type {
 	case html.TextNode:
+		// With an include list, only text inside an included element counts.
+		if len(opts.includeSet) > 0 && opts.includedDepth == 0 {
+			return
+		}
 		// Re-escape text content: the parser unescaped entities, so writing
 		// n.Data raw would turn text like "&lt;script&gt;" into live markup.
 		buf.WriteString(escapeText(n.Data))
@@ -814,9 +827,11 @@ func (d *Document) renderCompact(buf *strings.Builder, n *html.Node, opts *rende
 		buf.WriteString(">")
 
 		// Render children
+		opts.includedDepth++
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			d.renderCompact(buf, c, opts)
 		}
+		opts.includedDepth--
 
 		// Render closing tag
 		buf.WriteString("</")
@@ -844,6 +859,10 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 
 	switch n.Type {
 	case html.TextNode:
+		// With an include list, only text inside an included element counts.
+		if len(opts.includeSet) > 0 && opts.includedDepth == 0 {
+			return
+		}
 		text := strings.TrimSpace(n.Data)
 		if text != "" {
 			buf.WriteString(indent)
@@ -896,9 +915,11 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 		buf.WriteString(">\n")
 
 		// Render children
+		opts.includedDepth++
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			d.renderPretty(buf, c, depth+1, opts)
 		}
+		opts.includedDepth--
 
 		// Render closing tag
 		buf.WriteString(indent)

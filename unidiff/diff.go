@@ -289,19 +289,22 @@ func Parse(diffText string) (*Diff, error) {
 			diffLine.RawLine = line
 			parsed := true
 
-			if strings.HasPrefix(line, "+") {
+			// A line only counts if its side of the hunk has lines left;
+			// otherwise it belongs to whatever follows the hunk (such as
+			// the next file's "--- a/..." header).
+			if strings.HasPrefix(line, "+") && newRemaining > 0 {
 				diffLine.Type = LineAdded
 				diffLine.Content = line[1:]
 				diffLine.NewLineNum = newLineNum
 				newLineNum++
 				newRemaining--
-			} else if strings.HasPrefix(line, "-") {
+			} else if strings.HasPrefix(line, "-") && oldRemaining > 0 {
 				diffLine.Type = LineRemoved
 				diffLine.Content = line[1:]
 				diffLine.OldLineNum = oldLineNum
 				oldLineNum++
 				oldRemaining--
-			} else if strings.HasPrefix(line, " ") || line == "" {
+			} else if (strings.HasPrefix(line, " ") || line == "") && oldRemaining > 0 && newRemaining > 0 {
 				diffLine.Type = LineContext
 				diffLine.Content = strings.TrimPrefix(line, " ")
 				diffLine.OldLineNum = oldLineNum
@@ -448,37 +451,10 @@ func Parse(diffText string) (*Diff, error) {
 			// Currently we preserve lines as strings without newline characters,
 			// so this metadata is primarily informational or for exact reconstruction.
 			continue
-		} else if currentHunk != nil {
-			// Process diff line
-			var diffLine Line
-			diffLine.RawLine = line
-
-			if strings.HasPrefix(line, "+") {
-				diffLine.Type = LineAdded
-				diffLine.Content = strings.TrimPrefix(line, "+")
-				diffLine.OldLineNum = 0
-				diffLine.NewLineNum = newLineNum
-				newLineNum++
-			} else if strings.HasPrefix(line, "-") {
-				diffLine.Type = LineRemoved
-				diffLine.Content = strings.TrimPrefix(line, "-")
-				diffLine.OldLineNum = oldLineNum
-				diffLine.NewLineNum = 0
-				oldLineNum++
-			} else if strings.HasPrefix(line, " ") || line == "" {
-				diffLine.Type = LineContext
-				diffLine.Content = strings.TrimPrefix(line, " ")
-				diffLine.OldLineNum = oldLineNum
-				diffLine.NewLineNum = newLineNum
-				oldLineNum++
-				newLineNum++
-			} else {
-				// Other lines (might be metadata, skip)
-				continue
-			}
-
-			currentHunk.Lines = append(currentHunk.Lines, diffLine)
 		}
+		// Any other line (after a hunk's declared counts are used up, or
+		// outside a hunk) is not diff content: blank separators, a
+		// format-patch signature ("-- "), or other metadata.
 	}
 
 	if err := scanner.Err(); err != nil {
