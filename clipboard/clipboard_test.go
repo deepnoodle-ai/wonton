@@ -93,6 +93,18 @@ func TestRunCommandWithStdinBackgroundChild(t *testing.T) {
 	assert.True(t, time.Since(start) < 2*time.Second, "took %v", time.Since(start))
 }
 
+// A deadline that passes while waiting for a forked child's stderr must not
+// turn a successful write into ErrTimeout.
+func TestRunCommandWithStdinDeadlineDuringWaitDelay(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	err := runCommandWithStdin(ctx, "hello", "sh", "-c", "cat >/dev/null; sleep 1 &")
+	assert.NoError(t, err)
+}
+
 func TestRunCommandWithStdinKeepsStderr(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs sh")

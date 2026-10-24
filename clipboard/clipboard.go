@@ -172,7 +172,8 @@ func WriteContext(ctx context.Context, text string) error {
 // Available returns true if clipboard functionality is available on the current system.
 // It checks for the presence of required clipboard utilities based on the operating system.
 //
-// On Linux, it checks for xclip, xsel (X11), or wl-copy/wl-paste (Wayland).
+// On Linux, it checks for xclip or xsel (X11), or for wl-copy when
+// WAYLAND_DISPLAY is set (Wayland), matching the tools Read and Write use.
 // On macOS, it checks for pbcopy/pbpaste.
 // On Windows, it always returns true (PowerShell is assumed to be available).
 // On other platforms, it returns false.
@@ -261,13 +262,16 @@ func runCommandWithStdin(ctx context.Context, input string, name string, args ..
 	cmd.WaitDelay = stderrWaitDelay
 
 	err := cmd.Run()
+	if cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		// The command exited 0, so the write succeeded. Check this before
+		// the deadline: the deadline can pass during the WaitDelay while a
+		// forked child still holds stderr open (Run then returns
+		// exec.ErrWaitDelay). A command killed at the deadline is not a
+		// success, so real timeouts still return ErrTimeout.
+		return nil
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return ErrTimeout
-	}
-	if errors.Is(err, exec.ErrWaitDelay) {
-		// The command exited successfully; only a forked child still
-		// holds stderr open.
-		err = nil
 	}
 	if err != nil {
 		return commandError(name, err, stderr.Bytes())
