@@ -121,6 +121,7 @@ func (t *textInput) SetValue(value string) {
 	if value == "" {
 		t.segments = []inputSegment{}
 	} else {
+		t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 		t.segments = []inputSegment{{display: value, actual: value, isPaste: false}}
 	}
 	t.CursorPos = len(value)
@@ -779,6 +780,24 @@ func (t *textInput) findSegmentAtPos(pos int) (segIndex int, offset int) {
 	return lastIdx, len(t.segments[lastIdx].display)
 }
 
+// snapOutOfSpecial moves pos out of the interior of an atomic segment (a
+// paste placeholder), to its end when forward is true and to its start
+// otherwise. Positions in regular text are returned unchanged.
+func (t *textInput) snapOutOfSpecial(pos int, forward bool) int {
+	start := 0
+	for _, seg := range t.segments {
+		end := start + len(seg.display)
+		if pos > start && pos < end && seg.isSpecial() {
+			if forward {
+				return end
+			}
+			return start
+		}
+		start = end
+	}
+	return pos
+}
+
 // insertAtCursor inserts text at the current cursor position
 func (t *textInput) insertAtCursor(text string) {
 	t.insertSegmentAtCursor(inputSegment{display: text, actual: text, isPaste: false})
@@ -797,6 +816,7 @@ func (t *textInput) insertSegmentAtCursor(newSeg inputSegment) {
 		return
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	seg := t.segments[segIdx]
 
@@ -859,6 +879,7 @@ func (t *textInput) deleteBackward() bool {
 		return false
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	seg := t.segments[segIdx]
 
@@ -905,6 +926,7 @@ func (t *textInput) deleteForward() bool {
 		return false
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, false)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	// At a segment boundary, findSegmentAtPos returns the previous segment
 	// with offset == len(seg.display). Hop forward so Delete can remove the
@@ -1079,17 +1101,17 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	switch event.Key {
 	case KeyArrowLeft:
 		if t.CursorPos > 0 {
-			t.CursorPos = prevClusterBoundary(displayText, t.CursorPos)
+			t.CursorPos = t.snapOutOfSpecial(prevClusterBoundary(displayText, t.CursorPos), false)
 		}
 		return true
 	case KeyArrowRight:
 		if t.CursorPos < len(displayText) {
-			t.CursorPos = nextClusterBoundary(displayText, t.CursorPos)
+			t.CursorPos = t.snapOutOfSpecial(nextClusterBoundary(displayText, t.CursorPos), true)
 		}
 		return true
 	case KeyArrowUp:
 		if t.MultilineMode {
-			newPos := t.cursorUp(displayText)
+			newPos := t.snapOutOfSpecial(t.cursorUp(displayText), false)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
 				return true
@@ -1098,7 +1120,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		return false // Cursor can't move: let app handle (history, shortcuts)
 	case KeyArrowDown:
 		if t.MultilineMode {
-			newPos := t.cursorDown(displayText)
+			newPos := t.snapOutOfSpecial(t.cursorDown(displayText), true)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
 				return true
