@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-24
+
 ### Added
 
 - `tui.DetectTerminalBackground` reports whether the terminal background is
