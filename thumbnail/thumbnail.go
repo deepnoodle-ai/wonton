@@ -125,7 +125,8 @@ func renderImage(req Request) (Result, error) {
 	if cfg.Width <= 0 || cfg.Height <= 0 {
 		return Result{}, fmt.Errorf("non-positive source dimensions %dx%d", cfg.Width, cfg.Height)
 	}
-	if cfg.Width*cfg.Height > maxPixels {
+	// Multiply in int64 so the product cannot wrap on 32-bit platforms.
+	if int64(cfg.Width)*int64(cfg.Height) > int64(maxPixels) {
 		return Result{}, fmt.Errorf("source %dx%d exceeds decode cap", cfg.Width, cfg.Height)
 	}
 	src, _, err := image.Decode(bytes.NewReader(req.Source))

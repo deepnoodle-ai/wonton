@@ -2,11 +2,18 @@ package thumbnail
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"strings"
+	"sync"
 	"testing"
+
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -130,6 +137,87 @@ func TestRenderOverPixelCapFallsBack(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, res.Renderer, RendererFallback)
+}
+
+// pngHeader returns a PNG signature and IHDR chunk claiming w x h pixels.
+// image.DecodeConfig reads only this far.
+func pngHeader(w, h uint32) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("\x89PNG\r\n\x1a\n")
+	ihdr := make([]byte, 17)
+	copy(ihdr, "IHDR")
+	binary.BigEndian.PutUint32(ihdr[4:], w)
+	binary.BigEndian.PutUint32(ihdr[8:], h)
+	ihdr[12] = 8 // bit depth
+	ihdr[13] = 6 // RGBA
+	_ = binary.Write(&buf, binary.BigEndian, uint32(13))
+	buf.Write(ihdr)
+	_ = binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(ihdr))
+	return buf.Bytes()
+}
+
+func TestRenderImagePixelCapDoesNotOverflow(t *testing.T) {
+	// 65536*65536 wraps to 0 in a 32-bit int, which would pass the cap.
+	_, err := renderImage(Request{
+		MimeType: "image/png",
+		Source:   pngHeader(65536, 65536),
+		Width:    320,
+		Height:   200,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds decode cap")
+}
+
+func TestRenderConcurrentCards(t *testing.T) {
+	// Cards share fonts. Run with -race to check that renders do not share
+	// mutable font.Face state.
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 5; j++ {
+				_, err := Render(Request{MimeType: "text/plain", Name: "a.txt", Source: []byte("hello\nworld"), Width: 320, Height: 200})
+				assert.NoError(t, err)
+				_, err = Render(Request{MimeType: "application/pdf", Name: "b.pdf", Width: 320, Height: 200})
+				assert.NoError(t, err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// countingFace counts glyph advance lookups.
+type countingFace struct {
+	font.Face
+	n int
+}
+
+func (c *countingFace) GlyphAdvance(r rune) (fixed.Int26_6, bool) {
+	c.n++
+	return c.Face.GlyphAdvance(r)
+}
+
+func TestTruncateIsLinear(t *testing.T) {
+	f, err := face(true, 11)
+	assert.NoError(t, err)
+	cf := &countingFace{Face: f}
+	long := strings.Repeat("a", 20_000)
+	got := truncate(cf, long, fixed.I(300))
+	assert.True(t, strings.HasSuffix(got, "…"))
+	assert.True(t, font.MeasureString(f, got) <= fixed.I(300))
+	assert.True(t, font.MeasureString(f, strings.TrimSuffix(got, "…")+"a…") > fixed.I(300), "truncate should keep the longest prefix that fits")
+	assert.True(t, cf.n < 3*len(long), "GlyphAdvance called %d times", cf.n)
+}
+
+func TestTruncate(t *testing.T) {
+	f, err := face(false, 12)
+	assert.NoError(t, err)
+	assert.Equal(t, "short", truncate(f, "short", fixed.I(1000)))
+	assert.Equal(t, "…", truncate(f, "wide", fixed.I(1)))
+	// Trailing spaces before the ellipsis are trimmed.
+	w := font.MeasureString(f, "ab …")
+	assert.Equal(t, "ab…", truncate(f, "ab cdef", w))
 }
 
 func TestRenderInvalidUTF8TextFallsBack(t *testing.T) {
