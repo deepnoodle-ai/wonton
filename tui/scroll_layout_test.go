@@ -299,7 +299,11 @@ func TestScrolledOutFocusablesDoNotTakeFocusClicksBelowTheScroll(t *testing.T) {
 			r.processEvent(MouseEvent{X: 0, Y: 10, Button: MouseButtonLeft, Type: MouseClick})
 			assert.Equal(t, "quit", r.focusMgr.GetFocusedID(), "scrollY=%d: a click on Quit focuses Quit", scrollY)
 		}
-		r.processEvent(MouseEvent{X: 0, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
-		assert.Equal(t, fmt.Sprintf("row%d", scrollY+1), r.focusMgr.GetFocusedID(), "a visible row still takes focus clicks")
+		// Every visible row, one of each focusable kind, still takes clicks.
+		for y := range 10 {
+			assert.NoError(t, r.renderChecked())
+			r.processEvent(MouseEvent{X: 0, Y: y, Button: MouseButtonLeft, Type: MouseClick})
+			assert.Equal(t, fmt.Sprintf("row%d", scrollY+y), r.focusMgr.GetFocusedID(), "scrollY=%d: a click on visible row %d focuses it", scrollY, y)
+		}
 	}
 }
