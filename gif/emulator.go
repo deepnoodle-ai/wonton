@@ -90,12 +90,8 @@ func (e *Emulator) Resize(cols, rows int) {
 	// Adjust cursor position
 	newScreen.CursorX = e.screen.CursorX
 	newScreen.CursorY = e.screen.CursorY
-	if newScreen.CursorX >= cols {
-		newScreen.CursorX = cols - 1
-	}
-	if newScreen.CursorY >= rows {
-		newScreen.CursorY = rows - 1
-	}
+	newScreen.CursorX = max(0, min(newScreen.CursorX, cols-1))
+	newScreen.CursorY = max(0, min(newScreen.CursorY, rows-1))
 
 	e.screen = newScreen
 }
@@ -124,13 +120,22 @@ func (e *Emulator) ProcessOutput(data string) {
 	for i < len(data) {
 		// Check for escape sequences
 		if data[i] == '\x1b' {
+			// The patterns are anchored to the start of data[i:], so a match
+			// always begins at this ESC. An unanchored match could start at a
+			// later escape and skip the text in between.
+
 			// Try to match CSI sequence
 			if i+1 < len(data) && data[i+1] == '[' {
 				match := ansiCSI.FindStringSubmatchIndex(data[i:])
 				if match != nil {
 					params := data[i+match[2] : i+match[3]]
-					cmd := data[i+match[4] : i+match[5]]
-					e.processCSI(params, cmd)
+					intermediates := data[i+match[4] : i+match[5]]
+					cmd := data[i+match[6] : i+match[7]]
+					// Sequences with intermediate bytes (such as DECSCUSR
+					// "ESC [ 0 SP q") do not affect the screen model.
+					if intermediates == "" {
+						e.processCSI(params, cmd)
+					}
 					i += match[1]
 					continue
 				}
@@ -202,15 +207,29 @@ func (e *Emulator) ProcessOutput(data string) {
 
 // ANSI escape sequence patterns
 var (
-	// ansiCSI matches CSI sequences: ESC [ <params> <final>
-	// Params can include digits, semicolons, and private markers (?, >, <, =, !)
-	ansiCSI    = regexp.MustCompile(`\x1b\[([0-9;?><!=]*)([A-Za-z])`)
-	ansiOSC    = regexp.MustCompile(`\x1b\]([^\x07\x1b]*)(?:\x07|\x1b\\)`)
-	ansiSimple = regexp.MustCompile(`\x1b[()][AB012]`)
+	// ansiCSI matches CSI sequences per ECMA-48:
+	// ESC [ <parameter bytes 0x30-0x3F> <intermediate bytes 0x20-0x2F> <final byte 0x40-0x7E>
+	// Parameter bytes include digits, ';', ':', and private markers (<, =, >, ?).
+	ansiCSI = regexp.MustCompile(`^\x1b\[([0-?]*)([ -/]*)([@-~])`)
+	ansiOSC = regexp.MustCompile(`^\x1b\]([^\x07\x1b]*)(?:\x07|\x1b\\)`)
+	// ansiSimple matches other two-byte (or intermediate-prefixed) escapes,
+	// such as charset selection (ESC ( B), DECSC/DECRC (ESC 7, ESC 8), and
+	// keypad modes (ESC =, ESC >).
+	ansiSimple = regexp.MustCompile(`^\x1b[ -/]*[0-~]`)
 )
 
 // processCSI handles CSI escape sequences
 func (e *Emulator) processCSI(params, cmd string) {
+	if params != "" && strings.ContainsRune("<=>?", rune(params[0])) {
+		// Private sequences (such as ESC[?25l or ESC[>4;2m) have their own
+		// meanings. Only the selective erase forms of J and K (DECSED,
+		// DECSEL) map onto the screen model; ignore the rest so they are not
+		// misread as standard sequences.
+		if params[0] != '?' || (cmd != "J" && cmd != "K") {
+			return
+		}
+		params = params[1:]
+	}
 	switch cmd {
 	case "m": // SGR - Select Graphic Rendition
 		e.processSGR(params)
@@ -357,6 +376,10 @@ func (e *Emulator) processSGR(params string) {
 
 	parts := strings.Split(params, ";")
 	for i := 0; i < len(parts); i++ {
+		if strings.Contains(parts[i], ":") {
+			e.processSGRSubparams(strings.Split(parts[i], ":"))
+			continue
+		}
 		code, _ := strconv.Atoi(parts[i])
 		switch {
 		case code == 0:
@@ -412,6 +435,42 @@ func (e *Emulator) processSGR(params string) {
 	}
 }
 
+// processSGRSubparams handles one colon-separated SGR parameter (ITU T.416
+// form), such as "38:2::R:G:B", "38:5:N", or "4:3" (curly underline).
+func (e *Emulator) processSGRSubparams(sub []string) {
+	code, _ := strconv.Atoi(sub[0])
+	if code != 38 && code != 48 {
+		// Sub-parameters only refine the attribute (for example the
+		// underline style); apply the base code alone.
+		e.processSGR(strconv.Itoa(code))
+		return
+	}
+	if len(sub) < 2 {
+		return
+	}
+	mode, _ := strconv.Atoi(sub[1])
+	var c color.Color
+	switch {
+	case mode == 5 && len(sub) >= 3:
+		idx, _ := strconv.Atoi(sub[2])
+		c = color256(idx)
+	case mode == 2 && len(sub) >= 5:
+		// "38:2:R:G:B" or "38:2:<colorspace>:R:G:B": RGB are the last three.
+		n := len(sub)
+		r, _ := strconv.Atoi(sub[n-3])
+		g, _ := strconv.Atoi(sub[n-2])
+		b, _ := strconv.Atoi(sub[n-1])
+		c = RGB(uint8(r), uint8(g), uint8(b))
+	default:
+		return
+	}
+	if code == 38 {
+		e.fg = c
+	} else {
+		e.bg = c
+	}
+}
+
 // ansiColor returns the RGBA color for basic ANSI color codes 0-7
 func ansiColor(code int) color.RGBA {
 	colors := []color.RGBA{
@@ -448,8 +507,14 @@ func ansiBrightColor(code int) color.RGBA {
 	return colors[7]
 }
 
-// color256 returns the color for 256-color mode
+// cubeLevels are the xterm 6x6x6 color cube component values. They match
+// Terminal256, so colors map to their exact palette entries.
+var cubeLevels = [6]uint8{0, 95, 135, 175, 215, 255}
+
+// color256 returns the color for 256-color mode. Out-of-range indexes are
+// clamped to [0, 255].
 func color256(idx int) color.RGBA {
+	idx = max(0, min(idx, 255))
 	if idx < 16 {
 		// Standard colors
 		if idx < 8 {
@@ -459,10 +524,7 @@ func color256(idx int) color.RGBA {
 	} else if idx < 232 {
 		// 216 color cube (6x6x6)
 		idx -= 16
-		r := (idx / 36) * 51
-		g := ((idx / 6) % 6) * 51
-		b := (idx % 6) * 51
-		return color.RGBA{uint8(r), uint8(g), uint8(b), 255}
+		return color.RGBA{cubeLevels[idx/36], cubeLevels[(idx/6)%6], cubeLevels[idx%6], 255}
 	} else {
 		// Grayscale (24 shades)
 		gray := uint8((idx-232)*10 + 8)

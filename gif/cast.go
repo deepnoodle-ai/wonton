@@ -2,6 +2,8 @@ package gif
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/deepnoodle-ai/wonton/termsession"
 )
@@ -17,8 +19,8 @@ import (
 //	opts.FPS = 15
 //	opts.Speed = 2.0  // Double speed playback
 type CastOptions struct {
-	Cols      int       // Override terminal columns (0 = use recording dimensions)
-	Rows      int       // Override terminal rows (0 = use recording dimensions)
+	Cols      int       // Override terminal columns (0 = use recording dimensions). Setting Cols or Rows fixes the size: "r" resize events are then ignored.
+	Rows      int       // Override terminal rows (0 = use recording dimensions). Setting Cols or Rows fixes the size: "r" resize events are then ignored.
 	Speed     float64   // Playback speed multiplier (1.0 = normal, 2.0 = double speed)
 	MaxIdle   float64   // Maximum idle time between events in seconds (default: 2.0, prevents long pauses)
 	FPS       int       // Target frames per second for output GIF (default: 10)
@@ -91,8 +93,11 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	}
 
 	// Determine terminal dimensions
-	cols := header.Width
-	rows := header.Height
+	cols, rows := 0, 0
+	if header != nil {
+		cols, rows = header.Width, header.Height
+	}
+	fixedSize := opts.Cols > 0 || opts.Rows > 0
 	if opts.Cols > 0 {
 		cols = opts.Cols
 	}
@@ -106,9 +111,20 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 		rows = 24
 	}
 
-	// Create emulator and renderer
-	emulator := NewEmulator(cols, rows)
+	// Size the canvas to fit the largest terminal size in the recording, so
+	// that "r" (resize) events do not draw outside it.
+	canvasCols, canvasRows := cols, rows
+	if !fixedSize {
+		for _, event := range events {
+			if c, r, ok := parseResize(event); ok {
+				canvasCols = max(canvasCols, c)
+				canvasRows = max(canvasRows, r)
+			}
+		}
+	}
 
+	// Create emulator and renderer
+	emulator := NewEmulator(canvasCols, canvasRows)
 	rendererOpts := RendererOptions{
 		Font:       opts.Font,
 		FontSize:   opts.FontSize,
@@ -118,12 +134,19 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	}
 	renderer := NewTerminalRendererWithOptions(emulator.Screen(), rendererOpts)
 	renderer.SetLoopCount(0) // Loop forever
+	if cols != canvasCols || rows != canvasRows {
+		emulator.Resize(cols, rows)
+		renderer.screen = emulator.Screen()
+	}
 
-	// Process events and render frames
+	// Process events and render frames. A frame shows the screen as it was
+	// before the current event, for as long as it was visible: the time
+	// since the previous frame. So render first, then apply the event.
 	frameInterval := 1.0 / float64(opts.FPS)
 	lastFrameTime := 0.0
 	var adjustedTime float64
 	var lastEventTime float64
+	dirty := false
 
 	for _, event := range events {
 		// Apply speed and max idle adjustments
@@ -134,24 +157,32 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 		adjustedTime += timeDelta / opts.Speed
 		lastEventTime = event.Time
 
-		// Only process output events
-		if event.Type == "o" {
-			emulator.ProcessOutput(event.Data)
-		}
-
-		// Render frame if enough time has passed
+		// Render the current screen if enough time has passed
 		if adjustedTime-lastFrameTime >= frameInterval {
-			delay := int((adjustedTime - lastFrameTime) * 100) // Convert to centiseconds
+			delay := int((adjustedTime-lastFrameTime)*100 + 0.5) // Convert to centiseconds
 			if delay < 1 {
 				delay = 1
 			}
 			renderer.RenderFrame(delay)
 			lastFrameTime = adjustedTime
+			dirty = false
+		}
+
+		switch event.Type {
+		case "o":
+			emulator.ProcessOutput(event.Data)
+			dirty = true
+		case "r":
+			if c, r, ok := parseResize(event); ok && !fixedSize {
+				emulator.Resize(c, r)
+				renderer.screen = emulator.Screen()
+				dirty = true
+			}
 		}
 	}
 
-	// Render final frame if time has advanced, or ensure at least one frame exists
-	if lastFrameTime < adjustedTime || renderer.GIF().FrameCount() == 0 {
+	// Render the final screen, or ensure at least one frame exists
+	if dirty || renderer.GIF().FrameCount() == 0 {
 		renderer.RenderFrame(10) // 100ms final frame
 	}
 
@@ -195,4 +226,21 @@ func GetCastInfo(castFile string) (*CastInfo, error) {
 		Title:      header.Title,
 		Timestamp:  header.Timestamp,
 	}, nil
+}
+
+// parseResize parses an asciinema "r" event, whose data is "COLSxROWS".
+func parseResize(event termsession.RecordingEvent) (cols, rows int, ok bool) {
+	if event.Type != "r" {
+		return 0, 0, false
+	}
+	c, r, found := strings.Cut(event.Data, "x")
+	if !found {
+		return 0, 0, false
+	}
+	cols, err1 := strconv.Atoi(c)
+	rows, err2 := strconv.Atoi(r)
+	if err1 != nil || err2 != nil || cols <= 0 || rows <= 0 {
+		return 0, 0, false
+	}
+	return cols, rows, true
 }
