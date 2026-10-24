@@ -29,18 +29,11 @@ var (
 )
 
 var (
-	fontsOnce     sync.Once
-	regularFont   *opentype.Font
-	monoFont      *opentype.Font
-	fontLoadErr   error
-	faceCache     = map[faceKey]font.Face{}
-	faceCacheLock sync.Mutex
+	fontsOnce   sync.Once
+	regularFont *opentype.Font
+	monoFont    *opentype.Font
+	fontLoadErr error
 )
-
-type faceKey struct {
-	mono bool
-	size int
-}
 
 func loadFonts() error {
 	fontsOnce.Do(func() {
@@ -53,6 +46,9 @@ func loadFonts() error {
 	return fontLoadErr
 }
 
+// face returns a new font.Face. A font.Face holds mutable rasterizer and
+// glyph buffers and is not safe for concurrent use, so faces are not shared
+// between calls. The parsed *opentype.Font is safe to share.
 func face(mono bool, sizePx float64) (font.Face, error) {
 	if err := loadFonts(); err != nil {
 		return nil, err
@@ -61,22 +57,11 @@ func face(mono bool, sizePx float64) (font.Face, error) {
 	if size < 6 {
 		size = 6
 	}
-	key := faceKey{mono: mono, size: size}
-	faceCacheLock.Lock()
-	defer faceCacheLock.Unlock()
-	if f, ok := faceCache[key]; ok {
-		return f, nil
-	}
 	src := regularFont
 	if mono {
 		src = monoFont
 	}
-	f, err := opentype.NewFace(src, &opentype.FaceOptions{Size: float64(size), DPI: 72, Hinting: font.HintingFull})
-	if err != nil {
-		return nil, err
-	}
-	faceCache[key] = f
-	return f, nil
+	return opentype.NewFace(src, &opentype.FaceOptions{Size: float64(size), DPI: 72, Hinting: font.HintingFull})
 }
 
 // renderDocumentCard draws a preview card for UTF-8 text/markdown/json/code
@@ -206,15 +191,29 @@ func truncate(f font.Face, s string, maxW fixed.Int26_6) string {
 		return s
 	}
 	const ell = "…"
-	ellW := font.MeasureString(f, ell)
-	runes := []rune(s)
-	for len(runes) > 0 {
-		runes = runes[:len(runes)-1]
-		if font.MeasureString(f, string(runes))+ellW <= maxW {
-			return strings.TrimRight(string(runes), " ") + ell
+	limit := maxW - font.MeasureString(f, ell)
+	// Accumulate advances (as font.MeasureString does) in one pass to find
+	// the longest prefix that fits next to the ellipsis. Re-measuring each
+	// shorter prefix would be quadratic in the line length.
+	var w fixed.Int26_6
+	prev := rune(-1)
+	end := 0
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if prev >= 0 {
+			w += f.Kern(prev, r)
 		}
+		adv, _ := f.GlyphAdvance(r)
+		w += adv
+		// Include the kern between this rune and the ellipsis that follows.
+		if w+f.Kern(r, '…') > limit {
+			break
+		}
+		i += size
+		end = i
+		prev = r
 	}
-	return ell
+	return strings.TrimRight(s[:end], " ") + ell
 }
 
 // normalizeLine expands tabs and strips control characters so a single source
