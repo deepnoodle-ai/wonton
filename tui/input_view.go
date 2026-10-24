@@ -77,6 +77,7 @@ func (s *inputState) FocusBounds() image.Rectangle {
 //     cycle, Esc restores the original text, and any other key accepts the
 //     current candidate and is then processed normally.
 //  3. Enter — submits (Shift+Enter falls through for multiline newlines).
+//     With no OnSubmit callback, Enter propagates to the application.
 //  4. History — Up/Down recall entries when the cursor can't move within
 //     the text (always, in single-line mode; at the first/last visual line
 //     in multiline mode).
@@ -121,13 +122,16 @@ func (s *inputState) HandleKeyEvent(event KeyEvent) bool {
 	}
 
 	// 3. Enter for submit (unless Shift is pressed for multiline newlines).
+	// Without an OnSubmit callback Enter is left unconsumed, so it reaches
+	// the app's HandleEvent.
 	if event.Key == KeyEnter && !event.Shift {
 		s.completions = nil
 		s.historyIdx = -1
 		s.historyDraft = ""
-		if s.onSubmit != nil {
-			s.onSubmit(s.input.Value())
+		if s.onSubmit == nil {
+			return false
 		}
+		s.onSubmit(s.input.Value())
 		return true
 	}
 
@@ -491,7 +495,8 @@ func (i *InputView) OnChange(fn func(string)) *InputView {
 	return i
 }
 
-// OnSubmit sets a callback invoked when Enter is pressed.
+// OnSubmit sets a callback invoked when Enter is pressed. Without one,
+// Enter is delivered to the application's HandleEvent.
 func (i *InputView) OnSubmit(fn func(string)) *InputView {
 	i.onSubmit = fn
 	return i
@@ -651,9 +656,7 @@ func (i *InputView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Determine if this input is focused
 	fm := ctx.FocusManager()
-	isFocused := fm != nil && fm.GetFocusedID() == i.id
 
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
@@ -676,6 +679,9 @@ func (i *InputView) render(ctx *RenderContext) {
 		highlight:        i.highlight,
 		history:          i.history,
 	}, fm)
+
+	// Read focus after Register, which may auto-focus this input.
+	isFocused := fm != nil && fm.GetFocusedID() == i.id
 
 	// Apply focus-aware styling to the textInput
 	if isFocused && i.focusStyle != nil {

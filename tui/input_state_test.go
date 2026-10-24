@@ -447,3 +447,15 @@ func TestInputStateCtrlDHookPrecedesForwardDelete(t *testing.T) {
 		t.Fatal("OnKey did not intercept Ctrl-D")
 	}
 }
+
+// Without an OnSubmit callback, Enter must propagate to the application.
+func TestInputState_EnterWithoutSubmitNotConsumed(t *testing.T) {
+	var text string
+	state := newTestInputState(t, inputConfig{binding: &text})
+	assert.False(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter}))
+
+	submitted := false
+	state = newTestInputState(t, inputConfig{binding: &text, onSubmit: func(string) { submitted = true }})
+	assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter}))
+	assert.True(t, submitted)
+}

@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"image"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // promptChoiceRegistryImpl manages text input state for prompt choices.
@@ -51,7 +53,7 @@ func (r *promptChoiceRegistryImpl) Get(id string) *textInput {
 // # Keyboard Controls
 //
 //   - Arrow Up/Down: Navigate between options
-//   - 1-9: Jump directly to numbered option
+//   - 1-9: Jump directly to numbered option (typed as text on the input option)
 //   - Enter: Confirm selection (triggers OnSelect callback)
 //   - Escape: Cancel (triggers OnCancel callback)
 //   - Any character: When on input option, types into the input field
@@ -90,7 +92,8 @@ type PromptChoiceView struct {
 // # Parameters
 //
 //   - selected: Pointer to track the currently selected index (0-based).
-//     This value updates as the user navigates.
+//     This value updates as the user navigates. It is required: with nil,
+//     the view does not panic, but the selection stays at option 0.
 //   - inputText: Pointer to store custom input text. Can be nil if no input
 //     option is needed. When an InputOption is added, typed text is stored here.
 //
@@ -440,13 +443,13 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	switch event.Key {
 	case KeyArrowUp:
 		if selected > 0 {
-			*p.selected = selected - 1
+			p.setSelected(selected - 1)
 			p.updateInputFocus()
 		}
 		return true
 	case KeyArrowDown:
 		if selected < total-1 {
-			*p.selected = selected + 1
+			p.setSelected(selected + 1)
 			p.updateInputFocus()
 		}
 		return true
@@ -461,11 +464,12 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	}
 
-	// Handle number keys (1-9) for quick selection
-	if event.Rune >= '1' && event.Rune <= '9' {
+	// Handle number keys (1-9) for quick selection. While the custom input
+	// is selected, digits are typed into it instead.
+	if event.Rune >= '1' && event.Rune <= '9' && !p.isInputSelected() {
 		idx := int(event.Rune - '1')
 		if idx < total {
-			*p.selected = idx
+			p.setSelected(idx)
 			p.updateInputFocus()
 			return true
 		}
@@ -497,6 +501,14 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // updateInputFocus updates the textInput focus based on current selection
+// setSelected stores the selection. A nil selected pointer has nowhere to
+// keep it, so the selection stays at option 0.
+func (p *PromptChoiceView) setSelected(idx int) {
+	if p.selected != nil {
+		*p.selected = idx
+	}
+}
+
 func (p *PromptChoiceView) updateInputFocus() {
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())
@@ -651,7 +663,9 @@ func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isS
 
 	// Draw cursor if this option is selected and focused
 	if isSelected && p.focused {
-		cursorX := x + ti.CursorPos
+		// CursorPos is a byte offset; convert it to a display column.
+		cursorPos := min(max(ti.CursorPos, 0), len(inputValue))
+		cursorX := x + runewidth.StringWidth(inputValue[:cursorPos])
 		if inputValue == "" {
 			cursorX = x // At start when empty
 		}
@@ -659,9 +673,9 @@ func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isS
 			// Draw block cursor
 			charUnderCursor := " "
 			if inputValue == "" && len(p.inputLabel) > 0 {
-				charUnderCursor = string([]rune(p.inputLabel)[0])
-			} else if ti.CursorPos < len(inputValue) {
-				charUnderCursor = string([]rune(inputValue)[ti.CursorPos])
+				charUnderCursor = p.inputLabel[:nextClusterBoundary(p.inputLabel, 0)]
+			} else if cursorPos < len(inputValue) {
+				charUnderCursor = inputValue[cursorPos:nextClusterBoundary(inputValue, cursorPos)]
 			}
 			cursorStyle := NewStyle().WithBackground(ColorWhite).WithForeground(ColorBlack)
 			ctx.PrintStyled(cursorX, y, charUnderCursor, cursorStyle)

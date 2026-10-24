@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ListItemRenderer is a function that renders a list item.
@@ -110,6 +112,7 @@ func FilterableListStrings(labels []string, selected *int) *FilterableListView {
 }
 
 // OnSelect sets a callback when an item is selected (Enter key or click).
+// The index is the item's position in the unfiltered items.
 func (l *FilterableListView) OnSelect(fn func(item ListItem, index int)) *FilterableListView {
 	l.onSelect = fn
 	return l
@@ -167,46 +170,54 @@ func (l *FilterableListView) HandleKeyEvent(event KeyEvent) bool {
 	switch event.Key {
 	case KeyEnter:
 		if l.selected != nil && *l.selected >= 0 && *l.selected < len(l.filteredIdxs) {
-			origIdx := l.filteredIdxs[*l.selected]
-
-			// Update chosen items
-			if l.multiSelect {
-				// Toggle in multi-select mode
-				if l.chosen[origIdx] {
-					delete(l.chosen, origIdx)
-				} else {
-					l.chosen[origIdx] = true
-				}
-			} else {
-				// Single select mode - clear others and set this one
-				l.chosen = make(map[int]bool)
-				l.chosen[origIdx] = true
-			}
-
-			// Sync to external binding if provided
-			l.syncChosenToPtr()
-
-			// Fire callback
-			if l.onSelect != nil {
-				l.onSelect(l.items[origIdx], *l.selected)
-			}
+			l.choose(*l.selected)
 			return true
 		}
 	case KeyBackspace:
 		// Handle filter text deletion
 		if l.showFilter && l.filterText != nil && len(*l.filterText) > 0 {
-			*l.filterText = (*l.filterText)[:len(*l.filterText)-1]
+			_, size := utf8.DecodeLastRuneInString(*l.filterText)
+			*l.filterText = (*l.filterText)[:len(*l.filterText)-size]
 			return true
 		}
 	}
 
 	// Handle printable characters for filtering
-	if l.showFilter && l.filterText != nil && event.Rune >= 32 && event.Rune < 127 {
+	if l.showFilter && l.filterText != nil && event.Rune >= 32 && unicode.IsPrint(event.Rune) {
 		*l.filterText += string(event.Rune)
 		return true
 	}
 
 	return false
+}
+
+// choose marks the item at a filtered position as chosen and fires
+// OnSelect with the item's index in the unfiltered items. Enter and mouse
+// clicks share it, so both behave the same.
+func (l *FilterableListView) choose(filteredIdx int) {
+	origIdx := l.filteredIdxs[filteredIdx]
+
+	// Update chosen items
+	if l.multiSelect {
+		// Toggle in multi-select mode
+		if l.chosen[origIdx] {
+			delete(l.chosen, origIdx)
+		} else {
+			l.chosen[origIdx] = true
+		}
+	} else {
+		// Single select mode - clear others and set this one
+		l.chosen = make(map[int]bool)
+		l.chosen[origIdx] = true
+	}
+
+	// Sync to external binding if provided
+	l.syncChosenToPtr()
+
+	// Fire callback
+	if l.onSelect != nil {
+		l.onSelect(l.items[origIdx], origIdx)
+	}
 }
 
 // Style sets the style for normal items.
@@ -578,8 +589,10 @@ func (l *FilterableListView) renderItems(ctx *RenderContext) {
 
 	// Helper to calculate visible items and indicator needs
 	calcLayout := func(scrollOff int) (visibleItems int, hasAbove, hasBelow bool) {
+		// An indicator takes a row only when an item still fits beside it;
+		// otherwise it would be drawn over the item.
 		available := height
-		hasAbove = scrollOff > 0
+		hasAbove = scrollOff > 0 && available-1 >= l.itemHeight
 		if hasAbove {
 			available--
 		}
@@ -588,7 +601,7 @@ func (l *FilterableListView) renderItems(ctx *RenderContext) {
 			visibleItems = 1
 		}
 		itemsBelow := numItems - scrollOff - visibleItems
-		hasBelow = itemsBelow > 0
+		hasBelow = itemsBelow > 0 && available-1 >= l.itemHeight
 		if hasBelow {
 			available--
 			visibleItems = available / l.itemHeight
@@ -693,9 +706,7 @@ func (l *FilterableListView) renderItem(ctx *RenderContext, item ListItem, selec
 				if l.selected != nil {
 					*l.selected = idx
 				}
-				// Get the actual item from the filtered indices
-				actualIdx := l.filteredIdxs[idx]
-				l.onSelect(l.items[actualIdx], actualIdx)
+				l.choose(idx)
 			})
 		}
 		return
@@ -761,12 +772,11 @@ func (l *FilterableListView) renderItem(ctx *RenderContext, item ListItem, selec
 	if l.onSelect != nil {
 		bounds := ctx.AbsoluteBounds()
 		idx := index
-		oi := origIdx
 		ctx.registries().interactive.RegisterButton(bounds, func() {
 			if l.selected != nil {
 				*l.selected = idx
 			}
-			l.onSelect(l.items[oi], oi)
+			l.choose(idx)
 		})
 	}
 }

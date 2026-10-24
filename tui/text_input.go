@@ -265,8 +265,9 @@ func (t *textInput) Draw(frame RenderFrame) {
 		totalLines := t.countVisualLines(width)
 		cursorLine := t.getCursorLine(width)
 
-		// Auto-scroll to keep cursor visible
-		if t.MaxHeight > 0 && totalLines > height {
+		// Auto-scroll to keep cursor visible. The height may come from
+		// MaxHeight or from the parent layout.
+		if totalLines > height {
 			// Ensure cursor is within visible range
 			if cursorLine < t.ScrollOffset {
 				t.ScrollOffset = cursorLine
@@ -369,6 +370,12 @@ func (t *textInput) Draw(frame RenderFrame) {
 			// Calculate cursor position accounting for newlines and scroll offset
 			cursorLine := t.getCursorLine(width)
 			cursorX := t.getCursorXInLine(width)
+			if t.MaskChar != 0 && !showingPlaceholder {
+				// Masked text draws as one truncated line; keep the cursor
+				// on it, in the last column once the text fills the width.
+				cursorLine = t.ScrollOffset
+				cursorX = min(runewidth.StringWidth(displayText[:min(t.CursorPos, len(displayText))]), width-1)
+			}
 
 			// Only draw cursor if it's in the visible range
 			screenLine := cursorLine - t.ScrollOffset
@@ -779,6 +786,24 @@ func (t *textInput) findSegmentAtPos(pos int) (segIndex int, offset int) {
 	return lastIdx, len(t.segments[lastIdx].display)
 }
 
+// snapOutOfSpecial moves pos out of the interior of an atomic segment (a
+// paste placeholder), to its end when forward is true and to its start
+// otherwise. Positions in regular text are returned unchanged.
+func (t *textInput) snapOutOfSpecial(pos int, forward bool) int {
+	start := 0
+	for _, seg := range t.segments {
+		end := start + len(seg.display)
+		if pos > start && pos < end && seg.isSpecial() {
+			if forward {
+				return end
+			}
+			return start
+		}
+		start = end
+	}
+	return pos
+}
+
 // insertAtCursor inserts text at the current cursor position
 func (t *textInput) insertAtCursor(text string) {
 	t.insertSegmentAtCursor(inputSegment{display: text, actual: text, isPaste: false})
@@ -797,6 +822,7 @@ func (t *textInput) insertSegmentAtCursor(newSeg inputSegment) {
 		return
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	seg := t.segments[segIdx]
 
@@ -859,6 +885,7 @@ func (t *textInput) deleteBackward() bool {
 		return false
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	seg := t.segments[segIdx]
 
@@ -905,6 +932,7 @@ func (t *textInput) deleteForward() bool {
 		return false
 	}
 
+	t.CursorPos = t.snapOutOfSpecial(t.CursorPos, false)
 	segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 	// At a segment boundary, findSegmentAtPos returns the previous segment
 	// with offset == len(seg.display). Hop forward so Delete can remove the
@@ -1079,17 +1107,17 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	switch event.Key {
 	case KeyArrowLeft:
 		if t.CursorPos > 0 {
-			t.CursorPos = prevClusterBoundary(displayText, t.CursorPos)
+			t.CursorPos = t.snapOutOfSpecial(prevClusterBoundary(displayText, t.CursorPos), false)
 		}
 		return true
 	case KeyArrowRight:
 		if t.CursorPos < len(displayText) {
-			t.CursorPos = nextClusterBoundary(displayText, t.CursorPos)
+			t.CursorPos = t.snapOutOfSpecial(nextClusterBoundary(displayText, t.CursorPos), true)
 		}
 		return true
 	case KeyArrowUp:
 		if t.MultilineMode {
-			newPos := t.cursorUp(displayText)
+			newPos := t.snapOutOfSpecial(t.cursorUp(displayText), false)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
 				return true
@@ -1098,7 +1126,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		return false // Cursor can't move: let app handle (history, shortcuts)
 	case KeyArrowDown:
 		if t.MultilineMode {
-			newPos := t.cursorDown(displayText)
+			newPos := t.snapOutOfSpecial(t.cursorDown(displayText), true)
 			if newPos != t.CursorPos {
 				t.CursorPos = newPos
 				return true
@@ -1272,6 +1300,7 @@ func (t *textInput) HandlePaste(content string) bool {
 		t.segments = []inputSegment{newSeg}
 		t.CursorPos = len(newSeg.display)
 	} else {
+		t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 		segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 		seg := t.segments[segIdx]
 
