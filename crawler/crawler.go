@@ -108,8 +108,9 @@ type Result struct {
 	// was configured for this domain. The type depends on the Parser implementation.
 	Parsed any
 
-	// Links contains all URLs discovered on the page that passed the
-	// follow behavior filter. These may be enqueued for future crawling.
+	// Links contains every URL found on the page, resolved against the
+	// page's final URL and normalized. It is not filtered by FollowBehavior;
+	// the crawler applies that filter only to the URLs it enqueues.
 	Links []string
 
 	// Response is the raw fetch response including HTML content and metadata
@@ -930,6 +931,7 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 					}
 				}
 				fetchErr := &fetch.Error{StatusCode: response.StatusCode, URL: rawURL}
+				attemptErrors := append(append([]error(nil), scheduled.attemptErrors...), fetchErr)
 				adaptiveRetry := throttled && c.adaptive
 				if ctx.Err() == nil && scheduled.attempt < c.retryMaxAttempts() &&
 					(adaptiveRetry || (c.retryOptions != nil && fetchErr.Retryable())) {
@@ -945,13 +947,20 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 						slog.Int("attempt", scheduled.attempt),
 						slog.Duration("delay", delay))
 					return processOutcome{
-						crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
-						observation: observation,
-						retry:       true,
-						retryDelay:  delay,
+						crawlDelay:    c.robotsCrawlDelayFor(parsedURL),
+						observation:   observation,
+						retry:         true,
+						retryDelay:    delay,
+						attemptErrors: attemptErrors,
 					}
 				}
-				result := c.resultWithError(item, parsedURL, fetchErr)
+				// Match the transport-error path: with RetryOptions set, the
+				// final error is a retry.Error that wraps every attempt.
+				var resultErr error = fetchErr
+				if c.retryOptions != nil {
+					resultErr = &retry.Error{Last: fetchErr, Attempts: len(attemptErrors), Errors: attemptErrors}
+				}
+				result := c.resultWithError(item, parsedURL, resultErr)
 				result.Response = response
 				callback(ctx, result)
 				c.stats.IncrementFailed()
@@ -987,14 +996,16 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 	if response.Links != nil {
 		discoveredLinks = c.extractURLs(response.Links, linkBase(parsedURL, response.URL))
 	}
-	filteredURLs := c.filterLinks(parsedURL, discoveredLinks)
+	// Filter against the final page URL too, so a redirect to another host
+	// (example.com -> www.example.com) keeps following that host's links.
+	filteredURLs := c.filterLinks(linkBase(parsedURL, response.URL), discoveredLinks)
 	callback(ctx, &Result{
 		URL:          parsedURL,
 		Depth:        item.Depth,
 		Referrer:     item.Referrer,
 		DiscoveredAt: item.DiscoveredAt,
 		Parsed:       parsed,
-		Links:        filteredURLs,
+		Links:        discoveredLinks,
 		Response:     response,
 		Error:        parseErr,
 	})
