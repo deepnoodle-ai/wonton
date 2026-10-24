@@ -30,6 +30,8 @@ func TestGenerateRecursiveMapAndSlice(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, Object, s.Properties["tree"].Type)
 	assert.Equal(t, Array, s.Properties["items"].Type)
+	assert.NotNil(t, s.Properties["items"].Items)
+	assert.NotNil(t, s.Properties["items"].Items.Items, "recursive placeholder needs items")
 	_, err = json.Marshal(s)
 	assert.NoError(t, err)
 }

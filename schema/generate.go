@@ -82,8 +82,9 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 // reflectType recursively analyzes a reflect.Type and returns a Property
 // that describes its JSON Schema representation.
 //
-// seen tracks struct types currently in the recursion path so that
-// self-referential types (e.g. linked-list nodes, tree nodes) terminate
+// seen tracks the struct types, and the named slice, array, map, and pointer
+// types, currently in the recursion path so that self-referential types
+// (e.g. linked-list nodes, tree nodes, type Tree map[string]Tree) terminate
 // with a placeholder schema instead of overflowing the stack. The map is
 // keyed by reflect.Type and entries are removed as the recursion unwinds,
 // so non-cyclic shared types still produce full schemas at each occurrence.
@@ -306,7 +307,8 @@ func recursivePlaceholder(t reflect.Type) *Property {
 		additionalProps := true
 		return &Property{Type: Object, AdditionalProperties: &additionalProps, Description: desc}
 	case reflect.Slice, reflect.Array:
-		return &Property{Type: Array, Description: desc}
+		// Arrays need an items schema; {} accepts any element, as for []any.
+		return &Property{Type: Array, Items: &Property{}, Description: desc}
 	default:
 		return &Property{Description: desc}
 	}
