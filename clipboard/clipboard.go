@@ -67,6 +67,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -189,23 +190,34 @@ func Available() bool {
 		_, err := exec.LookPath("pbcopy")
 		return err == nil
 	case "linux":
-		// Check for X11 clipboard tools
-		if _, err := exec.LookPath("xclip"); err == nil {
-			return true
-		}
-		if _, err := exec.LookPath("xsel"); err == nil {
-			return true
-		}
-		// Check for Wayland clipboard tools
-		if _, err := exec.LookPath("wl-copy"); err == nil {
-			return true
-		}
-		return false
+		return linuxAvailable(func(name string) bool {
+			_, err := exec.LookPath(name)
+			return err == nil
+		}, os.Getenv("WAYLAND_DISPLAY") != "")
 	case "windows":
 		return true // PowerShell is always available on Windows
 	default:
 		return false
 	}
+}
+
+// linuxAvailable reports whether the Linux backend has a tool it will use.
+// It mirrors clipboard_linux.go: wl-copy is only used under Wayland.
+func linuxAvailable(has func(name string) bool, wayland bool) bool {
+	if has("xclip") || has("xsel") {
+		return true
+	}
+	return wayland && has("wl-copy")
+}
+
+// trimPowerShellNewline removes the single line ending that PowerShell
+// appends to command output. It keeps any line ending that is part of the
+// clipboard content itself.
+func trimPowerShellNewline(s string) string {
+	if strings.HasSuffix(s, "\r\n") {
+		return strings.TrimSuffix(s, "\r\n")
+	}
+	return strings.TrimSuffix(s, "\n")
 }
 
 // Clear clears the clipboard by writing an empty string to it.
@@ -233,16 +245,29 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 	return stdout.Bytes(), nil
 }
 
+// stderrWaitDelay bounds how long runCommandWithStdin waits for stderr to
+// close after the command exits.
+const stderrWaitDelay = 100 * time.Millisecond
+
 // runCommandWithStdin executes a command with stdin input.
 func runCommandWithStdin(ctx context.Context, input string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(input)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	// xclip and wl-copy fork a daemon that serves the selection and inherits
+	// stderr. Without a WaitDelay, Run would block until that daemon exits.
+	// With it, Run returns shortly after the command itself exits.
+	cmd.WaitDelay = stderrWaitDelay
 
 	err := cmd.Run()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return ErrTimeout
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The command exited successfully; only a forked child still
+		// holds stderr open.
+		err = nil
 	}
 	if err != nil {
 		return commandError(name, err, stderr.Bytes())

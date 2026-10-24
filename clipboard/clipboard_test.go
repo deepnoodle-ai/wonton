@@ -3,6 +3,7 @@ package clipboard
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -75,6 +76,64 @@ func TestClear(t *testing.T) {
 	result, err := Read()
 	assert.NoError(t, err)
 	assert.Equal(t, "", result)
+}
+
+// xclip and wl-copy fork a daemon that inherits stderr. The write must
+// return once the command exits, not wait for the daemon to close stderr.
+func TestRunCommandWithStdinBackgroundChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := runCommandWithStdin(ctx, "hello", "sh", "-c", "cat >/dev/null; sleep 3 &")
+	assert.NoError(t, err)
+	assert.True(t, time.Since(start) < 2*time.Second, "took %v", time.Since(start))
+}
+
+func TestRunCommandWithStdinKeepsStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	err := runCommandWithStdin(context.Background(), "", "sh", "-c", "echo boom >&2; exit 1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "boom")
+}
+
+func TestTrimPowerShellNewline(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"hello\r\n", "hello"},
+		{"hello\n", "hello"},
+		{"hello\n\r\n", "hello\n"},
+		{"hello\r\n\r\n", "hello\r\n"},
+		{"hello", "hello"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, trimPowerShellNewline(tt.in), "input %q", tt.in)
+	}
+}
+
+func TestLinuxAvailable(t *testing.T) {
+	has := func(names ...string) func(string) bool {
+		return func(name string) bool {
+			for _, n := range names {
+				if n == name {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	assert.False(t, linuxAvailable(has("wl-copy", "wl-paste"), false))
+	assert.True(t, linuxAvailable(has("wl-copy", "wl-paste"), true))
+	assert.True(t, linuxAvailable(has("xclip"), false))
+	assert.True(t, linuxAvailable(has("xsel"), true))
+	assert.False(t, linuxAvailable(has(), true))
 }
 
 // Example_usage demonstrates basic clipboard read and write operations.
