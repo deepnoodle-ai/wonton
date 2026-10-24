@@ -476,3 +476,44 @@ func TestFrameDrawRectEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestEmulator_WriteAfterResizeToZero(t *testing.T) {
+	em := NewEmulator(10, 5)
+	em.Resize(0, 0)
+	// Must not panic on a 0x0 screen.
+	em.ProcessOutput("hello\r\nworld\x1b[2J\x1b[K")
+	em.Screen().WriteString("x", nil, nil)
+}
+
+func TestRenderCastEvents_FixedSizeIgnoresResize(t *testing.T) {
+	header := &termsession.RecordingHeader{Version: 2, Width: 5, Height: 2}
+	events := []termsession.RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "ab"},
+		{Time: 0.5, Type: "r", Data: "10x3"},
+		{Time: 1.0, Type: "o", Data: "cdefghij"},
+	}
+	opts := DefaultCastOptions()
+	opts.Cols = 5
+	g, err := RenderCastEvents(header, events, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := renderScreenImage(5, 2, "ab")
+	if g.Width() != want.Bounds().Dx() || g.Height() != want.Bounds().Dy() {
+		t.Errorf("canvas = %dx%d, want %dx%d (resize must be ignored)", g.Width(), g.Height(), want.Bounds().Dx(), want.Bounds().Dy())
+	}
+}
+
+func TestParseResizeRejectsMalformedData(t *testing.T) {
+	for _, data := range []string{"0x5", "5x0", "abc", "10", "x", "-3x4", "10x3x2"} {
+		if _, _, ok := parseResize(termsession.RecordingEvent{Type: "r", Data: data}); ok {
+			t.Errorf("parseResize(%q) accepted malformed data", data)
+		}
+	}
+	if c, r, ok := parseResize(termsession.RecordingEvent{Type: "r", Data: "120x40"}); !ok || c != 120 || r != 40 {
+		t.Errorf("parseResize(120x40) = %d, %d, %v", c, r, ok)
+	}
+	if _, _, ok := parseResize(termsession.RecordingEvent{Type: "o", Data: "120x40"}); ok {
+		t.Error("parseResize accepted an output event")
+	}
+}

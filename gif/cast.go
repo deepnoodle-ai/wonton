@@ -19,8 +19,8 @@ import (
 //	opts.FPS = 15
 //	opts.Speed = 2.0  // Double speed playback
 type CastOptions struct {
-	Cols      int       // Override terminal columns (0 = use recording dimensions)
-	Rows      int       // Override terminal rows (0 = use recording dimensions)
+	Cols      int       // Override terminal columns (0 = use recording dimensions). Setting Cols or Rows fixes the size: "r" resize events are then ignored.
+	Rows      int       // Override terminal rows (0 = use recording dimensions). Setting Cols or Rows fixes the size: "r" resize events are then ignored.
 	Speed     float64   // Playback speed multiplier (1.0 = normal, 2.0 = double speed)
 	MaxIdle   float64   // Maximum idle time between events in seconds (default: 2.0, prevents long pauses)
 	FPS       int       // Target frames per second for output GIF (default: 10)
