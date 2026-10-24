@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -255,20 +258,26 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 
 	// Write to a temporary file in the same directory and rename it into
 	// place on success, so a failed or oversized transfer never truncates or
-	// deletes a file already at outputPath.
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(outputPath); err == nil && info.Mode().IsRegular() {
-		mode = info.Mode().Perm()
+	// deletes a file already at outputPath. A symlink at outputPath is
+	// followed, so the download replaces its target, as os.Create did.
+	target := outputPath
+	if resolved, err := filepath.EvalSymlinks(outputPath); err == nil {
+		target = resolved
 	}
-	outputFile, err := os.CreateTemp(filepath.Dir(outputPath), "."+filepath.Base(outputPath)+".*.part")
+	existingMode, hasExisting := os.FileMode(0), false
+	if info, err := os.Stat(target); err == nil && info.Mode().IsRegular() {
+		existingMode, hasExisting = info.Mode().Perm(), true
+	}
+	outputFile, err := createTempFile(filepath.Dir(target))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
 	tempPath := outputFile.Name()
 
 	written, err := io.Copy(outputFile, reader)
-	if err == nil {
-		err = outputFile.Chmod(mode)
+	if err == nil && hasExisting {
+		// Keep the mode of the file being replaced.
+		err = outputFile.Chmod(existingMode)
 	}
 	if closeErr := outputFile.Close(); err == nil {
 		err = closeErr
@@ -281,14 +290,30 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 		os.Remove(tempPath) // Clean up partial file
 		return nil, fmt.Errorf("file size exceeds maximum allowed size of %d bytes", opts.MaxSizeBytes)
 	}
-	if err := os.Rename(tempPath, outputPath); err != nil {
+	if err := os.Rename(tempPath, target); err != nil {
 		os.Remove(tempPath)
-		return nil, fmt.Errorf("failed to create output file: %w", err)
+		return nil, fmt.Errorf("failed to save output file: %w", err)
 	}
 
 	result.Size = written
 	result.Path = outputPath
 	return result, nil
+}
+
+// createTempFile creates a new, uniquely named file in dir for a download in
+// progress. The name is short and fixed-length, so it works for any target
+// name, and the file is created with mode 0666 so the umask applies, as it
+// does for os.Create.
+func createTempFile(dir string) (*os.File, error) {
+	for i := 0; i < 100; i++ {
+		name := filepath.Join(dir, ".download-"+strconv.FormatUint(rand.Uint64(), 36)+".part")
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, err
+	}
+	return nil, errors.New("could not create a unique temporary file")
 }
 
 // withinDir reports whether target is base or a path inside it. Both paths

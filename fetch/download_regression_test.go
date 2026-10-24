@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -32,6 +33,41 @@ func TestDownloadFallsBackToURLWhenContentDispositionIsUnusable(t *testing.T) {
 		assert.NoError(t, err, header)
 		assert.Equal(t, "report.csv", result.Filename, header)
 	}
+}
+
+func TestDownloadLongFilename(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	outputPath := filepath.Join(t.TempDir(), strings.Repeat("a", 240)+".bin")
+	result, err := Download(context.Background(), server.URL+"/x", &DownloadOptions{OutputPath: outputPath})
+	assert.NoError(t, err)
+	assert.Equal(t, outputPath, result.Path)
+}
+
+func TestDownloadWritesThroughSymlink(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("new"))
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.bin")
+	link := filepath.Join(dir, "link.bin")
+	assert.NoError(t, os.WriteFile(target, []byte("old"), 0o644))
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := Download(context.Background(), server.URL+"/x", &DownloadOptions{OutputPath: link})
+	assert.NoError(t, err)
+	info, err := os.Lstat(link)
+	assert.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0, "symlink was replaced by a regular file")
+	data, _ := os.ReadFile(target)
+	assert.Equal(t, "new", string(data))
 }
 
 func TestDownloadKeepsExistingFileWhenTransferFails(t *testing.T) {
