@@ -136,8 +136,26 @@ func Truncate(s string, w int, tail string) string {
 		return result
 	}
 
-	result, _ := FitLeft(s, target)
-	return result + tail
+	result, _ := fitWithTail(s, target, tail, w)
+	return result
+}
+
+// fitWithTail returns the longest prefix of s that fits in target cells with
+// tail appended, and the width of the result. The tail can join the last
+// cluster of the prefix and widen it (for example "❤" + VS16, or a keycap
+// base + VS16 + U+20E3). When that pushes the result past w, the prefix is
+// shortened until it fits.
+func fitWithTail(s string, target int, tail string, w int) (string, int) {
+	head, _ := FitLeft(s, target)
+	result := head + tail
+	rw := StringWidth(result)
+	for rw > w && target > 0 {
+		target--
+		head, _ = FitLeft(s, target)
+		result = head + tail
+		rw = StringWidth(result)
+	}
+	return result, rw
 }
 
 // Fit is [Truncate] that also returns the display width of the result. It
@@ -165,7 +183,11 @@ func Fit(s string, w int, tail string) (string, int) {
 			r, rw := FitLeft(tail, w)
 			return r, rw
 		}
-		return s[:w-tailW] + tail, w
+		if tail == "" || tail[0] < 0x80 {
+			// An ASCII tail never joins the ASCII head.
+			return s[:w-tailW] + tail, w
+		}
+		return fitWithTail(s, w-tailW, tail, w)
 	}
 	sw := StringWidth(s)
 	if sw <= w {
@@ -180,8 +202,7 @@ func Fit(s string, w int, tail string) (string, int) {
 		r, rw := FitLeft(tail, w)
 		return r, rw
 	}
-	head, headW := FitLeft(s, target)
-	return head + tail, headW + tailW
+	return fitWithTail(s, target, tail, w)
 }
 
 // FitLeft returns the longest prefix of s that fits in w terminal cells, along

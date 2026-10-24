@@ -162,6 +162,10 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 	// Track keycap sequence pieces so we can force width=2 for
 	// (base ∈ {#, *, 0-9}) VS16 U+20E3, which uniseg does not handle.
 	isKeycapBase := r == '#' || r == '*' || (r >= '0' && r <= '9')
+	// prefixWidth is the width of any leading Prepend runes. The rest of the
+	// cluster's width rules apply to the base rune that follows them, and
+	// prefixWidth is added on top.
+	prefixWidth := 0
 	sawVS16 := false
 	sawKeycap := false
 
@@ -205,7 +209,7 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 			if isKeycapBase && sawVS16 && sawKeycap && width < 2 && !terminalCompat.Load() {
 				width = 2
 			}
-			return s[:length], s[length:], width
+			return s[:length], s[length:], prefixWidth + width
 		}
 
 		// Width accumulation rules matching uniseg v0.4.7:
@@ -215,7 +219,20 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 		//     take their width from the base rune; trailing Jamo do not add
 		//     additional width to the syllable block.
 		//   - All other clusters accumulate runeWidthFromPacked of subsequent runes.
-		if firstProp == gbExtendedPictographic {
+		//   - A cluster that starts with Prepend applies these rules to the
+		//     first non-Prepend rune, with the Prepend widths added.
+		if firstProp == gbPrepend && prop != gbPrepend {
+			// GB9b: Prepend × Any. The first non-Prepend rune is the base of
+			// the rest of the cluster, so take the width rules and the GB9c
+			// sub-state from it, as if the cluster had started here.
+			firstProp = prop
+			prefixWidth = width
+			width = runeWidthFromPacked(r2, packed)
+			isKeycapBase = r2 == '#' || r2 == '*' || (r2 >= '0' && r2 <= '9')
+			if r2 >= 0x0915 {
+				incbSub = incbInitial(r2)
+			}
+		} else if firstProp == gbExtendedPictographic {
 			switch r2 {
 			case 0xFE0E:
 				width = 1
@@ -248,7 +265,7 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 		width = 2
 	}
 
-	return s, "", width
+	return s, "", prefixWidth + width
 }
 
 // Indic_Conjunct_Break sub-states for rule GB9c tracking.
