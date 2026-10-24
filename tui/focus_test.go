@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"image"
+	"io"
 	"testing"
 	"time"
 
@@ -480,6 +482,40 @@ func TestFocusManager_SetFocusBeforeElementRenders(t *testing.T) {
 	assert.True(t, modal.focused)
 	assert.False(t, main.focused)
 	assert.Equal(t, "modal-input", fm.GetFocusedID())
+}
+
+// inputItems is a list of one-row input fields for a Viewport.
+type inputItems struct{ values []string }
+
+func (it *inputItems) Len() int { return len(it.values) }
+func (it *inputItems) Item(i int) View {
+	return InputField(&it.values[i]).ID(fmt.Sprintf("field-%d", i))
+}
+
+type focusViewportApp struct {
+	vp    ViewportState
+	items *inputItems
+}
+
+func (a *focusViewportApp) View() View { return Height(3, Viewport(&a.vp, a.items)) }
+
+func TestFocusManager_KeepsFocusOnItemScrolledOutOfViewport(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("field-1")
+	r.render()
+
+	app.vp.ScrollToBottom()
+	r.render()
+	r.render()
+	assert.Equal(t, "field-1", r.focusMgr.GetFocusedID(), "focus stays on an item scrolled out of view")
+
+	app.vp.ScrollToTop()
+	r.render()
+	r.processEvent(KeyEvent{Rune: 'x'})
+	assert.Equal(t, "x", app.items.values[1], "the field gets keys when it scrolls back")
+	assert.Equal(t, "", app.items.values[0])
 }
 
 func TestFocusManager_EmptyIDDoesNotLetSecondAutoFocus(t *testing.T) {

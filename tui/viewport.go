@@ -521,6 +521,14 @@ func (v *ViewportView) render(ctx *RenderContext) {
 		y += h + s.gap
 	}
 
+	// Items outside the window did not render, so the focus manager cannot
+	// see them. Keep focus on one that scrolled out of view.
+	if len(s.layout) < s.len() {
+		if fm := ctx.FocusManager(); fm != nil {
+			fm.keepFocus()
+		}
+	}
+
 	// After the items, so the highlight paints over what they drew.
 	s.paintSelection(ctx)
 

@@ -39,10 +39,12 @@ type FocusManager struct {
 	focusables map[string]Focusable
 	focusedID  string
 	order      []string // registration order for Tab navigation
-	// pending is set when SetFocus names an element that is not registered
-	// yet, such as a dialog that opens in the same update. It keeps the
-	// next frame from treating focusedID as stale before the element renders.
-	pending bool
+	// keep tells the next Clear and key event not to treat an unregistered
+	// focusedID as stale. SetFocus sets it for an element that has not
+	// rendered yet, such as a dialog that opens in the same update. A
+	// Viewport sets it when it leaves items unrendered, because the focused
+	// element can be one that scrolled out of view.
+	keep bool
 }
 
 // NewFocusManager creates a new focus manager instance.
@@ -56,10 +58,10 @@ func NewFocusManager() *FocusManager {
 func (fm *FocusManager) Clear() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	if !fm.pending {
+	if !fm.keep {
 		fm.dropStaleLocked()
 	}
-	fm.pending = false
+	fm.keep = false
 	fm.order = fm.order[:0]
 	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
 	for k := range fm.focusables {
@@ -79,9 +81,6 @@ func (fm *FocusManager) Register(f Focusable) {
 	_, emptyFocused := fm.focusables[""]
 	fm.focusables[id] = f
 	fm.order = append(fm.order, id)
-	if id == fm.focusedID {
-		fm.pending = false
-	}
 
 	// Auto-focus first element if none focused
 	if fm.focusedID == "" && !emptyFocused {
@@ -126,7 +125,17 @@ func (fm *FocusManager) SetFocus(id string) {
 	if exists {
 		next.SetFocused(true)
 	}
-	fm.pending = !exists
+	if !exists {
+		fm.keep = true
+	}
+}
+
+// keepFocus keeps the focused ID through the next frame even if its element
+// does not render. A view that renders only some of its children calls it.
+func (fm *FocusManager) keepFocus() {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	fm.keep = true
 }
 
 // dropStaleLocked clears focusedID when the focused element was not
@@ -143,7 +152,7 @@ func (fm *FocusManager) dropStaleLocked() {
 // element is no longer registered. Key handling calls it so that a key that
 // arrives before the next render reaches a focusable, as auto-focus would.
 func (fm *FocusManager) settleLocked() {
-	if fm.pending || len(fm.order) == 0 {
+	if fm.keep || len(fm.order) == 0 {
 		return
 	}
 	if _, exists := fm.focusables[fm.focusedID]; exists {
