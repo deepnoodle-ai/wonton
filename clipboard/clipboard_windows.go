@@ -4,7 +4,6 @@ package clipboard
 
 import (
 	"context"
-	"strings"
 )
 
 // read implements clipboard reading for Windows using PowerShell Get-Clipboard.
@@ -15,11 +14,7 @@ func read(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// PowerShell appends a trailing CRLF to the output
-	result := string(out)
-	result = strings.TrimSuffix(result, "\r\n")
-	result = strings.TrimSuffix(result, "\n")
-	return result, nil
+	return trimPowerShellNewline(string(out)), nil
 }
 
 // write implements clipboard writing for Windows using clip.exe.

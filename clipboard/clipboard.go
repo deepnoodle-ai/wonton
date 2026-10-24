@@ -67,6 +67,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -171,7 +172,8 @@ func WriteContext(ctx context.Context, text string) error {
 // Available returns true if clipboard functionality is available on the current system.
 // It checks for the presence of required clipboard utilities based on the operating system.
 //
-// On Linux, it checks for xclip, xsel (X11), or wl-copy/wl-paste (Wayland).
+// On Linux, it checks for xclip or xsel (X11), or for wl-copy when
+// WAYLAND_DISPLAY is set (Wayland), matching the tools Read and Write use.
 // On macOS, it checks for pbcopy/pbpaste.
 // On Windows, it always returns true (PowerShell is assumed to be available).
 // On other platforms, it returns false.
@@ -189,23 +191,34 @@ func Available() bool {
 		_, err := exec.LookPath("pbcopy")
 		return err == nil
 	case "linux":
-		// Check for X11 clipboard tools
-		if _, err := exec.LookPath("xclip"); err == nil {
-			return true
-		}
-		if _, err := exec.LookPath("xsel"); err == nil {
-			return true
-		}
-		// Check for Wayland clipboard tools
-		if _, err := exec.LookPath("wl-copy"); err == nil {
-			return true
-		}
-		return false
+		return linuxAvailable(func(name string) bool {
+			_, err := exec.LookPath(name)
+			return err == nil
+		}, os.Getenv("WAYLAND_DISPLAY") != "")
 	case "windows":
 		return true // PowerShell is always available on Windows
 	default:
 		return false
 	}
+}
+
+// linuxAvailable reports whether the Linux backend has a tool it will use.
+// It mirrors clipboard_linux.go: wl-copy is only used under Wayland.
+func linuxAvailable(has func(name string) bool, wayland bool) bool {
+	if has("xclip") || has("xsel") {
+		return true
+	}
+	return wayland && has("wl-copy")
+}
+
+// trimPowerShellNewline removes the single line ending that PowerShell
+// appends to command output. It keeps any line ending that is part of the
+// clipboard content itself.
+func trimPowerShellNewline(s string) string {
+	if strings.HasSuffix(s, "\r\n") {
+		return strings.TrimSuffix(s, "\r\n")
+	}
+	return strings.TrimSuffix(s, "\n")
 }
 
 // Clear clears the clipboard by writing an empty string to it.
@@ -233,14 +246,30 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 	return stdout.Bytes(), nil
 }
 
+// stderrWaitDelay bounds how long runCommandWithStdin waits for stderr to
+// close after the command exits. It is a variable so tests can widen it.
+var stderrWaitDelay = 100 * time.Millisecond
+
 // runCommandWithStdin executes a command with stdin input.
 func runCommandWithStdin(ctx context.Context, input string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(input)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	// xclip and wl-copy fork a daemon that serves the selection and inherits
+	// stderr. Without a WaitDelay, Run would block until that daemon exits.
+	// With it, Run returns shortly after the command itself exits.
+	cmd.WaitDelay = stderrWaitDelay
 
 	err := cmd.Run()
+	if cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		// The command exited 0, so the write succeeded. Check this before
+		// the deadline: the deadline can pass during the WaitDelay while a
+		// forked child still holds stderr open (Run then returns
+		// exec.ErrWaitDelay). A command killed at the deadline is not a
+		// success, so real timeouts still return ErrTimeout.
+		return nil
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return ErrTimeout
 	}
