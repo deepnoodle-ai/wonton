@@ -217,10 +217,13 @@ type Config struct {
 ### Supported Types
 
 - Basic types: `string`, `bool`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`
-- Time types: `time.Duration`, `time.Location`
+- Time types: `time.Duration`, `time.Location`, `time.Time` (RFC 3339)
+- URLs: `url.URL`
 - Collections: `[]T` (slices), `map[K]V` (maps)
 - Any type implementing `encoding.TextUnmarshaler`
-- Pointer types: `*T` for any supported type T
+- Any type, including a struct, with a parser registered by `WithParser`
+- Pointer types: `*T` for any supported type T. An unset pointer field with
+  no default stays `nil`.
 
 ### Error Types
 

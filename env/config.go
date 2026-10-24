@@ -47,6 +47,7 @@ import (
 	"encoding"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
@@ -403,13 +404,13 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 		}
 
 		// Handle embedded structs
-		if field.Anonymous && fv.Kind() == reflect.Struct {
+		if field.Anonymous && fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
 			p.parseStruct(fv, prefix)
 			continue
 		}
 
 		// Handle nested structs with envPrefix tag
-		if fv.Kind() == reflect.Struct && !isSpecialType(fv.Type()) {
+		if fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
 			nestedPrefix := prefix
 			if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
 				nestedPrefix = prefix + prefixTag
@@ -420,8 +421,10 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 			continue
 		}
 
-		// Handle pointer to struct
-		if fv.Kind() == reflect.Ptr && fv.Type().Elem().Kind() == reflect.Struct {
+		// Handle pointer to struct. Pointers to value types (*time.Time,
+		// *url.URL, custom parser types) are parsed as fields instead.
+		if fv.Kind() == reflect.Ptr && fv.Type().Elem().Kind() == reflect.Struct &&
+			!p.isValueType(fv.Type()) && !p.isValueType(fv.Type().Elem()) {
 			if fv.IsNil() {
 				fv.Set(reflect.New(fv.Type().Elem()))
 			}
@@ -480,8 +483,9 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 		if p.options.UseFieldNameByDefault {
 			envVar = toUpperSnakeCase(field.Name)
 		} else {
-			// No env var, just apply default if present
-			if defaultValue != "" {
+			// No env var, just apply default if present. Like the env var
+			// path below, keep a value already set (e.g., from JSON).
+			if defaultValue != "" && fv.IsZero() {
 				if err := p.setFieldValue(fv, defaultValue, field); err != nil {
 					p.errors.Errors = append(p.errors.Errors, &FieldError{
 						Field: field.Name,
@@ -655,6 +659,17 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 		}
 	}
 
+	// Special case for url.URL, which implements UnmarshalBinary but not
+	// UnmarshalText.
+	if t == reflect.TypeOf(url.URL{}) {
+		u, err := url.Parse(value)
+		if err != nil {
+			return fmt.Errorf("invalid url: %w", err)
+		}
+		fv.Set(reflect.ValueOf(*u))
+		return nil
+	}
+
 	// Special case for time.Location
 	if t == reflect.TypeOf(time.Location{}) {
 		loc, err := time.LoadLocation(value)
@@ -802,11 +817,18 @@ func (p *structParser) setMapValue(fv reflect.Value, value string, sf reflect.St
 	return nil
 }
 
-// isSpecialType returns true for types that should be parsed as values, not structs.
-func isSpecialType(t reflect.Type) bool {
-	// time.Time, url.URL, etc.
-	return t.Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()) ||
-		reflect.PointerTo(t).Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem())
+// isValueType reports whether t is parsed from a single value rather than
+// treated as a nested config struct: types with a custom parser, text
+// unmarshalers (time.Time, ...), url.URL, and time.Location.
+func (p *structParser) isValueType(t reflect.Type) bool {
+	if _, ok := p.options.FuncMap[t]; ok {
+		return true
+	}
+	if t == reflect.TypeOf(time.Location{}) || t == reflect.TypeOf(url.URL{}) {
+		return true
+	}
+	textUnmarshaler := reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+	return t.Implements(textUnmarshaler) || reflect.PointerTo(t).Implements(textUnmarshaler)
 }
 
 // toUpperSnakeCase converts CamelCase to UPPER_SNAKE_CASE.
