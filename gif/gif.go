@@ -256,6 +256,9 @@ func (f *Frame) DrawLine(x0, y0, x1, y1 int, c color.Color) {
 
 // DrawRect draws a rectangle outline.
 func (f *Frame) DrawRect(x, y, w, h int, c color.Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
 	f.DrawLine(x, y, x+w-1, y, c)         // Top
 	f.DrawLine(x, y+h-1, x+w-1, y+h-1, c) // Bottom
 	f.DrawLine(x, y, x, y+h-1, c)         // Left
