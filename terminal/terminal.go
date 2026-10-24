@@ -1411,20 +1411,9 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 		return nil
 	}
 
-	// For buffered mode, record the logical output immediately
-	// This captures timing of Print() calls, not EndFrame() calls
-	if t.recorder != nil {
-		var output strings.Builder
-		output.WriteString(fmt.Sprintf("\033[%d;%dH", startY+1, startX+1))
-		if !style.IsEmpty() {
-			output.WriteString(style.String())
-		}
-		output.WriteString(text)
-		if !style.IsEmpty() {
-			output.WriteString("\033[0m")
-		}
-		t.recorder.RecordOutput(output.String())
-	}
+	// Buffered mode is recorded in flushInternal, from the bytes that
+	// actually reach the terminal, so clipping, SetCell, and Fill are
+	// captured too.
 
 	currentX := startX
 	currentY := startY
@@ -1583,7 +1572,11 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 	char = cellRune(char)
 	if !t.buffered {
 		// Fallback for non-buffered
-		fmt.Fprintf(t.out, "\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
+		out := fmt.Sprintf("\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
+		fmt.Fprint(t.out, out)
+		if t.recorder != nil {
+			t.recorder.RecordOutput(out)
+		}
 		return nil
 	}
 
@@ -1661,14 +1654,19 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 	char = cellRune(char)
 	if !t.buffered {
 		line := strings.Repeat(string(char), width)
+		var out strings.Builder
 		if !style.IsEmpty() {
-			fmt.Fprint(t.out, style.String())
+			out.WriteString(style.String())
 		}
 		for i := 0; i < height; i++ {
-			fmt.Fprintf(t.out, "\033[%d;%dH%s", y+i+1, x+1, line)
+			fmt.Fprintf(&out, "\033[%d;%dH%s", y+i+1, x+1, line)
 		}
 		if !style.IsEmpty() {
-			fmt.Fprint(t.out, "\033[0m")
+			out.WriteString("\033[0m")
+		}
+		fmt.Fprint(t.out, out.String())
+		if t.recorder != nil {
+			t.recorder.RecordOutput(out.String())
 		}
 		return nil
 	}
@@ -2035,8 +2033,11 @@ func (t *Terminal) flushInternal() error {
 		copy(t.frontBuffer[y][minX:maxX+1], t.backBuffer[y][minX:maxX+1])
 	}
 
-	// Note: Recording happens at Print() level, not here
-	// This ensures we capture timing of logical operations, not frame flushes
+	// Record exactly what the terminal received. Recording at Print() time
+	// would miss SetCell and Fill and ignore clipping.
+	if t.recorder != nil {
+		t.recorder.RecordOutput(outputStr)
+	}
 
 	// Record metrics if enabled
 	if t.metricsEnabled {
