@@ -162,6 +162,10 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 	// Track keycap sequence pieces so we can force width=2 for
 	// (base ∈ {#, *, 0-9}) VS16 U+20E3, which uniseg does not handle.
 	isKeycapBase := r == '#' || r == '*' || (r >= '0' && r <= '9')
+	// prefixWidth is the width of any leading Prepend runes. The rest of the
+	// cluster's width rules apply to the base rune that follows them, and
+	// prefixWidth is added on top.
+	prefixWidth := 0
 	sawVS16 := false
 	sawKeycap := false
 
@@ -205,7 +209,7 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 			if isKeycapBase && sawVS16 && sawKeycap && width < 2 && !terminalCompat.Load() {
 				width = 2
 			}
-			return s[:length], s[length:], width
+			return s[:length], s[length:], prefixWidth + width
 		}
 
 		// Width accumulation rules matching uniseg v0.4.7:
@@ -222,7 +226,9 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 			// the rest of the cluster, so take the width rules and the GB9c
 			// sub-state from it, as if the cluster had started here.
 			firstProp = prop
-			width += runeWidthFromPacked(r2, packed)
+			prefixWidth = width
+			width = runeWidthFromPacked(r2, packed)
+			isKeycapBase = r2 == '#' || r2 == '*' || (r2 >= '0' && r2 <= '9')
 			if r2 >= 0x0915 {
 				incbSub = incbInitial(r2)
 			}
@@ -259,7 +265,7 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 		width = 2
 	}
 
-	return s, "", width
+	return s, "", prefixWidth + width
 }
 
 // Indic_Conjunct_Break sub-states for rule GB9c tracking.

@@ -429,11 +429,11 @@ func TestTruncate_TailJoinsHead(t *testing.T) {
 	tests := []struct {
 		s, tail string
 	}{
-		{"❤abcdef", "️"},      // ❤ + VS16 -> width 2
-		{"1abcdef", "️⃣"},     // keycap base + VS16 + keycap
-		{"x❤abcdef", "️"},     // non-ASCII path with room to back off
-		{"12345678", "️⃣..."}, // ASCII fast path in Fit
-		{"ab❤cdefgh", "️…"},
+		{"\u2764abcdef", "\uFE0F"},      // ❤ + VS16 -> width 2
+		{"abc1defg", "\uFE0F\u20E3"},    // keycap base 1 ends the head at w=4
+		{"x\u2764abcdef", "\uFE0F"},     // non-ASCII path with room to back off
+		{"12345678", "\uFE0F\u20E3..."}, // ASCII fast path in Fit
+		{"ab\u2764cdefgh", "\uFE0F\u2026"},
 	}
 	for _, tt := range tests {
 		for w := 0; w <= StringWidth(tt.s)+2; w++ {
@@ -453,7 +453,7 @@ func TestGraphemes_PrependConjunct(t *testing.T) {
 	// GB9b joins Prepend to the following consonant. GB9c must then still
 	// join consonant + virama + consonant.
 	var got []string
-	for c := range Graphemes("ൎക്ക") {
+	for c := range Graphemes("\u0D4E\u0D15\u0D4D\u0D15") {
 		got = append(got, c)
 	}
 	if len(got) != 1 {
@@ -469,9 +469,11 @@ func TestStringWidth_PrependCluster(t *testing.T) {
 		s    string
 		want int
 	}{
-		{"prepend + flag", "؀\U0001F1FA\U0001F1F8", 1 + 2},
-		{"prepend + family", "؀\U0001F468‍\U0001F469‍\U0001F467‍\U0001F466", 1 + 2},
-		{"prepend + letter", "؀b", 2},
+		{"prepend + flag", "\u0600\U0001F1FA\U0001F1F8", 1 + 2},
+		{"prepend + family", "\u0600\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466", 1 + 2},
+		{"prepend + letter", "\u0600b", 2},
+		{"prepend + heart VS16", "\u0600\u2764\uFE0F", 1 + 2},
+		{"prepend + keycap", "\u0600" + "1\uFE0F\u20E3", 1 + 2},
 	}
 	for _, tt := range tests {
 		if got := StringWidth(tt.s); got != tt.want {
