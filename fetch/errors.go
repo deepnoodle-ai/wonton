@@ -31,6 +31,11 @@ func ErrUnsupportedOption(option string) error {
 	return fmt.Errorf("%w: %s", ErrUnsupported, option)
 }
 
+// ErrUnsupportedContentType is returned by [HTTPFetcher.Fetch] when the
+// response has a content type it does not process. It is a permanent failure:
+// retrying the same URL returns the same content.
+var ErrUnsupportedContentType = errors.New("unexpected content type")
+
 // Error represents a failed HTTP fetch. It preserves the HTTP status code
 // and target URL so callers can decide how to handle the failure, and
 // supports error unwrapping via [errors.Is] and [errors.As].
