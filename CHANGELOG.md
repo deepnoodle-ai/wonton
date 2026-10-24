@@ -11,6 +11,17 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tui.Input` and `tui.InputField` no longer draw as focused when they
+  render after a focusable with an empty ID. That earlier focusable holds
+  focus, and keys go to it.
+- `tui.Prompt` no longer panics when an `AutocompleteFunc` returns a byte
+  offset inside a multi-byte character.
+- A width-3 or width-4 dash (U+2E3A, U+2E3B) printed or set in a
+  `terminal` frame clears the columns it covers. Before, the text under
+  them stayed on screen.
+
 ## [0.8.0] - 2026-10-24
 
 ### Added

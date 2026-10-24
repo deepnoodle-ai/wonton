@@ -497,7 +497,9 @@ func (s *promptState) runAutocomplete() ([]string, int) {
 	cursor := len(string(s.input[:s.cursorPos]))
 	completions, from := s.config.autocomplete(input, cursor)
 	from = min(max(from, 0), cursor)
-	return completions, utf8.RuneCountInString(input[:from])
+	// An offset inside a rune counts its bytes as runes; keep it at or
+	// before the cursor.
+	return completions, min(utf8.RuneCountInString(input[:from]), s.cursorPos)
 }
 
 // triggerAutocomplete activates autocomplete

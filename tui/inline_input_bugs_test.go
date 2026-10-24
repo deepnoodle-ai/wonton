@@ -49,3 +49,15 @@ func TestPromptState_AutocompleteMultiByte(t *testing.T) {
 	assert.Equal(t, "日本 @file.go", string(state.input))
 	assert.Equal(t, len([]rune("日本 @file.go")), state.cursorPos)
 }
+
+// An offset inside a multi-byte rune breaks the byte-offset contract, but
+// must not panic.
+func TestPromptState_AutocompleteMidRuneOffset(t *testing.T) {
+	cfg := defaultPromptConfig()
+	cfg.autocomplete = func(string, int) ([]string, int) { return []string{"x"}, 2 }
+	state := &promptState{config: cfg, input: []rune("中"), cursorPos: 1}
+
+	state.triggerAutocomplete()
+	state.applyAutocomplete()
+	assert.Equal(t, string(state.input), "中x")
+}

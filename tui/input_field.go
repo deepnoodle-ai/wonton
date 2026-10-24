@@ -433,8 +433,7 @@ func (f *InputFieldView) render(ctx *RenderContext) {
 	fm := ctx.FocusManager()
 	isFocused := false
 	if fm != nil {
-		focusedID := fm.GetFocusedID()
-		isFocused = focusedID == f.id || focusedID == ""
+		isFocused = fm.wouldAutoFocus() || (f.id != "" && fm.GetFocusedID() == f.id)
 	}
 
 	if f.bordered && f.border != nil && !f.horizontalBarOnly {
