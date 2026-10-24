@@ -78,6 +78,10 @@ import (
 var (
 	ErrNotRepository = errors.New("not a git repository")
 	ErrNoCommits     = errors.New("no commits yet")
+
+	// ErrInvalidArgument is returned when a caller-supplied ref, name, or
+	// pattern would be read by git as a command-line option.
+	ErrInvalidArgument = errors.New("invalid argument")
 )
 
 // Repository represents a git repository and provides methods for
@@ -114,8 +118,10 @@ func Open(path string) (*Repository, error) {
 		return nil, fmt.Errorf("resolving path: %w", err)
 	}
 
-	// Use git rev-parse to find the repository root
-	cmd := exec.Command("git", "-C", absPath, "rev-parse", "--show-toplevel", "--git-dir")
+	// Use git rev-parse to find the git directory and whether the repository
+	// is bare. Bare repositories have no working tree, so --show-toplevel
+	// would fail for them.
+	cmd := exec.Command("git", "-C", absPath, "rev-parse", "--is-bare-repository", "--absolute-git-dir")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, ErrNotRepository
@@ -125,10 +131,24 @@ func Open(path string) (*Repository, error) {
 	if len(lines) < 2 {
 		return nil, ErrNotRepository
 	}
+	gitDir := lines[1]
+	if lines[0] == "true" {
+		return &Repository{Path: gitDir, GitDir: gitDir}, nil
+	}
+
+	cmd = exec.Command("git", "-C", absPath, "rev-parse", "--show-toplevel")
+	out, err = cmd.Output()
+	if err != nil {
+		return nil, ErrNotRepository
+	}
+	top := strings.TrimSpace(string(out))
+	if top == "" {
+		return nil, ErrNotRepository
+	}
 
 	return &Repository{
-		Path:   lines[0],
-		GitDir: lines[1],
+		Path:   top,
+		GitDir: gitDir,
 	}, nil
 }
 
@@ -263,6 +283,26 @@ func (r *Repository) run(ctx context.Context, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// checkArgs rejects caller-supplied values that git would parse as options,
+// such as a ref of "--output=/tmp/x". Empty values are allowed; callers skip
+// them before building the command.
+func checkArgs(values ...string) error {
+	for _, v := range values {
+		if strings.HasPrefix(v, "-") {
+			return fmt.Errorf("%w: %q must not start with '-'", ErrInvalidArgument, v)
+		}
+	}
+	return nil
+}
+
+// newScanner returns a line scanner over command output that can hold a line
+// as long as the whole output, so long lines are never dropped.
+func newScanner(out []byte) *bufio.Scanner {
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+	scanner.Buffer(nil, len(out)+1)
+	return scanner
+}
+
 // runLines executes a git command and returns lines of output.
 func (r *Repository) runLines(ctx context.Context, args ...string) ([]string, error) {
 	out, err := r.run(ctx, args...)
@@ -329,7 +369,7 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 	}
 
 	status := &Status{}
-	scanner := bufio.NewScanner(bytes.NewReader(out))
+	scanner := newScanner(out)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -352,23 +392,22 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 			}
 		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
 			// Changed entry
-			fs := parseStatusEntry(line)
-			if fs != nil {
-				if fs.staged {
-					status.Staged = append(status.Staged, fs.FileStatus)
-				}
-				if fs.unstaged {
-					status.Unstaged = append(status.Unstaged, fs.FileStatus)
-				}
+			staged, unstaged := parseStatusEntry(line)
+			if staged != nil {
+				status.Staged = append(status.Staged, *staged)
+			}
+			if unstaged != nil {
+				status.Unstaged = append(status.Unstaged, *unstaged)
 			}
 		case strings.HasPrefix(line, "? "):
 			// Untracked
 			status.Untracked = append(status.Untracked, line[2:])
 			status.HasUntracked = true
 		case strings.HasPrefix(line, "u "):
-			// Unmerged (conflict)
-			parts := strings.Fields(line)
-			if len(parts) > 10 {
+			// Unmerged (conflict): 10 fields, then the path (which may
+			// contain spaces).
+			parts := strings.SplitN(line, " ", 11)
+			if len(parts) == 11 {
 				status.Conflicts = append(status.Conflicts, parts[10])
 			}
 		}
@@ -382,43 +421,48 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 	return status, scanner.Err()
 }
 
-type statusEntry struct {
-	FileStatus
-	staged   bool
-	unstaged bool
-}
-
-func parseStatusEntry(line string) *statusEntry {
-	parts := strings.Fields(line)
-	if len(parts) < 9 {
-		return nil
+// parseStatusEntry parses a porcelain v2 changed entry and returns the staged
+// and unstaged sides separately; either may be nil. The formats are:
+//
+//	1 XY sub mH mI mW hH hI <path>
+//	2 XY sub mH mI mW hH hI <score> <path>\t<origPath>
+//
+// Paths may contain spaces, so only the fixed fields are split off.
+func parseStatusEntry(line string) (staged, unstaged *FileStatus) {
+	var xy, path, oldPath string
+	switch {
+	case strings.HasPrefix(line, "1 "):
+		parts := strings.SplitN(line, " ", 9)
+		if len(parts) < 9 {
+			return nil, nil
+		}
+		xy, path = parts[1], parts[8]
+	case strings.HasPrefix(line, "2 "):
+		parts := strings.SplitN(line, " ", 10)
+		if len(parts) < 10 {
+			return nil, nil
+		}
+		xy = parts[1]
+		path, oldPath, _ = strings.Cut(parts[9], "\t")
+	default:
+		return nil, nil
+	}
+	if len(xy) < 2 {
+		return nil, nil
 	}
 
-	xy := parts[1]
-	path := parts[8]
-
-	entry := &statusEntry{
-		FileStatus: FileStatus{Path: path},
+	side := func(code byte) *FileStatus {
+		if code == '.' {
+			return nil
+		}
+		fs := &FileStatus{Path: path, Status: statusCodeToString(code)}
+		if code == 'R' || code == 'C' {
+			fs.OldPath = oldPath
+		}
+		return fs
 	}
-
-	// First character is staged status
-	if xy[0] != '.' {
-		entry.staged = true
-		entry.FileStatus.Status = statusCodeToString(xy[0])
-	}
-	// Second character is unstaged status
-	if xy[1] != '.' {
-		entry.unstaged = true
-		entry.FileStatus.Status = statusCodeToString(xy[1])
-	}
-
-	// Handle renames (line type "2")
-	if parts[0] == "2" && len(parts) >= 10 {
-		entry.FileStatus.OldPath = parts[9]
-		entry.FileStatus.Status = "renamed"
-	}
-
-	return entry
+	// First character is staged status, second is unstaged status.
+	return side(xy[0]), side(xy[1])
 }
 
 func statusCodeToString(c byte) string {

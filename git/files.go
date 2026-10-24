@@ -103,6 +103,9 @@ func (r *Repository) FileExists(ctx context.Context, path string) (bool, error) 
 // The ref can be a commit hash, branch, tag, or any valid git revision.
 // The path is relative to the repository root.
 func (r *Repository) ShowFile(ctx context.Context, ref, path string) ([]byte, error) {
+	if err := checkArgs(ref); err != nil {
+		return nil, err
+	}
 	return r.run(ctx, "show", ref+":"+path)
 }
 

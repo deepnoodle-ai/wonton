@@ -1,8 +1,6 @@
 package git
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -70,8 +68,14 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 	}
 
 	if opts.From != "" && opts.To != "" {
+		if err := checkArgs(opts.From, opts.To); err != nil {
+			return nil, err
+		}
 		args = append(args, opts.From+".."+opts.To)
 	} else if opts.Ref != "" {
+		if err := checkArgs(opts.Ref); err != nil {
+			return nil, err
+		}
 		args = append(args, opts.Ref)
 	}
 
@@ -109,7 +113,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 
 	// Parse numstat for file details
 	fileStats := make(map[string]*DiffFile)
-	scanner := bufio.NewScanner(bytes.NewReader(numstatOut))
+	scanner := newScanner(numstatOut)
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Split(line, "\t")
@@ -147,10 +151,11 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 		return nil, err
 	}
 
-	scanner = bufio.NewScanner(bytes.NewReader(nameStatusOut))
+	scanner = newScanner(nameStatusOut)
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Fields(line)
+		// Fields are tab-separated; paths may contain spaces.
+		parts := strings.Split(line, "\t")
 		if len(parts) < 2 {
 			continue
 		}
@@ -240,8 +245,8 @@ func parseRenamePath(path string) (newPath, oldPath string) {
 			inner := path[start+1 : end]
 			parts := strings.Split(inner, " => ")
 			if len(parts) == 2 {
-				oldPath = prefix + parts[0] + suffix
-				newPath = prefix + parts[1] + suffix
+				oldPath = joinRenamePart(prefix, parts[0], suffix)
+				newPath = joinRenamePart(prefix, parts[1], suffix)
 				return
 			}
 		}
@@ -256,6 +261,33 @@ func parseRenamePath(path string) (newPath, oldPath string) {
 	return path, ""
 }
 
+// patchHeaderPath returns the new path from the "a/<old> b/<new>" part of a
+// "diff --git" header. Paths may contain spaces, so it first tries the common
+// case where both sides name the same path, then falls back to the last " b/".
+func patchHeaderPath(header string) string {
+	if n := len(header) - len("a/ b/"); n > 0 && n%2 == 0 {
+		path := header[2 : 2+n/2]
+		if header == "a/"+path+" b/"+path {
+			return path
+		}
+	}
+	if i := strings.LastIndex(header, " b/"); i >= 0 {
+		return header[i+len(" b/"):]
+	}
+	return ""
+}
+
+// joinRenamePart rebuilds one side of a "prefix{old => new}suffix" rename.
+// When the braced part is empty (a move into or out of a directory, such as
+// "dir/{sub => }/file"), the separator it would have carried is dropped so the
+// result has no leading or doubled slash.
+func joinRenamePart(prefix, mid, suffix string) string {
+	if mid == "" && strings.HasPrefix(suffix, "/") && (prefix == "" || strings.HasSuffix(prefix, "/")) {
+		suffix = suffix[1:]
+	}
+	return prefix + mid + suffix
+}
+
 // parsePatchContent splits a unified diff into per-file patches.
 func parsePatchContent(patch string) map[string]string {
 	result := make(map[string]string)
@@ -266,7 +298,7 @@ func parsePatchContent(patch string) map[string]string {
 	var currentPath string
 	var currentPatch strings.Builder
 
-	scanner := bufio.NewScanner(strings.NewReader(patch))
+	scanner := newScanner([]byte(patch))
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -282,35 +314,7 @@ func parsePatchContent(patch string) map[string]string {
 			currentPatch.WriteString(line)
 			currentPatch.WriteString("\n")
 
-			// Parse path from header
-			// Format: diff --git a/path/to/file b/path/to/file
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				// usually parts[2] is a/path and parts[3] is b/path
-				// taking b/path is safer for modified files
-				// but we need to handle spaces in filenames too...
-				// for simplicity matching existing logic:
-				currentPath = strings.TrimPrefix(parts[3], "b/")
-				// A more robust way would be to parse " b/" from the end
-				// but git output quoting makes this hard without full parser.
-				// The previous logic was: strings.TrimPrefix(fields[1], "b/")
-				// which assumes fields[1] is the path.
-				// "diff --git a/file b/file" -> fields: ["diff", "--git", "a/file", "b/file"]
-				// So previous logic used fields[1] which was "--git"? No, fields[2] is a/file.
-				// The previous logic was:
-				// parts := strings.Split(patch, "diff --git ")
-				// ...
-				// header := lines[0] // "a/file b/file"
-				// fields := strings.Fields(header)
-				// path := strings.TrimPrefix(fields[1], "b/")
-				// So it used the second field of "a/file b/file", which is "b/file".
-				// Here line is "diff --git a/file b/file".
-				// fields are ["diff", "--git", "a/file", "b/file"]
-				// So we want fields[3].
-				if len(parts) >= 4 {
-					currentPath = strings.TrimPrefix(parts[3], "b/")
-				}
-			}
+			currentPath = patchHeaderPath(strings.TrimPrefix(line, "diff --git "))
 		} else {
 			if currentPath != "" { // Only append if we're inside a patch
 				currentPatch.WriteString(line)
