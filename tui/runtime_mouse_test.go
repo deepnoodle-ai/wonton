@@ -73,6 +73,34 @@ func TestRuntimeReleaseElsewhereIsNotAClick(t *testing.T) {
 	assert.Nil(t, click, "a drag that ends elsewhere is not a click")
 }
 
+// dragBackToStart presses at (5,5), drags away, drags back, and releases.
+// It returns the synthetic click from the release, or nil.
+func dragBackToStart(process func(Event) (Event, Event)) Event {
+	now := time.Now()
+	process(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MousePress, Time: now})
+	process(MouseEvent{X: 20, Y: 5, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	process(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	_, click := process(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MouseRelease, Time: now})
+	return click
+}
+
+func TestRuntimeDragBackToStartIsNotAClick(t *testing.T) {
+	r := newTestRuntime(t)
+	assert.Nil(t, dragBackToStart(r.processMouseEvent), "a drag that returns to its start is not a click")
+
+	// A drag that stays on the press cell is still a click.
+	now := time.Now()
+	r.processMouseEvent(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MousePress, Time: now})
+	r.processMouseEvent(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	_, click := r.processMouseEvent(MouseEvent{X: 5, Y: 5, Button: MouseButtonLeft, Type: MouseRelease, Time: now})
+	assert.NotNil(t, click)
+}
+
+func TestInlineAppDragBackToStartIsNotAClick(t *testing.T) {
+	r := NewInlineApp()
+	assert.Nil(t, dragBackToStart(r.processMouseEvent), "a drag that returns to its start is not a click")
+}
+
 func TestMouseModeOptionsKeepTheMostCapableRequest(t *testing.T) {
 	tests := []struct {
 		name string

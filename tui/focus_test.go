@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"image"
+	"io"
 	"testing"
 	"time"
 
@@ -425,4 +427,173 @@ func TestFocusPrevEvent_ImplementsEvent(t *testing.T) {
 
 	var e Event = event
 	assert.Equal(t, now, e.Timestamp())
+}
+
+// renderFocusables simulates one frame: Clear, then Register each element.
+func renderFocusables(fm *FocusManager, fs ...*mockFocusable) {
+	fm.Clear()
+	for _, f := range fs {
+		fm.Register(f)
+	}
+}
+
+func TestFocusManager_FocusedViewDisappearsRefocusesFirst(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main, modal)
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main, modal)
+	assert.True(t, modal.focused)
+
+	// The modal closes. The frame that drops it still shows the stale focus,
+	// and the next frame focuses the first remaining focusable.
+	renderFocusables(fm, main)
+	renderFocusables(fm, main)
+	assert.True(t, main.focused, "the remaining focusable should take focus")
+	assert.Equal(t, "main-input", fm.GetFocusedID())
+}
+
+func TestFocusManager_KeyAfterFocusedViewDisappears(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main, modal)
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main) // modal closed, no render since
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	assert.True(t, main.focused, "Tab should reach the only remaining focusable")
+	assert.Equal(t, "main-input", fm.GetFocusedID())
+}
+
+func TestFocusManager_SetFocusBeforeElementRenders(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main)
+	// The app opens a modal and focuses it in the same update. The modal
+	// is not registered until the next frame, so focus must wait for it.
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main, modal)
+	assert.True(t, modal.focused)
+	assert.False(t, main.focused)
+	assert.Equal(t, "modal-input", fm.GetFocusedID())
+}
+
+// inputItems is a list of one-row input fields for a Viewport.
+type inputItems struct{ values []string }
+
+func (it *inputItems) Len() int { return len(it.values) }
+func (it *inputItems) Item(i int) View {
+	return InputField(&it.values[i]).ID(fmt.Sprintf("field-%d", i))
+}
+
+type focusViewportApp struct {
+	vp    ViewportState
+	items *inputItems
+	width int // when set, the viewport's width
+}
+
+func (a *focusViewportApp) View() View {
+	if a.width > 0 {
+		return Width(a.width, Height(3, Viewport(&a.vp, a.items)))
+	}
+	return Height(3, Viewport(&a.vp, a.items))
+}
+
+func TestFocusManager_KeepsFocusOnItemScrolledOutOfViewport(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("field-1")
+	r.render()
+
+	app.vp.ScrollToBottom()
+	r.render()
+	r.render()
+	assert.Equal(t, "field-1", r.focusMgr.GetFocusedID(), "focus stays on an item scrolled out of view")
+
+	app.vp.ScrollToTop()
+	r.render()
+	r.processEvent(KeyEvent{Rune: 'x'})
+	assert.Equal(t, "x", app.items.values[1], "the field gets keys when it scrolls back")
+	assert.Equal(t, "", app.items.values[0])
+}
+
+func TestFocusManager_EmptyIDDoesNotLetSecondAutoFocus(t *testing.T) {
+	fm := NewFocusManager()
+	anon := &mockFocusable{id: ""}
+	named := &mockFocusable{id: "named"}
+
+	renderFocusables(fm, anon, named)
+	assert.True(t, anon.focused)
+	assert.False(t, named.focused, "only the first focusable is auto-focused")
+}
+
+// overflowWithButtonApp shows an overflowing Viewport of fields and, while
+// showButton is set, a Button outside it.
+type overflowWithButtonApp struct {
+	vp         ViewportState
+	items      *inputItems
+	showButton bool
+}
+
+func (a *overflowWithButtonApp) View() View {
+	list := Height(3, Viewport(&a.vp, a.items))
+	if a.showButton {
+		return Stack(list, Button("OK", func() {}).ID("ok"))
+	}
+	return Stack(list)
+}
+
+func TestFocusManager_RemovedButtonOutsideOverflowingViewportMovesFocus(t *testing.T) {
+	app := &overflowWithButtonApp{items: &inputItems{values: make([]string, 10)}, showButton: true}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("ok")
+	r.render()
+	assert.Equal(t, "ok", r.focusMgr.GetFocusedID())
+
+	app.showButton = false
+	r.render()
+	r.render()
+	assert.Equal(t, "field-0", r.focusMgr.GetFocusedID(), "focus moves to the first focusable")
+
+	r.processEvent(KeyEvent{Rune: 'x'})
+	assert.Equal(t, "x", app.items.values[0], "keys reach the newly focused field")
+}
+
+func TestFocusManager_KeepsScrolledOutFocusAcrossResize(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("field-1")
+	r.render()
+
+	app.vp.ScrollToBottom()
+	r.render()
+	app.width = 30
+	r.render()
+	r.render()
+	assert.Equal(t, "field-1", r.focusMgr.GetFocusedID(), "focus survives a width change while scrolled out")
+}
+
+func TestFocusManager_RemovedViewportItemMovesFocus(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	app.vp.ScrollToBottom()
+	r.render()
+	r.focusMgr.SetFocus("field-9")
+	r.render()
+	assert.Equal(t, "field-9", r.focusMgr.GetFocusedID())
+
+	app.items.values = app.items.values[:9]
+	r.render()
+	r.render()
+	assert.NotEqual(t, "field-9", r.focusMgr.GetFocusedID(), "a removed item does not keep focus")
+	assert.NotNil(t, r.focusMgr.GetFocused(), "a remaining field has focus")
 }

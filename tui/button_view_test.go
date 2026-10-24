@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"io"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -476,4 +477,61 @@ func TestButton_Render_InGroup(t *testing.T) {
 
 	termtest.AssertRowContains(t, screen, 0, "Yes")
 	termtest.AssertRowContains(t, screen, 0, "No")
+}
+
+// unnamedButtonApp builds a Button with no ID and a new capturing closure on
+// every render.
+type unnamedButtonApp struct {
+	name    string
+	submits int
+	renders int
+}
+
+func (a *unnamedButtonApp) View() View {
+	a.renders++
+	step := a.renders
+	return Stack(
+		InputField(&a.name).ID("name"),
+		Button("Submit", func() { a.submits += step }),
+	)
+}
+
+func TestButton_UnnamedKeepsFocusAcrossRenders(t *testing.T) {
+	app := &unnamedButtonApp{}
+	r := NewRuntime(NewTestTerminal(80, 24, io.Discard), app, 30)
+	r.render()
+	assert.Equal(t, "name", r.focusMgr.GetFocusedID())
+
+	r.processEvent(KeyEvent{Key: KeyTab})
+	buttonID := r.focusMgr.GetFocusedID()
+	assert.NotEqual(t, "name", buttonID)
+
+	r.render()
+	r.render()
+	assert.Equal(t, buttonID, r.focusMgr.GetFocusedID(), "focus stays on the button after re-renders")
+
+	r.processEvent(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, 3, app.submits, "Enter reaches the button built in the latest render")
+}
+
+type buttonClickApp struct{ clicks int }
+
+func (a *buttonClickApp) View() View {
+	return Stack(
+		Text("header"),
+		Button("Submit", func() { a.clicks++ }).ID("submit"),
+	)
+}
+
+func TestButton_MouseClickInvokesCallback(t *testing.T) {
+	app := &buttonClickApp{}
+	r := NewRuntime(NewTestTerminal(80, 24, io.Discard), app, 30)
+	r.render()
+
+	r.processEvent(MouseEvent{X: 2, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 1, app.clicks, "clicking a button runs its callback")
+	assert.Equal(t, "submit", r.focusMgr.GetFocusedID(), "clicking a button also focuses it")
+
+	r.processEvent(MouseEvent{X: 2, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 1, app.clicks, "a click outside the button does not run its callback")
 }
