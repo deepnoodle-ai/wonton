@@ -29,8 +29,12 @@ import "math"
 //	    fmt.Print(c.Apply("█"))
 //	}
 func HSLToRGB(h, s, l float64) RGB {
+	// Treat NaN inputs (and an infinite hue, which math.Mod turns into NaN)
+	// as 0 so they cannot reach the uint8 conversion below.
+	s, l = zeroNaN(s), zeroNaN(l)
+
 	// Wrap hue into [0, 360) and normalize to 0-1 range
-	h = math.Mod(h, 360.0)
+	h = zeroNaN(math.Mod(h, 360.0))
 	if h < 0 {
 		h += 360.0
 	}
@@ -127,4 +131,11 @@ func hueToRGB(p, q, t float64) float64 {
 		return p + (q-p)*(2.0/3.0-t)*6
 	}
 	return p
+}
+
+func zeroNaN(v float64) float64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	return v
 }

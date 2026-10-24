@@ -93,3 +93,10 @@ func channelDelta(a, b color.RGB) int {
 	}
 	return d
 }
+
+func TestHSLToRGB_NaN(t *testing.T) {
+	// NaN inputs are treated as 0
+	assert.Equal(t, color.HSLToRGB(0, 0, 0), color.HSLToRGB(math.NaN(), math.NaN(), math.NaN()))
+	assert.Equal(t, color.HSLToRGB(0, 1, 0.5), color.HSLToRGB(math.NaN(), 1, 0.5))
+	assert.Equal(t, color.HSLToRGB(120, 0, 0.5), color.HSLToRGB(120, math.NaN(), 0.5))
+}

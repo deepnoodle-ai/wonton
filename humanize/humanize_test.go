@@ -444,3 +444,13 @@ func ExampleTruncateWithSuffix() {
 	// hello w~
 	// hello
 }
+
+func TestMinInt64(t *testing.T) {
+	assert.Equal(t, "-8.0 EiB", Bytes(math.MinInt64))
+	assert.Equal(t, "-9.2 EB", BytesSI(math.MinInt64))
+	assert.Equal(t, "-106751d 23h", Duration(time.Duration(math.MinInt64)))
+	assert.Equal(t, "-106751d", DurationShort(time.Duration(math.MinInt64)))
+	// time.Time.Sub saturates at math.MinInt64 for spans over ~292 years.
+	assert.Equal(t, "in 292 years", RelativeTime(time.Now(), time.Time{}))
+	assert.Equal(t, "292 years ago", RelativeTime(time.Time{}, time.Now()))
+}

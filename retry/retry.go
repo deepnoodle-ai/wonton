@@ -217,11 +217,14 @@ func LinearBackoff(attempt int, cfg *Config) time.Duration {
 	if attempt <= 0 {
 		return 0
 	}
-	backoff := cfg.InitialBackoff + time.Duration(attempt-1)*cfg.LinearIncrement
-	if backoff > cfg.MaxBackoff || backoff < 0 {
-		backoff = cfg.MaxBackoff
+	// Compute in float64 space: (attempt-1)*LinearIncrement can overflow
+	// time.Duration and wrap to a small positive value, which would slip
+	// under the cap.
+	backoff := float64(cfg.InitialBackoff) + float64(attempt-1)*float64(cfg.LinearIncrement)
+	if !(backoff < float64(cfg.MaxBackoff)) || backoff < 0 {
+		backoff = float64(cfg.MaxBackoff)
 	}
-	return applyJitter(backoff, cfg.Jitter)
+	return applyJitter(time.Duration(backoff), cfg.Jitter)
 }
 
 // ConstantBackoff returns the same delay for all attempts (with jitter).
@@ -249,7 +252,9 @@ func FullJitterBackoff(attempt int, cfg *Config) time.Duration {
 		return 0
 	}
 	ceiling := float64(cfg.InitialBackoff) * math.Pow(cfg.BackoffMultiplier, float64(attempt-1))
-	if ceiling > float64(cfg.MaxBackoff) {
+	// The negated comparison also catches NaN (e.g. 0 * Inf), which would
+	// otherwise convert to an arbitrary time.Duration.
+	if !(ceiling < float64(cfg.MaxBackoff)) {
 		ceiling = float64(cfg.MaxBackoff)
 	}
 	return time.Duration(rand.Float64() * ceiling)

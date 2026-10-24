@@ -764,3 +764,25 @@ func TestNilTimerAndDelayFuncUseDefaults(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, calls)
 }
+
+func TestLinearBackoffOverflowCaps(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:  time.Second,
+		MaxBackoff:      time.Minute,
+		LinearIncrement: time.Duration(1 << 62),
+	}
+	// (attempt-1)*LinearIncrement wraps int64 to 0 for attempt 5.
+	assert.Equal(t, time.Minute, LinearBackoff(5, cfg))
+	assert.Equal(t, time.Minute, LinearBackoff(1<<40, cfg))
+}
+
+func TestFullJitterBackoffNaNCeiling(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:    0,
+		MaxBackoff:        time.Minute,
+		BackoffMultiplier: 2,
+	}
+	// 0 * Inf is NaN. The delay must stay within [0, MaxBackoff].
+	d := FullJitterBackoff(5000, cfg)
+	assert.True(t, d >= 0 && d <= time.Minute, "delay out of range: %v", d)
+}
