@@ -576,6 +576,10 @@ func Regexp(t testing.TB, pattern any, str string, msgAndArgs ...any) {
 	var re *regexp.Regexp
 	switch p := pattern.(type) {
 	case *regexp.Regexp:
+		if p == nil {
+			t.Fatalf("pattern must not be a nil *regexp.Regexp")
+			return
+		}
 		re = p
 	case string:
 		var err error
@@ -709,13 +713,13 @@ func contains(haystack, needle any) bool {
 		return strings.Contains(hv.String(), nv.String())
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < hv.Len(); i++ {
-			if gocmp.Equal(hv.Index(i).Interface(), needle) {
+			if gocmp.Equal(hv.Index(i).Interface(), needle, defaultOpts...) {
 				return true
 			}
 		}
 	case reflect.Map:
 		for _, k := range hv.MapKeys() {
-			if gocmp.Equal(k.Interface(), needle) {
+			if gocmp.Equal(k.Interface(), needle, defaultOpts...) {
 				return true
 			}
 		}
