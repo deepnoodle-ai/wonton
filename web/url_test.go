@@ -156,6 +156,17 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "https://example.com/path",
 		},
 		{
+			name:     "https port removed from upgraded http URL",
+			input:    "http://example.com:443/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "port 443 kept on http with KeepHTTP",
+			input:    "http://example.com:443/path",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "http://example.com:443/path",
+		},
+		{
 			name:     "default http port removed with KeepHTTP",
 			input:    "http://example.com:80/path",
 			opts:     []NormalizeOption{KeepHTTP()},

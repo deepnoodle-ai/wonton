@@ -278,18 +278,19 @@ func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 	u.Host = strings.ToLower(u.Host)
 
 	// Default ports are redundant: example.com:443 and example.com are the
-	// same resource over https.
-	if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+	// same resource over https. An http URL that will be upgraded drops
+	// either default port, so "http://host:80" and "http://host:443" both
+	// become "https://host".
+	upgrade := u.Scheme == "http" && !cfg.keepHTTP
+	port := u.Port()
+	if (u.Scheme == "http" && port == "80") || (port == "443" && (u.Scheme == "https" || upgrade)) {
 		host := u.Hostname()
 		if strings.Contains(host, ":") {
 			host = "[" + host + "]" // restore IPv6 brackets stripped by Hostname
 		}
 		u.Host = host
 	}
-
-	// Upgrade after stripping the default port, so "http://host:80" becomes
-	// "https://host" rather than "https://host:80".
-	if u.Scheme == "http" && !cfg.keepHTTP {
+	if upgrade {
 		u.Scheme = "https"
 	}
 
