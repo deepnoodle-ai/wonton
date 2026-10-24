@@ -211,8 +211,9 @@ func (c *CodeView) expandTabs(s string, startCol int) string {
 	var result strings.Builder
 	col := startCol
 
-	for _, r := range s {
-		if r == '\t' {
+	// Advance by grapheme cluster, so columns match runewidth.StringWidth.
+	for cluster, w := range runewidth.Graphemes(s) {
+		if cluster == "\t" {
 			// Calculate spaces to next tab stop
 			spaces := c.tabWidth - (col % c.tabWidth)
 			for i := 0; i < spaces; i++ {
@@ -220,8 +221,8 @@ func (c *CodeView) expandTabs(s string, startCol int) string {
 			}
 			col += spaces
 		} else {
-			result.WriteRune(r)
-			col += runewidth.RuneWidth(r)
+			result.WriteString(cluster)
+			col += w
 		}
 	}
 
@@ -370,24 +371,10 @@ func padLeft(n, width int) string {
 }
 
 // truncateToWidth truncates a string to fit within a given display width.
+// It never splits a grapheme cluster.
 func truncateToWidth(s string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return ""
-	}
-
-	var result strings.Builder
-	width := 0
-
-	for _, r := range s {
-		rw := runewidth.RuneWidth(r)
-		if width+rw > maxWidth {
-			break
-		}
-		result.WriteRune(r)
-		width += rw
-	}
-
-	return result.String()
+	result, _ := runewidth.FitLeft(s, maxWidth)
+	return result
 }
 
 // AvailableThemes returns a list of available syntax highlighting themes.

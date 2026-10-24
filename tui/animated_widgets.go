@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"unicode/utf8"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // AnimatedText represents text with color animation
@@ -29,20 +29,15 @@ func (at *AnimatedText) Update(frame uint64) {
 
 // Draw renders the animated text
 func (at *AnimatedText) Draw(frame RenderFrame) {
-	runes := []rune(at.text)
-	totalChars := len(runes)
-
-	for i, r := range runes {
-		currentX := at.x + i
-		var style Style
+	forEachAnimatedCluster(at.text, func(i, total, col int, cluster string, _ int) bool {
+		style := NewStyle()
 		if at.animation != nil {
 			// Use the animation's GetStyle method - consolidated rendering
-			style = at.animation.GetStyle(at.currentFrame, i, totalChars)
-		} else {
-			style = NewStyle()
+			style = at.animation.GetStyle(at.currentFrame, i, total)
 		}
-		frame.SetCell(currentX, at.y, r, style)
-	}
+		frame.PrintTruncated(at.x+col, at.y, cluster, style)
+		return true
+	})
 }
 
 // Position returns the element's position
@@ -52,7 +47,7 @@ func (at *AnimatedText) Position() (x, y int) {
 
 // Dimensions returns the element's dimensions
 func (at *AnimatedText) Dimensions() (width, height int) {
-	return utf8.RuneCountInString(at.text), 1
+	return runewidth.StringWidth(at.text), 1
 }
 
 // SetText updates the text content
@@ -125,19 +120,15 @@ func (aml *AnimatedMultiLine) Draw(frame RenderFrame) {
 
 		if i < len(aml.animations) && aml.animations[i] != nil {
 			// Draw animated line
-			runes := []rune(line)
-			totalChars := len(runes)
-
-			for j, r := range runes {
-				if j >= aml.width {
-					break // Respect width limit
+			forEachAnimatedCluster(line, func(j, total, col int, cluster string, cw int) bool {
+				if col+cw > aml.width {
+					return false // Respect width limit
 				}
-
-				currentX := aml.x + j
 				// Use the animation's GetStyle method - consolidated rendering
-				style := aml.animations[i].GetStyle(aml.currentFrame, j, totalChars)
-				frame.SetCell(currentX, aml.y+i, r, style)
-			}
+				style := aml.animations[i].GetStyle(aml.currentFrame, j, total)
+				frame.PrintTruncated(aml.x+col, aml.y+i, cluster, style)
+				return true
+			})
 		} else {
 			// Draw static line
 			frame.PrintStyled(aml.x, aml.y+i, line, NewStyle())
@@ -239,7 +230,7 @@ func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 		if i > 0 {
 			sepStyle := NewStyle().WithForeground(ColorBrightBlack).WithBgRGB(asb.background)
 			frame.PrintStyled(currentX, asb.y, asb.separator, sepStyle)
-			currentX += utf8.RuneCountInString(asb.separator)
+			currentX += runewidth.StringWidth(asb.separator)
 		}
 
 		// Draw icon if present
@@ -247,18 +238,18 @@ func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 			iconText := item.Icon + " "
 			if item.Animation != nil {
 				// Apply animation to icon
-				runes := []rune(iconText)
-				for j, r := range runes {
-					style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
+				forEachAnimatedCluster(iconText, func(j, total, col int, cluster string, _ int) bool {
+					style := item.Animation.GetStyle(asb.currentFrame, j, total)
 					// Combine with background
 					style = style.WithBgRGB(asb.background)
-					frame.SetCell(currentX+j, asb.y, r, style)
-				}
+					frame.PrintTruncated(currentX+col, asb.y, cluster, style)
+					return true
+				})
 			} else {
 				iconStyle := item.Style.WithBgRGB(asb.background)
 				frame.PrintStyled(currentX, asb.y, iconText, iconStyle)
 			}
-			currentX += utf8.RuneCountInString(iconText)
+			currentX += runewidth.StringWidth(iconText)
 		}
 
 		// Draw key
@@ -270,41 +261,26 @@ func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 			}
 			keyStyle = keyStyle.WithBgRGB(asb.background)
 			frame.PrintStyled(currentX, asb.y, keyText, keyStyle)
-			currentX += utf8.RuneCountInString(keyText)
+			currentX += runewidth.StringWidth(keyText)
 		}
 
 		// Draw value
 		if item.Value != "" {
 			if item.Animation != nil {
 				// Apply animation to value
-				runes := []rune(item.Value)
-				for j, r := range runes {
-					switch anim := item.Animation.(type) {
-					case *RainbowAnimation:
-						colors := SmoothRainbow(anim.length)
-						offset := int(asb.currentFrame) / anim.speed
-						if anim.reversed {
-							offset = -offset
-						}
-						rainbowPos := (j + offset) % len(colors)
-						if rainbowPos < 0 {
-							rainbowPos += len(colors)
-						}
-						rgb := colors[rainbowPos]
-						// Combine with background
-						style := NewStyle().WithFgRGB(rgb).WithBgRGB(asb.background)
-						frame.SetCell(currentX+j, asb.y, r, style)
-					default:
-						style := item.Animation.GetStyle(asb.currentFrame, j, len(runes))
-						style = style.WithBgRGB(asb.background)
-						frame.SetCell(currentX+j, asb.y, r, style)
-					}
-				}
+				// GetStyle also sizes a RainbowAnimation that has no Length.
+				forEachAnimatedCluster(item.Value, func(j, total, col int, cluster string, _ int) bool {
+					style := item.Animation.GetStyle(asb.currentFrame, j, total)
+					// Combine with background
+					style = style.WithBgRGB(asb.background)
+					frame.PrintTruncated(currentX+col, asb.y, cluster, style)
+					return true
+				})
 			} else {
 				valueStyle := NewStyle().WithForeground(ColorWhite).WithBgRGB(asb.background)
 				frame.PrintStyled(currentX, asb.y, item.Value, valueStyle)
 			}
-			currentX += utf8.RuneCountInString(item.Value)
+			currentX += runewidth.StringWidth(item.Value)
 		}
 	}
 }

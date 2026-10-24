@@ -7,7 +7,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// TreeNode represents a node in a tree view.
+// TreeNode represents a node in a tree view. Nodes must form a tree: a node
+// that is its own ancestor makes rendering recurse without end.
 type TreeNode struct {
 	// Label is the display text for this node.
 	Label string
@@ -58,6 +59,9 @@ func (n *TreeNode) IsLeaf() bool {
 
 // ExpandAll expands this node and all descendants.
 func (n *TreeNode) ExpandAll() {
+	if n == nil {
+		return
+	}
 	n.Expanded = true
 	for _, child := range n.Children {
 		child.ExpandAll()
@@ -66,6 +70,9 @@ func (n *TreeNode) ExpandAll() {
 
 // CollapseAll collapses this node and all descendants.
 func (n *TreeNode) CollapseAll() {
+	if n == nil {
+		return
+	}
 	n.Expanded = false
 	for _, child := range n.Children {
 		child.CollapseAll()
@@ -369,6 +376,9 @@ func (t *TreeView) flatten() []flattenedNode {
 }
 
 func (t *TreeView) flattenNode(node *TreeNode, depth int, isLast bool, ancestors []bool, result *[]flattenedNode) {
+	if node == nil {
+		return
+	}
 	*result = append(*result, flattenedNode{
 		node:      node,
 		depth:     depth,
@@ -554,6 +564,9 @@ func (t *TreeView) FindNode(label string) *TreeNode {
 }
 
 func findNodeByLabel(node *TreeNode, label string) *TreeNode {
+	if node == nil {
+		return nil
+	}
 	if node.Label == label {
 		return node
 	}

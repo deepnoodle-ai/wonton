@@ -238,13 +238,24 @@ func (a *AnimatedProgressView) render(ctx *RenderContext) {
 
 	frame := ctx.Frame()
 
+	// A non-positive speed would divide by zero; treat it as the fastest rate.
+	shimmerSpeed := max(a.shimmerSpeed, 1)
+	pulseSpeed := max(a.pulseSpeed, 1)
+
+	// Shimmer blends from the bar's RGB color. A bar with only an ANSI color
+	// has no RGB value to blend from, so the highlight is drawn unblended.
+	baseColor := a.highlightColor
+	if p.style.FgRGB != nil {
+		baseColor = *p.style.FgRGB
+	}
+
 	// Draw filled portion with animation
 	for i := 0; i < fillWidth; i++ {
 		style := p.style
 
 		if a.shimmer && fillWidth > 0 {
 			// Calculate shimmer position (moves across the bar)
-			shimmerPos := int(frame/uint64(a.shimmerSpeed)) % (fillWidth + 3)
+			shimmerPos := int(frame/uint64(shimmerSpeed)) % (fillWidth + 3)
 			distance := shimmerPos - i
 			if distance < 0 {
 				distance = -distance
@@ -253,17 +264,16 @@ func (a *AnimatedProgressView) render(ctx *RenderContext) {
 			// Apply shimmer highlight when close to shimmer position
 			if distance <= 2 {
 				intensity := 1.0 - float64(distance)/3.0
-				baseColor := p.style.FgRGB
-				r := uint8(float64(baseColor.R) + float64(a.highlightColor.R-baseColor.R)*intensity)
-				g := uint8(float64(baseColor.G) + float64(a.highlightColor.G-baseColor.G)*intensity)
-				b := uint8(float64(baseColor.B) + float64(a.highlightColor.B-baseColor.B)*intensity)
+				r := uint8(float64(baseColor.R) + (float64(a.highlightColor.R)-float64(baseColor.R))*intensity)
+				g := uint8(float64(baseColor.G) + (float64(a.highlightColor.G)-float64(baseColor.G))*intensity)
+				b := uint8(float64(baseColor.B) + (float64(a.highlightColor.B)-float64(baseColor.B))*intensity)
 				style = style.WithFgRGB(NewRGB(r, g, b))
 			}
 		}
 
 		if a.pulse {
 			// Calculate pulse brightness using sine wave (oscillates over time)
-			pulsePhase := float64(frame) / float64(a.pulseSpeed)
+			pulsePhase := float64(frame) / float64(pulseSpeed)
 			// Sine wave oscillates between -1 and 1, so scale to 0.3-1.0 range
 			brightness := 0.65 + 0.35*math.Sin(pulsePhase)
 			r := uint8(float64(a.pulseColor.R) * brightness)

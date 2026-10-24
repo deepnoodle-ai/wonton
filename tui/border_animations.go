@@ -211,9 +211,9 @@ func (s *SparkleBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, p
 		// Calculate sparkle intensity
 		intensity := 1.0 - float64(posInCycle)/float64(s.Density)
 
-		r := uint8(float64(s.BaseColor.R) + float64(s.SparkColor.R-s.BaseColor.R)*intensity)
-		g := uint8(float64(s.BaseColor.G) + float64(s.SparkColor.G-s.BaseColor.G)*intensity)
-		b := uint8(float64(s.BaseColor.B) + float64(s.SparkColor.B-s.BaseColor.B)*intensity)
+		r := uint8(float64(s.BaseColor.R) + (float64(s.SparkColor.R)-float64(s.BaseColor.R))*intensity)
+		g := uint8(float64(s.BaseColor.G) + (float64(s.SparkColor.G)-float64(s.BaseColor.G))*intensity)
+		b := uint8(float64(s.BaseColor.B) + (float64(s.SparkColor.B)-float64(s.BaseColor.B))*intensity)
 
 		return NewStyle().WithFgRGB(NewRGB(r, g, b))
 	}
@@ -328,9 +328,9 @@ func (c *CornerHighlightAnimation) GetBorderStyle(frame uint64, part BorderPart,
 }
 
 func (c *CornerHighlightAnimation) blendColors(from, to RGB, intensity float64) Style {
-	r := uint8(float64(from.R) + float64(to.R-from.R)*intensity)
-	g := uint8(float64(from.G) + float64(to.G-from.G)*intensity)
-	b := uint8(float64(from.B) + float64(to.B-from.B)*intensity)
+	r := uint8(float64(from.R) + (float64(to.R)-float64(from.R))*intensity)
+	g := uint8(float64(from.G) + (float64(to.G)-float64(from.G))*intensity)
+	b := uint8(float64(from.B) + (float64(to.B)-float64(from.B))*intensity)
 	return NewStyle().WithFgRGB(NewRGB(r, g, b))
 }
 

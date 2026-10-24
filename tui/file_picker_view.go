@@ -3,6 +3,8 @@ package tui
 import (
 	"image"
 	"strings"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // FilePickerView displays a file picker with filter input and file list.
@@ -190,10 +192,11 @@ func (f *FilePickerView) render(ctx *RenderContext) {
 	// Overlay path on divider
 	if f.currentPath != "" {
 		pathLabel := " " + f.currentPath + " "
-		if len(pathLabel) > width-4 {
-			pathLabel = " ..." + pathLabel[len(pathLabel)-width+7:] + " "
+		if runewidth.StringWidth(pathLabel) > width-4 {
+			tail, _ := runewidth.FitRight(pathLabel, width-7)
+			pathLabel = " ..." + tail + " "
 		}
-		ctx.PrintStyled(2, dividerY, pathLabel, f.pathStyle)
+		ctx.PrintTruncated(2, dividerY, pathLabel, f.pathStyle)
 	}
 
 	// Get filtered items

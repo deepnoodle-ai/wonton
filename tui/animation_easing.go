@@ -115,17 +115,19 @@ func EaseInOutExpo(t float64) float64 {
 
 // EaseInCirc accelerates using circular function.
 func EaseInCirc(t float64) float64 {
+	t = clamp01(t)
 	return 1 - math.Sqrt(1-t*t)
 }
 
 // EaseOutCirc decelerates using circular function.
 func EaseOutCirc(t float64) float64 {
-	t--
+	t = clamp01(t) - 1
 	return math.Sqrt(1 - t*t)
 }
 
 // EaseInOutCirc accelerates and decelerates using circular function.
 func EaseInOutCirc(t float64) float64 {
+	t = clamp01(t)
 	if t < 0.5 {
 		return (1 - math.Sqrt(1-4*t*t)) / 2
 	}
@@ -233,6 +235,9 @@ func EaseChain(easings ...Easing) Easing {
 		if section >= n {
 			section = n - 1
 		}
+		if section < 0 {
+			section = 0
+		}
 		sectionT := (t*float64(n) - float64(section))
 		return (float64(section) + easings[section](sectionT)) / float64(n)
 	}
@@ -274,4 +279,9 @@ func EaseClamp(easing Easing) Easing {
 		}
 		return v
 	}
+}
+
+// clamp01 limits t to [0, 1] for easings that are undefined outside it.
+func clamp01(t float64) float64 {
+	return max(0, min(1, t))
 }

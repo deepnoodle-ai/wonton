@@ -1,6 +1,10 @@
 package tui
 
-import "image"
+import (
+	"image"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
+)
 
 // AnimatedBorderedView wraps a view with an animated border.
 type AnimatedBorderedView struct {
@@ -89,7 +93,8 @@ func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 	frame := ctx.Frame()
 
 	// Calculate total perimeter for border animation
-	perimeter := (w-2)*2 + (h-2)*2 + 4 // Include corners
+	// Include corners. A 1x1 border computes 0; animations divide by it.
+	perimeter := max((w-2)*2+(h-2)*2+4, 1)
 
 	// Draw top border
 	position := 0
@@ -166,13 +171,8 @@ func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 
 	// Title
 	if f.title != "" && w > 4 {
-		titleW, _ := MeasureText(f.title)
-		maxTitleW := w - 4
-		if titleW > maxTitleW {
-			titleW = maxTitleW
-		}
 		titleX := 2
-		ctx.PrintTruncated(titleX, 0, f.title[:min(len(f.title), maxTitleW)], f.titleStyle)
+		ctx.PrintTruncated(titleX, 0, runewidth.Truncate(f.title, w-4, ""), f.titleStyle)
 	}
 
 	// Inner content
