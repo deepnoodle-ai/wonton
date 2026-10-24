@@ -39,7 +39,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
   tildes were printed. A single tilde, as in `~5 minutes`, stays plain text.
 - `tui` Markdown applies `BlockQuoteStyle` to quoted text. Before, quotes
   were only indented. The text's own styles, such as inline code colors,
-  still win.
+  still win. The default theme draws quoted text in bright black, so quotes
+  in the default theme now appear grey.
 - When `tui` Markdown wraps a paragraph, the space between two words keeps
   only the style both words share. Before, the space before inline code
   took the code background, and the space before a link was underlined.
