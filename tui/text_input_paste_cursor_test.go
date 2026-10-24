@@ -52,6 +52,13 @@ func TestTextInputEditInsidePastePlaceholder(t *testing.T) {
 
 	ti = newPlaceholderInput(t)
 	ti.CursorPos = 2
+	ti.HandlePaste("z")
+	if ti.Value() != "aline1\nline2z" || ti.CursorPos != len(ti.DisplayText()) {
+		t.Fatalf("paste: cursor=%d value=%q", ti.CursorPos, ti.Value())
+	}
+
+	ti = newPlaceholderInput(t)
+	ti.CursorPos = 2
 	ti.HandleKey(KeyEvent{Rune: 'b'})
 	if ti.Value() != "aline1\nline2b" || ti.CursorPos != len(ti.DisplayText()) {
 		t.Fatalf("insert: cursor=%d value=%q", ti.CursorPos, ti.Value())

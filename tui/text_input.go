@@ -121,7 +121,6 @@ func (t *textInput) SetValue(value string) {
 	if value == "" {
 		t.segments = []inputSegment{}
 	} else {
-		t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 		t.segments = []inputSegment{{display: value, actual: value, isPaste: false}}
 	}
 	t.CursorPos = len(value)
@@ -1301,6 +1300,7 @@ func (t *textInput) HandlePaste(content string) bool {
 		t.segments = []inputSegment{newSeg}
 		t.CursorPos = len(newSeg.display)
 	} else {
+		t.CursorPos = t.snapOutOfSpecial(t.CursorPos, true)
 		segIdx, offset := t.findSegmentAtPos(t.CursorPos)
 		seg := t.segments[segIdx]
 
