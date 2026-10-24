@@ -1,0 +1,101 @@
+package terminal
+
+import (
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/deepnoodle-ai/wonton/assert"
+)
+
+func TestKeyDecoder_BracketedPasteEndingWithEscape(t *testing.T) {
+	// The paste content ends with ESC, so the end marker's ESC follows a
+	// lone ESC. The decoder must still find the marker.
+	decoder := NewKeyDecoder(strings.NewReader("\x1b[200~hello\x1b\x1b[201~q"))
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent).Paste, "hello\x1b")
+
+	event, err = decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent).Rune, 'q')
+}
+
+func TestKeyDecoder_BracketedPasteWithEmbeddedEscapes(t *testing.T) {
+	for _, content := range []string{"a\x1b[20b", "\x1b\x1b[2\x1b[201", "x\x1b[200~y", "\x1b[2\x1b[20\x1b"} {
+		decoder := NewKeyDecoder(strings.NewReader("\x1b[200~" + content + "\x1b[201~z"))
+		event, err := decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, event.(KeyEvent).Paste, content)
+		event, err = decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, event.(KeyEvent).Rune, 'z')
+	}
+}
+
+func TestKeyDecoder_EscapeSequenceAcrossBufferBoundary(t *testing.T) {
+	// ESC is the last byte of the first 4096-byte buffer fill. The rest of
+	// the sequence is still pending, so ESC is not a standalone key.
+	input := strings.Repeat("a", 4095) + "\x1b[A"
+	for _, readEvent := range []bool{true, false} {
+		decoder := NewKeyDecoder(strings.NewReader(input))
+		var last KeyEvent
+		count := 0
+		for {
+			var ev KeyEvent
+			var err error
+			if readEvent {
+				var e Event
+				e, err = decoder.ReadEvent()
+				if k, ok := e.(KeyEvent); ok {
+					ev = k
+				}
+			} else {
+				ev, err = decoder.ReadKeyEvent()
+			}
+			if err == io.EOF {
+				break
+			}
+			assert.NoError(t, err)
+			last = ev
+			count++
+		}
+		assert.Equal(t, count, 4096)
+		assert.Equal(t, last.Key, KeyArrowUp)
+	}
+}
+
+func TestKeyDecoder_AltNonASCII(t *testing.T) {
+	decoder := NewKeyDecoder(strings.NewReader("\x1b\xc3\xa9"))
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent), KeyEvent{Rune: 'é', Alt: true})
+
+	decoder = NewKeyDecoder(strings.NewReader("\x1b\xe4\xb8\x96"))
+	key, err := decoder.ReadKeyEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, key, KeyEvent{Rune: '世', Alt: true})
+}
+
+func TestKeyDecoder_KittyFunctionalKeys(t *testing.T) {
+	tests := []struct {
+		input string
+		want  KeyEvent
+	}{
+		{"\x1b[57358u", KeyEvent{}},                                // Caps Lock
+		{"\x1b[57376u", KeyEvent{}},                                // F13
+		{"\x1b[57441;2u", KeyEvent{Shift: true}},                   // Left Shift
+		{"\x1b[57399u", KeyEvent{Rune: '0'}},                       // KP_0
+		{"\x1b[57413u", KeyEvent{Rune: '+'}},                       // KP_Add
+		{"\x1b[57414u", KeyEvent{Key: KeyEnter}},                   // KP_Enter
+		{"\x1b[57419u", KeyEvent{Key: KeyArrowUp}},                 // KP_Up
+		{"\x1b[57426u", KeyEvent{Key: KeyDelete}},                  // KP_Delete
+		{"\x1b[57417;5u", KeyEvent{Key: KeyArrowLeft, Ctrl: true}}, // Ctrl+KP_Left
+	}
+	for _, tt := range tests {
+		decoder := NewKeyDecoder(strings.NewReader(tt.input))
+		event, err := decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, event.(KeyEvent), tt.want, "input %q", tt.input)
+	}
+}
