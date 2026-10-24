@@ -64,7 +64,32 @@ import (
 // KeyDecoder is NOT thread-safe. Only one goroutine should call ReadEvent at a time.
 type KeyDecoder struct {
 	reader        *bufio.Reader
+	src           *fillTracker
 	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
+}
+
+// fillTracker records whether the most recent Read filled the whole buffer
+// it was given. A full read means the source had at least that many bytes
+// ready, so more bytes are probably pending. The decoder uses this to tell an
+// escape sequence that straddles a bufio buffer fill from a lone Escape key.
+type fillTracker struct {
+	r    io.Reader
+	full bool
+}
+
+func (f *fillTracker) Read(p []byte) (int, error) {
+	n, err := f.r.Read(p)
+	f.full = n > 0 && n == len(p)
+	return n, err
+}
+
+// standaloneEscape reports whether an ESC that was just read is a lone
+// Escape key press. Escape sequences arrive as a rapid burst, so if the
+// terminal sent one, the following bytes are normally already buffered. The
+// exception is when the ESC was the last byte of a read that filled the
+// buffer; then the rest of the burst is still in the source.
+func (kd *KeyDecoder) standaloneEscape() bool {
+	return kd.reader.Buffered() == 0 && !kd.src.full
 }
 
 // NewKeyDecoder creates a new KeyDecoder that reads from the given input stream.
@@ -81,8 +106,10 @@ type KeyDecoder struct {
 // The decoder must be paired with a terminal in raw mode to receive
 // input character-by-character rather than line-by-line.
 func NewKeyDecoder(reader io.Reader) *KeyDecoder {
+	src := &fillTracker{r: reader}
 	return &KeyDecoder{
-		reader:        bufio.NewReader(reader),
+		reader:        bufio.NewReader(src),
+		src:           src,
 		pasteTabWidth: 0, // Default: preserve tabs
 	}
 }
@@ -182,7 +209,7 @@ func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
 	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
 	// sequence, the following bytes should already be in the buffer.
 	// If nothing is buffered, this is a standalone Escape key press.
-	if kd.reader.Buffered() == 0 {
+	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
 	}
 
@@ -210,6 +237,14 @@ func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
 		if nextByte >= 0x20 && nextByte < 0x7F {
 			// Printable character with Alt
 			return KeyEvent{Rune: rune(nextByte), Alt: true}, nil
+		}
+		if nextByte >= 0xC2 && nextByte <= 0xF4 {
+			// UTF-8 lead byte: Alt with a non-ASCII character
+			ev, err := kd.decodeUTF8(nextByte)
+			if ev.Rune != 0 {
+				ev.Alt = true
+			}
+			return ev, err
 		}
 		// Unknown sequence, return escape
 		kd.reader.UnreadByte()
@@ -485,7 +520,7 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
 	// sequence, the following bytes should already be in the buffer.
 	// If nothing is buffered, this is a standalone Escape key press.
-	if kd.reader.Buffered() == 0 {
+	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
 	}
 
@@ -512,6 +547,14 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 		if nextByte >= 0x20 && nextByte < 0x7F {
 			// Printable character with Alt
 			return KeyEvent{Rune: rune(nextByte), Alt: true}, nil
+		}
+		if nextByte >= 0xC2 && nextByte <= 0xF4 {
+			// UTF-8 lead byte: Alt with a non-ASCII character
+			ev, err := kd.decodeUTF8(nextByte)
+			if ev.Rune != 0 {
+				ev.Alt = true
+			}
+			return ev, err
 		}
 		// Unknown sequence, return escape
 		kd.reader.UnreadByte()
@@ -680,6 +723,14 @@ func (kd *KeyDecoder) decodeCSIu(codepoint string, modifier int) (KeyEvent, erro
 
 	// For other codepoints, try to parse as a number and return as a rune
 	if cp, err := strconv.Atoi(codepoint); err == nil && cp >= 32 && cp < 0x10FFFF {
+		if cp >= kittyFunctionalFirst && cp <= kittyFunctionalLast {
+			// Kitty functional keys (keypad, F13-F35, lock and modifier
+			// keys, media keys) use Private Use Area codepoints. They are
+			// not text, so never return them as a Rune.
+			ev := kittyFunctionalKey(cp)
+			ev.Shift, ev.Alt, ev.Ctrl = shift, alt, ctrl
+			return ev, nil
+		}
 		// If Ctrl is pressed with a letter, return the appropriate KeyCtrl* constant
 		// This handles Kitty protocol sending Ctrl+C as codepoint 99 ('c') with Ctrl modifier
 		if ctrl && cp >= 'a' && cp <= 'z' {
@@ -692,6 +743,46 @@ func (kd *KeyDecoder) decodeCSIu(codepoint string, modifier int) (KeyEvent, erro
 	}
 
 	return KeyEvent{Key: KeyUnknown}, nil
+}
+
+// Kitty keyboard protocol functional key codepoints. See
+// https://sw.kovidgoyal.net/kitty/keyboard-protocol/#functional-key-definitions
+const (
+	kittyFunctionalFirst = 57344
+	kittyFunctionalLast  = 63743
+	kittyKP0             = 57399
+	kittyKP9             = 57408
+)
+
+// kittyKeypadRunes maps the Kitty keypad text keys (KP_DECIMAL through
+// KP_SEPARATOR) to the characters they type.
+var kittyKeypadRunes = map[int]rune{
+	57409: '.', 57410: '/', 57411: '*', 57412: '-', 57413: '+', 57415: '=', 57416: ',',
+}
+
+// kittyKeypadKeys maps the Kitty keypad Enter and navigation keys to keys.
+var kittyKeypadKeys = map[int]Key{
+	57414: KeyEnter,
+	57417: KeyArrowLeft, 57418: KeyArrowRight, 57419: KeyArrowUp, 57420: KeyArrowDown,
+	57421: KeyPageUp, 57422: KeyPageDown, 57423: KeyHome, 57424: KeyEnd,
+	57425: KeyInsert, 57426: KeyDelete,
+}
+
+// kittyFunctionalKey maps a Kitty functional key codepoint to a KeyEvent.
+// Keypad keys map to the characters or keys they stand for. Keys with no
+// equivalent (F13-F35, lock, modifier, and media keys) return KeyUnknown with
+// no Rune.
+func kittyFunctionalKey(cp int) KeyEvent {
+	if cp >= kittyKP0 && cp <= kittyKP9 {
+		return KeyEvent{Rune: rune('0' + cp - kittyKP0)}
+	}
+	if r, ok := kittyKeypadRunes[cp]; ok {
+		return KeyEvent{Rune: r}
+	}
+	if k, ok := kittyKeypadKeys[cp]; ok {
+		return KeyEvent{Key: k}
+	}
+	return KeyEvent{Key: KeyUnknown}
 }
 
 // ctrlLetterEvent returns a KeyEvent for Ctrl+letter combinations
@@ -840,9 +931,13 @@ func normalizePasteContent(s string, tabWidth int) string {
 // decodeBracketedPaste decodes a bracketed paste sequence
 // We've already consumed ESC [ 200 ~, now read until ESC [ 201 ~
 func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
+	const endMarker = "\x1b[201~"
 	var content []byte
 
-	// Read bytes until we find the end sequence: ESC [ 201 ~
+	// Append every byte and check for the end marker as a suffix. Matching on
+	// the accumulated content (rather than reading ahead after each ESC)
+	// finds the marker even when it directly follows an ESC in the pasted
+	// text, such as "hello\x1b\x1b[201~".
 	for {
 		b, err := kd.reader.ReadByte()
 		if err != nil {
@@ -853,85 +948,12 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 			// Return what we have so far (with normalized line endings)
 			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, err
 		}
-
-		// Check if this might be the start of the end sequence
-		if b == 0x1B { // ESC
-			// Peek ahead to check for [ 2 0 1 ~
-			next1, err1 := kd.reader.ReadByte()
-			if err1 != nil {
-				if errors.Is(err1, terminalinput.Boundary) {
-					return kd.boundaryPaste(content)
-				}
-				content = append(content, b)
-				break
-			}
-
-			if next1 == '[' {
-				next2, err2 := kd.reader.ReadByte()
-				if err2 != nil {
-					if errors.Is(err2, terminalinput.Boundary) {
-						return kd.boundaryPaste(content)
-					}
-					content = append(content, b, next1)
-					break
-				}
-
-				if next2 == '2' {
-					next3, err3 := kd.reader.ReadByte()
-					if err3 != nil {
-						if errors.Is(err3, terminalinput.Boundary) {
-							return kd.boundaryPaste(content)
-						}
-						content = append(content, b, next1, next2)
-						break
-					}
-
-					if next3 == '0' {
-						next4, err4 := kd.reader.ReadByte()
-						if err4 != nil {
-							if errors.Is(err4, terminalinput.Boundary) {
-								return kd.boundaryPaste(content)
-							}
-							content = append(content, b, next1, next2, next3)
-							break
-						}
-
-						if next4 == '1' {
-							next5, err5 := kd.reader.ReadByte()
-							if err5 != nil {
-								if errors.Is(err5, terminalinput.Boundary) {
-									return kd.boundaryPaste(content)
-								}
-								content = append(content, b, next1, next2, next3, next4)
-								break
-							}
-
-							if next5 == '~' {
-								// Found the end sequence!
-								return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
-							}
-							// Not the end sequence, add all bytes to content
-							content = append(content, b, next1, next2, next3, next4, next5)
-						} else {
-							content = append(content, b, next1, next2, next3, next4)
-						}
-					} else {
-						content = append(content, b, next1, next2, next3)
-					}
-				} else {
-					content = append(content, b, next1, next2)
-				}
-			} else {
-				content = append(content, b, next1)
-			}
-		} else {
-			// Regular character, add to content
-			content = append(content, b)
+		content = append(content, b)
+		if b == '~' && len(content) >= len(endMarker) && string(content[len(content)-len(endMarker):]) == endMarker {
+			content = content[:len(content)-len(endMarker)]
+			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
 		}
 	}
-
-	// If we reach here, we hit EOF or error
-	return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
 }
 
 // boundaryPaste ends incomplete framing at an acknowledged ownership cutoff.
