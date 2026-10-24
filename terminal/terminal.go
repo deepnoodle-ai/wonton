@@ -712,8 +712,10 @@ func (tf *terminalRenderFrame) SetCell(x, y int, char rune, style Style) error {
 	globalX := tf.bounds.Min.X + x
 	globalY := tf.bounds.Min.Y + y
 
-	// Clip to frame bounds
-	if !image.Pt(globalX, globalY).In(tf.bounds) {
+	// Clip to frame bounds. A wide character must fit entirely: its
+	// continuation cell may not land outside the frame.
+	if !image.Pt(globalX, globalY).In(tf.bounds) ||
+		globalX+runewidth.RuneWidth(cellRune(char)) > tf.bounds.Max.X {
 		return ErrOutOfBounds
 	}
 
@@ -771,6 +773,12 @@ func (t *Terminal) RefreshSize() error {
 	if err != nil {
 		t.mu.Unlock()
 		return err
+	}
+	if width <= 0 || height <= 0 {
+		// Some PTYs report 0x0 before they are sized. Buffers with no rows
+		// or columns cannot be drawn into, so keep the current size.
+		t.mu.Unlock()
+		return nil
 	}
 
 	sizeChanged := width != t.width || height != t.height
@@ -1445,6 +1453,13 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 		if skipLine {
 			continue
 		}
+		if cluster == "\t" {
+			// A tab has display width 0 (see runewidth), which is how callers
+			// such as tui measure text, so it takes no column here either.
+			// Storing it in a cell would send a raw tab on flush and move the
+			// real cursor to the next tab stop, out of step with the buffer.
+			continue
+		}
 
 		charWidth := clusterWidth
 
@@ -1454,6 +1469,12 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 				// Auto-wrap: move to next line
 				currentX = clipRect.Min.X
 				currentY++
+				if currentX+charWidth > clipRect.Max.X {
+					// Wider than the whole clip rect (a wide glyph in a
+					// 1-column frame): it can never fit, so drop it rather
+					// than draw past the right edge.
+					continue
+				}
 			} else {
 				// Truncate: skip everything up to the next newline so a
 				// narrower later cluster can't be drawn at the skipped
@@ -1699,9 +1720,29 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 	}
 
 	for j := 0; j < height; j++ {
+		row := t.backBuffer[y+j]
+		// A wide glyph straddling either edge of the fill loses one half;
+		// blank the other half so no orphaned lead or continuation remains.
+		if row[x].Continuation && x > 0 {
+			row[x-1] = Cell{Char: ' ', Style: NewStyle(), Width: 1}
+			t.dirtyRegion.Mark(x-1, y+j)
+		}
+		if right := x + width; right < t.width && row[right].Continuation {
+			row[right] = Cell{Char: ' ', Style: NewStyle(), Width: 1}
+			t.dirtyRegion.Mark(right, y+j)
+		}
+
 		for i := 0; i < width; i += step {
 			// Validation (should be covered by top-level check but good for safety)
 			if x+i >= t.width {
+				break
+			}
+
+			if charWidth > 1 && i+charWidth > width {
+				// No room for the whole glyph: fill the remainder with spaces.
+				for ; i < width; i++ {
+					row[x+i] = Cell{Char: ' ', Style: style, Width: 1}
+				}
 				break
 			}
 
@@ -2284,9 +2325,11 @@ func (tf *terminalRenderFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) 
 		return tf.PrintStyled(x, y, link.Text, link.Style.WithURL(""))
 	}
 
-	// Print the styled text followed by the URL in parentheses
+	// Print the styled text followed by the URL in parentheses. Clear any URL
+	// the style carries: the fallback format shows the URL as text, and the
+	// style's URL was not validated.
 	text := link.Text + " (" + link.URL + ")"
-	return tf.PrintStyled(x, y, text, link.Style)
+	return tf.PrintStyled(x, y, text, link.Style.WithURL(""))
 }
 
 // Write writes raw bytes directly to the terminal output, making *Terminal an
@@ -2359,6 +2402,11 @@ func (t *Terminal) restyleCellInternal(x, y int, style Style) error {
 	}
 	if x < 0 || x >= t.width || y < 0 || y >= t.height {
 		return ErrOutOfBounds
+	}
+	// The right half of a wide glyph is never drawn on its own (flush skips
+	// continuation cells), so restyle the glyph from its lead cell.
+	if t.backBuffer[y][x].Continuation && x > 0 {
+		x--
 	}
 	t.backBuffer[y][x].Style = style
 	t.dirtyRegion.Mark(x, y)

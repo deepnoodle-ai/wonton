@@ -157,10 +157,18 @@ func (s *Screen) parseCSI(data string) int {
 		return -1
 	}
 
-	// Find the end of the sequence (final byte is 0x40-0x7E)
+	// Find the end of the sequence (final byte is 0x40-0x7E). CAN and SUB
+	// cancel the sequence, and ESC starts a new one; either way the bytes
+	// read so far are dropped and nothing is executed.
 	end := -1
 	for i := 0; i < len(data); i++ {
 		c := data[i]
+		if c == 0x18 || c == 0x1A {
+			return i + 1
+		}
+		if c == 0x1B {
+			return i
+		}
 		if c >= 0x40 && c <= 0x7E {
 			end = i
 			break

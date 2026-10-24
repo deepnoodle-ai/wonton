@@ -152,6 +152,8 @@ type Screen struct {
 //	screen := termtest.NewScreen(80, 24)  // Standard terminal size
 //	screen.Write([]byte("Hello, World!"))
 func NewScreen(width, height int) *Screen {
+	// A screen needs at least one cell for the cursor to stand on.
+	width, height = max(width, 1), max(height, 1)
 	s := &Screen{
 		width:  width,
 		height: height,

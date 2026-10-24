@@ -78,8 +78,12 @@ func (t *Terminal) handoffSnapshot() (terminalstate.Transition, error) {
 			}
 			if writeErr == nil {
 				// These modes can be reset without destructive stack operations.
-				t.cursorHidden, t.bracketedPaste, t.mouseMode = hidden, paste, mouse
-				_, writeErr = terminalstate.WriteControl(t.out, activeModes(false, hidden, paste, false, mouse))
+				// Record them only once the terminal has received them all.
+				var complete bool
+				complete, writeErr = terminalstate.WriteControl(t.out, activeModes(false, hidden, paste, false, mouse))
+				if complete {
+					t.cursorHidden, t.bracketedPaste, t.mouseMode = hidden, paste, mouse
+				}
 			}
 			var keyboardErr error
 			if writeErr == nil && kitty && !t.kittyEnabled {
