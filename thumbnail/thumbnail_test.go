@@ -3,7 +3,6 @@ package thumbnail
 import (
 	"bytes"
 	"encoding/binary"
-	"hash/crc32"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -139,28 +138,24 @@ func TestRenderOverPixelCapFallsBack(t *testing.T) {
 	assert.Equal(t, res.Renderer, RendererFallback)
 }
 
-// pngHeader returns a PNG signature and IHDR chunk claiming w x h pixels.
-// image.DecodeConfig reads only this far.
-func pngHeader(w, h uint32) []byte {
+// gifHeader returns a GIF header and logical screen descriptor claiming
+// w x h pixels. image.DecodeConfig reads only this far.
+func gifHeader(w, h uint16) []byte {
 	var buf bytes.Buffer
-	buf.WriteString("\x89PNG\r\n\x1a\n")
-	ihdr := make([]byte, 17)
-	copy(ihdr, "IHDR")
-	binary.BigEndian.PutUint32(ihdr[4:], w)
-	binary.BigEndian.PutUint32(ihdr[8:], h)
-	ihdr[12] = 8 // bit depth
-	ihdr[13] = 6 // RGBA
-	_ = binary.Write(&buf, binary.BigEndian, uint32(13))
-	buf.Write(ihdr)
-	_ = binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(ihdr))
+	buf.WriteString("GIF89a")
+	_ = binary.Write(&buf, binary.LittleEndian, w)
+	_ = binary.Write(&buf, binary.LittleEndian, h)
+	buf.Write([]byte{0, 0, 0}) // no global color table, background, aspect
 	return buf.Bytes()
 }
 
 func TestRenderImagePixelCapDoesNotOverflow(t *testing.T) {
-	// 65536*65536 wraps to 0 in a 32-bit int, which would pass the cap.
+	// 65535*65535 overflows a 32-bit int and wraps negative, which would
+	// pass the cap. (PNG's decoder rejects such sizes itself on 32-bit
+	// platforms; GIF's does not.)
 	_, err := renderImage(Request{
-		MimeType: "image/png",
-		Source:   pngHeader(65536, 65536),
+		MimeType: "image/gif",
+		Source:   gifHeader(65535, 65535),
 		Width:    320,
 		Height:   200,
 	})
@@ -171,20 +166,27 @@ func TestRenderImagePixelCapDoesNotOverflow(t *testing.T) {
 func TestRenderConcurrentCards(t *testing.T) {
 	// Cards share fonts. Run with -race to check that renders do not share
 	// mutable font.Face state.
+	// Errors are collected and checked on the test goroutine: assert calls
+	// t.Fatalf, which must not run on a worker goroutine.
 	var wg sync.WaitGroup
+	errs := make(chan error, 8*5*2)
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 5; j++ {
 				_, err := Render(Request{MimeType: "text/plain", Name: "a.txt", Source: []byte("hello\nworld"), Width: 320, Height: 200})
-				assert.NoError(t, err)
+				errs <- err
 				_, err = Render(Request{MimeType: "application/pdf", Name: "b.pdf", Width: 320, Height: 200})
-				assert.NoError(t, err)
+				errs <- err
 			}
 		}()
 	}
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		assert.NoError(t, err)
+	}
 }
 
 // countingFace counts glyph advance lookups.
