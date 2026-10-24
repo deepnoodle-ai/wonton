@@ -479,6 +479,41 @@ func TestButton_Render_InGroup(t *testing.T) {
 	termtest.AssertRowContains(t, screen, 0, "No")
 }
 
+// unnamedButtonApp builds a Button with no ID and a new capturing closure on
+// every render.
+type unnamedButtonApp struct {
+	name    string
+	submits int
+	renders int
+}
+
+func (a *unnamedButtonApp) View() View {
+	a.renders++
+	step := a.renders
+	return Stack(
+		InputField(&a.name).ID("name"),
+		Button("Submit", func() { a.submits += step }),
+	)
+}
+
+func TestButton_UnnamedKeepsFocusAcrossRenders(t *testing.T) {
+	app := &unnamedButtonApp{}
+	r := NewRuntime(NewTestTerminal(80, 24, io.Discard), app, 30)
+	r.render()
+	assert.Equal(t, "name", r.focusMgr.GetFocusedID())
+
+	r.processEvent(KeyEvent{Key: KeyTab})
+	buttonID := r.focusMgr.GetFocusedID()
+	assert.NotEqual(t, "name", buttonID)
+
+	r.render()
+	r.render()
+	assert.Equal(t, buttonID, r.focusMgr.GetFocusedID(), "focus stays on the button after re-renders")
+
+	r.processEvent(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, 3, app.submits, "Enter reaches the button built in the latest render")
+}
+
 type buttonClickApp struct{ clicks int }
 
 func (a *buttonClickApp) View() View {
