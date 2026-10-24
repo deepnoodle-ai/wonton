@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/creack/pty"
@@ -65,5 +66,23 @@ func TestHandoffRestoreRecordsModesOnlyAfterWrite(t *testing.T) {
 	}
 	if terminal.cursorHidden || terminal.bracketedPaste {
 		t.Fatalf("modes recorded as active after a failed write: hidden=%v paste=%v", terminal.cursorHidden, terminal.bracketedPaste)
+	}
+
+	// A write that fails partway may have enabled some modes. They must be
+	// recorded so that exit sends their disables.
+	out.Reset()
+	out.call, out.failAt, out.bytes = 0, 1, 3
+	if err := transition.Restore(false); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("restore=%v", err)
+	}
+	if !terminal.cursorHidden || !terminal.bracketedPaste {
+		t.Fatalf("modes not recorded after a partial write: hidden=%v paste=%v", terminal.cursorHidden, terminal.bracketedPaste)
+	}
+	out.failAt = 0
+	if err := transition.Restore(true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "\x1b[?2004l") {
+		t.Fatalf("exit did not disable bracketed paste: %q", out.String())
 	}
 }
