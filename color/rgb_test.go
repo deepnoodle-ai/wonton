@@ -1,6 +1,7 @@
 package color_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -112,4 +113,7 @@ func TestRGB_Lerp(t *testing.T) {
 	// t is clamped to [0, 1]
 	assert.Equal(t, start, start.Lerp(end, -1))
 	assert.Equal(t, end, start.Lerp(end, 2))
+
+	// NaN is treated as 0
+	assert.Equal(t, start, start.Lerp(end, math.NaN()))
 }

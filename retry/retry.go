@@ -134,6 +134,7 @@ type Config struct {
 	InitialBackoff time.Duration
 
 	// MaxBackoff is the maximum delay between retries.
+	// 0 means no maximum.
 	MaxBackoff time.Duration
 
 	// BackoffMultiplier is the factor by which backoff increases each retry.
@@ -198,13 +199,7 @@ func ExponentialBackoff(attempt int, cfg *Config) time.Duration {
 		return 0
 	}
 	backoff := float64(cfg.InitialBackoff) * math.Pow(cfg.BackoffMultiplier, float64(attempt-1))
-	// Cap in float64 space: for large attempt counts the product overflows
-	// time.Duration (going negative), so the comparison must happen before
-	// the conversion. The negated comparison also catches NaN.
-	if !(backoff < float64(cfg.MaxBackoff)) {
-		backoff = float64(cfg.MaxBackoff)
-	}
-	return applyJitter(time.Duration(backoff), cfg.Jitter)
+	return applyJitter(capBackoff(backoff, cfg), cfg.Jitter)
 }
 
 // LinearBackoff calculates delay using linear backoff with jitter.
@@ -217,11 +212,11 @@ func LinearBackoff(attempt int, cfg *Config) time.Duration {
 	if attempt <= 0 {
 		return 0
 	}
-	backoff := cfg.InitialBackoff + time.Duration(attempt-1)*cfg.LinearIncrement
-	if backoff > cfg.MaxBackoff || backoff < 0 {
-		backoff = cfg.MaxBackoff
-	}
-	return applyJitter(backoff, cfg.Jitter)
+	// Compute in float64 space: (attempt-1)*LinearIncrement can overflow
+	// time.Duration and wrap to a small positive value, which would slip
+	// under the cap.
+	backoff := float64(cfg.InitialBackoff) + float64(attempt-1)*float64(cfg.LinearIncrement)
+	return applyJitter(capBackoff(backoff, cfg), cfg.Jitter)
 }
 
 // ConstantBackoff returns the same delay for all attempts (with jitter).
@@ -249,10 +244,30 @@ func FullJitterBackoff(attempt int, cfg *Config) time.Duration {
 		return 0
 	}
 	ceiling := float64(cfg.InitialBackoff) * math.Pow(cfg.BackoffMultiplier, float64(attempt-1))
-	if ceiling > float64(cfg.MaxBackoff) {
-		ceiling = float64(cfg.MaxBackoff)
+	return time.Duration(rand.Float64() * float64(capBackoff(ceiling, cfg)))
+}
+
+// uncappedBackoff stands in for "no maximum" when MaxBackoff is 0. It leaves
+// headroom so that adding jitter cannot overflow time.Duration.
+const uncappedBackoff = time.Duration(1 << 61)
+
+// capBackoff converts a computed delay to a time.Duration, capped at
+// MaxBackoff (or uncappedBackoff when MaxBackoff is 0). The cap is applied in
+// float64 space: for large attempt counts the delay overflows time.Duration,
+// so the comparison must happen before the conversion. The negated comparison
+// also catches NaN (e.g. 0 * Inf).
+func capBackoff(backoff float64, cfg *Config) time.Duration {
+	limit := cfg.MaxBackoff
+	if limit <= 0 {
+		limit = uncappedBackoff
 	}
-	return time.Duration(rand.Float64() * ceiling)
+	if !(backoff < float64(limit)) {
+		return limit
+	}
+	if backoff < 0 {
+		return 0
+	}
+	return time.Duration(backoff)
 }
 
 // applyJitter adds +/- jitter percentage to a duration. The result is never
@@ -263,11 +278,16 @@ func applyJitter(d time.Duration, jitter float64) time.Duration {
 	}
 	jitterRange := float64(d) * jitter
 	jitterAmount := (rand.Float64()*2 - 1) * jitterRange
-	result := time.Duration(float64(d) + jitterAmount)
-	if result < 0 {
+	// Clamp in float64 space: a result at or above 2^63 does not fit in a
+	// time.Duration, and converting it would wrap to a negative value.
+	result := float64(d) + jitterAmount
+	if result <= 0 {
 		return 0
 	}
-	return result
+	if result >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return time.Duration(result)
 }
 
 // Option is a functional option for configuring retry behavior.

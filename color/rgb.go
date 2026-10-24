@@ -127,7 +127,7 @@ func (rgb RGB) Sprint(args ...any) string {
 //
 //	mid := color.NewRGB(255, 0, 0).Lerp(color.NewRGB(0, 0, 255), 0.5)
 func (rgb RGB) Lerp(other RGB, t float64) RGB {
-	if t < 0 {
+	if !(t > 0) { // also catches NaN
 		t = 0
 	}
 	if t > 1 {

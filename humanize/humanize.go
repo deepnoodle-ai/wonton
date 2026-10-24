@@ -88,26 +88,43 @@ func BytesSI(b int64) string {
 }
 
 func formatBytes(b int64, base float64, units []string) string {
-	if b < 0 {
-		return "-" + formatBytes(-b, base, units)
-	}
 	if b == 0 {
 		return "0 B"
 	}
+	// Work with the magnitude as a uint64 so that math.MinInt64, whose
+	// negation overflows int64, is handled correctly.
+	sign := ""
+	n := uint64(b)
+	if b < 0 {
+		sign = "-"
+		n = -n
+	}
 
-	bf := float64(b)
+	bf := float64(n)
 	for _, unit := range units[:len(units)-1] {
 		// Compare against base-0.05 so values that would display as the base
 		// (e.g., "1024.0 KiB" after %.1f rounding) move to the next unit.
 		if bf < base-0.05 {
 			if unit == "B" {
-				return fmt.Sprintf("%d %s", b, unit)
+				return fmt.Sprintf("%s%d %s", sign, n, unit)
 			}
-			return fmt.Sprintf("%.1f %s", bf, unit)
+			return fmt.Sprintf("%s%.1f %s", sign, bf, unit)
 		}
 		bf /= base
 	}
-	return fmt.Sprintf("%.1f %s", bf, units[len(units)-1])
+	return fmt.Sprintf("%s%.1f %s", sign, bf, units[len(units)-1])
+}
+
+// absDuration returns the magnitude of d. math.MinInt64 has no positive
+// int64 counterpart, so it saturates to math.MaxInt64.
+func absDuration(d time.Duration) time.Duration {
+	if d == math.MinInt64 {
+		return math.MaxInt64
+	}
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 // Duration formats a duration into a human-readable string with up to two
@@ -133,9 +150,7 @@ func Duration(d time.Duration) string {
 	}
 
 	neg := d < 0
-	if neg {
-		d = -d
-	}
+	d = absDuration(d)
 
 	var result string
 	switch {
@@ -213,9 +228,7 @@ func DurationShort(d time.Duration) string {
 	}
 
 	neg := d < 0
-	if neg {
-		d = -d
-	}
+	d = absDuration(d)
 
 	var result string
 	switch {
@@ -276,10 +289,18 @@ func Time(t time.Time) string {
 //	RelativeTime(future, now)      // "in 5 minutes"
 func RelativeTime(t, ref time.Time) string {
 	d := ref.Sub(t)
-	past := d >= 0
-	if !past {
-		d = -d
+	if d == math.MaxInt64 || d == math.MinInt64 {
+		// Sub saturates for spans over about 292 years. Count the years from
+		// whole seconds instead, which cover the full time.Time range.
+		secs := ref.Unix() - t.Unix()
+		past := secs >= 0
+		if !past {
+			secs = -secs
+		}
+		return relativeString(int(secs/(365*24*60*60)), "year", past)
 	}
+	past := d >= 0
+	d = absDuration(d)
 
 	var value int
 	var unit string
@@ -310,10 +331,14 @@ func RelativeTime(t, ref time.Time) string {
 		unit = "year"
 	}
 
+	return relativeString(value, unit, past)
+}
+
+// relativeString formats value and unit as "N units ago" or "in N units".
+func relativeString(value int, unit string, past bool) string {
 	if value != 1 {
 		unit += "s"
 	}
-
 	if past {
 		return fmt.Sprintf("%d %s ago", value, unit)
 	}

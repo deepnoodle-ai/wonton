@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -763,4 +764,59 @@ func TestNilTimerAndDelayFuncUseDefaults(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, calls)
+}
+
+func TestLinearBackoffOverflowCaps(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:  time.Second,
+		MaxBackoff:      time.Minute,
+		LinearIncrement: time.Duration(1 << 62),
+	}
+	// (attempt-1)*LinearIncrement wraps int64 to 0 for attempt 5.
+	assert.Equal(t, time.Minute, LinearBackoff(5, cfg))
+	assert.Equal(t, time.Minute, LinearBackoff(math.MaxInt32, cfg))
+}
+
+func TestFullJitterBackoffNaNCeiling(t *testing.T) {
+	cfg := &Config{
+		InitialBackoff:    0,
+		MaxBackoff:        time.Minute,
+		BackoffMultiplier: 2,
+	}
+	// 0 * Inf is NaN. The delay must stay within [0, MaxBackoff], and must
+	// not collapse to 0 (arm64 converts NaN to 0).
+	foundPositive := false
+	for i := 0; i < 100; i++ {
+		d := FullJitterBackoff(5000, cfg)
+		assert.True(t, d >= 0 && d <= time.Minute, "delay out of range: %v", d)
+		foundPositive = foundPositive || d > 0
+	}
+	assert.True(t, foundPositive, "expected at least one positive delay")
+}
+
+// A Config built without MaxBackoff must not clamp every delay to zero,
+// which would retry with no delay at all.
+func TestZeroMaxBackoffMeansNoCap(t *testing.T) {
+	cfg := &Config{InitialBackoff: time.Second, BackoffMultiplier: 2, LinearIncrement: time.Second}
+	assert.Equal(t, 4*time.Second, ExponentialBackoff(3, cfg))
+	assert.Equal(t, 3*time.Second, LinearBackoff(3, cfg))
+	d := FullJitterBackoff(3, cfg)
+	assert.True(t, d >= 0 && d <= 4*time.Second, "FullJitterBackoff = %v", d)
+	assert.Equal(t, uncappedBackoff, ExponentialBackoff(1000, cfg))
+}
+
+func TestMaxInt64MaxBackoffStaysPositive(t *testing.T) {
+	for _, jitter := range []float64{0, 0.1, 0.9} {
+		cfg := &Config{InitialBackoff: time.Second, MaxBackoff: math.MaxInt64, BackoffMultiplier: 2, LinearIncrement: math.MaxInt64, Jitter: jitter}
+		for i := 0; i < 200; i++ {
+			for _, d := range []time.Duration{ExponentialBackoff(1000, cfg), LinearBackoff(3, cfg)} {
+				assert.True(t, d > 0, "jitter %v: delay %v", jitter, d)
+			}
+		}
+	}
+	// The uncapped path with a large jitter must not wrap either.
+	cfg := &Config{InitialBackoff: time.Second, BackoffMultiplier: 2, Jitter: 5}
+	for i := 0; i < 200; i++ {
+		assert.True(t, ExponentialBackoff(1000, cfg) >= 0)
+	}
 }
