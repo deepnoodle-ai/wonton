@@ -278,11 +278,16 @@ func applyJitter(d time.Duration, jitter float64) time.Duration {
 	}
 	jitterRange := float64(d) * jitter
 	jitterAmount := (rand.Float64()*2 - 1) * jitterRange
-	result := time.Duration(float64(d) + jitterAmount)
-	if result < 0 {
+	// Clamp in float64 space: a result at or above 2^63 does not fit in a
+	// time.Duration, and converting it would wrap to a negative value.
+	result := float64(d) + jitterAmount
+	if result <= 0 {
 		return 0
 	}
-	return result
+	if result >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return time.Duration(result)
 }
 
 // Option is a functional option for configuring retry behavior.
