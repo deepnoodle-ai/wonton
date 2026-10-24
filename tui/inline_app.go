@@ -443,40 +443,54 @@ func (r *InlineApp) Run(app InlineApplication) error {
 	// Initialize resize watcher (platform-specific)
 	r.setupResizeWatcher()
 
-	// Render initial view
-	r.render()
+	// Render initial view. A panic here is captured like one in the event
+	// loop, so the terminal is restored below before Run re-panics.
+	func() {
+		defer r.capturePanic()
+		r.render()
+	}()
+	r.panicMu.Lock()
+	renderPanicked := r.panicVal != nil
+	r.panicMu.Unlock()
 
-	// Start the four goroutines
+	// Start the four goroutines, unless the first render already failed
 	var wg sync.WaitGroup
-	wg.Add(4)
+	if renderPanicked && r.managedInput != nil {
+		// The input reader never ran, so release the input it would own.
+		r.managedInput.owner.Stop()
+		_ = r.managedInput.owner.Close()
+	}
+	if !renderPanicked {
+		wg.Add(4)
 
-	// Goroutine 1: Main event loop
-	go func() {
-		defer wg.Done()
-		defer r.capturePanic()
-		r.eventLoop()
-	}()
+		// Goroutine 1: Main event loop
+		go func() {
+			defer wg.Done()
+			defer r.capturePanic()
+			r.eventLoop()
+		}()
 
-	// Goroutine 2: Input reader
-	go func() {
-		defer wg.Done()
-		defer r.capturePanic()
-		r.inputReader()
-	}()
+		// Goroutine 2: Input reader
+		go func() {
+			defer wg.Done()
+			defer r.capturePanic()
+			r.inputReader()
+		}()
 
-	// Goroutine 3: Command executor
-	go func() {
-		defer wg.Done()
-		defer r.capturePanic()
-		r.commandExecutor()
-	}()
+		// Goroutine 3: Command executor
+		go func() {
+			defer wg.Done()
+			defer r.capturePanic()
+			r.commandExecutor()
+		}()
 
-	// Goroutine 4: Resize listener
-	go func() {
-		defer wg.Done()
-		defer r.capturePanic()
-		r.resizeListener()
-	}()
+		// Goroutine 4: Resize listener
+		go func() {
+			defer wg.Done()
+			defer r.capturePanic()
+			r.resizeListener()
+		}()
+	}
 
 	// Wait for all goroutines to finish
 	wg.Wait()
@@ -655,16 +669,13 @@ func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
 		return true
 	}
 
-	// Handle batch events by unpacking them
+	// Handle batch events by unpacking them. Recurse so a nested batch (from
+	// a nested Sequence) is unpacked and its Quit is honored.
 	if batch, isBatch := event.(BatchEvent); isBatch {
 		for _, e := range batch.Events {
-			if r.stopping() {
+			if r.processEventWithQuitCheck(e) {
 				return true
 			}
-			if _, isQuit := e.(QuitEvent); isQuit {
-				return true
-			}
-			r.processEvent(e)
 		}
 	} else {
 		r.processEvent(event)
@@ -723,6 +734,9 @@ func (r *InlineApp) processEvent(event Event) {
 	}
 
 	for _, cmd := range cmds {
+		if cmd == nil {
+			continue
+		}
 		// Quit and the focus commands take effect now, so an event already
 		// queued (the next key press, say) sees their result.
 		if isRuntimeCmd(cmd) {
@@ -758,7 +772,12 @@ func (r *InlineApp) render() {
 func (r *InlineApp) renderChecked() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.renderLiveLocked(true)
+}
 
+// renderLiveLocked calls LiveView and draws the live region. The caller holds
+// r.mu and the output gate.
+func (r *InlineApp) renderLiveLocked(useSync bool) error {
 	if app, ok := r.app.(InlineApplication); ok {
 		// Clear registries before render
 		r.focusMgr.Clear()
@@ -769,7 +788,7 @@ func (r *InlineApp) renderChecked() error {
 		view := buildViews(r.reg, app.LiveView)
 
 		// Render the view using LivePrinter with focus manager
-		if err := r.live.UpdateWithFocus(view, r.focusMgr); err != nil {
+		if err := r.live.update(view, useSync, r.focusMgr); err != nil {
 			return err
 		}
 
@@ -777,6 +796,24 @@ func (r *InlineApp) renderChecked() error {
 		r.reg.textAreas.Prune()
 	}
 	return nil
+}
+
+// restoreLiveLocked draws the live region again after scrollback output.
+// lines is the frame the live region showed before it was cleared.
+//
+// Print and PrintRaw may run on a Cmd goroutine, so they must not call
+// LiveView while the event loop is inside HandleEvent. They redraw the last
+// frame instead; the event loop draws a fresh frame after the next event.
+// Only before Run, when there is no event loop and no frame yet, does this
+// render LiveView. The caller holds r.mu and the output gate.
+func (r *InlineApp) restoreLiveLocked(lines []string, useSync bool) {
+	if len(lines) > 0 {
+		_ = r.live.redraw(lines, useSync)
+		return
+	}
+	if !r.running {
+		_ = r.renderLiveLocked(useSync)
+	}
 }
 
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
@@ -968,12 +1005,10 @@ func (r *InlineApp) commandExecutor() {
 // This method temporarily clears the live region, prints the view to scrollback,
 // and restores the live region below.
 //
-// Important: Print triggers a re-render of the live region. After writing
-// scrollback content, Print calls UpdateNoSync(LiveView()) to redraw the live
-// view. Any app state that affects LiveView() output must be set before calling
-// Print, not after. Changing state between a Print call and the next render tick
-// causes the two frames to disagree on live region height, which produces ghost
-// lines or other visual artifacts.
+// Print does not call LiveView. Below the new scrollback content it redraws
+// the live region exactly as the event loop last drew it, so focus styling
+// stays and LiveView never runs at the same time as HandleEvent. The event
+// loop draws a fresh live region after the current event, as usual.
 //
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
@@ -991,6 +1026,7 @@ func (r *InlineApp) Print(view View) {
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
 	// Clear live region (moves cursor back)
+	liveLines := r.live.lastLines
 	r.live.Clear()
 
 	// Print to scrollback with raw mode line endings
@@ -999,10 +1035,8 @@ func (r *InlineApp) Print(view View) {
 	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
-	// Re-render live region (skip its internal sync since we're already in one)
-	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdateNoSync(buildViews(r.reg, app.LiveView))
-	}
+	// Restore live region (skip its internal sync since we're already in one)
+	r.restoreLiveLocked(liveLines, false)
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
@@ -1033,12 +1067,11 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
+	liveLines := r.live.lastLines
 	r.live.Clear()
 	r.output.Write(data)
 
-	if app, ok := r.app.(InlineApplication); ok {
-		r.live.UpdateNoSync(buildViews(r.reg, app.LiveView))
-	}
+	r.restoreLiveLocked(liveLines, false)
 }
 
 // Stop requests shutdown without waiting for event dispatch or cleanup.
@@ -1081,16 +1114,15 @@ func (r *InlineApp) ClearScrollback() {
 		return
 	}
 	// Clear live region first
+	liveLines := r.live.lastLines
 	r.live.Clear()
 
 	// Clear screen and scrollback
 	// \033[3J clears scrollback, \033[2J clears screen, \033[H moves to top
 	fmt.Fprint(r.output, "\033[3J\033[2J\033[H")
 
-	// Re-render live region
-	if app, ok := r.app.(InlineApplication); ok {
-		r.live.Update(buildViews(r.reg, app.LiveView))
-	}
+	// Restore live region
+	r.restoreLiveLocked(liveLines, true)
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.

@@ -13,11 +13,12 @@ var ErrSuspendReentrant = errors.New("tui: Suspend is already in progress")
 
 // Suspend hands the terminal back to plain output for the duration of fn.
 //
-// It leaves the alternate screen, releases mouse reporting, shows the cursor,
-// and leaves raw mode, so anything fn writes lands in the terminal's own
-// scrollback, where the terminal's find, selection, and copy all work on it.
-// When fn returns, the screen, mouse mode, cursor state, and raw mode are
-// restored and the next frame repaints from scratch.
+// It leaves the alternate screen, releases mouse reporting and the Kitty
+// keyboard protocol, shows the cursor, and leaves raw mode, so anything fn
+// writes lands in the terminal's own scrollback, where the terminal's find,
+// selection, and copy all work on it. When fn returns, the screen, mouse mode,
+// keyboard protocol, cursor state, and raw mode are restored and the next
+// frame repaints from scratch.
 //
 // This is how an application offers "show me this in my real terminal" — a
 // transcript dump, a diff, a log — without reimplementing search and selection
@@ -26,7 +27,9 @@ var ErrSuspendReentrant = errors.New("tui: Suspend is already in progress")
 // Input while fn runs: the runtime's input reader owns stdin and cannot hand it
 // back, so fn does not read os.Stdin. It reads decoded events from the keys
 // channel instead, which receives everything the user types while fn runs
-// (events are dropped rather than queued if fn is not reading). The application
+// (events are dropped rather than queued if fn is not reading). Because raw
+// mode is off, a real terminal echoes what the user types and passes it on a
+// line at a time, when the user presses Enter. The application
 // receives no events and no frames are rendered until fn returns.
 //
 // Call Suspend from HandleEvent — that is the event-loop goroutine, between
@@ -59,12 +62,19 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) (err error) {
 	mouseMode := r.terminal.MouseMode()
 	hadHiddenCursor := r.terminal.IsCursorHidden()
 	hadRawMode := term.IsTerminal(int(os.Stdin.Fd())) && r.terminal.IsRawMode()
+	hadKitty := r.terminal.IsKittyProtocolEnabled()
 
 	if mouseMode != MouseModeOff {
 		r.terminal.DisableMouseTracking()
 	}
 	if hadHiddenCursor {
 		r.terminal.ShowCursor()
+	}
+	// The Kitty keyboard protocol needs raw mode: left on, Enter arrives as
+	// ESC [ 13 u and the line discipline never ends a line. Pop it before
+	// leaving the alternate screen, which keeps its own keyboard stack.
+	if hadKitty {
+		r.terminal.DisableEnhancedKeyboard()
 	}
 	if hadAltScreen {
 		r.terminal.DisableAlternateScreen()
@@ -85,6 +95,9 @@ func (r *Runtime) Suspend(fn func(keys <-chan Event)) (err error) {
 		}
 		if hadAltScreen {
 			r.terminal.EnableAlternateScreen()
+		}
+		if hadKitty {
+			r.terminal.EnableEnhancedKeyboard()
 		}
 		if hadHiddenCursor {
 			r.terminal.HideCursor()
