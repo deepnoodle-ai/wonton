@@ -31,6 +31,21 @@ func TestTextInputMaskedCursorAtFullWidth(t *testing.T) {
 	}
 }
 
+// A single-line input squeezed to one row by its parent shows the wrapped
+// row that holds the cursor, so the user sees what they type.
+func TestTextInputOneRowOverflowShowsCursorRow(t *testing.T) {
+	ti := newTextInput()
+	ti.SetFocused(true)
+	ti.SetValue("abcdefghij" + "klm")
+	cell := drawTextInput(t, ti, 10, 1)
+	if ti.ScrollOffset != 1 {
+		t.Fatalf("ScrollOffset = %d, want 1", ti.ScrollOffset)
+	}
+	if cell(0, 0).Char != 'k' || cursorCells(cell, ti, 10, 1) != 1 {
+		t.Fatalf("row shows %q, want the cursor row starting at 'k'", string(cell(0, 0).Char))
+	}
+}
+
 // A multiline input whose height comes from the parent (MaxHeight == 0)
 // must scroll to keep the cursor visible.
 func TestTextInputScrollsWithoutMaxHeight(t *testing.T) {
