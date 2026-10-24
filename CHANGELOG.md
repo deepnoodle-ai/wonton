@@ -11,12 +11,165 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `fetch.ErrUnsupportedContentType` reports a response whose content type
+  `HTTPFetcher` does not process. The error text is unchanged.
+- `sse.Reader.LastEventID` returns the last event ID the stream set,
+  including an `id:` line that arrived with no data.
+- `env.Parse` and `env.ParseInto` read `url.URL` and `*url.URL` fields.
+- `cli.ParseFlags` and `cli.BindFlags` support `time.Duration`, `[]string`,
+  and `[]int` fields.
+
+### Changed
+
+- `git`: a ref, branch, tag, pattern, remote, or config key that starts with
+  `-` returns `git.ErrInvalidArgument` instead of reaching git.
+  `BranchExists` checks only local and remote branches, so a tag, hash, or
+  `HEAD` returns false. `Log` and `Show` return `ErrNoCommits` only when
+  `HEAD` does not resolve; a bad ref in a repository with commits returns
+  the git error. `ConfigWithScope` accepts only the `ConfigScope` constants.
+- `retry.Config.MaxBackoff` of 0 means no maximum. Before, a `Config` built
+  without it retried in a tight loop with no delay.
+- `web.NormalizeURL` returns an error for `mailto:`, `tel:`, `javascript:`,
+  and similar URIs. `NormalizeURL` and `ResolveLink` upgrade
+  `http://host:80` to `https://host`, not `https://host:80`.
+- `crawler` treats a page with status 400 or higher as a failure:
+  `Result.Error` is a `*fetch.Error` and `Result.Response` is still set.
+  With `RetryOptions`, 408, 429, 500, 502, 503, and 504 are retried. A
+  `robots.txt` that returns 5xx disallows the host for one minute, per
+  RFC 9309. `Result.Links` holds every link on the page, resolved against
+  the final URL; its doc comment said otherwise.
+- `fetch.HTTPFetcher` returns a `*fetch.Error` for any status of 400 or more
+  whose body it does not process, instead of the unexpected content type
+  error. It accepts `text/plain` only when `Request.Formats` includes
+  `"raw_html"`.
+- `tui`: Enter in an input with no `OnSubmit` reaches the app's
+  `HandleEvent`. On the input option of a `PromptChoice`, digits are typed
+  into the text instead of jumping to an option. `FilterableList.OnSelect`
+  receives the unfiltered item index for Enter, as it already did for
+  clicks, and a click marks the item chosen.
+- `sse.Client.LastEventID` is written once, when the stream ends. Read it
+  after the events channel closes, and use `Event.ID` during the stream. An
+  empty `id:` clears it, and an `id:` with no data sets it.
+- `cli`: an empty environment variable counts as unset. A slice flag given
+  on the command line replaces the value from the environment instead of
+  extending it. An app whose stdin or stdout is redirected with `SetStdin`
+  or `SetStdout` is non-interactive.
+- `terminal.KeyDecoder` reports Kitty functional keys it has no `Key` for,
+  such as F13 and Caps Lock, as `KeyUnknown` with modifiers. Keypad keys map
+  to their characters and keys.
+- `termsession.Player.Seek` moves to the first event at or after the target.
+- `gif.RenderCast` shows each screen for the time it was on screen, so a
+  recording with a gap before its first output starts with a blank frame.
+- `schema.Generate` puts a `json:"-,"` field under the key `"-"`, and a
+  direct field wins over an embedded field with the same name.
+
 ### Fixed
 
-- `schema.Generate` includes the exported fields of an embedded struct whose
-  type is unexported, such as `type input struct { base }`, as
-  `encoding/json` does. Before, those fields were missing, so a schema with
+- `tui`:
+  - Clicking a `Button` runs its callback.
+  - Focus returns when the focused view disappears, for example when a
+    dialog closes.
+  - `MouseRegion.OnRelease` fires. A drag that returns to its start cell
+    fires `OnDragEnd` and is not reported as a click.
+  - Views inside a `Scroll` or `Viewport` draw, clip, and take clicks in
+    their own area. Rows a `Scroll` hides take no clicks or focus clicks.
+  - `ViewportState.ScrollBy` reaches the bottom of a tall last item.
+  - `Padding`, `Bordered`, and `AnimatedBordered` respect a size limit that
+    their inset uses up. `CellGrid` and `ColorGrid` never measure negative.
+  - Several widgets no longer panic during render. Animated text,
+    `CodeView`, and widget titles keep wide characters intact, and color
+    animations no longer jump to the wrong colors.
+  - Prompts and inputs no longer panic on non-ASCII text or paste
+    placeholders, and `tui.Prompt` no longer prints a masked password in
+    plain text. `cli.Context.Input` submits on Enter.
+  - `InlineApp.Print` is safe to call from a `Cmd` goroutine. A panic in the
+    first `LiveView` call restores the terminal. `tui.WithInput` works with
+    `tui.Run`. A nil `Cmd` no longer crashes the app, and `Quit` inside a
+    nested `Sequence` quits.
+  - `PlaybackController` can be controlled while `Play` runs and can play
+    again after `Stop`. `LoadRecording` reads lines longer than 64KB.
+- `terminal`:
+  - `KeyDecoder` no longer locks up when a bracketed paste ends with an ESC
+    byte, and an escape sequence at a 4096-byte read boundary no longer
+    decodes as `KeyEscape` plus text. `Alt` with a non-ASCII key reports the
+    key with `Alt` set.
+  - Frames no longer leave half a wide character after `FillStyled`, draw a
+    wide character past a `SubFrame` edge, or shift a row after a tab in
+    `PrintStyled`. `RestyleCell` works on either half of a wide character.
+    `RefreshSize` no longer panics on a 0x0 size. A frame title that exactly
+    fills the top border is drawn. `PrintHyperlinkFallback` no longer emits
+    a hidden OSC 8 link.
+  - `StartRecording` records what the terminal shows, including `SetCell`
+    and `FillStyled`. `IdleTimeLimit` also limits idle time before a pause.
+- `termsession`: a `Session` releases its PTY when the command exits.
+  `Player.Seek` no longer replays an elapsed event or loses a seek made
+  during playback.
+- `termtest`: a cancelled escape sequence no longer eats the next character,
+  and `NewScreen(0, 0)` no longer panics.
+- `gif`: casts keep text after an unknown escape sequence, dark 256-color
+  shades keep their color, and resize events apply. `Emulator` ignores
+  private sequences such as `ESC[>4;2m` instead of resetting colors.
+- `runewidth`: `Graphemes` keeps a Prepend-led conjunct in one cluster, and
+  `StringWidth` measures such clusters sensibly. `Truncate` and `Fit` never
+  return a result wider than requested.
+- `crawler` obeys `robots.txt` with `fetch.HTTPFetcher`. It resolves relative
+  links on directory pages and after redirects. Items preloaded into
+  `Options.Frontier` obey `MaxURLs` and `KnownURLs`.
+- `fetch.Download` saves into `/` with `CreateDirs`, falls back to the URL
+  file name when the `Content-Disposition` name is unusable, and no longer
+  destroys an existing file when a download fails or is too large.
+- `git`: `Status`, `Branches`, `Diff`, `Blame`, `Log`, `Show`, and `Open`
+  return correct results for inputs they misparsed. `Branches` no longer
+  lists a detached `HEAD` and tells `origin/foo` from `feature/foo`.
+- `schema.Generate` no longer crashes on a recursive map or slice type such
+  as `type Tree map[string]Tree`. Embedded structs produce a valid
+  `required` list. `"additionalProperties": null` unmarshals as unset.
+  It includes the exported fields of an embedded struct whose type is
+  unexported, such as `type input struct { base }`, as `encoding/json`
+  does. Before, those fields were missing, so a schema with
   `additionalProperties: false` rejected every input that set them.
+- `sse.Reader` accepts lines that end with a lone CR. Reading
+  `Client.LastEventID` after the stream ends is race-free.
+- `cli`: `--` ends flag parsing for the root command. `Group.Use`
+  middleware runs for group subcommands. Values from `Env(...)` go through
+  `Enum` and `ValidateWith`. Short flags accept `-o=value`. `IsPiped` no
+  longer panics when stdin cannot be read.
+- `env`: fields of type `time.Location`, `*time.Time`, or a struct with a
+  `WithParser` parser are read from the environment. Before, they were
+  treated as nested config structs and their `env`, `envDefault`, and
+  `required` tags were ignored. `envDefault` no longer overwrites a value
+  from a JSON file on a field without an `env` tag. `WriteEnvFile` quotes
+  values that contain `\r`.
+- `clipboard`: on Linux, `Write` and `Clear` return as soon as `xclip` or
+  `wl-copy` exits instead of timing out, and `Available` no longer reports
+  `wl-copy` without `WAYLAND_DISPLAY`. On Windows, `Read` keeps a trailing
+  newline.
+- `thumbnail.Render` is safe to call concurrently, renders a long single
+  line in linear time, and holds its source-pixel cap on 32-bit platforms.
+- `humanize.Bytes(math.MinInt64)` no longer overflows the stack, and
+  `RelativeTime` handles a zero `time.Time`. `retry.LinearBackoff` and
+  `FullJitterBackoff` stay within `MaxBackoff` for extreme inputs.
+  `color.RGB.Lerp` and `color.HSLToRGB` treat `NaN` as 0.
+- `assert.Contains` no longer panics on structs with unexported fields or on
+  `error` values.
+- `htmltomd.Convert` keeps indentation and blank lines inside code blocks,
+  keeps `<tfoot>` rows and nested lists, and escapes quotes in titles.
+- `htmlparse` reads the right page title, classifies `mailto:` links as
+  external, and `Transform` with `Include` emits only included text.
+- `unidiff.Parse` no longer adds trailing lines to a finished hunk.
+
+### Security
+
+- `git` no longer passes a value that starts with `-` to git as an option.
+  Before, `repo.Show(ctx, "--output=/tmp/x")` wrote a file to disk.
+- `httpguard.ValidatePublicIP` rejects IPv6 addresses that embed an IPv4
+  address, such as `::127.0.0.1` and `::169.254.169.254`, and the reserved
+  `2001::/23` range. Clients from `httpguard.NewClient` keep the IPv6 zone
+  when they dial.
+- `.cast` recordings with `RedactSecrets` no longer leak secrets that
+  contain `:` or `=`, such as base64 Bearer tokens.
 
 ## [0.7.3] - 2026-10-14
 
