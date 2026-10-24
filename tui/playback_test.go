@@ -146,12 +146,12 @@ func TestPlayback_SetSpeedWhilePausedKeepsPosition(t *testing.T) {
 	p.SetSpeed(2)
 	p.Resume()
 
-	// 0.5s of recording time elapsed at 1x. At 2x the elapsed playback
-	// time must not jump past the event at 1s (0.5s at 2x).
+	// 0.5s of recording time elapsed at 1x. At 2x the same recording
+	// position is 0.25s of playback time.
 	p.mu.RLock()
 	elapsed := p.elapsedLocked()
 	p.mu.RUnlock()
-	assert.True(t, elapsed < 0.5, "elapsed %v jumped past the next event", elapsed)
+	assert.True(t, elapsed > 0.24 && elapsed < 0.26, "elapsed = %v, want ~0.25", elapsed)
 }
 
 func TestPlayback_SeekWhilePausedDoesNotDoubleCountPause(t *testing.T) {
@@ -189,4 +189,73 @@ func TestPlayback_ConcurrentControlIsRaceFree(t *testing.T) {
 	}
 	p.Stop()
 	waitDone(t, done)
+}
+
+func TestPlayback_SeekDuringLongGapTakesEffectPromptly(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 2, Type: "o", Data: "b"},
+		RecordingEvent{Time: 4, Type: "o", Data: "c"},
+	)
+	out := &syncBuffer{}
+	term := NewTestTerminal(10, 2, out)
+	done := playAsync(p, term)
+
+	// Play is waiting 2s for "b". Seek to "c" partway through the wait.
+	time.Sleep(50 * time.Millisecond)
+	p.Seek(4)
+	time.Sleep(200 * time.Millisecond)
+	assert.Equal(t, "ac", out.String())
+
+	p.Stop()
+	waitDone(t, done)
+}
+
+func TestPlayback_SetSpeedDuringLongGapTakesEffectPromptly(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 2, Type: "o", Data: "b"},
+	)
+	out := &syncBuffer{}
+	term := NewTestTerminal(10, 2, out)
+	done := playAsync(p, term)
+
+	// About 0.1s of 2s has played. At 100x the rest takes about 19ms.
+	time.Sleep(100 * time.Millisecond)
+	p.SetSpeed(100)
+	time.Sleep(150 * time.Millisecond)
+	assert.Equal(t, "ab", out.String())
+
+	waitDone(t, done)
+}
+
+func TestPlayback_PauseStopPlayRunsOneLoop(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 0.05, Type: "o", Data: "b"},
+		RecordingEvent{Time: 1, Type: "o", Data: "c"},
+	)
+	out := &syncBuffer{}
+	term := NewTestTerminal(10, 2, out)
+	first := playAsync(p, term)
+
+	// Pause before "b" is due. When the wait for "b" ends, the first loop
+	// sees the pause and enters its paused sleep.
+	time.Sleep(20 * time.Millisecond)
+	p.Pause()
+	time.Sleep(60 * time.Millisecond)
+	p.Stop()
+	second := playAsync(p, term)
+
+	// The first loop must exit on its own Stop, not keep running beside
+	// the second loop until the recording ends.
+	select {
+	case <-first:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("first Play loop kept running after Stop and a new Play")
+	}
+
+	waitDone(t, second)
+	// "a" from the first run, then "abc" from the second run only.
+	assert.Equal(t, "aabc", out.String())
 }

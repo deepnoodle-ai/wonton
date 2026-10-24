@@ -15,6 +15,10 @@ import (
 // exceed bufio.Scanner's 64KB default.
 const maxRecordingLineSize = 16 * 1024 * 1024
 
+// pollInterval is the longest Play waits before it checks for Pause, Seek,
+// and SetSpeed again.
+const pollInterval = 50 * time.Millisecond
+
 // PlaybackController manages playback of recorded sessions
 type PlaybackController struct {
 	events       []RecordingEvent
@@ -144,6 +148,14 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 	p.mu.Unlock()
 
 	for {
+		// Check this run's own channel. A Stop followed by a new Play resets
+		// p.stopped, but the closed channel still ends this loop.
+		select {
+		case <-stopChan:
+			return nil
+		default:
+		}
+
 		p.mu.RLock()
 		if p.stopped {
 			p.mu.RUnlock()
@@ -174,7 +186,11 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 
 		// Handle pause state
 		if paused {
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-stopChan:
+				return nil
+			case <-time.After(pollInterval):
+			}
 			continue
 		}
 
@@ -194,12 +210,13 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 			// This prevents choppy playback from sub-millisecond timing
 			const minSleepDuration = 10 * time.Millisecond
 			if sleepDuration >= minSleepDuration {
+				// Wake at least every pollInterval, so Pause, Seek, and
+				// SetSpeed take effect during a long gap between events.
 				select {
 				case <-stopChan:
 					return nil
-				case <-time.After(sleepDuration):
+				case <-time.After(min(sleepDuration, pollInterval)):
 				}
-				// Pause, Seek, or SetSpeed may have run while sleeping.
 				// Re-evaluate the state before writing anything.
 				continue
 			}
