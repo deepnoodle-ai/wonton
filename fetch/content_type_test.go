@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,6 +33,21 @@ func TestHTTPFetcherReturnsPlainTextForRawRequests(t *testing.T) {
 	// Without a raw request, plain text is still refused.
 	_, err = fetcher.Fetch(context.Background(), &Request{URL: server.URL})
 	assert.ErrorIs(t, err, ErrUnsupportedContentType)
+}
+
+func TestHTTPFetcherReportsHTTPErrorsWithNonHTMLBodies(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	t.Cleanup(server.Close)
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{Client: server.Client()})
+
+	_, err := fetcher.Fetch(context.Background(), &Request{URL: server.URL})
+	var fetchErr *Error
+	assert.True(t, errors.As(err, &fetchErr), "got %v", err)
+	assert.Equal(t, http.StatusInternalServerError, fetchErr.StatusCode)
 }
 
 func TestHTTPFetcherMatchesContentTypeCaseInsensitively(t *testing.T) {

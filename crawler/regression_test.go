@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -344,4 +345,70 @@ func TestPreloadedFrontierHonorsLimits(t *testing.T) {
 		mu.Unlock()
 	}))
 	assert.Equal(t, []string{"https://example.com/a", "https://example.com/b"}, crawled)
+}
+
+// A 5xx robots.txt disallows all whatever its content type.
+func TestRobotsTxtServerErrorWithJSONBodyDisallowsAll(t *testing.T) {
+	rec := &hitRecorder{}
+	server := newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
+		"/robots.txt": func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"boom"}`)
+		},
+		"/": htmlPage("home"),
+	})
+	c := newHTTPCrawler(t, server, Options{})
+
+	var blocked int
+	assert.NoError(t, c.Crawl(context.Background(), []string{server.URL + "/"}, func(_ context.Context, r *Result) {
+		if r.Error != nil {
+			blocked++
+		}
+	}))
+	assert.Equal(t, 0, rec.count("/"))
+	assert.Equal(t, 1, blocked)
+}
+
+// Result.Links lists every link on the page, including ones the follow
+// behavior does not enqueue.
+func TestResultLinksIncludeExternalLinks(t *testing.T) {
+	rec := &hitRecorder{}
+	server := newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
+		"/":  htmlPage(`<a href="/a">a</a><a href="https://other.example/x">x</a>`),
+		"/a": htmlPage("a"),
+	})
+	c := newHTTPCrawler(t, server, Options{FollowBehavior: FollowSameDomain, RespectRobotsTxt: BoolPtr(false)})
+
+	var mu sync.Mutex
+	var links []string
+	assert.NoError(t, c.Crawl(context.Background(), []string{server.URL + "/"}, func(_ context.Context, r *Result) {
+		if r.URL.Path == "" || r.URL.Path == "/" {
+			mu.Lock()
+			links = r.Links
+			mu.Unlock()
+		}
+	}))
+	assert.Equal(t, []string{server.URL + "/a", "https://other.example/x"}, links)
+	assert.Equal(t, 1, rec.count("/a"))
+}
+
+// After a redirect to another host, same-domain filtering uses the final
+// host, so the crawl continues there.
+func TestSameDomainFollowsAfterCrossHostRedirect(t *testing.T) {
+	rec := &hitRecorder{}
+	var server *httptest.Server
+	server = newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
+		"/start": func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, server.URL+"/page", http.StatusFound)
+		},
+		"/page": htmlPage(`<a href="/next">next</a>`),
+		"/next": htmlPage("next"),
+	})
+	// server.URL uses 127.0.0.1; seed through localhost so the redirect
+	// changes host.
+	seed := strings.Replace(server.URL, "127.0.0.1", "localhost", 1) + "/start"
+	c := newHTTPCrawler(t, server, Options{FollowBehavior: FollowSameDomain, RespectRobotsTxt: BoolPtr(false)})
+	assert.NoError(t, c.Crawl(context.Background(), []string{seed}, func(context.Context, *Result) {}))
+	assert.Equal(t, 1, rec.count("/next"))
 }

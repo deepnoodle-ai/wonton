@@ -260,6 +260,11 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, f.maxBodySize+1))
 			return bareResponse, nil
 		}
+		// An HTTP error is reported as such, whatever body type it has,
+		// so callers can act on the status code.
+		if resp.StatusCode >= http.StatusBadRequest {
+			return nil, &Error{StatusCode: resp.StatusCode, URL: req.URL}
+		}
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedContentType, contentType)
 	}
 
