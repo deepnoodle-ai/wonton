@@ -423,6 +423,63 @@ func TestTruncate_Invariant(t *testing.T) {
 	}
 }
 
+func TestTruncate_TailJoinsHead(t *testing.T) {
+	// A tail that starts with VS16 joins the last cluster of the head and
+	// can widen it. The result must still fit in w.
+	tests := []struct {
+		s, tail string
+	}{
+		{"❤abcdef", "️"},      // ❤ + VS16 -> width 2
+		{"1abcdef", "️⃣"},     // keycap base + VS16 + keycap
+		{"x❤abcdef", "️"},     // non-ASCII path with room to back off
+		{"12345678", "️⃣..."}, // ASCII fast path in Fit
+		{"ab❤cdefgh", "️…"},
+	}
+	for _, tt := range tests {
+		for w := 0; w <= StringWidth(tt.s)+2; w++ {
+			got := Truncate(tt.s, w, tt.tail)
+			if gw := StringWidth(got); gw > w {
+				t.Errorf("Truncate(%+q, %d, %+q) = %+q (width %d)", tt.s, w, tt.tail, got, gw)
+			}
+			fs, fw := Fit(tt.s, w, tt.tail)
+			if gw := StringWidth(fs); gw > w || gw != fw {
+				t.Errorf("Fit(%+q, %d, %+q) = (%+q, %d), actual width %d", tt.s, w, tt.tail, fs, fw, gw)
+			}
+		}
+	}
+}
+
+func TestGraphemes_PrependConjunct(t *testing.T) {
+	// GB9b joins Prepend to the following consonant. GB9c must then still
+	// join consonant + virama + consonant.
+	var got []string
+	for c := range Graphemes("ൎക്ക") {
+		got = append(got, c)
+	}
+	if len(got) != 1 {
+		t.Errorf("Graphemes split a Prepend-led conjunct into %+q", got)
+	}
+}
+
+func TestStringWidth_PrependCluster(t *testing.T) {
+	// A Prepend character joins the next base. The cluster width is the
+	// Prepend width plus the base cluster's width, not the sum of every rune.
+	tests := []struct {
+		name string
+		s    string
+		want int
+	}{
+		{"prepend + flag", "؀\U0001F1FA\U0001F1F8", 1 + 2},
+		{"prepend + family", "؀\U0001F468‍\U0001F469‍\U0001F467‍\U0001F466", 1 + 2},
+		{"prepend + letter", "؀b", 2},
+	}
+	for _, tt := range tests {
+		if got := StringWidth(tt.s); got != tt.want {
+			t.Errorf("%s: StringWidth(%+q) = %d, want %d", tt.name, tt.s, got, tt.want)
+		}
+	}
+}
+
 // --- Fit ---
 
 func TestFit(t *testing.T) {

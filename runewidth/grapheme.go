@@ -215,7 +215,18 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 		//     take their width from the base rune; trailing Jamo do not add
 		//     additional width to the syllable block.
 		//   - All other clusters accumulate runeWidthFromPacked of subsequent runes.
-		if firstProp == gbExtendedPictographic {
+		//   - A cluster that starts with Prepend applies these rules to the
+		//     first non-Prepend rune, with the Prepend widths added.
+		if firstProp == gbPrepend && prop != gbPrepend {
+			// GB9b: Prepend × Any. The first non-Prepend rune is the base of
+			// the rest of the cluster, so take the width rules and the GB9c
+			// sub-state from it, as if the cluster had started here.
+			firstProp = prop
+			width += runeWidthFromPacked(r2, packed)
+			if r2 >= 0x0915 {
+				incbSub = incbInitial(r2)
+			}
+		} else if firstProp == gbExtendedPictographic {
 			switch r2 {
 			case 0xFE0E:
 				width = 1
