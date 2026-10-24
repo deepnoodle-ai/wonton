@@ -92,7 +92,8 @@ type PromptChoiceView struct {
 // # Parameters
 //
 //   - selected: Pointer to track the currently selected index (0-based).
-//     This value updates as the user navigates.
+//     This value updates as the user navigates. It is required: with nil,
+//     the view does not panic, but the selection stays at option 0.
 //   - inputText: Pointer to store custom input text. Can be nil if no input
 //     option is needed. When an InputOption is added, typed text is stored here.
 //
@@ -154,9 +155,6 @@ type PromptChoiceView struct {
 //	}
 func PromptChoice(selected *int, inputText *string) *PromptChoiceView {
 	id := fmt.Sprintf("prompt_choice_%p", selected)
-	if selected == nil {
-		selected = new(int) // unbound: navigation works but does not persist
-	}
 	return &PromptChoiceView{
 		reg:         capturedRegistries(),
 		id:          id,
@@ -445,13 +443,13 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	switch event.Key {
 	case KeyArrowUp:
 		if selected > 0 {
-			*p.selected = selected - 1
+			p.setSelected(selected - 1)
 			p.updateInputFocus()
 		}
 		return true
 	case KeyArrowDown:
 		if selected < total-1 {
-			*p.selected = selected + 1
+			p.setSelected(selected + 1)
 			p.updateInputFocus()
 		}
 		return true
@@ -471,7 +469,7 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	if event.Rune >= '1' && event.Rune <= '9' && !p.isInputSelected() {
 		idx := int(event.Rune - '1')
 		if idx < total {
-			*p.selected = idx
+			p.setSelected(idx)
 			p.updateInputFocus()
 			return true
 		}
@@ -503,6 +501,14 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 }
 
 // updateInputFocus updates the textInput focus based on current selection
+// setSelected stores the selection. A nil selected pointer has nowhere to
+// keep it, so the selection stays at option 0.
+func (p *PromptChoiceView) setSelected(idx int) {
+	if p.selected != nil {
+		*p.selected = idx
+	}
+}
+
 func (p *PromptChoiceView) updateInputFocus() {
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())

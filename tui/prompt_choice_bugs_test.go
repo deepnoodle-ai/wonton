@@ -22,7 +22,8 @@ func TestPromptChoice_RenderMultiByteCursor(t *testing.T) {
 	renderWithRegistries(t, view, view.reg)
 }
 
-// A nil selected pointer must not panic on navigation keys.
+// A nil selected pointer must not panic on navigation keys. The selection
+// has nowhere to persist, so it stays at option 0 (see PromptChoice docs).
 func TestPromptChoice_NilSelected(t *testing.T) {
 	view := PromptChoice(nil, nil).Option("A").Option("B")
 	view.focused = true
