@@ -774,7 +774,7 @@ func TestLinearBackoffOverflowCaps(t *testing.T) {
 	}
 	// (attempt-1)*LinearIncrement wraps int64 to 0 for attempt 5.
 	assert.Equal(t, time.Minute, LinearBackoff(5, cfg))
-	assert.Equal(t, time.Minute, LinearBackoff(1<<40, cfg))
+	assert.Equal(t, time.Minute, LinearBackoff(math.MaxInt32, cfg))
 }
 
 func TestFullJitterBackoffNaNCeiling(t *testing.T) {
