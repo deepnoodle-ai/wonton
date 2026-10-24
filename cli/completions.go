@@ -17,7 +17,7 @@ import (
 func (a *App) GenerateBashCompletion(w io.Writer) error {
 	tmpl := `# bash completion for %[1]s
 
-_%[1]s_completions() {
+_%[4]s_completions() {
     local cur prev commands
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -38,13 +38,13 @@ _%[1]s_completions() {
     COMPREPLY=( $(compgen -f -- ${cur}) )
 }
 
-complete -F _%[1]s_completions %[1]s
+complete -F _%[4]s_completions %[1]s
 `
 
 	commands := a.getCommandNames()
 	groupCases := a.generateBashGroupCases()
 
-	_, err := fmt.Fprintf(w, tmpl, a.name, strings.Join(commands, " "), groupCases)
+	_, err := fmt.Fprintf(w, tmpl, a.name, strings.Join(commands, " "), groupCases, shellIdent(a.name))
 	return err
 }
 
@@ -58,11 +58,13 @@ complete -F _%[1]s_completions %[1]s
 //	eval "$(myapp completion zsh)"
 func (a *App) GenerateZshCompletion(w io.Writer) error {
 	var sb strings.Builder
+	// Function names must be identifiers; command names stay as-is.
+	ident := shellIdent(a.name)
 
 	sb.WriteString(fmt.Sprintf("#compdef %s\n\n", a.name))
 
 	// Commands function
-	sb.WriteString(fmt.Sprintf("__%s_commands() {\n", a.name))
+	sb.WriteString(fmt.Sprintf("__%s_commands() {\n", ident))
 	sb.WriteString("    local commands\n")
 	sb.WriteString("    commands=(\n")
 	sb.WriteString(a.generateZshCommandDesc())
@@ -76,7 +78,7 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 		if group == nil {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("__%s_group_%s() {\n", a.name, name))
+		sb.WriteString(fmt.Sprintf("__%s_group_%s() {\n", ident, shellIdent(name)))
 		sb.WriteString("    local commands\n")
 		sb.WriteString("    commands=(\n")
 		for _, cmdName := range orderedCommandKeys(group.commands, group.commandOrder) {
@@ -91,11 +93,11 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 	}
 
 	// Main completion function
-	sb.WriteString(fmt.Sprintf("_%s() {\n", a.name))
+	sb.WriteString(fmt.Sprintf("_%s() {\n", ident))
 	sb.WriteString("    local curcontext=\"$curcontext\" state line\n")
 	sb.WriteString("    typeset -A opt_args\n\n")
 	sb.WriteString("    _arguments -C \\\n")
-	sb.WriteString(fmt.Sprintf("        '1: :__%s_commands' \\\n", a.name))
+	sb.WriteString(fmt.Sprintf("        '1: :__%s_commands' \\\n", ident))
 	sb.WriteString("        '*::arg:->args'\n\n")
 	sb.WriteString("    case $state in\n")
 	sb.WriteString("        args)\n")
@@ -105,7 +107,7 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("                %s)\n", name))
-		sb.WriteString(fmt.Sprintf("                    __%s_group_%s\n", a.name, name))
+		sb.WriteString(fmt.Sprintf("                    __%s_group_%s\n", ident, shellIdent(name)))
 		sb.WriteString("                    ;;\n")
 	}
 	sb.WriteString("            esac\n")
@@ -116,7 +118,7 @@ func (a *App) GenerateZshCompletion(w io.Writer) error {
 	// Register completion - works with both eval and file sourcing
 	// Check if compdef is available (requires compinit to be loaded)
 	sb.WriteString("if (( $+functions[compdef] )); then\n")
-	sb.WriteString(fmt.Sprintf("    compdef _%s %s\n", a.name, a.name))
+	sb.WriteString(fmt.Sprintf("    compdef _%s %s\n", ident, a.name))
 	sb.WriteString("fi\n")
 
 	_, err := io.WriteString(w, sb.String())
@@ -309,6 +311,20 @@ func escapeZsh(s string) string {
 }
 
 func escapeFish(s string) string {
+	// Escape backslashes first, so a trailing "\\" cannot escape the
+	// closing quote.
+	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "'", "\\'")
 	return s
+}
+
+// shellIdent turns s into a valid shell function name component by
+// replacing every character other than ASCII letters, digits, and '_'.
+func shellIdent(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, s)
 }

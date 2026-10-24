@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -672,21 +674,35 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 
 	// Track which flags were explicitly set by user
 	ctx.setFlags = make(map[string]bool)
+	// Invalid environment values, reported after the command line is parsed
+	var envErrs []flagEnvError
+	// Track which flags were set on the command line, so slice flags given
+	// there replace values from the environment instead of extending them.
+	ctx.cliFlags = make(map[string]bool)
 
 	// Initialize with defaults and check env vars
 	for _, f := range allFlags {
 		name := f.GetName()
-		// Check env var first
+		// Check env var first. An empty variable counts as unset. A bad
+		// value is reported only if the command line does not set the flag.
 		if f.GetEnvVar() != "" {
-			if val, ok := lookupEnv(f.GetEnvVar()); ok {
-				typed, err := convertFlagValue(f, val)
-				if err != nil {
-					return c.errorWithHelpHint(fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
-						val, name, f.GetEnvVar(), err))
+			if val, ok := lookupEnv(f.GetEnvVar()); ok && val != "" {
+				msg := checkFlagValue(f, val)
+				var typed any
+				if msg == "" {
+					var err error
+					if typed, err = convertFlagValue(f, val); err != nil {
+						msg = err.Error()
+					}
 				}
-				ctx.flags[name] = typed
-				ctx.setFlags[name] = true
-				continue
+				if msg == "" {
+					ctx.flags[name] = typed
+					ctx.setFlags[name] = true
+					continue
+				}
+				envErrs = append(envErrs, flagEnvError{name: name, err: c.errorWithHelpHint(
+					fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
+						val, name, f.GetEnvVar(), msg))})
 			}
 		}
 		// Use default
@@ -727,6 +743,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
+					ctx.cliFlags[name] = true
 				} else if i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
@@ -738,9 +755,15 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				}
 			}
 		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-			// Short flag(s)
+			// Short flag(s). -o=value (or -vo=value) gives the last flag
+			// an inline value.
 			shorts := arg[1:]
+			inlineValue, hasInline := "", false
+			if idx := strings.IndexByte(shorts, '='); idx > 0 {
+				shorts, inlineValue, hasInline = shorts[:idx], shorts[idx+1:], true
+			}
 			for j, r := range shorts {
+				last := j == len(shorts)-len(string(r))
 				// -h shows help unless a flag explicitly claims the -h short
 				if r == 'h' && c.isHelpShort() {
 					return c.showHelp()
@@ -749,10 +772,16 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if flag == nil {
 					return c.errorWithHelpHint(fmt.Sprintf("unknown flag: -%c", r))
 				}
-				if _, ok := flag.GetDefault().(bool); ok {
+				if last && hasInline {
+					if err := c.setFlag(ctx, flag.GetName(), inlineValue); err != nil {
+						return err
+					}
+					ctx.setFlags[flag.GetName()] = true
+				} else if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
-				} else if j == len(shorts)-1 && i+1 < len(args) && !looksLikeFlag(args[i+1]) {
+					ctx.cliFlags[flag.GetName()] = true
+				} else if last && i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
 						return err
@@ -764,6 +793,14 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			}
 		} else {
 			positional = append(positional, arg)
+		}
+	}
+
+	// A bad environment value matters only when the command line did not
+	// override it.
+	for _, e := range envErrs {
+		if !ctx.cliFlags[e.name] {
+			return e.err
 		}
 	}
 
@@ -862,47 +899,45 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		return c.errorWithHelpHint(fmt.Sprintf("unknown flag: %s", name))
 	}
 
-	// Validate enum
-	if enum := flag.GetEnum(); len(enum) > 0 {
-		valid := false
-		for _, e := range enum {
-			if e == value {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s (allowed: %s)",
-				name, value, strings.Join(enum, ", ")))
-		}
+	// Validate enum and run custom validator
+	if enum := flag.GetEnum(); len(enum) > 0 && !slices.Contains(enum, value) {
+		return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s (allowed: %s)",
+			name, value, strings.Join(enum, ", ")))
 	}
-
-	// Run custom validator
 	if err := flag.Validate(value); err != nil {
 		return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s", name, err))
 	}
 
-	// Handle slice flags by accumulating values
-	// On first user-provided value, clear defaults and start fresh
+	// Handle slice flags by accumulating values. The first command-line
+	// value replaces defaults and environment values.
+	accumulate := ctx.cliFlags[name]
+	if ctx.cliFlags != nil {
+		ctx.cliFlags[name] = true
+	}
 	switch flag.GetDefault().(type) {
 	case []string:
 		var existing []string
-		if ctx.setFlags[name] {
-			// Already set by user, accumulate
+		if accumulate {
+			// Already set on the command line, accumulate
 			existing, _ = ctx.flags[name].([]string)
 		}
 		// Otherwise start with empty slice (replacing defaults)
 		ctx.flags[name] = append(existing, value)
 	case []int:
 		var existing []int
-		if ctx.setFlags[name] {
+		if accumulate {
 			// Already set by user, accumulate
 			existing, _ = ctx.flags[name].([]int)
 		}
 		// Otherwise start with empty slice (replacing defaults)
 		intVal, err := parseInt(value)
 		if err != nil {
-			return fmt.Errorf("invalid integer for --%s: %s", name, value)
+			msg := fmt.Sprintf("invalid integer for --%s: %q", name, value)
+			if strings.Contains(value, ",") {
+				// Command-line values are not split on commas.
+				msg += fmt.Sprintf(" (pass one value per --%s)", name)
+			}
+			return errors.New(msg)
 		}
 		ctx.flags[name] = append(existing, intVal)
 	default:
@@ -913,6 +948,37 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		ctx.flags[name] = typed
 	}
 	return nil
+}
+
+// flagEnvError is an invalid environment value for a flag.
+type flagEnvError struct {
+	name string
+	err  error
+}
+
+// checkFlagValue applies a flag's Enum and Validate checks to a raw value
+// and returns a message describing the first failure, or "". Slice flags
+// check each comma-separated element, as convertFlagValue splits them.
+func checkFlagValue(f Flag, val string) string {
+	values := []string{val}
+	switch f.GetDefault().(type) {
+	case []string, []int:
+		values = nil
+		if val != "" {
+			for _, part := range strings.Split(val, ",") {
+				values = append(values, strings.TrimSpace(part))
+			}
+		}
+	}
+	for _, v := range values {
+		if enum := f.GetEnum(); len(enum) > 0 && !slices.Contains(enum, v) {
+			return fmt.Sprintf("allowed: %s", strings.Join(enum, ", "))
+		}
+		if err := f.Validate(v); err != nil {
+			return err.Error()
+		}
+	}
+	return ""
 }
 
 func parseInt(s string) (int, error) {
