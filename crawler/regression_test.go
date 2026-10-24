@@ -403,6 +403,7 @@ func TestSameDomainFilteringAfterRedirect(t *testing.T) {
 	}{
 		{target: "www.example.com", wantFollow: 1},
 		{target: "other.example.net", wantFollow: 0},
+		{target: "blog.example.com", wantFollow: 0},
 	} {
 		t.Run(tc.target, func(t *testing.T) {
 			rec := &hitRecorder{}

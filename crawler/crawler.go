@@ -996,11 +996,11 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 	if response.Links != nil {
 		discoveredLinks = c.extractURLs(response.Links, linkBase(parsedURL, response.URL))
 	}
-	// After a redirect within the same site (example.com -> www.example.com),
-	// filter against the final host so its links are still followed. A
-	// redirect to another site does not widen the crawl to that site.
+	// After a redirect between the bare and "www." forms of the same host
+	// (example.com -> www.example.com), filter against the final host so its
+	// links are still followed. Any other redirect does not widen the crawl.
 	filterBase := parsedURL
-	if final := linkBase(parsedURL, response.URL); web.AreRelatedHosts(parsedURL, final) {
+	if final := linkBase(parsedURL, response.URL); sameHostIgnoringWWW(parsedURL, final) {
 		filterBase = final
 	}
 	filteredURLs := c.filterLinks(filterBase, discoveredLinks)
@@ -1039,6 +1039,15 @@ func linkBase(requested *url.URL, responseURL string) *url.URL {
 		return requested
 	}
 	return u
+}
+
+// sameHostIgnoringWWW reports whether a and b name the same host, treating
+// a leading "www." as insignificant.
+func sameHostIgnoringWWW(a, b *url.URL) bool {
+	trim := func(u *url.URL) string {
+		return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	}
+	return trim(a) == trim(b)
 }
 
 // isPermanentFetchError reports whether retrying a failed fetch cannot help:
