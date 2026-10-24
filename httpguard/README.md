@@ -187,12 +187,17 @@ Non-positive durations fall back to the defaults.
 
 Loopback, private (RFC 1918 and IPv6 unique-local), link-local — including the
 `169.254.169.254` metadata address — multicast, unspecified, and broadcast
-addresses, plus shared address space (`100.64.0.0/10`), documentation and
-benchmark ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`,
-`2001:db8::/32`, `3fff::/20`), IPv4/IPv6 transition ranges (`64:ff9b::/96`,
-`2001::/32`, `2002::/16`), and reserved space (`240.0.0.0/4`, `5f00::/16`).
+addresses, plus "this network" (`0.0.0.0/8`), shared address space
+(`100.64.0.0/10`), documentation and benchmark ranges (`192.0.2.0/24`,
+`198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`,
+`3fff::/20`), IPv4/IPv6 transition ranges (`64:ff9b::/96`, `64:ff9b:1::/48`,
+`192.88.99.0/24`, `2002::/16`), IETF protocol assignments (`192.0.0.0/24`,
+and `2001::/23`, which includes Teredo, benchmarking, and ORCHID), ORCHIDv2
+(`2001:20::/28`), discard-only (`100::/64`), and reserved space
+(`240.0.0.0/4`, `5f00::/16`, `fec0::/10`).
 IPv4-mapped IPv6 addresses are checked as IPv4, so `::ffff:127.0.0.1` is
-rejected as loopback.
+rejected as loopback. IPv4-compatible (`::/96`, such as `::127.0.0.1`) and
+IPv4-translated (`::ffff:0:0:0/96`) addresses are rejected outright.
 
 The list tracks the "globally reachable: false" entries of the IANA
 special-purpose address registries, which is where a newly reserved range

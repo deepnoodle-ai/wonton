@@ -654,3 +654,72 @@ func TestValidatePublicIPRejectsRecentlyReservedRanges(t *testing.T) {
 		assert.ErrorIs(t, ValidatePublicIP(net.ParseIP(value)), ErrNonPublicAddress, "ValidatePublicIP(%q)", value)
 	}
 }
+
+func TestValidatePublicIPRejectsIPv4EmbeddingAndProtocolRanges(t *testing.T) {
+	for _, value := range []string{
+		"::127.0.0.1",        // IPv4-compatible loopback (::/96)
+		"::169.254.169.254",  // IPv4-compatible metadata address
+		"::8.8.8.8",          // IPv4-compatible, deprecated by RFC 4291
+		"::ffff:0:127.0.0.1", // IPv4-translated (RFC 2765)
+		"2001:20::1",         // ORCHIDv2 (RFC 7343)
+		"2001:1::1",          // IETF protocol assignments (2001::/23)
+		"2001:1ff:ffff::1",   // top of 2001::/23
+	} {
+		assert.ErrorIs(t, ValidatePublicIP(net.ParseIP(value)), ErrNonPublicAddress, "ValidatePublicIP(%q)", value)
+	}
+	// Neighbours of the new ranges stay public.
+	for _, value := range []string{"2001:200::1", "2606:4700:4700::1111", "::ffff:8.8.8.8"} {
+		assert.NoError(t, ValidatePublicIP(net.ParseIP(value)), "ValidatePublicIP(%q)", value)
+	}
+}
+
+func TestClientKeepsTheZoneOfALiteralAddress(t *testing.T) {
+	sentinel := errors.New("stop after observing the dial")
+	var dialed []string
+	var validated []string
+	client := NewClient(
+		WithResolver(func(context.Context, string) ([]net.IPAddr, error) {
+			t.Error("a zoned literal must not be resolved as a hostname")
+			return nil, errors.New("unexpected lookup")
+		}),
+		WithAddressValidator(func(ip net.IP) error {
+			validated = append(validated, ip.String())
+			return nil
+		}),
+		WithDialContext(func(_ context.Context, _, address string) (net.Conn, error) {
+			dialed = append(dialed, address)
+			return nil, sentinel
+		}),
+	)
+	_, err := transportOf(t, client).DialContext(context.Background(), "tcp", "[fe80::1%lo0]:8080")
+	assert.ErrorIs(t, err, sentinel)
+	assert.Equal(t, validated, []string{"fe80::1"})
+	assert.Equal(t, dialed, []string{"[fe80::1%lo0]:8080"})
+}
+
+func TestClientRejectsZonedLinkLocalLiteralByDefault(t *testing.T) {
+	client := NewClient(WithDialContext(func(context.Context, string, string) (net.Conn, error) {
+		t.Error("dial must not happen")
+		return nil, errors.New("unexpected dial")
+	}))
+	_, err := transportOf(t, client).DialContext(context.Background(), "tcp", "[fe80::1%lo0]:8080")
+	assert.ErrorIs(t, err, ErrNonPublicAddress)
+}
+
+func TestClientKeepsTheZoneOfAResolvedAddress(t *testing.T) {
+	sentinel := errors.New("stop after observing the dial")
+	var dialed []string
+	client := NewClient(
+		WithResolver(func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("fe80::1"), Zone: "en0"}}, nil
+		}),
+		WithAddressValidator(func(net.IP) error { return nil }),
+		WithDialContext(func(_ context.Context, _, address string) (net.Conn, error) {
+			dialed = append(dialed, address)
+			return nil, sentinel
+		}),
+	)
+	_, err := transportOf(t, client).DialContext(context.Background(), "tcp", "printer.local:80")
+	assert.ErrorIs(t, err, sentinel)
+	assert.Equal(t, dialed, []string{"[fe80::1%en0]:80"})
+}

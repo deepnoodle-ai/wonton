@@ -41,6 +41,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -88,10 +89,14 @@ var nonPublicRanges = []*net.IPNet{
 	mustCIDR("240.0.0.0/4"),     // reserved
 	mustCIDR("64:ff9b::/96"),    // IPv4/IPv6 translation
 	mustCIDR("64:ff9b:1::/48"),  // IPv4/IPv6 translation (local use)
+	mustCIDR("::/96"),           // IPv4-compatible IPv6 (deprecated, RFC 4291)
+	mustCIDR("::ffff:0:0:0/96"), // IPv4-translated IPv6 (RFC 2765)
 	mustCIDR("100::/64"),        // discard-only
+	mustCIDR("2001::/23"),       // IETF protocol assignments (RFC 2928)
 	mustCIDR("2001::/32"),       // Teredo
 	mustCIDR("2001:2::/48"),     // benchmarking
 	mustCIDR("2001:10::/28"),    // ORCHID (deprecated)
+	mustCIDR("2001:20::/28"),    // ORCHIDv2 (RFC 7343)
 	mustCIDR("2001:db8::/32"),   // documentation
 	mustCIDR("2002::/16"),       // 6to4
 	mustCIDR("3fff::/20"),       // documentation (RFC 9637)
@@ -316,8 +321,9 @@ func (c *config) dialGuarded(ctx context.Context, network, address string) (net.
 	if err != nil {
 		return nil, err
 	}
-	if literal := net.ParseIP(host); literal != nil {
-		if err := c.validate(literal); err != nil {
+	// netip accepts IPv6 zones ("fe80::1%lo0"), which net.ParseIP rejects.
+	if literal, err := netip.ParseAddr(host); err == nil {
+		if err := c.validate(net.IP(literal.AsSlice())); err != nil {
 			return nil, err
 		}
 		return c.connect(ctx, network, []string{address})
@@ -339,7 +345,11 @@ func (c *config) dialGuarded(ctx context.Context, network, address string) (net.
 		if err := c.validate(addr.IP); err != nil {
 			return nil, err
 		}
-		addresses = append(addresses, net.JoinHostPort(addr.IP.String(), port))
+		ip := addr.IP.String()
+		if addr.Zone != "" {
+			ip += "%" + addr.Zone
+		}
+		addresses = append(addresses, net.JoinHostPort(ip, port))
 	}
 	return c.connect(ctx, network, addresses)
 }
