@@ -379,8 +379,13 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 	}
 	t.reg = ctx.registries()
 
-	// Determine if focused
+	// Register as focusable for Tab navigation (if focus manager available).
+	// Register first: it may auto-focus this area, and the border style
+	// below depends on focus.
 	fm := ctx.FocusManager()
+	if fm != nil {
+		fm.Register(&textAreaFocusHandler{area: t, bounds: ctx.AbsoluteBounds()})
+	}
 	isFocused := t.id != "" && fm != nil && fm.GetFocusedID() == t.id
 
 	// Build content view
@@ -485,16 +490,6 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 
 	// Update scroll position
 	t.setScrollY(scrollY)
-
-	// Register as focusable for Tab navigation (if focus manager available)
-	bounds := ctx.AbsoluteBounds()
-	if fm != nil {
-		handler := &textAreaFocusHandler{
-			area:   t,
-			bounds: bounds,
-		}
-		fm.Register(handler)
-	}
 }
 
 func (t *TextAreaView) renderBordered(ctx *RenderContext, w, h int, content *ScrollView, scrollY *int, borderStyle, titleStyle Style) {
@@ -677,6 +672,10 @@ func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 			if scrollY < 0 {
 				scrollY = 0
 			}
+		} else {
+			// The next render clamps this to the real bottom, which also
+			// works when the parent layout sets the height.
+			scrollY = maxLine
 		}
 		handled = true
 	}

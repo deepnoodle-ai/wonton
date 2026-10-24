@@ -427,8 +427,15 @@ func (f *InputFieldView) render(ctx *RenderContext) {
 	}
 
 	// Determine if this input is focused
+	// The input registers later, inside renderInput, and Register focuses
+	// the first focusable when nothing has focus. Predict that, so the
+	// border and label use the focused style on the first frame too.
 	fm := ctx.FocusManager()
-	isFocused := fm != nil && fm.GetFocusedID() == f.id
+	isFocused := false
+	if fm != nil {
+		focusedID := fm.GetFocusedID()
+		isFocused = focusedID == f.id || focusedID == ""
+	}
 
 	if f.bordered && f.border != nil && !f.horizontalBarOnly {
 		// Draw full bordered input with label embedded in top border

@@ -656,9 +656,7 @@ func (i *InputView) render(ctx *RenderContext) {
 		return
 	}
 
-	// Determine if this input is focused
 	fm := ctx.FocusManager()
-	isFocused := fm != nil && fm.GetFocusedID() == i.id
 
 	// Register this input - use absolute bounds for click registration
 	inputBounds := ctx.AbsoluteBounds()
@@ -681,6 +679,9 @@ func (i *InputView) render(ctx *RenderContext) {
 		highlight:        i.highlight,
 		history:          i.history,
 	}, fm)
+
+	// Read focus after Register, which may auto-focus this input.
+	isFocused := fm != nil && fm.GetFocusedID() == i.id
 
 	// Apply focus-aware styling to the textInput
 	if isFocused && i.focusStyle != nil {
