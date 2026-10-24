@@ -7,7 +7,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
-// TreeNode represents a node in a tree view.
+// TreeNode represents a node in a tree view. Nodes must form a tree: a node
+// that is its own ancestor makes rendering recurse without end.
 type TreeNode struct {
 	// Label is the display text for this node.
 	Label string
