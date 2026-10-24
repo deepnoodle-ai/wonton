@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/publicsuffix"
@@ -164,18 +165,15 @@ func NormalizeURL(value string, opts ...NormalizeOption) (*url.URL, error) {
 				return nil, fmt.Errorf("invalid url %q: %w", value, err)
 			}
 		}
-	case "http":
-		if !cfg.keepHTTP {
-			u.Scheme = "https"
-		}
-	case "https":
-		// Already https, nothing to do
+	case "http", "https":
+		// canonicalize upgrades http after it strips the default port.
 	default:
 		// Inputs like "localhost:3000" parse as scheme "localhost" with
-		// opaque "3000". A digit-leading opaque means the "scheme" was a
-		// hostname and the opaque a port; real opaque schemes (mailto:a@b,
-		// tel:+1..., data:text/html) never start with a digit.
-		if u.Opaque == "" || u.Opaque[0] < '0' || u.Opaque[0] > '9' {
+		// opaque "3000". An opaque that is only a valid port (optionally
+		// followed by a path, query, or fragment) means the "scheme" was a
+		// hostname. Known non-host schemes are always rejected, since
+		// "tel:911" and "javascript:0" also look like host:port.
+		if !looksLikeHostPort(u) {
 			return nil, fmt.Errorf("invalid url scheme %q: %s", u.Scheme, value)
 		}
 		u, err = url.Parse("https://" + value)
@@ -228,10 +226,39 @@ func ResolveLink(base *url.URL, href string, opts ...NormalizeOption) (*url.URL,
 
 	cfg := applyOptions(opts)
 	resolved := base.ResolveReference(ref)
-	if resolved.Scheme == "http" && !cfg.keepHTTP {
-		resolved.Scheme = "https"
-	}
 	return canonicalize(resolved, cfg)
+}
+
+// nonHostSchemes are URI schemes whose opaque part can start with digits but
+// never names a host:port.
+var nonHostSchemes = map[string]bool{
+	"about": true, "blob": true, "callto": true, "data": true, "fax": true,
+	"file": true, "geo": true, "intent": true, "javascript": true,
+	"magnet": true, "mailto": true, "news": true, "sip": true, "sips": true,
+	"skype": true, "sms": true, "tel": true, "urn": true, "vbscript": true,
+	"xmpp": true,
+}
+
+// looksLikeHostPort reports whether a URL parsed with a non-http scheme is
+// really a schemeless "host:port[/path]" input, such as "localhost:3000".
+func looksLikeHostPort(u *url.URL) bool {
+	if nonHostSchemes[u.Scheme] || u.Opaque == "" {
+		return false
+	}
+	port := u.Opaque
+	if i := strings.IndexAny(port, "/?#"); i >= 0 {
+		port = port[:i]
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return false
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // canonicalize applies the shared normalization transformations to a parsed
@@ -251,13 +278,20 @@ func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 	u.Host = strings.ToLower(u.Host)
 
 	// Default ports are redundant: example.com:443 and example.com are the
-	// same resource over https.
-	if (u.Scheme == "https" && u.Port() == "443") || (u.Scheme == "http" && u.Port() == "80") {
+	// same resource over https. An http URL that will be upgraded drops
+	// either default port, so "http://host:80" and "http://host:443" both
+	// become "https://host".
+	upgrade := u.Scheme == "http" && !cfg.keepHTTP
+	port := u.Port()
+	if (u.Scheme == "http" && port == "80") || (port == "443" && (u.Scheme == "https" || upgrade)) {
 		host := u.Hostname()
 		if strings.Contains(host, ":") {
 			host = "[" + host + "]" // restore IPv6 brackets stripped by Hostname
 		}
 		u.Host = host
+	}
+	if upgrade {
+		u.Scheme = "https"
 	}
 
 	if !cfg.keepQuery {

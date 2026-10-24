@@ -149,9 +149,22 @@ func TestNormalizeURL(t *testing.T) {
 			expected: "https://example.com/path",
 		},
 		{
-			name:     "default http port removed after upgrade is not assumed",
+			// http://host:80 is the same resource as http://host, so both
+			// upgrade to https://host; keeping :80 would mean TLS on port 80.
+			name:     "default http port removed before upgrade",
 			input:    "http://example.com:80/path",
-			expected: "https://example.com:80/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "https port removed from upgraded http URL",
+			input:    "http://example.com:443/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "port 443 kept on http with KeepHTTP",
+			input:    "http://example.com:443/path",
+			opts:     []NormalizeOption{KeepHTTP()},
+			expected: "http://example.com:443/path",
 		},
 		{
 			name:     "default http port removed with KeepHTTP",
@@ -513,6 +526,48 @@ func TestResolveLink(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNormalizeURLRejectsNonHTTPSchemesWithDigitOpaque(t *testing.T) {
+	for _, input := range []string{
+		"mailto:123@example.com",
+		"tel:18005551234",
+		"tel:911",
+		"javascript:0",
+		"javascript:1;alert(1)",
+		"sms:12345",
+		"data:1",
+	} {
+		u, err := NormalizeURL(input)
+		if err == nil {
+			t.Errorf("NormalizeURL(%q) = %q, want error", input, u)
+		}
+	}
+	// Schemeless host:port inputs still work.
+	for input, want := range map[string]string{
+		"localhost:3000":          "https://localhost:3000",
+		"localhost:3000/path?q=1": "https://localhost:3000/path",
+		"myhost:8080#top":         "https://myhost:8080",
+	} {
+		u, err := NormalizeURL(input)
+		assert.NoError(t, err, input)
+		assert.Equal(t, want, u.String(), input)
+	}
+}
+
+func TestDefaultHTTPPortRemovedBeforeUpgrade(t *testing.T) {
+	u, err := NormalizeURL("http://example.com:80/path")
+	assert.NoError(t, err)
+	assert.Equal(t, "https://example.com/path", u.String())
+
+	base, _ := url.Parse("https://example.com/")
+	u, err = ResolveLink(base, "http://other.com:80/page")
+	assert.NoError(t, err)
+	assert.Equal(t, "https://other.com/page", u.String())
+
+	u, err = ResolveLink(base, "http://other.com:80/page", KeepHTTP())
+	assert.NoError(t, err)
+	assert.Equal(t, "http://other.com/page", u.String())
 }
 
 func TestResolveLinkInvalidBase(t *testing.T) {
