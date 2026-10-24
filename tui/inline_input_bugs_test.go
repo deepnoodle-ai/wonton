@@ -59,5 +59,5 @@ func TestPromptState_AutocompleteMidRuneOffset(t *testing.T) {
 
 	state.triggerAutocomplete()
 	state.applyAutocomplete()
-	assert.Equal(t, "中x", string(state.input))
+	assert.Equal(t, string(state.input), "中x")
 }

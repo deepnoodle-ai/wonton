@@ -1526,6 +1526,8 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 					Continuation: true,
 				}
 				t.dirtyRegion.Mark(currentX+1, currentY)
+			} else if charWidth > 2 {
+				t.blankTail(currentX, currentY, charWidth, clipRect.Max.X, style)
 			}
 		}
 
@@ -1537,6 +1539,22 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	t.virtualY = currentY
 
 	return nil
+}
+
+// blankTail writes blank cells over the columns after a glyph wider than two
+// cells, up to maxX. runewidth gives U+2E3A and U+2E3B widths 3 and 4, but
+// terminals draw them in one cell. Continuation cells would hide those
+// columns from flush, so stale text would stay on screen; blanks draw over it.
+func (t *Terminal) blankTail(x, y, width, maxX int, style Style) {
+	for i := 1; i < width && x+i < maxX && x+i < t.width; i++ {
+		if old := t.backBuffer[y][x+i]; old.Width == 2 && x+i+1 < t.width {
+			// Don't orphan the continuation of a wide glyph cut in half.
+			t.backBuffer[y][x+i+1] = Cell{Char: ' ', Style: NewStyle(), Width: 1}
+			t.dirtyRegion.Mark(x+i+1, y)
+		}
+		t.backBuffer[y][x+i] = Cell{Char: ' ', Style: style, Width: 1}
+		t.dirtyRegion.Mark(x+i, y)
+	}
 }
 
 // Println outputs text with a newline
@@ -1651,6 +1669,8 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 			Continuation: true,
 		}
 		t.dirtyRegion.Mark(x+1, y)
+	} else if charWidth > 2 {
+		t.blankTail(x, y, charWidth, t.width, style)
 	}
 
 	return nil
