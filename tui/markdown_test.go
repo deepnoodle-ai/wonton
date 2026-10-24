@@ -1568,7 +1568,7 @@ func TestMarkdownRenderer_StrikethroughMergesWithOtherStyles(t *testing.T) {
 
 func TestMarkdownRenderer_SingleTildeIsNotStrikethrough(t *testing.T) {
 	renderer := NewMarkdownRenderer()
-	for _, input := range []string{"about ~5 to ~10 minutes", "~~~not a fence~~~ x", "a ~~b~ c"} {
+	for _, input := range []string{"about ~5 to ~10 minutes", "a ~~~b~~~ c", "a ~~b~ c"} {
 		result, err := renderer.Render(input)
 		assert.NoError(t, err)
 		for _, line := range result.Lines {
