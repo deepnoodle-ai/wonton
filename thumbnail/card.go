@@ -205,7 +205,8 @@ func truncate(f font.Face, s string, maxW fixed.Int26_6) string {
 		}
 		adv, _ := f.GlyphAdvance(r)
 		w += adv
-		if w > limit {
+		// Include the kern between this rune and the ellipsis that follows.
+		if w+f.Kern(r, '…') > limit {
 			break
 		}
 		i += size
