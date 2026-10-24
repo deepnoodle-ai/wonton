@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"io"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -476,4 +477,26 @@ func TestButton_Render_InGroup(t *testing.T) {
 
 	termtest.AssertRowContains(t, screen, 0, "Yes")
 	termtest.AssertRowContains(t, screen, 0, "No")
+}
+
+type buttonClickApp struct{ clicks int }
+
+func (a *buttonClickApp) View() View {
+	return Stack(
+		Text("header"),
+		Button("Submit", func() { a.clicks++ }).ID("submit"),
+	)
+}
+
+func TestButton_MouseClickInvokesCallback(t *testing.T) {
+	app := &buttonClickApp{}
+	r := NewRuntime(NewTestTerminal(80, 24, io.Discard), app, 30)
+	r.render()
+
+	r.processEvent(MouseEvent{X: 2, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 1, app.clicks, "clicking a button runs its callback")
+	assert.Equal(t, "submit", r.focusMgr.GetFocusedID(), "clicking a button also focuses it")
+
+	r.processEvent(MouseEvent{X: 2, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 1, app.clicks, "a click outside the button does not run its callback")
 }
