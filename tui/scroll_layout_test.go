@@ -251,3 +251,41 @@ func TestScrolledOutClickablesDoNotTakeClicksBelowTheScroll(t *testing.T) {
 	r.processEvent(MouseEvent{X: 0, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
 	assert.Equal(t, []string{"Quit", "row5"}, a.clicked)
 }
+
+// focusRowsApp is a Scroll of focusable rows, alternately FocusableView and
+// Button, with a Button below it.
+type focusRowsApp struct{ scrollY int }
+
+func (a *focusRowsApp) View() View {
+	var rows []View
+	for i := range 30 {
+		id := fmt.Sprintf("row%d", i)
+		if i%2 == 0 {
+			rows = append(rows, FocusableView(Text("%s", id), &FocusHandler{ID: id}))
+		} else {
+			rows = append(rows, Button(id, func() {}).ID(id))
+		}
+	}
+	return Stack(
+		Height(10, Scroll(Stack(rows...), &a.scrollY)),
+		Button("Quit", func() {}).ID("quit"),
+	)
+}
+
+func (a *focusRowsApp) HandleEvent(Event) []Cmd { return nil }
+
+func TestScrolledOutFocusablesDoNotTakeFocusClicksBelowTheScroll(t *testing.T) {
+	for _, scrollY := range []int{0, 5} {
+		a := &focusRowsApp{scrollY: scrollY}
+		r := NewRuntime(NewTestTerminal(20, 12, &bytes.Buffer{}), a, 30)
+		// FocusManager.HandleClick walks a map, so repeat to cover its order.
+		for range 20 {
+			assert.NoError(t, r.renderChecked())
+			r.focusMgr.SetFocus(fmt.Sprintf("row%d", scrollY))
+			r.processEvent(MouseEvent{X: 0, Y: 10, Button: MouseButtonLeft, Type: MouseClick})
+			assert.Equal(t, "quit", r.focusMgr.GetFocusedID(), "scrollY=%d: a click on Quit focuses Quit", scrollY)
+		}
+		r.processEvent(MouseEvent{X: 0, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
+		assert.Equal(t, fmt.Sprintf("row%d", scrollY+1), r.focusMgr.GetFocusedID(), "a visible row still takes focus clicks")
+	}
+}

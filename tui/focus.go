@@ -470,7 +470,8 @@ func (f *focusableWrapper) size(maxWidth, maxHeight int) (int, int) {
 }
 
 func (f *focusableWrapper) render(ctx *RenderContext) {
-	f.bounds = ctx.AbsoluteBounds()
+	// Only the visible part takes focus clicks; rows a Scroll hides must not.
+	f.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(f)
 	}
