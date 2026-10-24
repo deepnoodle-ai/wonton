@@ -371,9 +371,13 @@ func (s *Session) Resize(width, height int) error {
 	s.mu.Lock()
 	ptmx := s.pty
 	recorder := s.recorder
+	started := s.started
 	s.mu.Unlock()
 
 	if ptmx == nil {
+		if started {
+			return fmt.Errorf("session has exited")
+		}
 		return fmt.Errorf("session not started")
 	}
 
@@ -555,6 +559,11 @@ func (s *Session) copyOutput() {
 		if recorder != nil {
 			recorder.Flush()
 			recorder.Close()
+			s.mu.Lock()
+			if s.recorder == recorder {
+				s.recorder = nil
+			}
+			s.mu.Unlock()
 		}
 
 		// Wait for the process to exit and capture exit code
@@ -573,6 +582,15 @@ func (s *Session) copyOutput() {
 			}
 			s.mu.Unlock()
 		}
+
+		// The command has exited and its output is drained, so release the
+		// PTY master. Callers that only call Wait would otherwise leak it.
+		s.mu.Lock()
+		if s.pty != nil {
+			s.pty.Close()
+			s.pty = nil
+		}
+		s.mu.Unlock()
 
 		close(s.done)
 	}()

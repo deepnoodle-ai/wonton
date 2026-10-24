@@ -184,9 +184,12 @@ func (t *Terminal) ResumeRecording() {
 		if recorder.paused {
 			recorder.paused = false
 			// Remove the paused duration from the timeline so recording
-			// resumes where it was paused instead of leaving a gap.
-			recorder.timeAdjust += time.Since(recorder.pauseStart).Seconds()
-			recorder.lastEventTime = time.Now()
+			// resumes where it was paused instead of leaving a gap. Shift the
+			// last event time by the same amount, so idle time before and
+			// after the pause counts as one gap against IdleTimeLimit.
+			paused := time.Since(recorder.pauseStart)
+			recorder.timeAdjust += paused.Seconds()
+			recorder.lastEventTime = recorder.lastEventTime.Add(paused)
 		}
 		recorder.mu.Unlock()
 	}

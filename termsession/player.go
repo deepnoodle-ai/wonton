@@ -34,6 +34,7 @@ type Player struct {
 	mu             sync.RWMutex
 	stopChan       chan struct{}
 	stopped        bool
+	seekGen        uint64 // incremented by Seek so Play does not overwrite it
 }
 
 // PlayerOptions configures playback behavior.
@@ -189,6 +190,7 @@ func (p *Player) Play() error {
 		event := events[p.currentIndex]
 		speed := p.speed
 		currentIndex := p.currentIndex
+		seekGen := p.seekGen
 		elapsed := p.elapsedLocked()
 		p.mu.RUnlock()
 
@@ -249,7 +251,11 @@ func (p *Player) Play() error {
 		}
 
 		p.mu.Lock()
-		p.currentIndex = batchIndex
+		// The batch was written without the lock held. If Seek ran in the
+		// meantime, keep the position it chose.
+		if p.seekGen == seekGen {
+			p.currentIndex = batchIndex
+		}
 		p.mu.Unlock()
 	}
 }
@@ -411,24 +417,26 @@ func (p *Player) SetLoop(loop bool) {
 // Seek jumps to a specific time offset in the recording.
 //
 // The time is specified in seconds from the start of the recording.
-// Seeking adjusts the playback position to the event closest to the
-// target time. This can be called during playback.
+// Playback continues with the first event at or after the target time.
+// This can be called during playback.
 func (p *Player) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	events := p.activeEvents()
 
-	// Find the event closest to the target time
-	targetIndex := 0
+	// Play next the first event at or after the target time. Events before
+	// it have already elapsed at that point in the recording.
+	targetIndex := len(events)
 	for i, event := range events {
-		if event.Time > seconds {
+		if event.Time >= seconds {
+			targetIndex = i
 			break
 		}
-		targetIndex = i
 	}
 
 	p.currentIndex = targetIndex
+	p.seekGen++
 	// Adjust start time to account for the seek
 	elapsed := p.elapsedLocked()
 	adjustment := elapsed - (seconds / p.speed)

@@ -365,12 +365,12 @@ func (r *Recorder) Resume() {
 	if r.paused {
 		r.paused = false
 		// Remove the paused duration from the timeline so the recording
-		// resumes from the point where Pause was called. One clock reading
-		// for both, so no sliver of real time escapes both the pause
-		// adjustment and the idle accounting.
-		now := time.Now()
-		r.timeAdjust += now.Sub(r.pauseStart)
-		r.lastEventTime = now
+		// resumes from the point where Pause was called. Shift the last
+		// event time by the same duration, so idle time before and after the
+		// pause counts as one gap against IdleTimeLimit.
+		paused := time.Since(r.pauseStart)
+		r.timeAdjust += paused
+		r.lastEventTime = r.lastEventTime.Add(paused)
 	}
 	r.mu.Unlock()
 }
