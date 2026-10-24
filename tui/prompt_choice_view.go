@@ -561,7 +561,7 @@ func (p *PromptChoiceView) render(ctx *RenderContext) {
 	p.reg = ctx.registries()
 
 	// Register with focus manager
-	p.bounds = ctx.AbsoluteBounds()
+	p.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(p)
 	}

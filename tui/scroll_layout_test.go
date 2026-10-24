@@ -252,18 +252,32 @@ func TestScrolledOutClickablesDoNotTakeClicksBelowTheScroll(t *testing.T) {
 	assert.Equal(t, []string{"Quit", "row5"}, a.clicked)
 }
 
-// focusRowsApp is a Scroll of focusable rows, alternately FocusableView and
-// Button, with a Button below it.
-type focusRowsApp struct{ scrollY int }
+// focusRowsApp is a Scroll of one-row focusable widgets of several kinds,
+// with a Button below it.
+type focusRowsApp struct {
+	scrollY int
+	texts   [30]string
+	sels    [30]int
+	toggles [30]bool
+}
 
 func (a *focusRowsApp) View() View {
 	var rows []View
 	for i := range 30 {
 		id := fmt.Sprintf("row%d", i)
-		if i%2 == 0 {
+		switch i % 6 {
+		case 0:
 			rows = append(rows, FocusableView(Text("%s", id), &FocusHandler{ID: id}))
-		} else {
+		case 1:
 			rows = append(rows, Button(id, func() {}).ID(id))
+		case 2:
+			rows = append(rows, SelectListStrings([]string{id}, &a.sels[i]).ID(id))
+		case 3:
+			rows = append(rows, Input(&a.texts[i]).ID(id))
+		case 4:
+			rows = append(rows, InputField(&a.texts[i]).ID(id))
+		case 5:
+			rows = append(rows, Toggle(&a.toggles[i]).ID(id))
 		}
 	}
 	return Stack(

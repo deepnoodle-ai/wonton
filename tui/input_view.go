@@ -663,7 +663,7 @@ func (i *InputView) render(ctx *RenderContext) {
 	i.reg = ctx.registries()
 	state := i.reg.inputs.Register(i.id, inputConfig{
 		binding:          i.binding,
-		bounds:           inputBounds,
+		bounds:           ctx.clickArea(inputBounds),
 		placeholder:      i.placeholder,
 		placeholderStyle: i.placeholderStyle,
 		mask:             i.mask,

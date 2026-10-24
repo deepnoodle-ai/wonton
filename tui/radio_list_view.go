@@ -206,7 +206,7 @@ func (r *RadioListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	r.bounds = ctx.AbsoluteBounds()
+	r.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(r)
 	}

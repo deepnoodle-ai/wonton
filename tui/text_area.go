@@ -384,7 +384,7 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 	// below depends on focus.
 	fm := ctx.FocusManager()
 	if fm != nil {
-		fm.Register(&textAreaFocusHandler{area: t, bounds: ctx.AbsoluteBounds()})
+		fm.Register(&textAreaFocusHandler{area: t, bounds: ctx.clickArea(ctx.AbsoluteBounds())})
 	}
 	isFocused := t.id != "" && fm != nil && fm.GetFocusedID() == t.id
 

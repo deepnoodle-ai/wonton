@@ -525,7 +525,7 @@ func (t *TableView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	t.bounds = ctx.AbsoluteBounds()
+	t.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(t)
 	}
