@@ -39,6 +39,10 @@ type FocusManager struct {
 	focusables map[string]Focusable
 	focusedID  string
 	order      []string // registration order for Tab navigation
+	// pending is set when SetFocus names an element that is not registered
+	// yet, such as a dialog that opens in the same update. It keeps the
+	// next frame from treating focusedID as stale before the element renders.
+	pending bool
 }
 
 // NewFocusManager creates a new focus manager instance.
@@ -52,6 +56,10 @@ func NewFocusManager() *FocusManager {
 func (fm *FocusManager) Clear() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
+	if !fm.pending {
+		fm.dropStaleLocked()
+	}
+	fm.pending = false
 	fm.order = fm.order[:0]
 	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
 	for k := range fm.focusables {
@@ -66,11 +74,17 @@ func (fm *FocusManager) Register(f Focusable) {
 	defer fm.mu.Unlock()
 
 	id := f.FocusID()
+	// An element with an empty ID can hold focus while focusedID is "", so
+	// a later element must not also auto-focus.
+	_, emptyFocused := fm.focusables[""]
 	fm.focusables[id] = f
 	fm.order = append(fm.order, id)
+	if id == fm.focusedID {
+		fm.pending = false
+	}
 
 	// Auto-focus first element if none focused
-	if fm.focusedID == "" {
+	if fm.focusedID == "" && !emptyFocused {
 		fm.focusedID = id
 		f.SetFocused(true)
 	} else {
@@ -108,9 +122,35 @@ func (fm *FocusManager) SetFocus(id string) {
 	fm.focusedID = id
 
 	// Focus new
-	if next, exists := fm.focusables[id]; exists {
+	next, exists := fm.focusables[id]
+	if exists {
 		next.SetFocused(true)
 	}
+	fm.pending = !exists
+}
+
+// dropStaleLocked clears focusedID when the focused element was not
+// registered in the frame that just rendered, so the next frame auto-focuses
+// its first focusable. Without this, focus is lost for good when the focused
+// view disappears (for example, when a dialog closes).
+func (fm *FocusManager) dropStaleLocked() {
+	if _, exists := fm.focusables[fm.focusedID]; !exists {
+		fm.focusedID = ""
+	}
+}
+
+// settleLocked moves focus to the first registered element when the focused
+// element is no longer registered. Key handling calls it so that a key that
+// arrives before the next render reaches a focusable, as auto-focus would.
+func (fm *FocusManager) settleLocked() {
+	if fm.pending || len(fm.order) == 0 {
+		return
+	}
+	if _, exists := fm.focusables[fm.focusedID]; exists {
+		return
+	}
+	fm.focusedID = fm.order[0]
+	fm.focusables[fm.focusedID].SetFocused(true)
 }
 
 // FocusNext moves focus to the next element in registration order.
@@ -190,6 +230,7 @@ func (fm *FocusManager) findCurrentIndex() int {
 // focusables; with nowhere to go, it propagates to the application.
 func (fm *FocusManager) HandleKey(event KeyEvent) bool {
 	fm.mu.Lock()
+	fm.settleLocked()
 	focused := fm.focusables[fm.focusedID]
 	fm.mu.Unlock()
 

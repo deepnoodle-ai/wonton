@@ -426,3 +426,68 @@ func TestFocusPrevEvent_ImplementsEvent(t *testing.T) {
 	var e Event = event
 	assert.Equal(t, now, e.Timestamp())
 }
+
+// renderFocusables simulates one frame: Clear, then Register each element.
+func renderFocusables(fm *FocusManager, fs ...*mockFocusable) {
+	fm.Clear()
+	for _, f := range fs {
+		fm.Register(f)
+	}
+}
+
+func TestFocusManager_FocusedViewDisappearsRefocusesFirst(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main, modal)
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main, modal)
+	assert.True(t, modal.focused)
+
+	// The modal closes. The frame that drops it still shows the stale focus,
+	// and the next frame focuses the first remaining focusable.
+	renderFocusables(fm, main)
+	renderFocusables(fm, main)
+	assert.True(t, main.focused, "the remaining focusable should take focus")
+	assert.Equal(t, "main-input", fm.GetFocusedID())
+}
+
+func TestFocusManager_KeyAfterFocusedViewDisappears(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main, modal)
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main) // modal closed, no render since
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	assert.True(t, main.focused, "Tab should reach the only remaining focusable")
+	assert.Equal(t, "main-input", fm.GetFocusedID())
+}
+
+func TestFocusManager_SetFocusBeforeElementRenders(t *testing.T) {
+	fm := NewFocusManager()
+	main := &mockFocusable{id: "main-input"}
+	modal := &mockFocusable{id: "modal-input"}
+
+	renderFocusables(fm, main)
+	// The app opens a modal and focuses it in the same update. The modal
+	// is not registered until the next frame, so focus must wait for it.
+	fm.SetFocus("modal-input")
+	renderFocusables(fm, main, modal)
+	assert.True(t, modal.focused)
+	assert.False(t, main.focused)
+	assert.Equal(t, "modal-input", fm.GetFocusedID())
+}
+
+func TestFocusManager_EmptyIDDoesNotLetSecondAutoFocus(t *testing.T) {
+	fm := NewFocusManager()
+	anon := &mockFocusable{id: ""}
+	named := &mockFocusable{id: "named"}
+
+	renderFocusables(fm, anon, named)
+	assert.True(t, anon.focused)
+	assert.False(t, named.focused, "only the first focusable is auto-focused")
+}
