@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+// maxRecordingLineSize caps one line of a .cast file. Full-screen frames can
+// exceed bufio.Scanner's 64KB default.
+const maxRecordingLineSize = 16 * 1024 * 1024
+
+// pollInterval is the longest Play waits before it checks for Pause, Seek,
+// and SetSpeed again.
+const pollInterval = 50 * time.Millisecond
+
 // PlaybackController manages playback of recorded sessions
 type PlaybackController struct {
 	events       []RecordingEvent
@@ -57,6 +65,7 @@ func LoadRecording(filename string) (*PlaybackController, error) {
 	}
 
 	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxRecordingLineSize)
 
 	// Read header (first line)
 	if !scanner.Scan() {
@@ -121,6 +130,15 @@ func LoadRecording(filename string) (*PlaybackController, error) {
 // Play starts playback of the recording
 func (p *PlaybackController) Play(terminal *Terminal) error {
 	p.mu.Lock()
+	if len(p.events) == 0 {
+		p.mu.Unlock()
+		return nil
+	}
+	if p.stopped {
+		// A previous Stop closed the channel; give this run a fresh one.
+		p.stopChan = make(chan struct{})
+	}
+	stopChan := p.stopChan
 	p.terminal = terminal
 	p.startTime = time.Now()
 	p.currentIndex = 0
@@ -130,6 +148,14 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 	p.mu.Unlock()
 
 	for {
+		// Check this run's own channel. A Stop followed by a new Play resets
+		// p.stopped, but the closed channel still ends this loop.
+		select {
+		case <-stopChan:
+			return nil
+		default:
+		}
+
 		p.mu.RLock()
 		if p.stopped {
 			p.mu.RUnlock()
@@ -143,6 +169,10 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 				p.currentIndex = 0
 				p.startTime = time.Now()
 				p.totalPaused = 0
+				if p.paused {
+					// Count the pause from the restart, not from before it.
+					p.pauseTime = p.startTime
+				}
 				p.mu.Unlock()
 				continue
 			} else {
@@ -156,7 +186,11 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 
 		// Handle pause state
 		if paused {
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-stopChan:
+				return nil
+			case <-time.After(pollInterval):
+			}
 			continue
 		}
 
@@ -164,11 +198,11 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 		event := p.events[p.currentIndex]
 		speed := p.speed
 		currentIndex := p.currentIndex
+		elapsed := p.elapsedLocked()
 		p.mu.RUnlock()
 
 		// Calculate when this event should fire
 		targetTime := event.Time / speed
-		elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
 
 		if elapsed < targetTime {
 			sleepDuration := time.Duration((targetTime - elapsed) * float64(time.Second))
@@ -176,11 +210,15 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 			// This prevents choppy playback from sub-millisecond timing
 			const minSleepDuration = 10 * time.Millisecond
 			if sleepDuration >= minSleepDuration {
+				// Wake at least every pollInterval, so Pause, Seek, and
+				// SetSpeed take effect during a long gap between events.
 				select {
-				case <-p.stopChan:
+				case <-stopChan:
 					return nil
-				case <-time.After(sleepDuration):
+				case <-time.After(min(sleepDuration, pollInterval)):
 				}
+				// Re-evaluate the state before writing anything.
+				continue
 			}
 		}
 
@@ -191,6 +229,10 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 		batchIndex := currentIndex
 
 		p.mu.RLock()
+		if p.paused || p.stopped || p.currentIndex != currentIndex {
+			p.mu.RUnlock()
+			continue
+		}
 		for batchIndex < len(p.events) {
 			batchEvent := p.events[batchIndex]
 
@@ -226,7 +268,10 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 		// Input events ("i") are informational only, not replayed to the terminal
 
 		p.mu.Lock()
-		p.currentIndex = batchIndex
+		// Keep a position that Seek set while the output was written.
+		if p.currentIndex == currentIndex {
+			p.currentIndex = batchIndex
+		}
 		p.mu.Unlock()
 	}
 }
@@ -294,19 +339,12 @@ func (p *PlaybackController) SetSpeed(speed float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Adjust timing to prevent jumps when speed changes
-	if !p.paused {
-		elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
-		currentEventTime := float64(0)
-		if p.currentIndex < len(p.events) {
-			currentEventTime = p.events[p.currentIndex].Time
-		}
-
-		// Calculate new start time to maintain position
-		newElapsed := currentEventTime / speed
-		adjustment := elapsed - newElapsed
-		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
-	}
+	// Adjust timing to keep the recording position when speed changes.
+	// This also applies while paused, so Resume continues from the same spot.
+	elapsed := p.elapsedLocked()
+	newElapsed := elapsed * p.speed / speed
+	adjustment := elapsed - newElapsed
+	p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
 
 	p.speed = speed
 }
@@ -341,7 +379,7 @@ func (p *PlaybackController) Seek(seconds float64) {
 
 	p.currentIndex = targetIndex
 	// Adjust start time to account for the seek
-	elapsed := time.Since(p.startTime).Seconds() - p.totalPaused.Seconds()
+	elapsed := p.elapsedLocked()
 	adjustment := elapsed - (seconds / p.speed)
 	p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
 }
@@ -394,4 +432,15 @@ func (p *PlaybackController) GetProgress() float64 {
 		return 0
 	}
 	return p.positionLocked() / duration
+}
+
+// elapsedLocked returns the playback time elapsed in seconds, excluding
+// pauses. While paused, the clock stops at the pause time, because Resume
+// adds the current pause to totalPaused. Caller must hold p.mu.
+func (p *PlaybackController) elapsedLocked() float64 {
+	now := time.Now()
+	if p.paused {
+		now = p.pauseTime
+	}
+	return now.Sub(p.startTime).Seconds() - p.totalPaused.Seconds()
 }
