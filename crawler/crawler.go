@@ -59,6 +59,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/crawler/cache"
 	"github.com/deepnoodle-ai/wonton/fetch"
 	"github.com/deepnoodle-ai/wonton/htmlparse"
+	"github.com/deepnoodle-ai/wonton/httpguard"
 	"github.com/deepnoodle-ai/wonton/retry"
 	"github.com/deepnoodle-ai/wonton/web"
 )
@@ -107,8 +108,9 @@ type Result struct {
 	// was configured for this domain. The type depends on the Parser implementation.
 	Parsed any
 
-	// Links contains all URLs discovered on the page that passed the
-	// follow behavior filter. These may be enqueued for future crawling.
+	// Links contains every URL found on the page, resolved against the
+	// page's final URL and normalized. It is not filtered by FollowBehavior;
+	// the crawler applies that filter only to the URLs it enqueues.
 	Links []string
 
 	// Response is the raw fetch response including HTML content and metadata
@@ -426,7 +428,7 @@ func New(opts Options) (*Crawler, error) {
 	// crawled again. This supports resuming interrupted crawls.
 	for _, rawURL := range opts.KnownURLs {
 		if normalized, err := c.normalizeURL(rawURL); err == nil {
-			c.processedURLs.Store(strings.TrimSuffix(normalized.String(), "/"), true)
+			c.processedURLs.Store(normalized.String(), urlKnown)
 		}
 	}
 	if err := c.AddParserRules(opts.ParserRules...); err != nil {
@@ -619,10 +621,12 @@ func (c *Crawler) prepareURL(rawURL string, parent *URLItem) (URLItem, bool, boo
 			slog.String("error", err.Error()))
 		return URLItem{}, false, false
 	}
-	value := strings.TrimSuffix(normalizedURL.String(), "/")
+	// The normalized form keeps a directory's trailing slash: "/docs/" and
+	// "/docs" resolve relative links differently and may differ.
+	value := normalizedURL.String()
 	// Atomically check-and-mark as seen so concurrent workers cannot enqueue
 	// the same URL twice.
-	if _, seen := c.processedURLs.LoadOrStore(value, true); seen {
+	if _, seen := c.processedURLs.LoadOrStore(value, urlQueued); seen {
 		return URLItem{}, false, false
 	}
 	// Reserve a slot against the max URLs limit before queueing.
@@ -641,6 +645,43 @@ func (c *Crawler) prepareURL(rawURL string, parent *URLItem) (URLItem, bool, boo
 		item.Referrer = parent.URL
 	}
 	return item, true, false
+}
+
+// Values stored in processedURLs. urlQueued marks a URL admitted through
+// prepareURL and not yet dispatched; the other states are final.
+const (
+	urlQueued     = "queued"
+	urlDispatched = "dispatched"
+	urlKnown      = "known"
+)
+
+// claimScheduledURL marks a dispatched first attempt as processed. URLs that
+// were admitted through prepareURL are claimed directly. Anything else was
+// preloaded into a caller's frontier, so it is normalized and checked against
+// URLs already seen and the MaxURLs limit. It reports whether to process the
+// item.
+func (c *Crawler) claimScheduledURL(scheduled *scheduledItem) bool {
+	if c.processedURLs.CompareAndSwap(scheduled.item.URL, urlQueued, urlDispatched) {
+		return true
+	}
+	normalizedURL, err := c.normalizeURL(scheduled.item.URL)
+	if err != nil {
+		c.logger.Warn("invalid url",
+			slog.String("url", scheduled.item.URL),
+			slog.String("error", err.Error()))
+		return false
+	}
+	value := normalizedURL.String()
+	if _, seen := c.processedURLs.LoadOrStore(value, urlDispatched); seen {
+		return false
+	}
+	if c.maxURLs > 0 && atomic.AddInt64(&c.enqueuedURLs, 1) > int64(c.maxURLs) {
+		atomic.AddInt64(&c.enqueuedURLs, -1)
+		c.processedURLs.Delete(value)
+		return false
+	}
+	scheduled.item.URL = value
+	return true
 }
 
 // releaseURL undoes the bookkeeping performed before a URL is queued, used
@@ -667,8 +708,16 @@ func (c *Crawler) worker(
 			return
 		}
 		// Caller-provided frontiers may be preloaded rather than populated by
-		// enqueue, so mark every dispatched item as seen before processing it.
-		c.processedURLs.Store(scheduled.item.URL, true)
+		// enqueue. Admit such items here, applying the same normalization,
+		// deduplication, KnownURLs, and MaxURLs checks as enqueued URLs.
+		if scheduled.attempt == 1 && !c.claimScheduledURL(&scheduled) {
+			scheduler.complete(ctx, completedItem{scheduled: scheduled})
+			admitter.completeURL()
+			if ctx.Err() != nil {
+				return
+			}
+			continue
+		}
 		atomic.AddInt64(&c.inFlightURLs, 1)
 		outcome := c.processURL(ctx, scheduled, callback)
 		if outcome.attemptErrors != nil {
@@ -827,7 +876,8 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 
 		if err != nil {
 			attemptErrors := append(append([]error(nil), scheduled.attemptErrors...), err)
-			if c.retryOptions != nil && ctx.Err() == nil && scheduled.attempt < c.retryMaxAttempts() {
+			if c.retryOptions != nil && ctx.Err() == nil && scheduled.attempt < c.retryMaxAttempts() &&
+				!isPermanentFetchError(err) {
 				delay := c.retryBackoff(scheduled.attempt)
 				c.logger.Warn("retrying fetch",
 					slog.String("url", rawURL),
@@ -869,24 +919,48 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 			c.storeResponseCacheEntry(ctx, rawURL, cachedEntry)
 			response = responseFromCacheEntry(cachedEntry, rawURL)
 		} else {
-			if response.StatusCode == http.StatusTooManyRequests || response.StatusCode == http.StatusServiceUnavailable {
-				if retryAfter, ok := parseRetryAfter(headerValue(response.Headers, "Retry-After"), time.Now()); ok {
-					observation.retryAfter = retryAfter
-					observation.hasRetryAfter = true
-				}
-				if c.adaptive && scheduled.attempt < c.retryMaxAttempts() {
-					c.logger.Warn("host asked crawler to back off",
-						slog.String("url", rawURL),
-						slog.Int("status", response.StatusCode),
-						slog.Int("attempt", scheduled.attempt))
-					return processOutcome{
-						crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
-						observation: observation,
-						retry:       true,
+			if response.StatusCode >= http.StatusBadRequest {
+				// HTTP error pages are failures: their links are not followed
+				// and they do not count as successes.
+				throttled := response.StatusCode == http.StatusTooManyRequests ||
+					response.StatusCode == http.StatusServiceUnavailable
+				if throttled {
+					if retryAfter, ok := parseRetryAfter(headerValue(response.Headers, "Retry-After"), time.Now()); ok {
+						observation.retryAfter = retryAfter
+						observation.hasRetryAfter = true
 					}
 				}
 				fetchErr := &fetch.Error{StatusCode: response.StatusCode, URL: rawURL}
-				result := c.resultWithError(item, parsedURL, fetchErr)
+				attemptErrors := append(append([]error(nil), scheduled.attemptErrors...), fetchErr)
+				adaptiveRetry := throttled && c.adaptive
+				if ctx.Err() == nil && scheduled.attempt < c.retryMaxAttempts() &&
+					(adaptiveRetry || (c.retryOptions != nil && fetchErr.Retryable())) {
+					// Adaptive mode backs off the whole host from the
+					// observation; otherwise use the retry backoff.
+					var delay time.Duration
+					if !adaptiveRetry {
+						delay = c.retryBackoff(scheduled.attempt)
+					}
+					c.logger.Warn("retrying after http error",
+						slog.String("url", rawURL),
+						slog.Int("status", response.StatusCode),
+						slog.Int("attempt", scheduled.attempt),
+						slog.Duration("delay", delay))
+					return processOutcome{
+						crawlDelay:    c.robotsCrawlDelayFor(parsedURL),
+						observation:   observation,
+						retry:         true,
+						retryDelay:    delay,
+						attemptErrors: attemptErrors,
+					}
+				}
+				// Match the transport-error path: with RetryOptions set, the
+				// final error is a retry.Error that wraps every attempt.
+				var resultErr error = fetchErr
+				if c.retryOptions != nil {
+					resultErr = &retry.Error{Last: fetchErr, Attempts: len(attemptErrors), Errors: attemptErrors}
+				}
+				result := c.resultWithError(item, parsedURL, resultErr)
 				result.Response = response
 				callback(ctx, result)
 				c.stats.IncrementFailed()
@@ -915,11 +989,21 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 		}
 	}
 
-	// Extract URLs from the page
+	// Extract URLs from the page. Relative links resolve against the URL the
+	// page was served from, which differs from the requested URL after a
+	// redirect.
 	var discoveredLinks []string
 	if response.Links != nil {
-		discoveredLinks = c.extractURLs(response.Links, parsedURL)
+		discoveredLinks = c.extractURLs(response.Links, linkBase(parsedURL, response.URL))
 	}
+	// After a redirect between the bare and "www." forms of the same host
+	// (example.com -> www.example.com), filter against the final host so its
+	// links are still followed. Any other redirect does not widen the crawl.
+	filterBase := parsedURL
+	if final := linkBase(parsedURL, response.URL); sameHostIgnoringWWW(parsedURL, final) {
+		filterBase = final
+	}
+	filteredURLs := c.filterLinks(filterBase, discoveredLinks)
 	callback(ctx, &Result{
 		URL:          parsedURL,
 		Depth:        item.Depth,
@@ -936,12 +1020,47 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 		c.stats.IncrementSucceeded()
 	}
 
-	filteredURLs := c.filterLinks(parsedURL, discoveredLinks)
 	return processOutcome{
 		crawlDelay:  c.robotsCrawlDelayFor(parsedURL),
 		observation: observation,
 		discovered:  filteredURLs,
 	}
+}
+
+// linkBase returns the URL to resolve a page's relative links against: the
+// final URL the response reports, if it is a valid http(s) URL, or else the
+// requested URL.
+func linkBase(requested *url.URL, responseURL string) *url.URL {
+	if responseURL == "" {
+		return requested
+	}
+	u, err := url.Parse(responseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return requested
+	}
+	return u
+}
+
+// sameHostIgnoringWWW reports whether a and b name the same host, treating
+// a leading "www." as insignificant.
+func sameHostIgnoringWWW(a, b *url.URL) bool {
+	trim := func(u *url.URL) string {
+		return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
+	}
+	return trim(a) == trim(b)
+}
+
+// isPermanentFetchError reports whether retrying a failed fetch cannot help:
+// the address is refused by the SSRF guard, a redirect is refused, the
+// content type is unsupported, or the HTTP status is not retryable.
+func isPermanentFetchError(err error) bool {
+	if errors.Is(err, httpguard.ErrNonPublicAddress) ||
+		errors.Is(err, httpguard.ErrRedirectRefused) ||
+		errors.Is(err, fetch.ErrUnsupportedContentType) {
+		return true
+	}
+	var fetchErr *fetch.Error
+	return errors.As(err, &fetchErr) && fetchErr.StatusCode != 0 && !fetchErr.Retryable()
 }
 
 func (c *Crawler) resultWithError(item URLItem, parsedURL *url.URL, err error) *Result {

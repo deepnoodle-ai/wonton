@@ -19,7 +19,9 @@
 // The package supports multiple output formats via the Request.Formats field:
 //
 //   - "html" - Processed HTML with transformations applied
-//   - "raw_html" - Original HTML without modifications
+//   - "raw_html" - Original HTML without modifications. HTTPFetcher also
+//     accepts text/plain responses (such as robots.txt) when this format is
+//     requested, and returns their body unparsed in Response.RawHTML.
 //   - "markdown" - HTML converted to Markdown format
 //   - "links" - All hyperlinks found on the page
 //   - "images" - All images found on the page

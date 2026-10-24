@@ -3,6 +3,7 @@ package crawler
 import (
 	"bufio"
 	"context"
+	"errors"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,10 +18,18 @@ type robotsTxtData struct {
 	allowRules    []string
 	crawlDelay    time.Duration
 	fetchedAt     time.Time
+	// disallowAll is set when the server answered robots.txt with a 5xx
+	// status. RFC 9309 treats robots.txt as unavailable and requires a
+	// complete disallow until it can be fetched.
+	disallowAll bool
 }
 
 // robotsTxtCacheExpiry is how long to cache robots.txt data
 const robotsTxtCacheExpiry = 24 * time.Hour
+
+// robotsTxtServerErrorExpiry is how long a 5xx robots.txt result is cached,
+// kept short so a transient server error doesn't block a host for a day.
+const robotsTxtServerErrorExpiry = time.Minute
 
 // fetchRobotsTxt fetches and parses robots.txt for the given URL's host
 func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robotsTxtData, error) {
@@ -29,7 +38,11 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 	// Check cache first
 	if cached, ok := c.robotsCache.Load(host); ok {
 		data := cached.(*robotsTxtData)
-		if time.Since(data.fetchedAt) < robotsTxtCacheExpiry {
+		expiry := robotsTxtCacheExpiry
+		if data.disallowAll {
+			expiry = robotsTxtServerErrorExpiry
+		}
+		if time.Since(data.fetchedAt) < expiry {
 			return data, nil
 		}
 		// Expired, fetch again
@@ -48,14 +61,25 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 		return data, nil
 	}
 
-	// Fetch robots.txt
+	// Fetch robots.txt. It is plain text, so ask for the raw body: fetchers
+	// such as HTTPFetcher accept text/plain only for raw requests, and the
+	// processed "html" format would wrap the text in markup.
 	req := &fetch.Request{
 		URL:             robotsURL,
 		Prettify:        false,
 		OnlyMainContent: false,
+		Formats:         []string{"raw_html"},
 	}
 
 	response, err := fetcher.Fetch(ctx, req)
+	var fetchErr *fetch.Error
+	if (err != nil && errors.As(err, &fetchErr) && fetchErr.StatusCode >= 500) ||
+		(err == nil && response.StatusCode >= 500) {
+		c.logger.Debug("robots.txt returned a server error, disallowing all", "host", host)
+		data := &robotsTxtData{fetchedAt: time.Now(), disallowAll: true}
+		c.robotsCache.Store(host, data)
+		return data, nil
+	}
 	if err != nil {
 		// If fetch fails, allow all (permissive behavior)
 		c.logger.Debug("failed to fetch robots.txt, allowing all",
@@ -66,8 +90,19 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 		return data, nil
 	}
 
-	// Parse robots.txt
-	data := parseRobotsTxt(response.HTML, c.robotsTxtUserAgent)
+	// A missing (4xx) robots.txt allows all.
+	if response.StatusCode >= 400 {
+		data := &robotsTxtData{fetchedAt: time.Now()}
+		c.robotsCache.Store(host, data)
+		return data, nil
+	}
+
+	// Parse robots.txt. Fetchers that ignore Formats return the body as HTML.
+	content := response.RawHTML
+	if content == "" {
+		content = response.HTML
+	}
+	data := parseRobotsTxt(content, c.robotsTxtUserAgent)
 	data.fetchedAt = time.Now()
 
 	// Cache the result
@@ -85,18 +120,23 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 	wildcardData := &robotsTxtData{}
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
-	var currentUserAgent string
+	// A group is one or more consecutive User-agent lines followed by rules.
+	// The matches of every User-agent line in a group are combined.
 	var isSpecificMatch bool
 	var isWildcardMatch bool
+	lastWasUserAgent := false
 	hasSpecificRules := false
 
 	userAgentLower := strings.ToLower(userAgent)
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
+		line := scanner.Text()
+		// Everything after "#" is a comment, including inline comments.
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
@@ -109,46 +149,62 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 		directive := strings.TrimSpace(strings.ToLower(line[:colonIdx]))
 		value := strings.TrimSpace(line[colonIdx+1:])
 
-		switch directive {
-		case "user-agent":
-			currentUserAgent = strings.ToLower(value)
-			isWildcardMatch = currentUserAgent == "*"
-			// A malformed bare User-agent directive must not match every agent:
-			// strings.Contains(s, "") is otherwise always true.
-			isSpecificMatch = currentUserAgent != "" &&
-				(currentUserAgent == userAgentLower || strings.Contains(userAgentLower, currentUserAgent))
-			// Don't count wildcard as specific
-			if isSpecificMatch && !isWildcardMatch {
+		if directive == "user-agent" {
+			if !lastWasUserAgent {
+				// A User-agent line after rules starts a new group.
+				isSpecificMatch, isWildcardMatch = false, false
+			}
+			lastWasUserAgent = true
+			agent := strings.ToLower(value)
+			switch {
+			case agent == "*":
+				isWildcardMatch = true
+			// A malformed bare User-agent directive must not match every
+			// agent: strings.Contains(s, "") is otherwise always true.
+			case agent != "" && (agent == userAgentLower || strings.Contains(userAgentLower, agent)):
+				isSpecificMatch = true
 				hasSpecificRules = true
 			}
+			continue
+		}
 
+		var targets []*robotsTxtData
+		if isSpecificMatch {
+			targets = append(targets, specificData)
+		}
+		if isWildcardMatch {
+			targets = append(targets, wildcardData)
+		}
+
+		switch directive {
+		case "disallow", "allow", "crawl-delay":
+			lastWasUserAgent = false
+		default:
+			continue
+		}
+
+		switch directive {
 		case "disallow":
 			if value == "" {
 				continue
 			}
-			if isSpecificMatch && !isWildcardMatch {
-				specificData.disallowRules = append(specificData.disallowRules, value)
-			} else if isWildcardMatch {
-				wildcardData.disallowRules = append(wildcardData.disallowRules, value)
+			for _, data := range targets {
+				data.disallowRules = append(data.disallowRules, value)
 			}
 
 		case "allow":
 			if value == "" {
 				continue
 			}
-			if isSpecificMatch && !isWildcardMatch {
-				specificData.allowRules = append(specificData.allowRules, value)
-			} else if isWildcardMatch {
-				wildcardData.allowRules = append(wildcardData.allowRules, value)
+			for _, data := range targets {
+				data.allowRules = append(data.allowRules, value)
 			}
 
 		case "crawl-delay":
 			if seconds, err := strconv.ParseFloat(value, 64); err == nil && seconds >= 0 {
 				delay := time.Duration(seconds * float64(time.Second))
-				if isSpecificMatch && !isWildcardMatch {
-					specificData.crawlDelay = delay
-				} else if isWildcardMatch {
-					wildcardData.crawlDelay = delay
+				for _, data := range targets {
+					data.crawlDelay = delay
 				}
 			}
 		}
@@ -171,6 +227,9 @@ func (c *Crawler) isAllowedByRobots(ctx context.Context, targetURL *url.URL) boo
 	if err != nil {
 		// On error, allow by default (permissive)
 		return true
+	}
+	if data.disallowAll {
+		return false
 	}
 
 	path := targetURL.Path
