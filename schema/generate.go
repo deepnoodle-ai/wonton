@@ -217,7 +217,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 	directNames := make(map[string]bool)
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		if !field.IsExported() || (field.Anonymous && shouldFlattenEmbedded(field)) || field.Tag.Get("json") == "-" {
+		if !isJSONField(field) || (field.Anonymous && shouldFlattenEmbedded(field)) || field.Tag.Get("json") == "-" {
 			continue
 		}
 		name, _ := parseJSONTag(field)
@@ -227,8 +227,8 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 
-		// Skip unexported fields
-		if !field.IsExported() {
+		// Skip fields that encoding/json ignores.
+		if !isJSONField(field) {
 			continue
 		}
 
@@ -312,6 +312,24 @@ func recursivePlaceholder(t reflect.Type) *Property {
 	default:
 		return &Property{Description: desc}
 	}
+}
+
+// isJSONField reports whether encoding/json considers a struct field at all.
+// Unexported fields are ignored, except embedded structs (or pointers to
+// structs) of unexported type: their exported fields are still promoted, and
+// with a json name tag they marshal as a named field.
+func isJSONField(field reflect.StructField) bool {
+	if field.IsExported() {
+		return true
+	}
+	if !field.Anonymous {
+		return false
+	}
+	t := field.Type
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Kind() == reflect.Struct
 }
 
 // shouldFlattenEmbedded reports whether an anonymous struct field's
