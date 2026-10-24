@@ -266,8 +266,9 @@ func (t *textInput) Draw(frame RenderFrame) {
 		totalLines := t.countVisualLines(width)
 		cursorLine := t.getCursorLine(width)
 
-		// Auto-scroll to keep cursor visible
-		if t.MaxHeight > 0 && totalLines > height {
+		// Auto-scroll to keep cursor visible. The height may come from
+		// MaxHeight or from the parent layout.
+		if totalLines > height {
 			// Ensure cursor is within visible range
 			if cursorLine < t.ScrollOffset {
 				t.ScrollOffset = cursorLine
@@ -370,6 +371,12 @@ func (t *textInput) Draw(frame RenderFrame) {
 			// Calculate cursor position accounting for newlines and scroll offset
 			cursorLine := t.getCursorLine(width)
 			cursorX := t.getCursorXInLine(width)
+			if t.MaskChar != 0 && !showingPlaceholder {
+				// Masked text draws as one truncated line; keep the cursor
+				// on it, in the last column once the text fills the width.
+				cursorLine = t.ScrollOffset
+				cursorX = min(runewidth.StringWidth(displayText[:min(t.CursorPos, len(displayText))]), width-1)
+			}
 
 			// Only draw cursor if it's in the visible range
 			screenLine := cursorLine - t.ScrollOffset
