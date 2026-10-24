@@ -142,6 +142,7 @@ type Reader struct {
 	event       Event
 	lastEventID string // Persists across events per SSE spec
 	started     bool   // True once the first line has been read (for BOM stripping)
+	skipLF      bool   // The last line ended in CR; a following LF belongs to it
 }
 
 // NewReader creates a new SSE reader that parses events from r.
@@ -149,9 +150,53 @@ type Reader struct {
 // The reader buffers input and parses events according to the SSE specification.
 // Call Read repeatedly to get each event from the stream.
 func NewReader(r io.Reader) *Reader {
-	return &Reader{
+	reader := &Reader{
 		scanner: bufio.NewScanner(r),
 	}
+	reader.scanner.Split(reader.splitLines)
+	return reader
+}
+
+// LastEventID returns the last event ID seen in the stream. Per the SSE
+// specification it persists across events, is set by an "id" field even when
+// no event is dispatched, and is cleared by an empty "id" field.
+func (r *Reader) LastEventID() string {
+	return r.lastEventID
+}
+
+// splitLines is a bufio.SplitFunc for SSE line endings, which may be CRLF,
+// LF, or a lone CR. A line that ends in CR is returned at once, without
+// waiting for the next byte, and a following LF is then skipped.
+func (r *Reader) splitLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	// Skip the LF of a CRLF whose CR ended the previous line. Fold it into
+	// this call's advance: bufio.Scanner reads more input after a nil token
+	// instead of splitting the data it already holds.
+	skip := 0
+	if r.skipLF && len(data) > 0 {
+		r.skipLF = false
+		if data[0] == '\n' {
+			skip = 1
+		}
+	}
+	line := data[skip:]
+	if i := bytes.IndexAny(line, "\r\n"); i >= 0 {
+		if line[i] == '\n' {
+			return skip + i + 1, line[:i], nil
+		}
+		if i+1 < len(line) {
+			if line[i+1] == '\n' {
+				return skip + i + 2, line[:i], nil
+			}
+			return skip + i + 1, line[:i], nil
+		}
+		r.skipLF = true
+		return skip + i + 1, line[:i], nil
+	}
+	if atEOF && len(line) > 0 {
+		return skip + len(line), line, nil
+	}
+	// Need more data. Consume a skipped LF now so it is not seen again.
+	return skip, nil, nil
 }
 
 // Buffer sets the maximum buffer size for reading lines.
@@ -341,9 +386,13 @@ type Client struct {
 	// If nil, http.DefaultClient is used.
 	HTTPClient *http.Client
 
-	// LastEventID is the most recently received event ID.
-	// It is sent as the Last-Event-ID header on subsequent connections,
-	// allowing the server to resume the stream from where it left off.
+	// LastEventID is the last event ID of the stream. It is sent as the
+	// Last-Event-ID header on subsequent connections, allowing the server to
+	// resume the stream from where it left off.
+	//
+	// Connect updates it when the stream ends, before the events channel is
+	// closed. Read it after the events channel is closed; while the stream
+	// runs, use Event.ID instead.
 	LastEventID string
 
 	// BufferSize sets the maximum line size for reading events.
@@ -460,35 +509,41 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 	}
 
 	reader := NewReader(resp.Body)
+	// Seed the reader so events after a reconnect carry the previous ID
+	// until the server sends a new one.
+	reader.lastEventID = c.LastEventID
 	if c.BufferSize > 0 {
 		reader.Buffer(c.BufferSize)
+	}
+	// LastEventID is written only as the stream ends, before errs is sent
+	// to and before events is closed. A caller that reads it after the
+	// events channel closes, or after receiving from errs, never races.
+	fail := func(err error) {
+		c.LastEventID = reader.LastEventID()
+		errs <- err
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			errs <- ctx.Err()
+			fail(ctx.Err())
 			return
 		default:
 		}
 
 		event, err := reader.Read()
 		if err == io.EOF {
+			c.LastEventID = reader.LastEventID()
 			return
 		}
 		if err != nil {
-			errs <- err
+			fail(err)
 			return
-		}
-
-		// Update Last-Event-ID
-		if event.ID != "" {
-			c.LastEventID = event.ID
 		}
 
 		select {
 		case events <- event:
 		case <-ctx.Done():
-			errs <- ctx.Err()
+			fail(ctx.Err())
 			return
 		}
 	}
