@@ -247,8 +247,8 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 }
 
 // stderrWaitDelay bounds how long runCommandWithStdin waits for stderr to
-// close after the command exits.
-const stderrWaitDelay = 100 * time.Millisecond
+// close after the command exits. It is a variable so tests can widen it.
+var stderrWaitDelay = 100 * time.Millisecond
 
 // runCommandWithStdin executes a command with stdin input.
 func runCommandWithStdin(ctx context.Context, input string, name string, args ...string) error {

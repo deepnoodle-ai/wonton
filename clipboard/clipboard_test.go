@@ -99,10 +99,18 @@ func TestRunCommandWithStdinDeadlineDuringWaitDelay(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs sh")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	// Widen the wait window so the deadline reliably lands inside it: sh
+	// exits well before 1s, the deadline passes at 1s, and Run returns only
+	// after the 3s WaitDelay because the background child holds stderr.
+	old := stderrWaitDelay
+	stderrWaitDelay = 3 * time.Second
+	defer func() { stderrWaitDelay = old }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err := runCommandWithStdin(ctx, "hello", "sh", "-c", "cat >/dev/null; sleep 1 &")
+	err := runCommandWithStdin(ctx, "hello", "sh", "-c", "cat >/dev/null; sleep 5 &")
 	assert.NoError(t, err)
+	assert.Error(t, ctx.Err(), "the deadline must have passed during the wait")
 }
 
 func TestRunCommandWithStdinKeepsStderr(t *testing.T) {
