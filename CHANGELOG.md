@@ -17,10 +17,7 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `HTTPFetcher` does not process. The error text is unchanged.
 - `sse.Reader.LastEventID` returns the last event ID the stream set,
   including an `id:` line that arrived with no data.
-- `env.Parse` and `env.ParseInto` read `time.Location`, `*time.Time`,
-  `url.URL`, `*url.URL`, and structs that have a `WithParser` parser or
-  implement `encoding.TextUnmarshaler`. Their `env`, `envDefault`, and
-  `required` tags work.
+- `env.Parse` and `env.ParseInto` read `url.URL` and `*url.URL` fields.
 - `cli.ParseFlags` and `cli.BindFlags` support `time.Duration`, `[]string`,
   and `[]int` fields.
 
@@ -44,7 +41,7 @@ bug fixes. Release notes identify incompatible changes explicitly.
   RFC 9309. `Result.Links` holds every link on the page, resolved against
   the final URL; its doc comment said otherwise.
 - `fetch.HTTPFetcher` returns a `*fetch.Error` for any status of 400 or more
-  whose body it does not process, instead of an unsupported content type
+  whose body it does not process, instead of the unexpected content type
   error. It accepts `text/plain` only when `Request.Formats` includes
   `"raw_html"`.
 - `tui`: Enter in an input with no `OnSubmit` reaches the app's
@@ -139,7 +136,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
   middleware runs for group subcommands. Values from `Env(...)` go through
   `Enum` and `ValidateWith`. Short flags accept `-o=value`. `IsPiped` no
   longer panics when stdin cannot be read.
-- `env`: `envDefault` no longer overwrites a value from a JSON file on a
+- `env`: fields of type `time.Location`, `*time.Time`, or a struct with a
+  `WithParser` parser are read from the environment. Before, they were
+  treated as nested config structs and their `env`, `envDefault`, and
+  `required` tags were ignored. `envDefault` no longer overwrites a value from a JSON file on a
   field without an `env` tag. `WriteEnvFile` quotes values that contain
   `\r`.
 - `clipboard`: on Linux, `Write` and `Clear` return as soon as `xclip` or
