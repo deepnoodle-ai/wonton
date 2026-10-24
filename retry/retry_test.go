@@ -786,3 +786,14 @@ func TestFullJitterBackoffNaNCeiling(t *testing.T) {
 	d := FullJitterBackoff(5000, cfg)
 	assert.True(t, d >= 0 && d <= time.Minute, "delay out of range: %v", d)
 }
+
+// A Config built without MaxBackoff must not clamp every delay to zero,
+// which would retry with no delay at all.
+func TestZeroMaxBackoffMeansNoCap(t *testing.T) {
+	cfg := &Config{InitialBackoff: time.Second, BackoffMultiplier: 2, LinearIncrement: time.Second}
+	assert.Equal(t, 4*time.Second, ExponentialBackoff(3, cfg))
+	assert.Equal(t, 3*time.Second, LinearBackoff(3, cfg))
+	d := FullJitterBackoff(3, cfg)
+	assert.True(t, d >= 0 && d <= 4*time.Second, "FullJitterBackoff = %v", d)
+	assert.Equal(t, uncappedBackoff, ExponentialBackoff(1000, cfg))
+}
