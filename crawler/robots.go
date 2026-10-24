@@ -3,6 +3,7 @@ package crawler
 import (
 	"bufio"
 	"context"
+	"errors"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,10 +18,18 @@ type robotsTxtData struct {
 	allowRules    []string
 	crawlDelay    time.Duration
 	fetchedAt     time.Time
+	// disallowAll is set when the server answered robots.txt with a 5xx
+	// status. RFC 9309 treats robots.txt as unavailable and requires a
+	// complete disallow until it can be fetched.
+	disallowAll bool
 }
 
 // robotsTxtCacheExpiry is how long to cache robots.txt data
 const robotsTxtCacheExpiry = 24 * time.Hour
+
+// robotsTxtServerErrorExpiry is how long a 5xx robots.txt result is cached,
+// kept short so a transient server error doesn't block a host for a day.
+const robotsTxtServerErrorExpiry = time.Minute
 
 // fetchRobotsTxt fetches and parses robots.txt for the given URL's host
 func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robotsTxtData, error) {
@@ -29,7 +38,11 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 	// Check cache first
 	if cached, ok := c.robotsCache.Load(host); ok {
 		data := cached.(*robotsTxtData)
-		if time.Since(data.fetchedAt) < robotsTxtCacheExpiry {
+		expiry := robotsTxtCacheExpiry
+		if data.disallowAll {
+			expiry = robotsTxtServerErrorExpiry
+		}
+		if time.Since(data.fetchedAt) < expiry {
 			return data, nil
 		}
 		// Expired, fetch again
@@ -59,6 +72,14 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 	}
 
 	response, err := fetcher.Fetch(ctx, req)
+	var fetchErr *fetch.Error
+	if (err != nil && errors.As(err, &fetchErr) && fetchErr.StatusCode >= 500) ||
+		(err == nil && response.StatusCode >= 500) {
+		c.logger.Debug("robots.txt returned a server error, disallowing all", "host", host)
+		data := &robotsTxtData{fetchedAt: time.Now(), disallowAll: true}
+		c.robotsCache.Store(host, data)
+		return data, nil
+	}
 	if err != nil {
 		// If fetch fails, allow all (permissive behavior)
 		c.logger.Debug("failed to fetch robots.txt, allowing all",
@@ -69,7 +90,7 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 		return data, nil
 	}
 
-	// A missing or failing robots.txt allows all (permissive behavior).
+	// A missing (4xx) robots.txt allows all.
 	if response.StatusCode >= 400 {
 		data := &robotsTxtData{fetchedAt: time.Now()}
 		c.robotsCache.Store(host, data)
@@ -206,6 +227,9 @@ func (c *Crawler) isAllowedByRobots(ctx context.Context, targetURL *url.URL) boo
 	if err != nil {
 		// On error, allow by default (permissive)
 		return true
+	}
+	if data.disallowAll {
+		return false
 	}
 
 	path := targetURL.Path

@@ -104,6 +104,29 @@ func TestRobotsTxtEnforcedWithHTTPFetcher(t *testing.T) {
 	assert.Equal(t, []string{"/private"}, blocked)
 }
 
+// A 5xx robots.txt means the rules are unavailable; RFC 9309 requires a
+// complete disallow rather than crawling everything.
+func TestRobotsTxtServerErrorDisallowsAll(t *testing.T) {
+	rec := &hitRecorder{}
+	server := newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
+		"/robots.txt": func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		},
+		"/": htmlPage("home"),
+	})
+	c := newHTTPCrawler(t, server, Options{})
+
+	var blocked int
+	err := c.Crawl(context.Background(), []string{server.URL + "/"}, func(_ context.Context, r *Result) {
+		if r.Error != nil {
+			blocked++
+		}
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, rec.count("/"), "page fetched despite 5xx robots.txt")
+	assert.Equal(t, 1, blocked)
+}
+
 // BUG-017: relative links resolve against the page URL as served, keeping a
 // directory's trailing slash and following redirects.
 func TestRelativeLinksResolveAgainstDirectoryAndRedirect(t *testing.T) {
