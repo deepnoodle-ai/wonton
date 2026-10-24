@@ -769,8 +769,9 @@ type Destroyable interface {
 
 Thread safety: `View()`/`LiveView()` and `HandleEvent()` are NEVER called
 concurrently — both fullscreen and InlineApp runtimes run them sequentially on
-one goroutine. Do not use mutexes to protect app state (see InlineApp example
-comments for why `Print()` + mutexes deadlock).
+one goroutine. Do not use mutexes to protect app state; they are not needed.
+InlineApp's `Print()`, `PrintRaw()`, and `ClearScrollback()` redraw the last
+live frame and never call `LiveView()`, so they are safe from a Cmd goroutine.
 
 ### Event System
 
@@ -1090,8 +1091,8 @@ type App struct {
 }
 
 // No mutexes! The runtime calls LiveView() and HandleEvent() sequentially —
-// never concurrently. Mutexes would deadlock: HandleEvent → Print() →
-// re-renders LiveView() synchronously, so both would try to acquire the lock.
+// never concurrently, so app state needs no lock. Print() redraws the last
+// live frame and never calls LiveView().
 func (app *App) LiveView() tui.View {
     var status tui.View  // use tui.View (not *textView) since Loading returns a different type
     if app.processing {
