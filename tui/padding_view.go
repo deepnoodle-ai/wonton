@@ -70,24 +70,38 @@ func (p *paddingView) size(maxWidth, maxHeight int) (int, int) {
 	paddingW := p.left + p.right
 	paddingH := p.top + p.bottom
 
-	// Reduce constraints by padding
-	innerMaxW := maxWidth
-	if maxWidth > 0 {
-		innerMaxW = maxWidth - paddingW
-		if innerMaxW < 0 {
-			innerMaxW = 0
-		}
-	}
-	innerMaxH := maxHeight
-	if maxHeight > 0 {
-		innerMaxH = maxHeight - paddingH
-		if innerMaxH < 0 {
-			innerMaxH = 0
-		}
-	}
+	return insetSize(p.inner, maxWidth, maxHeight, paddingW, paddingH)
+}
 
-	innerW, innerH := p.inner.size(innerMaxW, innerMaxH)
-	return innerW + paddingW, innerH + paddingH
+// insetSize measures inner inside a frame that takes insetW columns and insetH
+// rows, such as padding or a border. When the frame uses up all of a limit,
+// inner has no room on that axis. A limit of 0 means unconstrained, so inner
+// is measured with a limit of 1 and the result is held at the limit.
+func insetSize(inner View, maxWidth, maxHeight, insetW, insetH int) (int, int) {
+	innerMaxW, fullW := insetLimit(maxWidth, insetW)
+	innerMaxH, fullH := insetLimit(maxHeight, insetH)
+
+	innerW, innerH := inner.size(innerMaxW, innerMaxH)
+	w, h := innerW+insetW, innerH+insetH
+	if fullW {
+		w = maxWidth
+	}
+	if fullH {
+		h = maxHeight
+	}
+	return w, h
+}
+
+// insetLimit reduces a size limit by inset. full reports a limit the inset
+// uses up.
+func insetLimit(limit, inset int) (inner int, full bool) {
+	if limit <= 0 {
+		return limit, false
+	}
+	if limit <= inset {
+		return 1, true
+	}
+	return limit - inset, false
 }
 
 func (p *paddingView) render(ctx *RenderContext) {

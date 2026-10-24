@@ -173,6 +173,9 @@ func (c *RenderContext) clearSource(x, y, width, height int) {
 	for yy := max(r.Min.Y, 0); yy < min(r.Max.Y, c.source.bounds.Max.Y); yy++ {
 		for xx := max(r.Min.X, 0); xx < min(r.Max.X, c.source.bounds.Max.X); xx++ {
 			point := image.Pt(xx, yy)
+			if local := point.Sub(c.sourceOrigin); !c.shows(local.X, local.Y) {
+				continue
+			}
 			if cell, ok := c.source.cells[point]; ok {
 				for col := cell.x; col < cell.x+cell.width; col++ {
 					delete(c.source.cells, image.Pt(col, yy))
@@ -181,6 +184,17 @@ func (c *RenderContext) clearSource(x, y, width, height int) {
 		}
 	}
 }
+
+// shows reports whether a point in this context reaches the screen. A Scroll
+// hides the rows it has scrolled past, and those rows must not claim the
+// source cells of the views drawn where they would have been.
+func (c *RenderContext) shows(x, y int) bool {
+	if f, ok := c.frame.(*scrollRenderFrame); ok {
+		return f.shows(x, y)
+	}
+	return true
+}
+
 func (c *RenderContext) recordSegment(x, y int, seg StyledSegment, base int) {
 	if c.source == nil {
 		return
@@ -188,7 +202,7 @@ func (c *RenderContext) recordSegment(x, y int, seg StyledSegment, base int) {
 	n, col := 0, x
 	width, height := c.Size()
 	for g, w := range runewidth.Graphemes(seg.Text) {
-		if y >= 0 && y < height && col >= 0 && col+w <= width {
+		if y >= 0 && y < height && col >= 0 && col+w <= width && c.shows(col, y) {
 			for _, token := range seg.source {
 				if token.lo <= n && token.hi >= n+len(g) {
 					lo, hi := token.start+base, token.end+base

@@ -109,23 +109,7 @@ func (f *BorderedView) size(maxWidth, maxHeight int) (int, int) {
 		borderSize = 2 // 1 char on each side
 	}
 
-	innerMaxW := maxWidth
-	if maxWidth > 0 {
-		innerMaxW = maxWidth - borderSize
-		if innerMaxW < 0 {
-			innerMaxW = 0
-		}
-	}
-	innerMaxH := maxHeight
-	if maxHeight > 0 {
-		innerMaxH = maxHeight - borderSize
-		if innerMaxH < 0 {
-			innerMaxH = 0
-		}
-	}
-
-	innerW, innerH := f.inner.size(innerMaxW, innerMaxH)
-	return innerW + borderSize, innerH + borderSize
+	return insetSize(f.inner, maxWidth, maxHeight, borderSize, borderSize)
 }
 
 func (f *BorderedView) render(ctx *RenderContext) {

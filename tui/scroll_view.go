@@ -110,13 +110,7 @@ func (s *ScrollView) render(ctx *RenderContext) {
 	}
 
 	// Create an offset render frame that translates coordinates
-	offsetFrame := &scrollRenderFrame{
-		inner:         ctx.RenderFrame(),
-		offsetY:       scrollY,
-		clipH:         viewportHeight,
-		clipW:         viewportWidth,
-		contentHeight: contentHeight,
-	}
+	offsetFrame := newScrollFrame(ctx.RenderFrame(), scrollY, viewportWidth, viewportHeight, contentHeight)
 
 	// Create a new context with the scroll frame, preserving the frame counter
 	scrollCtx := ctx.WithFrame(offsetFrame)
@@ -129,29 +123,71 @@ func (s *ScrollView) render(ctx *RenderContext) {
 // only rendering cells that fall within the visible viewport.
 type scrollRenderFrame struct {
 	inner         RenderFrame
-	offsetX       int // X offset for subframes (from padding, etc.)
-	offsetY       int // scroll offset (how many rows to skip from top)
-	clipH         int // viewport height
-	clipW         int // viewport width
-	contentHeight int // full content height (for Size() reporting)
+	offsetX       int             // X offset for subframes (from padding, etc.)
+	offsetY       int             // scroll offset (how many rows to skip from top)
+	clip          image.Rectangle // drawable area, in inner coordinates
+	width         int             // frame width (for Size() reporting)
+	contentHeight int             // full content height (for Size() reporting)
+}
+
+// newScrollFrame returns a frame over inner that shows a width x height
+// window of content scrolled down by offsetY rows.
+func newScrollFrame(inner RenderFrame, offsetY, width, height, contentHeight int) *scrollRenderFrame {
+	return &scrollRenderFrame{
+		inner:         inner,
+		offsetY:       offsetY,
+		clip:          image.Rect(0, 0, width, height),
+		width:         width,
+		contentHeight: contentHeight,
+	}
+}
+
+// screen converts a point in this frame to inner coordinates and reports
+// whether it is in the drawable area.
+func (f *scrollRenderFrame) screen(x, y int) (int, int, bool) {
+	screenX, screenY := x+f.offsetX, y-f.offsetY
+	return screenX, screenY, image.Pt(screenX, screenY).In(f.clip)
+}
+
+// shows reports whether a point in this frame reaches the screen, through
+// every scroll frame it is nested in.
+func (f *scrollRenderFrame) shows(x, y int) bool {
+	screenX, screenY, ok := f.screen(x, y)
+	if !ok {
+		return false
+	}
+	if inner, nested := f.inner.(*scrollRenderFrame); nested {
+		return inner.shows(screenX, screenY)
+	}
+	return true
+}
+
+// rowVisible reports whether inner row screenY is in the drawable area.
+func (f *scrollRenderFrame) rowVisible(screenY int) bool {
+	return screenY >= f.clip.Min.Y && screenY < f.clip.Max.Y
+}
+
+// rows returns a frame over the drawable columns of inner, from row screenY
+// to the bottom of the drawable area, so text clips at this frame's edges
+// and wraps inside them.
+func (f *scrollRenderFrame) rows(screenY int) RenderFrame {
+	return f.inner.SubFrame(image.Rect(f.clip.Min.X, screenY, f.clip.Max.X, f.clip.Max.Y))
 }
 
 func (f *scrollRenderFrame) SetCell(x, y int, char rune, style Style) error {
-	// Apply offsets and check if in viewport
-	screenX := x + f.offsetX
-	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH || screenX < 0 || screenX >= f.clipW {
+	screenX, screenY, ok := f.screen(x, y)
+	if !ok {
 		return nil // Outside viewport, skip
 	}
 	return f.inner.SetCell(screenX, screenY, char, style)
 }
 
 func (f *scrollRenderFrame) PrintStyled(x, y int, text string, style Style) error {
-	return f.printPerLine(x, y, text, style, f.inner.PrintStyled)
+	return f.printPerLine(x, y, text, style, RenderFrame.PrintStyled)
 }
 
 func (f *scrollRenderFrame) PrintTruncated(x, y int, text string, style Style) error {
-	return f.printPerLine(x, y, text, style, f.inner.PrintTruncated)
+	return f.printPerLine(x, y, text, style, RenderFrame.PrintTruncated)
 }
 
 // printPerLine clips a print to the viewport one line at a time.
@@ -165,22 +201,15 @@ func (f *scrollRenderFrame) printPerLine(
 	x, y int,
 	text string,
 	style Style,
-	print func(int, int, string, Style) error,
+	print func(RenderFrame, int, int, string, Style) error,
 ) error {
-	screenX := x + f.offsetX
-	if !strings.Contains(text, "\n") {
-		screenY := y - f.offsetY
-		if screenY < 0 || screenY >= f.clipH {
-			return nil // Entire line outside viewport
-		}
-		return print(screenX, screenY, text, style)
-	}
+	rowX := x + f.offsetX - f.clip.Min.X
 	for i, line := range strings.Split(text, "\n") {
 		screenY := y + i - f.offsetY
-		if screenY < 0 || screenY >= f.clipH {
+		if !f.rowVisible(screenY) {
 			continue
 		}
-		if err := print(screenX, screenY, line, style); err != nil {
+		if err := print(f.rows(screenY), rowX, 0, line, style); err != nil {
 			return err
 		}
 	}
@@ -188,25 +217,20 @@ func (f *scrollRenderFrame) printPerLine(
 }
 
 func (f *scrollRenderFrame) FillStyled(x, y, width, height int, char rune, style Style) error {
-	screenX := x + f.offsetX
-	// For each row in the fill area, check if it's visible
-	for row := 0; row < height; row++ {
-		screenY := (y + row) - f.offsetY
-		if screenY >= 0 && screenY < f.clipH {
-			if err := f.inner.FillStyled(screenX, screenY, width, 1, char, style); err != nil {
-				return err
-			}
-		}
+	area := image.Rect(x, y, x+width, y+height).
+		Add(image.Pt(f.offsetX, -f.offsetY)).
+		Intersect(f.clip)
+	if area.Empty() {
+		return nil
 	}
-	return nil
+	return f.inner.FillStyled(area.Min.X, area.Min.Y, area.Dx(), area.Dy(), char, style)
 }
 
 // Cell reads through the same offset SetCell writes through, so a caller works
 // in content coordinates and gets a blank for anything scrolled out of view.
 func (f *scrollRenderFrame) Cell(x, y int) Cell {
-	screenX := x + f.offsetX
-	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH || screenX < 0 || screenX >= f.clipW {
+	screenX, screenY, ok := f.screen(x, y)
+	if !ok {
 		return Cell{Char: ' '}
 	}
 	return f.inner.Cell(screenX, screenY)
@@ -216,9 +240,8 @@ func (f *scrollRenderFrame) Cell(x, y int) Cell {
 // scrolled out of view is left alone rather than restyling whatever the
 // viewport happens to be showing at that row.
 func (f *scrollRenderFrame) RestyleCell(x, y int, style Style) error {
-	screenX := x + f.offsetX
-	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH || screenX < 0 || screenX >= f.clipW {
+	screenX, screenY, ok := f.screen(x, y)
+	if !ok {
 		return nil
 	}
 	return f.inner.RestyleCell(screenX, screenY, style)
@@ -227,44 +250,46 @@ func (f *scrollRenderFrame) RestyleCell(x, y int, style Style) error {
 func (f *scrollRenderFrame) Size() (width, height int) {
 	// Report full content height so inner views render all content,
 	// even parts that are scrolled out of view (they get clipped by SetCell/PrintStyled)
-	return f.clipW, f.contentHeight
+	return f.width, f.contentHeight
 }
 
+// GetBounds returns where the frame's content sits on screen, scrolled-off
+// rows included, so a view can add its own coordinates to bounds.Min to place
+// a click region.
 func (f *scrollRenderFrame) GetBounds() image.Rectangle {
-	// Return the full content bounds, not the viewport bounds
-	return image.Rect(0, 0, f.clipW, f.clipH+f.offsetY)
+	origin, _ := screenArea(f)
+	return image.Rect(0, 0, f.width, f.contentHeight).Add(origin)
 }
 
 func (f *scrollRenderFrame) SubFrame(rect image.Rectangle) RenderFrame {
-	// Create a subframe that accumulates X offset and adjusts Y offset
+	// Create a subframe that accumulates X offset and adjusts Y offset, and
+	// clips to the part of rect this frame can draw on.
 	return &scrollRenderFrame{
 		inner:         f.inner,
 		offsetX:       f.offsetX + rect.Min.X, // Accumulate X offset
 		offsetY:       f.offsetY - rect.Min.Y, // Adjust Y offset for nested bounds
-		clipH:         f.clipH,
-		clipW:         f.clipW,
+		clip:          rect.Add(image.Pt(f.offsetX, -f.offsetY)).Intersect(f.clip),
+		width:         rect.Dx(),
 		contentHeight: rect.Dy(), // Use subframe's height for content
 	}
 }
 
 func (f *scrollRenderFrame) PrintHyperlink(x, y int, link Hyperlink) error {
-	screenX := x + f.offsetX
 	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH {
+	if !f.rowVisible(screenY) {
 		return nil
 	}
-	return f.inner.PrintHyperlink(screenX, screenY, link)
+	return f.rows(screenY).PrintHyperlink(x+f.offsetX-f.clip.Min.X, 0, link)
 }
 
 func (f *scrollRenderFrame) PrintHyperlinkFallback(x, y int, link Hyperlink) error {
-	screenX := x + f.offsetX
 	screenY := y - f.offsetY
-	if screenY < 0 || screenY >= f.clipH {
+	if !f.rowVisible(screenY) {
 		return nil
 	}
-	return f.inner.PrintHyperlinkFallback(screenX, screenY, link)
+	return f.rows(screenY).PrintHyperlinkFallback(x+f.offsetX-f.clip.Min.X, 0, link)
 }
 
 func (f *scrollRenderFrame) Fill(char rune, style Style) error {
-	return f.inner.Fill(char, style)
+	return f.FillStyled(0, 0, f.width, f.contentHeight, char, style)
 }

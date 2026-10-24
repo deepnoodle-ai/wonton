@@ -291,7 +291,9 @@ func (s *ViewportState) moveDown(item, line, delta int) (int, int) {
 		}
 		next := s.nextVisible(item)
 		if next < 0 {
-			return item, line
+			// Past the end: go to the last line and let clampAnchor pull
+			// the anchor back to the bottom of the content.
+			return item, max(span-1, line)
 		}
 		delta -= span - line
 		item, line = next, 0
@@ -519,13 +521,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	for i := s.anchorItem; i >= 0 && i < s.len() && y < height; i = s.nextVisible(i) {
 		h := s.heightOf(i)
 		if h > 0 && y+h > 0 {
-			frame := &scrollRenderFrame{
-				inner:         ctx.RenderFrame(),
-				offsetY:       -y,
-				clipH:         height,
-				clipW:         width,
-				contentHeight: h,
-			}
+			frame := newScrollFrame(ctx.RenderFrame(), -y, width, height, h)
 			view := s.viewOf(i)
 			registered := 0
 			if fm != nil {
@@ -593,7 +589,7 @@ func screenArea(f RenderFrame) (origin image.Point, clip image.Rectangle) {
 		return b.Min, b
 	}
 	innerOrigin, innerClip := screenArea(sf.inner)
-	shown := image.Rect(0, 0, sf.clipW, sf.clipH).Add(innerOrigin)
+	shown := sf.clip.Add(innerOrigin)
 	return innerOrigin.Add(image.Pt(sf.offsetX, -sf.offsetY)), shown.Intersect(innerClip)
 }
 
