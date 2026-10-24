@@ -673,6 +673,8 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 
 	// Track which flags were explicitly set by user
 	ctx.setFlags = make(map[string]bool)
+	// Invalid environment values, reported after the command line is parsed
+	var envErrs []flagEnvError
 	// Track which flags were set on the command line, so slice flags given
 	// there replace values from the environment instead of extending them.
 	ctx.cliFlags = make(map[string]bool)
@@ -680,21 +682,26 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	// Initialize with defaults and check env vars
 	for _, f := range allFlags {
 		name := f.GetName()
-		// Check env var first
+		// Check env var first. An empty variable counts as unset. A bad
+		// value is reported only if the command line does not set the flag.
 		if f.GetEnvVar() != "" {
-			if val, ok := lookupEnv(f.GetEnvVar()); ok {
-				if msg := checkFlagValue(f, val); msg != "" {
-					return c.errorWithHelpHint(fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
-						val, name, f.GetEnvVar(), msg))
+			if val, ok := lookupEnv(f.GetEnvVar()); ok && val != "" {
+				msg := checkFlagValue(f, val)
+				var typed any
+				if msg == "" {
+					var err error
+					if typed, err = convertFlagValue(f, val); err != nil {
+						msg = err.Error()
+					}
 				}
-				typed, err := convertFlagValue(f, val)
-				if err != nil {
-					return c.errorWithHelpHint(fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
-						val, name, f.GetEnvVar(), err))
+				if msg == "" {
+					ctx.flags[name] = typed
+					ctx.setFlags[name] = true
+					continue
 				}
-				ctx.flags[name] = typed
-				ctx.setFlags[name] = true
-				continue
+				envErrs = append(envErrs, flagEnvError{name: name, err: c.errorWithHelpHint(
+					fmt.Sprintf("invalid value %q for --%s from environment variable %s: %s",
+						val, name, f.GetEnvVar(), msg))})
 			}
 		}
 		// Use default
@@ -735,6 +742,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
+					ctx.cliFlags[name] = true
 				} else if i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
@@ -771,6 +779,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 				} else if _, ok := flag.GetDefault().(bool); ok {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
+					ctx.cliFlags[flag.GetName()] = true
 				} else if last && i+1 < len(args) && !looksLikeFlag(args[i+1]) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
@@ -783,6 +792,14 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 			}
 		} else {
 			positional = append(positional, arg)
+		}
+	}
+
+	// A bad environment value matters only when the command line did not
+	// override it.
+	for _, e := range envErrs {
+		if !ctx.cliFlags[e.name] {
+			return e.err
 		}
 	}
 
@@ -925,6 +942,12 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		ctx.flags[name] = typed
 	}
 	return nil
+}
+
+// flagEnvError is an invalid environment value for a flag.
+type flagEnvError struct {
+	name string
+	err  error
 }
 
 // checkFlagValue applies a flag's Enum and Validate checks to a raw value

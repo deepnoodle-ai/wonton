@@ -7,7 +7,9 @@ import (
 )
 
 // isTerminal checks if a file is a terminal.
-func isTerminal(f *os.File) bool {
+// isTerminal reports whether f is a terminal. It is a variable so tests can
+// simulate a terminal.
+var isTerminal = func(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 

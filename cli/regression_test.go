@@ -165,13 +165,55 @@ func TestRootPositionalsKeepOrderAfterBoolFlag(t *testing.T) {
 
 // BUG-065: interactivity is detected from the app's own stdin/stdout.
 func TestInteractivityUsesAppStreams(t *testing.T) {
+	// Pretend every *os.File is a terminal, as when go test runs in one.
+	orig := isTerminal
+	isTerminal = func(*os.File) bool { return true }
+	defer func() { isTerminal = orig }()
+
 	app := TestApp("app")
 	ran := ""
 	app.Command("run").
 		Interactive(func(*Context) error { ran = "interactive"; return nil }).
 		NonInteractive(func(*Context) error { ran = "non-interactive"; return nil })
 	assert.NoError(t, app.ExecuteArgs([]string{"run"}))
-	assert.Equal(t, "non-interactive", ran)
+	assert.Equal(t, "non-interactive", ran, "app stdin is not a file, so the app is not interactive")
+
+	// With the app's streams on terminal files, it is interactive.
+	app.SetStdin(os.Stdin)
+	app.SetStdout(os.Stdout)
+	assert.NoError(t, app.ExecuteArgs([]string{"run"}))
+	assert.Equal(t, "interactive", ran)
+}
+
+// An empty environment variable counts as unset, and a command-line value
+// overrides a bad environment value.
+func TestEnvFlagEmptyAndOverride(t *testing.T) {
+	app := TestApp("app")
+	var env string
+	var debug bool
+	app.Command("run").Flags(
+		String("env", "e").Env("APP_ENV").Enum("dev", "prod").Default("dev"),
+		Bool("debug").Env("APP_DEBUG"),
+	).Run(func(ctx *Context) error {
+		env = ctx.String("env")
+		debug = ctx.Bool("debug")
+		return nil
+	})
+
+	t.Setenv("APP_ENV", "")
+	assert.NoError(t, app.ExecuteArgs([]string{"run"}))
+	assert.Equal(t, "dev", env)
+
+	t.Setenv("APP_ENV", "invalid")
+	assert.NoError(t, app.ExecuteArgs([]string{"run", "--env", "prod"}))
+	assert.Equal(t, "prod", env)
+	assert.Error(t, app.ExecuteArgs([]string{"run"}))
+
+	t.Setenv("APP_ENV", "dev")
+	t.Setenv("APP_DEBUG", "maybe")
+	assert.NoError(t, app.ExecuteArgs([]string{"run", "--debug"}))
+	assert.True(t, debug)
+	assert.Error(t, app.ExecuteArgs([]string{"run"}))
 }
 
 // BUG-074: IsPiped does not panic when stdin cannot be stat'ed.
