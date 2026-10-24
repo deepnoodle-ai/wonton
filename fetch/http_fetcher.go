@@ -190,6 +190,12 @@ func NewHTTPFetcher(options HTTPFetcherOptions) *HTTPFetcher {
 // Unsupported options that will return ErrUnsupported:
 //   - MaxAge, WaitFor, Mobile, Actions, StorageState
 //   - Formats: screenshot, json, summary
+//
+// An HTML or plain-text page is returned with a nil error whatever its
+// status, as net/http does, so check Response.StatusCode for error pages.
+// A 429 or 503 with another body type is also returned with a nil error,
+// without its body. Any other status of 400 or more with a body Fetch does
+// not process returns an *Error.
 func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error) {
 	// Check for unsupported options
 	if err := f.validateRequest(req); err != nil {
