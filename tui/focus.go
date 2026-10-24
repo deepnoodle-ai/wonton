@@ -87,8 +87,19 @@ func (fm *FocusManager) Register(f Focusable) {
 		fm.focusedID = id
 		f.SetFocused(true)
 	} else {
-		f.SetFocused(fm.focusedID == id)
+		// An element with an empty ID only holds focus when it auto-focused
+		// above; a later one must not match the empty focusedID.
+		f.SetFocused(id != "" && fm.focusedID == id)
 	}
+}
+
+// wouldAutoFocus reports whether the next registered element would take
+// focus, because nothing holds it yet.
+func (fm *FocusManager) wouldAutoFocus() bool {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	_, emptyFocused := fm.focusables[""]
+	return fm.focusedID == "" && !emptyFocused
 }
 
 // GetFocused returns the currently focused element, or nil if none.

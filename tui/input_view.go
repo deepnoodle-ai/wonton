@@ -681,7 +681,7 @@ func (i *InputView) render(ctx *RenderContext) {
 	}, fm)
 
 	// Read focus after Register, which may auto-focus this input.
-	isFocused := fm != nil && fm.GetFocusedID() == i.id
+	isFocused := fm != nil && state.focused
 
 	// Apply focus-aware styling to the textInput
 	if isFocused && i.focusStyle != nil {

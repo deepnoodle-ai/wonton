@@ -41,6 +41,23 @@ func TestFirstFrameFocusStyle(t *testing.T) {
 	assert.Equal(t, focus, in.reg.inputs.inputs[in.id].input.Style)
 }
 
+// A field after a focusable with an empty ID does not take focus, so it
+// must not draw focused either.
+func TestFieldAfterEmptyIDFocusableIsNotFocused(t *testing.T) {
+	val := ""
+	term := renderFirstFrame(t, Stack(
+		TextArea(nil).Content("x").Size(10, 2),
+		InputField(&val).Label("Name").Bordered(),
+	))
+	assert.NotEqual(t, ColorCyan, term.GetCell(0, 2).Style.Foreground)
+
+	focus := NewStyle().WithForeground(ColorRed)
+	first, second := "", ""
+	a, b := Input(&first), Input(&second).ID("second").FocusStyle(focus)
+	renderFirstFrame(t, Stack(TextArea(nil).Content("x").Size(10, 2), a, b))
+	assert.NotEqual(t, focus, b.reg.inputs.inputs["second"].input.Style)
+}
+
 // End scrolls to the bottom even without current-line highlighting.
 func TestTextAreaEndScrollsToBottom(t *testing.T) {
 	ta := TextArea(nil).Content(strings.Repeat("x\n", 19)+"x").Size(30, 6)
