@@ -139,9 +139,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `env`: fields of type `time.Location`, `*time.Time`, or a struct with a
   `WithParser` parser are read from the environment. Before, they were
   treated as nested config structs and their `env`, `envDefault`, and
-  `required` tags were ignored. `envDefault` no longer overwrites a value from a JSON file on a
-  field without an `env` tag. `WriteEnvFile` quotes values that contain
-  `\r`.
+  `required` tags were ignored. `envDefault` no longer overwrites a value
+  from a JSON file on a field without an `env` tag. `WriteEnvFile` quotes
+  values that contain `\r`.
 - `clipboard`: on Linux, `Write` and `Clear` return as soon as `xclip` or
   `wl-copy` exits instead of timing out, and `Available` no longer reports
   `wl-copy` without `WAYLAND_DISPLAY`. On Windows, `Read` keeps a trailing
