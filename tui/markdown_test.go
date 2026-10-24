@@ -1540,3 +1540,183 @@ func TestMarkdownRenderer_WrappedLinkSegmentText(t *testing.T) {
 	}
 	assert.Equal(t, "Get in Touch", combinedText.String())
 }
+
+func TestMarkdownRenderer_Strikethrough(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render("keep ~~gone~~ keep")
+	assert.NoError(t, err)
+	assert.Equal(t, renderToPlainText(result), "keep gone keep\n")
+
+	var struck []string
+	for _, seg := range result.Lines[0].Segments {
+		if seg.Style.Strikethrough {
+			struck = append(struck, seg.Text)
+		}
+	}
+	assert.Equal(t, struck, []string{"gone"})
+}
+
+func TestMarkdownRenderer_StrikethroughMergesWithOtherStyles(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render("~~**both**~~")
+	assert.NoError(t, err)
+	seg := result.Lines[0].Segments[0]
+	assert.Equal(t, seg.Text, "both")
+	assert.True(t, seg.Style.Strikethrough)
+	assert.True(t, seg.Style.Bold)
+}
+
+func TestMarkdownRenderer_SingleTildeIsNotStrikethrough(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	for _, input := range []string{"about ~5 to ~10 minutes", "a ~~~b~~~ c", "a ~~b~ c"} {
+		result, err := renderer.Render(input)
+		assert.NoError(t, err)
+		for _, line := range result.Lines {
+			for _, seg := range line.Segments {
+				assert.False(t, seg.Style.Strikethrough, "input %q struck %q", input, seg.Text)
+			}
+		}
+	}
+	result, err := renderer.Render("about ~5 to ~10 minutes")
+	assert.NoError(t, err)
+	assert.Equal(t, renderToPlainText(result), "about ~5 to ~10 minutes\n")
+}
+
+func TestMarkdownRenderer_StrikethroughWithSourceOffset(t *testing.T) {
+	view := Markdown("a ~~b~~ c", nil).SourceOffset(0)
+	view.renderContent(40)
+	assert.Equal(t, renderToPlainText(view.rendered), "a b c\n")
+	assert.True(t, view.rendered.sourceValid)
+}
+
+func TestMarkdownRenderer_BlockQuoteDefaultIndent(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render("> quoted\n")
+	assert.NoError(t, err)
+	assert.Equal(t, renderToPlainText(result), "  quoted\n")
+}
+
+func TestMarkdownRenderer_BlockQuotePrefix(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	theme.BlockQuotePrefixStyle = NewStyle().WithForeground(ColorBrightBlack)
+	renderer := NewMarkdownRenderer().WithTheme(theme)
+
+	result, err := renderer.Render("> one\n>\n> two\n\nafter")
+	assert.NoError(t, err)
+	assert.Equal(t, renderToPlainText(result), "│ one\n│\n│ two\n\nafter\n")
+	assert.Equal(t, result.Lines[0].Segments[0].Style, theme.BlockQuotePrefixStyle)
+}
+
+func TestMarkdownRenderer_BlockQuotePrefixNested(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	renderer := NewMarkdownRenderer().WithTheme(theme)
+
+	result, err := renderer.Render("> outer\n>\n> > inner\n>\n> - item\n")
+	assert.NoError(t, err)
+	assert.Equal(t, renderToPlainText(result), "│ outer\n│\n│ │ inner\n│\n│ • item\n")
+}
+
+func TestMarkdownRenderer_BlockQuotePrefixWraps(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(12)
+
+	result, err := renderer.Render("> alpha beta gamma delta\n")
+	assert.NoError(t, err)
+	for _, line := range strings.Split(strings.TrimSuffix(renderToPlainText(result), "\n"), "\n") {
+		assert.True(t, strings.HasPrefix(line, "│ "), "line %q", line)
+		assert.True(t, runewidth.StringWidth(line) <= 12, "line %q", line)
+	}
+}
+
+func TestMarkdownRenderer_BlockQuotePrefixWithCodeBlock(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	renderer := NewMarkdownRenderer().WithTheme(theme)
+
+	result, err := renderer.Render("> text\n>\n>     code\n")
+	assert.NoError(t, err)
+	// The final "\n" is the code line's own newline, which an undecorated
+	// code block keeps in its segment text.
+	assert.Equal(t, renderToPlainText(result), "│ text\n│\n│     code\n\n")
+}
+
+func TestMarkdownRenderer_BlockQuoteStyleApplied(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	theme.BlockQuotePrefixStyle = NewStyle().WithForeground(ColorBlue)
+	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(40)
+
+	result, err := renderer.Render("> plain `code` **bold**\n\nafter")
+	assert.NoError(t, err)
+	line := result.Lines[0]
+	assert.Equal(t, line.Segments[0].Style.Foreground, ColorBlue)
+	for _, seg := range line.Segments[1:] {
+		switch strings.TrimSpace(seg.Text) {
+		case "plain", "":
+			assert.Equal(t, seg.Style.Foreground, ColorBrightBlack, "segment %q", seg.Text)
+		case "code":
+			assert.Equal(t, seg.Style.Foreground, ColorYellow)
+		case "bold":
+			assert.Equal(t, seg.Style.Foreground, ColorBrightBlack)
+			assert.True(t, seg.Style.Bold)
+		}
+	}
+	after := result.Lines[len(result.Lines)-1]
+	assert.Equal(t, after.Segments[0].Style.Foreground, ColorDefault)
+}
+
+func TestMarkdownRenderer_BlockQuoteStyleWithoutPrefix(t *testing.T) {
+	renderer := NewMarkdownRenderer().WithMaxWidth(40)
+	result, err := renderer.Render("> quoted\n")
+	assert.NoError(t, err)
+	assert.Equal(t, result.Lines[0].Segments[0].Style.Foreground, ColorBrightBlack)
+}
+
+func TestMarkdownRenderer_SpaceBeforeCodeAndLinkIsUnstyled(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.CodeStyle = NewStyle().WithBackground(ColorBlack)
+	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(80)
+
+	result, err := renderer.Render("run `go test` then see [the docs](https://example.com) now")
+	assert.NoError(t, err)
+	segs := result.Lines[0].Segments
+	for i, seg := range segs {
+		if seg.Text != " " {
+			continue
+		}
+		next := segs[i+1].Text
+		if next == "go" || next == "the" {
+			assert.Equal(t, seg.Style.Background, ColorDefault, "space before %q", next)
+			assert.False(t, seg.Style.Underline, "space before %q", next)
+		}
+		if next == "test" {
+			// The space inside the code span keeps the code background.
+			assert.Equal(t, seg.Style.Background, ColorBlack)
+		}
+		if next == "docs" {
+			assert.True(t, seg.Style.Underline, "space inside the link")
+		}
+	}
+}
+
+func TestMarkdownRenderer_BlockQuotePrefixKeepsCodePanelBlankRows(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	theme.CodeBlockStyle = NewStyle().WithBgRGB(RGB{R: 40, G: 40, B: 40})
+	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(20)
+
+	result, err := renderer.Render("> ```go\n> a := 1\n>\n> b := 2\n>\n> ```\n")
+	assert.NoError(t, err)
+	// Three code rows plus the trailing blank code row, all filled.
+	assert.Equal(t, len(result.Lines), 4)
+	for i, line := range result.Lines {
+		assert.Equal(t, line.Segments[0].Text, "│ ", "row %d", i)
+		assert.Equal(t, lineWidth(line), 20, "row %d", i)
+		for _, seg := range line.Segments[1:] {
+			assert.NotNil(t, seg.Style.BgRGB, "row %d segment %q has no background", i, seg.Text)
+		}
+	}
+}

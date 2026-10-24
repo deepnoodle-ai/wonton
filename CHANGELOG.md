@@ -11,6 +11,37 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `tui.DetectTerminalBackground` reports whether the terminal background is
+  dark or light, as a `tui.TerminalBackground` (`TerminalBackgroundDark`,
+  `TerminalBackgroundLight`, or `TerminalBackgroundUnknown`). It asks the
+  terminal with an OSC 11 query, waits 100ms by default, reads only the
+  terminal's reply, and falls back to `COLORFGBG`. It returns unknown at
+  once when standard output is not a terminal. Call it before a TUI starts.
+  Keys typed during the query are dropped, and on a timeout it flushes
+  pending input so a slow reply is not read as keys.
+- `color.RGB.Luminance` returns a color's relative luminance, from 0 for
+  black to 1 for white.
+- `tui.MarkdownTheme.BlockQuotePrefix` and `BlockQuotePrefixStyle` draw a
+  prefix, such as `"│ "`, before every quoted line. Nested quotes repeat it.
+- When `tui.MarkdownTheme.CodeBlockStyle` sets a background, a code block is
+  drawn as a solid panel: one column of padding on each side and every line
+  filled to the wrap width. Syntax highlighting sets only the foreground.
+- `tui.MarkdownTheme.CodeBlockShowLanguage` right-aligns a fenced code
+  block's language on its first line, in `CodeBlockLanguageStyle`.
+
+### Fixed
+
+- `tui` Markdown renders `~~text~~` with `StrikethroughStyle`. Before, the
+  tildes were printed. A single tilde, as in `~5 minutes`, stays plain text.
+- `tui` Markdown applies `BlockQuoteStyle` to quoted text. Before, quotes
+  were only indented. The text's own styles, such as inline code colors,
+  still win.
+- When `tui` Markdown wraps a paragraph, the space between two words keeps
+  only the style both words share. Before, the space before inline code
+  took the code background, and the space before a link was underlined.
+
 ## [0.8.1] - 2026-10-24
 
 ### Fixed

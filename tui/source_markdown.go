@@ -111,6 +111,7 @@ func wrapLiteralSegments(segments []StyledSegment, width int) [][]StyledSegment 
 }
 
 func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language string, ctx *renderContext) {
+	start := len(ctx.result.Lines)
 	code := StyledSegment{Style: mr.Theme.CodeBlockStyle}
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
@@ -157,5 +158,5 @@ func (mr *MarkdownRenderer) renderSourceCode(lines *text.Segments, language stri
 	for _, row := range splitSegmentsAtNewlines(styled) {
 		ctx.result.Lines = append(ctx.result.Lines, StyledLine{Segments: row, Indent: ctx.indent + mr.TabWidth})
 	}
-	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+	mr.finishCodeBlock(ctx, start, language)
 }

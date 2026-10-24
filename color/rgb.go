@@ -66,6 +66,23 @@ func (rgb RGB) Hex() string {
 	return fmt.Sprintf("#%02x%02x%02x", rgb.R, rgb.G, rgb.B)
 }
 
+// Luminance returns the relative luminance of the color: how bright it looks,
+// from 0 for black to 1 for white. It uses the sRGB formula that WCAG
+// contrast ratios are built on, so green counts far more than blue.
+//
+// A luminance below about 0.18 reads as dark; that is the midpoint between
+// black and white as the eye sees it (CIE lightness 50).
+func (rgb RGB) Luminance() float64 {
+	linear := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.04045 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*linear(rgb.R) + 0.7152*linear(rgb.G) + 0.0722*linear(rgb.B)
+}
+
 // ForegroundSeq returns the ANSI escape sequence for RGB foreground color.
 // It is not affected by Enabled; remember to append color.Reset after your
 // text to return to default colors.

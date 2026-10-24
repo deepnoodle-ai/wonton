@@ -117,3 +117,12 @@ func TestRGB_Lerp(t *testing.T) {
 	// NaN is treated as 0
 	assert.Equal(t, start, start.Lerp(end, math.NaN()))
 }
+
+func TestRGBLuminance(t *testing.T) {
+	assert.InDelta(t, color.NewRGB(0, 0, 0).Luminance(), 0, 1e-9)
+	assert.InDelta(t, color.NewRGB(255, 255, 255).Luminance(), 1, 1e-9)
+	assert.InDelta(t, color.NewRGB(255, 0, 0).Luminance(), 0.2126, 1e-9)
+	assert.InDelta(t, color.NewRGB(0, 255, 0).Luminance(), 0.7152, 1e-9)
+	assert.InDelta(t, color.NewRGB(128, 128, 128).Luminance(), 0.2159, 1e-3)
+	assert.True(t, color.NewRGB(0, 0, 255).Luminance() < color.NewRGB(0, 255, 0).Luminance())
+}
