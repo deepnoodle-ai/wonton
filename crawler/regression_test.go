@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -393,22 +393,47 @@ func TestResultLinksIncludeExternalLinks(t *testing.T) {
 	assert.Equal(t, 1, rec.count("/a"))
 }
 
-// After a redirect to another host, same-domain filtering uses the final
-// host, so the crawl continues there.
-func TestSameDomainFollowsAfterCrossHostRedirect(t *testing.T) {
-	rec := &hitRecorder{}
-	var server *httptest.Server
-	server = newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
-		"/start": func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, server.URL+"/page", http.StatusFound)
-		},
-		"/page": htmlPage(`<a href="/next">next</a>`),
-		"/next": htmlPage("next"),
-	})
-	// server.URL uses 127.0.0.1; seed through localhost so the redirect
-	// changes host.
-	seed := strings.Replace(server.URL, "127.0.0.1", "localhost", 1) + "/start"
-	c := newHTTPCrawler(t, server, Options{FollowBehavior: FollowSameDomain, RespectRobotsTxt: BoolPtr(false)})
-	assert.NoError(t, c.Crawl(context.Background(), []string{seed}, func(context.Context, *Result) {}))
-	assert.Equal(t, 1, rec.count("/next"))
+// After a redirect within the same site, same-domain filtering uses the
+// final host, so the crawl continues there. A redirect to another site does
+// not widen the crawl to that site.
+func TestSameDomainFilteringAfterRedirect(t *testing.T) {
+	for _, tc := range []struct {
+		target     string
+		wantFollow int
+	}{
+		{target: "www.example.com", wantFollow: 1},
+		{target: "other.example.net", wantFollow: 0},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			rec := &hitRecorder{}
+			var port string
+			server := newSiteServer(t, rec, map[string]func(http.ResponseWriter, *http.Request){
+				"/start": func(w http.ResponseWriter, r *http.Request) {
+					http.Redirect(w, r, "http://"+tc.target+":"+port+"/page", http.StatusFound)
+				},
+				"/page": htmlPage(`<a href="/next">next</a>`),
+				"/next": htmlPage("next"),
+			})
+			_, port, _ = net.SplitHostPort(server.Listener.Addr().String())
+			// Send every host name to the test server.
+			client := &http.Client{Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+					var d net.Dialer
+					return d.DialContext(ctx, network, server.Listener.Addr().String())
+				},
+			}}
+			c, err := New(Options{
+				DefaultFetcher:   fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{Client: client}),
+				AllowHTTP:        true,
+				Workers:          1,
+				FollowBehavior:   FollowSameDomain,
+				RespectRobotsTxt: BoolPtr(false),
+			})
+			assert.NoError(t, err)
+			seed := "http://example.com:" + port + "/start"
+			assert.NoError(t, c.Crawl(context.Background(), []string{seed}, func(context.Context, *Result) {}))
+			assert.Equal(t, 1, rec.count("/page"))
+			assert.Equal(t, tc.wantFollow, rec.count("/next"))
+		})
+	}
 }

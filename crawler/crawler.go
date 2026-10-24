@@ -996,9 +996,14 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 	if response.Links != nil {
 		discoveredLinks = c.extractURLs(response.Links, linkBase(parsedURL, response.URL))
 	}
-	// Filter against the final page URL too, so a redirect to another host
-	// (example.com -> www.example.com) keeps following that host's links.
-	filteredURLs := c.filterLinks(linkBase(parsedURL, response.URL), discoveredLinks)
+	// After a redirect within the same site (example.com -> www.example.com),
+	// filter against the final host so its links are still followed. A
+	// redirect to another site does not widen the crawl to that site.
+	filterBase := parsedURL
+	if final := linkBase(parsedURL, response.URL); web.AreRelatedHosts(parsedURL, final) {
+		filterBase = final
+	}
+	filteredURLs := c.filterLinks(filterBase, discoveredLinks)
 	callback(ctx, &Result{
 		URL:          parsedURL,
 		Depth:        item.Depth,
