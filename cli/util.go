@@ -33,6 +33,9 @@ func IsTTY() bool {
 //	    scanner := bufio.NewScanner(os.Stdin)
 //	}
 func IsPiped() bool {
-	stat, _ := os.Stdin.Stat()
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
 	return (stat.Mode() & os.ModeCharDevice) == 0
 }

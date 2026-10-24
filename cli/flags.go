@@ -55,11 +55,14 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 	var result T
 	rv := reflect.ValueOf(&result).Elem()
 	rt := rv.Type()
+	if rt.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("BindFlags requires a struct type, got %s", rt)
+	}
 
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
 		tag := field.Tag.Get("flag")
-		if tag == "" {
+		if tag == "" || !field.IsExported() {
 			continue
 		}
 
@@ -89,11 +92,14 @@ func parseStructFlags(c *Command, t reflect.Type) {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		tag := field.Tag.Get("flag")
-		if tag == "" {
+		if tag == "" || !field.IsExported() {
 			continue
 		}
 
@@ -114,8 +120,62 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		_, required := field.Tag.Lookup("required")
 		_, hidden := field.Tag.Lookup("hidden")
 
+		// time.Duration has kind Int64, so check it before the kind switch.
+		if field.Type == durationType {
+			var defVal time.Duration
+			if def := field.Tag.Get("default"); def != "" {
+				if v, err := time.ParseDuration(def); err == nil {
+					defVal = v
+				}
+			}
+			c.flags = append(c.flags, &DurationFlag{
+				Name:     name,
+				Short:    short,
+				Help:     help,
+				Value:    defVal,
+				EnvVar:   envVar,
+				Required: required,
+				Hidden:   hidden,
+			})
+			continue
+		}
+
 		// Create typed flag based on field type
 		switch field.Type.Kind() {
+		case reflect.Slice:
+			def := field.Tag.Get("default")
+			switch field.Type.Elem().Kind() {
+			case reflect.String:
+				var defVal []string
+				if def != "" {
+					defVal = splitList(def)
+				}
+				c.flags = append(c.flags, &StringSliceFlag{
+					Name:     name,
+					Short:    short,
+					Help:     help,
+					Value:    defVal,
+					EnvVar:   envVar,
+					Required: required,
+					Hidden:   hidden,
+				})
+			case reflect.Int:
+				var defVal []int
+				for _, part := range splitList(def) {
+					if v, err := strconv.Atoi(part); err == nil {
+						defVal = append(defVal, v)
+					}
+				}
+				c.flags = append(c.flags, &IntSliceFlag{
+					Name:     name,
+					Short:    short,
+					Help:     help,
+					Value:    defVal,
+					EnvVar:   envVar,
+					Required: required,
+					Hidden:   hidden,
+				})
+			}
 		case reflect.Bool:
 			defVal := false
 			if def := field.Tag.Get("default"); def != "" {
@@ -194,8 +254,48 @@ func parseStructFlags(c *Command, t reflect.Type) {
 	}
 }
 
+var durationType = reflect.TypeOf(time.Duration(0))
+
+// splitList splits a comma-separated tag value, trimming spaces. An empty
+// string yields no elements.
+func splitList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
 func setFieldValue(v reflect.Value, s string) error {
+	if v.Type() == durationType {
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return err
+		}
+		v.SetInt(int64(d))
+		return nil
+	}
 	switch v.Kind() {
+	case reflect.Slice:
+		switch v.Type().Elem().Kind() {
+		case reflect.String:
+			v.Set(reflect.ValueOf(splitList(s)))
+		case reflect.Int:
+			var ints []int
+			for _, part := range splitList(s) {
+				n, err := strconv.Atoi(part)
+				if err != nil {
+					return err
+				}
+				ints = append(ints, n)
+			}
+			v.Set(reflect.ValueOf(ints))
+		default:
+			return fmt.Errorf("unsupported type: %s", v.Type())
+		}
 	case reflect.String:
 		v.SetString(s)
 	case reflect.Bool:
@@ -220,6 +320,15 @@ func setFieldValue(v reflect.Value, s string) error {
 
 func setFieldFromAny(v reflect.Value, val any) error {
 	switch v.Kind() {
+	case reflect.Slice:
+		rv := reflect.ValueOf(val)
+		if !rv.IsValid() {
+			return nil
+		}
+		if !rv.Type().AssignableTo(v.Type()) {
+			return fmt.Errorf("cannot assign %T to %s", val, v.Type())
+		}
+		v.Set(rv)
 	case reflect.String:
 		v.SetString(fmt.Sprint(val))
 	case reflect.Bool:
@@ -231,6 +340,8 @@ func setFieldFromAny(v reflect.Value, val any) error {
 		}
 	case reflect.Int, reflect.Int64:
 		switch i := val.(type) {
+		case time.Duration:
+			v.SetInt(int64(i))
 		case int:
 			v.SetInt(int64(i))
 		case int64:

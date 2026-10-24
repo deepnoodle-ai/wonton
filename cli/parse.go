@@ -53,12 +53,15 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 
 		// Handle end-of-flags marker
 		if arg == "--" {
-			// Everything after -- is treated as positional args (command detection still applies)
-			i++
-			if i < len(args) {
-				// Try to resolve the next arg as a command/group
-				p.resolveCommandPosition(result, args, i)
+			// A known command or group right after -- is still resolved.
+			// Otherwise everything after -- is positional for the root
+			// command; keep the marker so the command's flag parser also
+			// stops at it.
+			if i+1 < len(args) && p.isKnownCommand(args[i+1]) {
+				p.resolveCommandPosition(result, args, i+1)
+				return result, nil
 			}
+			result.CommandArgs = args[i:]
 			return result, nil
 		}
 
@@ -130,6 +133,13 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
 			// Short flag(s)
 			shorts := arg[1:]
+
+			// -o=value carries its own value, like --name=value
+			if strings.Contains(shorts, "=") {
+				result.GlobalFlags = append(result.GlobalFlags, arg)
+				i++
+				continue
+			}
 
 			// Handle -h as help unless a global flag explicitly claims -h
 			if shorts == "h" && p.app.isHelpShort() {

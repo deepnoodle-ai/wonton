@@ -430,7 +430,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	if a.forceInteractive != nil {
 		a.isInteractive = *a.forceInteractive
 	} else {
-		a.isInteractive = isTerminal(os.Stdin) && isTerminal(os.Stdout)
+		// Check the app's own streams, so SetStdin/SetStdout (and TestApp)
+		// are honored.
+		stdin, inOK := a.stdin.(*os.File)
+		stdout, outOK := a.stdout.(*os.File)
+		a.isInteractive = inOK && outOK && isTerminal(stdin) && isTerminal(stdout)
 	}
 
 	// Apply --no-color / --color / --force-color command-line overrides.
@@ -472,7 +476,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	// Build the full argument list for the command.
 	// This includes any global flags (which the command's parseFlags will process)
 	// followed by the command's own arguments.
-	cmdArgs := append(result.GlobalFlags, result.CommandArgs...)
+	cmdArgs := append(append([]string(nil), result.GlobalFlags...), result.CommandArgs...)
 
 	// Find the command (or use root handler)
 	var cmd *Command
@@ -554,12 +558,15 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		}
 		if cmd == nil {
 			// Command not found - if app has root handler, treat as positional arg
+			// Keep the original argument order: flags parsed before the
+			// token, the token itself, then the rest.
+			rootArgs := append(append(append([]string(nil), result.GlobalFlags...), result.Command), result.CommandArgs...)
 			if rootCmd := a.commands[""]; rootCmd != nil {
 				cmd = rootCmd
-				cmdArgs = append([]string{result.Command}, cmdArgs...)
+				cmdArgs = rootArgs
 			} else if a.handler != nil {
 				cmd = a.rootCommand()
-				cmdArgs = append([]string{result.Command}, cmdArgs...)
+				cmdArgs = rootArgs
 			} else {
 				return a.unknownCommandError(result.Command)
 			}
@@ -597,9 +604,15 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		return fmt.Errorf("no handler defined for command: %s", cmd.name)
 	}
 
-	// Build middleware chain: app middleware runs before (wraps) command middleware
+	// Build middleware chain: app middleware runs before (wraps) group
+	// middleware, which runs before command middleware.
 	for i := len(cmd.middleware) - 1; i >= 0; i-- {
 		handler = cmd.middleware[i](handler)
+	}
+	if cmd.group != nil {
+		for i := len(cmd.group.middleware) - 1; i >= 0; i-- {
+			handler = cmd.group.middleware[i](handler)
+		}
 	}
 	for i := len(a.middleware) - 1; i >= 0; i-- {
 		handler = a.middleware[i](handler)

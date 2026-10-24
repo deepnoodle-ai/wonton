@@ -36,6 +36,7 @@ type Context struct {
 	positional  []string
 	flags       map[string]any
 	setFlags    map[string]bool // Flags explicitly set by user (or env var)
+	cliFlags    map[string]bool // flags set on the command line (not env or default)
 	interactive bool
 
 	// I/O
