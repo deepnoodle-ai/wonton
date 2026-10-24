@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"image"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // promptChoiceRegistryImpl manages text input state for prompt choices.
@@ -51,7 +53,7 @@ func (r *promptChoiceRegistryImpl) Get(id string) *textInput {
 // # Keyboard Controls
 //
 //   - Arrow Up/Down: Navigate between options
-//   - 1-9: Jump directly to numbered option
+//   - 1-9: Jump directly to numbered option (typed as text on the input option)
 //   - Enter: Confirm selection (triggers OnSelect callback)
 //   - Escape: Cancel (triggers OnCancel callback)
 //   - Any character: When on input option, types into the input field
@@ -152,6 +154,9 @@ type PromptChoiceView struct {
 //	}
 func PromptChoice(selected *int, inputText *string) *PromptChoiceView {
 	id := fmt.Sprintf("prompt_choice_%p", selected)
+	if selected == nil {
+		selected = new(int) // unbound: navigation works but does not persist
+	}
 	return &PromptChoiceView{
 		reg:         capturedRegistries(),
 		id:          id,
@@ -461,8 +466,9 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	}
 
-	// Handle number keys (1-9) for quick selection
-	if event.Rune >= '1' && event.Rune <= '9' {
+	// Handle number keys (1-9) for quick selection. While the custom input
+	// is selected, digits are typed into it instead.
+	if event.Rune >= '1' && event.Rune <= '9' && !p.isInputSelected() {
 		idx := int(event.Rune - '1')
 		if idx < total {
 			*p.selected = idx
@@ -651,7 +657,9 @@ func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isS
 
 	// Draw cursor if this option is selected and focused
 	if isSelected && p.focused {
-		cursorX := x + ti.CursorPos
+		// CursorPos is a byte offset; convert it to a display column.
+		cursorPos := min(max(ti.CursorPos, 0), len(inputValue))
+		cursorX := x + runewidth.StringWidth(inputValue[:cursorPos])
 		if inputValue == "" {
 			cursorX = x // At start when empty
 		}
@@ -659,9 +667,9 @@ func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isS
 			// Draw block cursor
 			charUnderCursor := " "
 			if inputValue == "" && len(p.inputLabel) > 0 {
-				charUnderCursor = string([]rune(p.inputLabel)[0])
-			} else if ti.CursorPos < len(inputValue) {
-				charUnderCursor = string([]rune(inputValue)[ti.CursorPos])
+				charUnderCursor = p.inputLabel[:nextClusterBoundary(p.inputLabel, 0)]
+			} else if cursorPos < len(inputValue) {
+				charUnderCursor = inputValue[cursorPos:nextClusterBoundary(inputValue, cursorPos)]
 			}
 			cursorStyle := NewStyle().WithBackground(ColorWhite).WithForeground(ColorBlack)
 			ctx.PrintStyled(cursorX, y, charUnderCursor, cursorStyle)

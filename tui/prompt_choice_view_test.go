@@ -73,6 +73,10 @@ func TestPromptChoice_NumberKeys(t *testing.T) {
 	view.HandleKeyEvent(KeyEvent{Rune: '3'})
 	assert.Equal(t, 2, selected)
 
+	// On the input option, digits are typed instead; arrows navigate away
+	view.HandleKeyEvent(KeyEvent{Key: KeyArrowUp})
+	assert.Equal(t, 1, selected)
+
 	// Press '1' to jump back
 	view.HandleKeyEvent(KeyEvent{Rune: '1'})
 	assert.Equal(t, 0, selected)
