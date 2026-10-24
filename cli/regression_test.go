@@ -185,6 +185,23 @@ func TestInteractivityUsesAppStreams(t *testing.T) {
 	assert.Equal(t, "interactive", ran)
 }
 
+// Command-line values for slice flags are not split on commas; environment
+// values are.
+func TestSliceFlagCommaHandling(t *testing.T) {
+	app := TestApp("app")
+	var tags []string
+	app.Command("run").Flags(Strings("tag"), Ints("num")).Run(func(ctx *Context) error {
+		tags = ctx.Strings("tag")
+		return nil
+	})
+	assert.NoError(t, app.ExecuteArgs([]string{"run", "--tag", "a,b"}))
+	assert.Equal(t, []string{"a,b"}, tags)
+
+	err := app.ExecuteArgs([]string{"run", "--num", "1,2"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "one value per --num")
+}
+
 // An empty environment variable counts as unset, and a command-line value
 // overrides a bad environment value.
 func TestEnvFlagEmptyAndOverride(t *testing.T) {

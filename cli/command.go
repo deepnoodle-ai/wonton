@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -931,7 +932,12 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		// Otherwise start with empty slice (replacing defaults)
 		intVal, err := parseInt(value)
 		if err != nil {
-			return fmt.Errorf("invalid integer for --%s: %s", name, value)
+			msg := fmt.Sprintf("invalid integer for --%s: %q", name, value)
+			if strings.Contains(value, ",") {
+				// Command-line values are not split on commas.
+				msg += fmt.Sprintf(" (pass one value per --%s)", name)
+			}
+			return errors.New(msg)
 		}
 		ctx.flags[name] = append(existing, intVal)
 	default:

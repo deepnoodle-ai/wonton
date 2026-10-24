@@ -6,7 +6,6 @@ import (
 	"golang.org/x/term"
 )
 
-// isTerminal checks if a file is a terminal.
 // isTerminal reports whether f is a terminal. It is a variable so tests can
 // simulate a terminal.
 var isTerminal = func(f *os.File) bool {
