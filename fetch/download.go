@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -242,7 +245,7 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 		if err != nil {
 			return nil, fmt.Errorf("invalid output path: %w", err)
 		}
-		if !strings.HasPrefix(absOutput, absBase+string(filepath.Separator)) && absOutput != absBase {
+		if !withinDir(absBase, absOutput) {
 			return nil, errors.New("path traversal detected: output path escapes base directory")
 		}
 	}
@@ -253,27 +256,78 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 		}
 	}
 
-	outputFile, err := os.Create(outputPath)
+	// Write to a temporary file in the same directory and rename it into
+	// place on success, so a failed or oversized transfer never truncates or
+	// deletes a file already at outputPath. A symlink at outputPath is
+	// followed, so the download replaces its target, as os.Create did.
+	target := outputPath
+	if resolved, err := filepath.EvalSymlinks(outputPath); err == nil {
+		target = resolved
+	}
+	existingMode, hasExisting := os.FileMode(0), false
+	if info, err := os.Stat(target); err == nil && info.Mode().IsRegular() {
+		existingMode, hasExisting = info.Mode().Perm(), true
+	}
+	outputFile, err := createTempFile(filepath.Dir(target))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
+	tempPath := outputFile.Name()
 
 	written, err := io.Copy(outputFile, reader)
+	if err == nil && hasExisting {
+		// Keep the mode of the file being replaced.
+		err = outputFile.Chmod(existingMode)
+	}
 	if closeErr := outputFile.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		os.Remove(outputPath) // Clean up partial file
+		os.Remove(tempPath) // Clean up partial file
 		return nil, fmt.Errorf("failed to write file contents: %w", err)
 	}
 	if opts.MaxSizeBytes > 0 && written > opts.MaxSizeBytes {
-		os.Remove(outputPath) // Clean up partial file
+		os.Remove(tempPath) // Clean up partial file
 		return nil, fmt.Errorf("file size exceeds maximum allowed size of %d bytes", opts.MaxSizeBytes)
+	}
+	if err := os.Rename(tempPath, target); err != nil {
+		os.Remove(tempPath)
+		return nil, fmt.Errorf("failed to save output file: %w", err)
 	}
 
 	result.Size = written
 	result.Path = outputPath
 	return result, nil
+}
+
+// createTempFile creates a new, uniquely named file in dir for a download in
+// progress. The name is short and fixed-length, so it works for any target
+// name, and the file is created with mode 0666 so the umask applies, as it
+// does for os.Create.
+func createTempFile(dir string) (*os.File, error) {
+	for i := 0; i < 100; i++ {
+		name := filepath.Join(dir, ".download-"+strconv.FormatUint(rand.Uint64(), 36)+".part")
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, err
+	}
+	return nil, errors.New("could not create a unique temporary file")
+}
+
+// withinDir reports whether target is base or a path inside it. Both paths
+// must be absolute and clean. A base that already ends in a separator (the
+// filesystem root) is not given a second one.
+func withinDir(base, target string) bool {
+	if target == base {
+		return true
+	}
+	prefix := base
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	return strings.HasPrefix(target, prefix)
 }
 
 // safeFilenameFromResponse extracts a filename from the response and sanitizes
@@ -283,17 +337,17 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 func safeFilenameFromResponse(resp *http.Response) (string, error) {
 	var filename string
 
-	// Try Content-Disposition header first
+	// Try Content-Disposition header first. Sanitize before deciding whether
+	// to fall back, so a degenerate name such as "." or "/" still falls back.
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
-		filename = filenameFromContentDisposition(cd)
+		filename = sanitizeFilename(filenameFromContentDisposition(cd))
 	}
 
 	// Fall back to the URL path (of the final URL, after redirects)
 	if filename == "" {
-		filename = filepath.Base(resp.Request.URL.Path)
+		filename = sanitizeFilename(filepath.Base(resp.Request.URL.Path))
 	}
 
-	filename = sanitizeFilename(filename)
 	if filename == "" {
 		return "", errors.New("could not determine a valid filename from response")
 	}
