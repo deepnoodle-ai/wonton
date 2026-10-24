@@ -314,22 +314,16 @@ func recursivePlaceholder(t reflect.Type) *Property {
 	}
 }
 
-// isJSONField reports whether encoding/json considers a struct field at all.
-// Unexported fields are ignored, except embedded structs (or pointers to
-// structs) of unexported type: their exported fields are still promoted, and
-// with a json name tag they marshal as a named field.
+// isJSONField reports whether a struct field can carry JSON input.
+// Unexported fields are ignored, except embedded structs of unexported type:
+// their exported fields are still promoted, and with a json name tag they
+// decode as a named field. An embedded pointer to an unexported struct is
+// ignored, because encoding/json cannot allocate it when decoding.
 func isJSONField(field reflect.StructField) bool {
 	if field.IsExported() {
 		return true
 	}
-	if !field.Anonymous {
-		return false
-	}
-	t := field.Type
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	return t.Kind() == reflect.Struct
+	return field.Anonymous && field.Type.Kind() == reflect.Struct
 }
 
 // shouldFlattenEmbedded reports whether an anonymous struct field's

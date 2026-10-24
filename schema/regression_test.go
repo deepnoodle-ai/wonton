@@ -152,12 +152,12 @@ func TestGenerateUnexportedEmbedded(t *testing.T) {
 	assert.Equal(t, 3, len(s.Properties))
 	assert.Equal(t, []string{"label", "count"}, s.Required)
 
-	// A pointer to an unexported struct is walked too; its fields are optional.
+	// A pointer to an unexported struct is ignored: encoding/json cannot
+	// allocate it, so input for its fields would fail to decode.
 	s, err = Generate(outerUnexportedPtrEmbed{})
 	assert.NoError(t, err)
-	assert.Contains(t, s.Properties, "label")
-	assert.Equal(t, String, s.Properties["label"].Type)
-	assert.Contains(t, s.Properties, "note")
+	assert.NotContains(t, s.Properties, "label")
+	assert.NotContains(t, s.Properties, "note")
 	assert.Equal(t, []string{"count"}, s.Required)
 
 	// An embedded non-struct of unexported type is ignored.
