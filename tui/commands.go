@@ -136,11 +136,15 @@ func None() []Cmd {
 //	    fetchData(),
 //	    processResults(),
 //	)}
+//
+// Nil commands are skipped, as they are in a []Cmd returned from HandleEvent.
 func Sequence(cmds ...Cmd) Cmd {
 	return func() Event {
-		events := make([]Event, len(cmds))
-		for i, cmd := range cmds {
-			events[i] = cmd()
+		events := make([]Event, 0, len(cmds))
+		for _, cmd := range cmds {
+			if cmd != nil {
+				events = append(events, cmd())
+			}
 		}
 		return BatchEvent{
 			Time:   time.Now(),

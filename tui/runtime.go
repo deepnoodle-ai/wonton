@@ -187,6 +187,9 @@ func (r *Runtime) Run() error {
 	// Initialize application if it implements Initializable
 	if init, ok := r.app.(Initializable); ok {
 		if err := init.Init(); err != nil {
+			r.mu.Lock()
+			r.running = false
+			r.mu.Unlock()
 			return fmt.Errorf("application initialization failed: %w", err)
 		}
 	}
@@ -204,6 +207,9 @@ func (r *Runtime) Run() error {
 		}
 
 		if err := r.terminal.EnableRawMode(); err != nil {
+			r.mu.Lock()
+			r.running = false
+			r.mu.Unlock()
 			return fmt.Errorf("failed to enable raw mode: %w", err)
 		}
 
@@ -459,16 +465,13 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 		return true
 	}
 
-	// Handle batch events by unpacking them
+	// Handle batch events by unpacking them. Recurse so a nested batch (from
+	// a nested Sequence) is unpacked and its Quit is honored.
 	if batch, isBatch := event.(BatchEvent); isBatch {
 		for _, e := range batch.Events {
-			if r.stopping() {
+			if r.processEventWithQuitCheck(e) {
 				return true
 			}
-			if _, isQuit := e.(QuitEvent); isQuit {
-				return true
-			}
-			r.processEvent(e)
 		}
 	} else {
 		r.processEvent(event)
@@ -519,6 +522,9 @@ func (r *Runtime) processEvent(event Event) {
 	}
 
 	for _, cmd := range cmds {
+		if cmd == nil {
+			continue
+		}
 		// Quit and the focus commands take effect now, so an event already
 		// queued (the next key press, say) sees their result.
 		if isRuntimeCmd(cmd) {

@@ -216,10 +216,7 @@ func Run(app Application, opts ...RunOption) error {
 		terminal.EnableBracketedPaste()
 	}
 
-	// Create and configure runtime
-	runtime := NewRuntime(terminal, app, cfg.fps)
-	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
-	runtime.SetBackslashEnter(cfg.backslashEnter)
+	runtime := newRunRuntime(terminal, app, cfg)
 
 	// Reset requested modes before the deferred terminal.Close cleanup.
 	if cfg.mouseMode != mouseOff {
@@ -231,4 +228,16 @@ func Run(app Application, opts ...RunOption) error {
 
 	// Run the application
 	return runtime.Run()
+}
+
+// newRunRuntime creates the Runtime for Run and applies the options that
+// configure it.
+func newRunRuntime(terminal *Terminal, app Application, cfg runConfig) *Runtime {
+	runtime := NewRuntime(terminal, app, cfg.fps)
+	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
+	runtime.SetBackslashEnter(cfg.backslashEnter)
+	if cfg.inputSource != nil {
+		runtime.SetInputSource(cfg.inputSource)
+	}
+	return runtime
 }

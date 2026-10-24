@@ -460,24 +460,7 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		renderHeight = viewHeight
 	}
 
-	// If we've already rendered, move cursor back up
-	if lp.started && lp.lastHeight > 0 {
-		// Move cursor up to the start of the previous render.
-		// After rendering N lines (with newlines between but not at end),
-		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
-		if lp.lastHeight > 1 {
-			fmt.Fprintf(checked, "\033[%dA", lp.lastHeight-1)
-		}
-		// Move to beginning of line
-		fmt.Fprint(checked, "\r")
-	}
-
-	// Hide cursor on first update for cleaner display
-	if !lp.started {
-		fmt.Fprint(checked, "\033[?25l")
-		lp.hiddenCursor = true
-		lp.started = true
-	}
+	lp.beginFrame(checked)
 
 	// Create terminal buffer and render at the full (uncapped) height.
 	// This lets the view lay out all its content naturally.
@@ -517,7 +500,48 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 	} else {
 		newLines = allLines
 	}
-	height := displayHeight
+	return lp.writeFrame(checked, newLines, useSync)
+}
+
+// redraw writes lines, a frame this printer drew before, without rendering a
+// view. InlineApp uses it to restore the live region after scrollback output
+// without calling the application's LiveView off the event loop.
+func (lp *LivePrinter) redraw(lines []string, useSync bool) error {
+	if len(lines) == 0 {
+		return nil
+	}
+	checked := &checkedLiveOutput{destination: lp.config.Output}
+	lp.beginFrame(checked)
+	return lp.writeFrame(checked, lines, useSync)
+}
+
+// beginFrame moves the cursor to the top of the live region, and hides the
+// cursor on the first frame.
+func (lp *LivePrinter) beginFrame(checked io.Writer) {
+	// If we've already rendered, move cursor back up
+	if lp.started && lp.lastHeight > 0 {
+		// Move cursor up to the start of the previous render.
+		// After rendering N lines (with newlines between but not at end),
+		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
+		if lp.lastHeight > 1 {
+			fmt.Fprintf(checked, "\033[%dA", lp.lastHeight-1)
+		}
+		// Move to beginning of line
+		fmt.Fprint(checked, "\r")
+	}
+
+	// Hide cursor on first update for cleaner display
+	if !lp.started {
+		fmt.Fprint(checked, "\033[?25l")
+		lp.hiddenCursor = true
+		lp.started = true
+	}
+}
+
+// writeFrame writes newLines over the previous frame, redrawing only the
+// lines that changed.
+func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string, useSync bool) error {
+	height := len(newLines)
 
 	// Build output with line-level diffing
 	var output strings.Builder
@@ -577,7 +601,7 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 		finalOutput = output.String()
 	}
 
-	_, err = io.WriteString(checked, finalOutput)
+	_, err := io.WriteString(checked, finalOutput)
 	return errors.Join(err, checked.err)
 }
 

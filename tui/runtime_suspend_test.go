@@ -69,6 +69,25 @@ func TestSuspendComesBackInTheSameMouseMode(t *testing.T) {
 	}
 }
 
+// Suspend leaves raw mode, and the Kitty keyboard protocol only works in raw
+// mode: left on, Enter arrives as ESC [ 13 u and the line discipline never
+// sees a newline. Without the alternate screen nothing else pops it.
+func TestSuspendReleasesKittyKeyboard(t *testing.T) {
+	var buf bytes.Buffer
+	term := NewTestTerminal(80, 24, &buf)
+	term.EnableEnhancedKeyboard()
+	assert.True(t, term.IsKittyProtocolEnabled())
+	r := NewRuntime(term, &testRuntimeModel{}, 30)
+
+	buf.Reset()
+	assert.NoError(t, r.Suspend(func(keys <-chan Event) {
+		assert.False(t, term.IsKittyProtocolEnabled(),
+			"Kitty keyboard must be released while fn owns the terminal")
+	}))
+	assert.True(t, term.IsKittyProtocolEnabled(), "Kitty keyboard must come back")
+	assert.Contains(t, buf.String(), "\x1b[<u")
+}
+
 func TestSuspendLeavesAlreadyDisabledModesAlone(t *testing.T) {
 	var buf bytes.Buffer
 	term := NewTestTerminal(80, 24, &buf)
