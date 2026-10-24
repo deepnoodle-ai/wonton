@@ -40,8 +40,14 @@ type BranchOptions struct {
 //	    Contains: "abc1234",
 //	})
 func (r *Repository) Branches(ctx context.Context, opts BranchOptions) ([]Branch, error) {
-	// Format: refname, objectname, upstream, HEAD indicator
-	format := "%(refname:short)%00%(objectname:short)%00%(upstream:short)%00%(HEAD)"
+	if err := checkArgs(opts.Contains, opts.Merged, opts.NoMerged); err != nil {
+		return nil, err
+	}
+
+	// Format: full refname, objectname, upstream, HEAD indicator. The full
+	// refname tells local branches (refs/heads/) from remote-tracking ones
+	// (refs/remotes/); short names can't, since local names may contain "/".
+	format := "%(refname)%00%(objectname:short)%00%(upstream:short)%00%(HEAD)"
 
 	args := []string{"branch", "--format=" + format}
 
@@ -78,17 +84,20 @@ func (r *Repository) Branches(ctx context.Context, opts BranchOptions) ([]Branch
 		}
 
 		branch := Branch{
-			Name:      parts[0],
 			Hash:      parts[1],
 			Upstream:  parts[2],
 			IsCurrent: parts[3] == "*",
-			IsRemote:  strings.HasPrefix(parts[0], "remotes/") || strings.Contains(parts[0], "/"),
 		}
 
-		// Clean up remote branch names
-		if strings.HasPrefix(branch.Name, "remotes/") {
-			branch.Name = strings.TrimPrefix(branch.Name, "remotes/")
+		switch {
+		case strings.HasPrefix(parts[0], "refs/heads/"):
+			branch.Name = strings.TrimPrefix(parts[0], "refs/heads/")
+		case strings.HasPrefix(parts[0], "refs/remotes/"):
+			branch.Name = strings.TrimPrefix(parts[0], "refs/remotes/")
 			branch.IsRemote = true
+		default:
+			// Not a branch, such as "(HEAD detached at abc1234)".
+			continue
 		}
 
 		branches = append(branches, branch)
@@ -138,14 +147,20 @@ func (r *Repository) DefaultBranch(ctx context.Context) (string, error) {
 //
 // The name can be a local branch (e.g., "main") or a remote branch
 // (e.g., "origin/main").
+//
+// Tags, commit hashes, and other refs that are not branches return false.
 func (r *Repository) BranchExists(ctx context.Context, name string) (bool, error) {
-	_, err := r.run(ctx, "rev-parse", "--verify", name)
-	if err != nil {
-		if strings.Contains(err.Error(), "unknown revision") ||
-			strings.Contains(err.Error(), "Needed a single revision") {
-			return false, nil
-		}
+	if err := checkArgs(name); err != nil {
 		return false, err
 	}
-	return true, nil
+	for _, ref := range []string{"refs/heads/" + name, "refs/remotes/" + name} {
+		_, err := r.run(ctx, "show-ref", "--verify", "--quiet", ref)
+		if err == nil {
+			return true, nil
+		}
+		if !strings.Contains(err.Error(), "exit status 1") {
+			return false, err
+		}
+	}
+	return false, nil
 }

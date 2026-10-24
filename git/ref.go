@@ -10,6 +10,9 @@ import (
 // The ref can be any valid git reference including symbolic names like HEAD,
 // branch names, tag names, or relative references like HEAD~1 or main^.
 func (r *Repository) ResolveRef(ctx context.Context, ref string) (string, error) {
+	if err := checkArgs(ref); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "rev-parse", ref)
 	if err != nil {
 		return "", err
@@ -20,6 +23,9 @@ func (r *Repository) ResolveRef(ctx context.Context, ref string) (string, error)
 // ShortHash returns the abbreviated hash for a ref.
 // Typically returns a 7-character hash, but may be longer to ensure uniqueness.
 func (r *Repository) ShortHash(ctx context.Context, ref string) (string, error) {
+	if err := checkArgs(ref); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "rev-parse", "--short", ref)
 	if err != nil {
 		return "", err
@@ -33,6 +39,9 @@ func (r *Repository) ShortHash(ctx context.Context, ref string) (string, error) 
 // This is useful for determining if a branch has been merged or checking if
 // one commit is older than another.
 func (r *Repository) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+	if err := checkArgs(ancestor, descendant); err != nil {
+		return false, err
+	}
 	_, err := r.run(ctx, "merge-base", "--is-ancestor", ancestor, descendant)
 	if err != nil {
 		if strings.Contains(err.Error(), "exit status 1") {
@@ -48,6 +57,9 @@ func (r *Repository) IsAncestor(ctx context.Context, ancestor, descendant string
 // This is the most recent commit that is an ancestor of both commits.
 // Useful for finding where two branches diverged.
 func (r *Repository) MergeBase(ctx context.Context, a, b string) (string, error) {
+	if err := checkArgs(a, b); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "merge-base", a, b)
 	if err != nil {
 		return "", err
@@ -58,6 +70,9 @@ func (r *Repository) MergeBase(ctx context.Context, a, b string) (string, error)
 // AbbrevRef returns the abbreviated ref name for a symbolic ref.
 // For example, converts "refs/heads/main" to "main".
 func (r *Repository) AbbrevRef(ctx context.Context, ref string) (string, error) {
+	if err := checkArgs(ref); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "rev-parse", "--abbrev-ref", ref)
 	if err != nil {
 		return "", err
@@ -68,6 +83,9 @@ func (r *Repository) AbbrevRef(ctx context.Context, ref string) (string, error) 
 // RefExists checks if a ref exists.
 // Returns true if the ref can be resolved to a commit.
 func (r *Repository) RefExists(ctx context.Context, ref string) (bool, error) {
+	if err := checkArgs(ref); err != nil {
+		return false, err
+	}
 	_, err := r.run(ctx, "rev-parse", "--verify", "--quiet", ref)
 	if err != nil {
 		if strings.Contains(err.Error(), "exit status 1") ||
@@ -84,6 +102,9 @@ func (r *Repository) RefExists(ctx context.Context, ref string) (bool, error) {
 func (r *Repository) CommitCount(ctx context.Context, ref string) (int, error) {
 	if ref == "" {
 		ref = "HEAD"
+	}
+	if err := checkArgs(ref); err != nil {
+		return 0, err
 	}
 	out, err := r.run(ctx, "rev-list", "--count", ref)
 	if err != nil {
@@ -109,6 +130,9 @@ func (r *Repository) CommitCount(ctx context.Context, ref string) (int, error) {
 // CommitCountBetween returns the number of commits between two refs.
 // Uses range syntax (from..to) to count commits reachable from "to" but not from "from".
 func (r *Repository) CommitCountBetween(ctx context.Context, from, to string) (int, error) {
+	if err := checkArgs(from, to); err != nil {
+		return 0, err
+	}
 	out, err := r.run(ctx, "rev-list", "--count", from+".."+to)
 	if err != nil {
 		return 0, err

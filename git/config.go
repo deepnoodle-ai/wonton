@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -36,6 +37,9 @@ const (
 //	    fmt.Printf("Remote for main branch: %s\n", branch)
 //	}
 func (r *Repository) Config(ctx context.Context, key string) (string, error) {
+	if err := checkArgs(key); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "config", "--get", key)
 	if err != nil {
 		// Key not found is not an error for our purposes
@@ -52,6 +56,14 @@ func (r *Repository) Config(ctx context.Context, key string) (string, error) {
 // Use this to query config at a specific level without considering other scopes.
 // Returns an empty string if the key is not found in the specified scope.
 func (r *Repository) ConfigWithScope(ctx context.Context, key string, scope ConfigScope) (string, error) {
+	switch scope {
+	case ConfigScopeLocal, ConfigScopeGlobal, ConfigScopeSystem:
+	default:
+		return "", fmt.Errorf("%w: unknown config scope %q", ErrInvalidArgument, scope)
+	}
+	if err := checkArgs(key); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "config", "--"+string(scope), "--get", key)
 	if err != nil {
 		if strings.Contains(err.Error(), "exit status 1") {

@@ -69,6 +69,9 @@ func (r *Repository) Remote(ctx context.Context, name string) (*Remote, error) {
 
 // RemoteURL returns the fetch URL for a named remote.
 func (r *Repository) RemoteURL(ctx context.Context, name string) (string, error) {
+	if err := checkArgs(name); err != nil {
+		return "", err
+	}
 	out, err := r.run(ctx, "remote", "get-url", name)
 	if err != nil {
 		return "", err

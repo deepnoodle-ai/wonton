@@ -96,6 +96,9 @@ func (r *Repository) Log(ctx context.Context, opts LogOptions) ([]Commit, error)
 	if ref == "" {
 		ref = "HEAD"
 	}
+	if err := checkArgs(ref); err != nil {
+		return nil, err
+	}
 	args = append(args, ref)
 
 	if opts.Path != "" {
@@ -104,7 +107,9 @@ func (r *Repository) Log(ctx context.Context, opts LogOptions) ([]Commit, error)
 
 	out, err := r.run(ctx, args...)
 	if err != nil {
-		if strings.Contains(err.Error(), "unknown revision") {
+		// An unknown revision means "no commits" only when the repository
+		// is empty; otherwise the caller asked for a ref that doesn't exist.
+		if strings.Contains(err.Error(), "unknown revision") && !r.hasCommits(ctx) {
 			return nil, ErrNoCommits
 		}
 		return nil, err
@@ -189,8 +194,17 @@ func (r *Repository) Show(ctx context.Context, ref string) (*Commit, error) {
 //	// See commits added in v2.0.0 since v1.0.0
 //	commits, err := repo.CommitsBetween(ctx, "v1.0.0", "v2.0.0")
 func (r *Repository) CommitsBetween(ctx context.Context, from, to string) ([]Commit, error) {
+	if err := checkArgs(from, to); err != nil {
+		return nil, err
+	}
 	return r.Log(ctx, LogOptions{
 		Ref:         from + ".." + to,
 		IncludeBody: true,
 	})
+}
+
+// hasCommits reports whether HEAD resolves to a commit.
+func (r *Repository) hasCommits(ctx context.Context) bool {
+	_, err := r.run(ctx, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	return err == nil
 }

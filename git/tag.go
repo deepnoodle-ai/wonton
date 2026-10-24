@@ -45,6 +45,10 @@ func (r *Repository) Tags(ctx context.Context, opts TagOptions) ([]Tag, error) {
 	// Format: refname, objectname, type, taggername, taggeremail, taggerdate, subject
 	format := "%(refname:short)%00%(objectname:short)%00%(*objectname:short)%00%(objecttype)%00%(taggername)%00%(taggeremail)%00%(creatordate:unix)%00%(subject)"
 
+	if err := checkArgs(opts.Pattern, opts.Contains, opts.PointsAt); err != nil {
+		return nil, err
+	}
+
 	args := []string{"tag", "-l", "--format=" + format}
 
 	if opts.Pattern != "" {
@@ -136,6 +140,9 @@ func (r *Repository) TagsForCommit(ctx context.Context, ref string) ([]Tag, erro
 // since the tag. If the commit is tagged, returns just the tag name.
 // Returns something like "v1.0.0-3-g1234567" or "v1.0.0".
 func (r *Repository) Describe(ctx context.Context, ref string) (string, error) {
+	if err := checkArgs(ref); err != nil {
+		return "", err
+	}
 	args := []string{"describe", "--tags", "--always"}
 	if ref != "" {
 		args = append(args, ref)
@@ -155,6 +162,9 @@ func (r *Repository) Describe(ctx context.Context, ref string) (string, error) {
 // tagged commits. Returns something like "v1.0.0-0-g1234567" for tagged
 // commits and "v1.0.0-3-g1234567" for commits after a tag.
 func (r *Repository) DescribeLong(ctx context.Context, ref string) (string, error) {
+	if err := checkArgs(ref); err != nil {
+		return "", err
+	}
 	args := []string{"describe", "--tags", "--long", "--always"}
 	if ref != "" {
 		args = append(args, ref)

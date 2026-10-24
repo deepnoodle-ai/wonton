@@ -1,8 +1,6 @@
 package git
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -19,7 +17,7 @@ type BlameOptions struct {
 	// If 0, starts from the beginning of the file.
 	StartLine int
 	// EndLine is the last line to blame (1-indexed, inclusive).
-	// If 0 (and StartLine is also 0), blames the entire file.
+	// If 0, blames through the end of the file.
 	EndLine int
 }
 
@@ -59,9 +57,14 @@ func (r *Repository) Blame(ctx context.Context, path string, opts BlameOptions) 
 		args = append(args, "-L", strconv.Itoa(opts.StartLine)+","+strconv.Itoa(opts.EndLine))
 	} else if opts.StartLine > 0 {
 		args = append(args, "-L", strconv.Itoa(opts.StartLine)+",")
+	} else if opts.EndLine > 0 {
+		args = append(args, "-L", "1,"+strconv.Itoa(opts.EndLine))
 	}
 
 	if opts.Ref != "" {
+		if err := checkArgs(opts.Ref); err != nil {
+			return nil, err
+		}
 		args = append(args, opts.Ref)
 	}
 
@@ -77,7 +80,7 @@ func (r *Repository) Blame(ctx context.Context, path string, opts BlameOptions) 
 
 func parseBlameOutput(out []byte) ([]BlameLine, error) {
 	var lines []BlameLine
-	scanner := bufio.NewScanner(bytes.NewReader(out))
+	scanner := newScanner(out)
 
 	var current BlameLine
 	commitInfo := make(map[string]map[string]string) // cache commit info by hash
