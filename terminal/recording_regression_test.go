@@ -88,3 +88,25 @@ func TestRecorderPauseClampsIdleBeforePause(t *testing.T) {
 		t.Errorf("event time = %.3fs, want about 0.05s (idle before pause must be clamped)", got)
 	}
 }
+
+func TestRecordingRedactsValueRedrawnWithoutLabel(t *testing.T) {
+	term := NewTestTerminal(30, 2, &bytes.Buffer{})
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{RedactSecrets: true}))
+
+	drawFrame := func(draw func(f RenderFrame)) {
+		frame, err := term.BeginFrame()
+		assert.NoError(t, err)
+		draw(frame)
+		assert.NoError(t, term.EndFrame(frame))
+	}
+	drawFrame(func(f RenderFrame) { f.PrintStyled(0, 0, "Token: abc", NewStyle()) })
+	// Only the value cells change in the second frame.
+	drawFrame(func(f RenderFrame) { f.PrintStyled(7, 0, "s3cr3tvalue", NewStyle()) })
+	assert.NoError(t, term.StopRecording())
+
+	recorded := strings.Join(readCastEvents(t, filename), "")
+	assert.False(t, strings.Contains(recorded, "s3cr3tvalue"), "secret recorded in plain text: %q", recorded)
+	assert.False(t, strings.Contains(recorded, "abc"), "secret recorded in plain text: %q", recorded)
+	assert.True(t, strings.Contains(recorded, "Token: [REDACTED]"), "recorded: %q", recorded)
+}

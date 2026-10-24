@@ -371,9 +371,13 @@ func (s *Session) Resize(width, height int) error {
 	s.mu.Lock()
 	ptmx := s.pty
 	recorder := s.recorder
+	started := s.started
 	s.mu.Unlock()
 
 	if ptmx == nil {
+		if started {
+			return fmt.Errorf("session has exited")
+		}
 		return fmt.Errorf("session not started")
 	}
 

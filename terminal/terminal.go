@@ -1835,6 +1835,44 @@ func (t *Terminal) Reset() {
 	}
 }
 
+// renderRowsLocked renders the given rows of the back buffer in full, each
+// from column 0, and then moves the cursor to the virtual position. It is
+// used to record whole rows. Caller must hold t.mu.
+func (t *Terminal) renderRowsLocked(rows []int) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	var style Style
+	for _, y := range rows {
+		fmt.Fprintf(&b, "\033[%d;1H", y+1)
+		for x := 0; x < t.width; x++ {
+			cell := t.backBuffer[y][x]
+			if cell.Continuation {
+				continue
+			}
+			if !cell.Style.Equal(style) {
+				if !style.IsEmpty() {
+					b.WriteString("\033[0m")
+				}
+				b.WriteString(cell.Style.String())
+				style = cell.Style
+			}
+			b.WriteRune(cell.Char)
+			b.WriteString(cell.Trailing)
+			if cell.Width > 1 && x+cell.Width < t.width {
+				// Position the next cell explicitly, as flush does.
+				fmt.Fprintf(&b, "\033[%d;%dH", y+1, x+cell.Width+1)
+			}
+		}
+	}
+	if !style.IsEmpty() {
+		b.WriteString("\033[0m")
+	}
+	fmt.Fprintf(&b, "\033[%d;%dH", t.virtualY+1, t.virtualX+1)
+	return b.String()
+}
+
 // Flush calculates the difference between buffers and updates the terminal
 func (t *Terminal) Flush() {
 	t.mu.Lock()
@@ -1893,7 +1931,10 @@ func (t *Terminal) flushInternal() error {
 	minX := max(0, t.dirtyRegion.MinX)
 	maxX := min(t.width-1, t.dirtyRegion.MaxX)
 
+	var changedRows []int // rows with at least one changed cell, for recording
+
 	for y := minY; y <= maxY; y++ {
+		rowChanged := false
 		for x := minX; x <= maxX; x++ {
 			cell := t.backBuffer[y][x]
 			oldCell := t.frontBuffer[y][x]
@@ -1906,6 +1947,7 @@ func (t *Terminal) flushInternal() error {
 			}
 
 			if !cell.Equal(oldCell) {
+				rowChanged = true
 				// Move cursor if needed
 				if y != currentY || x != currentX {
 					// Optimization: If we are just 1 char ahead, no need to move
@@ -1985,6 +2027,9 @@ func (t *Terminal) flushInternal() error {
 				}
 			}
 		}
+		if rowChanged {
+			changedRows = append(changedRows, y)
+		}
 	}
 
 	// End any active hyperlink
@@ -2033,10 +2078,18 @@ func (t *Terminal) flushInternal() error {
 		copy(t.frontBuffer[y][minX:maxX+1], t.backBuffer[y][minX:maxX+1])
 	}
 
-	// Record exactly what the terminal received. Recording at Print() time
-	// would miss SetCell and Fill and ignore clipping.
+	// Record what the terminal received. Recording at Print() time would
+	// miss SetCell and Fill and ignore clipping.
 	if t.recorder != nil {
-		t.recorder.RecordOutput(outputStr)
+		if t.recorder.redactSecrets {
+			// Redaction runs on each event alone. A diff can hold a changed
+			// value without the label drawn in an earlier frame ("Token: "),
+			// so the pattern would not match. Record each changed row in
+			// full instead, so the label and value are redacted together.
+			t.recorder.RecordOutput(t.renderRowsLocked(changedRows))
+		} else {
+			t.recorder.RecordOutput(outputStr)
+		}
 	}
 
 	// Record metrics if enabled

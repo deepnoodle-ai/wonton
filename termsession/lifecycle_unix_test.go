@@ -29,6 +29,9 @@ func TestSession_NaturalExitReleasesPTY(t *testing.T) {
 	ptmx := s.pty
 	s.mu.Unlock()
 	assert.Nil(t, ptmx, "PTY master must be closed after the command exits")
+	err = s.Resize(80, 24)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exited")
 
 	assert.NoError(t, s.Close())
 }
