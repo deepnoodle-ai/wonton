@@ -47,9 +47,11 @@ const defaultBackgroundTimeout = 100 * time.Millisecond
 //
 // Call it once at startup, before a Runtime, InlineApp, or anything else
 // reads standard input: it puts the terminal in raw mode for the query and
-// reads the answer from standard input. It reads only up to the end of the
-// terminal's answer, so keys typed after it stay unread, but keys typed
-// before the answer arrives are consumed.
+// reads the answer from standard input. Keys typed while it waits are
+// dropped. When the terminal answers in time, it reads only up to the end of
+// the answer, so keys typed after that stay unread. When it times out, it
+// flushes all pending input, so a slow answer already on its way is not read
+// as keys; an answer that arrives after the flush still would be.
 //
 // It returns TerminalBackgroundUnknown at once, with no error, when standard
 // output is not a terminal. When standard input is not a terminal, or TERM is

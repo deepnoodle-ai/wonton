@@ -88,4 +88,34 @@ func TestQueryBackgroundTimesOut(t *testing.T) {
 	assert.False(t, ok)
 	elapsed := time.Since(start)
 	assert.True(t, elapsed >= 50*time.Millisecond && elapsed < time.Second, "elapsed %v", elapsed)
+	assert.Equal(t, pending(t, tty), "")
+}
+
+func TestQueryBackgroundTimeoutLeavesNoPartialReply(t *testing.T) {
+	// The terminal starts a reply but never finishes it or answers DA1.
+	tty := fakeTerminal(t, "\x1b]11;rgb:0000/00")
+	start := time.Now()
+	_, ok, err := queryBackground(tty, tty, 50*time.Millisecond)
+	assert.NoError(t, err)
+	assert.False(t, ok)
+	// A started reply gets one extra timeout.
+	assert.True(t, time.Since(start) >= 100*time.Millisecond)
+	assert.Equal(t, pending(t, tty), "")
+}
+
+func TestFlushInputDropsPendingBytes(t *testing.T) {
+	master, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pty: %v", err)
+	}
+	defer master.Close()
+	defer tty.Close()
+	state, err := term.MakeRaw(int(tty.Fd()))
+	assert.NoError(t, err)
+	defer term.Restore(int(tty.Fd()), state)
+	master.WriteString("\x1b]11;rgb:ffff/ffff/ffff\x07")
+	fds := []unix.PollFd{{Fd: int32(tty.Fd()), Events: unix.POLLIN}}
+	unix.Poll(fds, 1000) // wait for the bytes to arrive
+	assert.NoError(t, flushInput(int(tty.Fd())))
+	assert.Equal(t, pending(t, tty), "")
 }

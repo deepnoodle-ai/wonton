@@ -14,7 +14,8 @@ import (
 
 // queryBackground writes backgroundQuery to out and reads the replies from
 // in, a terminal, for up to timeout. It reads one byte at a time and stops
-// at the end of the DA1 reply, so it never consumes input that follows.
+// at the end of the DA1 reply, so it never consumes input that follows. On a
+// timeout it flushes pending input instead.
 func queryBackground(in *os.File, out io.Writer, timeout time.Duration) (RGB, bool, error) {
 	fd := int(in.Fd())
 	state, err := term.MakeRaw(fd)
@@ -46,7 +47,10 @@ func queryBackground(in *os.File, out io.Writer, timeout time.Duration) (RGB, bo
 				extended = true
 				continue
 			}
-			return replies.color, replies.ok, nil
+			// No DA1 reply yet: drop whatever input has arrived, so a reply
+			// already on its way is not read as keys. This also drops keys
+			// typed during the query.
+			return replies.color, replies.ok, flushInput(fd)
 		}
 		fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
 		n, err := unix.Poll(fds, int(wait/time.Millisecond)+1)

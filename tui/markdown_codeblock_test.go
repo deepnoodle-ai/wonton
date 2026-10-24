@@ -143,3 +143,24 @@ func TestMarkdownRenderer_CodeBlockPanelUsesBlockForegroundForPlainTokens(t *tes
 		}
 	}
 }
+
+func TestMarkdownRenderer_CodeBlockPanelExpandsTabsWithSourceOffset(t *testing.T) {
+	theme := panelTheme()
+	theme.CodeBlockShowLanguage = true
+	view := Markdown("```go\nif x {\n\treturn\n}\n```\n", nil).Theme(theme).SourceOffset(0)
+	view.renderContent(24)
+	assertPanel(t, view.rendered.Lines, 0, 24)
+	assert.Equal(t, renderToPlainText(view.rendered), " if x {"+strings.Repeat(" ", 14)+"go \n     return"+strings.Repeat(" ", 13)+"\n }"+strings.Repeat(" ", 22)+"\n")
+	assert.True(t, view.rendered.sourceValid)
+	// The expanded tab still maps to its one source byte.
+	var tab *sourceToken
+	for _, seg := range view.rendered.Lines[1].Segments {
+		for i, tok := range seg.source {
+			if tok.end-tok.start == 1 && strings.HasPrefix(seg.Text[tok.lo:], "    ") && tok.hi-tok.lo == 4 {
+				tab = &seg.source[i]
+			}
+		}
+	}
+	assert.NotNil(t, tab)
+	assert.Equal(t, tab.start, strings.Index("```go\nif x {\n\treturn\n}\n```\n", "\t"))
+}

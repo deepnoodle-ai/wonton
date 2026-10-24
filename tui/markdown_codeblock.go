@@ -106,12 +106,40 @@ func (mr *MarkdownRenderer) codeLineSegments(segments []StyledSegment) []StyledS
 		if len(text) < len(seg.Text) {
 			seg = segmentSlice(seg, 0, len(text))
 		}
-		if seg.source == nil && strings.Contains(seg.Text, "\t") {
-			seg.Text = strings.ReplaceAll(seg.Text, "\t", strings.Repeat(" ", max(mr.TabWidth, 1)))
+		if strings.Contains(seg.Text, "\t") {
+			seg = expandTabs(seg, max(mr.TabWidth, 1))
 		}
 		if seg.Text != "" {
 			out = append(out, seg)
 		}
 	}
 	return out
+}
+
+// expandTabs replaces each tab in seg with width spaces and moves the
+// segment's source ranges to match, so a tab still maps to its one source
+// byte, as source layout does.
+func expandTabs(seg StyledSegment, width int) StyledSegment {
+	spaces := strings.Repeat(" ", width)
+	shifted := make([]int, len(seg.Text)+1) // old byte offset -> new
+	var text strings.Builder
+	for i := 0; i < len(seg.Text); i++ {
+		shifted[i] = text.Len()
+		if seg.Text[i] == '\t' {
+			text.WriteString(spaces)
+		} else {
+			text.WriteByte(seg.Text[i])
+		}
+	}
+	shifted[len(seg.Text)] = text.Len()
+	seg.Text = text.String()
+	if seg.source != nil {
+		source := make([]sourceToken, len(seg.source))
+		for i, t := range seg.source {
+			t.lo, t.hi = shifted[t.lo], shifted[t.hi]
+			source[i] = t
+		}
+		seg.source = source
+	}
+	return seg
 }

@@ -19,6 +19,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
   terminal with an OSC 11 query, waits 100ms by default, reads only the
   terminal's reply, and falls back to `COLORFGBG`. It returns unknown at
   once when standard output is not a terminal. Call it before a TUI starts.
+  Keys typed during the query are dropped, and on a timeout it flushes
+  pending input so a slow reply is not read as keys.
 - `color.RGB.Luminance` returns a color's relative luminance, from 0 for
   black to 1 for white.
 - `tui.MarkdownTheme.BlockQuotePrefix` and `BlockQuotePrefixStyle` draw a

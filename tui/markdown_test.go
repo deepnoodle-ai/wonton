@@ -1701,3 +1701,22 @@ func TestMarkdownRenderer_SpaceBeforeCodeAndLinkIsUnstyled(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownRenderer_BlockQuotePrefixKeepsCodePanelBlankRows(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.BlockQuotePrefix = "│ "
+	theme.CodeBlockStyle = NewStyle().WithBgRGB(RGB{R: 40, G: 40, B: 40})
+	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(20)
+
+	result, err := renderer.Render("> ```go\n> a := 1\n>\n> b := 2\n>\n> ```\n")
+	assert.NoError(t, err)
+	// Three code rows plus the trailing blank code row, all filled.
+	assert.Equal(t, len(result.Lines), 4)
+	for i, line := range result.Lines {
+		assert.Equal(t, line.Segments[0].Text, "│ ", "row %d", i)
+		assert.Equal(t, lineWidth(line), 20, "row %d", i)
+		for _, seg := range line.Segments[1:] {
+			assert.NotNil(t, seg.Style.BgRGB, "row %d segment %q has no background", i, seg.Text)
+		}
+	}
+}

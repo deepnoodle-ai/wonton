@@ -220,7 +220,7 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 	// Trim trailing empty lines (including lines with only whitespace)
 	for len(result.Lines) > 0 {
 		last := result.Lines[len(result.Lines)-1]
-		if isBlankLine(last) {
+		if isBlankLine(last) && !hasFilledSegment(last) {
 			result.Lines = result.Lines[:len(result.Lines)-1]
 		} else {
 			break
@@ -228,6 +228,17 @@ func (mr *MarkdownRenderer) Render(markdown string) (*RenderedMarkdown, error) {
 	}
 
 	return result, nil
+}
+
+// hasFilledSegment reports whether a line paints a background, as a blank
+// row of a code panel does, so it is visible even when it holds only spaces.
+func hasFilledSegment(line StyledLine) bool {
+	for _, seg := range line.Segments {
+		if seg.Style != (Style{}) && hasBackground(seg.Style) {
+			return true
+		}
+	}
+	return false
 }
 
 // isBlankLine returns true if the line is empty or contains only whitespace
@@ -522,7 +533,7 @@ func (mr *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, ctx *renderCo
 
 	// The trailing blank line belongs between blocks, not to the quote.
 	end := len(ctx.result.Lines)
-	for end > start && isBlankLine(ctx.result.Lines[end-1]) {
+	for end > start && len(ctx.result.Lines[end-1].Segments) == 0 {
 		end--
 	}
 	style := mr.Theme.BlockQuotePrefixStyle
@@ -531,8 +542,10 @@ func (mr *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, ctx *renderCo
 	}
 	for i := start; i < end; i++ {
 		line := &ctx.result.Lines[i]
-		if isBlankLine(*line) {
+		if len(line.Segments) == 0 {
 			// A blank quoted line keeps the bar but not its trailing space.
+			// Lines of spaces, such as a blank row of a code panel, keep
+			// their segments.
 			*line = StyledLine{
 				Segments: []StyledSegment{{Text: strings.TrimRight(prefix, " "), Style: style}},
 				Indent:   savedIndent,
