@@ -909,6 +909,14 @@ func (r *InlineApp) processMouseEvent(event Event) (Event, Event) {
 		r.mousePressed = false
 		return event, nil
 
+	case MouseDrag:
+		// A drag that leaves the press cell is not a click, even if it
+		// comes back before the release.
+		if mouseEvent.X != r.mousePressX || mouseEvent.Y != r.mousePressY {
+			r.mousePressed = false
+		}
+		return event, nil
+
 	default:
 		return event, nil
 	}

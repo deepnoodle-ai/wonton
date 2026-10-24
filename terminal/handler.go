@@ -169,6 +169,10 @@ func (h *MouseHandler) HandleEvent(event *MouseEvent) {
 	// and set clickSynthesized=true so that handleRelease knows to skip its own
 	// click synthesis (which would cause duplicate clicks).
 	if event.Type == MouseClick || event.Type == MouseDoubleClick || event.Type == MouseTripleClick {
+		if h.isDragging {
+			// A drag that returns to its start cell is not a click.
+			return
+		}
 		h.clickSynthesized = true
 		targetRegion := h.findRegionAt(event.X, event.Y)
 		if targetRegion != nil {
@@ -249,18 +253,21 @@ func (h *MouseHandler) handleRelease(event *MouseEvent, _ *MouseRegion) {
 	// 1. We have a captured region (from the press)
 	// 2. No pre-synthesized click was received (clickSynthesized is false)
 	// 3. Mouse didn't move much (within ClickMoveThreshold)
+	// 4. No drag started, even one that came back to where it began
 	//
 	// When using Runtime, clickSynthesized will be true because Runtime sends
 	// MouseClick BEFORE MouseRelease, and HandleEvent sets the flag.
 	// This prevents duplicate click dispatch.
-	if h.capturedRegion != nil && !h.clickSynthesized {
-		dx := event.X - h.dragStartX
-		dy := event.Y - h.dragStartY
-		moved := dx*dx + dy*dy
+	if h.capturedRegion != nil {
+		if !h.clickSynthesized && !h.isDragging {
+			dx := event.X - h.dragStartX
+			dy := event.Y - h.dragStartY
+			moved := dx*dx + dy*dy
 
-		if moved <= h.ClickMoveThreshold*h.ClickMoveThreshold {
-			// This is a click!
-			h.detectAndDispatchClick(event, h.capturedRegion)
+			if moved <= h.ClickMoveThreshold*h.ClickMoveThreshold {
+				// This is a click!
+				h.detectAndDispatchClick(event, h.capturedRegion)
+			}
 		}
 
 		// End drag if active
@@ -295,6 +302,7 @@ func (h *MouseHandler) handleDrag(event *MouseEvent, _ *MouseRegion) {
 func (h *MouseHandler) handleCapturedEvent(event *MouseEvent) {
 	switch event.Type {
 	case MouseRelease:
+		h.dispatchToRegion(h.capturedRegion, event)
 		h.handleRelease(event, h.capturedRegion)
 	case MouseDrag:
 		if h.isDragging {

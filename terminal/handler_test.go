@@ -269,3 +269,56 @@ func TestMouseHandler_HandleEvent_Scroll(t *testing.T) {
 	h.HandleEvent(&MouseEvent{Type: MouseScroll, X: 5, Y: 5, Button: MouseButtonWheelUp})
 	assert.True(t, scrollCalled)
 }
+
+// recordingRegion returns a region that appends each callback's event type.
+func recordingRegion(events *[]MouseEventType) *MouseRegion {
+	rec := func(e *MouseEvent) { *events = append(*events, e.Type) }
+	return &MouseRegion{
+		X: 0, Y: 0, Width: 50, Height: 20,
+		OnPress: rec, OnRelease: rec, OnClick: rec,
+		OnDragStart: rec, OnDragEnd: rec,
+	}
+}
+
+func TestMouseHandler_ReleaseReachesCapturedRegion(t *testing.T) {
+	h := NewMouseHandler()
+	var events []MouseEventType
+	h.AddRegion(recordingRegion(&events))
+
+	now := time.Now()
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonLeft, Type: MousePress, Time: now})
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonNone, Type: MouseRelease, Time: now})
+
+	assert.Equal(t, []MouseEventType{MousePress, MouseRelease, MouseClick}, events)
+}
+
+func TestMouseHandler_DragBackToStartIsNotAClick(t *testing.T) {
+	h := NewMouseHandler()
+	var events []MouseEventType
+	h.AddRegion(recordingRegion(&events))
+
+	now := time.Now()
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonLeft, Type: MousePress, Time: now})
+	h.HandleEvent(&MouseEvent{X: 30, Y: 10, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonNone, Type: MouseRelease, Time: now})
+
+	assert.Equal(t, []MouseEventType{MousePress, MouseDragStart, MouseRelease, MouseDragEnd}, events)
+	assert.False(t, h.isDragging, "drag state should end on release")
+}
+
+func TestMouseHandler_SynthesizedClickDoesNotSkipDragEnd(t *testing.T) {
+	h := NewMouseHandler()
+	var events []MouseEventType
+	h.AddRegion(recordingRegion(&events))
+
+	now := time.Now()
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonLeft, Type: MousePress, Time: now})
+	h.HandleEvent(&MouseEvent{X: 30, Y: 10, Button: MouseButtonLeft, Type: MouseDrag, Time: now})
+	// A caller that synthesizes its own click sends it before the release.
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonLeft, Type: MouseClick, Time: now})
+	h.HandleEvent(&MouseEvent{X: 10, Y: 10, Button: MouseButtonNone, Type: MouseRelease, Time: now})
+
+	assert.Equal(t, []MouseEventType{MousePress, MouseDragStart, MouseRelease, MouseDragEnd}, events)
+	assert.False(t, h.isDragging, "drag state should end on release")
+}

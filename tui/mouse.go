@@ -194,6 +194,10 @@ func (h *MouseHandler) HandleEvent(event *MouseEvent) {
 	}
 
 	if event.Type == MouseClick || event.Type == MouseDoubleClick || event.Type == MouseTripleClick {
+		if h.isDragging {
+			// A drag that returns to its start cell is not a click.
+			return
+		}
 		h.clickSynthesized = true
 		targetRegion := h.findRegionAt(event.X, event.Y)
 		if targetRegion != nil {
@@ -252,13 +256,15 @@ func (h *MouseHandler) handlePress(event *MouseEvent, region *MouseRegion) {
 }
 
 func (h *MouseHandler) handleRelease(event *MouseEvent, _ *MouseRegion) {
-	if h.capturedRegion != nil && !h.clickSynthesized {
-		dx := event.X - h.dragStartX
-		dy := event.Y - h.dragStartY
-		moved := dx*dx + dy*dy
+	if h.capturedRegion != nil {
+		if !h.clickSynthesized && !h.isDragging {
+			dx := event.X - h.dragStartX
+			dy := event.Y - h.dragStartY
+			moved := dx*dx + dy*dy
 
-		if moved <= h.ClickMoveThreshold*h.ClickMoveThreshold {
-			h.detectAndDispatchClick(event, h.capturedRegion)
+			if moved <= h.ClickMoveThreshold*h.ClickMoveThreshold {
+				h.detectAndDispatchClick(event, h.capturedRegion)
+			}
 		}
 
 		if h.isDragging {
@@ -287,6 +293,7 @@ func (h *MouseHandler) handleDrag(event *MouseEvent, _ *MouseRegion) {
 func (h *MouseHandler) handleCapturedEvent(event *MouseEvent) {
 	switch event.Type {
 	case MouseRelease:
+		h.dispatchToRegion(h.capturedRegion, event)
 		h.handleRelease(event, h.capturedRegion)
 	case MouseDrag:
 		if h.isDragging {
