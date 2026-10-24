@@ -140,6 +140,11 @@ type outerTaggedUnexported struct {
 	unexportedBase `json:"base"`
 }
 
+type outerTaggedUnexportedPtr struct {
+	*unexportedBase `json:"base"`
+	Count           int `json:"count"`
+}
+
 // Issue #103: encoding/json promotes the exported fields of an embedded
 // struct whose type is unexported, so Generate must too.
 func TestGenerateUnexportedEmbedded(t *testing.T) {
@@ -179,4 +184,10 @@ func TestGenerateUnexportedEmbedded(t *testing.T) {
 	assert.Equal(t, Object, s.Properties["base"].Type)
 	assert.Contains(t, s.Properties["base"].Properties, "label")
 	assert.Equal(t, []string{"base"}, s.Required)
+
+	// A json-tagged pointer to an unexported struct is ignored too.
+	s, err = Generate(outerTaggedUnexportedPtr{})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "base")
+	assert.Equal(t, []string{"count"}, s.Required)
 }
