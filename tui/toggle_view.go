@@ -143,7 +143,7 @@ func (t *ToggleView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	t.bounds = ctx.AbsoluteBounds()
+	t.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(t)
 	}
@@ -173,7 +173,7 @@ func (t *ToggleView) render(ctx *RenderContext) {
 
 	// Register click region
 	if t.value != nil {
-		ctx.registries().interactive.RegisterButton(ctx.AbsoluteBounds(), func() {
+		ctx.registerClick(ctx.AbsoluteBounds(), func() {
 			*t.value = !*t.value
 			if t.onChange != nil {
 				t.onChange(*t.value)

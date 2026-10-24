@@ -218,7 +218,7 @@ func (l *SelectListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	l.bounds = ctx.AbsoluteBounds()
+	l.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(l)
 	}
@@ -283,7 +283,7 @@ func (l *SelectListView) render(ctx *RenderContext) {
 				bounds.Min.Y+y+1,
 			)
 			clickedItem := item
-			ctx.registries().interactive.RegisterButton(itemBounds, func() {
+			ctx.registerClick(itemBounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}

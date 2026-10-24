@@ -93,6 +93,9 @@ func (g *GridView) SetAllCells(fn func(col, row int) Style) *GridView {
 }
 
 func (g *GridView) size(maxWidth, maxHeight int) (int, int) {
+	if g.cols <= 0 || g.rows <= 0 {
+		return 0, 0
+	}
 	w := g.cols*g.cellWidth + (g.cols-1)*g.gap
 	h := g.rows*g.cellHeight + (g.rows-1)*g.gap
 
@@ -139,7 +142,7 @@ func (g *GridView) render(ctx *RenderContext) {
 					bounds.Min.Y+cellY+g.cellHeight,
 				)
 				c, r := col, row // capture for closure
-				ctx.registries().interactive.RegisterButton(clickBounds, func() {
+				ctx.registerClick(clickBounds, func() {
 					g.onClick(c, r)
 				})
 			}
@@ -200,6 +203,9 @@ func (g *ColorGridView) OnStateChange(fn func(col, row, colorIndex int)) *ColorG
 }
 
 func (g *ColorGridView) size(maxWidth, maxHeight int) (int, int) {
+	if g.cols <= 0 || g.rows <= 0 {
+		return 0, 0
+	}
 	w := g.cols*g.cellWidth + (g.cols-1)*g.gap
 	h := g.rows*g.cellHeight + (g.rows-1)*g.gap
 
@@ -252,9 +258,15 @@ func (g *ColorGridView) render(ctx *RenderContext) {
 				bounds.Min.Y+cellY+g.cellHeight,
 			)
 			c, r := col, row // capture for closure
-			ctx.registries().interactive.RegisterButton(clickBounds, func() {
+			ctx.registerClick(clickBounds, func() {
 				if r < len(g.state) && c < len(g.state[r]) {
-					g.state[r][c] = (g.state[r][c] + 1) % len(g.colors)
+					// render shows an out-of-range state as color 0, so
+					// the click moves on from there.
+					next := g.state[r][c] + 1
+					if g.state[r][c] < 0 || g.state[r][c] >= len(g.colors) {
+						next = 1
+					}
+					g.state[r][c] = next % len(g.colors)
 					if g.onStateChange != nil {
 						g.onStateChange(c, r, g.state[r][c])
 					}

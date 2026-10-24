@@ -236,7 +236,8 @@ func (b *ButtonView) render(ctx *RenderContext) {
 	}
 
 	// Register this button for focus management
-	bounds := ctx.AbsoluteBounds()
+	// Only the visible part takes clicks; rows a Scroll hides must not.
+	bounds := ctx.clickArea(ctx.AbsoluteBounds())
 	state := ctx.registries().buttons.Register(b.id, bounds, b.callback, b.focusStyle, ctx.FocusManager())
 	// Register the click region too: the focus manager only moves focus on
 	// a click, so without this a mouse click would never run the callback.
@@ -335,7 +336,7 @@ func (c *ClickableView) render(ctx *RenderContext) {
 
 	// Register this clickable for click handling (mouse only)
 	if c.callback != nil {
-		ctx.registries().interactive.RegisterRegion(ctx.AbsoluteBounds(), c.callback)
+		ctx.registerClick(ctx.AbsoluteBounds(), c.callback)
 	}
 
 	// Render the label

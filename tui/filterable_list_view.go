@@ -495,7 +495,7 @@ func (l *FilterableListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	l.bounds = ctx.AbsoluteBounds()
+	l.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(l)
 	}
@@ -702,7 +702,7 @@ func (l *FilterableListView) renderItem(ctx *RenderContext, item ListItem, selec
 		if l.onSelect != nil {
 			bounds := ctx.AbsoluteBounds()
 			idx := index
-			ctx.registries().interactive.RegisterButton(bounds, func() {
+			ctx.registerClick(bounds, func() {
 				if l.selected != nil {
 					*l.selected = idx
 				}
@@ -772,7 +772,7 @@ func (l *FilterableListView) renderItem(ctx *RenderContext, item ListItem, selec
 	if l.onSelect != nil {
 		bounds := ctx.AbsoluteBounds()
 		idx := index
-		ctx.registries().interactive.RegisterButton(bounds, func() {
+		ctx.registerClick(bounds, func() {
 			if l.selected != nil {
 				*l.selected = idx
 			}

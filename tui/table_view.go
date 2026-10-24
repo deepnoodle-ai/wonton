@@ -525,7 +525,7 @@ func (t *TableView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	t.bounds = ctx.AbsoluteBounds()
+	t.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(t)
 	}
@@ -673,7 +673,7 @@ func (t *TableView) render(ctx *RenderContext) {
 			bounds.Min.Y+currentY+i+1,
 		)
 		idx := rowIndex // capture for closure
-		ctx.registries().interactive.RegisterButton(rowBounds, func() {
+		ctx.registerClick(rowBounds, func() {
 			if t.selected != nil {
 				*t.selected = idx
 			}

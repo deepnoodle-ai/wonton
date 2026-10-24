@@ -439,7 +439,7 @@ func (t *TreeView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	t.bounds = ctx.AbsoluteBounds()
+	t.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(t)
 	}
@@ -537,7 +537,7 @@ func (t *TreeView) render(ctx *RenderContext) {
 			bounds.Min.Y+y+1,
 		)
 		nodeCopy := node // capture for closure
-		ctx.registries().interactive.RegisterButton(clickBounds, func() {
+		ctx.registerClick(clickBounds, func() {
 			// Toggle expand/collapse for non-leaf nodes
 			if !nodeCopy.IsLeaf() {
 				nodeCopy.Expanded = !nodeCopy.Expanded

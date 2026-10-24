@@ -258,7 +258,7 @@ func (c *CheckboxListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	c.bounds = ctx.AbsoluteBounds()
+	c.bounds = ctx.clickArea(ctx.AbsoluteBounds())
 	if fm := ctx.FocusManager(); fm != nil {
 		fm.Register(c)
 	}
@@ -327,7 +327,7 @@ func (c *CheckboxListView) render(ctx *RenderContext) {
 				bounds.Max.X,
 				bounds.Min.Y+y+1,
 			)
-			ctx.registries().interactive.RegisterButton(itemBounds, func() {
+			ctx.registerClick(itemBounds, func() {
 				if c.cursor != nil {
 					*c.cursor = idx
 				}
