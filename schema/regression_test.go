@@ -107,3 +107,87 @@ func TestUnmarshalAdditionalPropertiesNull(t *testing.T) {
 	assert.Nil(t, p.AdditionalProperties)
 	assert.Nil(t, p.AdditionalPropertiesSchema)
 }
+
+type unexportedBase struct {
+	Label string `json:"label"`
+	Note  string `json:"note,omitempty"`
+	id    string //nolint:unused // unexported fields stay hidden
+}
+
+type unexportedNumber int
+
+type outerUnexportedEmbed struct {
+	unexportedBase
+	Count int `json:"count"`
+}
+
+type outerUnexportedPtrEmbed struct {
+	*unexportedBase
+	Count int `json:"count"`
+}
+
+type outerUnexportedNonStruct struct {
+	unexportedNumber
+	Count int `json:"count"`
+}
+
+type outerShadowsUnexported struct {
+	unexportedBase
+	Label int `json:"label"`
+}
+
+type outerTaggedUnexported struct {
+	unexportedBase `json:"base"`
+}
+
+type outerTaggedUnexportedPtr struct {
+	*unexportedBase `json:"base"`
+	Count           int `json:"count"`
+}
+
+// Issue #103: encoding/json promotes the exported fields of an embedded
+// struct whose type is unexported, so Generate must too.
+func TestGenerateUnexportedEmbedded(t *testing.T) {
+	s, err := Generate(outerUnexportedEmbed{}, GenerateOptions{DisallowAdditionalProperties: true})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "label")
+	assert.Equal(t, String, s.Properties["label"].Type)
+	assert.Contains(t, s.Properties, "note")
+	assert.Equal(t, Integer, s.Properties["count"].Type)
+	assert.Equal(t, 3, len(s.Properties))
+	assert.Equal(t, []string{"label", "count"}, s.Required)
+
+	// A pointer to an unexported struct is ignored: encoding/json cannot
+	// allocate it, so input for its fields would fail to decode.
+	s, err = Generate(outerUnexportedPtrEmbed{})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "label")
+	assert.NotContains(t, s.Properties, "note")
+	assert.Equal(t, []string{"count"}, s.Required)
+
+	// An embedded non-struct of unexported type is ignored.
+	s, err = Generate(outerUnexportedNonStruct{})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(s.Properties))
+	assert.Equal(t, []string{"count"}, s.Required)
+
+	// A direct field shadows a field promoted from an unexported struct.
+	s, err = Generate(outerShadowsUnexported{})
+	assert.NoError(t, err)
+	assert.Equal(t, Integer, s.Properties["label"].Type)
+	assert.Equal(t, []string{"label"}, s.Required)
+
+	// With a json name tag, an unexported embedded struct is a named field.
+	s, err = Generate(outerTaggedUnexported{})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(s.Properties))
+	assert.Equal(t, Object, s.Properties["base"].Type)
+	assert.Contains(t, s.Properties["base"].Properties, "label")
+	assert.Equal(t, []string{"base"}, s.Required)
+
+	// A json-tagged pointer to an unexported struct is ignored too.
+	s, err = Generate(outerTaggedUnexportedPtr{})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "base")
+	assert.Equal(t, []string{"count"}, s.Required)
+}

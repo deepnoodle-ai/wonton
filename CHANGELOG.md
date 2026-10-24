@@ -11,6 +11,13 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- `schema.Generate` includes the exported fields of an embedded struct whose
+  type is unexported, such as `type input struct { base }`, as
+  `encoding/json` does. Before, those fields were missing, so a schema with
+  `additionalProperties: false` rejected every input that set them.
+
 ## [0.7.3] - 2026-10-14
 
 ### Fixed
