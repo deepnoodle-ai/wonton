@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/terminal"
 	"golang.org/x/term"
@@ -24,6 +25,7 @@ var (
 // AutocompleteFunc is called when the user presses Tab to get completion suggestions.
 // It receives the current input and cursor position, and returns a list of completions
 // and the index in the input string where replacement should start from.
+// Both cursorPos and replaceFrom are byte offsets into input.
 //
 // Example for file completion:
 //
@@ -50,6 +52,7 @@ type promptConfig struct {
 	validator    func(string) error
 	maxLength    int
 	mask         string
+	masked       bool // set by WithMask, so WithMask("") hides input
 	promptStyle  Style
 	inputStyle   Style
 	output       io.Writer
@@ -114,6 +117,7 @@ func WithMaxLength(n int) PromptOption {
 func WithMask(char string) PromptOption {
 	return func(c *promptConfig) {
 		c.mask = char
+		c.masked = true
 	}
 }
 
@@ -207,6 +211,7 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 
 	// Create live printer for the input region
 	lp := NewLivePrinter(WithWidth(80), WithOutput(cfg.output))
+	defer lp.Stop() // restores the cursor the live printer hid
 
 	// Render initial view
 	lp.Update(state.buildView())
@@ -227,17 +232,22 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 		result, done, keyErr := state.handleKey(event, prompt)
 		if done {
 			lp.Clear()
-			// Print final prompt + input on its own line
-			fmt.Fprint(cfg.output, state.config.promptStyle.String())
-			fmt.Fprint(cfg.output, prompt)
-			fmt.Fprint(cfg.output, "\033[0m")
-			fmt.Fprintln(cfg.output, string(state.input))
+			state.printFinal(cfg.output, prompt)
 			return result, keyErr
 		}
 
 		// Re-render
 		lp.Update(state.buildView())
 	}
+}
+
+// printFinal prints the prompt and the entered input on their own line after
+// the live region is cleared. Masked input stays masked.
+func (s *promptState) printFinal(w io.Writer, prompt string) {
+	fmt.Fprint(w, s.config.promptStyle.String())
+	fmt.Fprint(w, prompt)
+	fmt.Fprint(w, "\033[0m")
+	fmt.Fprintln(w, s.getDisplayInput())
 }
 
 // handleKey processes a key event and returns (result, done, error)
@@ -479,9 +489,20 @@ func (s *promptState) historyDown() {
 	s.cursorPos = len(s.input)
 }
 
+// runAutocomplete calls the AutocompleteFunc with a byte cursor offset, as
+// its documentation shows, and converts the returned byte offset back to a
+// rune index into s.input.
+func (s *promptState) runAutocomplete() ([]string, int) {
+	input := string(s.input)
+	cursor := len(string(s.input[:s.cursorPos]))
+	completions, from := s.config.autocomplete(input, cursor)
+	from = min(max(from, 0), cursor)
+	return completions, utf8.RuneCountInString(input[:from])
+}
+
 // triggerAutocomplete activates autocomplete
 func (s *promptState) triggerAutocomplete() {
-	completions, from := s.config.autocomplete(string(s.input), s.cursorPos)
+	completions, from := s.runAutocomplete()
 	if len(completions) == 0 {
 		return
 	}
@@ -495,7 +516,7 @@ func (s *promptState) triggerAutocomplete() {
 // tryAutoTriggerAutocomplete checks if autocomplete should be triggered automatically
 func (s *promptState) tryAutoTriggerAutocomplete() {
 	// Check if autocomplete function would return results
-	completions, from := s.config.autocomplete(string(s.input), s.cursorPos)
+	completions, from := s.runAutocomplete()
 
 	if len(completions) == 0 {
 		// No matches, deactivate if active
@@ -664,7 +685,7 @@ func (s *promptState) buildView() View {
 
 // getDisplayInput returns the input as it should be displayed (with masking if configured)
 func (s *promptState) getDisplayInput() string {
-	if s.config.mask != "" {
+	if s.config.masked || s.config.mask != "" {
 		return strings.Repeat(s.config.mask, len(s.input))
 	}
 	return string(s.input)
