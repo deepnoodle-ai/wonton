@@ -316,7 +316,7 @@ func WriteEnvFileWithPerm(envMap map[string]string, filename string, perm os.Fil
 // formatEnvLine formats a key-value pair for .env file output.
 func formatEnvLine(key, value string) string {
 	// Check if value needs quoting
-	needsQuotes := strings.ContainsAny(value, " \t\n\"'\\#") ||
+	needsQuotes := strings.ContainsAny(value, " \t\r\n\"'\\#") ||
 		value == "" ||
 		strings.HasPrefix(value, " ") ||
 		strings.HasSuffix(value, " ")
