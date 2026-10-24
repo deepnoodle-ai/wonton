@@ -1,6 +1,9 @@
 package tui
 
-import "image"
+import (
+	"image"
+	"slices"
+)
 
 // ViewportItems is the application's list of items. It is read every frame, so
 // items may be appended, replaced, or removed between frames.
@@ -86,6 +89,9 @@ type viewportEntry struct {
 	linesValid  bool
 	source      *sourceLayout
 	sourceValid bool
+
+	// focusIDs are the focus IDs the item registered when it last rendered.
+	focusIDs []string
 }
 
 // Invalidate drops the cached view and height for item i. Call it whenever an
@@ -502,6 +508,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	// Draw from the anchor down until the viewport is full. The first item is
 	// usually cut off at the top, which is what the offset frame is for.
 	s.layout = s.layout[:0]
+	fm := ctx.FocusManager()
 	y := -s.anchorLine
 	for i := s.anchorItem; i >= 0 && i < s.len() && y < height; i = s.nextVisible(i) {
 		h := s.heightOf(i)
@@ -513,7 +520,18 @@ func (v *ViewportView) render(ctx *RenderContext) {
 				clipW:         width,
 				contentHeight: h,
 			}
-			s.viewOf(i).render(ctx.WithFrame(frame))
+			view := s.viewOf(i)
+			registered := 0
+			if fm != nil {
+				registered = fm.registeredCount()
+			}
+			view.render(ctx.WithFrame(frame))
+			if fm != nil {
+				// Remember what the item registered, so focus can stay on it
+				// once it scrolls out of view.
+				e := s.entry(i)
+				e.focusIDs = fm.registeredSince(e.focusIDs[:0], registered)
+			}
 			// Record where it landed so a mouse position can be turned back
 			// into a point in the content.
 			s.layout = append(s.layout, viewportSpan{item: i, top: y, height: h})
@@ -522,9 +540,10 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	}
 
 	// Items outside the window did not render, so the focus manager cannot
-	// see them. Keep focus on one that scrolled out of view.
-	if len(s.layout) < s.len() {
-		if fm := ctx.FocusManager(); fm != nil {
+	// see them. Keep focus on one that scrolled out of view, but not on an
+	// element that is gone.
+	if fm != nil && len(s.layout) < s.len() {
+		if id, ok := fm.unregisteredFocusID(); ok && s.ownsFocusID(id) {
 			fm.keepFocus()
 		}
 	}
@@ -533,6 +552,19 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.paintSelection(ctx)
 
 	s.updatePosition()
+}
+
+// ownsFocusID reports whether a current item registered id when it last
+// rendered. An item that was removed, or invalidated, no longer counts.
+func (s *ViewportState) ownsFocusID(id string) bool {
+	n := min(len(s.cache), s.len())
+	for i := 0; i < n; i++ {
+		e := &s.cache[i]
+		if e.valid && slices.Contains(e.focusIDs, id) {
+			return true
+		}
+	}
+	return false
 }
 
 // screenArea returns the screen position of a frame's (0, 0) and the part of

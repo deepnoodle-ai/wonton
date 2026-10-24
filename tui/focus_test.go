@@ -527,3 +527,52 @@ func TestFocusManager_EmptyIDDoesNotLetSecondAutoFocus(t *testing.T) {
 	assert.True(t, anon.focused)
 	assert.False(t, named.focused, "only the first focusable is auto-focused")
 }
+
+// overflowWithButtonApp shows an overflowing Viewport of fields and, while
+// showButton is set, a Button outside it.
+type overflowWithButtonApp struct {
+	vp         ViewportState
+	items      *inputItems
+	showButton bool
+}
+
+func (a *overflowWithButtonApp) View() View {
+	list := Height(3, Viewport(&a.vp, a.items))
+	if a.showButton {
+		return Stack(list, Button("OK", func() {}).ID("ok"))
+	}
+	return Stack(list)
+}
+
+func TestFocusManager_RemovedButtonOutsideOverflowingViewportMovesFocus(t *testing.T) {
+	app := &overflowWithButtonApp{items: &inputItems{values: make([]string, 10)}, showButton: true}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("ok")
+	r.render()
+	assert.Equal(t, "ok", r.focusMgr.GetFocusedID())
+
+	app.showButton = false
+	r.render()
+	r.render()
+	assert.Equal(t, "field-0", r.focusMgr.GetFocusedID(), "focus moves to the first focusable")
+
+	r.processEvent(KeyEvent{Rune: 'x'})
+	assert.Equal(t, "x", app.items.values[0], "keys reach the newly focused field")
+}
+
+func TestFocusManager_RemovedViewportItemMovesFocus(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	app.vp.ScrollToBottom()
+	r.render()
+	r.focusMgr.SetFocus("field-9")
+	r.render()
+	assert.Equal(t, "field-9", r.focusMgr.GetFocusedID())
+
+	app.items.values = app.items.values[:9]
+	r.render()
+	r.render()
+	assert.NotEqual(t, "field-9", r.focusMgr.GetFocusedID(), "a removed item does not keep focus")
+	assert.NotNil(t, r.focusMgr.GetFocused(), "a remaining field has focus")
+}

@@ -130,8 +130,39 @@ func (fm *FocusManager) SetFocus(id string) {
 	}
 }
 
+// registeredCount returns how many elements have registered this frame. A
+// view passes it to registeredSince to learn which IDs a child registered.
+func (fm *FocusManager) registeredCount() int {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	return len(fm.order)
+}
+
+// registeredSince appends to dst the IDs registered after the first n.
+func (fm *FocusManager) registeredSince(dst []string, n int) []string {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	if n < len(fm.order) {
+		dst = append(dst, fm.order[n:]...)
+	}
+	return dst
+}
+
+// unregisteredFocusID returns the focused ID when its element has not
+// registered this frame.
+func (fm *FocusManager) unregisteredFocusID() (string, bool) {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	if fm.focusedID == "" {
+		return "", false
+	}
+	_, exists := fm.focusables[fm.focusedID]
+	return fm.focusedID, !exists
+}
+
 // keepFocus keeps the focused ID through the next frame even if its element
-// does not render. A view that renders only some of its children calls it.
+// does not render. A view that renders only some of its children calls it
+// when the focused element is one of the children it skipped.
 func (fm *FocusManager) keepFocus() {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
