@@ -495,9 +495,15 @@ func (it *inputItems) Item(i int) View {
 type focusViewportApp struct {
 	vp    ViewportState
 	items *inputItems
+	width int // when set, the viewport's width
 }
 
-func (a *focusViewportApp) View() View { return Height(3, Viewport(&a.vp, a.items)) }
+func (a *focusViewportApp) View() View {
+	if a.width > 0 {
+		return Width(a.width, Height(3, Viewport(&a.vp, a.items)))
+	}
+	return Height(3, Viewport(&a.vp, a.items))
+}
 
 func TestFocusManager_KeepsFocusOnItemScrolledOutOfViewport(t *testing.T) {
 	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
@@ -559,6 +565,21 @@ func TestFocusManager_RemovedButtonOutsideOverflowingViewportMovesFocus(t *testi
 
 	r.processEvent(KeyEvent{Rune: 'x'})
 	assert.Equal(t, "x", app.items.values[0], "keys reach the newly focused field")
+}
+
+func TestFocusManager_KeepsScrolledOutFocusAcrossResize(t *testing.T) {
+	app := &focusViewportApp{items: &inputItems{values: make([]string, 10)}}
+	r := NewRuntime(NewTestTerminal(40, 10, io.Discard), app, 30)
+	r.render()
+	r.focusMgr.SetFocus("field-1")
+	r.render()
+
+	app.vp.ScrollToBottom()
+	r.render()
+	app.width = 30
+	r.render()
+	r.render()
+	assert.Equal(t, "field-1", r.focusMgr.GetFocusedID(), "focus survives a width change while scrolled out")
 }
 
 func TestFocusManager_RemovedViewportItemMovesFocus(t *testing.T) {

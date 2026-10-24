@@ -73,6 +73,11 @@ type ViewportState struct {
 	gap   int
 	cache []viewportEntry
 	width int // the width cache entries were measured at; 0 before first render
+
+	// focusIDs[i] holds the focus IDs item i registered when it last
+	// rendered. It is kept apart from cache so a width change does not drop
+	// it; only Invalidate and InvalidateAll do.
+	focusIDs [][]string
 }
 
 // viewportEntry caches one item's view and its height at the cached width, and
@@ -89,9 +94,6 @@ type viewportEntry struct {
 	linesValid  bool
 	source      *sourceLayout
 	sourceValid bool
-
-	// focusIDs are the focus IDs the item registered when it last rendered.
-	focusIDs []string
 }
 
 // Invalidate drops the cached view and height for item i. Call it whenever an
@@ -99,6 +101,9 @@ type viewportEntry struct {
 func (s *ViewportState) Invalidate(i int) {
 	if i >= 0 && i < len(s.cache) {
 		s.cache[i] = viewportEntry{}
+	}
+	if i >= 0 && i < len(s.focusIDs) {
+		s.focusIDs[i] = nil
 	}
 }
 
@@ -109,6 +114,7 @@ func (s *ViewportState) InvalidateAll() {
 		s.ClearSelection()
 	}
 	s.cache = s.cache[:0]
+	s.focusIDs = s.focusIDs[:0]
 }
 
 // ScrollBy moves the viewport by lines: positive scrolls down (toward newer
@@ -529,8 +535,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 			if fm != nil {
 				// Remember what the item registered, so focus can stay on it
 				// once it scrolls out of view.
-				e := s.entry(i)
-				e.focusIDs = fm.registeredSince(e.focusIDs[:0], registered)
+				s.recordFocusIDs(i, fm, registered)
 			}
 			// Record where it landed so a mouse position can be turned back
 			// into a point in the content.
@@ -554,13 +559,23 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	s.updatePosition()
 }
 
+// recordFocusIDs stores the focus IDs item i registered since the focus
+// manager held registered IDs.
+func (s *ViewportState) recordFocusIDs(i int, fm *FocusManager, registered int) {
+	if n := s.len(); len(s.focusIDs) < n {
+		s.focusIDs = append(s.focusIDs, make([][]string, n-len(s.focusIDs))...)
+	}
+	if i >= 0 && i < len(s.focusIDs) {
+		s.focusIDs[i] = fm.registeredSince(s.focusIDs[i][:0], registered)
+	}
+}
+
 // ownsFocusID reports whether a current item registered id when it last
 // rendered. An item that was removed, or invalidated, no longer counts.
 func (s *ViewportState) ownsFocusID(id string) bool {
-	n := min(len(s.cache), s.len())
+	n := min(len(s.focusIDs), s.len())
 	for i := 0; i < n; i++ {
-		e := &s.cache[i]
-		if e.valid && slices.Contains(e.focusIDs, id) {
+		if slices.Contains(s.focusIDs[i], id) {
 			return true
 		}
 	}
