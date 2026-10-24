@@ -12,7 +12,9 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	east "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // MarkdownTheme defines the colors and styles for markdown rendering
@@ -34,7 +36,28 @@ type MarkdownTheme struct {
 
 	// Block styles
 	BlockQuoteStyle Style
-	CodeBlockStyle  Style
+
+	// BlockQuotePrefix is drawn before every line of a block quote, for
+	// example "│ ". A nested quote repeats it. Empty indents quoted lines
+	// by two spaces and draws nothing.
+	BlockQuotePrefix string
+	// BlockQuotePrefixStyle styles BlockQuotePrefix. The zero Style draws
+	// it in the terminal's default colors.
+	BlockQuotePrefixStyle Style
+
+	// CodeBlockStyle styles code blocks. When it sets a background, each
+	// code block is drawn as a solid panel of that color: one column of
+	// padding on each side, and every line filled to the available width
+	// (or to the widest line when MaxWidth is 0). Syntax highlighting then
+	// sets only the foreground and keeps the panel background.
+	CodeBlockStyle Style
+	// CodeBlockShowLanguage right-aligns a fenced code block's language,
+	// such as "go", on the block's first line. The label is left out when
+	// it does not fit beside the first line's code.
+	CodeBlockShowLanguage bool
+	// CodeBlockLanguageStyle styles the CodeBlockShowLanguage label. The
+	// zero Style uses a bright black (grey) foreground.
+	CodeBlockLanguageStyle Style
 
 	// List styles
 	BulletChar string
@@ -101,9 +124,45 @@ func NewMarkdownRenderer() *MarkdownRenderer {
 		Theme:    DefaultMarkdownTheme(),
 		MaxWidth: 0,
 		TabWidth: 4,
-		parser:   goldmark.New(goldmark.WithExtensions(extension.Table)),
+		parser:   goldmark.New(goldmark.WithExtensions(extension.Table, strikethrough{})),
 	}
 }
+
+// strikethrough parses ~~text~~ as east.Strikethrough. Unlike goldmark's
+// extension.Strikethrough, it ignores a single tilde, so prose such as
+// "~5 to ~10 minutes" is not struck through.
+type strikethrough struct{}
+
+func (strikethrough) Extend(m goldmark.Markdown) {
+	m.Parser().AddOptions(parser.WithInlineParsers(util.Prioritized(strikethroughParser{}, 500)))
+}
+
+type strikethroughParser struct{}
+
+func (strikethroughParser) Trigger() []byte { return []byte{'~'} }
+
+func (strikethroughParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+	before := block.PrecendingCharacter()
+	line, segment := block.PeekLine()
+	node := parser.ScanDelimiter(line, before, 1, strikethroughDelimiters{})
+	if node == nil || node.OriginalLength != 2 || before == '~' {
+		return nil
+	}
+	node.Segment = segment.WithStop(segment.Start + node.OriginalLength)
+	block.Advance(node.OriginalLength)
+	pc.PushDelimiter(node)
+	return node
+}
+
+type strikethroughDelimiters struct{}
+
+func (strikethroughDelimiters) IsDelimiter(b byte) bool { return b == '~' }
+
+func (strikethroughDelimiters) CanOpenCloser(opener, closer *parser.Delimiter) bool {
+	return opener.Char == closer.Char
+}
+
+func (strikethroughDelimiters) OnMatch(consumes int) ast.Node { return east.NewStrikethrough() }
 
 // WithTheme sets a custom theme for the renderer
 func (mr *MarkdownRenderer) WithTheme(theme MarkdownTheme) *MarkdownRenderer {
@@ -376,6 +435,7 @@ func (mr *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, ctx *renderCont
 		mr.renderSourceCode(node.Lines(), "", ctx)
 		return
 	}
+	start := len(ctx.result.Lines)
 	lines := node.Lines()
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
@@ -390,8 +450,7 @@ func (mr *MarkdownRenderer) renderCodeBlock(node *ast.CodeBlock, ctx *renderCont
 		})
 	}
 
-	// Add blank line after code block
-	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+	mr.finishCodeBlock(ctx, start, "")
 }
 
 func (mr *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, ctx *renderContext) {
@@ -401,6 +460,7 @@ func (mr *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, ctx
 	}
 	// Get language for syntax highlighting
 	language := string(node.Language(ctx.source))
+	start := len(ctx.result.Lines)
 
 	// Collect code lines
 	var code strings.Builder
@@ -419,7 +479,7 @@ func (mr *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, ctx
 					Indent:   ctx.indent + mr.TabWidth,
 				})
 			}
-			ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+			mr.finishCodeBlock(ctx, start, language)
 			return
 		}
 	}
@@ -438,20 +498,75 @@ func (mr *MarkdownRenderer) renderFencedCodeBlock(node *ast.FencedCodeBlock, ctx
 		})
 	}
 
-	// Add blank line after code block
-	ctx.result.Lines = append(ctx.result.Lines, StyledLine{})
+	mr.finishCodeBlock(ctx, start, language)
 }
 
 func (mr *MarkdownRenderer) renderBlockquote(node *ast.Blockquote, ctx *renderContext) {
+	start := len(ctx.result.Lines)
+	prefix := mr.Theme.BlockQuotePrefix
+	if prefix == "" {
+		savedIndent := ctx.indent
+		ctx.indent += 2
+		mr.renderChildren(node, ctx)
+		ctx.indent = savedIndent
+		mr.styleBlockQuote(ctx.result.Lines[start:])
+		return
+	}
+
 	savedIndent := ctx.indent
-	ctx.indent += 2
-
+	prefixWidth := runewidth.StringWidth(prefix)
+	ctx.indent += prefixWidth
 	mr.renderChildren(node, ctx)
-
-	// Apply blockquote style to all lines in the blockquote
-	// Note: This is simplified - in practice we'd track which lines belong to the blockquote
-
 	ctx.indent = savedIndent
+	mr.styleBlockQuote(ctx.result.Lines[start:])
+
+	// The trailing blank line belongs between blocks, not to the quote.
+	end := len(ctx.result.Lines)
+	for end > start && isBlankLine(ctx.result.Lines[end-1]) {
+		end--
+	}
+	style := mr.Theme.BlockQuotePrefixStyle
+	if style == (Style{}) {
+		style = NewStyle()
+	}
+	for i := start; i < end; i++ {
+		line := &ctx.result.Lines[i]
+		if isBlankLine(*line) {
+			// A blank quoted line keeps the bar but not its trailing space.
+			*line = StyledLine{
+				Segments: []StyledSegment{{Text: strings.TrimRight(prefix, " "), Style: style}},
+				Indent:   savedIndent,
+			}
+			continue
+		}
+		segments := []StyledSegment{{Text: prefix, Style: style}}
+		if gap := line.Indent - savedIndent - prefixWidth; gap > 0 {
+			segments = append(segments, StyledSegment{Text: strings.Repeat(" ", gap), Style: NewStyle()})
+		}
+		line.Segments = append(segments, line.Segments...)
+		line.Indent = savedIndent
+	}
+}
+
+// styleBlockQuote applies BlockQuoteStyle under the quoted text's own
+// styles: it fills in only the colors and attributes a segment leaves unset.
+// It runs before the quote's prefix is added, so the prefix keeps its style.
+func (mr *MarkdownRenderer) styleBlockQuote(lines []StyledLine) {
+	quote := mr.Theme.BlockQuoteStyle
+	if quote == (Style{}) {
+		return // an unset field, not black text
+	}
+	for i := range lines {
+		for j := range lines[i].Segments {
+			seg := &lines[i].Segments[j]
+			seg.Style = mr.mergeStyles(quote, seg.Style)
+			if seg.Hyperlink != nil {
+				link := *seg.Hyperlink
+				link.Style = mr.mergeStyles(quote, link.Style)
+				seg.Hyperlink = &link
+			}
+		}
+	}
 }
 
 func (mr *MarkdownRenderer) renderHorizontalRule(ctx *renderContext) {
@@ -566,6 +681,12 @@ func (mr *MarkdownRenderer) extractInlineSegmentsRec(node ast.Node, ctx *renderC
 		case 2:
 			style = mr.mergeStyles(style, mr.Theme.BoldStyle)
 		}
+		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+			mr.extractInlineSegmentsRec(child, ctx, style, segments)
+		}
+
+	case *east.Strikethrough:
+		style := mr.mergeStyles(currentStyle, mr.Theme.StrikethroughStyle)
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			mr.extractInlineSegmentsRec(child, ctx, style, segments)
 		}
@@ -746,7 +867,11 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 					width = 0
 				}
 				if len(current) > 0 && !isPunctuation(word.Text) && !lastSegmentEndsWithOpening(current) {
-					current = append(current, StyledSegment{Text: " ", Style: seg.Style})
+					// The space between words keeps only the style both
+					// words share, so code backgrounds and link underlines
+					// start at the text, not the space before it.
+					space := sharedStyle(current[len(current)-1].Style, seg.Style)
+					current = append(current, StyledSegment{Text: " ", Style: space})
 					width++
 				}
 				current = append(current, word)
@@ -768,6 +893,33 @@ func (mr *MarkdownRenderer) wrapSegments(segments []StyledSegment, maxWidth int)
 		lines = append(lines, current)
 	}
 	return lines
+}
+
+// sharedStyle returns the attributes and colors that a and b have in common.
+func sharedStyle(a, b Style) Style {
+	if a == b {
+		return a
+	}
+	out := NewStyle()
+	if a.Foreground == b.Foreground {
+		out.Foreground = a.Foreground
+	}
+	if a.Background == b.Background {
+		out.Background = a.Background
+	}
+	if a.FgRGB != nil && b.FgRGB != nil && *a.FgRGB == *b.FgRGB {
+		out.FgRGB = a.FgRGB
+	}
+	if a.BgRGB != nil && b.BgRGB != nil && *a.BgRGB == *b.BgRGB {
+		out.BgRGB = a.BgRGB
+	}
+	out.Bold = a.Bold && b.Bold
+	out.Italic = a.Italic && b.Italic
+	out.Underline = a.Underline && b.Underline
+	out.Strikethrough = a.Strikethrough && b.Strikethrough
+	out.Dim = a.Dim && b.Dim
+	out.Reverse = a.Reverse && b.Reverse
+	return out
 }
 
 func (mr *MarkdownRenderer) highlightCode(code, language string) [][]StyledSegment {
