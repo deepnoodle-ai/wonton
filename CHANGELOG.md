@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-24
+
 ### Fixed
 
 - `tui.Input` and `tui.InputField` no longer draw as focused when they
@@ -18,7 +20,7 @@ bug fixes. Release notes identify incompatible changes explicitly.
   focus, and keys go to it.
 - `tui.Prompt` no longer panics when an `AutocompleteFunc` returns a byte
   offset inside a multi-byte character.
-- A width-3 or width-4 dash (U+2E3A, U+2E3B) printed or set in a
+- A width-3 or width-4 dash (U+2E3A, U+2E3B) printed, set, or filled in a
   `terminal` frame clears the columns it covers. Before, the text under
   them stayed on screen.
 
