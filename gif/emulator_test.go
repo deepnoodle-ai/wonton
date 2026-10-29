@@ -605,5 +605,26 @@ func TestEmulator_StringAndCancelledSequences(t *testing.T) {
 			t.Errorf("expected X at (3,1), cursor=(%d,%d)", em.Screen().CursorX, em.Screen().CursorY)
 		}
 	})
+
+	t.Run("oversized DCS and OSC payloads skipped across chunks", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		chunk := strings.Repeat("A", 64*1024)
+		em.ProcessOutput("\x1bPq")
+		for i := 0; i < 24; i++ { // 1.5 MiB > maxPendingBytes
+			em.ProcessOutput(chunk)
+		}
+		em.ProcessOutput("\x1b")
+		em.ProcessOutput("\\o")
+
+		em.ProcessOutput("\x1b]52;c;")
+		for i := 0; i < 24; i++ {
+			em.ProcessOutput(chunk)
+		}
+		em.ProcessOutput("\x07k")
+
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+	})
 }
 

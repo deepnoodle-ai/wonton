@@ -347,3 +347,22 @@ func TestESCIntermediateSequencesConsumed(t *testing.T) {
 	assert.Equal(t, "Hello", s.Row(0))
 }
 
+func TestOversizedStringSequenceSkippedAcrossWrites(t *testing.T) {
+	s := NewScreen(20, 3)
+	chunk := []byte(strings.Repeat("A", 64*1024))
+	s.Write([]byte("\x1bPq"))
+	for i := 0; i < 24; i++ { // 1.5 MiB > maxPendingBytes
+		s.Write(chunk)
+	}
+	s.Write([]byte("\x1b"))
+	s.Write([]byte("\\o"))
+
+	s.Write([]byte("\x1b]52;c;"))
+	for i := 0; i < 24; i++ {
+		s.Write(chunk)
+	}
+	s.Write([]byte("\x07k"))
+
+	assert.Equal(t, "ok", s.Row(0))
+}
+

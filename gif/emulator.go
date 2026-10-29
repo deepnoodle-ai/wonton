@@ -30,11 +30,21 @@ import (
 //	renderer := gif.NewTerminalRenderer(emulator.Screen(), 8)
 //	renderer.RenderFrame(10)
 //	renderer.Save("output.gif")
+type skipMode uint8
+
+const (
+	skipNone skipMode = iota
+	skipST            // skipping DCS/SOS/PM/APC payload until ST (ESC \)
+	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
+)
+
 type Emulator struct {
 	screen  *TerminalScreen
 	fg      color.Color
 	bg      color.Color
 	pending string
+	skip    skipMode
+	skipEsc bool
 }
 
 // maxPendingBytes bounds how many bytes of an incomplete escape sequence are
@@ -44,6 +54,18 @@ const maxPendingBytes = 1 << 20
 func (e *Emulator) savePending(s string) {
 	if len(s) <= maxPendingBytes {
 		e.pending = s
+		return
+	}
+	e.pending = ""
+	if len(s) >= 2 && s[0] == '\x1b' {
+		switch s[1] {
+		case ']':
+			e.skip = skipOSC
+			e.skipEsc = len(s) > 2 && s[len(s)-1] == '\x1b'
+		case 'P', 'X', '^', '_':
+			e.skip = skipST
+			e.skipEsc = len(s) > 2 && s[len(s)-1] == '\x1b'
+		}
 	}
 }
 
@@ -74,6 +96,8 @@ func (e *Emulator) Reset() {
 	e.fg = White
 	e.bg = Black
 	e.pending = ""
+	e.skip = skipNone
+	e.skipEsc = false
 }
 
 // Resize changes the terminal dimensions, preserving as much existing content
@@ -132,6 +156,22 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 //   - OSC sequences (ESC]...): ignored (window title, etc.)
 //   - Control characters: \n, \r, \b, \t, and printable ASCII
 func (e *Emulator) ProcessOutput(data string) {
+	if data == "" {
+		return
+	}
+	if e.skip != skipNone {
+		if e.skipEsc {
+			data = "\x1b" + data
+			e.skipEsc = false
+		}
+		end, status := scanStringSequence(data, e.skip == skipOSC)
+		if status == seqIncomplete {
+			e.skipEsc = data[len(data)-1] == '\x1b'
+			return
+		}
+		e.skip = skipNone
+		data = data[end:]
+	}
 	if e.pending != "" {
 		data = e.pending + data
 		e.pending = ""
