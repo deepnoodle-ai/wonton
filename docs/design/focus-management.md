@@ -374,12 +374,10 @@ func (app *MyApp) View() tui.View {
 When mouse tracking is enabled, clicking on a focusable element focuses it:
 
 ```go
-app := tui.NewInlineApp(tui.InlineAppConfig{
-    MouseTracking: true,
-})
+runner := tui.NewInlineApp(tui.WithInlineMouseTracking(true))
 
 // Or for Runtime:
-tui.Run(app, tui.WithMouse(true))
+tui.Run(app, tui.WithMouseTracking(true))
 ```
 
 The FocusManager checks click coordinates against each element's `FocusBounds()`:

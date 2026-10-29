@@ -293,12 +293,12 @@ See `tui/inline_input_test.go` for unit tests covering:
 - Input masking
 - Validation
 
-## Future Enhancements
+## Beyond `Prompt()`
 
-Potential additions for Phase 2+:
-- `tui.InlineInput` - Struct-based widget for more control
-- `tui.RunInline()` - Full inline application model
-- Vim mode for input editing
-- Custom key bindings
-- Paste handlers
-- Input suggestions (distinct from autocomplete)
+For more control than a blocking prompt, use `tui.InlineApp` (or
+`tui.RunInline()`) with an `InputField` or `TextArea` in its live region; see
+[the InlineApp design](design/inline-app.md). `InputField` and `Input` accept a
+`PasteHandler` through `OnPaste`.
+
+Not yet supported: Vim mode, custom key bindings, and input suggestions
+(distinct from autocomplete).

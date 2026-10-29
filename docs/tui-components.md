@@ -4,23 +4,26 @@ This guide documents all available views (components) in the `tui` package. It i
 
 ## Quick Reference
 
-| Category    | Components                                                  |
-| ----------- | ----------------------------------------------------------- |
-| Layout      | `Stack`, `Group`, `ZStack`, `Spacer`, `Empty`               |
-| Containers  | `Bordered`, `Padding`, `Width`, `Height`, `Scroll`, `Panel` |
-| Text        | `Text`, `Divider`, `HeaderBar`, `StatusBar`, `FocusText`    |
-| Input       | `InputField`, `PasswordInput`, `TextArea`                   |
-| Buttons     | `Button`, `Clickable`, `StyledButton`, `Toggle`             |
-| Lists       | `SelectList`, `FilterableList`, `CheckboxList`, `RadioList` |
-| Data        | `Table`, `Tree`, `KeyValue`                                 |
-| Content     | `Code`, `Markdown`, `DiffView`                              |
-| Progress    | `Progress`, `Loading`, `Meter`                              |
-| Drawing     | `Canvas`, `CanvasContext`, `Fill`                           |
-| Grids       | `CellGrid`, `ColorGrid`, `CharGrid`                         |
-| Links       | `Link`, `InlineLinks`, `LinkRow`, `LinkList`                |
-| Files       | `FilePicker`                                                |
-| Collections | `ForEach`, `HForEach`                                       |
-| Conditional | `If`, `IfElse`, `Switch`                                    |
+| Category    | Components                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| Layout      | `Stack`, `Group`, `ZStack`, `Spacer`, `Empty`                                                             |
+| Containers  | `Bordered`, `AnimatedBordered`, `Padding`, `Background`, `Width`, `Height`, `Scroll`, `Viewport`, `Panel` |
+| Text        | `Text`, `Divider`, `HeaderBar`, `StatusBar`, `FocusText`                                                  |
+| Input       | `Input`, `InputField`, `PasswordInput`, `TextArea`                                                        |
+| Buttons     | `Button`, `Clickable`, `StyledButton`, `Toggle`                                                           |
+| Lists       | `SelectList`, `FilterableList`, `CheckboxList`, `RadioList`, `PromptChoice`                               |
+| Data        | `Table`, `Tree`, `KeyValue`                                                                               |
+| Content     | `Code`, `Markdown`, `DiffView`                                                                            |
+| Progress    | `Progress`, `Loading`, `Meter`                                                                            |
+| Drawing     | `Canvas`, `CanvasContext`, `Fill`                                                                         |
+| Grids       | `CellGrid`, `ColorGrid`, `CharGrid`, `Cells`                                                              |
+| Links       | `Link`, `InlineLinks`, `LinkRow`, `LinkList`                                                              |
+| Files       | `FilePicker`                                                                                              |
+| Collections | `ForEach`, `HForEach`                                                                                     |
+| Conditional | `If`, `IfElse`, `Switch`                                                                                  |
+| Focus       | `FocusText`, `FocusableView`                                                                              |
+| Workspaces  | `Split`, `Menu`, `HitMap`                                                                                 |
+| Debugging   | `Debug`                                                                                                   |
 
 ---
 
@@ -164,6 +167,24 @@ tui.Bordered(
 
 ---
 
+### AnimatedBordered
+
+A border whose colors animate on each tick. Needs a non-zero FPS.
+
+```go
+tui.AnimatedBordered(
+    tui.Text("Deploying..."),
+    tui.PresetRainbowBorder(3, false),
+).Title("Status")
+```
+
+**Constructor**: `AnimatedBordered(inner View, animation BorderAnimation) *AnimatedBorderedView`
+
+**Presets**: `PresetRainbowBorder(speed, reversed)`, `PresetPulsingBorder(color, speed)`,
+`PresetFireBorder(speed)`, `PresetMarqueeBorder(on, off, speed, segmentLength)`.
+
+---
+
 ### Padding
 
 Adds space around a view.
@@ -180,6 +201,20 @@ tui.PaddingLTRB(1, 2, 1, 0, content)       // left, top, right, bottom
 | `Padding(n int, inner View)`              | Equal padding on all sides      |
 | `PaddingHV(h, v int, inner View)`         | Horizontal and vertical padding |
 | `PaddingLTRB(l, t, r, b int, inner View)` | CSS-style individual sides      |
+
+---
+
+### Background
+
+Fills the space behind a view with a character and style.
+
+```go
+tui.Background(' ', tui.NewStyle().WithBgRGB(tui.NewRGB(20, 40, 60)),
+    tui.Text("On a dark blue panel"),
+)
+```
+
+**Constructor**: `Background(char rune, style Style, inner View) View`
 
 ---
 
@@ -227,6 +262,44 @@ tui.Scroll(
 | ------------------------------ | --------------------------------------------------- |
 | `.Anchor(anchor ScrollAnchor)` | `ScrollAnchorTop` (default) or `ScrollAnchorBottom` |
 | `.Bottom()`                    | Shorthand for `ScrollAnchorBottom` (chat-style)     |
+
+---
+
+### Viewport
+
+A scrollable, virtualized list for long content such as a chat transcript. It
+builds and measures only the items on screen, so ten thousand items cost the
+same per frame as ten. It is flexible: in a `Stack` it takes the rows the fixed
+children leave.
+
+```go
+type Transcript []Message
+
+func (t Transcript) Len() int          { return len(t) }
+func (t Transcript) Item(i int) tui.View { return tui.Markdown(t[i].Text, nil) }
+
+// app.viewport is a tui.ViewportState; set Follow to stick to the end.
+tui.Stack(
+    tui.Viewport(&app.viewport, app.transcript).Gap(1),
+    app.footerView(),
+)
+```
+
+**Constructor**: `Viewport(state *ViewportState, items ViewportItems) *ViewportView`
+
+**`ViewportItems`**: `Len() int` and `Item(i int) View`. Implement
+`Source(i int) (string, bool)` as well to copy original text instead of
+rendered cells; see [source selection](source-selection.md).
+
+**`ViewportState`**:
+| Field / Method                                    | Description                                         |
+| ------------------------------------------------- | --------------------------------------------------- |
+| `Follow`                                          | Stick to the end as items are appended              |
+| `ScrollBy(n)`, `PageUp()`, `PageDown()`           | Scroll by lines or pages                            |
+| `ScrollToTop()`, `ScrollToBottom()`, `ScrollToItem(i)` | Jump to a position                            |
+| `Invalidate(i)`, `InvalidateAll()`                | Rebuild cached item views after their data changes  |
+| `HandleMouse(e) bool`                             | Drag, double-click, and triple-click selection      |
+| `SelectedText()`, `ClearSelection()`              | Read or clear the current selection                 |
 
 ---
 
@@ -339,6 +412,39 @@ tui.StatusBar("Ready").Fg(tui.ColorGreen)
 ---
 
 ## Input Components
+
+### Input
+
+The bare text editor that `InputField` builds on: single or multiline, with
+history, completion, and paste handling, and no label or border.
+
+```go
+tui.Input(&app.draft).
+    Placeholder("Message...").
+    Multiline(true).
+    MaxHeight(8).
+    OnSubmit(func(text string) { app.send(text) })
+```
+
+**Constructor**: `Input(binding *string) *InputView`
+
+**Methods**:
+| Method                                         | Description                                 |
+| ---------------------------------------------- | ------------------------------------------- |
+| `.ID(id string)`                               | Focus ID                                    |
+| `.Placeholder(text string)`                    | Text shown when empty                       |
+| `.Multiline(enabled bool)`                     | Allow line breaks (Shift+Enter)             |
+| `.MaxHeight(lines int)`                        | Grow up to this many rows, then scroll      |
+| `.Width(w int)`                                | Fixed width                                 |
+| `.Mask(r rune)`                                | Mask characters (passwords)                 |
+| `.History(items []string)`                     | Up/Down history                             |
+| `.OnComplete(fn func(string) []string)`        | Tab completion candidates                   |
+| `.Highlight(fn func(string) []TextRange)`      | Style ranges of the value                   |
+| `.OnChange(fn)`, `.OnSubmit(fn)`, `.OnKey(fn)` | Callbacks                                   |
+| `.OnPaste(fn PasteHandler)`                    | Accept, modify, or reject pastes            |
+| `.PastePlaceholder(enabled bool)`              | Collapse multi-line pastes to a placeholder |
+
+---
 
 ### InputField
 
@@ -738,6 +844,30 @@ tui.RadioListStrings(options, &selected).
 | `.Width(w int)`                 | Fixed width                |
 | `.Height(h int)`                | Fixed height               |
 | `.Size(w, h int)`               | Fixed dimensions           |
+
+---
+
+### PromptChoice
+
+A numbered choice prompt, optionally with a free-text option, for confirmations
+and approvals.
+
+```go
+var selected int
+var feedback string
+
+tui.PromptChoice(&selected, &feedback).
+    Option("Approve").
+    Option("Reject").
+    InputOption("Tell it what to do instead...").
+    OnSelect(func(idx int, text string) { app.decide(idx, text) })
+```
+
+**Constructor**: `PromptChoice(selected *int, inputText *string) *PromptChoiceView`
+
+**Methods**: `.Option(label)`, `.Options(labels...)`, `.InputOption(placeholder)`,
+`.OnSelect(fn)`, `.OnCancel(fn)`, `.ShowNumbers(bool)`, `.HintText(text)`,
+`.Style(s)`, `.CursorStyle(s)`, `.InputStyle(s)`, `.Width(w)`, `.ID(id)`.
 
 ---
 
@@ -1482,6 +1612,24 @@ tui.CharGrid(data)
 
 ---
 
+### Cells
+
+Draws rows of `tui.Cell` (a `terminal.Cell`), such as a `tmux` pane's screen,
+with an optional cursor and selection.
+
+```go
+tui.Cells(screen.Cells). // screen is a tmux.Screen
+    Cursor(screen.CursorX, screen.CursorY).
+    Select(app.selection) // a tui.GridSelection; its Text is the copy
+```
+
+**Constructor**: `Cells(rows [][]Cell) *CellsView`
+
+**Methods**: `.Cursor(x, y)`, `.CursorStyle(s)`, `.Select(sel GridSelection)`,
+`.SelectStyle(s)`.
+
+---
+
 ## Panel Component
 
 ### Panel
@@ -1542,6 +1690,28 @@ tui.FocusText("Name: ", "name-input").
 
 ---
 
+### FocusableView
+
+Makes any view take part in Tab focus navigation, with optional key handling
+while it is focused.
+
+```go
+tui.FocusableView(app.logView(), &tui.FocusHandler{
+    ID: "logs",
+    OnKey: func(e tui.KeyEvent) bool {
+        if e.Key == tui.KeyArrowDown {
+            app.scrollY++
+            return true
+        }
+        return false
+    },
+})
+```
+
+**Constructor**: `FocusableView(inner View, handler *FocusHandler) View`
+
+---
+
 ## File Components
 
 ### FilePicker
@@ -1573,6 +1743,133 @@ tui.FilePicker(files, &filter, &selected).
 | `.Width(w int)`                               | Fixed width               |
 | `.Height(h int)`                              | Fixed height              |
 | `.Size(w, h int)`                             | Fixed dimensions          |
+
+---
+
+## Workspace Components
+
+### Split
+
+Nested rows and columns of panes that the user resizes by dragging the gaps.
+The application owns the `SplitState` and names panes with string IDs. The
+layout is plain data that `encoding/json` saves and restores.
+
+```go
+split := &tui.SplitState{}
+split.Append("editor", tui.SplitColumns)
+split.Split("editor", "shell", tui.SplitRows) // shell below editor
+
+func (a *app) View() tui.View {
+    return tui.Split(&a.split, func(id string) tui.View { return a.pane(id) })
+}
+
+func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
+    if e, ok := ev.(tui.MouseEvent); ok && a.split.HandleMouse(e) {
+        return nil
+    }
+    // ...
+}
+```
+
+**Constructor**: `Split(state *SplitState, pane func(id string) View) *SplitView`
+
+**Methods**: `.GutterStyle(s)` draws a line in every gutter; `.ActiveGutterStyle(s)`
+styles the gutter under the pointer or being dragged.
+
+**`SplitState`**: `Tight` (no gutter, for panes with their own borders),
+`MinSize`, `Append`, `Split`, `Remove`, `Equalize`, `Leaves`, `PaneAt`,
+`Neighbor`, `Bounds`, `HandleMouse`.
+
+---
+
+### Menu
+
+A modal popup menu for right-click and keyboard use, with hints, separators,
+and disabled and destructive entries. Draw it last in a `ZStack` and give it
+events first while it is open.
+
+```go
+func (a *app) View() tui.View {
+    return tui.ZStack(a.main(), tui.Menu(&a.menu))
+}
+
+func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
+    switch e := ev.(type) {
+    case tui.MouseEvent:
+        if a.menu.HandleMouse(e) {
+            return nil
+        }
+        if e.Type == tui.MouseClick && e.Button == tui.MouseButtonRight {
+            a.menu.Open(e.X, e.Y, "File", []tui.MenuItem{
+                {Label: "Rename", Hint: "r", Action: a.rename},
+                tui.MenuSeparator(),
+                {Label: "Delete", Danger: true, Action: a.delete},
+            })
+        }
+    case tui.KeyEvent:
+        if a.menu.HandleKey(e) {
+            return nil
+        }
+    }
+    return nil
+}
+```
+
+**Constructor**: `Menu(state *MenuState) *MenuView`
+
+**Methods**: `.Style(s)`, `.SelectedStyle(s)`, `.HintStyle(s)`, `.DisabledStyle(s)`,
+`.DangerStyle(s)`, `.TitleStyle(s)`, `.Border(b)`, `.BorderStyle(s)`.
+
+---
+
+### HitMap
+
+Records where tagged views were drawn so an event handler can ask which one is
+under the pointer, for views with no click handling of their own: sidebar rows,
+tabs, a status line.
+
+```go
+func (a *app) View() tui.View {
+    a.hits.Reset()
+    var rows []tui.View
+    for _, s := range a.sessions {
+        rows = append(rows, a.hits.Area("session:"+s.ID, tui.Text("%s", s.Name)))
+    }
+    return tui.Stack(rows...)
+}
+
+// In HandleEvent:
+if key, ok := a.hits.At(e.X, e.Y); ok {
+    a.clicked(key)
+}
+```
+
+**Methods**: `Reset()`, `Area(key string, child View) View`, `At(x, y) (string, bool)`,
+`Bounds(key) (image.Rectangle, bool)`.
+
+---
+
+## Debug Overlay
+
+### Debug
+
+An overlay of runtime statistics: frame rate, frame time, terminal size, and the last event.
+
+```go
+func (a *app) View() tui.View {
+    return tui.ZStack(
+        a.main(),
+        tui.Debug(a.debug).Position(tui.DebugTopRight),
+    )
+}
+
+func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
+    a.debug.Update(ev) // a.debug is a *tui.DebugInfo from tui.NewDebugInfo()
+    // ...
+}
+```
+
+**Constructor**: `Debug(info *DebugInfo) *DebugView`
 
 ---
 

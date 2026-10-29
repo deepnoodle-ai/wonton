@@ -13,29 +13,34 @@ graph export remain roadmap work.
 The crawler knows about *URLs*, but not about *hosts*, *time*, *content*, or
 *the graph*. Most gaps below point the same direction.
 
-- `enqueue`'s `default:` branch silently drops URLs when the queue fills.
-- Politeness is per-worker, not per-host: `FollowAny` with 10 workers can
-  hammer one server, while a single slow host's crawl-delay penalizes every
-  other host.
-- The cache stores only HTML, so status, headers, `ETag` and links are
-  discarded and re-derived by re-parsing. No TTL, no conditional
-  revalidation, no revisit policy.
+Still open:
+
 - `Sitemap:` in robots.txt is parsed past and ignored.
 - `<meta name="robots">`, `X-Robots-Tag`, and `<link rel="canonical">` are
   unhandled.
-- No depth, no referrer, no link graph. A `Result` can't say how it was found.
 - `web.IsBinaryURL` exists and isn't used; a large PDF is fetched as HTML.
 - A parse error increments `Failed` even when the fetch succeeded.
-- `parseRobotsTxt`: a malformed bare `User-agent:` line yields an empty value,
-  and `strings.Contains(ua, "")` is true, so it matches every agent.
 - `processedURLs` and `robotsCache` are unbounded `sync.Map`s.
-- The README advertises `fetch.NewBrowserFetcher()`, which does not exist.
+
+Fixed since this list was written:
+
+- ~~`enqueue` silently drops URLs when the queue fills.~~ The frontier applies
+  backpressure; URLs are never dropped.
+- ~~Politeness is per-worker, not per-host.~~ The per-host scheduler enforces
+  per-host concurrency and delay.
+- ~~The cache stores only HTML.~~ The HTTP-semantics cache stores status,
+  headers, body, and links, and revalidates.
+- ~~No depth, no referrer.~~ `Result` carries depth and referrer metadata.
+- ~~A bare `User-agent:` line matches every agent.~~ Empty agents never match.
+- ~~The README advertises `fetch.NewBrowserFetcher()`.~~ Removed.
 
 Reverse test — how would you make this crawler maximally rude and useless?
 Drop discovered URLs silently. Point every worker at one host. Download
 500MB binaries as HTML. Re-download unchanged pages forever. Lose all
 progress on Ctrl-C. Follow infinite calendar links until OOM. Every one of
-those is currently reachable, which is the real priority ordering.
+those was reachable when this list was written, which set the priority
+ordering. The silent drops, single-host hammering, and re-downloads are now
+fixed; binaries, lost progress, and crawler traps remain.
 
 ## Structure
 
