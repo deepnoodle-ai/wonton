@@ -1142,7 +1142,8 @@ func shouldSkipTerminalQuery() bool {
 // 1. Temporarily enabling raw mode
 // 2. Sending a query for progressive enhancement support (\x1b[?u)
 // 3. Sending a device attributes query (\x1b[c)
-// 4. Reading responses with a 200ms timeout
+// 4. Polling for and reading the response one byte at a time with a 200ms timeout
+//    (extended once by 200ms if a partial response is already in flight)
 //
 // Detection is skipped when TERM indicates a multiplexer (tmux/screen) or
 // dumb terminal, or when TERM_PROGRAM identifies a terminal known not to
@@ -1151,10 +1152,11 @@ func shouldSkipTerminalQuery() bool {
 // user's shell.
 //
 // Caveats:
-//   - Detection relies on SetReadDeadline which may not work on all platforms
-//   - If the user types during detection, their input may be consumed
-//   - On terminals that don't support deadlines, detection may block briefly
-//   - Detection spawns a goroutine that will clean up on timeout
+//   - Detection is supported on Unix terminals; on other platforms it returns
+//     false immediately.
+//   - Keys typed during the probe window (before the terminal's DA1 reply
+//     arrives, or before a timeout flushes unread input) are consumed with the
+//     reply; keys typed after the reply (or after timeout) are preserved.
 //
 // This is the same approach used by Gemini CLI and other terminal applications.
 func (t *Terminal) DetectKittyProtocol() bool {

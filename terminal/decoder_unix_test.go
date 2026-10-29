@@ -198,3 +198,138 @@ func TestDetectKittyProtocol_ReplyAndLeavesSubsequentKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestProbeKittyProtocol_GraceWindowAndTimeoutFlush(t *testing.T) {
+	t.Run("reply finishes during grace window", func(t *testing.T) {
+		master, slave, err := pty.Open()
+		if err != nil {
+			t.Skipf("pty unavailable: %v", err)
+		}
+		defer master.Close()
+		defer slave.Close()
+
+		const timeout = 60 * time.Millisecond
+		go func() {
+			var seen []byte
+			buf := make([]byte, 64)
+			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
+				n, err := master.Read(buf)
+				if err != nil {
+					return
+				}
+				seen = append(seen, buf[:n]...)
+			}
+			// Start the reply within the first timeout window, then finish it
+			// during the second (grace) timeout window followed by 'a'.
+			_, _ = master.WriteString("\x1b[?0u\x1b[?62;")
+			time.Sleep(timeout + 15*time.Millisecond)
+			_, _ = master.WriteString("22ca")
+		}()
+
+		assert.True(t, probeKittyProtocol(slave, slave, timeout))
+
+		oldStdin, oldStdout := os.Stdin, os.Stdout
+		os.Stdin, os.Stdout = slave, slave
+		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
+
+		term, err := NewTerminal()
+		assert.NoError(t, err)
+		assert.NoError(t, term.EnableRawMode())
+		defer term.DisableRawMode()
+
+		decoder := NewKeyDecoder(slave)
+		ev, err := decoder.ReadKeyEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
+	})
+
+	t.Run("incomplete reply times out after grace window and flushes unread input", func(t *testing.T) {
+		master, slave, err := pty.Open()
+		if err != nil {
+			t.Skipf("pty unavailable: %v", err)
+		}
+		defer master.Close()
+		defer slave.Close()
+
+		const timeout = 40 * time.Millisecond
+		go func() {
+			var seen []byte
+			buf := make([]byte, 64)
+			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
+				n, err := master.Read(buf)
+				if err != nil {
+					return
+				}
+				seen = append(seen, buf[:n]...)
+			}
+			// Send a partial reply without the terminating 'c' so the probe
+			// extends for one grace window and then times out.
+			_, _ = master.WriteString("\x1b[?62;22")
+		}()
+
+		start := time.Now()
+		assert.False(t, probeKittyProtocol(slave, slave, timeout))
+		assert.True(t, time.Since(start) >= 2*timeout, "started reply should get one extra timeout window")
+
+		oldStdin, oldStdout := os.Stdin, os.Stdout
+		os.Stdin, os.Stdout = slave, slave
+		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
+
+		term, err := NewTerminal()
+		assert.NoError(t, err)
+		assert.NoError(t, term.EnableRawMode())
+		defer term.DisableRawMode()
+
+		_, err = master.WriteString("a")
+		assert.NoError(t, err)
+
+		decoder := NewKeyDecoder(slave)
+		ev, err := decoder.ReadKeyEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
+	})
+
+	t.Run("unterminated reply overflow flushes unread bytes from tty", func(t *testing.T) {
+		master, slave, err := pty.Open()
+		if err != nil {
+			t.Skipf("pty unavailable: %v", err)
+		}
+		defer master.Close()
+		defer slave.Close()
+
+		const timeout = 60 * time.Millisecond
+		go func() {
+			var seen []byte
+			buf := make([]byte, 64)
+			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
+				n, err := master.Read(buf)
+				if err != nil {
+					return
+				}
+				seen = append(seen, buf[:n]...)
+			}
+			// Write 300 bytes without a DA1 'c' reply so >256 bytes sit in the
+			// PTY queue; probeKittyProtocol must flush the unread remainder.
+			_, _ = master.WriteString(strings.Repeat("\x1b[?0u", 60))
+		}()
+
+		assert.False(t, probeKittyProtocol(slave, slave, timeout))
+
+		oldStdin, oldStdout := os.Stdin, os.Stdout
+		os.Stdin, os.Stdout = slave, slave
+		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
+
+		term, err := NewTerminal()
+		assert.NoError(t, err)
+		assert.NoError(t, term.EnableRawMode())
+		defer term.DisableRawMode()
+
+		_, err = master.WriteString("a")
+		assert.NoError(t, err)
+
+		decoder := NewKeyDecoder(slave)
+		ev, err := decoder.ReadKeyEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
+	})
+}
