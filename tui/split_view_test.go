@@ -134,6 +134,35 @@ func TestSplitDragGutter(t *testing.T) {
 	assert.False(t, s.HandleMouse(MouseEvent{Type: MousePress, Button: MouseButtonRight, X: 3, Y: 0}))
 }
 
+func TestSplitPressAfterRemoveIgnoresOldGutters(t *testing.T) {
+	s := &SplitState{}
+	s.Append("a", SplitColumns)
+	s.Split("a", "b", SplitRows)
+	s.Append("c", SplitColumns)
+	renderSplit(s, 21, 5)
+	branch, _, ok := s.DividerAt(5, 2)
+	assert.True(t, ok)
+
+	// Removing b turns the rows branch into the leaf a. A press on its old
+	// gutter before the next render must not read the gone children.
+	s.Remove("b")
+	assert.True(t, branch.IsLeaf())
+	assert.False(t, s.HandleMouse(MouseEvent{Type: MousePress, Button: MouseButtonLeft, X: 5, Y: 2}))
+	_, _, ok = s.DividerAt(5, 2)
+	assert.False(t, ok)
+}
+
+func TestSplitDragWithNoRoomKeepsWeights(t *testing.T) {
+	s := &SplitState{Tight: true}
+	s.Append("a", SplitColumns)
+	s.Append("b", SplitColumns)
+	// Both panes were drawn with no width, so the gutter has nowhere to go.
+	s.drag = &splitDivider{node: s.Root, index: 0}
+	s.dragTo(5, 0)
+	assert.Equal(t, s.Root.Children[0].Weight, 1.0)
+	assert.Equal(t, s.Root.Children[1].Weight, 1.0)
+}
+
 func TestSplitHoverHighlightsGutter(t *testing.T) {
 	s := &SplitState{}
 	s.Append("a", SplitColumns)

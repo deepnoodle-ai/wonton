@@ -256,7 +256,8 @@ func (s *SplitState) Remove(id string) bool {
 	if leaf == nil {
 		return false
 	}
-	s.drag, s.hover = nil, nil
+	// The gutters from the last render describe the old tree.
+	s.drag, s.hover, s.dividers = nil, nil, nil
 	if parent == nil {
 		s.Root = nil
 		return true
@@ -472,6 +473,9 @@ func (s *SplitState) dragTo(x, y int) {
 	}
 	gap := s.gap()
 	total := end - start - gap
+	if total <= 0 {
+		return // no room on either side to move the gutter into
+	}
 	minSize := min(s.minSize(), total/2)
 	sizeA := max(minSize, min(pos-start, total-minSize))
 	pair := a.weight() + b.weight()
