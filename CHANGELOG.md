@@ -11,6 +11,22 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
+  after an ESC byte for the rest of an escape sequence. The default is
+  `terminal.DefaultEscapeTimeout`, 50ms. Zero turns the wait off.
+
+### Fixed
+
+- `terminal.KeyDecoder` decodes an escape sequence that the terminal writes
+  in two pieces, such as `x\x1b` and then `[A`, as `x` and `KeyArrowUp`.
+  Before, it reported `x`, `KeyEscape`, `[`, and `A`. When ESC is the last
+  byte available, the decoder now waits up to 50ms for more input. A lone
+  Escape key press is reported after that wait. The wait works when the
+  source is an `*os.File` on Unix, which includes `tui` apps; other readers
+  and Windows keep the old behavior. (#116)
+
 ## [0.9.0] - 2026-10-24
 
 ### Added

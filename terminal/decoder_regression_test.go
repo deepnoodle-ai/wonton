@@ -4,6 +4,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -98,4 +99,71 @@ func TestKeyDecoder_KittyFunctionalKeys(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, event.(KeyEvent), tt.want, "input %q", tt.input)
 	}
+}
+
+// chunkSource returns one chunk per Read, like a terminal that writes an
+// escape sequence in pieces. WaitReady reports whether chunks remain.
+type chunkSource struct {
+	chunks []string
+	waits  []time.Duration
+}
+
+func (c *chunkSource) Read(p []byte) (int, error) {
+	if len(c.chunks) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, c.chunks[0])
+	c.chunks = c.chunks[1:]
+	return n, nil
+}
+
+func (c *chunkSource) WaitReady(timeout time.Duration) bool {
+	c.waits = append(c.waits, timeout)
+	return len(c.chunks) > 0
+}
+
+func TestKeyDecoder_EscapeSequenceSplitAcrossReads(t *testing.T) {
+	for _, readEvent := range []bool{true, false} {
+		src := &chunkSource{chunks: []string{"x\x1b", "[A"}}
+		decoder := NewKeyDecoder(src)
+		var keys []KeyEvent
+		for {
+			var ev KeyEvent
+			var err error
+			if readEvent {
+				var e Event
+				e, err = decoder.ReadEvent()
+				ev, _ = e.(KeyEvent)
+			} else {
+				ev, err = decoder.ReadKeyEvent()
+			}
+			if err == io.EOF {
+				break
+			}
+			assert.NoError(t, err)
+			keys = append(keys, ev)
+		}
+		assert.Equal(t, keys, []KeyEvent{{Rune: 'x'}, {Key: KeyArrowUp}})
+		assert.Equal(t, src.waits, []time.Duration{DefaultEscapeTimeout})
+	}
+}
+
+func TestKeyDecoder_LoneEscapeAfterTimeout(t *testing.T) {
+	src := &chunkSource{chunks: []string{"\x1b"}}
+	decoder := NewKeyDecoder(src)
+	decoder.SetEscapeTimeout(10 * time.Millisecond)
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent), KeyEvent{Key: KeyEscape})
+	assert.Equal(t, src.waits, []time.Duration{10 * time.Millisecond})
+}
+
+func TestKeyDecoder_EscapeTimeoutDisabled(t *testing.T) {
+	src := &chunkSource{chunks: []string{"\x1b", "[A"}}
+	decoder := NewKeyDecoder(src)
+	decoder.SetEscapeTimeout(0)
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent), KeyEvent{Key: KeyEscape})
+	assert.Equal(t, len(src.waits), 0)
 }
