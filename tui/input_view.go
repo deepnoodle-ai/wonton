@@ -614,7 +614,7 @@ func calcWrappedHeight(text string, width int) int {
 	lines := 1
 	x := 0
 	for cluster, charWidth := range runewidth.Graphemes(text) {
-		if cluster == "\n" {
+		if isLineBreak(cluster) {
 			lines++
 			x = 0
 			continue

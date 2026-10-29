@@ -24,8 +24,10 @@ func TestTextInputKillLine(t *testing.T) {
 		{"at newline", "first\nlast", "first\nlast", KeyCtrlK, 5, 5, true},
 		{"at line start", "first\nlast", "first\nlast", KeyCtrlU, 6, 6, true},
 		{"single line removes newline", "first\nlast", "fi", KeyCtrlK, 2, 2, false},
-		{"CRLF is one cluster", "a\r\nb\nc", "a\nc", KeyCtrlK, 1, 1, true},
-		{"CRLF does not start a line", "a\nb\r\ncd", "a\nd", KeyCtrlU, len("a\nb\r\nc"), len("a\n"), true},
+		{"CRLF ends a line", "ab\r\ncd", "a\r\ncd", KeyCtrlK, 1, 1, true},
+		{"CRLF starts a line", "ab\r\ncd", "ab\r\nd", KeyCtrlU, len("ab\r\nc"), len("ab\r\n"), true},
+		{"at CRLF", "ab\r\ncd", "ab\r\ncd", KeyCtrlK, 2, 2, true},
+		{"after CRLF", "ab\r\ncd", "ab\r\ncd", KeyCtrlU, 4, 4, true},
 		{"empty", "", "", KeyCtrlU, 0, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

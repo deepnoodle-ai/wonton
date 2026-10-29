@@ -106,3 +106,28 @@ func TestTextInputWrappedCursorAtLineStart(t *testing.T) {
 		}
 	})
 }
+
+// A CRLF draws as a line break, and the cursor on it draws as a blank cell
+// at the end of the row, as it does on an LF.
+func TestTextInputDrawsCRLFAsLineBreak(t *testing.T) {
+	ti := newTextInput().WithMultilineMode(true)
+	ti.SetFocused(true)
+	ti.SetValue("ab\r\ncd")
+	ti.CursorPos = 2
+	cell := drawTextInput(t, ti, 10, 3)
+	rows := []string{"", "", ""}
+	for y := range rows {
+		for x := 0; x < 10; x++ {
+			rows[y] += string(cell(x, y).Char)
+		}
+	}
+	if got := strings.Join(rows, "|"); got != "ab        |cd        |          " {
+		t.Fatalf("rows = %q, want \"ab\" and \"cd\" on separate rows", got)
+	}
+	if cell(2, 0).Style != ti.CursorStyle || cursorCells(cell, ti, 10, 3) != 1 {
+		t.Fatalf("cursor is not drawn at the end of row 0")
+	}
+	if ti.Value() != "ab\r\ncd" {
+		t.Fatalf("Value() = %q, want the CRLF kept", ti.Value())
+	}
+}

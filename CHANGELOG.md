@@ -11,6 +11,14 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- In a multiline `tui.Input` or `tui.InputField`, a CRLF breaks the line as
+  LF does: in drawing, wrapping, the field's height, the cursor position,
+  Up/Down, Home/End, and Ctrl+U/Ctrl+K. Before, `ab\r\ncd` drew as one row,
+  `abcd`. The cursor stops before the CR or after the LF, and `Value()`
+  keeps the CRLF. (#138)
+
 ## [0.10.0] - 2026-10-29
 
 ### Added

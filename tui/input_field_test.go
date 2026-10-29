@@ -416,3 +416,15 @@ func TestInputField_Render_HorizontalBorder(t *testing.T) {
 	termtest.AssertRowContains(t, screen, 1, "text")
 	termtest.AssertRowContains(t, screen, 2, "─")
 }
+
+func TestInputField_Render_MultilineCRLF(t *testing.T) {
+	value := "ab\r\ncd"
+	field := InputField(&value).Multiline(true).Width(20).Bordered()
+	screen := SprintScreen(field, WithWidth(30))
+
+	// A CRLF breaks the line, and the field is tall enough for both rows.
+	termtest.AssertRowContains(t, screen, 1, "│ab ")
+	termtest.AssertRowContains(t, screen, 2, "│cd ")
+	termtest.AssertRowContains(t, screen, 3, "╰")
+	assert.Equal(t, "ab\r\ncd", value)
+}

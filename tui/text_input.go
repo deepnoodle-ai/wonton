@@ -308,7 +308,7 @@ func (t *textInput) Draw(frame RenderFrame) {
 			for cluster, cw := range runewidth.Graphemes(seg.display) {
 				offset := clusterOffset
 				clusterOffset += len(cluster)
-				if cluster == "\n" {
+				if isLineBreak(cluster) {
 					// Move to next line
 					visualLine++
 					x = drawX
@@ -407,7 +407,7 @@ func (t *textInput) Draw(frame RenderFrame) {
 							cluster = c
 							break
 						}
-						if cluster != "\n" && cluster != "" {
+						if cluster != "" && !isLineBreak(cluster) {
 							if t.MaskChar != 0 {
 								charUnderCursor = string(t.MaskChar)
 							} else {
@@ -483,7 +483,7 @@ func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 
 	offset := 0
 	for cluster, cw := range runewidth.Graphemes(displayText) {
-		if width > 0 && cluster != "\n" && x > startX && x+cw > startX+width {
+		if width > 0 && !isLineBreak(cluster) && x > startX && x+cw > startX+width {
 			// Wrap to next line before drawing this cluster (or placing cursor on it)
 			y++
 			x = startX
@@ -491,7 +491,7 @@ func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 		if offset >= t.CursorPos {
 			break
 		}
-		if cluster == "\n" {
+		if isLineBreak(cluster) {
 			y++
 			x = startX
 		} else {
@@ -515,7 +515,7 @@ func (t *textInput) countVisualLines(width int) int {
 	lines := 1
 	x := 0
 	for cluster, cw := range runewidth.Graphemes(displayText) {
-		if cluster == "\n" {
+		if isLineBreak(cluster) {
 			lines++
 			x = 0
 			continue
@@ -567,7 +567,7 @@ func (t *textInput) getVisualLines(displayText string) []lineRange {
 	offset := 0
 
 	for cluster, cw := range runewidth.Graphemes(displayText) {
-		if cluster == "\n" {
+		if isLineBreak(cluster) {
 			lines = append(lines, lineRange{lineStart, offset})
 			offset += len(cluster)
 			lineStart = offset
@@ -669,6 +669,13 @@ func (t *textInput) atLastVisualLine() bool {
 		return true
 	}
 	return t.cursorDown(t.DisplayText()) == t.CursorPos
+}
+
+// isLineBreak reports whether a grapheme cluster breaks the line. A CRLF is
+// one cluster (UAX #29), so it breaks the line as a lone LF does, and the
+// cursor never lands between its CR and LF.
+func isLineBreak(cluster string) bool {
+	return cluster == "\n" || cluster == "\r\n"
 }
 
 // prevClusterBoundary returns the byte offset of the cluster containing
@@ -948,25 +955,17 @@ func (t *textInput) deleteToEnd() {
 	t.deleteRange(t.CursorPos, t.displayLen())
 }
 
-// lineStart returns the offset just after the last newline before the
-// cursor, or 0 when the cursor is on the first line. Like lineEnd and the
-// layout, it skips the LF of a CRLF, which is one grapheme that does not
-// break the line.
+// lineStart returns the offset just after the last line break before the
+// cursor, or 0 when the cursor is on the first line. Every line break ends
+// in LF, and LF is in no other cluster, so a byte search finds it.
 func (t *textInput) lineStart() int {
 	dt := t.DisplayText()
-	end := min(t.CursorPos, len(dt))
-	for {
-		nl := strings.LastIndex(dt[:end], "\n")
-		if nl <= 0 || dt[nl-1] != '\r' {
-			return nl + 1
-		}
-		end = nl - 1
-	}
+	return strings.LastIndex(dt[:min(t.CursorPos, len(dt))], "\n") + 1
 }
 
-// lineEnd returns the offset of the first newline at or after the cursor,
-// or the end of the text. Special segments are atomic, and CRLF is one
-// grapheme, so neither ends the line at an embedded newline.
+// lineEnd returns the offset of the first line break at or after the cursor,
+// or the end of the text. Special segments are atomic, so they never end the
+// line at an embedded newline.
 func (t *textInput) lineEnd() int {
 	pos := 0
 	for _, seg := range t.segments {
@@ -974,7 +973,7 @@ func (t *textInput) lineEnd() int {
 		if segEnd > t.CursorPos && !seg.isSpecial() {
 			offset := max(0, t.CursorPos-pos)
 			for cluster, _ := range runewidth.Graphemes(seg.display[offset:]) {
-				if cluster == "\n" {
+				if isLineBreak(cluster) {
 					return pos + offset
 				}
 				offset += len(cluster)
