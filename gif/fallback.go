@@ -321,8 +321,8 @@ func (fb *FallbackFont) mask(buf *sfnt.Buffer, g sfnt.GlyphIndex, w, h int) *ima
 	if f == nil || w <= 0 || h <= 0 {
 		return m
 	}
-	// At a ppem of unitsPerEm, metrics in 26.6 fixed point are 64 times
-	// the values in font units.
+	// Read metrics at a ppem of unitsPerEm. upem, and every metric read at
+	// that size, is a 26.6 value: 64 times the value in font units.
 	upem := fixed.I(int(f.UnitsPerEm()))
 	metrics, err := f.Metrics(buf, upem, font.HintingNone)
 	if err != nil {
@@ -336,9 +336,11 @@ func (fb *FallbackFont) mask(buf *sfnt.Buffer, g sfnt.GlyphIndex, w, h int) *ima
 	if lineHeight <= 0 {
 		lineHeight = upem
 	}
-	// scale is in pixels per 26.6 unit at a ppem of unitsPerEm.
+	// scale converts those 26.6 values to pixels, so upem*scale is the
+	// size in pixels per em. LoadGlyph takes that size in 26.6.
 	scale := min(float32(h)/float32(lineHeight), float32(w)/float32(advance))
-	segments, err := f.LoadGlyph(buf, g, fixed.Int26_6(float32(upem)*scale*64), nil)
+	pixelsPerEm := float32(upem) * scale
+	segments, err := f.LoadGlyph(buf, g, fixed.Int26_6(pixelsPerEm*64), nil)
 	if err != nil {
 		return m
 	}

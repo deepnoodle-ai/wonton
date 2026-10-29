@@ -123,6 +123,22 @@ func litPixels(tr *TerminalRenderer, firstCell, cells int) int {
 	return n
 }
 
+// litBounds returns the bounding box of the pixels that are not black
+// background in the given cells of a rendered row, with no padding. It
+// counts gray pixels too, since thin outlines anti-alias to gray.
+func litBounds(tr *TerminalRenderer, firstCell, cells int) image.Rectangle {
+	img := tr.GIF().images[len(tr.GIF().images)-1]
+	var box image.Rectangle
+	for y := 0; y < tr.cellHeight; y++ {
+		for x := firstCell * tr.cellWidth; x < (firstCell+cells)*tr.cellWidth; x++ {
+			if r, g, b, _ := img.At(x, y).RGBA(); r+g+b > 0 {
+				box = box.Union(image.Rect(x, y, x+1, y+1))
+			}
+		}
+	}
+	return box
+}
+
 func renderRow(text string, fallbacks []*FallbackFont) *TerminalRenderer {
 	screen := NewTerminalScreen(6, 1)
 	screen.WriteString(text, White, Black)
@@ -137,6 +153,20 @@ func TestTerminalRenderer_FallbackDrawsEmoji(t *testing.T) {
 	}
 	if n := litPixels(renderRow("\U0001F680", []*FallbackFont{}), 0, 2); n != 0 {
 		t.Errorf("with fallback off, the emoji lit %d pixels, want 0", n)
+	}
+}
+
+// TestTerminalRenderer_FallbackGlyphFillsItsCells checks that a fallback
+// glyph is scaled to its cells: its lit area spans most of their height
+// and more than one of their two columns.
+func TestTerminalRenderer_FallbackGlyphFillsItsCells(t *testing.T) {
+	for _, text := range []string{"\U0001F680", "\U0001F1EF\U0001F1F5", "❤️"} {
+		tr := renderRow(text, []*FallbackFont{EmojiFallbackFont()})
+		box := litBounds(tr, 0, 2)
+		if box.Dy() < tr.cellHeight/2 || box.Dx() <= tr.cellWidth {
+			t.Errorf("%+q: lit area %dx%d, want at least %dx%d of the %dx%d cells",
+				text, box.Dx(), box.Dy(), tr.cellWidth+1, tr.cellHeight/2, 2*tr.cellWidth, tr.cellHeight)
+		}
 	}
 }
 
