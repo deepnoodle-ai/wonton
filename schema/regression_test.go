@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding"
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"testing"
 
@@ -405,4 +406,142 @@ func TestGenerateEmbeddingCycle(t *testing.T) {
 	assert.Contains(t, next.Properties, "a")
 	assert.Contains(t, next.Properties, "b")
 	assert.Contains(t, next.Properties["next"].Description, "recursive reference")
+}
+
+// With ",string" on a field that decodes from a JSON string, encoding/json
+// decodes only a JSON string literal inside the string. The schema keeps the
+// string type and adds a pattern for that literal.
+func TestGenerateJSONStringTagOnStringField(t *testing.T) {
+	type payload struct {
+		Name     string      `json:"name,string"`
+		OptName  *string     `json:"opt_name,string,omitempty"`
+		Text     textInOnly  `json:"text,string"`
+		Desc     string      `json:"desc,string" description:"Display name"`
+		Color    string      `json:"color,string" enum:"red,a<b" default:"red" example:"a<b"`
+		Pat      string      `json:"pat,string" pattern:"^\"[a-z]+\"$"`
+		Nullable string      `json:"nullable,string" nullable:"true"`
+		Plain    string      `json:"plain"`
+		Slice    []string    `json:"slice,string"` // ,string ignored by encoding/json on slices
+		Custom   customTextS `json:"custom,string"`
+		Email    string      `json:"email,string" format:"email" minLength:"1" maxLength:"10"`
+		Raw      rawString   `json:"raw,string"`
+		OptRaw   *rawString  `json:"opt_raw,string"`
+	}
+
+	s, err := Generate(payload{})
+	assert.NoError(t, err)
+
+	for _, name := range []string{"name", "opt_name", "text", "color", "nullable", "email"} {
+		p := s.Properties[name]
+		assert.Equal(t, String, p.Type, name)
+		assert.NotNil(t, p.Pattern, name)
+		assert.Equal(t, encodedStringPattern, *p.Pattern, name)
+		assert.Equal(t, encodedStringDescription, p.Description, name)
+	}
+	assert.True(t, *s.Properties["opt_name"].Nullable)
+	assert.True(t, *s.Properties["nullable"].Nullable)
+
+	// Tags replace the generated description and pattern.
+	assert.Equal(t, "Display name", s.Properties["desc"].Description)
+	assert.Equal(t, encodedStringPattern, *s.Properties["desc"].Pattern)
+	assert.Equal(t, `^"[a-z]+"$`, *s.Properties["pat"].Pattern)
+
+	// Enum, default, and example values are encoded like the field's value.
+	color := s.Properties["color"]
+	assert.Equal(t, []any{`"red"`, `"a<b"`, `"a\u003cb"`}, color.Enum)
+	assert.Equal(t, any(`"red"`), color.Default)
+	assert.Equal(t, any(`"a<b"`), color.Example)
+
+	// Format and length tags would check the quoted value, so they are dropped.
+	email := s.Properties["email"]
+	assert.Nil(t, email.Format)
+	assert.Nil(t, email.MinLength)
+	assert.Nil(t, email.MaxLength)
+
+	// encoding/json passes the outer string's raw content to UnmarshalJSON,
+	// so a type with its own decoder gets no pattern.
+	for _, name := range []string{"raw", "opt_raw"} {
+		assert.Equal(t, String, s.Properties[name].Type, name)
+		assert.Nil(t, s.Properties[name].Pattern, name)
+		assert.Empty(t, s.Properties[name].Description, name)
+	}
+	var raw struct {
+		Raw rawString `json:"raw,string"`
+	}
+	assert.NoError(t, json.Unmarshal([]byte(`{"raw":"42"}`), &raw))
+	assert.Equal(t, rawString("42"), raw.Raw)
+
+	// Fields without an honored ",string" option are unchanged.
+	assert.Nil(t, s.Properties["plain"].Pattern)
+	assert.Empty(t, s.Properties["plain"].Description)
+	assert.Equal(t, Array, s.Properties["slice"].Type)
+	assert.Nil(t, s.Properties["slice"].Items.Pattern)
+	assert.Nil(t, s.Properties["custom"].Pattern)
+
+	// Number and bool fields with ",string" get no pattern.
+	type numbers struct {
+		ID int64 `json:"id,string"`
+		OK bool  `json:"ok,string"`
+	}
+	s, err = Generate(numbers{})
+	assert.NoError(t, err)
+	assert.Nil(t, s.Properties["id"].Pattern)
+	assert.Nil(t, s.Properties["ok"].Pattern)
+}
+
+// rawString implements json.Unmarshaler but not json.Marshaler, so
+// encoding/json honors ",string" on it and calls UnmarshalJSON.
+type rawString string
+
+func (r *rawString) UnmarshalJSON(b []byte) error {
+	*r = rawString(b)
+	return nil
+}
+
+// customTextS implements json.Marshaler, so encoding/json ignores ",string"
+// on fields of this type.
+type customTextS string
+
+func (c customTextS) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(c))
+}
+
+// A value that matches encodedStringPattern decodes into a string field with
+// the ",string" option, and the values the pattern rejects fail to decode. The
+// one exception is "null", which encoding/json accepts as no value; the
+// pattern rejects it, so the schema stays strict but never wrong.
+func TestEncodedStringPatternMatchesDecoding(t *testing.T) {
+	type payload struct {
+		Name string `json:"name,string"`
+	}
+	re := regexp.MustCompile(encodedStringPattern)
+
+	for _, value := range []string{
+		`""`, `"abc"`, `"a\"b"`, `"a\\b"`, `"a\/b"`, `"\b\f\n\r\t"`,
+		`"éé"`, `"é😀"`, `"null"`,
+	} {
+		assert.True(t, re.MatchString(value), value)
+		body, err := json.Marshal(map[string]string{"name": value})
+		assert.NoError(t, err)
+		var p payload
+		assert.NoError(t, json.Unmarshal(body, &p), value)
+	}
+
+	for _, value := range []string{
+		`abc`, `"abc`, `abc"`, ` "abc"`, `"abc" `, `"a"b"`, `"\"`,
+		`"a\qb"`, `"\u00g0"`, `"\u00e"`, "\"a\tb\"", "\"a\x00b\"",
+	} {
+		assert.False(t, re.MatchString(value), value)
+		body, err := json.Marshal(map[string]string{"name": value})
+		assert.NoError(t, err)
+		var p payload
+		assert.Error(t, json.Unmarshal(body, &p), value)
+	}
+
+	// Both spellings of an encoded enum value decode to the Go value.
+	for _, body := range []string{`{"name":"\"a<b\""}`, `{"name":"\"a\\u003cb\""}`} {
+		var p payload
+		assert.NoError(t, json.Unmarshal([]byte(body), &p), body)
+		assert.Equal(t, "a<b", p.Name, body)
+	}
 }

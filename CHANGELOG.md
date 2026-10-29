@@ -13,6 +13,18 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ### Fixed
 
+- `schema.Generate` describes a `json:",string"` field of a string type, a
+  pointer to one, or an `encoding.TextUnmarshaler` as `encoding/json` decodes
+  it: a string holding a JSON string literal, such as `"\"abc\""`. The
+  property gains a `pattern` for that literal and a description unless the
+  field has one. Its `enum`, `default`, and `example` tag values are encoded
+  the same way, with each `enum` value listed with and without HTML escapes.
+  Its `format`, `minLength`, and `maxLength` tags are dropped, since they would
+  check the quoted value. Types that implement `json.Unmarshaler` get no
+  pattern, since their own decoder decides what they accept. Before, the
+  schema was a plain string, and every value that followed it failed to
+  decode. (#146)
+
 - Shift+Enter reaches applications inside tmux. tmux ignores the Kitty
   keyboard protocol and forwards modified keys only to a pane that asks for
   xterm's modifyOtherKeys. Inside tmux, `Terminal.EnableEnhancedKeyboard`,
@@ -27,6 +39,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
   set -s extended-keys on
   set -as terminal-features 'xterm*:extkeys'
   ```
+
+  (#148)
 
 ## [0.10.2] - 2026-10-29
 
