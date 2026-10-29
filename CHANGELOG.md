@@ -111,6 +111,13 @@ bug fixes. Release notes identify incompatible changes explicitly.
   calls `OnSubmit`, or with no `OnSubmit` the key reaches the app's
   `HandleEvent`. In a multiline input, Shift+Enter still inserts a newline.
   (#83)
+- `terminal.Terminal` from `NewTerminal` or `NewTestTerminal` now starts with
+  `NewStyle()` as its current style. Before, the style was black on black
+  until the first `SetStyle` or `Reset`. `Print`, `Println`, and `Fill` drew
+  black text on a black background, and `Clear`, `ClearLine`, and
+  `ClearToEndOfLine` blanked cells with a black background. In non-buffered
+  mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
+  was written after any cell with another style in the same flush.
 
 ## [0.9.0] - 2026-10-24
 

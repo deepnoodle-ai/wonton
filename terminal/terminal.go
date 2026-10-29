@@ -600,12 +600,13 @@ func NewTerminal() (*Terminal, error) {
 	}
 
 	t := &Terminal{
-		fd:       fd,
-		width:    width,
-		height:   height,
-		buffered: true,
-		out:      os.Stdout,
-		metrics:  NewRenderMetrics(),
+		fd:           fd,
+		width:        width,
+		height:       height,
+		buffered:     true,
+		out:          os.Stdout,
+		currentStyle: NewStyle(),
+		metrics:      NewRenderMetrics(),
 	}
 
 	t.initBuffers(width, height)
@@ -636,12 +637,13 @@ func NewTerminal() (*Terminal, error) {
 // or resize detection) will be no-ops in test mode.
 func NewTestTerminal(width, height int, out io.Writer) *Terminal {
 	t := &Terminal{
-		width:    width,
-		height:   height,
-		buffered: true,
-		out:      out,
-		fd:       -1, // Invalid FD
-		metrics:  NewRenderMetrics(),
+		width:        width,
+		height:       height,
+		buffered:     true,
+		out:          out,
+		fd:           -1, // Invalid FD
+		currentStyle: NewStyle(),
+		metrics:      NewRenderMetrics(),
 	}
 	t.initBuffers(width, height)
 	return t
