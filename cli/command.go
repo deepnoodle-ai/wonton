@@ -899,25 +899,9 @@ func (c *Command) isHelpShort() bool {
 // short flags such as "-4" to be parsed as flags while unregistered negative
 // numbers such as "-5" or "-3.14" remain positional arguments.
 func (c *Command) hasShortFlag(arg string) bool {
-	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || len(arg) <= 1 {
-		return false
-	}
-	shorts := arg[1:]
-	if idx := strings.IndexByte(shorts, '='); idx > 0 {
-		shorts = shorts[:idx]
-	}
-	if shorts == "" {
-		return false
-	}
-	for _, r := range shorts {
-		if r == 'h' && c.isHelpShort() {
-			continue
-		}
-		if c.findFlagByShort(string(r)) == nil {
-			return false
-		}
-	}
-	return true
+	return allShortsMatch(arg, func(r rune) bool {
+		return (r == 'h' && c.isHelpShort()) || c.findFlagByShort(string(r)) != nil
+	})
 }
 
 func (c *Command) setFlag(ctx *Context, name, value string) error {

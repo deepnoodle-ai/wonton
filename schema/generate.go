@@ -432,10 +432,16 @@ func hasJSONStringOption(field reflect.StructField) bool {
 
 // supportsJSONStringOption reports whether encoding/json honors the ",string"
 // struct tag option for a field of type t (string, integer, floating-point, or
-// boolean types, or pointers to them).
+// boolean types, or pointers to them, that do not implement json.Marshaler).
 func supportsJSONStringOption(t reflect.Type) bool {
+	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) {
+		return false
+	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
+		if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) {
+			return false
+		}
 	}
 	switch t.Kind() {
 	case reflect.Bool,

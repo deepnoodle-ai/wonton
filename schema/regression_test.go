@@ -230,6 +230,16 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	assert.NotNil(t, s.Properties["opt_token"].Nullable)
 	assert.True(t, *s.Properties["opt_token"].Nullable)
 	assert.Empty(t, s.Properties["iface"].Type)
+
+	// A struct that embeds a TextMarshaler promotes MarshalText and marshals
+	// as a JSON string in encoding/json.
+	type embedsTextMarshaler struct {
+		customTextValue
+		Extra int `json:"extra"`
+	}
+	s, err = Generate(embedsTextMarshaler{})
+	assert.NoError(t, err)
+	assert.Equal(t, String, s.Type)
 }
 
 // encoding/json drops conflicting embedded fields at the same depth (unless one
@@ -295,4 +305,28 @@ func TestGenerateEmbeddedConflictAndDepthRules(t *testing.T) {
 	assert.Contains(t, s.Properties, "id")
 	assert.Equal(t, String, s.Properties["id"].Type)
 	assert.Equal(t, []string{"id"}, s.Required)
+
+	// When the same struct is embedded twice at the same depth (diamond
+	// embedding), its promoted fields conflict at that depth and are omitted.
+	type SharedLeaf struct {
+		Shared string
+	}
+	type LeftBranch struct {
+		SharedLeaf
+		Left string `json:"left"`
+	}
+	type RightBranch struct {
+		SharedLeaf
+		Right string `json:"right"`
+	}
+	type Diamond struct {
+		LeftBranch
+		RightBranch
+	}
+	s, err = Generate(Diamond{})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "Shared")
+	assert.Contains(t, s.Properties, "left")
+	assert.Contains(t, s.Properties, "right")
+	assert.Equal(t, []string{"left", "right"}, s.Required)
 }

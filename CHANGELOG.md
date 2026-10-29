@@ -112,7 +112,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
   string, integer, floating-point, and boolean types or pointers to them),
   concrete types that implement `encoding.TextMarshaler` without
-  `json.Marshaler`, and embedded struct field dominance rules: shallower
+  `json.Marshaler` (including structs that inherit `MarshalText` from an
+  embedded field), and embedded struct field dominance rules: shallower
   embedded fields shadow deeper ones regardless of field order, a single
   `json`-tagged field at the shallowest depth wins over untagged siblings,
   and conflicting fields at the shallowest depth are omitted. (#133)

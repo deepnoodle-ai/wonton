@@ -390,24 +390,17 @@ func (p *parser) hasCommands() bool {
 // isRootBoolFlag reports whether name is a boolean flag defined on the root command.
 func (p *parser) isRootBoolFlag(name string) bool {
 	rootCmd := p.app.commands[""]
-	if rootCmd == nil {
-		return false
-	}
-	f := rootCmd.findFlag(name)
-	if f == nil {
-		return false
-	}
-	_, isBool := f.GetDefault().(bool)
-	return isBool
+	return rootCmd != nil && isBoolFlag(rootCmd.findFlag(name))
 }
 
 // isRootBoolFlagByShort reports whether short is a boolean flag defined on the root command.
 func (p *parser) isRootBoolFlagByShort(short string) bool {
 	rootCmd := p.app.commands[""]
-	if rootCmd == nil {
-		return false
-	}
-	f := rootCmd.findFlagByShort(short)
+	return rootCmd != nil && isBoolFlag(rootCmd.findFlagByShort(short))
+}
+
+// isBoolFlag reports whether f is a non-nil boolean flag.
+func isBoolFlag(f Flag) bool {
 	if f == nil {
 		return false
 	}
@@ -419,6 +412,19 @@ func (p *parser) isRootBoolFlagByShort(short string) bool {
 // optionally with an "=value" suffix) whose flag characters are all registered
 // as global flags or on the root command.
 func (p *parser) hasShortFlag(arg string) bool {
+	rootCmd := p.app.commands[""]
+	return allShortsMatch(arg, func(r rune) bool {
+		if r == 'h' && p.app.isHelpShort() {
+			return true
+		}
+		s := string(r)
+		return p.app.findGlobalFlagByShort(s) != nil || (rootCmd != nil && rootCmd.findFlagByShort(s) != nil)
+	})
+}
+
+// allShortsMatch reports whether arg is a short-flag token (or bundle, with an
+// optional "=value" suffix) in which every flag character satisfies match.
+func allShortsMatch(arg string, match func(rune) bool) bool {
 	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || len(arg) <= 1 {
 		return false
 	}
@@ -429,19 +435,10 @@ func (p *parser) hasShortFlag(arg string) bool {
 	if shorts == "" {
 		return false
 	}
-	rootCmd := p.app.commands[""]
 	for _, r := range shorts {
-		if r == 'h' && p.app.isHelpShort() {
-			continue
+		if !match(r) {
+			return false
 		}
-		s := string(r)
-		if p.app.findGlobalFlagByShort(s) != nil {
-			continue
-		}
-		if rootCmd != nil && rootCmd.findFlagByShort(s) != nil {
-			continue
-		}
-		return false
 	}
 	return true
 }
