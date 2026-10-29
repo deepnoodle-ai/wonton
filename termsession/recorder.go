@@ -137,21 +137,23 @@ func DefaultRecordingOptions() RecordingOptions {
 //
 // Recorder is safe for concurrent use (all methods are thread-safe).
 type Recorder struct {
-	file          *os.File
-	writer        *bufio.Writer
-	gzipWriter    *gzip.Writer
-	startTime     time.Time
-	lastEventTime time.Time
-	pauseStart    time.Time
-	timeAdjust    time.Duration // cumulative time removed for idle clamping and pauses
-	mu            sync.Mutex
-	compress      bool
-	redactSecrets bool
-	idleTimeLimit time.Duration
-	paused        bool
-	closed        bool
-	width         int
-	height        int
+	file           *os.File
+	writer         *bufio.Writer
+	gzipWriter     *gzip.Writer
+	startTime      time.Time
+	lastEventTime  time.Time
+	pauseStart     time.Time
+	timeAdjust     time.Duration // cumulative time removed for idle clamping and pauses
+	mu             sync.Mutex
+	compress       bool
+	redactSecrets  bool
+	idleTimeLimit  time.Duration
+	paused         bool
+	closed         bool
+	width          int
+	height         int
+	recordedWidth  int
+	recordedHeight int
 
 	// Redaction matches each chunk with the end of the chunks before it, so
 	// a secret split across PTY reads is still redacted.
@@ -186,13 +188,15 @@ func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Re
 	now := time.Now()
 
 	r := &Recorder{
-		startTime:     now,
-		lastEventTime: now,
-		compress:      opts.Compress,
-		redactSecrets: opts.RedactSecrets,
-		idleTimeLimit: time.Duration(opts.IdleTimeLimit * float64(time.Second)),
-		width:         width,
-		height:        height,
+		startTime:      now,
+		lastEventTime:  now,
+		compress:       opts.Compress,
+		redactSecrets:  opts.RedactSecrets,
+		idleTimeLimit:  time.Duration(opts.IdleTimeLimit * float64(time.Second)),
+		width:          width,
+		height:         height,
+		recordedWidth:  width,
+		recordedHeight: height,
 	}
 
 	file, err := os.Create(filename)
@@ -402,6 +406,15 @@ func (r *Recorder) Resume() {
 		paused := time.Since(r.pauseStart)
 		r.timeAdjust += paused
 		r.lastEventTime = r.lastEventTime.Add(paused)
+		if !r.closed && (r.width != r.recordedWidth || r.height != r.recordedHeight) {
+			r.recordedWidth = r.width
+			r.recordedHeight = r.height
+			r.writeEvent(RecordingEvent{
+				Time: r.eventTimeLocked(time.Now()),
+				Type: "r",
+				Data: fmt.Sprintf("%dx%d", r.width, r.height),
+			})
+		}
 	}
 	r.mu.Unlock()
 }
@@ -430,15 +443,20 @@ func (r *Recorder) UpdateSize(width, height int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if width == r.width && height == r.height {
+	if r.closed {
 		return
 	}
 	r.width = width
 	r.height = height
 
-	if r.paused || r.closed {
+	if r.paused {
 		return
 	}
+	if width == r.recordedWidth && height == r.recordedHeight {
+		return
+	}
+	r.recordedWidth = width
+	r.recordedHeight = height
 
 	r.writeEvent(RecordingEvent{
 		Time: r.eventTimeLocked(time.Now()),
