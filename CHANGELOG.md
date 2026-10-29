@@ -117,9 +117,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
   embedded fields shadow deeper ones regardless of field order, a single
   `json`-tagged field at the shallowest depth wins over untagged siblings,
   and conflicting fields at the shallowest depth are omitted. (#133)
-- `cli`: negative numbers passed as positional arguments (such as `-5` or
-  `-.5`) are no longer rejected as unknown short flags unless a matching
-  short flag (such as `-4`) is registered on the command, and a root-command
+- `cli`: negative numbers and other `-.x` tokens passed as positional
+  arguments (such as `-5`, `-.5`, or `-.env`) are no longer rejected as
+  unknown short flags unless a matching short flag (such as `-4`) is
+  registered on the command, and a root-command
   boolean flag before positional arguments no longer consumes the next
   positional as its value when resolving subcommands. (#133)
 

@@ -432,9 +432,6 @@ func allShortsMatch(arg string, match func(rune) bool) bool {
 	if idx := strings.IndexByte(shorts, '='); idx > 0 {
 		shorts = shorts[:idx]
 	}
-	if shorts == "" {
-		return false
-	}
 	for _, r := range shorts {
 		if !match(r) {
 			return false
