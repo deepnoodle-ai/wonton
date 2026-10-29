@@ -16,6 +16,7 @@ import (
 
 type app struct {
 	server *tmux.Server
+	saver  *saver
 	rt     *tui.Runtime
 
 	spaces  []*space
@@ -74,6 +75,7 @@ func (branchesEvent) Timestamp() time.Time { return time.Now() }
 func newApp(server *tmux.Server) *app {
 	return &app{
 		server:   server,
+		saver:    newSaver(func(data string) { _ = server.SetOption(context.Background(), optionName, data) }),
 		panes:    map[string]*pane{},
 		navWidth: 28,
 		branches: map[string]string{},
@@ -163,7 +165,8 @@ func (a *app) reap() []tui.Cmd {
 	for _, id := range gone {
 		a.removePane(id)
 	}
-	return a.save()
+	a.save()
+	return nil
 }
 
 // syncSizes fits every visible terminal to the box it was drawn in. tmux
@@ -273,7 +276,8 @@ func (a *app) splitPane(id string, axis tui.SplitAxis) []tui.Cmd {
 	sp.split.Split(id, p.id, axis)
 	sp.zoom = ""
 	a.focusPane(p.id)
-	return a.save()
+	a.save()
+	return nil
 }
 
 func (a *app) newColumn(sp *space) []tui.Cmd {
@@ -289,7 +293,8 @@ func (a *app) newColumn(sp *space) []tui.Cmd {
 	sp.split.Append(p.id, tui.SplitColumns)
 	sp.zoom = ""
 	a.focusPane(p.id)
-	return a.save()
+	a.save()
+	return nil
 }
 
 func (a *app) closePane(id string) []tui.Cmd {
@@ -299,7 +304,8 @@ func (a *app) closePane(id string) []tui.Cmd {
 	}
 	_ = p.term.Kill()
 	a.removePane(id)
-	return a.save()
+	a.save()
+	return nil
 }
 
 // removePane takes a pane out of its space; its session is already gone.
@@ -376,7 +382,8 @@ func (a *app) newSpace(dir string) []tui.Cmd {
 	sp.focus = p.id
 	a.spaces = append(a.spaces, sp)
 	a.current = len(a.spaces) - 1
-	return a.save()
+	a.save()
+	return nil
 }
 
 // closeSpace ends every pane in a space and removes it. The last space is
@@ -399,7 +406,8 @@ func (a *app) closeSpace(sp *space) []tui.Cmd {
 	} else if a.current > i {
 		a.current--
 	}
-	return a.save()
+	a.save()
+	return nil
 }
 
 func (a *app) renamePane(id string) []tui.Cmd {

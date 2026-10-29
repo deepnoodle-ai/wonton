@@ -99,7 +99,8 @@ func (a *app) spaceMenu(sp *space) []tui.MenuItem {
 		{Label: "Rename…", Action: a.run(func() []tui.Cmd { return a.renameSpace(sp) })},
 		{Label: "Equalize panes", Action: a.run(func() []tui.Cmd {
 			sp.split.Equalize()
-			return a.save()
+			a.save()
+			return nil
 		})},
 		tui.MenuSeparator(),
 		{Label: "Close space", Danger: true, Action: a.run(func() []tui.Cmd { return a.closeSpace(sp) })},
@@ -117,12 +118,14 @@ func (a *app) gapMenu(branch *tui.SplitNode, index int) []tui.MenuItem {
 		{Label: "Even out these two", Action: a.run(func() []tui.Cmd {
 			w := (branch.Children[index].Weight + branch.Children[index+1].Weight) / 2
 			branch.Children[index].Weight, branch.Children[index+1].Weight = w, w
-			return a.save()
+			a.save()
+			return nil
 		})},
 		{Label: "Swap sides", Action: a.run(func() []tui.Cmd {
 			c := branch.Children
 			c[index], c[index+1] = c[index+1], c[index]
-			return a.save()
+			a.save()
+			return nil
 		})},
 		{Label: rotate, Action: a.run(func() []tui.Cmd {
 			if branch.Axis == tui.SplitColumns {
@@ -130,12 +133,14 @@ func (a *app) gapMenu(branch *tui.SplitNode, index int) []tui.MenuItem {
 			} else {
 				branch.Axis = tui.SplitColumns
 			}
-			return a.save()
+			a.save()
+			return nil
 		})},
 		tui.MenuSeparator(),
 		{Label: "Equalize all", Hint: "^B =", Action: a.run(func() []tui.Cmd {
 			a.space().split.Equalize()
-			return a.save()
+			a.save()
+			return nil
 		})},
 	}
 }
@@ -149,7 +154,8 @@ func (a *app) workspaceMenu() []tui.MenuItem {
 		})},
 		{Label: "Equalize panes", Hint: "^B =", Action: a.run(func() []tui.Cmd {
 			sp.split.Equalize()
-			return a.save()
+			a.save()
+			return nil
 		})},
 		{Label: "Keys…", Hint: "^B ?", Action: a.openHelp},
 		tui.MenuSeparator(),

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/tmux"
@@ -93,21 +94,67 @@ func (a *app) snapshot() savedState {
 }
 
 // save writes the layout to the tmux server in the background.
-func (a *app) save() []tui.Cmd {
-	data, err := json.Marshal(a.snapshot())
-	if err != nil {
-		return nil
+func (a *app) save() {
+	if data, err := json.Marshal(a.snapshot()); err == nil {
+		a.saver.save(string(data))
 	}
-	server := a.server
-	return []tui.Cmd{func() tui.Event {
-		_ = server.SetOption(context.Background(), optionName, string(data))
-		return nil
-	}}
 }
 
+// saveNow writes the layout and waits until it is written.
 func (a *app) saveNow() {
-	if data, err := json.Marshal(a.snapshot()); err == nil {
-		_ = a.server.SetOption(context.Background(), optionName, string(data))
+	a.save()
+	a.saver.wait()
+}
+
+// saver writes layouts one at a time, in the order they were made. A layout
+// saved while another is being written replaces any still waiting, so the
+// last one saved is always the one stored.
+type saver struct {
+	write func(data string)
+
+	mu      sync.Mutex
+	idle    *sync.Cond
+	next    string
+	pending bool // next is waiting to be written
+	running bool // the writer goroutine is going
+}
+
+func newSaver(write func(data string)) *saver {
+	s := &saver{write: write}
+	s.idle = sync.NewCond(&s.mu)
+	return s
+}
+
+func (s *saver) save(data string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.next, s.pending = data, true
+	if !s.running {
+		s.running = true
+		go s.run()
+	}
+}
+
+func (s *saver) run() {
+	s.mu.Lock()
+	for s.pending {
+		data := s.next
+		s.pending = false
+		s.mu.Unlock()
+		s.write(data)
+		s.mu.Lock()
+	}
+	s.running = false
+	s.idle.Broadcast()
+	s.mu.Unlock()
+}
+
+// wait returns once every layout saved so far is written.
+func (s *saver) wait() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for s.running {
+		s.idle.Wait()
 	}
 }
 
@@ -141,7 +188,9 @@ func (a *app) restore() error {
 				sp.split.Remove(id)
 				continue
 			}
-			if _, err := a.attach(sp, id, ss.Names[id], "", 80, 24); err != nil {
+			// No size: the session keeps the one it has until the first
+			// frame lays it out, rather than redrawing at a guess.
+			if _, err := a.attach(sp, id, ss.Names[id], "", 0, 0); err != nil {
 				sp.split.Remove(id)
 				continue
 			}
@@ -161,7 +210,7 @@ func (a *app) restore() error {
 		if used[s.Name] {
 			continue
 		}
-		if _, err := a.attach(sp, s.Name, "", "", 80, 24); err == nil {
+		if _, err := a.attach(sp, s.Name, "", "", 0, 0); err == nil {
 			sp.split.Append(s.Name, tui.SplitColumns)
 			a.bumpSeq(s.Name)
 		}
@@ -201,13 +250,14 @@ func (a *app) newSpaceValue(dir string) *space {
 }
 
 // attach mirrors an existing or new session into a pane of sp. It does not
-// place the pane in the layout.
+// place the pane in the layout. A zero size leaves an existing session's
+// size as it is.
 func (a *app) attach(sp *space, id, name, dir string, width, height int) (*pane, error) {
 	term, err := a.server.Open(context.Background(), tmux.TerminalOptions{
 		Session:  id,
 		Dir:      dir,
-		Width:    max(width, 10),
-		Height:   max(height, 3),
+		Width:    size(width, 10),
+		Height:   size(height, 3),
 		OnUpdate: a.wake,
 	})
 	if err != nil {
@@ -216,6 +266,14 @@ func (a *app) attach(sp *space, id, name, dir string, width, height int) (*pane,
 	p := &pane{id: id, name: name, space: sp, term: term}
 	a.panes[id] = p
 	return p, nil
+}
+
+// size returns at least least, or zero to leave a size alone.
+func size(n, least int) int {
+	if n <= 0 {
+		return 0
+	}
+	return max(n, least)
 }
 
 // openPane starts a new session for sp. The caller places it in the layout.

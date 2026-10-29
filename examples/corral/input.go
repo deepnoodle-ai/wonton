@@ -96,7 +96,8 @@ func (a *app) command(e tui.KeyEvent) []tui.Cmd {
 		return a.renamePane(focus)
 	case '=':
 		sp.split.Equalize()
-		return a.save()
+		a.save()
+		return nil
 	case 'm':
 		if b, ok := a.hits.Bounds("pane:" + focus); ok {
 			a.openMenu("pane:"+focus, b.Min.X+2, b.Min.Y+1)
@@ -172,7 +173,8 @@ func (a *app) handleMouse(e tui.MouseEvent) []tui.Cmd {
 	sp := a.space()
 	if sp.zoom == "" && sp.split.HandleMouse(e) {
 		if e.Type == tui.MouseRelease {
-			return a.save()
+			a.save()
+			return nil
 		}
 		return nil
 	}
@@ -196,10 +198,11 @@ func (a *app) handleMouse(e tui.MouseEvent) []tui.Cmd {
 			if e.Button == tui.MouseButtonRight {
 				return nil
 			}
+			p := a.panes[id]
 			x, y, ok := a.paneLocal(id, e.X, e.Y, false)
 			switch {
-			case !ok:
-			case a.panes[id].term.SendMouse(e, x, y):
+			case !ok || p == nil:
+			case p.term.SendMouse(e, x, y):
 				// The pane's program reads the mouse: the drag is its.
 				a.capture = id
 			case e.Button == tui.MouseButtonLeft:
