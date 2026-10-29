@@ -376,8 +376,8 @@ func TestDiffRenderer_TabExpansion(t *testing.T) {
 	zeroTabRenderer := &DiffRenderer{TabWidth: 0}
 	assert.Equal(t, "    code", zeroTabRenderer.expandTabs("\tcode"))
 
-	// Nil diff returns empty slice without panicking
-	assert.Empty(t, renderer.RenderDiff(nil, "go"))
+	// Nil diff returns nil without panicking
+	assert.Nil(t, renderer.RenderDiff(nil, "go"))
 }
 
 func TestDiffRenderer_TabsInDiff(t *testing.T) {

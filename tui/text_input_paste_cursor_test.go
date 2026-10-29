@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"image"
+	"testing"
+)
 
 func newPlaceholderInput(t *testing.T) *textInput {
 	t.Helper()
@@ -62,5 +65,23 @@ func TestTextInputEditInsidePastePlaceholder(t *testing.T) {
 	ti.HandleKey(KeyEvent{Rune: 'b'})
 	if ti.Value() != "aline1\nline2b" || ti.CursorPos != len(ti.DisplayText()) {
 		t.Fatalf("insert: cursor=%d value=%q", ti.CursorPos, ti.Value())
+	}
+}
+
+func TestTextInputHomeEndSkipsWrappedPastePlaceholder(t *testing.T) {
+	ti := newPlaceholderInput(t).WithMultilineMode(true)
+	ti.SetBounds(image.Rect(0, 0, 10, 3))
+	// DisplayText is "a[pasted 2 lines]" (17 bytes); at width 10, row 0 is 0..10
+	// and row 1 is 10..17, splitting the paste placeholder across rows.
+	ti.CursorPos = 0
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	if ti.CursorPos != 1 {
+		t.Fatalf("End on row 0 should snap before placeholder, got cursor=%d", ti.CursorPos)
+	}
+
+	ti.CursorPos = len(ti.DisplayText())
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	if ti.CursorPos != 1 {
+		t.Fatalf("Home on row 1 should snap before placeholder, got cursor=%d", ti.CursorPos)
 	}
 }

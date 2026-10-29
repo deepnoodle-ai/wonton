@@ -822,7 +822,7 @@ func TestTextAreaFocusHandler_SmallBorderedViewHeight(t *testing.T) {
 		Size(20, 2).
 		Bordered().
 		HighlightCurrentLine(true)
-	handler := &textAreaFocusHandler{area: ta, bounds: image.Rect(0, 0, 20, 2)}
+	handler := &textAreaFocusHandler{area: ta, bounds: image.Rect(0, 0, 20, 2), height: 2}
 
 	assert.True(t, handler.HandleKeyEvent(KeyEvent{Key: KeyArrowDown}))
 	assert.Equal(t, 1, ta.getCursorLine())
@@ -831,6 +831,19 @@ func TestTextAreaFocusHandler_SmallBorderedViewHeight(t *testing.T) {
 	assert.True(t, handler.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
 	assert.Equal(t, 2, ta.getCursorLine())
 	assert.Equal(t, 2, ta.getScrollY(), "scrollY must not overshoot maxLine on End")
+
+	// When clickArea clips bounds to 1 row inside an outer ScrollView while the
+	// TextArea itself renders at height 6 (4 inner rows), Down must use the
+	// unclipped rendered height rather than scrolling on line 1.
+	ta = TextArea(nil).
+		Content("line0\nline1\nline2\nline3\nline4").
+		Size(20, 6).
+		Bordered().
+		HighlightCurrentLine(true)
+	clippedHandler := &textAreaFocusHandler{area: ta, bounds: image.Rect(0, 0, 20, 1), height: 6}
+	assert.True(t, clippedHandler.HandleKeyEvent(KeyEvent{Key: KeyArrowDown}))
+	assert.Equal(t, 1, ta.getCursorLine())
+	assert.Equal(t, 0, ta.getScrollY(), "clipped click bounds must not shrink innerHeight")
 }
 
 // renderBordered tests

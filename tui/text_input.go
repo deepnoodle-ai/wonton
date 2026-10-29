@@ -604,14 +604,12 @@ func cursorLineIndex(lines []lineRange, pos int) int {
 	return len(lines) - 1
 }
 
-// lineLastCursorPos returns the last byte offset within lines[i] where the
-// cursor still rests on lines[i]. For a soft-wrapped line, lines[i].end is the
-// first cluster of lines[i+1], and textInput tracks the cursor solely as a byte
-// offset without separate line-affinity state (while column width is outside
-// the [0, width-1] cell grid on a full row). The rightmost cursor stop on
-// lines[i] is therefore the start of its final grapheme cluster, so End on a
-// soft-wrapped row places the cursor on that final cluster and subsequent typing
-// inserts before it.
+// lineLastCursorPos returns the last byte offset on lines[i] that still draws
+// the cursor on that visual row. Because a soft-wrapped line shares its end
+// offset with the start of lines[i+1], placing the cursor at lines[i].end
+// would draw it at column 0 of the next row. Instead, this returns the start
+// of the last grapheme cluster on lines[i]; pressing End on a soft-wrapped row
+// therefore lands on that final character, and typing inserts before it.
 func lineLastCursorPos(displayText string, lines []lineRange, i int) int {
 	line := lines[i]
 	if i+1 < len(lines) && line.end == lines[i+1].start && line.end > line.start {
@@ -1137,7 +1135,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	case KeyHome, KeyCtrlA:
 		if t.MultilineMode {
 			lineStart, _ := t.getCurrentLineRange(displayText)
-			t.CursorPos = lineStart
+			t.CursorPos = t.snapOutOfSpecial(lineStart, false)
 		} else {
 			t.CursorPos = 0
 		}
@@ -1145,7 +1143,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	case KeyEnd, KeyCtrlE:
 		if t.MultilineMode {
 			_, lineEnd := t.getCurrentLineRange(displayText)
-			t.CursorPos = lineEnd
+			t.CursorPos = t.snapOutOfSpecial(lineEnd, false)
 		} else {
 			t.CursorPos = t.displayLen()
 		}

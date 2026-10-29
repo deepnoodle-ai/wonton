@@ -385,7 +385,11 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 	fm := ctx.FocusManager()
 	var handler *textAreaFocusHandler
 	if fm != nil {
-		handler = &textAreaFocusHandler{area: t, bounds: ctx.clickArea(ctx.AbsoluteBounds())}
+		handler = &textAreaFocusHandler{
+			area:   t,
+			bounds: ctx.clickArea(ctx.AbsoluteBounds()),
+			height: h,
+		}
 		fm.Register(handler)
 	}
 	isFocused := handler != nil && handler.IsFocused()
@@ -568,6 +572,7 @@ func (t *TextAreaView) renderBordered(ctx *RenderContext, w, h int, content *Scr
 type textAreaFocusHandler struct {
 	area    *TextAreaView
 	bounds  image.Rectangle
+	height  int
 	focused bool
 }
 
@@ -589,8 +594,8 @@ func (h *textAreaFocusHandler) FocusBounds() image.Rectangle {
 
 func (h *textAreaFocusHandler) innerHeight() int {
 	_, viewHeight := h.area.size(0, 0)
-	if h.bounds.Dy() > 0 && h.bounds.Dy() < viewHeight {
-		viewHeight = h.bounds.Dy()
+	if h.height > 0 && h.height < viewHeight {
+		viewHeight = h.height
 	}
 	if h.area.bordered && !h.area.leftBorderOnly {
 		viewHeight -= 2 // account for border

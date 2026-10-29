@@ -121,12 +121,14 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - In `tui.Input` and `tui.InputField`, the cursor now draws at column 0 of a
   soft-wrapped visual line instead of disappearing past the right edge of the
   previous line, and `Up`, `Down`, `Home`, `End`, and history recall treat
-  soft-wrap boundaries as the start of the wrapped line. `tui.DetectTerminalBackground`
-  no longer treats invalid UTF-8 bytes or `U+FFFD` as an OSC 11 reply
-  terminator, `tui.DiffRenderer` expands tabs by grapheme display width and
-  handles `TabWidth <= 0` and `nil` diffs without panicking, and `tui.TextArea`
-  applies its focused border and title styles when auto-focused without an ID
-  and clamps small bordered scroll heights. (#135)
+  soft-wrap boundaries as the start of the wrapped line (with `End` on a
+  soft-wrapped row stopping on the row's last character so the cursor stays on
+  that row). `tui.DetectTerminalBackground` no longer treats invalid UTF-8
+  bytes or `U+FFFD` as an OSC 11 reply terminator, `tui.DiffRenderer` expands
+  tabs by grapheme display width and handles `TabWidth <= 0` and `nil` diffs
+  without panicking, and `tui.TextArea` applies its focused border and title
+  styles when auto-focused without an ID and clamps small bordered scroll
+  heights. (#135)
 
 ## [0.9.0] - 2026-10-24
 
