@@ -138,7 +138,9 @@ func (s *Server) Open(ctx context.Context, opts TerminalOptions) (*Terminal, err
 
 	if opts.Width > 0 && opts.Height > 0 {
 		t.width, t.height = opts.Width, opts.Height
-		_, _ = ctl.Command(t.resizeCommand(opts.Width, opts.Height))
+		if _, err := ctl.Command(t.resizeCommand(opts.Width, opts.Height)); err != nil {
+			t.retryAt = time.Now().Add(resizeRetryDelay)
+		}
 	}
 	if err := t.capture(); err != nil {
 		_ = ctl.Close()

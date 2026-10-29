@@ -210,6 +210,21 @@ func TestTerminalKillAfterOutsideRename(t *testing.T) {
 	assert.False(t, s.HasSession(ctx, "after"))
 }
 
+// A size tmux refuses when Open asks for it can be asked for again later,
+// as with Resize.
+func TestOpenRetriesRefusedSize(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	assert.NoError(t, s.NewSession(ctx, SessionOptions{Name: "huge", Command: "cat"}))
+	// tmux allows windows up to 10000 cells wide.
+	term, err := s.Open(ctx, TerminalOptions{Session: "huge", Width: 20000, Height: 5})
+	assert.NoError(t, err)
+	defer term.Kill()
+	term.mu.Lock()
+	defer term.mu.Unlock()
+	assert.False(t, term.retryAt.IsZero())
+}
+
 func TestTerminalScrollEntersCopyMode(t *testing.T) {
 	s := testServer(t)
 	term, err := s.Open(context.Background(), TerminalOptions{
@@ -267,6 +282,9 @@ func TestTerminalForwardsMouseOnlyWhenAsked(t *testing.T) {
 
 	press := terminal.MouseEvent{Type: terminal.MousePress, Button: terminal.MouseButtonLeft}
 	assert.True(t, term.SendMouse(press, 2, 3))
+	if term.verbatim == "" {
+		t.Skip("tmux before 3.5 shows control characters in a paste as ^X")
+	}
 	// A paste keeps its tabs and other control characters as they are.
 	assert.NoError(t, term.Paste("\t\t\t\t\t\t\t"))
 	// od prints a line once it has 16 bytes: 9 of the mouse report and 7
