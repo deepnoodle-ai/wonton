@@ -289,6 +289,19 @@ for {
 | `NewStyle` | Create new style | None            | `Style` |
 | `NewRGB`   | Create RGB color | `r, g, b uint8` | `RGB`   |
 
+### Secret Redaction
+
+| Function / Method   | Description                                     | Inputs         | Outputs  |
+| ------------------- | ----------------------------------------------- | -------------- | -------- |
+| `RedactCredentials` | Redact secrets in one string                    | `input string` | `string` |
+| `Redactor.Redact`   | Redact the next chunk of a stream               | `data string`  | `string` |
+| `Redactor.Flush`    | Return the held-back end of a stream, and reset | None           | `string` |
+
+A `Redactor` redacts a secret that two chunks split, such as `"Token: "` and
+then the value, or a token cut in half by a read. It holds back the run of
+text at the end of each chunk until the next chunk ends it; call `Flush` when
+the stream ends or pauses. The zero value is ready to use.
+
 See full API reference in the [package godoc](https://pkg.go.dev/github.com/deepnoodle-ai/wonton/terminal).
 
 ## Related Packages

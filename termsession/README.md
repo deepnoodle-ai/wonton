@@ -211,6 +211,11 @@ for _, event := range outputEvents {
 | `Flush` | Writes buffered data to disk | none | `error` |
 | `Close` | Finalizes recording | none | `error` |
 
+With `RedactSecrets`, the recorder redacts each of the output and input
+streams as a whole, so a secret split across PTY reads or typed key by key
+is still redacted. The run of text at the end of each chunk is held back
+until whitespace, an escape sequence, `Pause`, or `Close` ends it.
+
 ### Player Functions
 
 | Function | Description | Inputs | Outputs |

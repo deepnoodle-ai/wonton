@@ -28,6 +28,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `gif.SystemFallbackFonts`, and `gif.DefaultFallbackFonts` return the
   built-in choices. The embedded font adds about 870 KB to programs that
   import `gif`.
+- `terminal.Redactor` redacts secrets in a stream that arrives in chunks,
+  such as PTY reads. `Redact` returns each chunk redacted, less the run of
+  text at its end, which the next chunk can continue. `Flush` returns that
+  text when the stream ends or pauses and resets the redactor. The zero
+  value is ready to use. (#126)
 
 ### Changed
 
@@ -66,6 +71,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
   reset or cursor move that follows a secret, and a secret in a hyperlink's
   URL is redacted inside the OSC 8 sequence. `terminal.RedactCredentials`
   also skips escape sequences. (#110)
+- `termsession.Recorder` with `RedactSecrets` now redacts a secret split
+  across PTY reads or `RecordOutput` and `RecordInput` calls: a value written
+  after its label in a separate write, a read that ends in the middle of a
+  token, and a secret typed key by key after its key. Output and input each
+  have their own `terminal.Redactor`. The run of text at the end of a chunk
+  is held back until whitespace, an escape sequence, `Pause`, or `Close`
+  ends it, so it can appear later in a replay. Redaction also holds back an
+  escape sequence that a read splits, so a redaction no longer lands inside
+  one. (#126)
 - `gif.Emulator` and `gif.TerminalScreen.WriteString` give each grapheme
   cluster one cell, or two for a wide one, and advance the cursor by display
   width. CJK text, emoji, and combining marks in casts no longer push the

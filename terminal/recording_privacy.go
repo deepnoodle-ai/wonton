@@ -45,25 +45,25 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)((?:secret|key|token|password)[:\s=]+)[a-zA-Z0-9+/]{20,}={0,2}`),
 }
 
-// redactTailSize is how much settled text a redactor keeps from earlier
-// events: room for a key and its delimiter ("Authorization: Bearer ").
+// redactTailSize is how much settled text a Redactor keeps from earlier
+// chunks: room for a key and its delimiter ("Authorization: Bearer ").
 const redactTailSize = 256
 
-// redactHoldLimit caps how much text a redactor holds back. A run of text
+// redactHoldLimit caps how much text a Redactor holds back. A run of text
 // longer than this is recorded before it ends.
 const redactHoldLimit = 8 << 10
 
-// redactor redacts secrets in a stream of terminal output or input, one event
-// at a time. Redacting each event alone misses a secret that two writes split:
-// a program that prints "Token: " and then the value records the value with no
-// key in front of it, and the first part of a token such as "AKIAIOSFODNN"
-// matches no pattern until the rest arrives.
+// Redactor redacts secrets in a stream of terminal output or input, one chunk
+// at a time. Redacting each chunk alone misses a secret that two writes or
+// reads split: a program that prints "Token: " and then the value records the
+// value with no key in front of it, and the first part of a token such as
+// "AKIAIOSFODNN" matches no pattern until the rest arrives.
 //
-// So a redactor matches each event together with the settled text before it
-// (the tail), and holds back the run of text at the end of the event, since
-// the next write can continue it. A secret is always a run of text with no
+// So a Redactor matches each chunk together with the settled text before it
+// (the tail), and holds back the run of text at the end of the chunk, since
+// the next chunk can continue it. A secret is always a run of text with no
 // whitespace, so text that ends in whitespace or a break is settled. The held
-// text is recorded with the next event, or by flush.
+// text is returned with the next chunk, or by Flush.
 //
 // Matching runs on the text, with escape sequences taken out, so a style change
 // between a key and its value does not hide the value, and a redaction never
@@ -72,26 +72,34 @@ const redactHoldLimit = 8 << 10
 // value drawn after a cursor move, but a value does not run on into the next
 // text drawn elsewhere. The payload of a string sequence, such as an OSC 8
 // hyperlink's URL, is redacted on its own.
-type redactor struct {
+//
+// Use one Redactor per stream, such as one for output and one for input. The
+// zero value is ready to use. A Redactor is not safe for concurrent use.
+type Redactor struct {
 	tail string // settled text before held, before redaction
-	held string // the end of the stream, which the next write can continue
+	held string // the end of the stream, which the next chunk can continue
 }
 
-// redact returns the stream up to the end of data, with each secret replaced
-// by [REDACTED], less the text it holds back.
-func (r *redactor) redact(data string) string {
+// Redact returns the stream up to the end of data, with each secret replaced
+// by [REDACTED], less the text it holds back. The result can be empty.
+func (r *Redactor) Redact(data string) string {
 	return r.settle(r.held+data, false)
 }
 
-// flush returns the text the redactor holds back, redacted. Call it when
-// nothing more will continue the stream.
-func (r *redactor) flush() string {
-	return r.settle(r.held, true)
+// Flush returns the text r holds back, redacted, and resets r, so the next
+// call to Redact starts a new stream. Call it when nothing more will continue
+// the stream, such as when recording stops or pauses, or the held text is
+// lost.
+func (r *Redactor) Flush() string {
+	out := r.settle(r.held, true)
+	*r = Redactor{}
+	return out
 }
 
 // settle redacts chunk, the held text and the new data. Unless final, it holds
-// back the run of text at the end of chunk.
-func (r *redactor) settle(chunk string, final bool) string {
+// back the run of text at the end of chunk, and an escape sequence that the
+// next chunk finishes.
+func (r *Redactor) settle(chunk string, final bool) string {
 	// Split chunk into text and escape sequences, and join the text.
 	type part struct {
 		s   string
@@ -100,9 +108,14 @@ func (r *redactor) settle(chunk string, final bool) string {
 	}
 	var parts []part
 	var text strings.Builder
+	end := len(chunk) // the start of an unfinished escape sequence to hold
 	for i := 0; i < len(chunk); {
 		if chunk[i] == '\x1b' {
-			n := escapeLen(chunk[i:])
+			n, done := escapeLen(chunk[i:])
+			if !done && !final && len(chunk)-i <= redactHoldLimit {
+				end = i
+				break
+			}
 			parts = append(parts, part{chunk[i : i+n], i, -1})
 			if breaksText(chunk[i : i+n]) {
 				text.WriteByte('\n')
@@ -123,7 +136,7 @@ func (r *redactor) settle(chunk string, final bool) string {
 	// The whitespace is what \s matches in the patterns.
 	joined := r.tail + text.String()
 	from := len(r.tail)
-	holdAt, hold := text.Len(), len(chunk)
+	holdAt, hold := text.Len(), end
 	if !final {
 		run := strings.LastIndexAny(joined, " \t\n\f\r") + 1
 		run = max(run, from)
@@ -135,7 +148,7 @@ func (r *redactor) settle(chunk string, final bool) string {
 				}
 			}
 			if len(chunk)-hold > redactHoldLimit {
-				holdAt, hold = text.Len(), len(chunk)
+				holdAt, hold = text.Len(), end
 			}
 		}
 	}
@@ -219,41 +232,48 @@ func isStringSequence(c byte) bool {
 }
 
 // escapeLen returns the length of the escape sequence at the start of s,
-// which begins with ESC. An unterminated sequence runs to the end of s.
-func escapeLen(s string) int {
+// which begins with ESC, and whether s holds all of it. An unterminated
+// sequence runs to the end of s.
+func escapeLen(s string) (n int, done bool) {
 	if len(s) < 2 {
-		return len(s)
+		return len(s), false
 	}
 	switch c := s[1]; {
 	case c == '[':
 		// CSI: parameter and intermediate bytes, then a final byte.
 		for i := 2; i < len(s); i++ {
 			if s[i] >= 0x40 && s[i] <= 0x7e {
-				return i + 1
+				return i + 1, true
 			}
 		}
-		return len(s)
+		return len(s), false
 	case isStringSequence(c):
 		// The payload ends with BEL or ST (ESC \). Any other ESC ends it too.
 		for i := 2; i < len(s); i++ {
 			if s[i] == '\a' {
-				return i + 1
+				return i + 1, true
 			}
 			if s[i] == '\x1b' {
-				if i+1 < len(s) && s[i+1] == '\\' {
-					return i + 2
+				if i+1 == len(s) {
+					return len(s), false // the ESC can start ST
 				}
-				return i
+				if s[i+1] == '\\' {
+					return i + 2, true
+				}
+				return i, true
 			}
 		}
-		return len(s)
+		return len(s), false
 	default:
 		// Intermediate bytes, then a final byte.
 		i := 1
 		for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
 			i++
 		}
-		return min(i+1, len(s))
+		if i == len(s) {
+			return len(s), false
+		}
+		return i + 1, true
 	}
 }
 
@@ -303,11 +323,13 @@ func lastBytes(s string, n int) string {
 // redactSecretPatterns redacts the secrets in data on its own, with no text
 // from earlier events.
 func redactSecretPatterns(data string) string {
-	var r redactor
-	return r.redact(data) + r.flush()
+	var r Redactor
+	return r.Redact(data) + r.Flush()
 }
 
-// RedactCredentials can be called manually to test redaction
+// RedactCredentials returns input with each secret replaced by [REDACTED].
+// It redacts input on its own; to redact a stream that arrives in chunks, use
+// a Redactor.
 func RedactCredentials(input string) string {
 	return redactSecretPatterns(input)
 }

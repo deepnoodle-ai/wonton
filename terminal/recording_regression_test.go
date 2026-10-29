@@ -191,8 +191,8 @@ func TestRedactorKeepsEscapeSequences(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		var r redactor
-		assert.Equal(t, r.redact(tt.in)+r.flush(), tt.want, tt.name)
+		var r Redactor
+		assert.Equal(t, r.Redact(tt.in)+r.Flush(), tt.want, tt.name)
 	}
 }
 
@@ -276,4 +276,61 @@ func TestRecordingPauseDropsRedactionContext(t *testing.T) {
 
 	recorded := strings.Join(readCastEvents(t, filename), "")
 	assert.Contains(t, recorded, "hello")
+}
+
+// redactChunks redacts chunks as one stream and returns the result.
+func redactChunks(chunks ...string) string {
+	var r Redactor
+	var b strings.Builder
+	for _, c := range chunks {
+		b.WriteString(r.Redact(c))
+	}
+	b.WriteString(r.Flush())
+	return b.String()
+}
+
+func TestRedactorJoinsChunksSplitMidToken(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+		want   string
+	}{
+		{
+			"read ends in the middle of the value",
+			[]string{"export API_KEY=sk-1234", "567890abcdefghij\n"},
+			"export API_KEY=[REDACTED]\n",
+		},
+		{
+			"read ends in the middle of the key",
+			[]string{"pass", "word: hunter2\n"},
+			"password: [REDACTED]\n",
+		},
+		{
+			"escape sequence split between the key and the value",
+			[]string{"password: \033[3", "1mhunter2\033[0m\r\n"},
+			"password: \033[31m[REDACTED]\033[0m\r\n",
+		},
+		{
+			"hyperlink URL split inside the sequence",
+			[]string{"\033]8;;https://x.test/?token=ab", "c123\033", "\\link\033]8;;\033\\"},
+			"\033]8;;https://x.test/?token=[REDACTED]\033\\link\033]8;;\033\\",
+		},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, redactChunks(tt.chunks...), tt.want, tt.name)
+	}
+}
+
+func TestRedactorFlushStartsNewStream(t *testing.T) {
+	var r Redactor
+	assert.Equal(t, r.Redact("Token: "), "Token: ")
+	assert.Equal(t, r.Flush(), "")
+	// The key before Flush does not reach the text after it.
+	assert.Equal(t, r.Redact("hello "), "hello ")
+}
+
+func TestRedactorRecordsUnfinishedEscapeAtFlush(t *testing.T) {
+	var r Redactor
+	assert.Equal(t, r.Redact("ok \033["), "ok ")
+	assert.Equal(t, r.Flush(), "\033[")
 }

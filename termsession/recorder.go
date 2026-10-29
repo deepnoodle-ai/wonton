@@ -152,6 +152,11 @@ type Recorder struct {
 	closed        bool
 	width         int
 	height        int
+
+	// Redaction matches each chunk with the end of the chunks before it, so
+	// a secret split across PTY reads is still redacted.
+	outputRedactor terminal.Redactor
+	inputRedactor  terminal.Redactor
 }
 
 // NewRecorder creates a new recorder that writes to the specified file.
@@ -239,7 +244,12 @@ func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Re
 // RecordOutput records terminal output data.
 //
 // The data is timestamped relative to when the recorder was created.
-// If RedactSecrets is enabled, passwords and API keys will be automatically redacted.
+// If RedactSecrets is enabled, passwords and API keys will be automatically
+// redacted, including a secret split across calls. The run of text at the end
+// of data is then held back until whitespace, an escape sequence, the next
+// Pause, or Close ends it, so it can appear later in a replay. For example,
+// a prompt with no trailing space, such as "Continue? [y/N]", is recorded
+// with the next output, which is often the echo of the answer.
 // Recording is skipped if the recorder is paused or if data is empty.
 //
 // This method is safe to call from multiple goroutines.
@@ -255,12 +265,13 @@ func (r *Recorder) RecordOutput(data string) {
 		return
 	}
 
-	if len(data) == 0 {
-		return
+	if r.redactSecrets {
+		// The redactor can hold back the end of data until the next event.
+		data = r.outputRedactor.Redact(data)
 	}
 
-	if r.redactSecrets {
-		data = terminal.RedactCredentials(data)
+	if len(data) == 0 {
+		return
 	}
 
 	r.writeEvent(RecordingEvent{
@@ -302,9 +313,11 @@ func (r *Recorder) eventTimeLocked(now time.Time) float64 {
 // and understanding user interactions with the terminal.
 //
 // If RedactSecrets is enabled, the same redaction applied to output is
-// applied to input. Note that input often arrives keystroke by keystroke,
-// which can defeat pattern-based redaction; pause recording around
-// sensitive prompts for stronger guarantees.
+// applied to input, and keystrokes are matched together, so a secret typed
+// after its key ("export TOKEN=...") is redacted. A password typed at a
+// prompt has no key in the input, and editing keys such as backspace can
+// break up a secret; pause recording around sensitive prompts for stronger
+// guarantees.
 //
 // This method is safe to call from multiple goroutines.
 func (r *Recorder) RecordInput(data string) {
@@ -319,12 +332,12 @@ func (r *Recorder) RecordInput(data string) {
 		return
 	}
 
-	if len(data) == 0 {
-		return
+	if r.redactSecrets {
+		data = r.inputRedactor.Redact(data)
 	}
 
-	if r.redactSecrets {
-		data = terminal.RedactCredentials(data)
+	if len(data) == 0 {
+		return
 	}
 
 	r.writeEvent(RecordingEvent{
@@ -334,11 +347,24 @@ func (r *Recorder) RecordInput(data string) {
 	})
 }
 
+// flushRedactorsLocked records the text the redactors hold back, when nothing
+// more can continue it, and resets them. Caller must hold r.mu.
+func (r *Recorder) flushRedactorsLocked() {
+	now := time.Now()
+	if data := r.outputRedactor.Flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "o", Data: data})
+	}
+	if data := r.inputRedactor.Flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "i", Data: data})
+	}
+}
+
 // Pause temporarily suspends recording.
 //
 // While paused, calls to RecordOutput and RecordInput are ignored.
 // Use Resume to continue recording. This is useful for temporarily
-// stopping recording during sensitive operations.
+// stopping recording during sensitive operations. Text held back for
+// redaction is recorded before the pause.
 func (r *Recorder) Pause() {
 	if r == nil {
 		return
@@ -346,6 +372,11 @@ func (r *Recorder) Pause() {
 
 	r.mu.Lock()
 	if !r.paused {
+		if !r.closed {
+			// Text during the pause is not seen, so the text before it must
+			// not be joined to the text after it.
+			r.flushRedactorsLocked()
+		}
 		r.paused = true
 		r.pauseStart = time.Now()
 	}
@@ -432,7 +463,9 @@ func (r *Recorder) writeEvent(event RecordingEvent) {
 // Flush writes any buffered data to the underlying file.
 //
 // Events are buffered for performance. Call Flush to ensure all
-// recorded events are written to disk immediately.
+// recorded events are written to disk immediately. With RedactSecrets,
+// Flush does not write the text held back for redaction, since that would
+// split a secret that the next chunk continues; Pause or Close writes it.
 func (r *Recorder) Flush() error {
 	if r == nil {
 		return nil
@@ -460,7 +493,8 @@ func (r *Recorder) Flush() error {
 
 // Close finalizes the recording and closes the file.
 //
-// This flushes all buffered data and closes any compression streams.
+// This flushes all buffered data, including text held back for redaction,
+// and closes any compression streams.
 // Always call Close when finished recording to ensure data is not lost.
 // It's safe to call Close multiple times.
 func (r *Recorder) Close() error {
@@ -479,6 +513,7 @@ func (r *Recorder) Close() error {
 	var firstErr error
 
 	if r.writer != nil {
+		r.flushRedactorsLocked()
 		if err := r.writer.Flush(); err != nil && firstErr == nil {
 			firstErr = err
 		}

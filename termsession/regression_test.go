@@ -186,6 +186,118 @@ func TestRecorder_RedactsInput(t *testing.T) {
 	}
 }
 
+// recordChunks records each chunk as an output ("o") or input ("i") event
+// with redaction on, then closes the recorder and returns the events. The
+// recorder runs fn, if any, after the chunks and before Close.
+func recordChunks(t *testing.T, typ string, chunks []string, fn func(*Recorder)) []RecordingEvent {
+	t.Helper()
+	filename := filepath.Join(t.TempDir(), "redact.cast")
+	r, err := NewRecorder(filename, 80, 24, RecordingOptions{RedactSecrets: true})
+	assert.NoError(t, err)
+	for _, c := range chunks {
+		if typ == "i" {
+			r.RecordInput(c)
+		} else {
+			r.RecordOutput(c)
+		}
+	}
+	if fn != nil {
+		fn(r)
+	}
+	assert.NoError(t, r.Close())
+	_, events, err := LoadCastFile(filename)
+	assert.NoError(t, err)
+	return events
+}
+
+// eventData joins the data of events of type typ.
+func eventData(events []RecordingEvent, typ string) string {
+	var b strings.Builder
+	for _, e := range events {
+		if e.Type == typ {
+			b.WriteString(e.Data)
+		}
+	}
+	return b.String()
+}
+
+// TestRecorder_RedactsSecretSplitAcrossReads verifies that a secret split
+// across PTY reads is joined and redacted whole. PTY reads split output at
+// any byte, with no cursor move between the pieces.
+func TestRecorder_RedactsSecretSplitAcrossReads(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string
+		want   string
+	}{
+		{
+			"value written after its label",
+			[]string{"Token: ", "s3cr3tvalue\r\n"},
+			"Token: [REDACTED]\r\n",
+		},
+		{
+			"read ends in the middle of the value",
+			[]string{"export API_KEY=sk-1234", "567890abcdefghij\r\n"},
+			"export API_KEY=[REDACTED]\r\n",
+		},
+		{
+			"unlabeled AWS key in two reads",
+			[]string{"key AKIAIOSFODNN", "7EXAMPLE done\r\n"},
+			"key [REDACTED] done\r\n",
+		},
+		{
+			"style escape split between label and value",
+			[]string{"password: \033[1", "mhunter2\033[0m\r\n"},
+			"password: \033[1m[REDACTED]\033[0m\r\n",
+		},
+		{
+			"secret at the end of the recording",
+			[]string{"password: ", "hunt", "er2"},
+			"password: [REDACTED]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events := recordChunks(t, "o", tt.chunks, nil)
+			assert.Equal(t, eventData(events, "o"), tt.want)
+		})
+	}
+}
+
+// TestRecorder_RedactsInputTypedKeyByKey verifies that input keystrokes are
+// matched together, so a secret typed after its key is redacted.
+func TestRecorder_RedactsInputTypedKeyByKey(t *testing.T) {
+	var keys []string
+	for _, c := range "export TOKEN=abc123\r" {
+		keys = append(keys, string(c))
+	}
+	events := recordChunks(t, "i", keys, nil)
+	assert.Equal(t, eventData(events, "i"), "export TOKEN=[REDACTED]\r")
+}
+
+// TestRecorder_PauseFlushesHeldText verifies that Pause records the text the
+// redactor holds back, and that the text before a pause is not joined to the
+// text after it.
+func TestRecorder_PauseFlushesHeldText(t *testing.T) {
+	events := recordChunks(t, "o", []string{"Token: ", "abc"}, func(r *Recorder) {
+		r.RecordInput("q")
+		r.Pause()
+		r.Resume()
+		r.RecordOutput("hello")
+	})
+	assert.Equal(t, eventData(events, "o"), "Token: [REDACTED]hello")
+	assert.Equal(t, eventData(events, "i"), "q")
+	// The held "abc" and "q" are recorded at the pause, before "hello".
+	assert.Equal(t, events[len(events)-1].Data, "hello")
+}
+
+// TestRecorder_CloseFlushesHeldText verifies that no output is lost when the
+// recording ends in the middle of a run of text.
+func TestRecorder_CloseFlushesHeldText(t *testing.T) {
+	events := recordChunks(t, "o", []string{"hello ", "wor", "ld"}, nil)
+	assert.Equal(t, eventData(events, "o"), "hello world")
+}
+
 // TestRecordingEvent_ResizeRoundTrip verifies resize events survive a
 // save/load cycle through the JSON array encoding.
 func TestRecordingEvent_ResizeRoundTrip(t *testing.T) {

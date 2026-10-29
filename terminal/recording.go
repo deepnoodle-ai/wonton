@@ -51,8 +51,8 @@ type Recorder struct {
 
 	// Redaction matches each event with the end of the events before it,
 	// so a value written after its key ("Token: ") is still redacted.
-	outputRedactor redactor
-	inputRedactor  redactor
+	outputRedactor Redactor
+	inputRedactor  Redactor
 }
 
 // RecordingOptions configures recording behavior
@@ -184,12 +184,11 @@ func (t *Terminal) PauseRecording() {
 		recorder.mu.Lock()
 		if !recorder.paused {
 			// Text written during the pause is not seen, so the text before
-			// it must not be joined to the text after it.
+			// it must not be joined to the text after it. Flushing resets
+			// the redactors.
 			recorder.flushRedactorsLocked()
 			recorder.paused = true
 			recorder.pauseStart = time.Now()
-			recorder.outputRedactor = redactor{}
-			recorder.inputRedactor = redactor{}
 		}
 		recorder.mu.Unlock()
 	}
@@ -239,7 +238,7 @@ func (r *Recorder) RecordOutput(data string) {
 
 	if r.redactSecrets {
 		// The redactor can hold back the end of data until the next event.
-		data = r.outputRedactor.redact(data)
+		data = r.outputRedactor.Redact(data)
 	}
 
 	if len(data) == 0 {
@@ -288,7 +287,7 @@ func (r *Recorder) RecordInput(data string) {
 
 	// Apply redaction to input as well (passwords, API keys typed by user)
 	if r.redactSecrets {
-		data = r.inputRedactor.redact(data)
+		data = r.inputRedactor.Redact(data)
 	}
 
 	if len(data) == 0 {
@@ -306,10 +305,10 @@ func (r *Recorder) RecordInput(data string) {
 // more can continue it. Caller must hold r.mu.
 func (r *Recorder) flushRedactorsLocked() {
 	now := time.Now()
-	if data := r.outputRedactor.flush(); data != "" {
+	if data := r.outputRedactor.Flush(); data != "" {
 		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "o", Data: data})
 	}
-	if data := r.inputRedactor.flush(); data != "" {
+	if data := r.inputRedactor.Flush(); data != "" {
 		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "i", Data: data})
 	}
 }
