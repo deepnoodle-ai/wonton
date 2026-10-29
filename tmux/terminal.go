@@ -209,12 +209,12 @@ func (t *Terminal) Detach() error {
 
 // Kill ends the session and every process in it.
 func (t *Terminal) Kill() error {
-	_, err := t.ctl.Command("kill-session -t " + Quote("="+t.Session()))
-	if errors.Is(err, ErrClosed) {
-		err = nil
+	_, err := t.ctl.Command("kill-session -t " + Quote(t.sessID))
+	if err != nil && !errors.Is(err, ErrClosed) {
+		return err
 	}
 	<-t.done
-	return err
+	return nil
 }
 
 // Rename renames the terminal's session.
@@ -222,7 +222,7 @@ func (t *Terminal) Rename(name string) error {
 	if name == "" || strings.ContainsAny(name, ":.") {
 		return fmt.Errorf("tmux: invalid session name %q", name)
 	}
-	_, err := t.ctl.Command("rename-session -t " + Quote("="+t.Session()) + " " + Quote(name))
+	_, err := t.ctl.Command("rename-session -t " + Quote(t.sessID) + " " + Quote(name))
 	if err == nil {
 		t.mu.Lock()
 		t.session = name

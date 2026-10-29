@@ -187,6 +187,29 @@ func TestTerminalRenameAndKill(t *testing.T) {
 	assert.False(t, s.HasSession(ctx, "after"))
 }
 
+// Another client can rename the session. Kill and Rename target the session
+// ID, so they still reach it.
+func TestTerminalKillAfterOutsideRename(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	term, err := s.Open(ctx, TerminalOptions{Session: "before", Command: "cat", Width: 20, Height: 3})
+	assert.NoError(t, err)
+	_, err = s.Run(ctx, "rename-session", "-t", "=before", "outside")
+	assert.NoError(t, err)
+
+	assert.NoError(t, term.Rename("after"))
+	assert.True(t, s.HasSession(ctx, "after"))
+	done := make(chan error, 1)
+	go func() { done <- term.Kill() }()
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Kill did not return")
+	}
+	assert.False(t, s.HasSession(ctx, "after"))
+}
+
 func TestTerminalScrollEntersCopyMode(t *testing.T) {
 	s := testServer(t)
 	term, err := s.Open(context.Background(), TerminalOptions{
