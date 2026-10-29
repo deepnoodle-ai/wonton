@@ -52,7 +52,7 @@ func (g *GroupView) flex() int {
 	// won't become flexible just because it contains a Spacer
 	for _, child := range g.children {
 		// Skip spacers - they're layout utilities, not content
-		if _, isSpacer := child.(*SpacerView); isSpacer {
+		if isSpacer(child) {
 			continue
 		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
