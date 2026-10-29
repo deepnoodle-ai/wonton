@@ -757,3 +757,34 @@ func TestTerminalIsAnIOWriter(t *testing.T) {
 	assert.Equal(t, n, 12, "Write reports the bytes consumed, as io.Writer requires")
 	assert.Equal(t, buf.String(), "\033]52;c;aGk=\a")
 }
+
+func TestTerminal_Unbuffered_SetCellOutOfBounds(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(10, 2)
+	assert.ErrorIs(t, term.SetCell(-1, 0, 'x', NewStyle()), ErrOutOfBounds)
+	assert.ErrorIs(t, term.SetCell(10, 0, 'x', NewStyle()), ErrOutOfBounds)
+	assert.ErrorIs(t, term.SetCell(0, 2, 'x', NewStyle()), ErrOutOfBounds)
+	assert.ErrorIs(t, term.SetCell(9, 0, '世', NewStyle()), ErrOutOfBounds)
+	assert.Equal(t, "", out.String())
+}
+
+func TestTerminal_Unbuffered_FillClipsAndHandlesWideChars(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(5, 2)
+
+	// Negative or fully off-screen dimensions must not panic or write output.
+	assert.NotPanics(t, func() {
+		term.Fill(0, 0, -1, 1, '*')
+		term.Fill(0, 0, 1, -1, '*')
+		term.Fill(-5, 0, 2, 1, '*')
+		term.Fill(10, 0, 2, 1, '*')
+	})
+	assert.Equal(t, "", out.String())
+
+	// Partially out-of-bounds rectangle clips to the terminal bounds.
+	term.Fill(3, 0, 5, 1, '#')
+	assert.Equal(t, "\x1b[1;4H##", out.String())
+
+	// Wide characters fill by display width rather than rune count.
+	out.Reset()
+	term.Fill(0, 1, 3, 1, '世')
+	assert.Equal(t, "\x1b[2;1H世 ", out.String())
+}

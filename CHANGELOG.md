@@ -148,6 +148,57 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `ClearToEndOfLine` blanked cells with a black background. In non-buffered
   mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
   was written after any cell with another style in the same flush.
+- `gif.Emulator` buffers an escape sequence or multi-byte UTF-8 character
+  split across `ProcessOutput` or `Write` calls until the rest of the bytes
+  arrive, instead of printing the tail of the sequence as text. It also
+  consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
+  string payloads across calls without buffering them) and CAN/SUB-cancelled
+  CSI sequences, and treats an explicit `0` parameter as `1` in relative
+  cursor movement sequences (`CSI 0 A` through `CSI 0 F`), which before
+  did not move the cursor. (#134)
+- `termtest.Screen` joins a combining mark, variation selector, or ZWJ
+  continuation written in a separate `Write`, `WriteString`, or `WriteRune`
+  call (or after an SGR sequence) onto the cell before the cursor, ignores
+  standalone zero-width clusters instead of overwriting the current cell, and
+  streams incomplete OSC, DCS, SOS, PM, and APC payloads across writes
+  without buffering them. Its ANSI parser also ignores `<`-prefixed private
+  CSI sequences and CSI sequences with intermediate bytes, handles `CSI ? J`
+  and `CSI ? K` selective erases, and consumes intermediate `ESC` sequences
+  such as `ESC # 8`. (#134)
+- `termsession.Player` honors `Seek` called before `Play`, caps an initial
+  idle delay before the first event when `MaxIdle` is set, and holds its read
+  lock across the end-of-events check and event read in `Play` so a
+  concurrent `Seek` past the end cannot panic. `termsession.Recorder` records
+  a resize event on `Resume` when `UpdateSize` was called while paused. (#134)
+- `terminal.Terminal.DetectKittyProtocol` no longer loses the first key
+  typed after it. When `os.Stdin` was a file opened with `os.OpenFile`, such
+  as a PTY in a test, and the terminal did not answer, the probe left a read
+  behind that took the next key press. The probe also works on a real
+  terminal now. Before, it needed a read deadline on `os.Stdin`, which the
+  standard `os.Stdin` does not support, so it reported false without
+  asking. Terminals that support the Kitty keyboard protocol are now
+  detected, and `tui` turns the protocol on for them. The probe stops at the
+  end of the terminal's reply, so keys typed after it are kept. Keys typed
+  while it waits are dropped. If the terminal has not answered after 200ms,
+  or 400ms once it has started to answer, or after 1 KiB of input without
+  its reply, the probe discards pending input. A whole reply that arrives
+  later decodes as `KeyUnknown`, not as keys. (#136)
+- `terminal.KeyDecoder` no longer drops the keys that follow a cut-off or
+  invalid UTF-8 character, or a legacy `ESC [ M` mouse report cut off by a
+  key. Before, a bad character took up to three following bytes, such as
+  Enter or Ctrl+C, and a mouse report took a control byte as its payload. A
+  legacy mouse report past column or row 223, where xterm sends NUL, is
+  dropped instead of reported at a negative position. A typed U+FFFD is no
+  longer dropped. (#136)
+- `terminal.Terminal.ClearToEndOfLine` started on the second column of a wide
+  character blanks its first column too, and a narrower terminal blanks a
+  wide character cut by the new right edge. Before, half a glyph stayed in
+  the buffer. (#136)
+- In non-buffered mode, `terminal.Terminal.SetCell` returns `ErrOutOfBounds`
+  for a cell outside the terminal or a wide character that does not fit, as
+  in buffered mode. `Fill` and `FillStyled` clip the rectangle to the
+  terminal and step by the character's display width. Before, they wrote
+  outside the terminal, and a negative width panicked. (#136)
 
 ## [0.9.0] - 2026-10-24
 

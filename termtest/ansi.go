@@ -13,6 +13,23 @@ import (
 func (s *Screen) processANSI(data string) int {
 	i := 0
 	for i < len(data) {
+		if s.skip != skipNone {
+			// Inside an OSC, DCS, SOS, PM, or APC payload, possibly begun in
+			// an earlier Write. The payload is discarded as it arrives rather
+			// than buffered, so a large one (a sixel image, an OSC 52 copy)
+			// costs no memory and is scanned only once.
+			end := parseStringTerminator(data[i:], s.skip == skipOSC)
+			if end < 0 {
+				// Keep a trailing ESC: it may be the first byte of ST.
+				if data[len(data)-1] == '\x1b' {
+					return len(data) - 1
+				}
+				return len(data)
+			}
+			s.skip = skipNone
+			i += end
+			continue
+		}
 		if data[i] == '\x1b' {
 			// Start of escape sequence
 			if i+1 >= len(data) {
@@ -33,28 +50,16 @@ func (s *Screen) processANSI(data string) int {
 				}
 				return i // Incomplete sequence
 			case ']':
-				// OSC sequence (Operating System Command)
-				end := s.parseOSC(data[i+2:])
-				if end >= 0 {
-					i += 2 + end
-					continue
-				}
-				return i // Incomplete sequence
+				// OSC (Operating System Command): skip the payload through
+				// BEL or ST
+				s.skip = skipOSC
+				i += 2
+				continue
 			case 'P', 'X', '^', '_':
-				// DCS/SOS/PM/APC: string sequence, consume payload through ST
-				end := parseStringTerminator(data[i+2:])
-				if end >= 0 {
-					i += 2 + end
-					continue
-				}
-				return i // Incomplete sequence
-			case '(', ')', '*', '+':
-				// Character set designation, skip
-				if i+2 < len(data) {
-					i += 3
-					continue
-				}
-				return i // Incomplete sequence
+				// DCS/SOS/PM/APC: skip the string payload through ST
+				s.skip = skipST
+				i += 2
+				continue
 			case '7':
 				// Save cursor and attributes (DECSC)
 				s.savedX = s.cursorX
@@ -103,6 +108,24 @@ func (s *Screen) processANSI(data string) int {
 				i += 2
 				continue
 			}
+			// Intermediate-prefixed escape (e.g. ESC ( B, ESC # 8, ESC SP F):
+			// ESC <0x20-0x2F>+ <0x30-0x7E>
+			if data[i+1] >= 0x20 && data[i+1] <= 0x2F {
+				j := i + 2
+				for j < len(data) && data[j] >= 0x20 && data[j] <= 0x2F {
+					j++
+				}
+				if j >= len(data) {
+					return i // Incomplete sequence
+				}
+				if data[j] >= 0x30 && data[j] <= 0x7E {
+					i = j + 1
+					continue
+				}
+				// Not a valid final byte: drop the ESC and the intermediates.
+				i = j
+				continue
+			}
 			// Unknown escape (ESC =, ESC >, ...): skip the ESC and its final byte
 			i += 2
 		} else {
@@ -138,13 +161,24 @@ func incompleteRuneTail(str string) int {
 	return 0
 }
 
-// parseStringTerminator scans for the ST (ESC \) terminator of a DCS, SOS,
-// PM, or APC string sequence. Returns the number of bytes consumed including
-// the terminator, or -1 if the sequence is incomplete.
-func parseStringTerminator(data string) int {
+// parseStringTerminator scans the payload of a string sequence for its end:
+// ST (ESC \), or also BEL for OSC (allowBEL). CAN and SUB cancel the
+// sequence, and an ESC not followed by '\' ends it and starts a new
+// sequence, which is left unconsumed. Returns the number of bytes consumed,
+// or -1 if the payload continues past the end of data.
+func parseStringTerminator(data string, allowBEL bool) int {
 	for i := 0; i < len(data); i++ {
-		if data[i] == '\x1b' && i+1 < len(data) && data[i+1] == '\\' {
-			return i + 2
+		if data[i] == '\x18' || data[i] == '\x1a' || (allowBEL && data[i] == '\x07') {
+			return i + 1
+		}
+		if data[i] == '\x1b' {
+			if i+1 >= len(data) {
+				return -1
+			}
+			if data[i+1] == '\\' {
+				return i + 2
+			}
+			return i
 		}
 	}
 	return -1
@@ -181,11 +215,26 @@ func (s *Screen) parseCSI(data string) int {
 	params := data[:end]
 	cmd := data[end]
 
-	// Private-parameter sequences (CSI ?, CSI >, CSI =) such as DEC private
-	// modes or xterm modifyOtherKeys don't affect screen content; consume
-	// and ignore them so e.g. "CSI >4;2m" isn't misread as SGR.
-	if len(params) > 0 && (params[0] == '?' || params[0] == '>' || params[0] == '=') {
-		return end + 1
+	// Sequences with intermediate bytes (0x20-0x2F, such as DECSCUSR
+	// "CSI 2 SP q" or SL/SR "CSI n SP @/A") have distinct meanings from
+	// standard CSI commands and do not affect the screen model.
+	for i := 0; i < len(params); i++ {
+		if params[i] >= 0x20 && params[i] <= 0x2F {
+			return end + 1
+		}
+	}
+
+	// Private-parameter sequences (CSI <, CSI =, CSI >, CSI ?) such as DEC
+	// private modes, SGR mouse, Kitty keyboard protocol, or xterm
+	// modifyOtherKeys have their own command namespaces; consume and ignore
+	// them, except DECSED (CSI ? J) and DECSEL (CSI ? K) which erase like
+	// standard ED/EL.
+	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
+		if params[0] == '?' && (cmd == 'J' || cmd == 'K') {
+			params = params[1:]
+		} else {
+			return end + 1
+		}
 	}
 
 	// Parse parameters
@@ -286,21 +335,6 @@ func (s *Screen) parseCSI(data string) int {
 	}
 
 	return end + 1
-}
-
-// parseOSC parses an OSC (Operating System Command) sequence.
-// Returns the number of bytes consumed (not including the OSC prefix).
-func (s *Screen) parseOSC(data string) int {
-	// OSC sequences end with ST (\x1b\\) or BEL (\x07)
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\x07' {
-			return i + 1
-		}
-		if data[i] == '\x1b' && i+1 < len(data) && data[i+1] == '\\' {
-			return i + 2
-		}
-	}
-	return -1 // Incomplete
 }
 
 // sgrParam is a single SGR parameter with optional colon-separated

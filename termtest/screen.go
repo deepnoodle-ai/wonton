@@ -142,7 +142,16 @@ type Screen struct {
 	savedStyle  Style    // Saved style (ESC 7/8)
 	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
+	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
 }
+
+type skipMode uint8
+
+const (
+	skipNone skipMode = iota
+	skipST            // skipping DCS/SOS/PM/APC payload until ST (ESC \)
+	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
+)
 
 // NewScreen creates a new virtual terminal screen with the specified dimensions.
 // The screen is initialized with empty cells (spaces) and the cursor at position (0, 0).
@@ -304,6 +313,19 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		return
 	}
 
+	switch {
+	case clusterWidth <= 0:
+		// Zero-width text with no cluster to join, such as a combining
+		// mark at the start of a line or a zero-width space, takes no cell.
+		return
+	case clusterWidth > 2:
+		clusterWidth = 1
+	}
+	if clusterWidth > s.width {
+		// A wide cluster never fits a one-column screen.
+		return
+	}
+
 	// Wrap if needed (deferred from filling the last column, or because the
 	// cluster doesn't fit on the current line)
 	if s.wrapPending || s.cursorX+clusterWidth > s.width {
@@ -324,6 +346,59 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 	}
 }
 
+// extendPrevious joins the start of str to the cluster in the cell before the
+// cursor when Unicode segmentation makes them one cluster, and returns the
+// rest of str.
+func (s *Screen) extendPrevious(str string) string {
+	// ASCII never extends a cluster: only LF does, after CR.
+	if str == "" || str[0] < utf8.RuneSelf || s.width <= 0 || s.height <= 0 {
+		return str
+	}
+	var x int
+	if s.wrapPending {
+		x = s.cursorX
+	} else {
+		if s.cursorX <= 0 {
+			return str
+		}
+		x = s.cursorX - 1
+	}
+	y := s.cursorY
+	if s.cells[y][x].Continuation && x > 0 {
+		x--
+	}
+	prev := s.cells[y][x]
+	if prev.Continuation || prev.Char == 0 {
+		return str
+	}
+	prevText := cellGlyph(prev)
+	for cluster, width := range runewidth.Graphemes(prevText + str) {
+		if len(cluster) <= len(prevText) {
+			return str
+		}
+		switch {
+		case width <= 0:
+			width = max(prev.Width, 1)
+		case width > 2:
+			width = 1
+		}
+		if x+width > s.width {
+			width = max(prev.Width, 1)
+		}
+		first, firstSize := utf8.DecodeRuneInString(cluster)
+		s.setCellGlyph(x, y, first, cluster[firstSize:], width, prev.Style)
+		s.cursorX = x + width
+		if s.cursorX >= s.width {
+			s.cursorX = s.width - 1
+			s.wrapPending = true
+		} else {
+			s.wrapPending = false
+		}
+		return str[len(cluster)-len(prevText):]
+	}
+	return str
+}
+
 // lineFeed moves the cursor down one row, scrolling at the bottom.
 func (s *Screen) lineFeed() {
 	s.cursorY++
@@ -342,11 +417,15 @@ func (s *Screen) lineFeed() {
 //
 // The screen scrolls up automatically when writing past the bottom.
 func (s *Screen) WriteRune(r rune) {
-	s.writeCluster(string(r), runewidth.RuneWidth(r))
+	s.WriteString(string(r))
 }
 
 // WriteString writes a string at the cursor position.
 func (s *Screen) WriteString(str string) {
+	if s.width <= 0 || s.height <= 0 {
+		return
+	}
+	str = s.extendPrevious(str)
 	for cluster, clusterWidth := range runewidth.Graphemes(str) {
 		s.writeCluster(cluster, clusterWidth)
 	}
@@ -410,6 +489,7 @@ func (s *Screen) Reset() {
 	s.savedY = 0
 	s.savedStyle = Style{}
 	s.pending = nil
+	s.skip = skipNone
 }
 
 // ClearLine clears the current line.
