@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-29
+
 ### Fixed
 
 - In a multiline `tui.Input` or `tui.InputField`, a CRLF breaks the line as
