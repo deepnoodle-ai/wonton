@@ -431,11 +431,23 @@ func TestTerminalRetriesFailedResize(t *testing.T) {
 	term.Resize(30, 10)
 	assert.Contains(t, <-f.lines, "resize-window")
 	f.send("%begin 1 1 1", "no space for new pane", "%error 1 1 1")
-	waitFor(t, "the size to be forgotten", func() bool {
+	waitFor(t, "the refusal", func() bool {
 		term.mu.Lock()
 		defer term.mu.Unlock()
-		return term.width == 0
+		return !term.retryAt.IsZero()
 	})
+
+	// Asking again at once sends nothing, so resizing on every frame does
+	// not flood tmux. Once the delay is over, it tries again.
+	term.Resize(30, 10)
+	select {
+	case line := <-f.lines:
+		t.Fatalf("resent at once: %q", line)
+	case <-time.After(50 * time.Millisecond):
+	}
+	term.mu.Lock()
+	term.retryAt = time.Now().Add(-time.Millisecond)
+	term.mu.Unlock()
 	term.Resize(30, 10)
 	assert.Contains(t, <-f.lines, "resize-window")
 }

@@ -64,6 +64,7 @@ type Terminal struct {
 	screen     *Screen
 	width      int // the size last asked of tmux
 	height     int
+	retryAt    time.Time // when a size tmux refused may be asked again
 	capturing  bool
 	dirty      bool // output arrived while a capture was running
 	timer      *time.Timer
@@ -231,19 +232,25 @@ func (t *Terminal) Rename(name string) error {
 	return err
 }
 
+// resizeRetryDelay is how long Resize waits before asking again for a size
+// tmux refused, so a caller that resizes on every frame does not send it on
+// every frame.
+const resizeRetryDelay = time.Second
+
 // Resize sets the pane's size in cells. It returns at once; the screen is
 // recaptured once tmux has resized the pane. Asking for the size already
-// asked for does nothing.
+// asked for does nothing, unless tmux refused it more than a second ago.
 func (t *Terminal) Resize(width, height int) {
 	if width < 1 || height < 1 {
 		return
 	}
 	t.mu.Lock()
-	if width == t.width && height == t.height {
+	if width == t.width && height == t.height && (t.retryAt.IsZero() || time.Now().Before(t.retryAt)) {
 		t.mu.Unlock()
 		return
 	}
 	t.width, t.height = width, height
+	t.retryAt = time.Time{}
 	t.mu.Unlock()
 	select {
 	case <-t.done:
@@ -253,10 +260,9 @@ func (t *Terminal) Resize(width, height int) {
 	errc := t.ctl.Go(t.resizeCommand(width, height))
 	go func() {
 		if err, ok := <-errc; ok && err != nil {
-			// Forget the size, so asking for it again tries again.
 			t.mu.Lock()
 			if t.width == width && t.height == height {
-				t.width, t.height = 0, 0
+				t.retryAt = time.Now().Add(resizeRetryDelay)
 			}
 			t.mu.Unlock()
 		}
