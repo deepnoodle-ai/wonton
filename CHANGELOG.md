@@ -11,6 +11,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Security
+
+- Upgrade `golang.org/x/net` to v0.62.0 for GO-2026-6866 and GO-2026-6860.
+  `htmlparse` and `htmltomd` call the affected HTML parsing and rendering
+  code. Wonton now requires Go 1.26, because that `x/net` release does.
+
 ## [0.9.0] - 2026-10-24
 
 ### Added
