@@ -236,13 +236,23 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		}
 
 		// encoding/json encodes string, numeric, and boolean fields (or
-		// pointers to them) with the ",string" option as JSON strings.
+		// pointers to them) with the ",string" option as JSON strings. A
+		// field that already decodes from a JSON string then needs a JSON
+		// string literal inside that string; see describeEncodedString.
+		encodedString := false
 		if c.stringOpt && supportsJSONStringOption(c.field.Type) {
+			if prop.Type == String {
+				describeEncodedString(prop)
+				encodedString = true
+			}
 			prop.Type = String
 		}
 
 		// Apply field tags to the property
 		applyFieldTags(prop, c.field)
+		if encodedString {
+			encodeTagValues(prop)
+		}
 
 		// Pointer-embedded structs are optional, so their promoted fields are
 		// not required on the enclosing struct.
@@ -404,6 +414,61 @@ func supportsJSONStringOption(t reflect.Type) bool {
 	default:
 		return false
 	}
+}
+
+// encodedStringPattern matches a JSON string literal, quotes included, as
+// RFC 8259 defines it: no unescaped quote, backslash, or control character,
+// and only the escapes \" \\ \/ \b \f \n \r \t and \uXXXX. It is valid in
+// both Go's regexp and ECMA-262, which JSON Schema validators use.
+const encodedStringPattern = `^"(?:[^"\\\x00-\x1f]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*"$`
+
+// encodedStringDescription is the description of a field that holds a
+// JSON-encoded string, unless the field has a description tag.
+const encodedStringDescription = `a JSON-encoded string, such as "\"abc\""`
+
+// describeEncodedString describes a field that decodes from a JSON string
+// (a string kind, a pointer to one, or an encoding.TextUnmarshaler) and has
+// the ",string" option. encoding/json then decodes only a JSON string whose
+// content is itself a JSON string literal: {"name":"\"abc\""} sets Name to
+// abc, and {"name":"abc"} fails. The property stays a string and gains a
+// pattern and a description saying so.
+//
+// Field tags apply after this. A description or pattern tag replaces the
+// generated one; a pattern tag, like format, minLength, and maxLength, is
+// matched against the encoded value, quotes included. Nullable is unaffected:
+// a pattern does not apply to null. Enum, default, and example tags name Go
+// values, and encodeTagValues encodes them.
+func describeEncodedString(prop *Property) {
+	pattern := encodedStringPattern
+	prop.Pattern = &pattern
+	prop.Description = encodedStringDescription
+}
+
+// encodeTagValues JSON-encodes the enum, default, and example values of a
+// field described by describeEncodedString, so enum:"red" becomes "\"red\"",
+// the value encoding/json decodes to red.
+func encodeTagValues(prop *Property) {
+	for i, v := range prop.Enum {
+		prop.Enum[i] = encodeTagValue(v)
+	}
+	prop.Default = encodeTagValue(prop.Default)
+	prop.Example = encodeTagValue(prop.Example)
+}
+
+// encodeTagValue returns v as a JSON string literal if v is a string, and v
+// otherwise. HTML characters are left unescaped to keep the value readable.
+func encodeTagValue(v any) any {
+	s, ok := v.(string)
+	if !ok {
+		return v
+	}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		return v
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // recursivePlaceholder is the permissive schema used where a type refers to
