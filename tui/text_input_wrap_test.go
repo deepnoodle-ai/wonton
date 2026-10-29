@@ -78,36 +78,37 @@ func TestTextInput_WrappedLineNavigation(t *testing.T) {
 	ti.SetBounds(image.Rect(0, 0, 10, 3))
 	ti.SetValue("abcdefghijklm") // row 0: "abcdefghij" (0..10), row 1: "klm" (10..13)
 
-	// Place cursor at column 0 of the wrapped second visual line ('k', offset 10).
+	// Offset 10 ('k') draws at column 0 of the wrapped second row.
 	ti.CursorPos = 10
 	assert.False(t, ti.atFirstVisualLine(), "cursor on wrapped row 1 must not report first visual line")
 
-	// Home on column 0 of row 1 stays at offset 10 instead of jumping to row 0.
-	ti.HandleKey(KeyEvent{Key: KeyHome})
-	assert.Equal(t, 10, ti.CursorPos)
-
-	// End on column 0 of row 1 moves to the end of row 1 (offset 13).
-	ti.HandleKey(KeyEvent{Key: KeyEnd})
-	assert.Equal(t, 13, ti.CursorPos)
-
 	// Up from column 0 of row 1 moves to column 0 of row 0 (offset 0).
-	ti.CursorPos = 10
 	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
-	assert.Equal(t, 0, ti.CursorPos)
+	assert.Equal(t, ti.CursorPos, 0)
 
-	// End on a soft-wrapped line stops at the last character on that visual line ('j', offset 9),
-	// not the first character of the next visual line ('k', offset 10); typing then inserts before 'j'.
+	// Home and End move within the line between newlines, across soft wraps,
+	// so typing after End appends to the line.
 	ti.CursorPos = 3
 	ti.HandleKey(KeyEvent{Key: KeyEnd})
-	assert.Equal(t, 9, ti.CursorPos)
+	assert.Equal(t, ti.CursorPos, 13)
 	ti.HandleKey(KeyEvent{Rune: 'X'})
-	assert.Equal(t, "abcdefghiXjklm", ti.Value())
-	assert.Equal(t, 10, ti.CursorPos)
+	assert.Equal(t, ti.Value(), "abcdefghijklmX")
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 0)
+
+	// With a hard newline, Home and End stop at it.
+	ti.SetValue("abcdefghijklm\nxyz")
+	ti.CursorPos = 3
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, ti.CursorPos, 13)
+	ti.CursorPos = 16
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 14)
 
 	// When row 0 wraps early before a wide char ("abcdefghi" + "中klmnopqr"),
 	// pressing Up from the end of row 1 (col 10) must land on row 0 ('i', offset 8),
 	// not on '中' (offset 9, which is row 1 col 0).
 	ti.SetValue("abcdefghi中klmnopqr")
 	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
-	assert.Equal(t, 8, ti.CursorPos)
+	assert.Equal(t, ti.CursorPos, 8)
 }

@@ -605,11 +605,9 @@ func cursorLineIndex(lines []lineRange, pos int) int {
 }
 
 // lineLastCursorPos returns the last byte offset on lines[i] that still draws
-// the cursor on that visual row. Because a soft-wrapped line shares its end
-// offset with the start of lines[i+1], placing the cursor at lines[i].end
-// would draw it at column 0 of the next row. Instead, this returns the start
-// of the last grapheme cluster on lines[i]; pressing End on a soft-wrapped row
-// therefore lands on that final character, and typing inserts before it.
+// the cursor on that visual row. A soft-wrapped line shares its end offset
+// with the start of lines[i+1], which draws at column 0 of the next row, so
+// for such a line this is the start of its last grapheme cluster.
 func lineLastCursorPos(displayText string, lines []lineRange, i int) int {
 	line := lines[i]
 	if i+1 < len(lines) && line.end == lines[i+1].start && line.end > line.start {
@@ -618,78 +616,41 @@ func lineLastCursorPos(displayText string, lines []lineRange, i int) int {
 	return line.end
 }
 
-// getCurrentLineRange returns the start and end byte positions of the current visual line.
-func (t *textInput) getCurrentLineRange(displayText string) (start, end int) {
-	lines := t.getVisualLines(displayText)
-	if len(lines) == 0 {
-		return 0, len(displayText)
-	}
-	i := cursorLineIndex(lines, t.CursorPos)
-	return lines[i].start, lineLastCursorPos(displayText, lines, i)
-}
-
 // cursorUp moves cursor to the previous visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
 func (t *textInput) cursorUp(displayText string) int {
-	lines := t.getVisualLines(displayText)
-	if len(lines) == 0 {
-		return t.CursorPos
-	}
-
-	cursorLine := cursorLineIndex(lines, t.CursorPos)
-	if cursorLine == 0 {
-		return t.CursorPos // Already on first line
-	}
-
-	cursorXOffset := 0
-	for _, cw := range runewidth.Graphemes(displayText[lines[cursorLine].start:min(t.CursorPos, len(displayText))]) {
-		cursorXOffset += cw
-	}
-
-	prevLine := lines[cursorLine-1]
-	// Find position on previous line at same x offset
-	targetX := 0
-	localOffset := 0
-	for cluster, cw := range runewidth.Graphemes(displayText[prevLine.start:prevLine.end]) {
-		if targetX+cw > cursorXOffset {
-			return prevLine.start + localOffset
-		}
-		targetX += cw
-		localOffset += len(cluster)
-	}
-	return lineLastCursorPos(displayText, lines, cursorLine-1)
+	return t.cursorToVisualLine(displayText, -1)
 }
 
 // cursorDown moves cursor to the next visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
 func (t *textInput) cursorDown(displayText string) int {
+	return t.cursorToVisualLine(displayText, 1)
+}
+
+// cursorToVisualLine returns the offset on the visual line delta rows from
+// the cursor's that is nearest the cursor's column, or CursorPos when there
+// is no such line.
+func (t *textInput) cursorToVisualLine(displayText string, delta int) int {
 	lines := t.getVisualLines(displayText)
-	if len(lines) == 0 {
+	cur := cursorLineIndex(lines, t.CursorPos)
+	target := cur + delta
+	if target < 0 || target >= len(lines) {
 		return t.CursorPos
 	}
+	cursorX := runewidth.StringWidth(displayText[lines[cur].start:min(t.CursorPos, len(displayText))])
 
-	cursorLine := cursorLineIndex(lines, t.CursorPos)
-	if cursorLine >= len(lines)-1 {
-		return t.CursorPos // Already on last line
-	}
-
-	cursorXOffset := 0
-	for _, cw := range runewidth.Graphemes(displayText[lines[cursorLine].start:min(t.CursorPos, len(displayText))]) {
-		cursorXOffset += cw
-	}
-
-	nextLine := lines[cursorLine+1]
-	// Find position on next line at same x offset
-	targetX := 0
-	localOffset := 0
-	for cluster, cw := range runewidth.Graphemes(displayText[nextLine.start:nextLine.end]) {
-		if targetX+cw > cursorXOffset {
-			return nextLine.start + localOffset
+	line := lines[target]
+	x := 0
+	offset := line.start
+	for cluster, cw := range runewidth.Graphemes(displayText[line.start:line.end]) {
+		if x+cw > cursorX {
+			return offset
 		}
-		targetX += cw
-		localOffset += len(cluster)
+		x += cw
+		offset += len(cluster)
 	}
-	return lineLastCursorPos(displayText, lines, cursorLine+1)
+	return lineLastCursorPos(displayText, lines, target)
 }
 
 // atFirstVisualLine reports whether the cursor is on the first visual line,
@@ -987,10 +948,17 @@ func (t *textInput) deleteToEnd() {
 	t.deleteRange(t.CursorPos, t.displayLen())
 }
 
-// lineDeleteEnd finds the first newline that forward deletion would stop at.
-// Special segments are atomic, and CRLF is one grapheme, so neither stops
-// deletion at an embedded newline.
-func (t *textInput) lineDeleteEnd() int {
+// lineStart returns the offset just after the last newline before the
+// cursor, or 0 when the cursor is on the first line.
+func (t *textInput) lineStart() int {
+	dt := t.DisplayText()
+	return strings.LastIndex(dt[:min(t.CursorPos, len(dt))], "\n") + 1
+}
+
+// lineEnd returns the offset of the first newline at or after the cursor,
+// or the end of the text. Special segments are atomic, and CRLF is one
+// grapheme, so neither ends the line at an embedded newline.
+func (t *textInput) lineEnd() int {
 	pos := 0
 	for _, seg := range t.segments {
 		segEnd := pos + len(seg.display)
@@ -1133,17 +1101,17 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		}
 		return true
 	case KeyHome, KeyCtrlA:
+		// In multiline mode Home and End move within the line between
+		// newlines, as Ctrl+U and Ctrl+K do, not the soft-wrapped row.
 		if t.MultilineMode {
-			lineStart, _ := t.getCurrentLineRange(displayText)
-			t.CursorPos = t.snapOutOfSpecial(lineStart, false)
+			t.CursorPos = t.lineStart()
 		} else {
 			t.CursorPos = 0
 		}
 		return true
 	case KeyEnd, KeyCtrlE:
 		if t.MultilineMode {
-			_, lineEnd := t.getCurrentLineRange(displayText)
-			t.CursorPos = t.snapOutOfSpecial(lineEnd, false)
+			t.CursorPos = t.lineEnd()
 		} else {
 			t.CursorPos = t.displayLen()
 		}
@@ -1152,18 +1120,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		// Delete from cursor to beginning of line
 		if t.CursorPos > 0 {
 			if t.MultilineMode {
-				// Find the start-of-line byte position (just after the
-				// previous newline, or 0).
-				dt := t.DisplayText()
-				cursorPos := t.CursorPos
-				if cursorPos > len(dt) {
-					cursorPos = len(dt)
-				}
-				targetPos := 0
-				if nl := strings.LastIndex(dt[:cursorPos], "\n"); nl >= 0 {
-					targetPos = nl + 1
-				}
-				t.deleteRange(targetPos, cursorPos)
+				t.deleteRange(t.lineStart(), min(t.CursorPos, len(displayText)))
 			} else {
 				t.deleteToBeginning()
 			}
@@ -1176,7 +1133,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 		// Delete from cursor to end of line
 		if t.CursorPos < t.displayLen() {
 			if t.MultilineMode {
-				t.deleteRange(t.CursorPos, t.lineDeleteEnd())
+				t.deleteRange(t.CursorPos, t.lineEnd())
 			} else {
 				t.deleteToEnd()
 			}

@@ -68,20 +68,29 @@ func TestTextInputEditInsidePastePlaceholder(t *testing.T) {
 	}
 }
 
-func TestTextInputHomeEndSkipsWrappedPastePlaceholder(t *testing.T) {
+// A placeholder split across a soft wrap is still atomic: Up and Down snap
+// out of it, and Home and End go to the ends of the line around it.
+func TestTextInputWrappedPastePlaceholder(t *testing.T) {
 	ti := newPlaceholderInput(t).WithMultilineMode(true)
 	ti.SetBounds(image.Rect(0, 0, 10, 3))
 	// DisplayText is "a[pasted 2 lines]" (17 bytes); at width 10, row 0 is 0..10
 	// and row 1 is 10..17, splitting the paste placeholder across rows.
-	ti.CursorPos = 0
-	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	end := len(ti.DisplayText())
+	ti.CursorPos = end
+	ti.HandleKey(KeyEvent{Key: KeyArrowUp})
 	if ti.CursorPos != 1 {
-		t.Fatalf("End on row 0 should snap before placeholder, got cursor=%d", ti.CursorPos)
+		t.Fatalf("Up into the placeholder should snap before it, got cursor=%d", ti.CursorPos)
 	}
-
-	ti.CursorPos = len(ti.DisplayText())
+	ti.HandleKey(KeyEvent{Key: KeyArrowDown})
+	if ti.CursorPos != end {
+		t.Fatalf("Down into the placeholder should snap after it, got cursor=%d", ti.CursorPos)
+	}
 	ti.HandleKey(KeyEvent{Key: KeyHome})
-	if ti.CursorPos != 1 {
-		t.Fatalf("Home on row 1 should snap before placeholder, got cursor=%d", ti.CursorPos)
+	if ti.CursorPos != 0 {
+		t.Fatalf("Home should go to the line start, got cursor=%d", ti.CursorPos)
+	}
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	if ti.CursorPos != end {
+		t.Fatalf("End should go to the line end, got cursor=%d", ti.CursorPos)
 	}
 }
