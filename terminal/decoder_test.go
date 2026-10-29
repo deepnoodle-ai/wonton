@@ -522,6 +522,13 @@ func TestKeyDecoder_ReadEvent_KittyCSIuModifiers(t *testing.T) {
 			name:        "Ctrl+J via CSI u decodes as Shift+Enter, as LF does",
 			input:       []byte{0x1B, '[', '1', '0', '6', ';', '5', 'u'},
 			expectedKey: KeyEnter,
+			expectCtrl:  false,
+			expectShift: true,
+		},
+		{
+			name:        "Ctrl+Shift+J via CSI u stays Ctrl+J",
+			input:       []byte{0x1B, '[', '1', '0', '6', ';', '6', 'u'},
+			expectedKey: KeyCtrlJ,
 			expectCtrl:  true,
 			expectShift: true,
 		},
