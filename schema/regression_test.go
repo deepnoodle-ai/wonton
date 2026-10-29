@@ -201,6 +201,17 @@ func (c customTextValue) MarshalText() ([]byte, error) {
 	return []byte(c.raw), nil
 }
 
+// customJSONInt implements json.Marshaler, so encoding/json calls MarshalJSON
+// and ignores the ",string" option on fields of this type.
+type customJSONInt int
+
+func (c customJSONInt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(int(c))
+}
+
+// namedIntPtr is a named pointer type; encoding/json ignores ",string" on it.
+type namedIntPtr *int
+
 // encoding/json encodes fields with json:",string" (for string, numeric, and
 // boolean types, or pointers to them) and types implementing
 // encoding.TextMarshaler as JSON strings.
@@ -214,6 +225,8 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 		Token   customTextValue        `json:"token"`
 		OptTok  *customTextValue       `json:"opt_token,omitempty"`
 		Iface   encoding.TextMarshaler `json:"iface,omitempty"`
+		Custom  customJSONInt          `json:"custom,string"`
+		Named   namedIntPtr            `json:"named,string"`
 	}
 
 	s, err := Generate(payload{})
@@ -230,6 +243,8 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	assert.NotNil(t, s.Properties["opt_token"].Nullable)
 	assert.True(t, *s.Properties["opt_token"].Nullable)
 	assert.Empty(t, s.Properties["iface"].Type)
+	assert.Equal(t, Integer, s.Properties["custom"].Type)
+	assert.Equal(t, Integer, s.Properties["named"].Type)
 
 	// A struct that embeds a TextMarshaler promotes MarshalText and marshals
 	// as a JSON string in encoding/json.
@@ -329,4 +344,33 @@ func TestGenerateEmbeddedConflictAndDepthRules(t *testing.T) {
 	assert.Contains(t, s.Properties, "left")
 	assert.Contains(t, s.Properties, "right")
 	assert.Equal(t, []string{"left", "right"}, s.Required)
+}
+
+type EmbedLoopA struct {
+	*EmbedLoopB
+	A string `json:"a"`
+}
+
+type EmbedLoopB struct {
+	*EmbedLoopA
+	B    string      `json:"b"`
+	Next *EmbedLoopB `json:"next,omitempty"`
+}
+
+// Structs that embed each other terminate, and a struct reflected as a field
+// type still gets the fields it promotes from an embedded struct that is
+// already being reflected further up, as encoding/json encodes them.
+func TestGenerateEmbeddingCycle(t *testing.T) {
+	s, err := Generate(EmbedLoopA{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "a")
+	assert.Contains(t, s.Properties, "b")
+	assert.Contains(t, s.Properties, "next")
+	assert.Equal(t, []string{"a"}, s.Required)
+
+	next := s.Properties["next"]
+	assert.Equal(t, Object, next.Type)
+	assert.Contains(t, next.Properties, "a")
+	assert.Contains(t, next.Properties, "b")
+	assert.Contains(t, next.Properties["next"].Description, "recursive reference")
 }
