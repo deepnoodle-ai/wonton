@@ -235,6 +235,16 @@ bug fixes. Release notes identify incompatible changes explicitly.
   color. `tui.CornerHighlightAnimation` now fades the highlight into both
   edges next to the lit corner. Before, it faded only into the top edge, and
   also when the bottom-left corner was lit. (#139)
+- `terminal.Terminal` no longer trusts its own width for multi-rune
+  grapheme clusters such as keycaps, VS16 emoji, and Indic text when it
+  writes a frame. It repositions the cursor after each one, erases the cells
+  a wide one spans, and rewrites the rest of the row. Before, a terminal that
+  drew such a cluster at another width shifted the rest of the row or let
+  old cells show through, leaving stale glyphs such as an old border behind.
+  Rows of plain text produce the same output as before. (#139)
+- When `tui.LivePrinter`'s live region shrinks, it clears the leftover lines
+  from column 0. Before, in raw mode, the start of the first leftover line
+  stayed on screen. (#139)
 - `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
   string, integer, floating-point, and boolean types or pointers to them),
   named types that `json.Unmarshal` decodes from a string because they
