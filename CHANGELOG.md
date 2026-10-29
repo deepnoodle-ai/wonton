@@ -123,8 +123,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   arrive, instead of printing the tail of the sequence as text. It also
   consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
   string payloads across calls without buffering them) and CAN/SUB-cancelled
-  CSI sequences, and treats an explicit `0` parameter as `1` in cursor
-  movement sequences (`CSI 0 A` through `G`, `d`, `H`, and `f`). (#134)
+  CSI sequences, and treats an explicit `0` parameter as `1` in relative
+  cursor movement sequences (`CSI 0 A` through `CSI 0 F`), which before
+  did not move the cursor. (#134)
 - `termtest.Screen` joins a combining mark, variation selector, or ZWJ
   continuation written in a separate `Write`, `WriteString`, or `WriteRune`
   call (or after an SGR sequence) onto the cell before the cursor, ignores
