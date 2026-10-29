@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -166,4 +167,32 @@ func TestKeyDecoder_EscapeTimeoutDisabled(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, event.(KeyEvent), KeyEvent{Key: KeyEscape})
 	assert.Equal(t, len(src.waits), 0)
+}
+
+func TestKeyDecoder_MalformedSGRMouseReportIsNotEOF(t *testing.T) {
+	// A mouse report missing a coordinate must not read as the end of the
+	// input: the runtime stops reading for good on io.EOF.
+	decoder := NewKeyDecoder(strings.NewReader("\x1b[<35;20;Ma\x1b[<0;5;6M"))
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent).Key, KeyUnknown)
+
+	event, err = decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent).Rune, 'a')
+
+	event, err = decoder.ReadEvent()
+	assert.NoError(t, err)
+	mouse := event.(MouseEvent)
+	assert.Equal(t, mouse.X, 4)
+	assert.Equal(t, mouse.Y, 5)
+
+	_, err = decoder.ReadEvent()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestParseMouseEvent_ShortReportIsNotEOF(t *testing.T) {
+	_, err := ParseMouseEvent([]byte("<35;20;M"))
+	assert.Error(t, err)
+	assert.False(t, errors.Is(err, io.EOF))
 }
