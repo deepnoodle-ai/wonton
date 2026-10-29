@@ -1,12 +1,15 @@
 package gif
 
 import (
+	"image"
 	"image/color"
+	"image/draw"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/runewidth"
+	"golang.org/x/image/font/sfnt"
 )
 
 // TerminalCell represents a single character cell in a terminal screen,
@@ -308,6 +311,12 @@ type TerminalRenderer struct {
 	padding    int
 	font       *FontFace  // TTF font (nil = use bitmap)
 	bitmapFont BitmapFont // Bitmap font to use if font is nil
+
+	// Fallback fonts and their caches, used with a TTF font only.
+	fallbacks []*FallbackFont
+	glyphBuf  sfnt.Buffer
+	choices   map[string]glyphChoice
+	masks     map[maskKey]*image.Alpha
 }
 
 // RendererOptions configures how a TerminalRenderer converts terminal screens
@@ -325,6 +334,11 @@ type RendererOptions struct {
 	UseBitmap  bool       // Force bitmap font instead of TTF (faster, lower quality)
 	BitmapFont BitmapFont // Which bitmap font to use when UseBitmap=true (default: 8x16)
 	Padding    int        // Padding in pixels around terminal content (default: 8)
+
+	// FallbackFonts are tried in order for characters the TTF font has no
+	// glyph for, such as emoji and CJK text. Nil uses DefaultFallbackFonts;
+	// an empty, non-nil slice turns fallback off. Bitmap fonts ignore it.
+	FallbackFonts []*FallbackFont
 }
 
 // DefaultRendererOptions returns sensible defaults for terminal rendering.
@@ -361,6 +375,9 @@ func NewTerminalRendererWithOptions(screen *TerminalScreen, opts RendererOptions
 		screen:     screen,
 		padding:    opts.Padding,
 		bitmapFont: opts.BitmapFont,
+		fallbacks:  opts.FallbackFonts,
+		choices:    map[string]glyphChoice{},
+		masks:      map[maskKey]*image.Alpha{},
 	}
 
 	// Determine font and cell dimensions
@@ -389,6 +406,9 @@ func NewTerminalRendererWithOptions(screen *TerminalScreen, opts RendererOptions
 			tr.cellWidth = opts.BitmapFont.Width
 			tr.cellHeight = opts.BitmapFont.Height
 		}
+	}
+	if tr.font != nil && tr.fallbacks == nil {
+		tr.fallbacks = DefaultFallbackFonts()
 	}
 
 	// Calculate image dimensions
@@ -456,14 +476,22 @@ func (tr *TerminalRenderer) RenderFrame(delay int) {
 
 // drawCell draws a cell's grapheme cluster at the given pixel position.
 //
-// A TTF font also draws the cluster's combining marks over its first rune.
-// The renderer does no mark positioning, so a mark drawn after its base
-// would land in the next cell. Other trailing runes, such as the rest of an
-// emoji ZWJ sequence, need text shaping and are not drawn. Bitmap fonts draw
-// only the first rune, since they draw a box for any glyph they lack.
+// With a TTF font, a cluster the font cannot draw, or an emoji sequence,
+// is drawn with the first fallback font that has a glyph for it (see
+// chooseGlyph). Otherwise the font draws the cluster's first rune and its
+// combining marks over it. The renderer does no mark positioning, so a mark
+// drawn after its base would land in the next cell. Bitmap fonts draw only
+// the first rune, since they draw a box for any glyph they lack.
 func (tr *TerminalRenderer) drawCell(f *Frame, px, py int, cell TerminalCell) {
 	if tr.font == nil {
 		DrawBitmapChar(f, px, py, cell.Char, cell.FG, tr.bitmapFont)
+		return
+	}
+	if c := tr.chooseGlyph(cell); c.font != nil {
+		w := max(cell.Width, 1) * tr.cellWidth
+		mask := tr.glyphMask(c, w)
+		draw.DrawMask(f.img, image.Rect(px, py, px+w, py+tr.cellHeight),
+			image.NewUniform(cell.FG), image.Point{}, mask, image.Point{}, draw.Over)
 		return
 	}
 	tr.font.DrawChar(f.img, px, py, cell.Char, cell.FG)

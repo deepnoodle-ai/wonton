@@ -19,6 +19,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `gif.TerminalCell` has `Trailing`, `Width`, and `Continuation` fields and a
   `Text` method, matching `terminal.Cell`. A cell holds a whole grapheme
   cluster, and a wide cluster's second column is a continuation cell.
+- The `gif` terminal renderer draws emoji and CJK text with fallback fonts
+  when its TTF font has no glyph for a character. `RendererOptions` and
+  `CastOptions` have a `FallbackFonts` field. By default the renderer uses
+  the embedded Noto Emoji font (monochrome), then installed CJK and symbol
+  fonts. Flags, keycaps, skin tones, and ZWJ sequences draw as one glyph.
+  `gif.ParseFallbackFont` loads another font, and `gif.EmojiFallbackFont`,
+  `gif.SystemFallbackFonts`, and `gif.DefaultFallbackFonts` return the
+  built-in choices. The embedded font adds about 870 KB to programs that
+  import `gif`.
 
 ### Changed
 
@@ -46,8 +55,7 @@ bug fixes. Release notes identify incompatible changes explicitly.
   2. A cluster split across writes or around an escape sequence joins the
   cell before the cursor, and writing or erasing over half of a wide cluster
   blanks the other half. With a TTF font, the renderer draws combining marks
-  over their base character. Glyphs the bundled font lacks, such as CJK and
-  emoji, still render blank.
+  over their base character.
 
 ## [0.9.0] - 2026-10-24
 

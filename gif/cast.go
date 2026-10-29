@@ -28,6 +28,11 @@ type CastOptions struct {
 	Font      *FontFace // Custom TTF/OTF font (nil = use default Inconsolata)
 	FontSize  float64   // Font size in points when using default font (default: 14)
 	UseBitmap bool      // Force bitmap font instead of TTF (faster but lower quality)
+
+	// FallbackFonts are tried in order for characters the TTF font has no
+	// glyph for, such as emoji and CJK text. Nil uses DefaultFallbackFonts;
+	// an empty, non-nil slice turns fallback off.
+	FallbackFonts []*FallbackFont
 }
 
 // DefaultCastOptions returns sensible defaults for cast conversion.
@@ -126,11 +131,12 @@ func RenderCastEvents(header *termsession.RecordingHeader, events []termsession.
 	// Create emulator and renderer
 	emulator := NewEmulator(canvasCols, canvasRows)
 	rendererOpts := RendererOptions{
-		Font:       opts.Font,
-		FontSize:   opts.FontSize,
-		UseBitmap:  opts.UseBitmap,
-		BitmapFont: BitmapFont8x16, // Default bitmap font when UseBitmap=true
-		Padding:    opts.Padding,
+		Font:          opts.Font,
+		FontSize:      opts.FontSize,
+		UseBitmap:     opts.UseBitmap,
+		FallbackFonts: opts.FallbackFonts,
+		BitmapFont:    BitmapFont8x16, // Default bitmap font when UseBitmap=true
+		Padding:       opts.Padding,
 	}
 	renderer := NewTerminalRendererWithOptions(emulator.Screen(), rendererOpts)
 	renderer.SetLoopCount(0) // Loop forever

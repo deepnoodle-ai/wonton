@@ -267,6 +267,34 @@ if err := g.Encode(&buf); err != nil {
 // Use buf.Bytes() or write to any io.Writer
 ```
 
+### Emoji and CJK in Terminal GIFs
+
+The TTF renderer draws a character its font lacks with a fallback font. By
+default it tries the embedded Noto Emoji font, then the installed CJK and
+symbol fonts that `SystemFallbackFonts` finds. Emoji glyphs are monochrome
+and take the text color. Flags, keycaps, skin tones, and ZWJ sequences draw
+as one glyph when the font has a ligature for them. CJK text renders only on
+a system with one of the known CJK fonts installed.
+
+```go
+// Use your own CJK font, and no system fonts
+data, err := os.ReadFile("NotoSansCJK-Regular.ttc")
+if err != nil {
+    log.Fatal(err)
+}
+cjk, err := gif.ParseFallbackFont(data)
+if err != nil {
+    log.Fatal(err)
+}
+
+opts := gif.DefaultCastOptions()
+opts.FallbackFonts = []*gif.FallbackFont{gif.EmojiFallbackFont(), cjk}
+g, err := gif.RenderCast("demo.cast", opts)
+```
+
+Set `FallbackFonts` to an empty slice to turn fallback off. Bitmap fonts do
+not use fallback fonts.
+
 ## API Reference
 
 ### Constructor Functions
