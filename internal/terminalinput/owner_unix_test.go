@@ -185,3 +185,47 @@ func TestOwnerHangupWakesIdleRead(t *testing.T) {
 		t.Fatal("hung-up input did not settle")
 	}
 }
+
+func TestWaitReadyWaitsForInputWithoutConsumingIt(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	state, err := term.MakeRaw(int(slave.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Restore(int(slave.Fd()), state)
+	owner, err := New(slave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	if owner.WaitReady(10 * time.Millisecond) {
+		t.Fatal("idle terminal reported ready")
+	}
+	go func() { time.Sleep(10 * time.Millisecond); master.Write([]byte("[A")) }()
+	if !owner.WaitReady(time.Second) {
+		t.Fatal("input written during the wait was not reported")
+	}
+	var data [2]byte
+	if _, err := io.ReadFull(owner, data[:]); err != nil || string(data[:]) != "[A" {
+		t.Fatalf("read=%q %v", data, err)
+	}
+	result := make(chan bool, 1)
+	go func() { result <- owner.WaitReady(time.Minute) }()
+	time.Sleep(10 * time.Millisecond)
+	if err := owner.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ready := <-result:
+		if ready {
+			t.Fatal("paused owner with nothing captured reported ready")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pause did not wake the wait")
+	}
+}

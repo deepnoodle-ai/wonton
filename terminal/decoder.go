@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/internal/terminalinput"
@@ -59,13 +61,35 @@ import (
 // This ensures that each ReadEvent call reads exactly one complete event, making it
 // safe to interleave with other input operations if needed.
 //
+// # Escape Timeout
+//
+// A lone Escape key and the start of an escape sequence both begin with the
+// ESC byte. When ESC is the last byte available, the decoder waits up to
+// DefaultEscapeTimeout for more input before it reports KeyEscape, so a
+// sequence that the terminal writes in two pieces still decodes as one key.
+// The wait needs a source that can be polled: an *os.File on Unix, or the
+// terminal input owner used by the tui package. Other readers get no wait. See
+// SetEscapeTimeout.
+//
 // # Thread Safety
 //
 // KeyDecoder is NOT thread-safe. Only one goroutine should call ReadEvent at a time.
 type KeyDecoder struct {
 	reader        *bufio.Reader
 	src           *fillTracker
+	wait          func(time.Duration) bool // nil if the source cannot be polled
+	escapeTimeout time.Duration
 	pasteTabWidth int // 0 = preserve tabs, >0 = convert to this many spaces
+}
+
+// DefaultEscapeTimeout is how long a KeyDecoder waits after an ESC byte for
+// the rest of an escape sequence before it reports a lone Escape key.
+const DefaultEscapeTimeout = 50 * time.Millisecond
+
+// readyWaiter is implemented by sources that can wait for input without
+// consuming it, such as terminalinput.Owner.
+type readyWaiter interface {
+	WaitReady(timeout time.Duration) bool
 }
 
 // fillTracker records whether the most recent Read filled the whole buffer
@@ -85,11 +109,19 @@ func (f *fillTracker) Read(p []byte) (int, error) {
 
 // standaloneEscape reports whether an ESC that was just read is a lone
 // Escape key press. Escape sequences arrive as a rapid burst, so if the
-// terminal sent one, the following bytes are normally already buffered. The
-// exception is when the ESC was the last byte of a read that filled the
-// buffer; then the rest of the burst is still in the source.
+// terminal sent one, the following bytes are normally already buffered. When
+// nothing is buffered, the decoder waits up to the escape timeout for more
+// input, which also catches a sequence the terminal wrote in two pieces.
+// Without a wait, it can only guess: if the ESC was the last byte of a read
+// that filled the buffer, the rest of the burst is probably still pending.
 func (kd *KeyDecoder) standaloneEscape() bool {
-	return kd.reader.Buffered() == 0 && !kd.src.full
+	if kd.reader.Buffered() > 0 {
+		return false
+	}
+	if kd.wait == nil || kd.escapeTimeout <= 0 {
+		return !kd.src.full
+	}
+	return !kd.wait(kd.escapeTimeout)
 }
 
 // NewKeyDecoder creates a new KeyDecoder that reads from the given input stream.
@@ -107,11 +139,29 @@ func (kd *KeyDecoder) standaloneEscape() bool {
 // input character-by-character rather than line-by-line.
 func NewKeyDecoder(reader io.Reader) *KeyDecoder {
 	src := &fillTracker{r: reader}
+	var wait func(time.Duration) bool
+	switch r := reader.(type) {
+	case readyWaiter:
+		wait = r.WaitReady
+	case *os.File:
+		wait = fileWaiter(r)
+	}
 	return &KeyDecoder{
 		reader:        bufio.NewReader(src),
 		src:           src,
+		wait:          wait,
+		escapeTimeout: DefaultEscapeTimeout,
 		pasteTabWidth: 0, // Default: preserve tabs
 	}
+}
+
+// SetEscapeTimeout sets how long the decoder waits after an ESC byte for the
+// rest of an escape sequence before it reports a lone Escape key. A longer
+// timeout tolerates slower links, such as SSH, but delays each Escape key
+// press by that much. Zero or less disables the wait. The default is
+// DefaultEscapeTimeout.
+func (kd *KeyDecoder) SetEscapeTimeout(d time.Duration) {
+	kd.escapeTimeout = d
 }
 
 // SetPasteTabWidth configures how tabs in pasted content are handled.
@@ -205,10 +255,8 @@ func (kd *KeyDecoder) ReadEvent() (Event, error) {
 // handleEscapeEvent processes an escape key or escape sequence, including mouse events
 // We've already consumed the ESC byte (0x1B)
 func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
-	// Check if there are more bytes already buffered.
-	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
-	// sequence, the following bytes should already be in the buffer.
-	// If nothing is buffered, this is a standalone Escape key press.
+	// If no more bytes are buffered or arrive within the escape timeout, this
+	// is a standalone Escape key press.
 	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
 	}
@@ -516,10 +564,8 @@ func (kd *KeyDecoder) ReadKeyEvent() (KeyEvent, error) {
 // handleEscape processes an escape key or escape sequence
 // We've already consumed the ESC byte (0x1B)
 func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
-	// Check if there are more bytes already buffered.
-	// Escape sequences arrive as a rapid burst, so if the terminal sent an escape
-	// sequence, the following bytes should already be in the buffer.
-	// If nothing is buffered, this is a standalone Escape key press.
+	// If no more bytes are buffered or arrive within the escape timeout, this
+	// is a standalone Escape key press.
 	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
 	}

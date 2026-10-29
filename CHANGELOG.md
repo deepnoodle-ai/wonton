@@ -11,6 +11,29 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
+  after an ESC byte for the rest of an escape sequence. The default is
+  `terminal.DefaultEscapeTimeout`, 50ms. Zero turns the wait off.
+
+### Changed
+
+- **Breaking**: Wonton now requires Go 1.26. `golang.org/x/net` is upgraded
+  to v0.62.0, which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser
+  that `htmlparse` and `htmltomd` use, and that version requires Go 1.26.
+
+### Fixed
+
+- `terminal.KeyDecoder` decodes an escape sequence that the terminal writes
+  in two pieces, such as `x\x1b` and then `[A`, as `x` and `KeyArrowUp`.
+  Before, it reported `x`, `KeyEscape`, `[`, and `A`. When ESC is the last
+  byte available, the decoder now waits up to 50ms for more input. A lone
+  Escape key press is reported after that wait. The decoder waits only when
+  it can poll its source: an `*os.File` on Unix, or the input owner that
+  `tui` apps use on Linux and macOS. Any other `io.Reader`, and an
+  `*os.File` on Windows, keeps the old behavior. (#116)
+
 ## [0.9.0] - 2026-10-24
 
 ### Added

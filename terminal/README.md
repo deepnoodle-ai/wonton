@@ -275,11 +275,12 @@ for {
 
 ### Input Decoding
 
-| Function          | Description                  | Inputs        | Outputs              |
-| ----------------- | ---------------------------- | ------------- | -------------------- |
-| `NewKeyDecoder`   | Create input decoder         | `r io.Reader` | `*KeyDecoder`        |
-| `ReadEvent`       | Read next input event        | None          | `Event, error`       |
-| `ParseMouseEvent` | Parse mouse event from bytes | `seq []byte`  | `*MouseEvent, error` |
+| Function           | Description                           | Inputs            | Outputs              |
+| ------------------ | ------------------------------------- | ----------------- | -------------------- |
+| `NewKeyDecoder`    | Create input decoder                  | `r io.Reader`     | `*KeyDecoder`        |
+| `ReadEvent`        | Read next input event                 | None              | `Event, error`       |
+| `SetEscapeTimeout` | Set the wait after ESC (default 50ms) | `d time.Duration` | None                 |
+| `ParseMouseEvent`  | Parse mouse event from bytes          | `seq []byte`      | `*MouseEvent, error` |
 
 ### Styles
 

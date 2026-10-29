@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -117,6 +118,41 @@ func (o *Owner) Read(dst []byte) (int, error) {
 				return 0, io.EOF
 			}
 		}
+	}
+}
+
+// WaitReady waits up to timeout for input that Read can return without
+// blocking, and reports whether there is some. It does not consume input.
+// A hangup or terminal error also reports true, so the next Read returns it.
+// Pause and Stop end the wait early.
+func (o *Owner) WaitReady(timeout time.Duration) bool {
+	o.readMu.Lock()
+	defer o.readMu.Unlock()
+	deadline := time.Now().Add(timeout)
+	for {
+		o.mu.Lock()
+		if o.stopped || o.paused {
+			ready := !o.stopped && len(o.captured) > 0
+			o.mu.Unlock()
+			return ready
+		}
+		o.mu.Unlock()
+		remaining := max(time.Until(deadline), 0)
+		descriptors := []unix.PollFd{{Fd: int32(o.fd), Events: unix.POLLIN}, {Fd: int32(o.wakeRead), Events: unix.POLLIN}}
+		if _, err := unix.Poll(descriptors, int((remaining+time.Millisecond-1)/time.Millisecond)); err != nil {
+			if errors.Is(err, unix.EINTR) && remaining > 0 {
+				continue
+			}
+			return false
+		}
+		if descriptors[0].Revents != 0 {
+			return true
+		}
+		if descriptors[1].Revents == 0 {
+			return false // timed out
+		}
+		var bytes [64]byte
+		_, _ = unix.Read(o.wakeRead, bytes[:])
 	}
 }
 

@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - name: Download dependencies
@@ -65,7 +65,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - name: Vet
@@ -87,14 +87,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The jobs above pin the 1.25 line, which is the oldest toolchain this
+      # The jobs above pin the 1.26 line, which is the oldest toolchain this
       # module supports. This one deliberately tracks the newest stable Go
       # instead. govulncheck reports standard library advisories against
-      # whatever toolchain it scans with, and setup-go's '1.25' resolves to
-      # whatever its manifest currently holds -- go1.25.12 at the time of
-      # writing, which trails the go1.25.13 that fixes five advisories we
-      # reach. Scanning on stable means a stdlib finding here tells us Go
-      # itself has no fix yet, rather than that the runner is a patch behind.
+      # whatever toolchain it scans with, and setup-go's '1.26' resolves to
+      # whatever its manifest currently holds, which can trail the patch
+      # release that fixes an advisory we reach. Scanning on stable means a
+      # stdlib finding here tells us Go itself has no fix yet, rather than
+      # that the runner is a patch behind.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

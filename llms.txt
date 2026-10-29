@@ -2,7 +2,7 @@
 
 Wonton is a Go module for rapid CLI and TUI application development. It provides
 terminal UI components, a CLI framework, web crawling, git operations, and
-utilities commonly needed by agentic command-line tools. Requires Go 1.25+.
+utilities commonly needed by agentic command-line tools. Requires Go 1.26+.
 Module path: `github.com/deepnoodle-ai/wonton`.
 
 Wonton is organized as a flat collection of focused packages under one module.
