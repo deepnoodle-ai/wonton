@@ -16,12 +16,18 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
   after an ESC byte for the rest of an escape sequence. The default is
   `terminal.DefaultEscapeTimeout`, 50ms. Zero turns the wait off.
+- `gif.TerminalCell` has `Trailing`, `Width`, and `Continuation` fields and a
+  `Text` method, matching `terminal.Cell`. A cell holds a whole grapheme
+  cluster, and a wide cluster's second column is a continuation cell.
 
 ### Changed
 
 - **Breaking**: Wonton now requires Go 1.26. `golang.org/x/net` is upgraded
   to v0.62.0, which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser
   that `htmlparse` and `htmltomd` use, and that version requires Go 1.26.
+- **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
+  without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
+  compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
 
 ### Fixed
 
@@ -51,6 +57,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
   reset or cursor move that follows a secret, and a secret in a hyperlink's
   URL is redacted inside the OSC 8 sequence. `terminal.RedactCredentials`
   also skips escape sequences. (#110)
+- `gif.Emulator` and `gif.TerminalScreen.WriteString` give each grapheme
+  cluster one cell, or two for a wide one, and advance the cursor by display
+  width. CJK text, emoji, and combining marks in casts no longer push the
+  rest of the line out of place: after `世A` the cursor is at column 3, not
+  2. A cluster split across writes or around an escape sequence joins the
+  cell before the cursor, and writing or erasing over half of a wide cluster
+  blanks the other half. With a TTF font, the renderer draws combining marks
+  over their base character. Glyphs the bundled font lacks, such as CJK and
+  emoji, still render blank.
 
 ## [0.9.0] - 2026-10-24
 
