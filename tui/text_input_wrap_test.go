@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -69,4 +70,54 @@ func TestTextInput_OversizedClusterDoesNotBlankLeadingLine(t *testing.T) {
 		// line 1; with width 3, cluster wraps to line 2.
 		assert.Equal(t, 2, calcWrappedHeight("ab"+cluster, 3))
 	})
+}
+
+func TestTextInput_WrappedLineNavigation(t *testing.T) {
+	ti := newTextInput().WithMultilineMode(true)
+	ti.SetFocused(true)
+	ti.SetBounds(image.Rect(0, 0, 10, 3))
+	ti.SetValue("abcdefghijklm") // row 0: "abcdefghij" (0..10), row 1: "klm" (10..13)
+
+	// Offset 10 ('k') draws at column 0 of the wrapped second row.
+	ti.CursorPos = 10
+	assert.False(t, ti.atFirstVisualLine(), "cursor on wrapped row 1 must not report first visual line")
+
+	// Up from column 0 of row 1 moves to column 0 of row 0 (offset 0).
+	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
+	assert.Equal(t, ti.CursorPos, 0)
+
+	// Home and End move within the line between newlines, across soft wraps,
+	// so typing after End appends to the line.
+	ti.CursorPos = 3
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, ti.CursorPos, 13)
+	ti.HandleKey(KeyEvent{Rune: 'X'})
+	assert.Equal(t, ti.Value(), "abcdefghijklmX")
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 0)
+
+	// With a hard newline, Home and End stop at it.
+	ti.SetValue("abcdefghijklm\nxyz")
+	ti.CursorPos = 3
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, ti.CursorPos, 13)
+	ti.CursorPos = 16
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 14)
+
+	// The layout does not break a line at CRLF, which is one grapheme, so
+	// Home and End go past it, as they do for the row it is drawn on.
+	ti.SetValue("ab\r\ncd")
+	ti.CursorPos = 5
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 0)
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, ti.CursorPos, 6)
+
+	// When row 0 wraps early before a wide char ("abcdefghi" + "中klmnopqr"),
+	// pressing Up from the end of row 1 (col 10) must land on row 0 ('i', offset 8),
+	// not on '中' (offset 9, which is row 1 col 0).
+	ti.SetValue("abcdefghi中klmnopqr")
+	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
+	assert.Equal(t, ti.CursorPos, 8)
 }

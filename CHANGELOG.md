@@ -68,6 +68,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
   without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
   compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
+- In a multiline `tui.Input` or `tui.InputField`, Home and End (Ctrl+A and
+  Ctrl+E) move to the start and end of the line between newlines, as Ctrl+U
+  and Ctrl+K do and as a single-line input does. Before, they moved to the
+  ends of the soft-wrapped row, so End in a long line stopped mid-word.
+  None of the four stops at a CRLF, which the input draws without a line
+  break. Before, Ctrl+U stopped after one. (#135)
 
 ### Fixed
 
@@ -199,6 +205,25 @@ bug fixes. Release notes identify incompatible changes explicitly.
   in buffered mode. `Fill` and `FillStyled` clip the rectangle to the
   terminal and step by the character's display width. Before, they wrote
   outside the terminal, and a negative width panicked. (#136)
+- In `tui.Input` and `tui.InputField`, a cursor on a character that wraps
+  to the next row, including a wide character that does not fit at the end
+  of a row, now draws at column 0 of that row, and the input scrolls to show
+  it. Before, it drew at the end of the row above, past the right edge when
+  that row was full. In a multiline input, Up, Down, and history recall
+  treat that cursor as on the wrapped row. Before, Up there recalled history
+  instead of moving up a row. Up or Down onto a soft-wrapped row shorter
+  than the cursor's column lands on that row's last character. Before, it
+  landed on the first character of the following row. (#135)
+- `tui.DetectTerminalBackground` no longer accepts an OSC 11 reply that ends
+  in an invalid UTF-8 byte or `U+FFFD` instead of BEL or ST. (#135)
+- `tui.DiffRenderer` expands a tab after a wide character or combining mark
+  to the correct tab stop. A `TabWidth` of 0 or less uses 4 instead of
+  panicking, and `RenderDiff(nil)` returns nil instead of panicking. (#135)
+- `tui.TextArea` without an `ID` uses its focused border and title styles
+  when it takes focus as the first focusable element. With
+  `HighlightCurrentLine`, Down and End scroll by the area's rendered height,
+  so a bordered area 2 rows tall, or an area a layout makes taller than its
+  `Size`, no longer scrolls too far. (#135)
 
 ## [0.9.0] - 2026-10-24
 

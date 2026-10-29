@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -132,7 +133,7 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return RGB{}, false
 		}
 		b = b[i+5:]
-		end := bytes.IndexAny(b, "\x07\x1b\x9c")
+		end := indexOSCTerminator(b)
 		if end < 0 {
 			return RGB{}, false
 		}
@@ -143,6 +144,22 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return c, true
 		}
 	}
+}
+
+// indexOSCTerminator returns the index of the first BEL, ESC, or 8-bit ST
+// (0x9c) in b, or -1. It steps by UTF-8 sequence, so the 0x9c continuation
+// byte of a character such as '✓' does not match. bytes.IndexAny cannot be
+// used: it decodes 0x9c as U+FFFD and matches any invalid byte or U+FFFD.
+func indexOSCTerminator(b []byte) int {
+	for i := 0; i < len(b); {
+		switch b[i] {
+		case 0x07, 0x1b, 0x9c:
+			return i
+		}
+		_, w := utf8.DecodeRune(b[i:])
+		i += w
+	}
+	return -1
 }
 
 // parseXColor parses the X11 color forms terminals use in OSC replies:
