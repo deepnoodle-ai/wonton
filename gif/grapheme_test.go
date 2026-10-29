@@ -80,6 +80,21 @@ func TestEmulator_ClusterSplitAcrossWrites(t *testing.T) {
 	}
 }
 
+// TestEmulator_JoinAtRightEdgeStaysInPlace checks that a symbol in the last
+// column keeps its place when a later VS16 would make it two columns wide.
+// It joins the VS16 but stays one column wide instead of wrapping.
+func TestEmulator_JoinAtRightEdgeStaysInPlace(t *testing.T) {
+	em := NewEmulator(5, 2)
+	em.ProcessOutput("abcd❤")
+	em.ProcessOutput("️")
+	screen := em.Screen()
+	checkRow(t, screen, 0, 5, []string{"a", "b", "c", "d", "❤️"})
+	checkRow(t, screen, 1, -1, []string{" ", " ", " ", " ", " "})
+	if screen.CursorY != 0 {
+		t.Errorf("cursorY = %d, want 0", screen.CursorY)
+	}
+}
+
 func TestEmulator_JoinedClusterKeepsBaseColors(t *testing.T) {
 	em := NewEmulator(20, 3)
 	em.ProcessOutput("e\x1b[31m\u0301")

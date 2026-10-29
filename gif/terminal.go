@@ -196,6 +196,12 @@ func (ts *TerminalScreen) extendPrevious(s string) string {
 		}
 		// Rewrite the joined cluster in its base's place and colors. Its
 		// width can change, as when VS16 gives a symbol emoji presentation.
+		// If the wider cluster no longer fits before the right edge, it
+		// keeps its old width, so it stays where it was printed instead of
+		// wrapping to the next line.
+		if x+width > ts.Width {
+			width = max(prev.Width, 1)
+		}
 		ts.SetCell(x, y, ' ', prev.FG, prev.BG)
 		ts.CursorX = x
 		ts.putCluster(cluster, width, prev.FG, prev.BG)
