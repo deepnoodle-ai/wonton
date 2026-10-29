@@ -625,6 +625,45 @@ func TestTerminal_PrintGraphemeClusters(t *testing.T) {
 	}
 }
 
+// TestTerminal_FlushDoesNotTrustClusterWidth pins how flush writes multi-rune
+// grapheme clusters, whose drawn width varies between terminals (keycaps,
+// VS16 emoji, Indic clusters). Trusting our width let a cluster drawn wider
+// shift every later cell on the row, and one drawn narrower expose the
+// unwritten continuation cell, so stale glyphs such as an old border stayed
+// on screen (examples/tui/reflow).
+func TestTerminal_FlushDoesNotTrustClusterWidth(t *testing.T) {
+	render := func(term *Terminal, buf *bytes.Buffer, text string) string {
+		buf.Reset()
+		frame, err := term.BeginFrame()
+		assert.NoError(t, err)
+		assert.NoError(t, frame.PrintStyled(0, 0, text, NewStyle()))
+		assert.NoError(t, term.EndFrame(frame))
+		return buf.String()
+	}
+
+	t.Run("cursor repositioned after a width-1 cluster", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		term := NewTestTerminal(10, 1, buf)
+		out := render(term, buf, "e\u0301x")
+		assert.Contains(t, out, "e\u0301\033[1;2Hx")
+	})
+
+	t.Run("wide cluster erases its span first", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		term := NewTestTerminal(10, 1, buf)
+		out := render(term, buf, "\U0001F1FA\U0001F1F8x")
+		assert.Contains(t, out, "\033[2X\U0001F1FA\U0001F1F8")
+	})
+
+	t.Run("cells after a rewritten cluster are rewritten", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		term := NewTestTerminal(10, 1, buf)
+		render(term, buf, "e\u0301ab")
+		out := render(term, buf, "a\u0301ab")
+		assert.Contains(t, out, "a\u0301\033[1;2Hab")
+	})
+}
+
 func TestTerminal_FillStyled(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 
