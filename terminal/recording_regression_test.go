@@ -110,3 +110,112 @@ func TestRecordingRedactsValueRedrawnWithoutLabel(t *testing.T) {
 	assert.False(t, strings.Contains(recorded, "abc"), "secret recorded in plain text: %q", recorded)
 	assert.True(t, strings.Contains(recorded, "Token: [REDACTED]"), "recorded: %q", recorded)
 }
+
+func TestRecordingRecordsScreenModes(t *testing.T) {
+	var screen bytes.Buffer
+	term := NewTestTerminal(20, 3, &screen)
+	term.buffered = false
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{}))
+
+	term.EnableAlternateScreen()
+	term.HideCursor()
+	term.Clear()
+	term.MoveCursor(2, 1)
+	term.EnableMouseTracking()
+	term.EnableBracketedPaste()
+	term.ShowCursor()
+	term.DisableAlternateScreen()
+	assert.NoError(t, term.StopRecording())
+
+	recorded := strings.Join(readCastEvents(t, filename), "")
+	assert.Equal(t, recorded, "\033[?1049h\033[?25l\033[2J\033[2;3H\033[?25h\033[?1049l")
+	// Input modes reach the terminal but stay out of the recording.
+	assert.Contains(t, screen.String(), "\033[?1000h")
+	assert.Contains(t, screen.String(), "\033[?2004h")
+}
+
+func TestRecordingStartsInCurrentScreenMode(t *testing.T) {
+	term := NewTestTerminal(20, 3, &bytes.Buffer{})
+	term.EnableAlternateScreen()
+	term.HideCursor()
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{}))
+	assert.NoError(t, term.StopRecording())
+
+	assert.Equal(t, readCastEvents(t, filename), []string{"\033[?1049h", "\033[?25l"})
+}
+
+func TestRecordingRedactsValueWrittenAfterLabelNonBuffered(t *testing.T) {
+	term := NewTestTerminal(30, 2, &bytes.Buffer{})
+	term.buffered = false
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{RedactSecrets: true}))
+
+	term.PrintAtStyled(0, 0, "Token: ", NewStyle().WithForeground(ColorCyan))
+	term.PrintAtStyled(7, 0, "s3cr3tvalue", NewStyle())
+	term.PrintAtStyled(0, 1, "next line", NewStyle())
+	assert.NoError(t, term.StopRecording())
+
+	recorded := strings.Join(readCastEvents(t, filename), "")
+	assert.NotContains(t, recorded, "s3cr3tvalue")
+	assert.Contains(t, recorded, "Token: \033[0m")
+	assert.Contains(t, recorded, "H[REDACTED]")
+	// Text drawn after the value is not joined to it.
+	assert.Contains(t, recorded, "Hnext line")
+}
+
+func TestRedactorKeepsEscapeSequences(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{
+			"style reset after the secret is kept",
+			"\033[31mpassword: \033[1mhunter2\033[0m done",
+			"\033[31mpassword: \033[1m[REDACTED]\033[0m done",
+		},
+		{
+			"secret split by a style change is replaced once",
+			"\033[1;1Hapi_key=abc\033[32mdef\033[0m",
+			"\033[1;1Hapi_key=[REDACTED]\033[32m\033[0m",
+		},
+		{
+			"value after a cursor move is redacted, text after the next move is not",
+			"password:\033[1;10Hhunter2\033[2;1Hnext",
+			"password:\033[1;10H[REDACTED]\033[2;1Hnext",
+		},
+		{
+			"hyperlink URL is redacted inside the sequence",
+			"\033]8;;https://x.test/?token=abc123\033\\link\033]8;;\033\\",
+			"\033]8;;https://x.test/?token=[REDACTED]\033\\link\033]8;;\033\\",
+		},
+	}
+	for _, tt := range tests {
+		var r redactor
+		assert.Equal(t, r.redact(tt.in), tt.want, tt.name)
+	}
+}
+
+func TestRedactorSecretSplitAcrossEvents(t *testing.T) {
+	var r redactor
+	assert.Equal(t, r.redact("Authorization: Bearer "), "Authorization: Bearer ")
+	assert.Equal(t, r.redact("dGhpcyBpcy"), "[REDACTED]")
+	assert.Equal(t, r.redact("BhIHNlY3JldA== ok"), "[REDACTED] ok")
+	assert.Equal(t, r.redact("plain text"), "plain text")
+}
+
+func TestRecordingPauseDropsRedactionContext(t *testing.T) {
+	term := NewTestTerminal(30, 2, &bytes.Buffer{})
+	term.buffered = false
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{RedactSecrets: true}))
+
+	term.PrintStyled("Token: ", NewStyle())
+	term.PauseRecording()
+	term.ResumeRecording()
+	term.PrintStyled("hello", NewStyle())
+	assert.NoError(t, term.StopRecording())
+
+	recorded := strings.Join(readCastEvents(t, filename), "")
+	assert.Contains(t, recorded, "hello")
+}

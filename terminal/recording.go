@@ -48,6 +48,11 @@ type Recorder struct {
 	idleTimeLimit float64
 	paused        bool
 	writeErr      error // First error encountered during write (sticky)
+
+	// Redaction matches each event with the end of the events before it,
+	// so a value written after its key ("Token: ") is still redacted.
+	outputRedactor redactor
+	inputRedactor  redactor
 }
 
 // RecordingOptions configures recording behavior
@@ -69,7 +74,13 @@ func DefaultRecordingOptions() RecordingOptions {
 	}
 }
 
-// StartRecording begins recording a session to the specified file
+// StartRecording begins recording a session to the specified file.
+//
+// The recording holds what changes the screen: drawn output, the alternate
+// screen, cursor visibility, and in non-buffered mode clears and cursor moves.
+// A recording started while the alternate screen is on or the cursor is hidden
+// begins in that state. Input modes such as mouse reporting and bracketed
+// paste are not recorded.
 func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -131,6 +142,12 @@ func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error 
 	}
 
 	t.recorder = recorder
+	if t.altScreen {
+		recorder.RecordOutput("\033[?1049h")
+	}
+	if t.cursorHidden {
+		recorder.RecordOutput("\033[?25l")
+	}
 	return nil
 }
 
@@ -168,6 +185,10 @@ func (t *Terminal) PauseRecording() {
 		if !recorder.paused {
 			recorder.paused = true
 			recorder.pauseStart = time.Now()
+			// Text written during the pause is not seen, so the text before
+			// it must not be joined to the text after it.
+			recorder.outputRedactor = redactor{}
+			recorder.inputRedactor = redactor{}
 		}
 		recorder.mu.Unlock()
 	}
@@ -226,7 +247,7 @@ func (r *Recorder) RecordOutput(data string) {
 	}
 
 	if r.redactSecrets {
-		event.Data = redactSecretPatterns(event.Data)
+		event.Data = r.outputRedactor.redact(event.Data)
 	}
 
 	r.writeEvent(event)
@@ -277,7 +298,7 @@ func (r *Recorder) RecordInput(data string) {
 
 	// Apply redaction to input as well (passwords, API keys typed by user)
 	if r.redactSecrets {
-		event.Data = redactSecretPatterns(event.Data)
+		event.Data = r.inputRedactor.redact(event.Data)
 	}
 
 	r.writeEvent(event)

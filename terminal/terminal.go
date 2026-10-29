@@ -862,7 +862,7 @@ func (t *Terminal) Clear() {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[2J")
+		t.writeScreenLocked("\033[2J")
 		return
 	}
 
@@ -882,7 +882,7 @@ func (t *Terminal) ClearLine() {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[2K")
+		t.writeScreenLocked("\033[2K")
 		return
 	}
 
@@ -901,7 +901,7 @@ func (t *Terminal) ClearToEndOfLine() {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[K")
+		t.writeScreenLocked("\033[K")
 		return
 	}
 
@@ -929,7 +929,7 @@ func (t *Terminal) MoveCursor(x, y int) {
 
 func (t *Terminal) moveCursorInternal(x, y int) {
 	if !t.buffered {
-		fmt.Fprintf(t.out, "\033[%d;%dH", y+1, x+1)
+		t.writeScreenLocked(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
 		return
 	}
 	t.virtualX = x
@@ -943,7 +943,7 @@ func (t *Terminal) MoveCursorUp(n int) {
 
 	if !t.buffered {
 		if n > 0 {
-			fmt.Fprintf(t.out, "\033[%dA", n)
+			t.writeScreenLocked(fmt.Sprintf("\033[%dA", n))
 		}
 		return
 	}
@@ -960,7 +960,7 @@ func (t *Terminal) MoveCursorDown(n int) {
 
 	if !t.buffered {
 		if n > 0 {
-			fmt.Fprintf(t.out, "\033[%dB", n)
+			t.writeScreenLocked(fmt.Sprintf("\033[%dB", n))
 		}
 		return
 	}
@@ -977,7 +977,7 @@ func (t *Terminal) MoveCursorRight(n int) {
 
 	if !t.buffered {
 		if n > 0 {
-			fmt.Fprintf(t.out, "\033[%dC", n)
+			t.writeScreenLocked(fmt.Sprintf("\033[%dC", n))
 		}
 		return
 	}
@@ -994,7 +994,7 @@ func (t *Terminal) MoveCursorLeft(n int) {
 
 	if !t.buffered {
 		if n > 0 {
-			fmt.Fprintf(t.out, "\033[%dD", n)
+			t.writeScreenLocked(fmt.Sprintf("\033[%dD", n))
 		}
 		return
 	}
@@ -1010,7 +1010,7 @@ func (t *Terminal) SaveCursor() {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[s")
+		t.writeScreenLocked("\033[s")
 		return
 	}
 	t.savedCursor = Position{X: t.virtualX, Y: t.virtualY}
@@ -1022,7 +1022,7 @@ func (t *Terminal) RestoreCursor() {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[u")
+		t.writeScreenLocked("\033[u")
 		return
 	}
 	t.virtualX = t.savedCursor.X
@@ -1038,21 +1038,43 @@ func (t *Terminal) CursorPosition() (x, y int) {
 
 // HideCursor hides the cursor
 func (t *Terminal) HideCursor() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.cursorHidden = true
-	fmt.Fprint(t.out, "\033[?25l")
+	t.writeScreenLocked("\033[?25l")
 }
 
 // ShowCursor shows the cursor
 func (t *Terminal) ShowCursor() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.showCursorLocked()
+}
+
+func (t *Terminal) showCursorLocked() {
 	t.cursorHidden = false
-	fmt.Fprint(t.out, "\033[?25h")
+	t.writeScreenLocked("\033[?25h")
 }
 
 // EnableAlternateScreen switches to the alternate screen buffer
 func (t *Terminal) EnableAlternateScreen() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if !t.altScreen {
-		fmt.Fprint(t.out, "\033[?1049h")
+		t.writeScreenLocked("\033[?1049h")
 		t.altScreen = true
+	}
+}
+
+// writeScreenLocked writes s, text or a sequence that changes what the screen
+// shows, straight to the output and records it, so a replay changes the screen
+// the same way. Sequences that change input modes (mouse, bracketed paste,
+// keyboard) are not recorded: replayed into a viewer's terminal, they would
+// change how that terminal reports input. Caller must hold t.mu.
+func (t *Terminal) writeScreenLocked(s string) {
+	fmt.Fprint(t.out, s)
+	if t.recorder != nil {
+		t.recorder.RecordOutput(s)
 	}
 }
 
@@ -1300,8 +1322,14 @@ func (t *Terminal) DisableMouseTracking() {
 
 // DisableAlternateScreen switches back to the main screen buffer
 func (t *Terminal) DisableAlternateScreen() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.disableAlternateScreenLocked()
+}
+
+func (t *Terminal) disableAlternateScreenLocked() {
 	if t.altScreen {
-		fmt.Fprint(t.out, "\033[?1049l")
+		t.writeScreenLocked("\033[?1049l")
 		t.altScreen = false
 	}
 }
@@ -1409,13 +1437,7 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 			output.WriteString("\033[0m")
 		}
 
-		outputStr := output.String()
-		fmt.Fprint(t.out, outputStr)
-
-		// Record for non-buffered mode
-		if t.recorder != nil {
-			t.recorder.RecordOutput(outputStr)
-		}
+		t.writeScreenLocked(output.String())
 		return nil
 	}
 
@@ -1612,10 +1634,7 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 	if !t.buffered {
 		// Fallback for non-buffered
 		out := fmt.Sprintf("\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
-		fmt.Fprint(t.out, out)
-		if t.recorder != nil {
-			t.recorder.RecordOutput(out)
-		}
+		t.writeScreenLocked(out)
 		return nil
 	}
 
@@ -1705,10 +1724,7 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 		if !style.IsEmpty() {
 			out.WriteString("\033[0m")
 		}
-		fmt.Fprint(t.out, out.String())
-		if t.recorder != nil {
-			t.recorder.RecordOutput(out.String())
-		}
+		t.writeScreenLocked(out.String())
 		return nil
 	}
 
@@ -1894,7 +1910,7 @@ func (t *Terminal) Reset() {
 	defer t.mu.Unlock()
 	t.currentStyle = NewStyle()
 	if !t.buffered {
-		fmt.Fprint(t.out, "\033[0m")
+		t.writeScreenLocked("\033[0m")
 	}
 }
 
@@ -2363,8 +2379,8 @@ func (t *Terminal) Close() error {
 	t.DisableEnhancedKeyboard()
 
 	// Restore cursor and screen
-	t.ShowCursor()
-	t.DisableAlternateScreen()
+	t.showCursorLocked()
+	t.disableAlternateScreenLocked()
 	t.DisableRawMode()
 
 	// Reset style
