@@ -41,9 +41,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
   modes, such as mouse reporting and bracketed paste, are still not recorded.
   `HideCursor`, `ShowCursor`, `EnableAlternateScreen`, and
   `DisableAlternateScreen` now hold the terminal's lock. (#109)
-- Recording with `RedactSecrets` now redacts a value that is written in a
-  separate call from its label, such as `"Token: "` and then the value. Each
-  event is matched together with the end of the text recorded before it.
+- Recording with `RedactSecrets` now redacts a secret that two writes split:
+  a value written in a separate call from its label, such as `"Token: "` and
+  then the value, or a token such as an AWS key that arrives in pieces. Each
+  event is matched together with the text recorded before it. A run of text
+  at the end of an event is held back until whitespace, a cursor move, the
+  next pause, or `StopRecording` ends it, so it can appear later in a replay.
   Matching skips escape sequences, so a redaction no longer removes a style
   reset or cursor move that follows a secret, and a secret in a hyperlink's
   URL is redacted inside the OSC 8 sequence. `terminal.RedactCredentials`

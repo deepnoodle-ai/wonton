@@ -192,16 +192,74 @@ func TestRedactorKeepsEscapeSequences(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var r redactor
-		assert.Equal(t, r.redact(tt.in), tt.want, tt.name)
+		assert.Equal(t, r.redact(tt.in)+r.flush(), tt.want, tt.name)
 	}
 }
 
-func TestRedactorSecretSplitAcrossEvents(t *testing.T) {
-	var r redactor
-	assert.Equal(t, r.redact("Authorization: Bearer "), "Authorization: Bearer ")
-	assert.Equal(t, r.redact("dGhpcyBpcy"), "[REDACTED]")
-	assert.Equal(t, r.redact("BhIHNlY3JldA== ok"), "[REDACTED] ok")
-	assert.Equal(t, r.redact("plain text"), "plain text")
+// recordOutputs records each write as an output event with redaction on, and
+// returns the recorded events.
+func recordOutputs(t *testing.T, writes ...string) []string {
+	t.Helper()
+	term := NewTestTerminal(30, 2, &bytes.Buffer{})
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{RedactSecrets: true}))
+	for _, w := range writes {
+		term.recorder.RecordOutput(w)
+	}
+	assert.NoError(t, term.StopRecording())
+	return readCastEvents(t, filename)
+}
+
+func TestRecordingRedactsSecretSplitAcrossWrites(t *testing.T) {
+	ghToken := "ghp_" + strings.Repeat("a1B2", 10)
+	longToken := strings.Repeat("Ab1+", 150) // 600 bytes, longer than the tail
+	tests := []struct {
+		name   string
+		writes []string
+		want   string
+	}{
+		{
+			"AWS key with no label",
+			[]string{"key AKIAIOSFODNN", "7EXAMPLE done"},
+			"key [REDACTED] done",
+		},
+		{
+			"GitHub token with no label",
+			[]string{ghToken[:10], ghToken[10:], "\n"},
+			"[REDACTED]\n",
+		},
+		{
+			"long token after its key, in three writes",
+			[]string{"Authorization: Bearer ", longToken[:200], longToken[200:400], longToken[400:] + " ok"},
+			"Authorization: Bearer [REDACTED] ok",
+		},
+		{
+			"value in two writes gets one marker",
+			[]string{"Token: ", "abc", "def\r\n"},
+			"Token: [REDACTED]\r\n",
+		},
+		{
+			"secret at the end of the recording",
+			[]string{"password: ", "hunt", "er2"},
+			"password: [REDACTED]",
+		},
+		{
+			"plain text at the end of the recording",
+			[]string{"hello ", "world"},
+			"hello world",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, strings.Join(recordOutputs(t, tt.writes...), ""), tt.want)
+		})
+	}
+}
+
+func TestRecordingHeldTextStaysInOrder(t *testing.T) {
+	// The held run is recorded with the next event, ahead of its bytes.
+	events := recordOutputs(t, "\033[1;1Habc", "\033[2;1Hdef ")
+	assert.Equal(t, events, []string{"\033[1;1H", "abc\033[2;1Hdef "})
 }
 
 func TestRecordingPauseDropsRedactionContext(t *testing.T) {

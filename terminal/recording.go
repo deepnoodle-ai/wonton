@@ -183,10 +183,11 @@ func (t *Terminal) PauseRecording() {
 	if recorder != nil {
 		recorder.mu.Lock()
 		if !recorder.paused {
-			recorder.paused = true
-			recorder.pauseStart = time.Now()
 			// Text written during the pause is not seen, so the text before
 			// it must not be joined to the text after it.
+			recorder.flushRedactorsLocked()
+			recorder.paused = true
+			recorder.pauseStart = time.Now()
 			recorder.outputRedactor = redactor{}
 			recorder.inputRedactor = redactor{}
 		}
@@ -236,21 +237,20 @@ func (r *Recorder) RecordOutput(data string) {
 		return
 	}
 
+	if r.redactSecrets {
+		// The redactor can hold back the end of data until the next event.
+		data = r.outputRedactor.redact(data)
+	}
+
 	if len(data) == 0 {
 		return
 	}
 
-	event := RecordingEvent{
+	r.writeEvent(RecordingEvent{
 		Time: r.eventTimeLocked(time.Now()),
 		Type: "o",
 		Data: data,
-	}
-
-	if r.redactSecrets {
-		event.Data = r.outputRedactor.redact(event.Data)
-	}
-
-	r.writeEvent(event)
+	})
 }
 
 // eventTimeLocked computes the timestamp for an event occurring at now,
@@ -286,22 +286,32 @@ func (r *Recorder) RecordInput(data string) {
 		return
 	}
 
+	// Apply redaction to input as well (passwords, API keys typed by user)
+	if r.redactSecrets {
+		data = r.inputRedactor.redact(data)
+	}
+
 	if len(data) == 0 {
 		return
 	}
 
-	event := RecordingEvent{
+	r.writeEvent(RecordingEvent{
 		Time: r.eventTimeLocked(time.Now()),
 		Type: "i",
 		Data: data,
-	}
+	})
+}
 
-	// Apply redaction to input as well (passwords, API keys typed by user)
-	if r.redactSecrets {
-		event.Data = r.inputRedactor.redact(event.Data)
+// flushRedactorsLocked records the text the redactors hold back, when nothing
+// more can continue it. Caller must hold r.mu.
+func (r *Recorder) flushRedactorsLocked() {
+	now := time.Now()
+	if data := r.outputRedactor.flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "o", Data: data})
 	}
-
-	r.writeEvent(event)
+	if data := r.inputRedactor.flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "i", Data: data})
+	}
 }
 
 // writeEvent writes a single event to the recording file
@@ -352,6 +362,7 @@ func (r *Recorder) close() error {
 	var firstErr error
 
 	if r.writer != nil {
+		r.flushRedactorsLocked()
 		if err := r.writer.Flush(); err != nil && firstErr == nil {
 			firstErr = err
 		}

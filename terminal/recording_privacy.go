@@ -45,68 +45,115 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)((?:secret|key|token|password)[:\s=]+)[a-zA-Z0-9+/]{20,}={0,2}`),
 }
 
-// redactTailSize is how much text a redactor keeps from earlier events: room
-// for a key and its delimiter ("Authorization: Bearer ") and the start of a
-// secret that continues into the next event.
+// redactTailSize is how much settled text a redactor keeps from earlier
+// events: room for a key and its delimiter ("Authorization: Bearer ").
 const redactTailSize = 256
 
+// redactHoldLimit caps how much text a redactor holds back. A run of text
+// longer than this is recorded before it ends.
+const redactHoldLimit = 8 << 10
+
 // redactor redacts secrets in a stream of terminal output or input, one event
-// at a time. Redacting each event alone misses a value whose key an earlier
-// event wrote: a program that prints "Token: " and then the value in a second
-// write records the value with no key in front of it. A redactor matches each
-// event together with the end of the text before it.
+// at a time. Redacting each event alone misses a secret that two writes split:
+// a program that prints "Token: " and then the value records the value with no
+// key in front of it, and the first part of a token such as "AKIAIOSFODNN"
+// matches no pattern until the rest arrives.
+//
+// So a redactor matches each event together with the settled text before it
+// (the tail), and holds back the run of text at the end of the event, since
+// the next write can continue it. A secret is always a run of text with no
+// whitespace, so text that ends in whitespace or a break is settled. The held
+// text is recorded with the next event, or by flush.
 //
 // Matching runs on the text, with escape sequences taken out, so a style change
 // between a key and its value does not hide the value, and a redaction never
-// removes an escape sequence. A sequence that can move the cursor separates the
-// text on either side like a line break: a key still matches a value drawn
-// after a cursor move, but a value does not run on into the next text drawn
-// elsewhere. The payload of a string sequence, such as an OSC 8 hyperlink's
-// URL, is redacted on its own.
+// removes an escape sequence. Any other escape sequence, such as a cursor move,
+// separates the text on either side like a line break: a key still matches a
+// value drawn after a cursor move, but a value does not run on into the next
+// text drawn elsewhere. The payload of a string sequence, such as an OSC 8
+// hyperlink's URL, is redacted on its own.
 type redactor struct {
-	tail string // text at the end of earlier events, before redaction
+	tail string // settled text before held, before redaction
+	held string // the end of the stream, which the next write can continue
 }
 
-// redact returns data with each secret replaced by [REDACTED].
+// redact returns the stream up to the end of data, with each secret replaced
+// by [REDACTED], less the text it holds back.
 func (r *redactor) redact(data string) string {
-	// Split data into text and escape sequences, and join the text.
+	return r.settle(r.held+data, false)
+}
+
+// flush returns the text the redactor holds back, redacted. Call it when
+// nothing more will continue the stream.
+func (r *redactor) flush() string {
+	return r.settle(r.held, true)
+}
+
+// settle redacts chunk, the held text and the new data. Unless final, it holds
+// back the run of text at the end of chunk.
+func (r *redactor) settle(chunk string, final bool) string {
+	// Split chunk into text and escape sequences, and join the text.
 	type part struct {
-		s  string
-		at int // offset of the text in text, or -1 for an escape sequence
+		s   string
+		raw int // offset of s in chunk
+		at  int // offset of the text in text, or -1 for an escape sequence
 	}
 	var parts []part
 	var text strings.Builder
-	for i := 0; i < len(data); {
-		if data[i] == '\x1b' {
-			n := escapeLen(data[i:])
-			parts = append(parts, part{data[i : i+n], -1})
-			if movesCursor(data[i : i+n]) {
+	for i := 0; i < len(chunk); {
+		if chunk[i] == '\x1b' {
+			n := escapeLen(chunk[i:])
+			parts = append(parts, part{chunk[i : i+n], i, -1})
+			if breaksText(chunk[i : i+n]) {
 				text.WriteByte('\n')
 			}
 			i += n
 			continue
 		}
-		n := strings.IndexByte(data[i:], '\x1b')
+		n := strings.IndexByte(chunk[i:], '\x1b')
 		if n < 0 {
-			n = len(data) - i
+			n = len(chunk) - i
 		}
-		parts = append(parts, part{data[i : i+n], text.Len()})
-		text.WriteString(data[i : i+n])
+		parts = append(parts, part{chunk[i : i+n], i, text.Len()})
+		text.WriteString(chunk[i : i+n])
 		i += n
 	}
 
+	// Find the run of text at the end, which the next write can continue.
+	// The whitespace is what \s matches in the patterns.
 	joined := r.tail + text.String()
-	spans := secretSpans(joined, len(r.tail))
-	r.tail = lastBytes(joined, redactTailSize)
-
-	var b strings.Builder
-	for _, p := range parts {
-		if p.at < 0 {
-			b.WriteString(redactEscape(p.s))
-		} else {
-			writeRedacted(&b, p.s, p.at, spans)
+	from := len(r.tail)
+	holdAt, hold := text.Len(), len(chunk)
+	if !final {
+		run := strings.LastIndexAny(joined, " \t\n\f\r") + 1
+		run = max(run, from)
+		if run < len(joined) {
+			for _, p := range parts {
+				if p.at >= 0 && p.at+len(p.s) > run-from {
+					holdAt, hold = run-from, p.raw+run-from-p.at
+					break
+				}
+			}
+			if len(chunk)-hold > redactHoldLimit {
+				holdAt, hold = text.Len(), len(chunk)
+			}
 		}
 	}
+
+	spans := secretSpans(joined, from)
+	var b strings.Builder
+	for _, p := range parts {
+		if p.raw >= hold {
+			break
+		}
+		if p.at < 0 {
+			b.WriteString(redactEscape(p.s))
+			continue
+		}
+		writeRedacted(&b, p.s[:min(len(p.s), hold-p.raw)], p.at, spans)
+	}
+	r.tail = lastBytes(joined[:from+holdAt], redactTailSize)
+	r.held = chunk[hold:]
 	return b.String()
 }
 
@@ -114,8 +161,8 @@ func (r *redactor) redact(data string) string {
 type span struct{ start, end int }
 
 // secretSpans returns the byte ranges of the secrets in s that end after from,
-// sorted, merged, and relative to from. A secret that starts before from is
-// cut to start at from. A pattern's capture group is the key and delimiter in
+// sorted, merged, and relative to from. A secret that starts before from has a
+// negative start. A pattern's capture group is the key and delimiter in
 // front of the secret, which are kept. The key is found by the capture group,
 // not by splitting the match on ':' or '=': the secret itself can contain
 // those characters (base64 padding, URLs with credentials), and splitting
@@ -131,7 +178,7 @@ func secretSpans(s string, from int) []span {
 			if end <= from || start >= end {
 				continue
 			}
-			spans = append(spans, span{max(start, from) - from, end - from})
+			spans = append(spans, span{start - from, end - from})
 		}
 	}
 	slices.SortFunc(spans, func(a, b span) int { return a.start - b.start })
@@ -210,9 +257,11 @@ func escapeLen(s string) int {
 	}
 }
 
-// movesCursor reports whether the escape sequence seq can move the cursor. SGR
-// sequences, which set the style, and string sequences do not.
-func movesCursor(seq string) bool {
+// breaksText reports whether the escape sequence seq separates the text on
+// either side. Only SGR sequences, which set the style, and string sequences
+// do not. The rest move the cursor or change the screen or its modes, and no
+// key and value are written with one of them in between.
+func breaksText(seq string) bool {
 	if len(seq) < 2 || isStringSequence(seq[1]) {
 		return false
 	}
@@ -255,7 +304,7 @@ func lastBytes(s string, n int) string {
 // from earlier events.
 func redactSecretPatterns(data string) string {
 	var r redactor
-	return r.redact(data)
+	return r.redact(data) + r.flush()
 }
 
 // RedactCredentials can be called manually to test redaction
