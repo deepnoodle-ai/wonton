@@ -455,14 +455,16 @@ func applyKeyModifiers(event KeyEvent, modifier int) KeyEvent {
 // decodeLegacyMouseEvent decodes legacy mouse format: ESC [ M followed by 3 bytes
 // We've already consumed ESC [ M
 func (kd *KeyDecoder) decodeLegacyMouseEvent() (Event, error) {
-	// Read the 3 bytes (each must be >= 0x20 per X10/legacy mouse encoding)
+	// Read the 3 bytes (each must be >= 0x20 per X10/legacy mouse encoding,
+	// except xterm sends NUL (0x00) for coordinate bytes i > 0 when X or Y
+	// exceeds 223).
 	buf := make([]byte, 3)
 	for i := 0; i < 3; i++ {
 		b, err := kd.reader.ReadByte()
 		if err != nil {
 			return KeyEvent{Key: KeyUnknown}, err
 		}
-		if b < 0x20 {
+		if b < 0x20 && (b != 0 || i == 0) {
 			// A C0 control byte (e.g. ESC, CR, Ctrl+C) cannot be part of a
 			// legacy mouse payload. Unread it so the next ReadEvent decodes it.
 			_ = kd.reader.UnreadByte()
@@ -630,7 +632,7 @@ func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
 			if err != nil {
 				return KeyEvent{Key: KeyUnknown}, err
 			}
-			if b < 0x20 {
+			if b < 0x20 && (b != 0 || i == 0) {
 				_ = kd.reader.UnreadByte()
 				return KeyEvent{Key: KeyUnknown}, nil
 			}

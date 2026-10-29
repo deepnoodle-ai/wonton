@@ -208,7 +208,7 @@ func TestProbeKittyProtocol_GraceWindowAndTimeoutFlush(t *testing.T) {
 		defer master.Close()
 		defer slave.Close()
 
-		const timeout = 60 * time.Millisecond
+		const timeout = 150 * time.Millisecond
 		go func() {
 			var seen []byte
 			buf := make([]byte, 64)

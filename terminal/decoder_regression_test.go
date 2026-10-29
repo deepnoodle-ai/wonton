@@ -235,7 +235,12 @@ func TestKeyDecoder_TruncatedUTF8DoesNotSwallowFollowingKey(t *testing.T) {
 
 func TestKeyDecoder_LegacyMouseInterruptedByControlByte(t *testing.T) {
 	for _, readEvent := range []bool{true, false} {
-		decoder := NewKeyDecoder(strings.NewReader("\x1b[M\r\x1b[M!\x03"))
+		// 1. \x1b[M\r -> interrupted at button byte by CR
+		// 2. \x1b[M!\x03 -> interrupted at X coordinate by Ctrl+C
+		// 3. \x1b[M \x00#a -> xterm out-of-range X coordinate (NUL at i=1):
+		//    must consume the whole 3-byte packet (' ', 0x00, '#') as one
+		//    KeyUnknown without leaking '#' as a keystroke before 'a'.
+		decoder := NewKeyDecoder(strings.NewReader("\x1b[M\r\x1b[M!\x03\x1b[M \x00#a"))
 
 		readNext := func() KeyEvent {
 			if readEvent {
@@ -252,6 +257,8 @@ func TestKeyDecoder_LegacyMouseInterruptedByControlByte(t *testing.T) {
 		assert.Equal(t, readNext(), KeyEvent{Key: KeyEnter})
 		assert.Equal(t, readNext(), KeyEvent{Key: KeyUnknown})
 		assert.Equal(t, readNext(), KeyEvent{Key: KeyCtrlC, Ctrl: true})
+		assert.Equal(t, readNext(), KeyEvent{Key: KeyUnknown})
+		assert.Equal(t, readNext(), KeyEvent{Rune: 'a'})
 	}
 
 	_, err := ParseMouseEvent([]byte{0, 33, 33})
