@@ -79,17 +79,28 @@ var systemFallbacks = sync.OnceValue(func() []*FallbackFont {
 		if _, err := os.Stat(path); err != nil {
 			continue
 		}
-		fonts = append(fonts, &FallbackFont{open: func() (*sfnt.Font, []ligatureLookup, error) {
-			// The file stays open: the font reads glyphs from it on demand.
-			file, err := os.Open(path)
-			if err != nil {
-				return nil, nil, err
-			}
-			return parseFallbackFont(file)
-		}})
+		fonts = append(fonts, lazyFallbackFont(path))
 	}
 	return fonts
 })
+
+// lazyFallbackFont returns a fallback font that opens and parses the font
+// file at path on first use. The file stays open, since the font reads
+// glyphs from it on demand. A file that does not parse is closed.
+func lazyFallbackFont(path string) *FallbackFont {
+	return &FallbackFont{open: func() (*sfnt.Font, []ligatureLookup, error) {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		f, ligatures, err := parseFallbackFont(file)
+		if err != nil {
+			file.Close()
+			return nil, nil, err
+		}
+		return f, ligatures, nil
+	}}
+}
 
 // SystemFallbackFonts returns the installed fonts the renderer knows to cover
 // CJK text and symbols, such as Hiragino on macOS, Noto Sans CJK or

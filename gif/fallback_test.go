@@ -218,22 +218,21 @@ func TestTerminalRenderer_SystemFontDrawsCJK(t *testing.T) {
 }
 
 // TestFallbackFont_UnreadableFileIsSkipped checks that a system font that
-// fails to parse draws nothing, and the next fallback font is tried.
+// fails to parse draws nothing and is closed, and the next fallback font is
+// tried.
 func TestFallbackFont_UnreadableFileIsSkipped(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "broken.ttf")
 	if err := os.WriteFile(path, []byte("not a font"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	broken := &FallbackFont{open: func() (*sfnt.Font, []ligatureLookup, error) {
-		file, err := os.Open(path)
-		if err != nil {
-			return nil, nil, err
-		}
-		return parseFallbackFont(file)
-	}}
+	broken := lazyFallbackFont(path)
 	var buf sfnt.Buffer
 	if glyphs := broken.shape(&buf, "\U0001F680"); glyphs != nil {
 		t.Errorf("unreadable font shaped to %v, want nil", glyphs)
+	}
+	// Windows cannot remove a file that is still open.
+	if err := os.Remove(path); err != nil {
+		t.Errorf("unreadable font file left open: %v", err)
 	}
 	tr := renderRow("\U0001F680", []*FallbackFont{broken, EmojiFallbackFont()})
 	if n := litPixels(tr, 0, 2); n == 0 {
