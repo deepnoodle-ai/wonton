@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -69,4 +70,41 @@ func TestTextInput_OversizedClusterDoesNotBlankLeadingLine(t *testing.T) {
 		// line 1; with width 3, cluster wraps to line 2.
 		assert.Equal(t, 2, calcWrappedHeight("ab"+cluster, 3))
 	})
+}
+
+func TestTextInput_WrappedLineNavigation(t *testing.T) {
+	ti := newTextInput().WithMultilineMode(true)
+	ti.SetFocused(true)
+	ti.SetBounds(image.Rect(0, 0, 10, 3))
+	ti.SetValue("abcdefghijklm") // row 0: "abcdefghij" (0..10), row 1: "klm" (10..13)
+
+	// Place cursor at column 0 of the wrapped second visual line ('k', offset 10).
+	ti.CursorPos = 10
+	assert.False(t, ti.atFirstVisualLine(), "cursor on wrapped row 1 must not report first visual line")
+
+	// Home on column 0 of row 1 stays at offset 10 instead of jumping to row 0.
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, 10, ti.CursorPos)
+
+	// End on column 0 of row 1 moves to the end of row 1 (offset 13).
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, 13, ti.CursorPos)
+
+	// Up from column 0 of row 1 moves to column 0 of row 0 (offset 0).
+	ti.CursorPos = 10
+	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
+	assert.Equal(t, 0, ti.CursorPos)
+
+	// End on a soft-wrapped line stops at the last character on that visual line ('j', offset 9),
+	// not the first character of the next visual line ('k', offset 10).
+	ti.CursorPos = 3
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, 9, ti.CursorPos)
+
+	// When row 0 wraps early before a wide char ("abcdefghi" + "中klmnopqr"),
+	// pressing Up from the end of row 1 (col 10) must land on row 0 ('i', offset 8),
+	// not on '中' (offset 9, which is row 1 col 0).
+	ti.SetValue("abcdefghi中klmnopqr")
+	assert.True(t, ti.HandleKey(KeyEvent{Key: KeyArrowUp}))
+	assert.Equal(t, 8, ti.CursorPos)
 }

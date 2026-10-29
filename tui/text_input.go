@@ -229,7 +229,7 @@ func (t *textInput) Draw(frame RenderFrame) {
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	if height <= 0 {
+	if width <= 0 || height <= 0 {
 		return
 	}
 
@@ -483,6 +483,11 @@ func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 
 	offset := 0
 	for cluster, cw := range runewidth.Graphemes(displayText) {
+		if width > 0 && cluster != "\n" && x > startX && x+cw > startX+width {
+			// Wrap to next line before drawing this cluster (or placing cursor on it)
+			y++
+			x = startX
+		}
 		if offset >= t.CursorPos {
 			break
 		}
@@ -490,11 +495,6 @@ func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 			y++
 			x = startX
 		} else {
-			if x > startX && x+cw > startX+width {
-				// Wrap to next line
-				y++
-				x = startX
-			}
 			x += cw
 		}
 		offset += len(cluster)
@@ -535,28 +535,7 @@ func (t *textInput) getCursorLine(width int) int {
 	if width <= 0 {
 		return 0
 	}
-	displayText := t.DisplayText()
-
-	line := 0
-	x := 0
-	offset := 0
-	for cluster, cw := range runewidth.Graphemes(displayText) {
-		if offset >= t.CursorPos {
-			break
-		}
-		if cluster == "\n" {
-			line++
-			x = 0
-		} else {
-			if x > 0 && x+cw > width {
-				line++
-				x = cw
-			} else {
-				x += cw
-			}
-		}
-		offset += len(cluster)
-	}
+	_, line := t.getCursorXY(0, 0, width)
 	return line
 }
 
@@ -565,25 +544,7 @@ func (t *textInput) getCursorXInLine(width int) int {
 	if width <= 0 {
 		return 0
 	}
-	displayText := t.DisplayText()
-
-	x := 0
-	offset := 0
-	for cluster, cw := range runewidth.Graphemes(displayText) {
-		if offset >= t.CursorPos {
-			break
-		}
-		if cluster == "\n" {
-			x = 0
-		} else {
-			if x > 0 && x+cw > width {
-				x = cw
-			} else {
-				x += cw
-			}
-		}
-		offset += len(cluster)
-	}
+	x, _ := t.getCursorXY(0, 0, width)
 	return x
 }
 
@@ -626,39 +587,61 @@ func (t *textInput) getVisualLines(displayText string) []lineRange {
 	return lines
 }
 
+// cursorLineIndex returns the index in lines of the visual line holding pos.
+// For a soft-wrapped line i (where lines[i].end == lines[i+1].start), the byte
+// offset lines[i].end is the first cluster of lines[i+1], so it belongs to
+// lines[i+1] rather than lines[i].
+func cursorLineIndex(lines []lineRange, pos int) int {
+	for i, line := range lines {
+		if i+1 < len(lines) && line.end == lines[i+1].start {
+			if pos >= line.start && pos < line.end {
+				return i
+			}
+		} else if pos >= line.start && pos <= line.end {
+			return i
+		}
+	}
+	return len(lines) - 1
+}
+
+// lineLastCursorPos returns the last byte offset within lines[i] where the
+// cursor still rests on lines[i]. For a soft-wrapped line, lines[i].end is the
+// first cluster of lines[i+1], so the last position on lines[i] is the start
+// of its final grapheme cluster.
+func lineLastCursorPos(displayText string, lines []lineRange, i int) int {
+	line := lines[i]
+	if i+1 < len(lines) && line.end == lines[i+1].start && line.end > line.start {
+		return prevClusterBoundary(displayText, line.end)
+	}
+	return line.end
+}
+
 // getCurrentLineRange returns the start and end byte positions of the current visual line.
 func (t *textInput) getCurrentLineRange(displayText string) (start, end int) {
 	lines := t.getVisualLines(displayText)
-	for _, line := range lines {
-		if t.CursorPos >= line.start && t.CursorPos <= line.end {
-			return line.start, line.end
-		}
+	if len(lines) == 0 {
+		return 0, len(displayText)
 	}
-	// Fallback: entire text
-	return 0, len(displayText)
+	i := cursorLineIndex(lines, t.CursorPos)
+	return lines[i].start, lineLastCursorPos(displayText, lines, i)
 }
 
 // cursorUp moves cursor to the previous visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
 func (t *textInput) cursorUp(displayText string) int {
 	lines := t.getVisualLines(displayText)
-
-	// Find which line the cursor is on
-	cursorLine := 0
-	cursorXOffset := 0
-	for i, line := range lines {
-		if t.CursorPos >= line.start && t.CursorPos <= line.end {
-			cursorLine = i
-			for _, cw := range runewidth.Graphemes(displayText[line.start:t.CursorPos]) {
-				cursorXOffset += cw
-			}
-			break
-		}
+	if len(lines) == 0 {
+		return t.CursorPos
 	}
 
-	// Move to previous line
+	cursorLine := cursorLineIndex(lines, t.CursorPos)
 	if cursorLine == 0 {
 		return t.CursorPos // Already on first line
+	}
+
+	cursorXOffset := 0
+	for _, cw := range runewidth.Graphemes(displayText[lines[cursorLine].start:min(t.CursorPos, len(displayText))]) {
+		cursorXOffset += cw
 	}
 
 	prevLine := lines[cursorLine-1]
@@ -672,30 +655,25 @@ func (t *textInput) cursorUp(displayText string) int {
 		targetX += cw
 		localOffset += len(cluster)
 	}
-	return prevLine.end
+	return lineLastCursorPos(displayText, lines, cursorLine-1)
 }
 
 // cursorDown moves cursor to the next visual line, maintaining x position where possible.
 // Returns new cursor position (byte offset).
 func (t *textInput) cursorDown(displayText string) int {
 	lines := t.getVisualLines(displayText)
-
-	// Find which line the cursor is on
-	cursorLine := 0
-	cursorXOffset := 0
-	for i, line := range lines {
-		if t.CursorPos >= line.start && t.CursorPos <= line.end {
-			cursorLine = i
-			for _, cw := range runewidth.Graphemes(displayText[line.start:t.CursorPos]) {
-				cursorXOffset += cw
-			}
-			break
-		}
+	if len(lines) == 0 {
+		return t.CursorPos
 	}
 
-	// Move to next line
+	cursorLine := cursorLineIndex(lines, t.CursorPos)
 	if cursorLine >= len(lines)-1 {
 		return t.CursorPos // Already on last line
+	}
+
+	cursorXOffset := 0
+	for _, cw := range runewidth.Graphemes(displayText[lines[cursorLine].start:min(t.CursorPos, len(displayText))]) {
+		cursorXOffset += cw
 	}
 
 	nextLine := lines[cursorLine+1]
@@ -709,7 +687,7 @@ func (t *textInput) cursorDown(displayText string) int {
 		targetX += cw
 		localOffset += len(cluster)
 	}
-	return nextLine.end
+	return lineLastCursorPos(displayText, lines, cursorLine+1)
 }
 
 // atFirstVisualLine reports whether the cursor is on the first visual line,

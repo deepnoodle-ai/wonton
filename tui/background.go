@@ -165,17 +165,32 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return RGB{}, false
 		}
 		b = b[i+5:]
-		end := bytes.IndexAny(b, "\x07\x1b\x9c")
+		end := indexOSCTerminator(b)
 		if end < 0 {
 			return RGB{}, false
 		}
 		if b[end] == 0x1b && (end+1 >= len(b) || b[end+1] != '\\') {
+			b = b[end:]
 			continue // an ESC that does not start ST: not a well-formed reply
 		}
 		if c, ok := parseXColor(string(b[:end])); ok {
 			return c, true
 		}
+		b = b[end:]
 	}
+}
+
+// indexOSCTerminator returns the byte index of the first BEL (0x07), ESC (0x1b),
+// or 8-bit ST (0x9c) in b, or -1 if none is present. Avoids bytes.IndexAny,
+// which decodes UTF-8 runes and treats raw 0x9c in the search string as
+// utf8.RuneError (matching any invalid UTF-8 byte or U+FFFD in b).
+func indexOSCTerminator(b []byte) int {
+	for i, c := range b {
+		if c == 0x07 || c == 0x1b || c == 0x9c {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseXColor parses the X11 color forms terminals use in OSC replies:

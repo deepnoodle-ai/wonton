@@ -383,10 +383,12 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 	// Register first: it may auto-focus this area, and the border style
 	// below depends on focus.
 	fm := ctx.FocusManager()
+	var handler *textAreaFocusHandler
 	if fm != nil {
-		fm.Register(&textAreaFocusHandler{area: t, bounds: ctx.clickArea(ctx.AbsoluteBounds())})
+		handler = &textAreaFocusHandler{area: t, bounds: ctx.clickArea(ctx.AbsoluteBounds())}
+		fm.Register(handler)
 	}
-	isFocused := t.id != "" && fm != nil && fm.GetFocusedID() == t.id
+	isFocused := handler != nil && handler.IsFocused()
 
 	// Build content view
 	content := t.getContent()
@@ -585,6 +587,20 @@ func (h *textAreaFocusHandler) FocusBounds() image.Rectangle {
 	return h.bounds
 }
 
+func (h *textAreaFocusHandler) innerHeight() int {
+	_, viewHeight := h.area.size(0, 0)
+	if h.bounds.Dy() > 0 && h.bounds.Dy() < viewHeight {
+		viewHeight = h.bounds.Dy()
+	}
+	if h.area.bordered && !h.area.leftBorderOnly {
+		viewHeight -= 2 // account for border
+	}
+	if viewHeight < 1 {
+		viewHeight = 1
+	}
+	return viewHeight
+}
+
 func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 	// Application hook sees every key first.
 	if h.area.onKey != nil && h.area.onKey(event) {
@@ -618,10 +634,7 @@ func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 			cursorLine++
 			handled = true
 			// Auto-scroll if needed
-			_, viewHeight := h.area.size(0, 0)
-			if h.area.bordered && !h.area.leftBorderOnly {
-				viewHeight -= 2 // account for border
-			}
+			viewHeight := h.innerHeight()
 			if cursorLine >= scrollY+viewHeight {
 				scrollY = cursorLine - viewHeight + 1
 			}
@@ -664,10 +677,7 @@ func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 		if h.area.highlightCurrentLine {
 			cursorLine = maxLine
 			// Scroll to the bottom
-			_, viewHeight := h.area.size(0, 0)
-			if h.area.bordered && !h.area.leftBorderOnly {
-				viewHeight -= 2 // account for border
-			}
+			viewHeight := h.innerHeight()
 			scrollY = maxLine - viewHeight + 1
 			if scrollY < 0 {
 				scrollY = 0

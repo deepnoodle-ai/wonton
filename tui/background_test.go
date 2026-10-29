@@ -26,6 +26,8 @@ func TestParseBackgroundReply(t *testing.T) {
 		{"with DA1 and noise", "x\x1b]11;rgb:2020/2020/2020\x07\x1b[?62;22c", RGB{R: 32, G: 32, B: 32}, true},
 		{"bad reply then good", "\x1b]11;garbage\x07\x1b]11;rgb:ff/ff/ff\x07", RGB{R: 255, G: 255, B: 255}, true},
 		{"unterminated", "\x1b]11;rgb:ffff/ffff/ffff", RGB{}, false},
+		{"unterminated invalid UTF-8", "\x1b]11;rgb:ffff/ffff/ffff\xff", RGB{}, false},
+		{"unterminated replacement char", "\x1b]11;rgb:ffff/ffff/ffff\xef\xbf\xbd", RGB{}, false},
 		{"ESC that is not ST", "\x1b]11;rgb:ffff/ffff/ffff\x1b[c", RGB{}, false},
 		{"empty", "", RGB{}, false},
 		{"DA1 only", "\x1b[?62;22c", RGB{}, false},

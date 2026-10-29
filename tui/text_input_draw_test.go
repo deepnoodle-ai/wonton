@@ -60,3 +60,49 @@ func TestTextInputScrollsWithoutMaxHeight(t *testing.T) {
 		t.Fatal("cursor is not visible")
 	}
 }
+
+func TestTextInputWrappedCursorAtLineStart(t *testing.T) {
+	t.Run("cursor on first char of wrapped line", func(t *testing.T) {
+		ti := newTextInput()
+		ti.SetFocused(true)
+		ti.SetValue("abcdefghijklm")
+		ti.CursorPos = 10 // 'k', drawn at row 1 col 0
+
+		cell := drawTextInput(t, ti, 10, 2)
+		if cell(0, 1).Char != 'k' || cell(0, 1).Style != ti.CursorStyle {
+			t.Fatalf("cell(0,1) = %q style=%v, want cursor on 'k'", string(cell(0, 1).Char), cell(0, 1).Style)
+		}
+		if cursorCells(cell, ti, 10, 2) != 1 {
+			t.Fatalf("cursorCells = %d, want 1", cursorCells(cell, ti, 10, 2))
+		}
+
+		// In a 1-row viewport, keeping the cursor on 'k' must stay on row 1.
+		cell = drawTextInput(t, ti, 10, 1)
+		if ti.ScrollOffset != 1 {
+			t.Fatalf("ScrollOffset = %d, want 1", ti.ScrollOffset)
+		}
+		if cell(0, 0).Char != 'k' || cursorCells(cell, ti, 10, 1) != 1 {
+			t.Fatalf("1-row cell(0,0) = %q cursorCells=%d, want cursor on 'k'", string(cell(0, 0).Char), cursorCells(cell, ti, 10, 1))
+		}
+	})
+
+	t.Run("cursor on wide char that wraps to next line", func(t *testing.T) {
+		ti := newTextInput()
+		ti.SetFocused(true)
+		ti.SetValue("abcdefghi中")
+		ti.CursorPos = 9 // '中' (width 2) wraps to row 1 col 0 in a 10-col input
+
+		if gotLine, gotX := ti.getCursorLine(10), ti.getCursorXInLine(10); gotLine != 1 || gotX != 0 {
+			t.Fatalf("cursor at (line=%d, x=%d), want (line=1, x=0)", gotLine, gotX)
+		}
+
+		// In a 1-row viewport, auto-scroll must scroll to row 1 so '中' and the cursor are visible.
+		cell := drawTextInput(t, ti, 10, 1)
+		if ti.ScrollOffset != 1 {
+			t.Fatalf("ScrollOffset = %d, want 1", ti.ScrollOffset)
+		}
+		if cell(0, 0).Char != '中' || cell(0, 0).Style != ti.CursorStyle {
+			t.Fatalf("cell(0,0) = %q style=%v, want cursor on '中'", string(cell(0, 0).Char), cell(0, 0).Style)
+		}
+	})
+}

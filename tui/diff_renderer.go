@@ -6,6 +6,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // DiffTheme defines colors and styles for diff rendering
@@ -72,6 +73,10 @@ type RenderedDiffLine struct {
 
 // RenderDiff renders a diff to styled output
 func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLine {
+	if diff == nil {
+		return nil
+	}
+
 	var result []RenderedDiffLine
 
 	for _, file := range diff.Files {
@@ -125,19 +130,24 @@ func (dr *DiffRenderer) expandTabs(s string) string {
 		return s
 	}
 
+	tabWidth := dr.TabWidth
+	if tabWidth <= 0 {
+		tabWidth = 4
+	}
+
 	var result strings.Builder
 	result.Grow(len(s) * 2) // Estimate expanded size
 
 	col := 0
-	for _, ch := range s {
-		if ch == '\t' {
+	for cluster, w := range runewidth.Graphemes(s) {
+		if cluster == "\t" {
 			// Expand tab to reach next tab stop
-			spaces := dr.TabWidth - (col % dr.TabWidth)
+			spaces := tabWidth - (col % tabWidth)
 			result.WriteString(strings.Repeat(" ", spaces))
 			col += spaces
 		} else {
-			result.WriteRune(ch)
-			col++
+			result.WriteString(cluster)
+			col += w
 		}
 	}
 
