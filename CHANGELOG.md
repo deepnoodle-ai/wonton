@@ -229,6 +229,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `HighlightCurrentLine`, Down and End scroll by the area's rendered height,
   so a bordered area 2 rows tall, or an area a layout makes taller than its
   `Size`, no longer scrolls too far. (#135)
+- `tui.AnimatedBordered` gives each corner its own position along the
+  border, clockwise from the top-left corner. Before, every corner got
+  position 0, so a rainbow or gradient drew all four corners in its first
+  color. `tui.CornerHighlightAnimation` now fades the highlight into both
+  edges next to the lit corner. Before, it faded only into the top edge, and
+  also when the bottom-left corner was lit. (#139)
 - `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
   string, integer, floating-point, and boolean types or pointers to them),
   named types that `json.Unmarshal` decodes from a string because they

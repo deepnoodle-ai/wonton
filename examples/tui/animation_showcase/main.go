@@ -224,53 +224,43 @@ func (app *AnimationShowcaseApp) View() tui.View {
 
 	effect := app.effects[app.currentEffect]
 
+	// Blank Text lines keep fixed gaps. A Spacer would grow and share the
+	// free height with the one that pushes the navigation to the bottom.
 	return tui.Stack(
 		tui.Text("Animation Showcase").Bold().Animate(tui.Rainbow(2)),
-
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Effect info
-		tui.Stack(
-			tui.Group(
-				tui.Text("Effect:").Bold().Fg(tui.ColorYellow),
-				tui.Spacer(),
-				tui.Text("%s", effect.name).Fg(tui.ColorWhite),
-			),
-			tui.Group(
-				tui.Text("Description:").Bold().Fg(tui.ColorYellow),
-				tui.Spacer(),
-				tui.Text("%s", effect.description).Fg(tui.ColorBrightBlack),
-			),
-		).Gap(1),
-
-		tui.Spacer().MinHeight(2),
+		tui.Group(
+			tui.Text("Effect:      ").Bold().Fg(tui.ColorYellow),
+			tui.Text("%s", effect.name).Fg(tui.ColorWhite),
+		),
+		tui.Group(
+			tui.Text("Description: ").Bold().Fg(tui.ColorYellow),
+			tui.Text("%s", effect.description).Fg(tui.ColorBrightBlack),
+		),
+		tui.Text(""),
 
 		// Current effect
-		tui.Stack(
-			effect.view(),
-		),
+		effect.view(),
 
 		tui.Spacer(),
 
 		// Navigation
-		tui.Stack(
-			tui.Text("─────────────────────────────────────────────────────────────────").Fg(tui.ColorBrightBlack),
-			tui.Group(
-				tui.Text("[←] Previous").Fg(tui.ColorGreen),
-				tui.Spacer(),
-				tui.Text("[→] Next").Fg(tui.ColorGreen),
-				tui.Spacer(),
-				tui.Text("[q] Quit").Fg(tui.ColorRed),
-			),
-			tui.Text("─────────────────────────────────────────────────────────────────").Fg(tui.ColorBrightBlack),
-
-			tui.Spacer().MinHeight(1),
-
-			tui.Group(
-				tui.Text("Effect").Fg(tui.ColorBrightBlack),
-				tui.Spacer(),
-				tui.Text("%d / %d", app.currentEffect+1, len(app.effects)).Fg(tui.ColorWhite),
-			),
+		tui.Divider(),
+		tui.Group(
+			tui.Text("[←] Previous").Fg(tui.ColorGreen),
+			tui.Spacer(),
+			tui.Text("[→] Next").Fg(tui.ColorGreen),
+			tui.Spacer(),
+			tui.Text("[q] Quit").Fg(tui.ColorRed),
+		),
+		tui.Divider(),
+		tui.Text(""),
+		tui.Group(
+			tui.Text("Effect").Fg(tui.ColorBrightBlack),
+			tui.Spacer(),
+			tui.Text("%d / %d", app.currentEffect+1, len(app.effects)).Fg(tui.ColorWhite),
 		),
 	).Padding(2)
 }

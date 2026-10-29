@@ -75,82 +75,15 @@ func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 	}
 
 	frame := ctx.Frame()
-
-	// Calculate total perimeter for border animation
-	// Include corners. A 1x1 border computes 0; animations divide by it.
-	perimeter := max((w-2)*2+(h-2)*2+4, 1)
-
-	// Draw top border
-	position := 0
-	for x := 1; x < w-1; x++ {
+	cells := f.borderCells(w, h)
+	for i, c := range cells {
 		style := f.staticBorderStyle
-		if f.borderAnimation != nil {
-			style = f.borderAnimation.GetBorderStyle(frame, BorderPartTop, position, perimeter)
+		if ea, ok := f.borderAnimation.(edgeBorderAnimation); ok {
+			style = ea.edgeBorderStyle(frame, c.part, c.edgeIndex, c.edgeLen)
+		} else if f.borderAnimation != nil {
+			style = f.borderAnimation.GetBorderStyle(frame, c.part, i, len(cells))
 		}
-		ctx.PrintTruncated(x, 0, f.border.Horizontal, style)
-		position++
-	}
-
-	// Draw right border
-	for y := 1; y < h-1; y++ {
-		style := f.staticBorderStyle
-		if f.borderAnimation != nil {
-			style = f.borderAnimation.GetBorderStyle(frame, BorderPartRight, position, perimeter)
-		}
-		if w > 1 {
-			ctx.PrintTruncated(w-1, y, f.border.Vertical, style)
-		}
-		position++
-	}
-
-	// Draw bottom border
-	for x := w - 2; x > 0; x-- {
-		style := f.staticBorderStyle
-		if f.borderAnimation != nil {
-			style = f.borderAnimation.GetBorderStyle(frame, BorderPartBottom, position, perimeter)
-		}
-		if h > 1 {
-			ctx.PrintTruncated(x, h-1, f.border.Horizontal, style)
-		}
-		position++
-	}
-
-	// Draw left border
-	for y := h - 2; y > 0; y-- {
-		style := f.staticBorderStyle
-		if f.borderAnimation != nil {
-			style = f.borderAnimation.GetBorderStyle(frame, BorderPartLeft, position, perimeter)
-		}
-		ctx.PrintTruncated(0, y, f.border.Vertical, style)
-		position++
-	}
-
-	// Draw corners
-	tlStyle := f.staticBorderStyle
-	trStyle := f.staticBorderStyle
-	blStyle := f.staticBorderStyle
-	brStyle := f.staticBorderStyle
-
-	if f.borderAnimation != nil {
-		tlStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartTopLeft, 0, perimeter)
-		trStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartTopRight, 0, perimeter)
-		if h > 1 {
-			blStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomLeft, 0, perimeter)
-		}
-		if w > 1 && h > 1 {
-			brStyle = f.borderAnimation.GetBorderStyle(frame, BorderPartBottomRight, 0, perimeter)
-		}
-	}
-
-	ctx.PrintTruncated(0, 0, f.border.TopLeft, tlStyle)
-	if w > 1 {
-		ctx.PrintTruncated(w-1, 0, f.border.TopRight, trStyle)
-	}
-	if h > 1 {
-		ctx.PrintTruncated(0, h-1, f.border.BottomLeft, blStyle)
-		if w > 1 {
-			ctx.PrintTruncated(w-1, h-1, f.border.BottomRight, brStyle)
-		}
+		ctx.PrintTruncated(c.x, c.y, c.glyph, style)
 	}
 
 	// Title
@@ -165,4 +98,43 @@ func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 		innerCtx := ctx.SubContext(innerBounds)
 		f.inner.render(innerCtx)
 	}
+}
+
+// borderCell is one cell of the border: where it goes, which part of the
+// border it belongs to, what it draws, and for an edge cell, its index along
+// that edge in clockwise order and the edge's length.
+type borderCell struct {
+	x, y      int
+	part      BorderPart
+	glyph     string
+	edgeIndex int
+	edgeLen   int
+}
+
+// borderCells lists the border's cells clockwise from the top-left corner,
+// corners included. A cell's index is its position along the perimeter, so
+// an animation flows through the corners instead of jumping at them.
+func (f *AnimatedBorderedView) borderCells(w, h int) []borderCell {
+	b := f.border
+	cells := []borderCell{{x: 0, y: 0, part: BorderPartTopLeft, glyph: b.TopLeft}}
+	edge := func(part BorderPart, glyph string, n int, at func(i int) (int, int)) {
+		for i := range n {
+			x, y := at(i)
+			cells = append(cells, borderCell{x, y, part, glyph, i, n})
+		}
+	}
+	edge(BorderPartTop, b.Horizontal, w-2, func(i int) (int, int) { return 1 + i, 0 })
+	if w > 1 {
+		cells = append(cells, borderCell{x: w - 1, y: 0, part: BorderPartTopRight, glyph: b.TopRight})
+		edge(BorderPartRight, b.Vertical, h-2, func(i int) (int, int) { return w - 1, 1 + i })
+		if h > 1 {
+			cells = append(cells, borderCell{x: w - 1, y: h - 1, part: BorderPartBottomRight, glyph: b.BottomRight})
+		}
+	}
+	if h > 1 {
+		edge(BorderPartBottom, b.Horizontal, w-2, func(i int) (int, int) { return w - 2 - i, h - 1 })
+		cells = append(cells, borderCell{x: 0, y: h - 1, part: BorderPartBottomLeft, glyph: b.BottomLeft})
+	}
+	edge(BorderPartLeft, b.Vertical, h-2, func(i int) (int, int) { return 0, h - 2 - i })
+	return cells
 }

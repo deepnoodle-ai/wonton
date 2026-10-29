@@ -264,67 +264,72 @@ type CornerHighlightAnimation struct {
 	Duration       int // How long each corner stays highlighted (in frames)
 }
 
+// edgeBorderAnimation is implemented by a border animation that styles an
+// edge cell by its distance from a corner. AnimatedBorderedView calls it in
+// place of GetBorderStyle, because a position along the whole perimeter does
+// not say where the corners are.
+type edgeBorderAnimation interface {
+	// edgeBorderStyle styles a cell. For an edge cell, index counts
+	// clockwise along that edge from 0, and edgeLen is the edge's length.
+	edgeBorderStyle(frame uint64, part BorderPart, index, edgeLen int) Style
+}
+
+// cornerFadeWidth is how many edge cells the highlight fades over on each
+// side of the lit corner.
+const cornerFadeWidth = 5
+
 // GetBorderStyle returns the style for a border position at a given frame.
+// It lights only the active corner. AnimatedBorderedView also fades the
+// highlight into the edges on each side of that corner.
 func (c *CornerHighlightAnimation) GetBorderStyle(frame uint64, part BorderPart, position int, length int) Style {
+	if part == c.activeCorner(frame) {
+		return NewStyle().WithFgRGB(c.HighlightColor)
+	}
+	return NewStyle().WithFgRGB(c.BaseColor)
+}
+
+func (c *CornerHighlightAnimation) edgeBorderStyle(frame uint64, part BorderPart, index, edgeLen int) Style {
+	// Clockwise, each edge runs from the first corner to the second.
+	var from, to BorderPart
+	switch part {
+	case BorderPartTop:
+		from, to = BorderPartTopLeft, BorderPartTopRight
+	case BorderPartRight:
+		from, to = BorderPartTopRight, BorderPartBottomRight
+	case BorderPartBottom:
+		from, to = BorderPartBottomRight, BorderPartBottomLeft
+	case BorderPartLeft:
+		from, to = BorderPartBottomLeft, BorderPartTopLeft
+	default:
+		return c.GetBorderStyle(frame, part, 0, 0)
+	}
+
+	// Cells next to the lit corner are fully lit and fade with distance.
+	distance := -1
+	switch c.activeCorner(frame) {
+	case from:
+		distance = index
+	case to:
+		distance = edgeLen - 1 - index
+	}
+	if distance < 0 || distance >= cornerFadeWidth {
+		return NewStyle().WithFgRGB(c.BaseColor)
+	}
+	intensity := 1.0 - float64(distance)/float64(cornerFadeWidth)
+	return c.blendColors(c.BaseColor, c.HighlightColor, intensity)
+}
+
+// activeCorner returns the corner lit at a frame, cycling clockwise from
+// the top-left corner.
+func (c *CornerHighlightAnimation) activeCorner(frame uint64) BorderPart {
 	if c.Speed <= 0 {
 		c.Speed = 1
 	}
 	if c.Duration <= 0 {
 		c.Duration = 30
 	}
-
-	// Cycle through corners: TL -> TR -> BR -> BL
-	cycle := (int(frame) / c.Speed) / c.Duration
-	activeCorner := cycle % 4
-
-	isHighlighted := false
-	switch part {
-	case BorderPartTopLeft:
-		isHighlighted = activeCorner == 0
-	case BorderPartTopRight:
-		isHighlighted = activeCorner == 1
-	case BorderPartBottomRight:
-		isHighlighted = activeCorner == 2
-	case BorderPartBottomLeft:
-		isHighlighted = activeCorner == 3
-	}
-
-	// Also highlight adjacent border sections
-	if !isHighlighted && (part == BorderPartTop || part == BorderPartRight ||
-		part == BorderPartBottom || part == BorderPartLeft) {
-		// Fade highlight into adjacent borders
-		fadeWidth := 5
-		if position < fadeWidth {
-			// Near start of this border section
-			switch part {
-			case BorderPartTop:
-				if activeCorner == 0 || activeCorner == 3 { // TL or BL (wraps around)
-					intensity := 1.0 - float64(position)/float64(fadeWidth)
-					return c.blendColors(c.BaseColor, c.HighlightColor, intensity)
-				}
-			case BorderPartRight:
-				if activeCorner == 1 { // TR
-					intensity := 1.0 - float64(position)/float64(fadeWidth)
-					return c.blendColors(c.BaseColor, c.HighlightColor, intensity)
-				}
-			case BorderPartBottom:
-				if activeCorner == 2 { // BR
-					intensity := 1.0 - float64(position)/float64(fadeWidth)
-					return c.blendColors(c.BaseColor, c.HighlightColor, intensity)
-				}
-			case BorderPartLeft:
-				if activeCorner == 3 { // BL
-					intensity := 1.0 - float64(position)/float64(fadeWidth)
-					return c.blendColors(c.BaseColor, c.HighlightColor, intensity)
-				}
-			}
-		}
-	}
-
-	if isHighlighted {
-		return NewStyle().WithFgRGB(c.HighlightColor)
-	}
-	return NewStyle().WithFgRGB(c.BaseColor)
+	corners := [4]BorderPart{BorderPartTopLeft, BorderPartTopRight, BorderPartBottomRight, BorderPartBottomLeft}
+	return corners[(frame/uint64(c.Speed)/uint64(c.Duration))%4]
 }
 
 func (c *CornerHighlightAnimation) blendColors(from, to RGB, intensity float64) Style {
