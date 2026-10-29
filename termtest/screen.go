@@ -142,7 +142,7 @@ type Screen struct {
 	savedStyle  Style    // Saved style (ESC 7/8)
 	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
-	skip        skipMode // Non-zero while discarding an incomplete OSC/DCS/SOS/PM/APC payload
+	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
 }
 
 type skipMode uint8

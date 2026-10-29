@@ -3,6 +3,7 @@ package gif
 import (
 	"bytes"
 	"image"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -610,7 +611,7 @@ func TestEmulator_StringAndCancelledSequences(t *testing.T) {
 		em := NewEmulator(20, 3)
 		chunk := strings.Repeat("A", 64*1024)
 		em.ProcessOutput("\x1bPq")
-		for i := 0; i < 24; i++ { // 1.5 MiB > maxPendingBytes
+		for i := 0; i < 24; i++ { // 1.5 MiB, more than maxPendingBytes
 			em.ProcessOutput(chunk)
 		}
 		em.ProcessOutput("\x1b")
@@ -625,5 +626,43 @@ func TestEmulator_StringAndCancelledSequences(t *testing.T) {
 		if got := rowText(em.Screen(), 0); got != "ok" {
 			t.Errorf("row 0 = %q, want %q", got, "ok")
 		}
+		if em.pending != "" {
+			t.Errorf("pending = %d bytes, want none", len(em.pending))
+		}
 	})
+}
+
+// TestEmulator_SplitAtEveryByte checks that splitting a stream at any byte
+// gives the same screen as writing it whole. The stream covers OSC with BEL
+// and ST, BEL inside a DCS payload, CAN and SUB aborts, an OSC ended by the
+// ESC of a following CSI, intermediate escapes, and multi-byte UTF-8.
+func TestEmulator_SplitAtEveryByte(t *testing.T) {
+	const stream = "a\x1b]0;title\x07b\x1b]2;t\x1b\\c\x1bP1$r\x07x\x1b\\d\x1b_G\x18e" +
+		"\x1b]0;t\x1b[31mf\x1b[12\x1ag\x1b(Bh\x1b#8i\u00e9jk\u0301"
+
+	whole := NewEmulator(20, 3)
+	whole.ProcessOutput(stream)
+	if got := rowText(whole.Screen(), 0); got != "abcdefghi\u00e9jk" {
+		t.Fatalf("row 0 = %q, want %q", got, "abcdefghi\u00e9jk")
+	}
+	if got := whole.Screen().Cells[0][5].FG; got != ansiColor(1) {
+		t.Errorf("f fg = %v, want red", got)
+	}
+
+	for k := 1; k < len(stream); k++ {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput(stream[:k])
+		em.ProcessOutput(stream[k:])
+		if !reflect.DeepEqual(em.Screen(), whole.Screen()) {
+			t.Errorf("split at byte %d: row 0 = %q, want %q", k, rowText(em.Screen(), 0), rowText(whole.Screen(), 0))
+		}
+	}
+
+	em := NewEmulator(20, 3)
+	for i := 0; i < len(stream); i++ {
+		em.Write([]byte{stream[i]})
+	}
+	if !reflect.DeepEqual(em.Screen(), whole.Screen()) {
+		t.Errorf("byte at a time: row 0 = %q, want %q", rowText(em.Screen(), 0), rowText(whole.Screen(), 0))
+	}
 }

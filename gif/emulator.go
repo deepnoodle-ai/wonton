@@ -34,8 +34,8 @@ type Emulator struct {
 	screen  *TerminalScreen
 	fg      color.Color
 	bg      color.Color
-	pending string
-	skip    skipMode
+	pending string   // incomplete escape sequence or UTF-8 rune from the last call
+	skip    skipMode // non-zero while inside an OSC/DCS/SOS/PM/APC payload
 }
 
 type skipMode uint8
@@ -146,22 +146,25 @@ func (e *Emulator) ProcessOutput(data string) {
 		data = e.pending + data
 		e.pending = ""
 	}
-	if data == "" {
-		return
-	}
 	i := 0
-	if e.skip != skipNone {
-		end, status := scanStringSequence(data, e.skip == skipOSC)
-		if status == seqIncomplete {
-			if data[len(data)-1] == '\x1b' {
-				e.pending = "\x1b"
-			}
-			return
-		}
-		e.skip = skipNone
-		i = end
-	}
 	for i < len(data) {
+		if e.skip != skipNone {
+			// Inside an OSC, DCS, SOS, PM, or APC payload, possibly begun in
+			// an earlier call. The payload is discarded as it arrives rather
+			// than buffered, so a large one (a sixel image, an OSC 52 copy)
+			// costs no memory and is scanned only once.
+			end := stringSequenceEnd(data[i:], e.skip == skipOSC)
+			if end < 0 {
+				// Keep a trailing ESC: it may be the first byte of ST.
+				if data[len(data)-1] == '\x1b' {
+					e.pending = "\x1b"
+				}
+				return
+			}
+			e.skip = skipNone
+			i += end
+			continue
+		}
 		// Check for escape sequences
 		if data[i] == '\x1b' {
 			if i+1 >= len(data) {
@@ -203,28 +206,14 @@ func (e *Emulator) ProcessOutput(data string) {
 
 			case ']':
 				// OSC sequence: ESC ] ... (BEL | ESC \)
-				end, status := scanStringSequence(data[i+2:], true)
-				if status == seqIncomplete {
-					e.skip = skipOSC
-					if i+2 < len(data) && data[len(data)-1] == '\x1b' {
-						e.pending = "\x1b"
-					}
-					return
-				}
-				i += 2 + end
+				e.skip = skipOSC
+				i += 2
 				continue
 
 			case 'P', 'X', '^', '_':
 				// DCS, SOS, PM, APC string sequence: ESC <type> ... ESC \
-				end, status := scanStringSequence(data[i+2:], false)
-				if status == seqIncomplete {
-					e.skip = skipST
-					if i+2 < len(data) && data[len(data)-1] == '\x1b' {
-						e.pending = "\x1b"
-					}
-					return
-				}
-				i += 2 + end
+				e.skip = skipST
+				i += 2
 				continue
 
 			default:
@@ -241,7 +230,8 @@ func (e *Emulator) ProcessOutput(data string) {
 					i = j + 1
 					continue
 				}
-				i++
+				// Not a valid final byte: drop the ESC and the intermediates.
+				i = j
 				continue
 			}
 		}
@@ -320,29 +310,28 @@ func scanCSI(data string) (int, seqStatus) {
 	return 0, seqIncomplete
 }
 
-// scanStringSequence scans the payload of an OSC (allowBEL=true) or
-// DCS/SOS/PM/APC (allowBEL=false) sequence through its BEL or ST (ESC \)
-// terminator.
-func scanStringSequence(data string, allowBEL bool) (int, seqStatus) {
+// stringSequenceEnd scans the payload of a string sequence for its end:
+// ST (ESC \), or also BEL for OSC (allowBEL). CAN and SUB cancel the
+// sequence, and an ESC not followed by '\' ends it and starts a new
+// sequence, which is left unconsumed. Returns the number of bytes consumed,
+// or -1 if the payload continues past the end of data.
+func stringSequenceEnd(data string, allowBEL bool) int {
 	for i := 0; i < len(data); i++ {
 		c := data[i]
-		if allowBEL && c == '\x07' {
-			return i + 1, seqComplete
+		if c == 0x18 || c == 0x1A || (allowBEL && c == 0x07) {
+			return i + 1
 		}
-		if c == 0x18 || c == 0x1A {
-			return i + 1, seqAborted
-		}
-		if c == '\x1b' {
+		if c == 0x1B {
 			if i+1 >= len(data) {
-				return 0, seqIncomplete
+				return -1
 			}
 			if data[i+1] == '\\' {
-				return i + 2, seqComplete
+				return i + 2
 			}
-			return i, seqAborted
+			return i
 		}
 	}
-	return 0, seqIncomplete
+	return -1
 }
 
 // incompleteRuneTail returns the number of trailing bytes in str that form

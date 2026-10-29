@@ -11,27 +11,25 @@ import (
 // sequence or UTF-8 rune is left unconsumed so Write can buffer it until
 // the remaining bytes arrive.
 func (s *Screen) processANSI(data string) int {
-	if len(data) == 0 {
-		return 0
-	}
 	i := 0
-	if s.skip != skipNone {
-		var end int
-		if s.skip == skipOSC {
-			end = s.parseOSC(data)
-		} else {
-			end = parseStringTerminator(data)
-		}
-		if end < 0 {
-			if data[len(data)-1] == '\x1b' {
-				return len(data) - 1
-			}
-			return len(data)
-		}
-		s.skip = skipNone
-		i = end
-	}
 	for i < len(data) {
+		if s.skip != skipNone {
+			// Inside an OSC, DCS, SOS, PM, or APC payload, possibly begun in
+			// an earlier Write. The payload is discarded as it arrives rather
+			// than buffered, so a large one (a sixel image, an OSC 52 copy)
+			// costs no memory and is scanned only once.
+			end := parseStringTerminator(data[i:], s.skip == skipOSC)
+			if end < 0 {
+				// Keep a trailing ESC: it may be the first byte of ST.
+				if data[len(data)-1] == '\x1b' {
+					return len(data) - 1
+				}
+				return len(data)
+			}
+			s.skip = skipNone
+			i += end
+			continue
+		}
 		if data[i] == '\x1b' {
 			// Start of escape sequence
 			if i+1 >= len(data) {
@@ -52,29 +50,16 @@ func (s *Screen) processANSI(data string) int {
 				}
 				return i // Incomplete sequence
 			case ']':
-				// OSC sequence (Operating System Command)
-				end := s.parseOSC(data[i+2:])
-				if end >= 0 {
-					i += 2 + end
-					continue
-				}
+				// OSC (Operating System Command): skip the payload through
+				// BEL or ST
 				s.skip = skipOSC
-				if i+2 < len(data) && data[len(data)-1] == '\x1b' {
-					return len(data) - 1
-				}
-				return len(data)
+				i += 2
+				continue
 			case 'P', 'X', '^', '_':
-				// DCS/SOS/PM/APC: string sequence, consume payload through ST
-				end := parseStringTerminator(data[i+2:])
-				if end >= 0 {
-					i += 2 + end
-					continue
-				}
+				// DCS/SOS/PM/APC: skip the string payload through ST
 				s.skip = skipST
-				if i+2 < len(data) && data[len(data)-1] == '\x1b' {
-					return len(data) - 1
-				}
-				return len(data)
+				i += 2
+				continue
 			case '7':
 				// Save cursor and attributes (DECSC)
 				s.savedX = s.cursorX
@@ -137,6 +122,7 @@ func (s *Screen) processANSI(data string) int {
 					i = j + 1
 					continue
 				}
+				// Not a valid final byte: drop the ESC and the intermediates.
 				i = j
 				continue
 			}
@@ -175,12 +161,14 @@ func incompleteRuneTail(str string) int {
 	return 0
 }
 
-// parseStringTerminator scans for the ST (ESC \) terminator of a DCS, SOS,
-// PM, or APC string sequence. Returns the number of bytes consumed including
-// the terminator, or -1 if the sequence is incomplete.
-func parseStringTerminator(data string) int {
+// parseStringTerminator scans the payload of a string sequence for its end:
+// ST (ESC \), or also BEL for OSC (allowBEL). CAN and SUB cancel the
+// sequence, and an ESC not followed by '\' ends it and starts a new
+// sequence, which is left unconsumed. Returns the number of bytes consumed,
+// or -1 if the payload continues past the end of data.
+func parseStringTerminator(data string, allowBEL bool) int {
 	for i := 0; i < len(data); i++ {
-		if data[i] == '\x18' || data[i] == '\x1a' {
+		if data[i] == '\x18' || data[i] == '\x1a' || (allowBEL && data[i] == '\x07') {
 			return i + 1
 		}
 		if data[i] == '\x1b' {
@@ -347,27 +335,6 @@ func (s *Screen) parseCSI(data string) int {
 	}
 
 	return end + 1
-}
-
-// parseOSC parses an OSC (Operating System Command) sequence.
-// Returns the number of bytes consumed (not including the OSC prefix).
-func (s *Screen) parseOSC(data string) int {
-	// OSC sequences end with ST (\x1b\\) or BEL (\x07)
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\x07' || data[i] == '\x18' || data[i] == '\x1a' {
-			return i + 1
-		}
-		if data[i] == '\x1b' {
-			if i+1 >= len(data) {
-				return -1
-			}
-			if data[i+1] == '\\' {
-				return i + 2
-			}
-			return i
-		}
-	}
-	return -1 // Incomplete
 }
 
 // sgrParam is a single SGR parameter with optional colon-separated
