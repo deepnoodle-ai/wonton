@@ -4,9 +4,9 @@ package terminalinput
 
 import (
 	"testing"
+	"time"
 
 	"github.com/creack/pty"
-	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -25,8 +25,9 @@ func TestFlushInputDropsPendingBytes(t *testing.T) {
 	defer term.Restore(fd, state)
 
 	master.WriteString("\x1b]11;rgb:ffff/ffff/ffff\x07")
-	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-	unix.Poll(fds, 1000) // wait for the bytes to arrive
+	if !waitReadable(fd, time.Second) {
+		t.Fatal("written bytes never arrived")
+	}
 	if err := FlushInput(fd); err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ package terminalinput
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -53,16 +54,25 @@ func pending(t *testing.T, tty *os.File) string {
 	defer term.Restore(fd, state)
 	var out []byte
 	buf := make([]byte, 64)
-	for {
-		fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		if n, _ := unix.Poll(fds, 100); n == 0 {
-			return string(out)
-		}
+	for waitReadable(fd, 100*time.Millisecond) {
 		n, err := unix.Read(fd, buf)
 		if n <= 0 || err != nil {
 			return string(out)
 		}
 		out = append(out, buf[:n]...)
+	}
+	return string(out)
+}
+
+// waitReadable reports whether fd has input within timeout. Unlike a bare
+// unix.Poll, it retries when a signal interrupts the poll.
+func waitReadable(fd int, timeout time.Duration) bool {
+	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	for {
+		n, err := unix.Poll(fds, int(timeout/time.Millisecond))
+		if !errors.Is(err, unix.EINTR) {
+			return n > 0
+		}
 	}
 }
 

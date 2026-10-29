@@ -4,6 +4,7 @@ package tui
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -49,10 +50,14 @@ func pending(t *testing.T, tty *os.File) string {
 	buf := make([]byte, 64)
 	for {
 		fds := []unix.PollFd{{Fd: int32(tty.Fd()), Events: unix.POLLIN}}
-		if n, _ := unix.Poll(fds, 100); n == 0 {
+		n, err := unix.Poll(fds, 100)
+		if errors.Is(err, unix.EINTR) {
+			continue // the runtime's preemption signal interrupted the poll
+		}
+		if n <= 0 {
 			return string(out)
 		}
-		n, err := unix.Read(int(tty.Fd()), buf)
+		n, err = unix.Read(int(tty.Fd()), buf)
 		if n <= 0 || err != nil {
 			return string(out)
 		}
