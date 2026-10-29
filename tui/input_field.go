@@ -172,8 +172,9 @@ func (f *InputFieldView) OnChange(fn func(string)) *InputFieldView {
 	return f
 }
 
-// OnSubmit sets a callback invoked when Enter is pressed. Without one,
-// Enter is delivered to the application's HandleEvent.
+// OnSubmit sets a callback invoked when Enter is pressed, or Shift+Enter in
+// a single-line input. Without one, Enter is delivered to the application's
+// HandleEvent.
 func (f *InputFieldView) OnSubmit(fn func(string)) *InputFieldView {
 	f.onSubmit = fn
 	return f

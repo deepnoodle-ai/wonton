@@ -96,6 +96,14 @@ bug fixes. Release notes identify incompatible changes explicitly.
   width, wraps at the right edge, and starts a new line at a newline. Before,
   `PrintAtStyled(7, 0, "x", style)` drew `x` at column 0, and the next
   `PrintStyled` drew over it. (#125)
+- `cli.Context.Input` submits when the terminal sends LF for Enter, or on
+  Ctrl-J or Shift+Enter. The key decoder reports these as Shift+Enter, and a
+  single-line `tui.Input` consumed them without doing anything. A
+  single-line `tui.Input` or `tui.InputField` now treats Shift+Enter as
+  Enter, and so does Alt+Enter where the terminal sends it as ESC+CR. It
+  calls `OnSubmit`, or with no `OnSubmit` the key reaches the app's
+  `HandleEvent`. In a multiline input, Shift+Enter still inserts a newline.
+  (#83)
 
 ## [0.9.0] - 2026-10-24
 

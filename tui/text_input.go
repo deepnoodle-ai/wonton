@@ -1223,9 +1223,12 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 			}
 			return true
 		}
-		if t.SubmitOnEnter && t.OnSubmit != nil {
-			t.OnSubmit(t.Value())
+		// An Enter that submits nothing is left unconsumed, so it reaches
+		// the app's HandleEvent.
+		if !t.SubmitOnEnter || t.OnSubmit == nil {
+			return false
 		}
+		t.OnSubmit(t.Value())
 		return true
 	}
 
