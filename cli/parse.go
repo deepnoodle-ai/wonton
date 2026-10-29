@@ -148,15 +148,17 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 				continue
 			}
 
-			// Handle -h as help unless a global flag explicitly claims -h
-			if shorts == "h" && p.app.isHelpShort() {
+			// For bundled short flags like -abc, only the last one can take a value
+			lastShort := string(shorts[len(shorts)-1])
+
+			// Handle -h, alone or ending a bundle like -vh, as help unless a
+			// global flag explicitly claims -h. Help takes no value.
+			if lastShort == "h" && p.app.isHelpShort() {
 				result.GlobalFlags = append(result.GlobalFlags, arg)
 				i++
 				continue
 			}
 
-			// For bundled short flags like -abc, only the last one can take a value
-			lastShort := string(shorts[len(shorts)-1])
 			gf := p.app.findGlobalFlagByShort(lastShort)
 
 			if gf == nil {

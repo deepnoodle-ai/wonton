@@ -241,9 +241,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `cli`: negative numbers and other `-.x` tokens passed as positional
   arguments (such as `-5`, `-.5`, or `-.env`) are no longer rejected as
   unknown short flags unless a matching short flag (such as `-4`) is
-  registered on the command, and a root-command boolean flag before
+  registered on the command. Right after a flag that needs a value, even a
+  registered `-4` is that value. A root-command boolean flag before
   positional arguments no longer consumes the next positional as its value
-  when resolving subcommands. (#133)
+  when resolving subcommands. A bundle that ends in the built-in `-h`, such
+  as `-vh`, shows help. Before, it took the next argument as its value and
+  could run a subcommand named later on the line. (#133)
 
 ## [0.9.0] - 2026-10-24
 

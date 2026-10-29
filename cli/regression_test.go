@@ -339,3 +339,41 @@ func TestNegativeNumberPositionalsAndRootBoolSubcommandCollision(t *testing.T) {
 	assert.False(t, ranSub, "should run root command, not subcommand")
 	assert.Equal(t, []string{"first.txt", "sub"}, rootArgs)
 }
+
+// A registered numeric short flag after a flag that takes a value is that
+// value, as getopt does, so a negative number can follow a flag without "=".
+func TestRegisteredNumericShortAfterValueFlagIsTheValue(t *testing.T) {
+	app := TestApp("app")
+	var ipv4 bool
+	var pattern string
+	app.Command("connect").
+		Flags(Bool("ipv4", "4"), String("pattern", "p")).
+		Run(func(ctx *Context) error {
+			ipv4 = ctx.Bool("ipv4")
+			pattern = ctx.String("pattern")
+			return nil
+		})
+
+	assert.NoError(t, app.ExecuteArgs([]string{"connect", "--pattern", "-4"}))
+	assert.Equal(t, "-4", pattern)
+	assert.False(t, ipv4)
+}
+
+// A bundle ending in the built-in -h shows help. The h takes no value, so the
+// next positional must not be consumed as one and a later token that names a
+// subcommand must not dispatch to it.
+func TestBundleEndingInHelpShowsRootHelp(t *testing.T) {
+	for _, flag := range []Flag{Bool("ipv4", "4"), Bool("verbose", "v")} {
+		app := TestApp("app")
+		ranSub := false
+		app.Main().Args("files...").Flags(flag).Run(func(*Context) error { return nil })
+		app.Command("sub").Run(func(*Context) error {
+			ranSub = true
+			return nil
+		})
+		bundle := "-" + flag.GetShort() + "h"
+		err := app.ExecuteArgs([]string{bundle, "first", "sub"})
+		assert.True(t, IsHelpRequested(err), "%s: %v", bundle, err)
+		assert.False(t, ranSub, bundle)
+	}
+}

@@ -761,10 +761,12 @@ myapp -c -5 run       # Short flag with negative value, then command
 myapp add -5 -3.14    # Negative numbers as positional arguments
 ```
 
-The parser treats `-N` and `-.x` tokens (where N is a digit) as values or
-positional arguments, not flags, unless the command registers a matching short
-flag such as `-4`. Use `--` to pass such a token as a positional argument
-anyway.
+The parser treats tokens that start with `-` and a digit (`-5`, `-3.14`) or
+with `-.` (`-.5`, `-.env`) as values or positional arguments, not flags. A
+command can still register a numeric short flag such as `-4`. Where a flag can
+appear, `-4` is then that flag. Right after a flag that needs a value, `-4` is
+the value, so `--count -4` sets the count. Use `--` to pass `-4` as a
+positional argument.
 
 ### Command Names Take Precedence
 
