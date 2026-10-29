@@ -443,7 +443,7 @@ func (tr *TerminalRenderer) RenderFrame(delay int) {
 		for y := 0; y < tr.screen.Height; y++ {
 			for x := 0; x < tr.screen.Width; x++ {
 				cell := tr.screen.Cells[y][x]
-				if cell.Continuation || cell.Char == ' ' || cell.Char == 0 {
+				if cell.Continuation || cell.Char == 0 || (cell.Char == ' ' && cell.Trailing == "") {
 					continue
 				}
 				pixelX := tr.padding + x*tr.cellWidth

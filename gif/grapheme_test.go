@@ -217,12 +217,17 @@ func TestTerminalRenderer_CombiningMarkStaysInCell(t *testing.T) {
 		return base, next
 	}
 	plainBase, _ := render("e")
-	base, next := render("é")
+	base, next := render("e\u0301")
 	if base <= plainBase {
 		t.Errorf("base cell lit pixels = %d, want more than plain e's %d", base, plainBase)
 	}
 	if next != 0 {
 		t.Errorf("next cell lit pixels = %d, want 0", next)
+	}
+
+	// A mark on a space draws too, though a plain space draws nothing.
+	if base, _ := render(" \u0301"); base == 0 {
+		t.Error("a combining mark on a space drew no pixels")
 	}
 }
 
