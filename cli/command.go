@@ -754,7 +754,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					return c.errorWithHelpHint(fmt.Sprintf("flag --%s requires a value", name))
 				}
 			}
-		} else if looksLikeFlag(arg) {
+		} else if looksLikeFlag(arg) || c.hasShortFlag(arg) {
 			// Short flag(s). -o=value (or -vo=value) gives the last flag
 			// an inline value.
 			shorts := arg[1:]
@@ -891,6 +891,33 @@ func (c *Command) findFlagByShort(short string) Flag {
 // claimed -h as a short flag name.
 func (c *Command) isHelpShort() bool {
 	return c.findFlagByShort("h") == nil
+}
+
+// hasShortFlag reports whether arg is a short flag (or bundle of short flags,
+// optionally with an "=value" suffix) whose flag characters are all registered
+// on this command or its visible global flags. This allows registered numeric
+// short flags such as "-4" to be parsed as flags while unregistered negative
+// numbers such as "-5" or "-3.14" remain positional arguments.
+func (c *Command) hasShortFlag(arg string) bool {
+	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || len(arg) <= 1 {
+		return false
+	}
+	shorts := arg[1:]
+	if idx := strings.IndexByte(shorts, '='); idx > 0 {
+		shorts = shorts[:idx]
+	}
+	if shorts == "" {
+		return false
+	}
+	for _, r := range shorts {
+		if r == 'h' && c.isHelpShort() {
+			continue
+		}
+		if c.findFlagByShort(string(r)) == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Command) setFlag(ctx *Context, name, value string) error {

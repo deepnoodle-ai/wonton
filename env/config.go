@@ -392,6 +392,8 @@ type structParser struct {
 	errors  *AggregateError
 }
 
+// parseStruct recursively populates exported struct fields in rv using prefix
+// as the current environment variable prefix.
 func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 	rt := rv.Type()
 

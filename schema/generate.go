@@ -280,6 +280,8 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 	return prop, nil
 }
 
+// structFieldCandidate records a direct or promoted struct field discovered
+// while walking a struct and its flattened embedded structs.
 type structFieldCandidate struct {
 	field        reflect.StructField
 	jsonName     string
@@ -399,13 +401,21 @@ func dominantCandidateIndex(candidates []structFieldCandidate, indices []int) (i
 	return 0, false
 }
 
+// implementsTextMarshaler reports whether a concrete type t (or *t) implements
+// encoding.TextMarshaler without implementing json.Marshaler. Interface types
+// are excluded because encoding/json marshals their dynamic value, which may
+// not be a JSON string.
 func implementsTextMarshaler(t reflect.Type) bool {
+	if t.Kind() == reflect.Interface {
+		return false
+	}
 	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) {
 		return false
 	}
 	return t.Implements(textMarshalerType) || reflect.PointerTo(t).Implements(textMarshalerType)
 }
 
+// hasJSONStringOption reports whether field's json tag includes the ",string" option.
 func hasJSONStringOption(field reflect.StructField) bool {
 	jsonTag := field.Tag.Get("json")
 	if jsonTag == "" {
@@ -420,6 +430,9 @@ func hasJSONStringOption(field reflect.StructField) bool {
 	return false
 }
 
+// supportsJSONStringOption reports whether encoding/json honors the ",string"
+// struct tag option for a field of type t (string, integer, floating-point, or
+// boolean types, or pointers to them).
 func supportsJSONStringOption(t reflect.Type) bool {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()

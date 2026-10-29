@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding"
 	"encoding/json"
 	"testing"
 
@@ -205,13 +206,14 @@ func (c customTextValue) MarshalText() ([]byte, error) {
 // encoding.TextMarshaler as JSON strings.
 func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	type payload struct {
-		ID      int64            `json:"id,string"`
-		Price   float64          `json:"price,string,omitempty"`
-		Enabled bool             `json:"enabled,string"`
-		OptID   *int             `json:"opt_id,string,omitempty"`
-		Slice   []int            `json:"slice,string"` // ,string ignored by encoding/json on slices
-		Token   customTextValue  `json:"token"`
-		OptTok  *customTextValue `json:"opt_token,omitempty"`
+		ID      int64                  `json:"id,string"`
+		Price   float64                `json:"price,string,omitempty"`
+		Enabled bool                   `json:"enabled,string"`
+		OptID   *int                   `json:"opt_id,string,omitempty"`
+		Slice   []int                  `json:"slice,string"` // ,string ignored by encoding/json on slices
+		Token   customTextValue        `json:"token"`
+		OptTok  *customTextValue       `json:"opt_token,omitempty"`
+		Iface   encoding.TextMarshaler `json:"iface,omitempty"`
 	}
 
 	s, err := Generate(payload{})
@@ -227,6 +229,7 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	assert.Equal(t, String, s.Properties["opt_token"].Type)
 	assert.NotNil(t, s.Properties["opt_token"].Nullable)
 	assert.True(t, *s.Properties["opt_token"].Nullable)
+	assert.Empty(t, s.Properties["iface"].Type)
 }
 
 // encoding/json drops conflicting embedded fields at the same depth (unless one

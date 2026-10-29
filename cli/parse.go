@@ -66,7 +66,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 		}
 
 		// Check if this arg is a known command or group
-		if !looksLikeFlag(arg) {
+		if !looksLikeFlag(arg) && !p.hasShortFlag(arg) {
 			p.resolveCommandPosition(result, args, i)
 			return result, nil
 		}
@@ -415,6 +415,37 @@ func (p *parser) isRootBoolFlagByShort(short string) bool {
 	return isBool
 }
 
+// hasShortFlag reports whether arg is a short flag (or bundle of short flags,
+// optionally with an "=value" suffix) whose flag characters are all registered
+// as global flags or on the root command.
+func (p *parser) hasShortFlag(arg string) bool {
+	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || len(arg) <= 1 {
+		return false
+	}
+	shorts := arg[1:]
+	if idx := strings.IndexByte(shorts, '='); idx > 0 {
+		shorts = shorts[:idx]
+	}
+	if shorts == "" {
+		return false
+	}
+	rootCmd := p.app.commands[""]
+	for _, r := range shorts {
+		if r == 'h' && p.app.isHelpShort() {
+			continue
+		}
+		s := string(r)
+		if p.app.findGlobalFlagByShort(s) != nil {
+			continue
+		}
+		if rootCmd != nil && rootCmd.findFlagByShort(s) != nil {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // looksLikeFlag returns true if the string looks like a flag rather than a value.
 // This allows values like "-1" (negative numbers) while still treating "-v" as a flag.
 func looksLikeFlag(s string) bool {
@@ -431,7 +462,7 @@ func looksLikeFlag(s string) bool {
 		if second >= '0' && second <= '9' {
 			return false // looks like negative number
 		}
-		if second == '.' && len(s) > 2 && s[2] >= '0' && s[2] <= '9' {
+		if second == '.' && len(s) > 2 {
 			return false // looks like negative decimal
 		}
 	}

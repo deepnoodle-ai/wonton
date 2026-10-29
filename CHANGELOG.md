@@ -42,6 +42,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
   without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
   compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
+- **Breaking**: `env.Parse` and `env.ParseInto` flatten an embedded pointer
+  struct (`*Common`) without adding a `COMMON_` prefix, matching a
+  value-embedded `Common`, and apply an `envPrefix` tag on both value- and
+  pointer-embedded structs. Before, `*Common` without `envPrefix` read
+  `COMMON_HOST` instead of `HOST`, and `Common` ignored `envPrefix`. (#133)
 
 ### Fixed
 
@@ -104,6 +109,18 @@ bug fixes. Release notes identify incompatible changes explicitly.
   calls `OnSubmit`, or with no `OnSubmit` the key reaches the app's
   `HandleEvent`. In a multiline input, Shift+Enter still inserts a newline.
   (#83)
+- `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
+  string, integer, floating-point, and boolean types or pointers to them),
+  concrete types that implement `encoding.TextMarshaler` without
+  `json.Marshaler`, and embedded struct field dominance rules: shallower
+  embedded fields shadow deeper ones regardless of field order, a single
+  `json`-tagged field at the shallowest depth wins over untagged siblings,
+  and conflicting fields at the shallowest depth are omitted. (#133)
+- `cli`: negative numbers passed as positional arguments (such as `-5` or
+  `-.5`) are no longer rejected as unknown short flags unless a matching
+  short flag (such as `-4`) is registered on the command, and a root-command
+  boolean flag before positional arguments no longer consumes the next
+  positional as its value when resolving subcommands. (#133)
 
 ## [0.9.0] - 2026-10-24
 
