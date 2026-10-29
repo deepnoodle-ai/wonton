@@ -69,6 +69,13 @@ type GitScanApp struct {
 	statusMsg string
 }
 
+// Key hints shown in the status bar for each mode.
+const (
+	commitsHint = "↑↓/jk navigate | Space/b page | Enter diff | f files | c copy | q quit"
+	diffHint    = "↑↓ scroll | f files | c copy | q back"
+	filesHint   = "↑↓ select | Enter/d diff | c copy path | q back"
+)
+
 // diffLine represents a single line in the diff view
 type diffLine struct {
 	Text    string
@@ -108,7 +115,7 @@ func main() {
 			tuiApp := &GitScanApp{
 				repo:      repo,
 				repoPath:  repo.Path,
-				statusMsg: "↑↓/jk navigate | Space/b page | Enter diff | f files | c copy | q quit",
+				statusMsg: commitsHint,
 			}
 
 			// Load initial data
@@ -124,9 +131,10 @@ func main() {
 
 			// Load commits
 			opts := git.LogOptions{
-				Limit:  ctx.Int("limit"),
-				Author: ctx.String("author"),
-				Grep:   ctx.String("grep"),
+				Limit:       ctx.Int("limit"),
+				Author:      ctx.String("author"),
+				Grep:        ctx.String("grep"),
+				IncludeBody: true, // the details panel shows the body
 			}
 			commits, err := repo.Log(bgCtx, opts)
 			if err != nil {
@@ -259,6 +267,7 @@ func (app *GitScanApp) handleCommitsKey(e tui.KeyEvent) []tui.Cmd {
 	case 'f', 'F':
 		app.loadDiff()
 		app.mode = ViewFiles
+		app.statusMsg = filesHint
 	case 'c', 'C':
 		if app.selectedCommit >= 0 && app.selectedCommit < len(app.commits) {
 			hash := app.commits[app.selectedCommit].Hash
@@ -284,7 +293,7 @@ func (app *GitScanApp) handleDiffKey(e tui.KeyEvent) []tui.Cmd {
 	// Back to commits
 	if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape {
 		app.mode = ViewCommits
-		app.statusMsg = "↑↓/jk navigate | Space/b page | f files | c copy hash | q quit"
+		app.statusMsg = commitsHint
 		return nil
 	}
 
@@ -362,6 +371,7 @@ func (app *GitScanApp) handleDiffKey(e tui.KeyEvent) []tui.Cmd {
 	switch e.Rune {
 	case 'f', 'F':
 		app.mode = ViewFiles
+		app.statusMsg = filesHint
 	case 'c', 'C':
 		// Copy selected line
 		if app.selectedLine >= 0 && app.selectedLine < len(app.diffLines) {
@@ -379,7 +389,7 @@ func (app *GitScanApp) handleFilesKey(e tui.KeyEvent) []tui.Cmd {
 	// Back
 	if e.Rune == 'q' || e.Rune == 'Q' || e.Key == tui.KeyEscape {
 		app.mode = ViewCommits
-		app.statusMsg = "↑↓/jk navigate | Space/b page | f files | c copy hash | q quit"
+		app.statusMsg = commitsHint
 		return nil
 	}
 
@@ -425,6 +435,7 @@ func (app *GitScanApp) handleFilesKey(e tui.KeyEvent) []tui.Cmd {
 	case tui.KeyEnter:
 		// Show diff for this file
 		app.mode = ViewDiff
+		app.statusMsg = diffHint
 		// Jump to this file in diff
 		if app.selectedFile >= 0 && app.selectedFile < len(app.files) {
 			targetFile := app.files[app.selectedFile].Path
@@ -476,6 +487,7 @@ func (app *GitScanApp) handleFilesKey(e tui.KeyEvent) []tui.Cmd {
 		}
 	case 'd', 'D':
 		app.mode = ViewDiff
+		app.statusMsg = diffHint
 	}
 
 	return nil
@@ -575,7 +587,7 @@ func (app *GitScanApp) loadDiff() {
 		}
 	}
 
-	app.statusMsg = "↑↓ scroll | f files | c copy | q back"
+	app.statusMsg = diffHint
 }
 
 func (app *GitScanApp) View() tui.View {
@@ -668,22 +680,27 @@ func (app *GitScanApp) viewCommits() tui.View {
 		commit := app.commits[app.selectedCommit]
 		detailViews = []tui.View{
 			tui.Text("Commit: %s", commit.ShortHash).Fg(tui.ColorYellow).Bold(),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Text("Author: %s", commit.Author.Name).Fg(tui.ColorCyan),
 			tui.Text("<%s>", commit.Author.Email).Fg(tui.ColorBrightBlack),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Text("Date: %s", commit.Timestamp.Format("2006-01-02 15:04:05")),
 			tui.Text("(%s)", humanize.Duration(time.Since(commit.Timestamp))).Fg(tui.ColorBrightBlack),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Divider(),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 		}
 
 		// Subject and body
 		detailViews = append(detailViews, tui.Text("%s", commit.Subject).Bold())
 		if commit.Body != "" {
-			detailViews = append(detailViews, tui.Spacer().MinHeight(1))
+			detailViews = append(detailViews, tui.Text(""))
 			lines := strings.Split(commit.Body, "\n")
+			// Keep the panel within the commit list's height (the list
+			// height less the padding and the lines above).
+			if maxLines := max(listHeight-2-len(detailViews), 1); len(lines) > maxLines {
+				lines = append(lines[:maxLines-1], "...")
+			}
 			for _, line := range lines {
 				if len(line) > 50 {
 					line = line[:47] + "..."
@@ -744,7 +761,7 @@ func (app *GitScanApp) formatCommit(commit git.Commit, selected bool) tui.View {
 		tui.Text(" %s ", commit.ShortHash).Fg(hashFg).Bg(bg).Bold(),
 		tui.Text("%s", subject).Fg(subjectFg).Bg(bg),
 		tui.Spacer(),
-		tui.Text("%s ", timeAgo).Fg(tui.ColorBrightBlack).Bg(bg),
+		tui.Text(" %s ", timeAgo).Fg(tui.ColorBrightBlack).Bg(bg),
 	)
 }
 
@@ -961,10 +978,8 @@ func (app *GitScanApp) viewFiles() tui.View {
 	}
 
 	summary := tui.Group(
-		tui.Text(" %d files changed", len(app.files)).Fg(tui.ColorWhite),
-		tui.Spacer().MinWidth(2),
-		tui.Text("+%d", totalAdd).Fg(tui.ColorGreen),
-		tui.Spacer().MinWidth(1),
+		tui.Text(" %d files changed  ", len(app.files)).Fg(tui.ColorWhite),
+		tui.Text("+%d ", totalAdd).Fg(tui.ColorGreen),
 		tui.Text("-%d", totalDel).Fg(tui.ColorRed),
 	)
 

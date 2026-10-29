@@ -92,7 +92,8 @@ func main() {
 			input := ctx.Arg(0)
 			output := ctx.Arg(1)
 			if output == "" {
-				output = strings.TrimSuffix(input, filepath.Ext(input)) + ".gif"
+				output = strings.TrimSuffix(input, filepath.Ext(input))
+				output = strings.TrimSuffix(output, ".cast") + ".gif"
 			}
 
 			opts := gif.CastOptions{
@@ -347,6 +348,7 @@ type InteractiveApp struct {
 	height       int
 	scrollOffset int
 	afterQuit    func() error // play or export, run once the TUI has exited
+	runtime      *tui.Runtime
 }
 
 func runInteractiveTUI(initialFile string) error {
@@ -367,18 +369,26 @@ func runInteractiveTUI(initialFile string) error {
 
 	// If initial file provided, select it
 	if initialFile != "" {
+		app.selected = -1
 		for i, f := range app.files {
 			if f == initialFile {
 				app.selected = i
 				break
 			}
 		}
+		if app.selected < 0 {
+			// Not in the current directory: list it so it can be selected.
+			app.files = append(app.files, initialFile)
+			app.selected = len(app.files) - 1
+		}
 		app.loadInfo(initialFile)
 	} else if len(app.files) > 0 {
 		app.loadInfo(app.files[0])
 	}
 
-	app.statusMsg = "↑↓ select | Enter play | e export | q quit"
+	if app.statusMsg == "" {
+		app.statusMsg = "↑↓ select | Enter play | e export | q quit"
+	}
 
 	if err := tui.Run(app); err != nil {
 		return err
@@ -389,6 +399,9 @@ func runInteractiveTUI(initialFile string) error {
 	}
 	return nil
 }
+
+// SetRuntime receives the runtime, so the list's Enter handler can stop it.
+func (app *InteractiveApp) SetRuntime(r *tui.Runtime) { app.runtime = r }
 
 func (app *InteractiveApp) loadInfo(file string) {
 	app.currentFile = file
@@ -412,24 +425,8 @@ func (app *InteractiveApp) HandleEvent(event tui.Event) []tui.Cmd {
 			return []tui.Cmd{tui.Quit()}
 		}
 
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.selected > 0 {
-				app.selected--
-				if len(app.files) > 0 {
-					app.loadInfo(app.files[app.selected])
-				}
-			}
-		case tui.KeyArrowDown:
-			if app.selected < len(app.files)-1 {
-				app.selected++
-				app.loadInfo(app.files[app.selected])
-			}
-		case tui.KeyEnter:
-			if len(app.files) > 0 {
-				return app.playSelected()
-			}
-		}
+		// The focused list handles navigation and Enter itself; View
+		// reloads the info when the selection changes.
 
 		switch e.Rune {
 		case 'e', 'E':
@@ -451,11 +448,15 @@ func (app *InteractiveApp) View() tui.View {
 			tui.HeaderBar("termrec - Terminal Recorder").Bg(tui.ColorMagenta).Fg(tui.ColorWhite),
 			tui.Spacer(),
 			tui.Text("No .cast files found in current directory").Fg(tui.ColorYellow),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Text("Use 'termrec record <output.cast>' to create a recording").Fg(tui.ColorBrightBlack),
 			tui.Spacer(),
 			tui.StatusBar("Press 'q' to quit"),
 		)
+	}
+
+	if app.selected < len(app.files) && app.files[app.selected] != app.currentFile {
+		app.loadInfo(app.files[app.selected])
 	}
 
 	// File list
@@ -511,7 +512,8 @@ func (app *InteractiveApp) View() tui.View {
 						Height(listHeight).
 						SelectedFg(tui.ColorBlack).
 						SelectedBg(tui.ColorMagenta).
-						ScrollOffset(&app.scrollOffset),
+						ScrollOffset(&app.scrollOffset).
+						OnSelect(func(tui.ListItem, int) { app.playSelected() }),
 				).Title("Recordings").BorderFg(tui.ColorMagenta),
 			),
 			tui.Stack(
@@ -524,9 +526,9 @@ func (app *InteractiveApp) View() tui.View {
 	)
 }
 
-func (app *InteractiveApp) playSelected() []tui.Cmd {
+func (app *InteractiveApp) playSelected() {
 	if app.selected >= len(app.files) {
-		return nil
+		return
 	}
 
 	file := app.files[app.selected]
@@ -534,7 +536,7 @@ func (app *InteractiveApp) playSelected() []tui.Cmd {
 		fmt.Print("\033[2J\033[H")
 		return playRecording(file, 1.0, false, 0.0)
 	}
-	return []tui.Cmd{tui.Quit()}
+	app.runtime.Stop()
 }
 
 func (app *InteractiveApp) exportSelected() []tui.Cmd {

@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -75,7 +76,13 @@ func main() {
 		).
 		Run(runMeta)
 
-	app.Execute()
+	if err := app.Execute(); err != nil {
+		if cli.IsHelpRequested(err) {
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(cli.GetExitCode(err))
+	}
 }
 
 // runCrawl handles the crawl command
@@ -240,11 +247,11 @@ func (app *CrawlApp) View() tui.View {
 
 func (app *CrawlApp) HandleEvent(event tui.Event) []tui.Cmd {
 	if key, ok := event.(tui.KeyEvent); ok {
-		switch key.Rune {
-		case 'q':
+		if key.Rune == 'q' || key.Key == tui.KeyCtrlC {
 			app.cancelFunc()
 			return []tui.Cmd{tui.Quit()}
-		case 's':
+		}
+		if key.Rune == 's' {
 			app.crawler.Stop()
 		}
 	}
@@ -461,6 +468,7 @@ type LinksApp struct {
 	links    []fetch.Link
 	baseURL  *url.URL
 	selected int
+	filter   string
 }
 
 func (app *LinksApp) View() tui.View {
@@ -493,15 +501,16 @@ func (app *LinksApp) View() tui.View {
 			tui.Text("%d total", len(app.links)).Dim(),
 		),
 		tui.Text(""),
-		tui.FilterableListStrings(items, &app.selected).Height(20),
+		tui.FilterableListStrings(items, &app.selected).Filter(&app.filter).Height(20),
 		tui.Text(""),
-		tui.Text("Type to filter, arrow keys to navigate, 'q' to quit").Dim(),
+		tui.Text("Type to filter, arrow keys to navigate, Esc to quit").Dim(),
 	).Padding(1)
 }
 
 func (app *LinksApp) HandleEvent(event tui.Event) []tui.Cmd {
+	// The list's filter takes typed letters, so quit on Esc or Ctrl+C.
 	if key, ok := event.(tui.KeyEvent); ok {
-		if key.Rune == 'q' {
+		if key.Key == tui.KeyEscape || key.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
 		}
 	}

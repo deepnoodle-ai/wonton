@@ -135,7 +135,7 @@ func generateGIF(ctx *cli.Context) error {
 		return fmt.Errorf("failed to save GIF: %w", err)
 	}
 
-	ctx.Printf("Successfully created %s with %d frames\n", output, len(commits))
+	ctx.Printf("Successfully created %s with %d frames\n", output, g.FrameCount())
 	return nil
 }
 

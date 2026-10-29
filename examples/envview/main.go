@@ -1,6 +1,6 @@
 // Example: envview - Interactive environment variable browser
 //
-// A TUI for browsing and editing environment variables and .env files.
+// A TUI for browsing environment variables and .env files.
 // Perfect for debugging configuration issues and managing environment settings.
 //
 // Run with:
@@ -57,6 +57,7 @@ func main() {
 		Version("1.0.0")
 
 	app.Main().
+		Args("files?...").
 		Flags(
 			cli.String("prefix", "p").
 				Help("Filter variables by prefix"),
@@ -444,7 +445,7 @@ func (app *EnvViewApp) View() tui.View {
 	return tui.Stack(
 		header,
 		filterBar,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Group(
 			tui.Stack(
 				tui.Bordered(
@@ -509,7 +510,7 @@ func (app *EnvViewApp) formatDetail(v EnvVar) []tui.View {
 	views := []tui.View{
 		tui.Text("Key:").Bold().Fg(tui.ColorCyan),
 		tui.Text("  %s", v.Key),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Value:").Bold().Fg(tui.ColorCyan),
 	}
 
@@ -532,10 +533,10 @@ func (app *EnvViewApp) formatDetail(v EnvVar) []tui.View {
 	}
 
 	views = append(views,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Source:").Bold().Fg(tui.ColorCyan),
 		tui.Text("  %s", v.Source),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Length: %d characters", len(v.Value)).Fg(tui.ColorBrightBlack),
 	)
 

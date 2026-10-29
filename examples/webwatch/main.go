@@ -294,7 +294,6 @@ func generateDiff(oldContent, newContent string) string {
 
 	// Simple line-by-line comparison
 	// This is a basic implementation - a real diff would use LCS algorithm
-	diff.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines)))
 
 	// Find common prefix
 	commonPrefix := 0
@@ -316,8 +315,17 @@ func generateDiff(oldContent, newContent string) string {
 		}
 	}
 
-	// Print context lines before changes
+	// The hunk covers up to 3 context lines on each side of the change
 	contextStart := max(0, commonPrefix-3)
+	contextEnd := min(len(oldLines), len(oldLines)-commonSuffix+3)
+	before := commonPrefix - contextStart
+	after := contextEnd - (len(oldLines) - commonSuffix)
+	removed := len(oldLines) - commonSuffix - commonPrefix
+	added := len(newLines) - commonSuffix - commonPrefix
+	diff.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n",
+		contextStart+1, before+removed+after, contextStart+1, before+added+after))
+
+	// Print context lines before changes
 	for i := contextStart; i < commonPrefix; i++ {
 		diff.WriteString(" " + oldLines[i] + "\n")
 	}
@@ -333,7 +341,6 @@ func generateDiff(oldContent, newContent string) string {
 	}
 
 	// Print context lines after changes
-	contextEnd := min(len(oldLines), len(oldLines)-commonSuffix+3)
 	for i := len(oldLines) - commonSuffix; i < contextEnd; i++ {
 		diff.WriteString(" " + oldLines[i] + "\n")
 	}

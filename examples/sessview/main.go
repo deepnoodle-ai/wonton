@@ -207,6 +207,8 @@ type BrowserApp struct {
 	height       int
 	statusMsg    string
 	afterQuit    func() error // playback, run once the TUI has exited
+	loaded       int          // index of the file the preview shows
+	runtime      *tui.Runtime
 }
 
 // RecordingPreview holds preview information about a recording
@@ -217,10 +219,14 @@ type RecordingPreview struct {
 	events   int
 }
 
+// SetRuntime receives the runtime, so the list's Enter handler can stop it.
+func (app *BrowserApp) SetRuntime(r *tui.Runtime) { app.runtime = r }
+
 // Init initializes the browser
 func (app *BrowserApp) Init() error {
 	if len(app.files) > 0 {
 		app.loadPreview(app.files[app.selected])
+		app.loaded = app.selected
 	}
 	app.statusMsg = "Use arrows to navigate, Enter to play, i for info, q to quit"
 	return nil
@@ -239,28 +245,8 @@ func (app *BrowserApp) HandleEvent(event tui.Event) []tui.Cmd {
 			return []tui.Cmd{tui.Quit()}
 		}
 
-		// Navigation
-		switch e.Key {
-		case tui.KeyArrowUp:
-			if app.selected > 0 {
-				app.selected--
-				app.loadPreview(app.files[app.selected])
-			}
-		case tui.KeyArrowDown:
-			if app.selected < len(app.files)-1 {
-				app.selected++
-				app.loadPreview(app.files[app.selected])
-			}
-		case tui.KeyHome:
-			app.selected = 0
-			app.loadPreview(app.files[app.selected])
-		case tui.KeyEnd:
-			app.selected = len(app.files) - 1
-			app.loadPreview(app.files[app.selected])
-		case tui.KeyEnter:
-			// Play the selected recording
-			return app.playSelected()
-		}
+		// The focused list handles navigation and Enter itself; View
+		// reloads the preview when the selection changes.
 
 		// Commands
 		switch e.Rune {
@@ -277,6 +263,11 @@ func (app *BrowserApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 // View renders the TUI
 func (app *BrowserApp) View() tui.View {
+	if app.selected != app.loaded && app.selected < len(app.files) {
+		app.loaded = app.selected
+		app.loadPreview(app.files[app.selected])
+	}
+
 	// Convert files to list items
 	items := make([]tui.ListItem, len(app.files))
 	for i, file := range app.files {
@@ -351,7 +342,8 @@ func (app *BrowserApp) View() tui.View {
 						Height(listHeight).
 						SelectedFg(tui.ColorBlack).
 						SelectedBg(tui.ColorCyan).
-						ScrollOffset(&app.scrollOffset),
+						ScrollOffset(&app.scrollOffset).
+						OnSelect(func(tui.ListItem, int) { app.playSelected() }),
 				).Title("Files").BorderFg(tui.ColorCyan),
 			),
 
@@ -388,9 +380,9 @@ func (app *BrowserApp) loadPreview(filename string) {
 }
 
 // playSelected plays the currently selected recording
-func (app *BrowserApp) playSelected() []tui.Cmd {
+func (app *BrowserApp) playSelected() {
 	if app.selected >= len(app.files) {
-		return nil
+		return
 	}
 
 	filename := app.files[app.selected]
@@ -400,7 +392,7 @@ func (app *BrowserApp) playSelected() []tui.Cmd {
 		fmt.Printf("\033[2J\033[H")
 		return playRecording(filename, 1.0, false, 0.0)
 	}
-	return []tui.Cmd{tui.Quit()}
+	app.runtime.Stop()
 }
 
 // showInfoSelected shows detailed info for the selected recording

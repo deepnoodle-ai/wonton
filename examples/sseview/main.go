@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -73,7 +74,7 @@ func main() {
 	app.Main().
 		Args("url").
 		Flags(
-			cli.String("header", "H").
+			cli.Strings("header", "H").
 				Help("Add header (format: 'Name: Value') - use multiple times for multiple headers"),
 			cli.Bool("json", "j").
 				Default(true).
@@ -97,10 +98,9 @@ func main() {
 					Hint("Usage: sseview https://example.com/events")
 			}
 
-			// Parse header (single header for simplicity)
+			// Parse headers
 			headers := make(map[string]string)
-			headerStr := ctx.String("header")
-			if headerStr != "" {
+			for _, headerStr := range ctx.Strings("header") {
 				parts := strings.SplitN(headerStr, ":", 2)
 				if len(parts) == 2 {
 					headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
@@ -142,15 +142,20 @@ func main() {
 	}
 }
 
+// errStreamClosed reports a stream that the server ended without an error.
+var errStreamClosed = errors.New("stream closed by server")
+
 func (app *SSEViewApp) connect(ctx context.Context, reconnect bool, timeout int) {
 	app.mu.Lock()
 	app.connecting = true
 	app.mu.Unlock()
 
 	client := sse.NewClient(app.url)
-	client.HTTPClient = &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
+	// Limit the wait for the response headers only: http.Client.Timeout
+	// would also cut off the stream itself once the timeout passes.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = time.Duration(timeout) * time.Second
+	client.HTTPClient = &http.Client{Transport: transport}
 
 	// Set headers
 	for k, v := range app.headers {
@@ -196,8 +201,13 @@ func (app *SSEViewApp) connect(ctx context.Context, reconnect bool, timeout int)
 			app.mu.Unlock()
 		}
 
-		// Check for errors
-		if err := <-errs; err != nil {
+		// Check for errors. A stream the server ends cleanly is reported
+		// too, so the retry below reconnects.
+		err := <-errs
+		if err == nil && ctx.Err() == nil {
+			err = errStreamClosed
+		}
+		if err != nil {
 			app.mu.Lock()
 			app.connected = false
 			app.error = err
@@ -218,6 +228,9 @@ func (app *SSEViewApp) connect(ctx context.Context, reconnect bool, timeout int)
 		if err := connectFn(); err != nil {
 			app.mu.Lock()
 			app.error = err
+			if err == errStreamClosed {
+				app.error = nil // a clean end shows as Disconnected
+			}
 			app.mu.Unlock()
 		}
 	}
@@ -471,8 +484,7 @@ func (app *SSEViewApp) View() tui.View {
 	}
 
 	statsBar := tui.Group(
-		tui.Text("Elapsed: %s", humanize.Duration(elapsed)).Fg(tui.ColorBrightBlack),
-		tui.Spacer().MinWidth(2),
+		tui.Text("Elapsed: %s  ", humanize.Duration(elapsed)).Fg(tui.ColorBrightBlack),
 		tui.Text("Last: %s", lastEventAgo).Fg(tui.ColorBrightBlack),
 		tui.Spacer(),
 		tui.Text("Auto-scroll: ").Fg(tui.ColorBrightBlack),
@@ -485,7 +497,7 @@ func (app *SSEViewApp) View() tui.View {
 	return tui.Stack(
 		header,
 		urlBar,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Group(
 			// Event list
 			tui.Stack(
@@ -545,7 +557,7 @@ func (app *SSEViewApp) formatEventDetail(evt SSEEvent) []tui.View {
 	// Header
 	views = append(views,
 		tui.Text("Event #%d", evt.Index).Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	)
 
 	// Metadata as key-value pairs
@@ -576,7 +588,7 @@ func (app *SSEViewApp) formatEventDetail(evt SSEEvent) []tui.View {
 		}
 	}
 
-	views = append(views, tui.Spacer().MinHeight(1))
+	views = append(views, tui.Text(""))
 
 	// Data
 	views = append(views, tui.Text("Data:").Bold())

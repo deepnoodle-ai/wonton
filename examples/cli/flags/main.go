@@ -9,13 +9,13 @@
 //
 // Run with:
 //
-//	go run examples/cli_flags/main.go run "Hello world"
-//	go run examples/cli_flags/main.go run --model gpt-4 -t 0.9 "Hello"
-//	go run examples/cli_flags/main.go run --format json "Test"
-//	MYAPP_MODEL=claude-opus go run examples/cli_flags/main.go run "Test"
-//	go run examples/cli_flags/main.go add a b c
-//	go run examples/cli_flags/main.go pair x y
-//	go run examples/cli_flags/main.go status
+//	go run ./examples/cli/flags run "Hello world"
+//	go run ./examples/cli/flags run --model gpt-4 -t 0.9 "Hello"
+//	go run ./examples/cli/flags run --format json "Test"
+//	MYAPP_MODEL=claude-opus go run ./examples/cli/flags run "Test"
+//	go run ./examples/cli/flags add a b c
+//	go run ./examples/cli/flags pair x y
+//	go run ./examples/cli/flags status
 package main
 
 import (

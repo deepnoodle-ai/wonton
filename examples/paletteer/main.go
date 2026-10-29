@@ -1,7 +1,7 @@
 // Example: paletteer - Terminal color palette designer
 //
 // A TUI for designing and previewing terminal color palettes. Create gradients,
-// pick colors with RGB/HSL sliders, and export to various formats.
+// pick colors with RGB sliders, and export to various formats.
 //
 // Run with:
 //
@@ -68,7 +68,7 @@ type PaletteerApp struct {
 	statusMsg string
 
 	// Export format
-	exportFormat int // 0=hex, 1=rgb, 2=hsl, 3=ansi
+	exportFormat int // 0=hex, 1=rgb, 2=css, 3=ansi
 }
 
 // Preset palettes

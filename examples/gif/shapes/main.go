@@ -7,13 +7,24 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"os"
 
 	"github.com/deepnoodle-ai/wonton/gif"
 )
 
 func main() {
-	// Create a 200x200 GIF
-	g := gif.New(200, 200)
+	// Create a 200x200 GIF. The default palette has only eight basic
+	// colors, so list the colors drawn below.
+	g := gif.NewWithPalette(200, 200, gif.Palette{
+		gif.RGB(20, 30, 50),    // background
+		gif.RGB(255, 100, 100), // squares
+		gif.RGB(100, 255, 100),
+		gif.RGB(100, 100, 255),
+		gif.RGB(255, 255, 100),
+		gif.RGB(255, 200, 100), // center circle
+		gif.White,
+		gif.Cyan,
+	})
 	g.SetLoopCount(0) // Loop forever
 
 	// Create 60 frames (about 3 seconds at 50ms/frame)
@@ -57,7 +68,7 @@ func main() {
 	// Save the GIF
 	if err := g.Save("shapes.gif"); err != nil {
 		fmt.Printf("Error: %v\n", err)
-		return
+		os.Exit(1)
 	}
 
 	fmt.Println("Created shapes.gif")

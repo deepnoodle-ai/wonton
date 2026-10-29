@@ -146,8 +146,15 @@ func demoCmd(ctx *cli.Context) error {
 
 	ctx.Println("Creating demo animation...")
 
-	// Create a simple bouncing ball animation
-	g := gif.New(width, height)
+	// Create a simple bouncing ball animation. The default palette has only
+	// eight basic colors, so list the colors drawn below.
+	g := gif.NewWithPalette(width, height, gif.Palette{
+		gif.RGB(32, 32, 48),    // background
+		gif.RGB(100, 100, 120), // border
+		gif.RGB(20, 20, 30),    // shadow
+		gif.RGB(255, 100, 100), // ball
+		gif.RGB(255, 200, 200), // ball outline
+	})
 	g.SetLoopCount(0)
 
 	ballX, ballY := width/4, height/3
