@@ -128,6 +128,43 @@ func TestTerminal_Unbuffered_PrintAtThenPrint(t *testing.T) {
 	assert.Equal(t, "\x1b[1;8H\x1b[1;8Hx\x1b[1;9Hy", out.String())
 }
 
+// Before SetStyle, the implicit style drew black on black (\x1b[0;30;40m).
+func TestTerminal_DefaultStyle_Unbuffered(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(10, 2)
+	term.Print("ab")
+	assert.Equal(t, "\x1b[1;1Hab", out.String())
+}
+
+func TestTerminal_DefaultStyle_Buffered(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTestTerminal(10, 1, &out)
+	term.PrintStyled("x", NewStyle().WithForeground(ColorRed))
+	term.Print("ab")
+	term.Flush()
+	assert.Equal(t, "\x1b[?2026h\x1b[?25l\x1b[1;1H\x1b[0;31mx\x1b[0mab\x1b[?25h\x1b[?2026l", out.String())
+}
+
+func TestTerminal_DefaultStyle_Cells(t *testing.T) {
+	tests := []struct {
+		name string
+		draw func(term *Terminal)
+	}{
+		{"Print", func(term *Terminal) { term.Print("a") }},
+		{"Println", func(term *Terminal) { term.Println("a") }},
+		{"Fill", func(term *Terminal) { term.Fill(0, 0, 1, 1, '#') }},
+		{"Clear", func(term *Terminal) { term.Clear() }},
+		{"ClearLine", func(term *Terminal) { term.ClearLine() }},
+		{"ClearToEndOfLine", func(term *Terminal) { term.ClearToEndOfLine() }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			term := NewTestTerminal(4, 2, &bytes.Buffer{})
+			tt.draw(term)
+			assert.Equal(t, NewStyle(), term.backBuffer[0][0].Style)
+		})
+	}
+}
+
 func TestTerminal_Unbuffered_CursorMovesMatchBuffered(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -261,6 +298,38 @@ func TestTerminal_Unbuffered_PrintPastLastLineScrolls(t *testing.T) {
 	x, y = term.CursorPosition()
 	assert.Equal(t, 2, x)
 	assert.Equal(t, 1, y)
+}
+
+func TestTerminal_Unbuffered_NewlineReturnsToColumnZero(t *testing.T) {
+	// Issue #130: raw mode turns off OPOST, so a bare \n kept the column.
+	term, out := newUnbufferedTestTerminal(10, 3)
+	term.PrintAtStyled(0, 0, "a\nbc", NewStyle())
+	assert.Equal(t, "\x1b[1;1H\x1b[1;1Ha\r\nbc", out.String())
+
+	// The style is reset around the newline, so a scrolled-in line is blank.
+	bold := NewStyle().WithBold()
+	out.Reset()
+	term.PrintAtStyled(0, 2, "a\nb", bold)
+	want := "\x1b[3;1H\x1b[3;1H" + bold.String() + "a\x1b[0m\r\n" + bold.String() + "b\x1b[0m"
+	assert.Equal(t, want, out.String())
+}
+
+func TestTerminal_Unbuffered_PrintlnWritesNewline(t *testing.T) {
+	// Issue #130: Println moved the tracked cursor but wrote no newline, so
+	// on the last line the screen did not scroll.
+	term, out := newUnbufferedTestTerminal(10, 2)
+	term.SetStyle(NewStyle())
+	term.MoveCursor(0, 1)
+	out.Reset()
+	term.Println("ab")
+	assert.Equal(t, "\x1b[2;1Hab\x1b[2;1H\n", out.String())
+	x, y := term.CursorPosition()
+	assert.Equal(t, 0, x)
+	assert.Equal(t, 1, y)
+
+	out.Reset()
+	term.Println("")
+	assert.Equal(t, "\x1b[2;1H\n", out.String())
 }
 
 func TestTerminal_BeginEndFrame(t *testing.T) {
