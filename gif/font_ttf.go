@@ -137,6 +137,12 @@ func (ff *FontFace) Ascent() int {
 	return ff.ascent
 }
 
+// hasGlyph reports whether the font has a glyph for r.
+func (ff *FontFace) hasGlyph(r rune) bool {
+	_, ok := ff.face.GlyphAdvance(r)
+	return ok
+}
+
 // DrawChar draws a single character at the specified pixel position on the
 // image. The position (px, py) is the top-left corner of the character cell.
 // The character is drawn in the foreground color with proper baseline alignment.

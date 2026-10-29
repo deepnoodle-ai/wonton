@@ -6,11 +6,23 @@ Phase 1 is done ([#115](https://github.com/deepnoodle-ai/wonton/issues/115)).
 `TerminalCell` holds a whole cluster (`Char` plus `Trailing`) with a `Width`,
 and wide clusters get a `Continuation` cell. `TerminalScreen` and `Emulator`
 advance the cursor by display width, and the emulator joins a cluster that
-arrives across writes or escape sequences. Phase 2 is partly done: the renderer
-skips continuation cells and, with a TTF font, draws combining marks over their
-base. Font fallback (Phase 3) and shaping (Phase 4) remain, so glyphs missing
-from Inconsolata, such as CJK and emoji, still render blank. The findings below
-describe the code before this work.
+arrives across writes or escape sequences. Phase 2 is done: the renderer skips
+continuation cells and, with a TTF font, draws combining marks over their base.
+
+Phase 3 is done with a fallback chain (`RendererOptions.FallbackFonts`). The
+default chain is an embedded monochrome Noto Emoji, then installed CJK and
+symbol fonts. Fallback glyphs are rasterized from `sfnt` outlines and scaled to
+fit their cells.
+
+Phase 4 is done for ligatures only. The renderer reads GSUB ligature lookups
+(type 4, and type 4 in type 7 extensions) from the `ccmp`, `liga`, and `rlig`
+features, and drops variation selectors before matching. That covers flags,
+keycaps, skin tones, and ZWJ sequences in Noto Emoji. Contextual lookups are
+skipped, so an unknown flag pair draws its first regional indicator. Color
+emoji is still out of scope: system color fonts use sbix, CBDT, or COLR
+tables, which `x/image` does not draw.
+
+The findings below describe the code before this work.
 
 ## Summary
 
