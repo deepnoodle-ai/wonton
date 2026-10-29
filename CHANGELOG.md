@@ -11,6 +11,20 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- `schema.Generate` describes a `json:",string"` field of a string type, a
+  pointer to one, or an `encoding.TextUnmarshaler` as `encoding/json` decodes
+  it: a string holding a JSON string literal, such as `"\"abc\""`. The
+  property gains a `pattern` for that literal and a description unless the
+  field has one. Its `enum`, `default`, and `example` tag values are encoded
+  the same way, with each `enum` value listed with and without HTML escapes.
+  Its `format`, `minLength`, and `maxLength` tags are dropped, since they would
+  check the quoted value. Types that implement `json.Unmarshaler` get no
+  pattern, since their own decoder decides what they accept. Before, the
+  schema was a plain string, and every value that followed it failed to
+  decode. (#146)
+
 ## [0.10.2] - 2026-10-29
 
 ### Fixed
