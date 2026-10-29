@@ -161,6 +161,26 @@ func TestTerminal_Unbuffered_CursorMovesMatchBuffered(t *testing.T) {
 			term.PrintAtStyled(17, 0, "abc", NewStyle())
 			term.PrintStyled("d", NewStyle())
 		}, 1, 1},
+		{"newline after filled line", func(term *Terminal) {
+			term.PrintAtStyled(17, 0, "abc", NewStyle())
+			term.PrintStyled("\nd", NewStyle())
+		}, 1, 1},
+		{"empty print after filled line", func(term *Terminal) {
+			term.PrintAtStyled(17, 0, "abc", NewStyle())
+			term.PrintStyled("", NewStyle())
+		}, 20, 0},
+		{"starts left of the screen", func(term *Terminal) {
+			term.MoveCursor(-3, 0)
+			term.PrintStyled("hello", NewStyle())
+		}, 2, 0},
+		{"newline left of the screen", func(term *Terminal) {
+			term.MoveCursor(-3, 1)
+			term.PrintStyled("ab\ncd", NewStyle())
+		}, 2, 2},
+		{"all left of the screen", func(term *Terminal) {
+			term.MoveCursor(-5, 1)
+			term.PrintStyled("ab", NewStyle())
+		}, -3, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -211,6 +231,23 @@ func TestTerminal_Unbuffered_PrintAfterFilledLine(t *testing.T) {
 	x, y := term.CursorPosition()
 	assert.Equal(t, 1, x)
 	assert.Equal(t, 1, y)
+
+	// An empty print draws nothing, so it does not scroll.
+	term.PrintAtStyled(8, 1, "ef", NewStyle())
+	out.Reset()
+	term.PrintStyled("", NewStyle())
+	assert.Equal(t, "", out.String())
+	x, y = term.CursorPosition()
+	assert.Equal(t, 10, x)
+	assert.Equal(t, 1, y)
+}
+
+func TestTerminal_Unbuffered_PrintSkipsTextLeftOfScreen(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(10, 2)
+	term.MoveCursor(-3, 0)
+	out.Reset()
+	term.PrintStyled("hello", NewStyle())
+	assert.Equal(t, "\x1b[1;1Hlo", out.String())
 }
 
 func TestTerminal_Unbuffered_PrintPastLastLineScrolls(t *testing.T) {

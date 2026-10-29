@@ -1424,36 +1424,7 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	if !t.buffered {
 		// Non-buffered mode doesn't support clipping via buffer, direct print
 		// This will draw outside the clipRect if it's smaller than terminal size
-		var output strings.Builder
-		// Start where the terminal really draws: it clamps a cursor move
-		// to the screen. Text that starts past the right edge, such as
-		// after a print that filled its line, goes on the next line as in
-		// buffered mode. On the last line, a newline scrolls up to make one.
-		x := max(startX, 0)
-		y := min(max(startY, 0), t.height-1)
-		scroll := false
-		if x >= t.width {
-			x = 0
-			if y == t.height-1 {
-				scroll = true
-			} else {
-				y++
-			}
-		}
-		output.WriteString(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
-		if scroll {
-			output.WriteString("\n")
-		}
-		if !style.IsEmpty() {
-			output.WriteString(style.String())
-		}
-		output.WriteString(text)
-		if !style.IsEmpty() {
-			output.WriteString("\033[0m")
-		}
-
-		t.writeScreenLocked(output.String())
-		t.virtualX, t.virtualY = t.advanceUnbuffered(x, y, text)
+		t.printUnbufferedLocked(startX, startY, text, style)
 		return nil
 	}
 
@@ -1577,6 +1548,77 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	t.virtualY = currentY
 
 	return nil
+}
+
+// printUnbufferedLocked writes text directly to the terminal from (startX,
+// startY) and advances the virtual cursor past it. Caller must hold t.mu.
+func (t *Terminal) printUnbufferedLocked(startX, startY int, text string, style Style) {
+	if text == "" {
+		// Nothing to draw, so the cursor stays where it is, as in
+		// buffered mode.
+		return
+	}
+
+	// Skip the clusters left of column 0, as buffered mode does. A newline
+	// starts the next line at column 0, so it ends the skipped run.
+	x := startX
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if x >= 0 || cluster == "\n" {
+			break
+		}
+		x += clusterWidth
+		text = text[len(cluster):]
+	}
+	if text == "" {
+		t.virtualX, t.virtualY = x, startY
+		return
+	}
+	x = max(x, 0)
+
+	// Start where the terminal really draws: it clamps a cursor move to
+	// the screen. Visible text that starts past the right edge, such as
+	// after a print that filled its line, goes on the next line as in
+	// buffered mode. On the last line, a newline scrolls up to make one.
+	y := min(max(startY, 0), t.height-1)
+	scroll := false
+	if x >= t.width && startsVisible(text) {
+		x = 0
+		if y == t.height-1 {
+			scroll = true
+		} else {
+			y++
+		}
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
+	if scroll {
+		output.WriteString("\n")
+	}
+	if !style.IsEmpty() {
+		output.WriteString(style.String())
+	}
+	output.WriteString(text)
+	if !style.IsEmpty() {
+		output.WriteString("\033[0m")
+	}
+
+	t.writeScreenLocked(output.String())
+	t.virtualX, t.virtualY = t.advanceUnbuffered(x, y, text)
+}
+
+// startsVisible reports whether text has a cluster that takes a column
+// before its first newline. A newline starts the next line by itself.
+func startsVisible(text string) bool {
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if cluster == "\n" {
+			return false
+		}
+		if clusterWidth > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // advanceUnbuffered returns the cursor position after text is written
