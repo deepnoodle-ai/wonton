@@ -151,3 +151,32 @@ func TestMenuClosedDrawsNothing(t *testing.T) {
 	screen := renderMenu(m, 10, 3)
 	assert.Equal(t, strings.TrimSpace(screen.Text()), "")
 }
+
+func TestMenuCutShortReachesOnlyShownItems(t *testing.T) {
+	var chosen string
+	m := &MenuState{}
+	m.Open(0, 0, "", testMenu(&chosen))
+	// Five rows fit the border and three items: the separator and Close are
+	// cut off.
+	renderMenu(m, 30, 5)
+
+	m.HandleKey(KeyEvent{Key: KeyArrowDown})
+	m.HandleKey(KeyEvent{Key: KeyArrowDown})
+	assert.Equal(t, m.Selected(), 0)
+	m.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, m.Selected(), 1)
+	m.HandleKey(KeyEvent{Rune: 'c'})
+	assert.True(t, m.IsOpen())
+
+	// The bottom border row maps to no item.
+	m.HandleMouse(MouseEvent{Type: MouseClick, Button: MouseButtonLeft, X: 3, Y: 4})
+	assert.True(t, m.IsOpen())
+	assert.Equal(t, chosen, "")
+
+	// A titled menu with no room for items draws and chooses nothing.
+	m.Open(0, 0, "Title", testMenu(&chosen))
+	renderMenu(m, 30, 3)
+	assert.Equal(t, m.Selected(), -1)
+	m.HandleKey(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, chosen, "")
+}

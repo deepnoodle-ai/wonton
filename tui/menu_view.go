@@ -73,6 +73,7 @@ type MenuState struct {
 	anchor   image.Point
 	bounds   image.Rectangle // the box at the last render, in screen cells
 	itemTop  int             // screen row of the first item
+	shown    int             // items that fit in the box at the last render
 
 	// dismissed is set when a press outside closed the menu, so the rest of
 	// that press — drags, the release, the click — is swallowed too.
@@ -89,6 +90,7 @@ func (m *MenuState) Open(x, y int, title string, items []MenuItem) {
 	m.open = true
 	m.dismissed = false
 	m.bounds = image.Rectangle{}
+	m.shown = len(items)
 	m.selected = -1
 	m.move(1)
 }
@@ -124,10 +126,10 @@ func (m *MenuState) Choose(i int) bool {
 	return true
 }
 
-// move steps the selection by dir (+1 or -1) to the next entry that can be
-// chosen, wrapping around.
+// move steps the selection by dir (+1 or -1) to the next shown entry that
+// can be chosen, wrapping around.
 func (m *MenuState) move(dir int) {
-	n := len(m.items)
+	n := m.shown
 	if n == 0 {
 		m.selected = -1
 		return
@@ -162,7 +164,7 @@ func (m *MenuState) HandleKey(e KeyEvent) bool {
 		m.selected = -1
 		m.move(1)
 	case e.Key == KeyEnd:
-		m.selected = len(m.items)
+		m.selected = m.shown
 		m.move(-1)
 	case e.Key == KeyEnter || (e.Key == KeyUnknown && e.Rune == ' '):
 		m.Choose(m.selected)
@@ -177,7 +179,7 @@ func (m *MenuState) HandleKey(e KeyEvent) bool {
 func (m *MenuState) jump(r rune) {
 	r = unicode.ToLower(r)
 	var matches []int
-	for i, it := range m.items {
+	for i, it := range m.items[:m.shown] {
 		if !it.selectable() {
 			continue
 		}
@@ -248,7 +250,7 @@ func (m *MenuState) HandleMouse(e MouseEvent) bool {
 
 func (m *MenuState) itemAt(y int) int {
 	i := y - m.itemTop
-	if i < 0 || i >= len(m.items) {
+	if i < 0 || i >= m.shown {
 		return -1
 	}
 	return i
@@ -361,6 +363,13 @@ func (v *MenuView) render(ctx *RenderContext) {
 	}
 	m.bounds = image.Rect(x, y, x+w, y+h)
 	m.itemTop = y + 1 + header
+	// A box cut short by the screen shows only the items that fit; the keys
+	// and the mouse reach only those.
+	m.shown = max(0, min(len(m.items), h-2-header))
+	if m.selected >= m.shown {
+		m.selected = -1
+		m.move(1)
+	}
 
 	box := m.bounds.Sub(screen.Min)
 	ctx.FillStyled(box.Min.X, box.Min.Y, w, h, ' ', v.style)
@@ -373,10 +382,7 @@ func (v *MenuView) render(ctx *RenderContext) {
 		v.drawRule(ctx, box, row)
 		row++
 	}
-	for i, it := range m.items {
-		if row >= box.Max.Y-1 {
-			break
-		}
+	for i, it := range m.items[:m.shown] {
 		if it.Separator {
 			v.drawRule(ctx, box, row)
 			row++
