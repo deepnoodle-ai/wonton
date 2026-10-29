@@ -48,13 +48,6 @@ func (s *Screen) processANSI(data string) int {
 					continue
 				}
 				return i // Incomplete sequence
-			case '(', ')', '*', '+':
-				// Character set designation, skip
-				if i+2 < len(data) {
-					i += 3
-					continue
-				}
-				return i // Incomplete sequence
 			case '7':
 				// Save cursor and attributes (DECSC)
 				s.savedX = s.cursorX
@@ -103,6 +96,23 @@ func (s *Screen) processANSI(data string) int {
 				i += 2
 				continue
 			}
+			// Intermediate-prefixed escape (e.g. ESC ( B, ESC # 8, ESC SP F):
+			// ESC <0x20-0x2F>+ <0x30-0x7E>
+			if data[i+1] >= 0x20 && data[i+1] <= 0x2F {
+				j := i + 2
+				for j < len(data) && data[j] >= 0x20 && data[j] <= 0x2F {
+					j++
+				}
+				if j >= len(data) {
+					return i // Incomplete sequence
+				}
+				if data[j] >= 0x30 && data[j] <= 0x7E {
+					i = j + 1
+					continue
+				}
+				i = j
+				continue
+			}
 			// Unknown escape (ESC =, ESC >, ...): skip the ESC and its final byte
 			i += 2
 		} else {
@@ -143,8 +153,17 @@ func incompleteRuneTail(str string) int {
 // the terminator, or -1 if the sequence is incomplete.
 func parseStringTerminator(data string) int {
 	for i := 0; i < len(data); i++ {
-		if data[i] == '\x1b' && i+1 < len(data) && data[i+1] == '\\' {
-			return i + 2
+		if data[i] == '\x18' || data[i] == '\x1a' {
+			return i + 1
+		}
+		if data[i] == '\x1b' {
+			if i+1 >= len(data) {
+				return -1
+			}
+			if data[i+1] == '\\' {
+				return i + 2
+			}
+			return i
 		}
 	}
 	return -1
@@ -181,11 +200,26 @@ func (s *Screen) parseCSI(data string) int {
 	params := data[:end]
 	cmd := data[end]
 
-	// Private-parameter sequences (CSI ?, CSI >, CSI =) such as DEC private
-	// modes or xterm modifyOtherKeys don't affect screen content; consume
-	// and ignore them so e.g. "CSI >4;2m" isn't misread as SGR.
-	if len(params) > 0 && (params[0] == '?' || params[0] == '>' || params[0] == '=') {
-		return end + 1
+	// Sequences with intermediate bytes (0x20-0x2F, such as DECSCUSR
+	// "CSI 2 SP q" or SL/SR "CSI n SP @/A") have distinct meanings from
+	// standard CSI commands and do not affect the screen model.
+	for i := 0; i < len(params); i++ {
+		if params[i] >= 0x20 && params[i] <= 0x2F {
+			return end + 1
+		}
+	}
+
+	// Private-parameter sequences (CSI <, CSI =, CSI >, CSI ?) such as DEC
+	// private modes, SGR mouse, Kitty keyboard protocol, or xterm
+	// modifyOtherKeys have their own command namespaces; consume and ignore
+	// them, except DECSED (CSI ? J) and DECSEL (CSI ? K) which erase like
+	// standard ED/EL.
+	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
+		if params[0] == '?' && (cmd == 'J' || cmd == 'K') {
+			params = params[1:]
+		} else {
+			return end + 1
+		}
 	}
 
 	// Parse parameters
@@ -293,11 +327,17 @@ func (s *Screen) parseCSI(data string) int {
 func (s *Screen) parseOSC(data string) int {
 	// OSC sequences end with ST (\x1b\\) or BEL (\x07)
 	for i := 0; i < len(data); i++ {
-		if data[i] == '\x07' {
+		if data[i] == '\x07' || data[i] == '\x18' || data[i] == '\x1a' {
 			return i + 1
 		}
-		if data[i] == '\x1b' && i+1 < len(data) && data[i+1] == '\\' {
-			return i + 2
+		if data[i] == '\x1b' {
+			if i+1 >= len(data) {
+				return -1
+			}
+			if data[i+1] == '\\' {
+				return i + 2
+			}
+			return i
 		}
 	}
 	return -1 // Incomplete

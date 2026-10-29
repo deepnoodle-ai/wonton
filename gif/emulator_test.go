@@ -517,3 +517,93 @@ func TestParseResizeRejectsMalformedData(t *testing.T) {
 		t.Error("parseResize accepted an output event")
 	}
 }
+
+func TestEmulator_SplitSequencesAcrossWrites(t *testing.T) {
+	t.Run("split CSI SGR", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("hi\x1b[31")
+		em.ProcessOutput("mRed")
+		if got := rowText(em.Screen(), 0); got != "hiRed" {
+			t.Fatalf("row 0 = %q, want %q", got, "hiRed")
+		}
+		if got := em.Screen().Cells[0][2].FG; got != ansiColor(1) {
+			t.Errorf("R fg = %v, want red", got)
+		}
+	})
+
+	t.Run("split lone ESC", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("a\x1b")
+		em.ProcessOutput("[2Cb")
+		if got := rowText(em.Screen(), 0); got != "a  b" {
+			t.Errorf("row 0 = %q, want %q", got, "a  b")
+		}
+	})
+
+	t.Run("split OSC BEL", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b]0;window ")
+		em.ProcessOutput("title\x07ok")
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+	})
+
+	t.Run("split OSC ST", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b]0;title\x1b")
+		em.ProcessOutput("\\ok")
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+	})
+
+	t.Run("split charset escape", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b(")
+		em.ProcessOutput("BHello")
+		if got := rowText(em.Screen(), 0); got != "Hello" {
+			t.Errorf("row 0 = %q, want %q", got, "Hello")
+		}
+	})
+
+	t.Run("split UTF-8 rune", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		raw := []byte("世界")
+		for _, b := range raw {
+			em.Write([]byte{b})
+		}
+		checkRow(t, em.Screen(), 0, 4, []string{"世", cont, "界", cont})
+	})
+}
+
+func TestEmulator_StringAndCancelledSequences(t *testing.T) {
+	t.Run("DCS and APC payloads ignored", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1bP1$r0m\x1b\\A\x1b_G123\x1b")
+		em.ProcessOutput("\\B")
+		if got := rowText(em.Screen(), 0); got != "AB" {
+			t.Errorf("row 0 = %q, want %q", got, "AB")
+		}
+	})
+
+	t.Run("cancelled CSI does not leak parameters", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b[12\x1b[31mHi\x1b[99\x18!")
+		if got := rowText(em.Screen(), 0); got != "Hi!" {
+			t.Errorf("row 0 = %q, want %q", got, "Hi!")
+		}
+		if got := em.Screen().Cells[0][0].FG; got != ansiColor(1) {
+			t.Errorf("H fg = %v, want red", got)
+		}
+	})
+
+	t.Run("zero cursor movement parameter uses default 1", func(t *testing.T) {
+		em := NewEmulator(20, 5)
+		em.ProcessOutput("\x1b[3;3H\x1b[0A\x1b[0CX")
+		if em.Screen().CursorY != 1 || em.Screen().Cells[1][3].Char != 'X' {
+			t.Errorf("expected X at (3,1), cursor=(%d,%d)", em.Screen().CursorX, em.Screen().CursorY)
+		}
+	})
+}
+

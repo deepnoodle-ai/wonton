@@ -34,6 +34,9 @@ type Player struct {
 	mu             sync.RWMutex
 	stopChan       chan struct{}
 	stopped        bool
+	playing        bool
+	hasInitialSeek bool
+	initialSeek    float64
 	seekGen        uint64 // incremented by Seek so Play does not overwrite it
 }
 
@@ -138,11 +141,24 @@ func (p *Player) Play() error {
 		p.mu.Unlock()
 		return ErrPlayerStopped
 	}
-	p.startTime = time.Now()
-	p.currentIndex = 0
+	now := time.Now()
+	if p.hasInitialSeek {
+		p.startTime = now.Add(-time.Duration((p.initialSeek / p.speed) * float64(time.Second)))
+		p.hasInitialSeek = false
+	} else {
+		p.startTime = now
+		p.currentIndex = 0
+	}
 	p.paused = false
 	p.totalPaused = 0
+	p.playing = true
 	p.mu.Unlock()
+
+	defer func() {
+		p.mu.Lock()
+		p.playing = false
+		p.mu.Unlock()
+	}()
 
 	// Use precomputed adjusted events if maxIdle was configured
 	events := p.events
@@ -177,16 +193,12 @@ func (p *Player) Play() error {
 			}
 		}
 
-		paused := p.paused
-		p.mu.RUnlock()
-
-		// Handle pause state
-		if paused {
+		if p.paused {
+			p.mu.RUnlock()
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
-		p.mu.RLock()
 		event := events[p.currentIndex]
 		speed := p.speed
 		currentIndex := p.currentIndex
@@ -267,18 +279,19 @@ func (p *Player) applyMaxIdle(events []RecordingEvent) []RecordingEvent {
 	}
 
 	result := make([]RecordingEvent, len(events))
-	var adjustment float64
+	var adjustedTime float64
+	var prevTime float64
 
 	for i, event := range events {
-		if i > 0 {
-			gap := event.Time - events[i-1].Time
-			if gap > p.maxIdle {
-				adjustment += gap - p.maxIdle
-			}
+		gap := event.Time - prevTime
+		if gap > p.maxIdle {
+			gap = p.maxIdle
 		}
+		adjustedTime += gap
+		prevTime = event.Time
 
 		result[i] = RecordingEvent{
-			Time: event.Time - adjustment,
+			Time: adjustedTime,
 			Type: event.Type,
 			Data: event.Data,
 		}
@@ -363,6 +376,9 @@ func (p *Player) activeEvents() []RecordingEvent {
 // excluding paused time (including the in-flight pause, if currently paused).
 // Caller must hold p.mu (read or write).
 func (p *Player) elapsedLocked() float64 {
+	if p.startTime.IsZero() {
+		return 0
+	}
 	elapsed := time.Since(p.startTime) - p.totalPaused
 	if p.paused {
 		elapsed -= time.Since(p.pauseTime)
@@ -385,14 +401,16 @@ func (p *Player) SetSpeed(speed float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Adjust the start time so the current position in the recording is
-	// preserved: position (in recording seconds) is elapsed * speed, and it
-	// must be unchanged under the new speed.
-	elapsed := p.elapsedLocked()
-	if elapsed > 0 {
-		position := elapsed * p.speed
-		adjustment := elapsed - position/speed
-		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+	if p.playing {
+		// Adjust the start time so the current position in the recording is
+		// preserved: position (in recording seconds) is elapsed * speed, and it
+		// must be unchanged under the new speed.
+		elapsed := p.elapsedLocked()
+		if elapsed > 0 {
+			position := elapsed * p.speed
+			adjustment := elapsed - position/speed
+			p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+		}
 	}
 
 	p.speed = speed
@@ -418,10 +436,14 @@ func (p *Player) SetLoop(loop bool) {
 //
 // The time is specified in seconds from the start of the recording.
 // Playback continues with the first event at or after the target time.
-// This can be called during playback.
+// This can be called before or during playback.
 func (p *Player) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if seconds < 0 {
+		seconds = 0
+	}
 
 	events := p.activeEvents()
 
@@ -437,10 +459,15 @@ func (p *Player) Seek(seconds float64) {
 
 	p.currentIndex = targetIndex
 	p.seekGen++
-	// Adjust start time to account for the seek
-	elapsed := p.elapsedLocked()
-	adjustment := elapsed - (seconds / p.speed)
-	p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+	if p.playing {
+		// Adjust start time to account for the seek
+		elapsed := p.elapsedLocked()
+		adjustment := elapsed - (seconds / p.speed)
+		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+	} else {
+		p.initialSeek = seconds
+		p.hasInitialSeek = true
+	}
 }
 
 // GetHeader returns the recording metadata.

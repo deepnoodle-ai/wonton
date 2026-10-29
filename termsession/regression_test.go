@@ -410,3 +410,90 @@ func (l *lockedBuffer) String() string {
 	defer l.mu.Unlock()
 	return l.b.String()
 }
+
+func TestPlayer_SeekBeforePlay(t *testing.T) {
+	filename := createTestRecording(t, []RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "first "},
+		{Time: 1.0, Type: "o", Data: "second"},
+	})
+
+	var out lockedBuffer
+	player, err := NewPlayer(filename, PlayerOptions{Output: &out, Speed: 50.0})
+	assert.NoError(t, err)
+
+	player.Seek(1.0)
+	assert.NoError(t, player.Play())
+	assert.Equal(t, "second", out.String())
+}
+
+func TestPlayer_SeekPastEndDuringPlay(t *testing.T) {
+	filename := createTestRecording(t, []RecordingEvent{
+		{Time: 0.01, Type: "o", Data: "first"},
+		{Time: 5.0, Type: "o", Data: "second"},
+	})
+
+	var out lockedBuffer
+	player, err := NewPlayer(filename, PlayerOptions{Output: &out})
+	assert.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() { done <- player.Play() }()
+
+	// Repeatedly seek past the end while Play is running to exercise the
+	// window between checking currentIndex and reading events[currentIndex].
+	for i := 0; i < 50; i++ {
+		player.Seek(100.0)
+		time.Sleep(time.Millisecond)
+	}
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		player.Stop()
+		t.Fatal("Play did not finish after Seek past end")
+	}
+}
+
+func TestPlayer_MaxIdleCapsInitialDelay(t *testing.T) {
+	filename := createTestRecording(t, []RecordingEvent{
+		{Time: 10.0, Type: "o", Data: "hello"},
+	})
+
+	var out lockedBuffer
+	player, err := NewPlayer(filename, PlayerOptions{
+		Output:  &out,
+		MaxIdle: 0.2,
+		Speed:   10.0,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, 0.2, player.GetDuration())
+
+	start := time.Now()
+	assert.NoError(t, player.Play())
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Equal(t, "hello", out.String())
+}
+
+func TestRecorder_UpdateSizeWhilePausedRecordedOnResume(t *testing.T) {
+	dir := t.TempDir()
+	filename := filepath.Join(dir, "paused_resize.cast")
+
+	r, err := NewRecorder(filename, 80, 24, RecordingOptions{})
+	assert.NoError(t, err)
+
+	r.Pause()
+	r.UpdateSize(120, 40)
+	r.Resume()
+	r.RecordOutput("after")
+	assert.NoError(t, r.Close())
+
+	_, events, err := LoadCastFile(filename)
+	assert.NoError(t, err)
+	assert.Len(t, events, 2)
+	assert.Equal(t, "r", events[0].Type)
+	assert.Equal(t, "120x40", events[0].Data)
+	assert.Equal(t, "o", events[1].Type)
+	assert.Equal(t, "after", events[1].Data)
+}
+
