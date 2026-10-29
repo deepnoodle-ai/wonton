@@ -143,9 +143,7 @@ func (s *Server) Open(ctx context.Context, opts TerminalOptions) (*Terminal, err
 		_ = ctl.Close()
 		return nil, err
 	}
-	t.mu.Lock()
-	t.started = true
-	t.mu.Unlock()
+	t.start()
 
 	go func() {
 		<-ctl.Done()
@@ -247,7 +245,22 @@ func (t *Terminal) Resize(width, height int) {
 	}
 	t.width, t.height = width, height
 	t.mu.Unlock()
-	t.async(t.resizeCommand(width, height))
+	select {
+	case <-t.done:
+		return
+	default:
+	}
+	errc := t.ctl.Go(t.resizeCommand(width, height))
+	go func() {
+		if err, ok := <-errc; ok && err != nil {
+			// Forget the size, so asking for it again tries again.
+			t.mu.Lock()
+			if t.width == width && t.height == height {
+				t.width, t.height = 0, 0
+			}
+			t.mu.Unlock()
+		}
+	}()
 }
 
 func (t *Terminal) resizeCommand(width, height int) string {
@@ -426,9 +439,13 @@ func isReplyError(err error) bool {
 func (t *Terminal) notified(n Notification) {
 	t.mu.Lock()
 	started := t.started
+	if !started && n.Name == "output" {
+		// Open is still taking its first capture, which may have missed
+		// this. start captures again once it is done.
+		t.dirty = true
+	}
 	t.mu.Unlock()
 	if !started {
-		// Open captures once it has the pane; nothing to schedule yet.
 		return
 	}
 	switch n.Name {
@@ -448,6 +465,18 @@ func (t *Terminal) notified(n Notification) {
 		t.mu.Unlock()
 		t.requestCapture()
 	case "layout-change", "pane-mode-changed", "window-pane-changed", "session-window-changed":
+		t.requestCapture()
+	}
+}
+
+// start lets notifications schedule captures, once Open has the pane and
+// its first capture. Output that arrived before then gets a capture now.
+func (t *Terminal) start() {
+	t.mu.Lock()
+	t.started = true
+	missed := t.dirty
+	t.mu.Unlock()
+	if missed {
 		t.requestCapture()
 	}
 }

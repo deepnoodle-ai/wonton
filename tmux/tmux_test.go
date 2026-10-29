@@ -399,3 +399,43 @@ func TestParseSnapshotEscapedHeader(t *testing.T) {
 	assert.Equal(t, screen.Title, "host")
 	assert.Equal(t, screen.Text(), "hi\n")
 }
+
+// Output that arrives while Open takes its first capture gets a capture of
+// its own once Open is done, rather than waiting for the pane's next write.
+func TestTerminalCapturesOutputMissedDuringOpen(t *testing.T) {
+	term := &Terminal{pane: "%1", interval: time.Millisecond, done: make(chan struct{})}
+	c, f := newFakeControl(t, term.notified)
+	term.ctl = c
+
+	f.send("%output %1 hello")
+	waitFor(t, "the output to be noticed", func() bool {
+		term.mu.Lock()
+		defer term.mu.Unlock()
+		return term.dirty
+	})
+	term.start()
+	select {
+	case line := <-f.lines:
+		assert.Contains(t, line, "capture-pane")
+	case <-time.After(2 * time.Second):
+		t.Fatal("no capture after start")
+	}
+}
+
+// A resize tmux refuses is tried again the next time the size is asked for.
+func TestTerminalRetriesFailedResize(t *testing.T) {
+	term := &Terminal{pane: "%1", done: make(chan struct{})}
+	c, f := newFakeControl(t, nil)
+	term.ctl = c
+
+	term.Resize(30, 10)
+	assert.Contains(t, <-f.lines, "resize-window")
+	f.send("%begin 1 1 1", "no space for new pane", "%error 1 1 1")
+	waitFor(t, "the size to be forgotten", func() bool {
+		term.mu.Lock()
+		defer term.mu.Unlock()
+		return term.width == 0
+	})
+	term.Resize(30, 10)
+	assert.Contains(t, <-f.lines, "resize-window")
+}
