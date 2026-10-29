@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-29
+
 ### Fixed
 
 - `schema.Generate` describes a `json:",string"` field of a string type, a
