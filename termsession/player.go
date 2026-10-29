@@ -376,9 +376,6 @@ func (p *Player) activeEvents() []RecordingEvent {
 // excluding paused time (including the in-flight pause, if currently paused).
 // Caller must hold p.mu (read or write).
 func (p *Player) elapsedLocked() float64 {
-	if p.startTime.IsZero() {
-		return 0
-	}
 	elapsed := time.Since(p.startTime) - p.totalPaused
 	if p.paused {
 		elapsed -= time.Since(p.pauseTime)

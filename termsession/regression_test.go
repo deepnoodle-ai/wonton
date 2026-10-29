@@ -428,30 +428,40 @@ func TestPlayer_SeekBeforePlay(t *testing.T) {
 
 func TestPlayer_SeekPastEndDuringPlay(t *testing.T) {
 	filename := createTestRecording(t, []RecordingEvent{
-		{Time: 0.01, Type: "o", Data: "first"},
+		{Time: 0.0, Type: "o", Data: "first"},
 		{Time: 5.0, Type: "o", Data: "second"},
 	})
 
 	var out lockedBuffer
-	player, err := NewPlayer(filename, PlayerOptions{Output: &out})
+	player, err := NewPlayer(filename, PlayerOptions{Output: &out, Loop: true})
 	assert.NoError(t, err)
 
 	done := make(chan error, 1)
 	go func() { done <- player.Play() }()
 
-	// Repeatedly seek past the end while Play is running to exercise the
-	// window between checking currentIndex and reading events[currentIndex].
-	for i := 0; i < 50; i++ {
-		player.Seek(100.0)
-		time.Sleep(time.Millisecond)
+	// With Loop, Play keeps restarting at the first event while several
+	// goroutines seek past the end. Play used to release its lock between
+	// checking currentIndex and reading events[currentIndex], so a Seek in
+	// that gap made it index past the end and panic.
+	deadline := time.Now().Add(200 * time.Millisecond)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for time.Now().Before(deadline) {
+				player.Seek(100.0)
+			}
+		}()
 	}
+	wg.Wait()
+	player.Stop()
 
 	select {
 	case err := <-done:
 		assert.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		player.Stop()
-		t.Fatal("Play did not finish after Seek past end")
+		t.Fatal("Play did not return after Stop")
 	}
 }
 
