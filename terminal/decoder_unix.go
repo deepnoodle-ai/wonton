@@ -4,9 +4,11 @@ package terminal
 
 import (
 	"errors"
+	"io"
 	"os"
 	"time"
 
+	"github.com/deepnoodle-ai/wonton/internal/terminalinput"
 	"golang.org/x/sys/unix"
 )
 
@@ -42,4 +44,26 @@ func pollReadable(fd int, timeout time.Duration) bool {
 		}
 		return err == nil && n > 0
 	}
+}
+
+// probeKittyProtocol asks the terminal on in whether it supports the Kitty
+// keyboard protocol (ESC [ ? u), followed by a primary device attributes
+// request (ESC [ c) that every terminal answers. A terminal that supports the
+// protocol answers the first with ESC [ ? <flags> u before its DA1 reply.
+//
+// It reaches the descriptor through SyscallConn and lets terminalinput.Query
+// poll and read it directly. Reading through the *os.File instead fails two
+// ways: os.Stdin from os.NewFile does not support read deadlines, and on a
+// file whose Fd has been called, Read blocks in the kernel past any deadline,
+// so a reader left behind after a timeout steals the next keystroke.
+func probeKittyProtocol(in *os.File, out io.Writer, timeout time.Duration) bool {
+	conn, err := in.SyscallConn()
+	if err != nil {
+		return false
+	}
+	var reply []byte
+	conn.Control(func(fd uintptr) {
+		reply, _ = terminalinput.Query(int(fd), out, "\x1b[?u\x1b[c", timeout)
+	})
+	return terminalinput.HasReply(reply, 'c') && terminalinput.HasReply(reply, 'u')
 }

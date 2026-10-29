@@ -124,39 +124,6 @@ func colorFGBGBackground(value string) TerminalBackground {
 // DA1 reply marks the end of whatever the terminal will say.
 const backgroundQuery = "\x1b]11;?\x07\x1b[c"
 
-// backgroundReplies is what a terminal has said so far in reply to
-// backgroundQuery.
-type backgroundReplies struct {
-	color RGB
-	ok    bool // color holds the terminal's background color
-	done  bool // the DA1 reply arrived, so no more replies will come
-}
-
-func scanBackgroundReplies(b []byte) backgroundReplies {
-	var r backgroundReplies
-	r.color, r.ok = parseBackgroundReply(b)
-	r.done = hasDeviceAttributesReply(b)
-	return r
-}
-
-// hasDeviceAttributesReply reports whether b holds a DA1 reply, ESC [ ? ... c.
-func hasDeviceAttributesReply(b []byte) bool {
-	for {
-		i := bytes.Index(b, []byte("\x1b[?"))
-		if i < 0 {
-			return false
-		}
-		b = b[i+3:]
-		j := 0
-		for j < len(b) && (b[j] >= '0' && b[j] <= '9' || b[j] == ';') {
-			j++
-		}
-		if j < len(b) && b[j] == 'c' {
-			return true
-		}
-	}
-}
-
 // parseBackgroundReply finds an OSC 11 reply in b, ESC ] 11 ; <color>
 // followed by BEL or ST, and returns its color.
 func parseBackgroundReply(b []byte) (RGB, bool) {

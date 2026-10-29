@@ -59,15 +59,6 @@ func TestIndexOSCTerminator(t *testing.T) {
 	assert.Equal(t, indexOSCTerminator([]byte("✓\x9c")), len("✓"))
 }
 
-func TestHasDeviceAttributesReply(t *testing.T) {
-	assert.True(t, hasDeviceAttributesReply([]byte("\x1b[?62;22c")))
-	assert.True(t, hasDeviceAttributesReply([]byte("\x1b]11;rgb:0/0/0\x07\x1b[?1;2c")))
-	assert.True(t, hasDeviceAttributesReply([]byte("\x1b[?u\x1b[?6c")))
-	assert.False(t, hasDeviceAttributesReply([]byte("\x1b[?62;22")))
-	assert.False(t, hasDeviceAttributesReply([]byte("\x1b[62c")))
-	assert.False(t, hasDeviceAttributesReply(nil))
-}
-
 func TestBackgroundOf(t *testing.T) {
 	assert.Equal(t, backgroundOf(RGB{}), TerminalBackgroundDark)
 	assert.Equal(t, backgroundOf(RGB{R: 0, G: 43, B: 54}), TerminalBackgroundDark)  // Solarized dark

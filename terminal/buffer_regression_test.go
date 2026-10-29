@@ -142,3 +142,30 @@ func TestFrameTitleThatFillsTopBorder(t *testing.T) {
 	drawFrame(t, term, func(fr RenderFrame) { f.Draw(fr) })
 	assert.Equal(t, "┌ abcd ┐", rowChars(term, 0, 8))
 }
+
+func TestClearToEndOfLineClearsStraddledWideCharacter(t *testing.T) {
+	term := NewTestTerminal(10, 1, &bytes.Buffer{})
+	term.PrintAtStyled(0, 0, "世界", NewStyle()) // columns 0-1 and 2-3
+	term.Flush()
+
+	// Clear starting on the continuation cell of the first wide character.
+	term.MoveCursor(1, 0)
+	term.ClearToEndOfLine()
+	term.Flush()
+
+	assert.False(t, term.GetCell(0, 0).Width == 2, "orphaned wide lead at 0: %+v", term.GetCell(0, 0))
+	assert.Equal(t, ' ', term.GetCell(0, 0).Char)
+	assert.Equal(t, ' ', term.GetCell(1, 0).Char)
+}
+
+func TestResizeBuffersClearsBisectedWideCharacter(t *testing.T) {
+	term := NewTestTerminal(10, 1, &bytes.Buffer{})
+	term.PrintAtStyled(3, 0, "世", NewStyle()) // columns 3-4
+
+	// Shrinking to width 4 cuts the wide character in half at column 3.
+	term.resizeBuffers(4, 1)
+
+	c := term.GetCell(3, 0)
+	assert.False(t, c.Width == 2, "wide lead with no continuation at resized edge: %+v", c)
+	assert.Equal(t, ' ', c.Char)
+}
