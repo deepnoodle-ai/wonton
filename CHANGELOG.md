@@ -72,7 +72,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
   Ctrl+E) move to the start and end of the line between newlines, as Ctrl+U
   and Ctrl+K do and as a single-line input does. Before, they moved to the
   ends of the soft-wrapped row, so End in a long line stopped mid-word.
-  (#135)
+  None of the four stops at a CRLF, which the input draws without a line
+  break. Before, Ctrl+U stopped after one. (#135)
 
 ### Fixed
 

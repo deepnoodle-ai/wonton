@@ -105,6 +105,15 @@ func TestTextInput_WrappedLineNavigation(t *testing.T) {
 	ti.HandleKey(KeyEvent{Key: KeyHome})
 	assert.Equal(t, ti.CursorPos, 14)
 
+	// The layout does not break a line at CRLF, which is one grapheme, so
+	// Home and End go past it, as they do for the row it is drawn on.
+	ti.SetValue("ab\r\ncd")
+	ti.CursorPos = 5
+	ti.HandleKey(KeyEvent{Key: KeyHome})
+	assert.Equal(t, ti.CursorPos, 0)
+	ti.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, ti.CursorPos, 6)
+
 	// When row 0 wraps early before a wide char ("abcdefghi" + "中klmnopqr"),
 	// pressing Up from the end of row 1 (col 10) must land on row 0 ('i', offset 8),
 	// not on '中' (offset 9, which is row 1 col 0).

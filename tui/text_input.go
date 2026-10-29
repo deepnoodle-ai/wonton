@@ -949,10 +949,19 @@ func (t *textInput) deleteToEnd() {
 }
 
 // lineStart returns the offset just after the last newline before the
-// cursor, or 0 when the cursor is on the first line.
+// cursor, or 0 when the cursor is on the first line. Like lineEnd and the
+// layout, it skips the LF of a CRLF, which is one grapheme that does not
+// break the line.
 func (t *textInput) lineStart() int {
 	dt := t.DisplayText()
-	return strings.LastIndex(dt[:min(t.CursorPos, len(dt))], "\n") + 1
+	end := min(t.CursorPos, len(dt))
+	for {
+		nl := strings.LastIndex(dt[:end], "\n")
+		if nl <= 0 || dt[nl-1] != '\r' {
+			return nl + 1
+		}
+		end = nl - 1
+	}
 }
 
 // lineEnd returns the offset of the first newline at or after the cursor,
