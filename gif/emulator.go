@@ -31,9 +31,29 @@ import (
 //	renderer.RenderFrame(10)
 //	renderer.Save("output.gif")
 type Emulator struct {
-	screen *TerminalScreen
-	fg     color.Color
-	bg     color.Color
+	screen  *TerminalScreen
+	fg      color.Color
+	bg      color.Color
+	pending string   // incomplete escape sequence or UTF-8 rune from the last call
+	skip    skipMode // non-zero while inside an OSC/DCS/SOS/PM/APC payload
+}
+
+type skipMode uint8
+
+const (
+	skipNone skipMode = iota
+	skipST            // skipping DCS/SOS/PM/APC payload until ST (ESC \)
+	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
+)
+
+// maxPendingBytes bounds how many bytes of an incomplete escape sequence are
+// buffered between ProcessOutput calls before being dropped.
+const maxPendingBytes = 1 << 20
+
+func (e *Emulator) savePending(s string) {
+	if len(s) <= maxPendingBytes {
+		e.pending = s
+	}
 }
 
 // NewEmulator creates a new terminal emulator with the specified dimensions.
@@ -62,6 +82,8 @@ func (e *Emulator) Reset() {
 	e.screen.Clear()
 	e.fg = White
 	e.bg = Black
+	e.pending = ""
+	e.skip = skipNone
 }
 
 // Resize changes the terminal dimensions, preserving as much existing content
@@ -120,50 +142,98 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 //   - OSC sequences (ESC]...): ignored (window title, etc.)
 //   - Control characters: \n, \r, \b, \t, and printable ASCII
 func (e *Emulator) ProcessOutput(data string) {
+	if e.pending != "" {
+		data = e.pending + data
+		e.pending = ""
+	}
 	i := 0
 	for i < len(data) {
+		if e.skip != skipNone {
+			// Inside an OSC, DCS, SOS, PM, or APC payload, possibly begun in
+			// an earlier call. The payload is discarded as it arrives rather
+			// than buffered, so a large one (a sixel image, an OSC 52 copy)
+			// costs no memory and is scanned only once.
+			end := stringSequenceEnd(data[i:], e.skip == skipOSC)
+			if end < 0 {
+				// Keep a trailing ESC: it may be the first byte of ST.
+				if data[len(data)-1] == '\x1b' {
+					e.pending = "\x1b"
+				}
+				return
+			}
+			e.skip = skipNone
+			i += end
+			continue
+		}
 		// Check for escape sequences
 		if data[i] == '\x1b' {
-			// The patterns are anchored to the start of data[i:], so a match
-			// always begins at this ESC. An unanchored match could start at a
-			// later escape and skip the text in between.
+			if i+1 >= len(data) {
+				e.savePending(data[i:])
+				return
+			}
 
-			// Try to match CSI sequence
-			if i+1 < len(data) && data[i+1] == '[' {
-				match := ansiCSI.FindStringSubmatchIndex(data[i:])
-				if match != nil {
-					params := data[i+match[2] : i+match[3]]
-					intermediates := data[i+match[4] : i+match[5]]
-					cmd := data[i+match[6] : i+match[7]]
-					// Sequences with intermediate bytes (such as DECSCUSR
-					// "ESC [ 0 SP q") do not affect the screen model.
-					if intermediates == "" {
-						e.processCSI(params, cmd)
+			switch data[i+1] {
+			case '\x1b':
+				// ESC ESC: consume the first ESC and reprocess from the second.
+				i++
+				continue
+
+			case '[':
+				// CSI sequence: ESC [ <params 0x30-0x3F> <intermediates 0x20-0x2F> <final 0x40-0x7E>
+				end, status := scanCSI(data[i+2:])
+				switch status {
+				case seqIncomplete:
+					e.savePending(data[i:])
+					return
+				case seqAborted:
+					i += 2 + end
+					continue
+				case seqComplete:
+					match := ansiCSI.FindStringSubmatchIndex(data[i : i+2+end])
+					if match != nil {
+						params := data[i+match[2] : i+match[3]]
+						intermediates := data[i+match[4] : i+match[5]]
+						cmd := data[i+match[6] : i+match[7]]
+						// Sequences with intermediate bytes (such as DECSCUSR
+						// "ESC [ 0 SP q") do not affect the screen model.
+						if intermediates == "" {
+							e.processCSI(params, cmd)
+						}
 					}
-					i += match[1]
+					i += 2 + end
 					continue
 				}
-			}
 
-			// Try to match OSC sequence
-			if i+1 < len(data) && data[i+1] == ']' {
-				match := ansiOSC.FindStringIndex(data[i:])
-				if match != nil {
-					i += match[1]
+			case ']':
+				// OSC sequence: ESC ] ... (BEL | ESC \)
+				e.skip = skipOSC
+				i += 2
+				continue
+
+			case 'P', 'X', '^', '_':
+				// DCS, SOS, PM, APC string sequence: ESC <type> ... ESC \
+				e.skip = skipST
+				i += 2
+				continue
+
+			default:
+				// Simple or intermediate-prefixed escape: ESC <0x20-0x2F>* <0x30-0x7E>
+				j := i + 1
+				for j < len(data) && data[j] >= 0x20 && data[j] <= 0x2F {
+					j++
+				}
+				if j >= len(data) {
+					e.savePending(data[i:])
+					return
+				}
+				if data[j] >= 0x30 && data[j] <= 0x7E {
+					i = j + 1
 					continue
 				}
-			}
-
-			// Try to match simple escape
-			match := ansiSimple.FindStringIndex(data[i:])
-			if match != nil {
-				i += match[1]
+				// Not a valid final byte: drop the ESC and the intermediates.
+				i = j
 				continue
 			}
-
-			// Skip unknown escape
-			i++
-			continue
 		}
 
 		// Decode the next rune (handles multi-byte UTF-8)
@@ -197,7 +267,17 @@ func (e *Emulator) ProcessOutput(data string) {
 				for end < len(data) && data[end] >= 0x20 {
 					end++
 				}
-				e.screen.print(data[i:end], e.fg, e.bg)
+				run := data[i:end]
+				if end == len(data) {
+					if tail := incompleteRuneTail(run); tail > 0 {
+						if len(run) > tail {
+							e.screen.print(run[:len(run)-tail], e.fg, e.bg)
+						}
+						e.savePending(run[len(run)-tail:])
+						return
+					}
+				}
+				e.screen.print(run, e.fg, e.bg)
 				i = end
 				continue
 			}
@@ -206,18 +286,74 @@ func (e *Emulator) ProcessOutput(data string) {
 	}
 }
 
-// ANSI escape sequence patterns
-var (
-	// ansiCSI matches CSI sequences per ECMA-48:
-	// ESC [ <parameter bytes 0x30-0x3F> <intermediate bytes 0x20-0x2F> <final byte 0x40-0x7E>
-	// Parameter bytes include digits, ';', ':', and private markers (<, =, >, ?).
-	ansiCSI = regexp.MustCompile(`^\x1b\[([0-?]*)([ -/]*)([@-~])`)
-	ansiOSC = regexp.MustCompile(`^\x1b\]([^\x07\x1b]*)(?:\x07|\x1b\\)`)
-	// ansiSimple matches other two-byte (or intermediate-prefixed) escapes,
-	// such as charset selection (ESC ( B), DECSC/DECRC (ESC 7, ESC 8), and
-	// keypad modes (ESC =, ESC >).
-	ansiSimple = regexp.MustCompile(`^\x1b[ -/]*[0-~]`)
+type seqStatus int
+
+const (
+	seqComplete seqStatus = iota
+	seqIncomplete
+	seqAborted
 )
+
+// scanCSI scans the body of a CSI sequence (after "ESC [").
+func scanCSI(data string) (int, seqStatus) {
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		switch {
+		case c == 0x18 || c == 0x1A: // CAN or SUB aborts the sequence
+			return i + 1, seqAborted
+		case c == 0x1B: // ESC aborts and starts a new sequence
+			return i, seqAborted
+		case c >= 0x40 && c <= 0x7E: // Final byte
+			return i + 1, seqComplete
+		}
+	}
+	return 0, seqIncomplete
+}
+
+// stringSequenceEnd scans the payload of a string sequence for its end:
+// ST (ESC \), or also BEL for OSC (allowBEL). CAN and SUB cancel the
+// sequence, and an ESC not followed by '\' ends it and starts a new
+// sequence, which is left unconsumed. Returns the number of bytes consumed,
+// or -1 if the payload continues past the end of data.
+func stringSequenceEnd(data string, allowBEL bool) int {
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c == 0x18 || c == 0x1A || (allowBEL && c == 0x07) {
+			return i + 1
+		}
+		if c == 0x1B {
+			if i+1 >= len(data) {
+				return -1
+			}
+			if data[i+1] == '\\' {
+				return i + 2
+			}
+			return i
+		}
+	}
+	return -1
+}
+
+// incompleteRuneTail returns the number of trailing bytes in str that form
+// the prefix of an incomplete multi-byte UTF-8 rune, or 0 if the string ends
+// on a rune boundary (or with bytes that can never become a valid rune).
+func incompleteRuneTail(str string) int {
+	for back := 1; back <= utf8.UTFMax && back <= len(str); back++ {
+		b := str[len(str)-back]
+		if utf8.RuneStart(b) {
+			if b >= 0xC0 && !utf8.FullRuneInString(str[len(str)-back:]) {
+				return back
+			}
+			return 0
+		}
+	}
+	return 0
+}
+
+// ansiCSI matches CSI sequences per ECMA-48:
+// ESC [ <parameter bytes 0x30-0x3F> <intermediate bytes 0x20-0x2F> <final byte 0x40-0x7E>
+// Parameter bytes include digits, ';', ':', and private markers (<, =, >, ?).
+var ansiCSI = regexp.MustCompile(`^\x1b\[([0-?]*)([ -/]*)([@-~])`)
 
 // processCSI handles CSI escape sequences
 func (e *Emulator) processCSI(params, cmd string) {
@@ -336,7 +472,7 @@ func parseParam(params string, defaultVal int) int {
 		return defaultVal
 	}
 	n, err := strconv.Atoi(params)
-	if err != nil {
+	if err != nil || (n == 0 && defaultVal > 0) {
 		return defaultVal
 	}
 	return n

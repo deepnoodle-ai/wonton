@@ -3,6 +3,7 @@ package gif
 import (
 	"bytes"
 	"image"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -515,5 +516,153 @@ func TestParseResizeRejectsMalformedData(t *testing.T) {
 	}
 	if _, _, ok := parseResize(termsession.RecordingEvent{Type: "o", Data: "120x40"}); ok {
 		t.Error("parseResize accepted an output event")
+	}
+}
+
+func TestEmulator_SplitSequencesAcrossWrites(t *testing.T) {
+	t.Run("split CSI SGR", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("hi\x1b[31")
+		em.ProcessOutput("mRed")
+		if got := rowText(em.Screen(), 0); got != "hiRed" {
+			t.Fatalf("row 0 = %q, want %q", got, "hiRed")
+		}
+		if got := em.Screen().Cells[0][2].FG; got != ansiColor(1) {
+			t.Errorf("R fg = %v, want red", got)
+		}
+	})
+
+	t.Run("split lone ESC", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("a\x1b")
+		em.ProcessOutput("[2Cb")
+		if got := rowText(em.Screen(), 0); got != "a  b" {
+			t.Errorf("row 0 = %q, want %q", got, "a  b")
+		}
+	})
+
+	t.Run("split OSC BEL", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b]0;window ")
+		em.ProcessOutput("title\x07ok")
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+	})
+
+	t.Run("split OSC ST", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b]0;title\x1b")
+		em.ProcessOutput("\\ok")
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+	})
+
+	t.Run("split charset escape", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b(")
+		em.ProcessOutput("BHello")
+		if got := rowText(em.Screen(), 0); got != "Hello" {
+			t.Errorf("row 0 = %q, want %q", got, "Hello")
+		}
+	})
+
+	t.Run("split UTF-8 rune", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		raw := []byte("世界")
+		for _, b := range raw {
+			em.Write([]byte{b})
+		}
+		checkRow(t, em.Screen(), 0, 4, []string{"世", cont, "界", cont})
+	})
+}
+
+func TestEmulator_StringAndCancelledSequences(t *testing.T) {
+	t.Run("DCS and APC payloads ignored", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1bP1$r0m\x1b\\A\x1b_G123\x1b")
+		em.ProcessOutput("\\B")
+		if got := rowText(em.Screen(), 0); got != "AB" {
+			t.Errorf("row 0 = %q, want %q", got, "AB")
+		}
+	})
+
+	t.Run("cancelled CSI does not leak parameters", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput("\x1b[12\x1b[31mHi\x1b[99\x18!")
+		if got := rowText(em.Screen(), 0); got != "Hi!" {
+			t.Errorf("row 0 = %q, want %q", got, "Hi!")
+		}
+		if got := em.Screen().Cells[0][0].FG; got != ansiColor(1) {
+			t.Errorf("H fg = %v, want red", got)
+		}
+	})
+
+	t.Run("zero cursor movement parameter uses default 1", func(t *testing.T) {
+		em := NewEmulator(20, 5)
+		em.ProcessOutput("\x1b[3;3H\x1b[0A\x1b[0CX")
+		if em.Screen().CursorY != 1 || em.Screen().Cells[1][3].Char != 'X' {
+			t.Errorf("expected X at (3,1), cursor=(%d,%d)", em.Screen().CursorX, em.Screen().CursorY)
+		}
+	})
+
+	t.Run("oversized DCS and OSC payloads skipped across chunks", func(t *testing.T) {
+		em := NewEmulator(20, 3)
+		chunk := strings.Repeat("A", 64*1024)
+		em.ProcessOutput("\x1bPq")
+		for i := 0; i < 24; i++ { // 1.5 MiB, more than maxPendingBytes
+			em.ProcessOutput(chunk)
+		}
+		em.ProcessOutput("\x1b")
+		em.ProcessOutput("\\o")
+
+		em.ProcessOutput("\x1b]52;c;")
+		for i := 0; i < 24; i++ {
+			em.ProcessOutput(chunk)
+		}
+		em.ProcessOutput("\x07k")
+
+		if got := rowText(em.Screen(), 0); got != "ok" {
+			t.Errorf("row 0 = %q, want %q", got, "ok")
+		}
+		if em.pending != "" {
+			t.Errorf("pending = %d bytes, want none", len(em.pending))
+		}
+	})
+}
+
+// TestEmulator_SplitAtEveryByte checks that splitting a stream at any byte
+// gives the same screen as writing it whole. The stream covers OSC with BEL
+// and ST, BEL inside a DCS payload, CAN and SUB aborts, an OSC ended by the
+// ESC of a following CSI, intermediate escapes, and multi-byte UTF-8.
+func TestEmulator_SplitAtEveryByte(t *testing.T) {
+	const stream = "a\x1b]0;title\x07b\x1b]2;t\x1b\\c\x1bP1$r\x07x\x1b\\d\x1b_G\x18e" +
+		"\x1b]0;t\x1b[31mf\x1b[12\x1ag\x1b(Bh\x1b#8i\u00e9jk\u0301"
+
+	whole := NewEmulator(20, 3)
+	whole.ProcessOutput(stream)
+	if got := rowText(whole.Screen(), 0); got != "abcdefghi\u00e9jk" {
+		t.Fatalf("row 0 = %q, want %q", got, "abcdefghi\u00e9jk")
+	}
+	if got := whole.Screen().Cells[0][5].FG; got != ansiColor(1) {
+		t.Errorf("f fg = %v, want red", got)
+	}
+
+	for k := 1; k < len(stream); k++ {
+		em := NewEmulator(20, 3)
+		em.ProcessOutput(stream[:k])
+		em.ProcessOutput(stream[k:])
+		if !reflect.DeepEqual(em.Screen(), whole.Screen()) {
+			t.Errorf("split at byte %d: row 0 = %q, want %q", k, rowText(em.Screen(), 0), rowText(whole.Screen(), 0))
+		}
+	}
+
+	em := NewEmulator(20, 3)
+	for i := 0; i < len(stream); i++ {
+		em.Write([]byte{stream[i]})
+	}
+	if !reflect.DeepEqual(em.Screen(), whole.Screen()) {
+		t.Errorf("byte at a time: row 0 = %q, want %q", rowText(em.Screen(), 0), rowText(whole.Screen(), 0))
 	}
 }

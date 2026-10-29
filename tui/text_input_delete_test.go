@@ -25,6 +25,7 @@ func TestTextInputKillLine(t *testing.T) {
 		{"at line start", "first\nlast", "first\nlast", KeyCtrlU, 6, 6, true},
 		{"single line removes newline", "first\nlast", "fi", KeyCtrlK, 2, 2, false},
 		{"CRLF is one cluster", "a\r\nb\nc", "a\nc", KeyCtrlK, 1, 1, true},
+		{"CRLF does not start a line", "a\nb\r\ncd", "a\nd", KeyCtrlU, len("a\nb\r\nc"), len("a\n"), true},
 		{"empty", "", "", KeyCtrlU, 0, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -80,6 +80,7 @@ your dependency graph small. Fewer dependencies means less supply chain risk.
 | [termsession](./termsession/README.md) | Session recording (asciinema format)   |
 | [termtest](./termtest/README.md)       | Terminal output testing                |
 | [thumbnail](./thumbnail/README.md)     | Image and document thumbnails          |
+| [tmux](./tmux/README.md)               | Live tmux-backed terminals             |
 | [tui](./tui/README.md)                 | Declarative TUI with layout engine     |
 | [unidiff](./unidiff/README.md)         | Unified diff parsing                   |
 | [web](./web/README.md)                 | URL canonicalization, search types     |
@@ -94,6 +95,7 @@ Every folder under `examples/` is a standalone `main` package you can run direct
 | CLI      | `go run ./examples/cli/flags`          | Flag types, defaults, and enums |
 | TUI      | `go run ./examples/tui/text_animation` | Animated text with flex layout  |
 | TUI      | `go run ./examples/tui/input_forms`    | Text input and form handling    |
+| TUI      | `go run ./examples/corral`             | Split panes of live terminals   |
 | Web      | `go run ./examples/sitecheck`          | Link checker with live TUI      |
 | Web      | `go run ./examples/webwatch`           | Page monitor with change diffs  |
 

@@ -204,28 +204,29 @@ func (c *CodeView) chromaToStyle(entry chroma.StyleEntry) Style {
 
 // expandTabs expands tab characters to spaces based on the current column.
 func (c *CodeView) expandTabs(s string, startCol int) string {
+	return expandTabStops(s, startCol, c.tabWidth)
+}
+
+// expandTabStops replaces each tab in s with spaces up to the next multiple
+// of tabWidth, counting columns from startCol. It advances by grapheme
+// cluster, so columns match runewidth.StringWidth.
+func expandTabStops(s string, startCol, tabWidth int) string {
 	if !strings.Contains(s, "\t") {
 		return s
 	}
 
 	var result strings.Builder
 	col := startCol
-
-	// Advance by grapheme cluster, so columns match runewidth.StringWidth.
 	for cluster, w := range runewidth.Graphemes(s) {
 		if cluster == "\t" {
-			// Calculate spaces to next tab stop
-			spaces := c.tabWidth - (col % c.tabWidth)
-			for i := 0; i < spaces; i++ {
-				result.WriteRune(' ')
-			}
+			spaces := tabWidth - (col % tabWidth)
+			result.WriteString(strings.Repeat(" ", spaces))
 			col += spaces
 		} else {
 			result.WriteString(cluster)
 			col += w
 		}
 	}
-
 	return result.String()
 }
 

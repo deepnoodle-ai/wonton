@@ -363,6 +363,21 @@ func TestDiffRenderer_TabExpansion(t *testing.T) {
 	// Test string without tabs
 	result = renderer.expandTabs("no tabs here")
 	assert.Equal(t, "no tabs here", result)
+
+	// Wide CJK character (width 2) before tab should expand to 2 spaces to reach tab stop 4
+	result = renderer.expandTabs("中\tcode")
+	assert.Equal(t, "中  code", result)
+
+	// Combining mark (2 runes, display width 1) before tab should expand to 3 spaces to reach tab stop 4
+	result = renderer.expandTabs("e\u0301\tcode")
+	assert.Equal(t, "e\u0301   code", result)
+
+	// Zero or negative TabWidth falls back to 4 instead of panicking with divide-by-zero
+	zeroTabRenderer := &DiffRenderer{TabWidth: 0}
+	assert.Equal(t, "    code", zeroTabRenderer.expandTabs("\tcode"))
+
+	// Nil diff returns nil without panicking
+	assert.Nil(t, renderer.RenderDiff(nil, "go"))
 }
 
 func TestDiffRenderer_TabsInDiff(t *testing.T) {

@@ -33,6 +33,32 @@ bug fixes. Release notes identify incompatible changes explicitly.
   text at its end, which the next chunk can continue. `Flush` returns that
   text when the stream ends or pauses and resets the redactor. The zero
   value is ready to use. (#126)
+- New `tmux` package: live terminals backed by tmux sessions. `Server.Open`
+  attaches a `Terminal` to a session (creating it if needed) over a
+  control-mode connection, captures the pane into a `Screen` of cells
+  whenever its program writes, and sends keys, pastes, and mouse events
+  back. Sessions outlive the program, so it can detach and reattach.
+  `Control` is the control-mode client underneath, and `Server` runs
+  one-shot commands and reads and writes user options.
+- `tui.Split` and `tui.SplitState`: columns and rows of panes that nest to
+  any depth, with gaps the user drags to resize. `SplitState` adds, splits,
+  removes, and equalizes panes, and reports `PaneAt`, `DividerAt`,
+  `Neighbor`, and `Bounds` in screen coordinates. Its tree is plain data
+  that `encoding/json` saves and restores. `Tight` drops the gaps for
+  panes with borders of their own, which then touch and are dragged by
+  the border cells where they meet.
+- `tui.Menu` and `tui.MenuState`: a popup menu for right-click and keyboard
+  use, with hints, separators, disabled and destructive entries. It opens
+  at a screen position, moves to stay on screen, and is modal while open.
+- `tui.HitMap` records where tagged views were drawn so an event handler can
+  ask which one is under the pointer.
+- `tui.Cells` draws a grid of `tui.Cell`s as given, with an optional block
+  cursor, such as a terminal screen from the `tmux` package. `Select`
+  highlights a `tui.GridSelection`, a terminal-style selection whose `Text`
+  is the text to copy.
+- `examples/corral`: a workspace of live terminals in resizable splits, with
+  a sidebar of spaces and panes, context menus, and a layout that survives
+  restarts.
 
 ### Changed
 
@@ -42,6 +68,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
   without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
   compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
+- In a multiline `tui.Input` or `tui.InputField`, Home and End (Ctrl+A and
+  Ctrl+E) move to the start and end of the line between newlines, as Ctrl+U
+  and Ctrl+K do and as a single-line input does. Before, they moved to the
+  ends of the soft-wrapped row, so End in a long line stopped mid-word.
+  None of the four stops at a CRLF, which the input draws without a line
+  break. Before, Ctrl+U stopped after one. (#135)
 - **Breaking**: `env.Parse` and `env.ParseInto` flatten an embedded pointer
   struct (`*Common`) without adding a `COMMON_` prefix, matching a
   value-embedded `Common`, and apply an `envPrefix` tag on both value- and
@@ -50,6 +82,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ### Fixed
 
+- `terminal.KeyDecoder.ReadEvent` drops a malformed SGR mouse report and
+  keeps reading. Before, it returned the report's parse error, which was
+  `io.EOF`, and the TUI runtime stopped reading input for good.
+  `terminal.ParseMouseEvent` no longer returns a bare `io.EOF` for one.
 - `terminal.KeyDecoder` decodes an escape sequence that the terminal writes
   in two pieces, such as `x\x1b` and then `[A`, as `x` and `KeyArrowUp`.
   Before, it reported `x`, `KeyEscape`, `[`, and `A`. When ESC is the last
@@ -123,6 +159,76 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `ClearToEndOfLine` blanked cells with a black background. In non-buffered
   mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
   was written after any cell with another style in the same flush.
+- `gif.Emulator` buffers an escape sequence or multi-byte UTF-8 character
+  split across `ProcessOutput` or `Write` calls until the rest of the bytes
+  arrive, instead of printing the tail of the sequence as text. It also
+  consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
+  string payloads across calls without buffering them) and CAN/SUB-cancelled
+  CSI sequences, and treats an explicit `0` parameter as `1` in relative
+  cursor movement sequences (`CSI 0 A` through `CSI 0 F`), which before
+  did not move the cursor. (#134)
+- `termtest.Screen` joins a combining mark, variation selector, or ZWJ
+  continuation written in a separate `Write`, `WriteString`, or `WriteRune`
+  call (or after an SGR sequence) onto the cell before the cursor, ignores
+  standalone zero-width clusters instead of overwriting the current cell, and
+  streams incomplete OSC, DCS, SOS, PM, and APC payloads across writes
+  without buffering them. Its ANSI parser also ignores `<`-prefixed private
+  CSI sequences and CSI sequences with intermediate bytes, handles `CSI ? J`
+  and `CSI ? K` selective erases, and consumes intermediate `ESC` sequences
+  such as `ESC # 8`. (#134)
+- `termsession.Player` honors `Seek` called before `Play`, caps an initial
+  idle delay before the first event when `MaxIdle` is set, and holds its read
+  lock across the end-of-events check and event read in `Play` so a
+  concurrent `Seek` past the end cannot panic. `termsession.Recorder` records
+  a resize event on `Resume` when `UpdateSize` was called while paused. (#134)
+- `terminal.Terminal.DetectKittyProtocol` no longer loses the first key
+  typed after it. When `os.Stdin` was a file opened with `os.OpenFile`, such
+  as a PTY in a test, and the terminal did not answer, the probe left a read
+  behind that took the next key press. The probe also works on a real
+  terminal now. Before, it needed a read deadline on `os.Stdin`, which the
+  standard `os.Stdin` does not support, so it reported false without
+  asking. Terminals that support the Kitty keyboard protocol are now
+  detected, and `tui` turns the protocol on for them. The probe stops at the
+  end of the terminal's reply, so keys typed after it are kept. Keys typed
+  while it waits are dropped. If the terminal has not answered after 200ms,
+  or 400ms once it has started to answer, or after 1 KiB of input without
+  its reply, the probe discards pending input. A whole reply that arrives
+  later decodes as `KeyUnknown`, not as keys. (#136)
+- `terminal.KeyDecoder` no longer drops the keys that follow a cut-off or
+  invalid UTF-8 character, or a legacy `ESC [ M` mouse report cut off by a
+  key. Before, a bad character took up to three following bytes, such as
+  Enter or Ctrl+C, and a mouse report took a control byte as its payload. A
+  legacy mouse report past column or row 223, where xterm sends NUL, is
+  dropped instead of reported at a negative position. A typed U+FFFD is no
+  longer dropped. (#136)
+- `terminal.Terminal.ClearToEndOfLine` started on the second column of a wide
+  character blanks its first column too, and a narrower terminal blanks a
+  wide character cut by the new right edge. Before, half a glyph stayed in
+  the buffer. (#136)
+- In non-buffered mode, `terminal.Terminal.SetCell` returns `ErrOutOfBounds`
+  for a cell outside the terminal or a wide character that does not fit, as
+  in buffered mode. `Fill` and `FillStyled` clip the rectangle to the
+  terminal and step by the character's display width. Before, they wrote
+  outside the terminal, and a negative width panicked. (#136)
+- In `tui.Input` and `tui.InputField`, a cursor on a character that wraps
+  to the next row, including a wide character that does not fit at the end
+  of a row, now draws at column 0 of that row, and the input scrolls to show
+  it. Before, it drew at the end of the row above, past the right edge when
+  that row was full. In a multiline input, Up, Down, and history recall
+  treat that cursor as on the wrapped row. Before, Up there recalled history
+  instead of moving up a row. Up or Down onto a soft-wrapped row shorter
+  than the cursor's column lands on that row's last character. Before, it
+  landed on the first character of the following row. (#135)
+- `tui.DetectTerminalBackground` no longer accepts an OSC 11 reply that ends
+  in an invalid UTF-8 byte or `U+FFFD` instead of BEL or ST. (#135)
+- `tui.DiffRenderer` expands a tab after a wide character or combining mark
+  to the correct tab stop. A `TabWidth` of 0 or less uses 4 instead of
+  panicking, and `RenderDiff(nil)` returns nil instead of panicking. (#135)
+- `tui.TextArea` without an `ID` uses its focused border and title styles
+  when it takes focus as the first focusable element. With
+  `HighlightCurrentLine`, Down and End scroll by the area's rendered height,
+  so a bordered area 2 rows tall, or an area a layout makes taller than its
+  `Size`, no longer scrolls too far. (#135)
 - `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
   string, integer, floating-point, and boolean types or pointers to them),
   concrete types that implement `encoding.TextMarshaler` without

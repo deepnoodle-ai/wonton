@@ -324,7 +324,10 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 	if len(params) > 0 && params[0] == '<' && (final == 'M' || final == 'm') {
 		event, err := ParseMouseEvent(append([]byte(params), final))
 		if err != nil {
-			return KeyEvent{Key: KeyUnknown}, err
+			// The malformed report has been read to its end; drop it and
+			// keep reading. Its parse error is not a read error, and one
+			// that said io.EOF would end the caller's input loop.
+			return KeyEvent{Key: KeyUnknown}, nil
 		}
 		return *event, nil
 	}
@@ -455,21 +458,37 @@ func applyKeyModifiers(event KeyEvent, modifier int) KeyEvent {
 // decodeLegacyMouseEvent decodes legacy mouse format: ESC [ M followed by 3 bytes
 // We've already consumed ESC [ M
 func (kd *KeyDecoder) decodeLegacyMouseEvent() (Event, error) {
-	// Read the 3 bytes
+	buf, err := kd.readLegacyMousePayload()
+	if buf == nil {
+		return KeyEvent{Key: KeyUnknown}, err
+	}
+	event, err := ParseMouseEvent(buf)
+	if err != nil {
+		return KeyEvent{Key: KeyUnknown}, nil
+	}
+	return *event, nil
+}
+
+// readLegacyMousePayload reads the 3 bytes after ESC [ M: the button, then
+// the column and row, each offset by 32. It returns nil if the payload is
+// cut short. The button byte is never below 0x20, and a coordinate byte is
+// below 0x20 only when xterm sends NUL for a column or row past 223. Any
+// other control byte, such as ESC, CR, or Ctrl+C, is a key that interrupted
+// the report, so it is put back for the next read.
+func (kd *KeyDecoder) readLegacyMousePayload() ([]byte, error) {
 	buf := make([]byte, 3)
-	for i := 0; i < 3; i++ {
+	for i := range buf {
 		b, err := kd.reader.ReadByte()
 		if err != nil {
-			return KeyEvent{Key: KeyUnknown}, err
+			return nil, err
+		}
+		if b < 0x20 && (i == 0 || b != 0) {
+			_ = kd.reader.UnreadByte()
+			return nil, nil
 		}
 		buf[i] = b
 	}
-
-	event, err := ParseMouseEvent(buf)
-	if err != nil {
-		return KeyEvent{Key: KeyUnknown}, err
-	}
-	return *event, nil
+	return buf, nil
 }
 
 // ReadKeyEvent reads a single key event from the input stream.
@@ -619,12 +638,8 @@ func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
 	// Legacy mouse report on the key-only API: consume the 3 raw payload
 	// bytes to keep the stream in sync, then report unknown.
 	if first == 'M' {
-		for i := 0; i < 3; i++ {
-			if _, err := kd.reader.ReadByte(); err != nil {
-				return KeyEvent{Key: KeyUnknown}, err
-			}
-		}
-		return KeyEvent{Key: KeyUnknown}, nil
+		_, err := kd.readLegacyMousePayload()
+		return KeyEvent{Key: KeyUnknown}, err
 	}
 
 	params, final, err := kd.readCSISequence(first)
@@ -922,23 +937,26 @@ func (kd *KeyDecoder) decodeSS3() (KeyEvent, error) {
 // decodeUTF8 decodes a multi-byte UTF-8 character
 // We've already read the first byte
 func (kd *KeyDecoder) decodeUTF8(firstByte byte) (KeyEvent, error) {
-	// Determine how many bytes we need
+	// Determine how many bytes we need. Reject overlong 2-byte leads (0xC0, 0xC1)
+	// and leads above U+10FFFF (0xF5..0xFF) immediately so we never consume
+	// subsequent keystrokes waiting for continuation bytes that cannot form a
+	// valid rune.
 	var numBytes int
 	if firstByte&0x80 == 0 {
 		// Single-byte ASCII (should have been handled earlier)
 		return KeyEvent{Rune: rune(firstByte)}, nil
-	} else if firstByte&0xE0 == 0xC0 {
+	} else if firstByte >= 0xC2 && firstByte <= 0xDF {
 		numBytes = 2
-	} else if firstByte&0xF0 == 0xE0 {
+	} else if firstByte >= 0xE0 && firstByte <= 0xEF {
 		numBytes = 3
-	} else if firstByte&0xF8 == 0xF0 {
+	} else if firstByte >= 0xF0 && firstByte <= 0xF4 {
 		numBytes = 4
 	} else {
-		// Invalid UTF-8
+		// Invalid UTF-8 lead or stray continuation byte
 		return KeyEvent{Key: KeyUnknown}, nil
 	}
 
-	// Read the remaining bytes
+	// Read the remaining continuation bytes (10xxxxxx)
 	buf := make([]byte, numBytes)
 	buf[0] = firstByte
 	for i := 1; i < numBytes; i++ {
@@ -946,12 +964,21 @@ func (kd *KeyDecoder) decodeUTF8(firstByte byte) (KeyEvent, error) {
 		if err != nil {
 			return KeyEvent{Key: KeyUnknown}, err
 		}
+		if b&0xC0 != 0x80 {
+			// Not a UTF-8 continuation byte: the multi-byte sequence was
+			// truncated. Push this byte back so it can be decoded as the
+			// start of the next key event.
+			_ = kd.reader.UnreadByte()
+			return KeyEvent{Key: KeyUnknown}, nil
+		}
 		buf[i] = b
 	}
 
 	// Decode the UTF-8 sequence
-	r, _ := utf8.DecodeRune(buf)
-	if r == utf8.RuneError {
+	// An invalid sequence (overlong, surrogate, past U+10FFFF) decodes with
+	// size 1. A typed U+FFFD is valid and decodes with its full size.
+	r, size := utf8.DecodeRune(buf)
+	if size != numBytes {
 		return KeyEvent{Key: KeyUnknown}, nil
 	}
 

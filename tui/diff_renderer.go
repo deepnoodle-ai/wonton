@@ -72,6 +72,10 @@ type RenderedDiffLine struct {
 
 // RenderDiff renders a diff to styled output
 func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLine {
+	if diff == nil {
+		return nil
+	}
+
 	var result []RenderedDiffLine
 
 	for _, file := range diff.Files {
@@ -119,29 +123,14 @@ func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLi
 	return result
 }
 
-// expandTabs expands tab characters to spaces
+// expandTabs expands tab characters to spaces, using 4 columns per tab stop
+// when TabWidth is not positive.
 func (dr *DiffRenderer) expandTabs(s string) string {
-	if !strings.Contains(s, "\t") {
-		return s
+	tabWidth := dr.TabWidth
+	if tabWidth <= 0 {
+		tabWidth = 4
 	}
-
-	var result strings.Builder
-	result.Grow(len(s) * 2) // Estimate expanded size
-
-	col := 0
-	for _, ch := range s {
-		if ch == '\t' {
-			// Expand tab to reach next tab stop
-			spaces := dr.TabWidth - (col % dr.TabWidth)
-			result.WriteString(strings.Repeat(" ", spaces))
-			col += spaces
-		} else {
-			result.WriteRune(ch)
-			col++
-		}
-	}
-
-	return result.String()
+	return expandTabStops(s, 0, tabWidth)
 }
 
 func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedDiffLine {

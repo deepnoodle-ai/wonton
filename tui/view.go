@@ -98,6 +98,14 @@ func (s *SpacerView) flex() int {
 	return s.flexFactor
 }
 
+// isSpacer reports whether v is a Spacer, possibly inside a wrapper that
+// leaves layout alone (HitMap.Area). A container does not become flexible
+// because it holds a Spacer.
+func isSpacer(v View) bool {
+	_, ok := unwrapHitArea(v).(*SpacerView)
+	return ok
+}
+
 func (s *SpacerView) render(ctx *RenderContext) {
 	// Spacer renders nothing - it just takes up space
 }

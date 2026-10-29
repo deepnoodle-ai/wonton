@@ -788,6 +788,65 @@ func TestTextArea_Render_RegistersFocusHandler(t *testing.T) {
 	assert.True(t, found, "should register focus handler and auto-focus first element")
 }
 
+func TestTextArea_Render_AutoFocusWithoutID(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(30, 5, &buf)
+	frame, err := terminal.BeginFrame()
+	assert.NoError(t, err)
+	defer terminal.EndFrame(frame)
+
+	fm := NewFocusManager()
+	ta := TextArea(nil).
+		Content("Test").
+		Size(20, 5).
+		Bordered().
+		BorderFg(ColorYellow).
+		FocusBorderFg(ColorMagenta).
+		Title("Log").
+		TitleStyle(NewStyle().WithForeground(ColorYellow)).
+		FocusTitleStyle(NewStyle().WithForeground(ColorGreen))
+
+	ctx := NewRenderContext(frame, 0).WithFocusManager(fm)
+	subCtx := ctx.SubContext(image.Rect(0, 0, 20, 5))
+	ta.render(subCtx)
+
+	// Even without an explicit ID, auto-focus from FocusManager.Register must
+	// style the border and title as focused.
+	assert.Equal(t, ColorMagenta, frame.Cell(0, 0).Style.Foreground)
+	assert.Equal(t, ColorGreen, frame.Cell(3, 0).Style.Foreground)
+}
+
+func TestTextAreaFocusHandler_SmallBorderedViewHeight(t *testing.T) {
+	ta := TextArea(nil).
+		Content("line0\nline1\nline2").
+		Size(20, 2).
+		Bordered().
+		HighlightCurrentLine(true)
+	handler := &textAreaFocusHandler{area: ta, bounds: image.Rect(0, 0, 20, 2), height: 2}
+
+	assert.True(t, handler.HandleKeyEvent(KeyEvent{Key: KeyArrowDown}))
+	assert.Equal(t, 1, ta.getCursorLine())
+	assert.Equal(t, 1, ta.getScrollY(), "scrollY must not overshoot cursorLine when border leaves 0 inner rows")
+
+	assert.True(t, handler.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
+	assert.Equal(t, 2, ta.getCursorLine())
+	assert.Equal(t, 2, ta.getScrollY(), "scrollY must not overshoot maxLine on End")
+
+	// The area renders at height 6 (4 inner rows): taller than its set size,
+	// as a parent layout can make it, and with click bounds clipped to 1 row
+	// by an outer ScrollView. Down must use the rendered height and not
+	// scroll on line 1.
+	ta = TextArea(nil).
+		Content("line0\nline1\nline2\nline3\nline4").
+		Size(20, 3).
+		Bordered().
+		HighlightCurrentLine(true)
+	clippedHandler := &textAreaFocusHandler{area: ta, bounds: image.Rect(0, 0, 20, 1), height: 6}
+	assert.True(t, clippedHandler.HandleKeyEvent(KeyEvent{Key: KeyArrowDown}))
+	assert.Equal(t, 1, ta.getCursorLine())
+	assert.Equal(t, 0, ta.getScrollY(), "innerHeight must come from the rendered height")
+}
+
 // renderBordered tests
 
 func TestTextArea_RenderBordered_FullBorder(t *testing.T) {

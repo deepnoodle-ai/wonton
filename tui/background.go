@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -123,39 +124,6 @@ func colorFGBGBackground(value string) TerminalBackground {
 // DA1 reply marks the end of whatever the terminal will say.
 const backgroundQuery = "\x1b]11;?\x07\x1b[c"
 
-// backgroundReplies is what a terminal has said so far in reply to
-// backgroundQuery.
-type backgroundReplies struct {
-	color RGB
-	ok    bool // color holds the terminal's background color
-	done  bool // the DA1 reply arrived, so no more replies will come
-}
-
-func scanBackgroundReplies(b []byte) backgroundReplies {
-	var r backgroundReplies
-	r.color, r.ok = parseBackgroundReply(b)
-	r.done = hasDeviceAttributesReply(b)
-	return r
-}
-
-// hasDeviceAttributesReply reports whether b holds a DA1 reply, ESC [ ? ... c.
-func hasDeviceAttributesReply(b []byte) bool {
-	for {
-		i := bytes.Index(b, []byte("\x1b[?"))
-		if i < 0 {
-			return false
-		}
-		b = b[i+3:]
-		j := 0
-		for j < len(b) && (b[j] >= '0' && b[j] <= '9' || b[j] == ';') {
-			j++
-		}
-		if j < len(b) && b[j] == 'c' {
-			return true
-		}
-	}
-}
-
 // parseBackgroundReply finds an OSC 11 reply in b, ESC ] 11 ; <color>
 // followed by BEL or ST, and returns its color.
 func parseBackgroundReply(b []byte) (RGB, bool) {
@@ -165,7 +133,7 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return RGB{}, false
 		}
 		b = b[i+5:]
-		end := bytes.IndexAny(b, "\x07\x1b\x9c")
+		end := indexOSCTerminator(b)
 		if end < 0 {
 			return RGB{}, false
 		}
@@ -176,6 +144,22 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return c, true
 		}
 	}
+}
+
+// indexOSCTerminator returns the index of the first BEL, ESC, or 8-bit ST
+// (0x9c) in b, or -1. It steps by UTF-8 sequence, so the 0x9c continuation
+// byte of a character such as '✓' does not match. bytes.IndexAny cannot be
+// used: it decodes 0x9c as U+FFFD and matches any invalid byte or U+FFFD.
+func indexOSCTerminator(b []byte) int {
+	for i := 0; i < len(b); {
+		switch b[i] {
+		case 0x07, 0x1b, 0x9c:
+			return i
+		}
+		_, w := utf8.DecodeRune(b[i:])
+		i += w
+	}
+	return -1
 }
 
 // parseXColor parses the X11 color forms terminals use in OSC replies:
