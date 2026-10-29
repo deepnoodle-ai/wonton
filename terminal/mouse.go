@@ -125,10 +125,16 @@ func ParseMouseEvent(seq []byte) (*MouseEvent, error) {
 		if _, err := fmt.Sscanf(coords, "%d;%d;%d", &button, &x, &y); err != nil {
 			return nil, err
 		}
+		if button < 0 {
+			return nil, fmt.Errorf("invalid mouse button code: %d", button)
+		}
 	} else {
 		// Legacy format - limited to coordinates < 223
 		if len(seq) != 3 {
 			return nil, fmt.Errorf("invalid legacy mouse sequence")
+		}
+		if seq[0] < 32 || seq[1] < 32 || seq[2] < 32 {
+			return nil, fmt.Errorf("invalid legacy mouse payload byte < 32")
 		}
 		button = int(seq[0]) - 32
 		x = int(seq[1]) - 32
