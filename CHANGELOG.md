@@ -11,12 +11,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-29
+
 ### Fixed
 
 - With the Kitty keyboard protocol on, `terminal.KeyDecoder` decodes Ctrl+J
   as Shift+Enter, as it does the LF byte that Ctrl+J sends otherwise. Before,
   it decoded as `KeyCtrlJ`, which `tui.Input` and `tui.InputField` ignore, so
   Ctrl+J stopped inserting a newline in terminals with the Kitty protocol.
+  (#144)
 
 ## [0.10.1] - 2026-10-29
 
