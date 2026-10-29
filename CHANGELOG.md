@@ -231,9 +231,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `Size`, no longer scrolls too far. (#135)
 - `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
   string, integer, floating-point, and boolean types or pointers to them),
-  concrete types that implement `encoding.TextMarshaler` without
-  `json.Marshaler` (including structs that inherit `MarshalText` from an
-  embedded field), and embedded struct field dominance rules: shallower
+  named types that `json.Unmarshal` decodes from a string because they
+  implement `encoding.TextUnmarshaler` without `json.Unmarshaler`
+  (including structs that inherit `UnmarshalText` from an embedded field),
+  and embedded struct field dominance rules: shallower
   embedded fields shadow deeper ones regardless of field order, a single
   `json`-tagged field at the shallowest depth wins over untagged siblings,
   and conflicting fields at the shallowest depth are omitted. (#133)

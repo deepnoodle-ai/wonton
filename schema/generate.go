@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
-	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+	jsonMarshalerType   = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	jsonUnmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )
 
 // GenerateOptions configures schema generation behavior.
@@ -112,9 +113,9 @@ func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool
 		return &Property{Type: String}, nil
 	}
 
-	// Types implementing encoding.TextMarshaler (and not json.Marshaler)
-	// marshal as JSON strings in encoding/json.
-	if t.Kind() != reflect.Ptr && implementsTextMarshaler(t) {
+	// Types implementing encoding.TextUnmarshaler (and not json.Unmarshaler)
+	// decode from JSON strings in encoding/json.
+	if t.Kind() != reflect.Ptr && unmarshalsFromText(t) {
 		return &Property{Type: String}, nil
 	}
 
@@ -352,15 +353,18 @@ func dominantFields(fields []structField) []structField {
 	return out
 }
 
-// implementsTextMarshaler reports whether a concrete type t (or *t) implements
-// encoding.TextMarshaler without implementing json.Marshaler. Interface types
-// are excluded because encoding/json marshals their dynamic value, which may
-// not be a JSON string.
-func implementsTextMarshaler(t reflect.Type) bool {
-	if t.Kind() == reflect.Interface || implementsJSONMarshaler(t) {
+// unmarshalsFromText reports whether encoding/json decodes a JSON string into
+// t with encoding.TextUnmarshaler. Schemas describe input that is decoded, so
+// this follows decoding, not MarshalText: a type with only MarshalText still
+// decodes from its underlying kind. As in encoding/json, the methods of *t
+// count only for a named t, json.Unmarshaler takes precedence, and an
+// interface type (whose pointer has no methods) is never a match.
+func unmarshalsFromText(t reflect.Type) bool {
+	if t.Name() == "" {
 		return false
 	}
-	return t.Implements(textMarshalerType) || reflect.PointerTo(t).Implements(textMarshalerType)
+	pt := reflect.PointerTo(t)
+	return pt.Implements(textUnmarshalerType) && !pt.Implements(jsonUnmarshalerType)
 }
 
 // implementsJSONMarshaler reports whether t or *t implements json.Marshaler.

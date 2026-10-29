@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -201,6 +202,29 @@ func (c customTextValue) MarshalText() ([]byte, error) {
 	return []byte(c.raw), nil
 }
 
+func (c *customTextValue) UnmarshalText(b []byte) error {
+	c.raw = string(b)
+	return nil
+}
+
+// textOutOnly has MarshalText but no UnmarshalText, so encoding/json decodes
+// it from a JSON number.
+type textOutOnly int
+
+func (t textOutOnly) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(int(t))), nil
+}
+
+// textInOnly has UnmarshalText but no MarshalText, so encoding/json decodes
+// it from a JSON string.
+type textInOnly int
+
+func (t *textInOnly) UnmarshalText(b []byte) error {
+	n, err := strconv.Atoi(string(b))
+	*t = textInOnly(n)
+	return err
+}
+
 // customJSONInt implements json.Marshaler, so encoding/json calls MarshalJSON
 // and ignores the ",string" option on fields of this type.
 type customJSONInt int
@@ -212,9 +236,9 @@ func (c customJSONInt) MarshalJSON() ([]byte, error) {
 // namedIntPtr is a named pointer type; encoding/json ignores ",string" on it.
 type namedIntPtr *int
 
-// encoding/json encodes fields with json:",string" (for string, numeric, and
+// encoding/json decodes fields with json:",string" (for string, numeric, and
 // boolean types, or pointers to them) and types implementing
-// encoding.TextMarshaler as JSON strings.
+// encoding.TextUnmarshaler from JSON strings.
 func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	type payload struct {
 		ID      int64                  `json:"id,string"`
@@ -227,6 +251,8 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 		Iface   encoding.TextMarshaler `json:"iface,omitempty"`
 		Custom  customJSONInt          `json:"custom,string"`
 		Named   namedIntPtr            `json:"named,string"`
+		OutOnly textOutOnly            `json:"out_only"`
+		InOnly  textInOnly             `json:"in_only"`
 	}
 
 	s, err := Generate(payload{})
@@ -245,9 +271,15 @@ func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
 	assert.Empty(t, s.Properties["iface"].Type)
 	assert.Equal(t, Integer, s.Properties["custom"].Type)
 	assert.Equal(t, Integer, s.Properties["named"].Type)
+	assert.Equal(t, Integer, s.Properties["out_only"].Type)
+	assert.Equal(t, String, s.Properties["in_only"].Type)
 
-	// A struct that embeds a TextMarshaler promotes MarshalText and marshals
-	// as a JSON string in encoding/json.
+	// Each schema type is one that json.Unmarshal accepts.
+	var p payload
+	assert.NoError(t, json.Unmarshal([]byte(`{"token":"x","out_only":1,"in_only":"2"}`), &p))
+
+	// A struct that embeds a TextUnmarshaler promotes UnmarshalText and
+	// decodes from a JSON string in encoding/json.
 	type embedsTextMarshaler struct {
 		customTextValue
 		Extra int `json:"extra"`
