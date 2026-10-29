@@ -845,6 +845,11 @@ func (t *Terminal) resizeBuffers(width, height int) {
 			// Invalidate front buffer to force redraw
 			newFront[y][x] = Cell{Char: 0, Style: NewStyle(), Width: 0, Continuation: false}
 		}
+		// A wide glyph whose continuation cell was cut off by a narrower
+		// width cannot fit in the last column; replace it with a space.
+		if width > 0 && newBack[y][width-1].Width > 1 {
+			newBack[y][width-1] = Cell{Char: ' ', Style: newBack[y][width-1].Style, Width: 1, Continuation: false}
+		}
 	}
 	t.backBuffer = newBack
 	t.frontBuffer = newFront
@@ -913,6 +918,13 @@ func (t *Terminal) ClearToEndOfLine() {
 		start := t.virtualX
 		if start < 0 {
 			start = 0
+		}
+
+		// If the clear starts on the continuation cell of a wide character,
+		// blank its lead cell too so no orphaned half-glyph remains.
+		if start > 0 && start < t.width && t.backBuffer[t.virtualY][start].Continuation {
+			t.backBuffer[t.virtualY][start-1] = Cell{Char: ' ', Style: NewStyle(), Width: 1, Continuation: false}
+			t.dirtyRegion.Mark(start-1, t.virtualY)
 		}
 
 		for x := start; x < t.width; x++ {
@@ -1146,71 +1158,31 @@ func shouldSkipTerminalQuery() bool {
 //
 // This is the same approach used by Gemini CLI and other terminal applications.
 func (t *Terminal) DetectKittyProtocol() bool {
-	if t.fd == -1 {
-		return false // Test mode
-	}
-
-	if shouldSkipTerminalQuery() {
+	if t.fd == -1 || shouldSkipTerminalQuery() {
 		t.kittySupported = false
 		return false
 	}
 
-	// The probe relies on read deadlines so the reader goroutine can never
-	// block past the timeout. If stdin doesn't support deadlines (redirected
-	// input, some consoles), skip detection entirely: otherwise the
-	// goroutine would park in Read for the process lifetime and silently
-	// swallow the user's next keystrokes.
-	if err := os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
-		t.kittySupported = false
-		return false
-	}
-	os.Stdin.SetReadDeadline(time.Time{}) // Clear the probe deadline
-
-	// Need raw mode for detection
-	oldState, err := term.MakeRaw(t.fd)
-	if err != nil {
-		return false
-	}
-	defer term.Restore(t.fd, oldState)
-
-	// Send query: progressive enhancement query + device attributes query
-	fmt.Fprint(t.out, "\x1b[?u\x1b[c")
-
-	// Read response with timeout
-	responseChan := make(chan string, 1)
-	go func() {
-		buf := make([]byte, 256)
-		response := ""
-		deadline := time.Now().Add(200 * time.Millisecond)
-		for time.Now().Before(deadline) {
-			if err := os.Stdin.SetReadDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
-				break
-			}
-			n, err := os.Stdin.Read(buf)
-			if err != nil {
-				break
-			}
-			response += string(buf[:n])
-			// Check if we have both responses
-			if strings.Contains(response, "\x1b[?") && strings.Contains(response, "c") {
-				break
-			}
-		}
-		os.Stdin.SetReadDeadline(time.Time{}) // Clear deadline
-		responseChan <- response
-	}()
-
-	select {
-	case response := <-responseChan:
-		// Check for progressive enhancement response (CSI ? <flags> u) AND device attributes (CSI ? ... c)
-		hasProgressiveEnhancement := strings.Contains(response, "\x1b[?") && strings.Contains(response, "u")
-		hasDeviceAttributes := strings.Contains(response, "\x1b[?") && strings.Contains(response, "c")
-		t.kittySupported = hasProgressiveEnhancement && hasDeviceAttributes
-	case <-time.After(250 * time.Millisecond):
-		t.kittySupported = false
-	}
-
+	t.kittySupported = probeKittyProtocol(os.Stdin, t.out, 200*time.Millisecond)
 	return t.kittySupported
+}
+
+// hasCSIQuestionReply reports whether b contains a CSI ? <params> <final>
+// response, where params consists of one or more digits or semicolons.
+func hasCSIQuestionReply(b []byte, final byte) bool {
+	for i := 0; i+3 < len(b); i++ {
+		if b[i] != 0x1b || b[i+1] != '[' || b[i+2] != '?' {
+			continue
+		}
+		j := i + 3
+		for j < len(b) && ((b[j] >= '0' && b[j] <= '9') || b[j] == ';') {
+			j++
+		}
+		if j > i+3 && j < len(b) && b[j] == final {
+			return true
+		}
+	}
+	return false
 }
 
 // EnableEnhancedKeyboard enables enhanced keyboard mode (CSI u / kitty keyboard protocol).
@@ -1734,13 +1706,6 @@ func (t *Terminal) SetCell(x, y int, char rune, style Style) error {
 
 func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 	char = cellRune(char)
-	if !t.buffered {
-		// Fallback for non-buffered
-		out := fmt.Sprintf("\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
-		t.writeScreenLocked(out)
-		return nil
-	}
-
 	if x < 0 || x >= t.width || y < 0 || y >= t.height {
 		return ErrOutOfBounds
 	}
@@ -1751,6 +1716,13 @@ func (t *Terminal) setCellInternal(x, y int, char rune, style Style) error {
 	// Check if character fits
 	if x+charWidth > t.width {
 		return ErrOutOfBounds
+	}
+
+	if !t.buffered {
+		// Fallback for non-buffered
+		out := fmt.Sprintf("\033[%d;%dH%s%c\033[0m", y+1, x+1, style.String(), char)
+		t.writeScreenLocked(out)
+		return nil
 	}
 
 	// Clear any wide-char artifacts before writing:
@@ -1815,21 +1787,6 @@ func (t *Terminal) FillStyled(x, y, width, height int, char rune, style Style) {
 
 func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style) error {
 	char = cellRune(char)
-	if !t.buffered {
-		line := strings.Repeat(string(char), width)
-		var out strings.Builder
-		if !style.IsEmpty() {
-			out.WriteString(style.String())
-		}
-		for i := 0; i < height; i++ {
-			fmt.Fprintf(&out, "\033[%d;%dH%s", y+i+1, x+1, line)
-		}
-		if !style.IsEmpty() {
-			out.WriteString("\033[0m")
-		}
-		t.writeScreenLocked(out.String())
-		return nil
-	}
 
 	// Clip the rectangle to the terminal bounds rather than rejecting the
 	// whole fill: the public Fill/FillStyled methods have no way to surface
@@ -1854,6 +1811,38 @@ func (t *Terminal) fillInternal(x, y, width, height int, char rune, style Style)
 	step := charWidth
 	if step < 1 {
 		step = 1
+	}
+
+	if !t.buffered {
+		var lineBuilder strings.Builder
+		for i := 0; i < width; i += step {
+			if charWidth > 1 && i+charWidth > width {
+				for ; i < width; i++ {
+					lineBuilder.WriteByte(' ')
+				}
+				break
+			}
+			lineBuilder.WriteRune(char)
+			if charWidth > 2 {
+				for k := 2; k < charWidth && i+k < width; k++ {
+					lineBuilder.WriteByte(' ')
+				}
+			}
+		}
+		line := lineBuilder.String()
+
+		var out strings.Builder
+		if !style.IsEmpty() {
+			out.WriteString(style.String())
+		}
+		for i := 0; i < height; i++ {
+			fmt.Fprintf(&out, "\033[%d;%dH%s", y+i+1, x+1, line)
+		}
+		if !style.IsEmpty() {
+			out.WriteString("\033[0m")
+		}
+		t.writeScreenLocked(out.String())
+		return nil
 	}
 
 	for j := 0; j < height; j++ {
