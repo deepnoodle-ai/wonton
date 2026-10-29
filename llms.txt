@@ -688,7 +688,8 @@ for _, file := range diff.Files {
 
 ## Example: Web Utilities
 
-URL normalization, host comparison, link resolution, media detection, text cleaning, and binary fetching:
+URL normalization, host comparison, link resolution, binary detection, and text
+cleaning. The `web` package does no I/O; `fetch` downloads files:
 
 ```go
 // Normalize URLs (adds https://, strips query/fragment)
@@ -701,31 +702,29 @@ url2, _ := url.Parse("https://api.example.com")
 web.AreRelatedHosts(url1, url2) // true
 web.AreSameHost(url1, url2)     // false (different subdomains)
 
-// Resolve relative links against a base domain
-resolved, ok := web.ResolveLink("example.com", "/about")
-// resolved: "https://example.com/about", ok: true
+// Resolve a link against the URL of the page it appeared on
+page, _ := url.Parse("https://example.com/blog/post")
+resolved, _ := web.ResolveLink(page, "../about")
+fmt.Println(resolved) // "https://example.com/about"
 
-// Detect media URLs (images, videos, archives, etc.)
-imgURL, _ := url.Parse("https://example.com/photo.jpg")
-web.IsMediaURL(imgURL)          // true
-web.IsMediaExtension(".pdf")    // true
-web.IsMediaExtension(".html")   // false
+// Detect binary URLs (images, video, archives, documents, etc.)
+pdfURL, _ := url.Parse("https://example.com/report.pdf")
+web.IsBinaryURL(pdfURL)          // true
+web.IsBinaryExtension(".html")   // false
 
 // Clean text extracted from web pages (unescape HTML, strip non-printable chars)
 web.NormalizeText("  Hello &amp; goodbye  ") // "Hello & goodbye"
-web.EndsWithPunctuation("Done.")             // true
 
-// Fetch binary files with size limits and MIME verification
-fetcher := web.NewDefaultBinaryFetcher()
-result, _ := fetcher.FetchBinary(ctx, &web.BinaryFetchInput{
-    URL:            "https://example.com/file.pdf",
-    OutputPath:     "/tmp/downloads/",
-    CreateDirs:     true,
-    MaxSizeBytes:   10 * 1024 * 1024, // 10 MB
-    ExpectedType:   "application/pdf",
-    VerifyMimeType: true,
+// Download files with size limits and MIME verification
+result, err := fetch.Download(ctx, "https://example.com/file.pdf", &fetch.DownloadOptions{
+    OutputPath:   "/tmp/downloads/", // filename from response
+    MaxSizeBytes: 10 * 1024 * 1024,  // 10 MB
+    ExpectedType: "application/pdf",
 })
-fmt.Println(result.DownloadPath, result.Size)
+if err != nil && fetch.IsRetryable(err) {
+    // 429, 5xx, timeouts, and connection resets are worth retrying
+}
+fmt.Println(result.Path, result.Size)
 
 // Web search interface (implement for your search provider)
 type MySearcher struct{}
@@ -733,10 +732,6 @@ func (s *MySearcher) Search(ctx context.Context, input *web.SearchInput) (*web.S
     // Call your search API...
     return &web.SearchOutput{Items: items}, nil
 }
-
-// HTTP error handling with status codes and recoverability
-err := web.NewFetchError(503, fmt.Errorf("service unavailable"))
-err.IsRecoverable() // true (429, 500, 502, 503, 504 are recoverable)
 ```
 
 ## TUI Architecture
@@ -876,8 +871,7 @@ Built-in command helpers:
 
 ```go
 tui.Quit()                          // Exit the application
-tui.Tick(duration)                  // Sleep then return TickEvent
-tui.After(duration, func())         // Sleep, run func, return TickEvent
+tui.After(duration, "tag")          // Wait, then deliver TimerEvent{Tag: "tag"}
 tui.Batch(cmds...)                  // Run multiple commands in parallel (returns []Cmd)
 tui.Sequence(cmds...)               // Run commands sequentially (returns Cmd)
 tui.None()                          // Empty command list (returns nil)
@@ -1147,9 +1141,9 @@ func (app *App) processItems() tui.Cmd {
 
 func main() {
     app := &App{fetchQueued: true}
-    app.runner = tui.NewInlineApp(tui.InlineAppConfig{
-        FPS: 30,  // 30+ for smooth animations; 10 is enough for basic status updates
-    })
+    app.runner = tui.NewInlineApp(
+        tui.WithInlineFPS(30), // 30+ for smooth animations; 10 is enough for basic status updates
+    )
     // InlineApp requires an interactive terminal (stdin must be a TTY).
     // It will fail with "stdin is not a terminal" when piped.
     if err := app.runner.Run(app); err != nil {
@@ -1174,7 +1168,7 @@ scrollable content like Markdown documents, use fullscreen `tui.Run()`.
 ## Key Patterns
 
 - **TUI apps** implement `View() tui.View` and optionally `HandleEvent(tui.Event) []tui.Cmd`. Call `tui.Run(&app)` to start. Return `tui.Quit()` to exit.
-- **Inline apps** implement `LiveView() tui.View`. Create with `tui.NewInlineApp(tui.InlineAppConfig{})` and call `runner.Run(&app)`. Use `FPS: 30` or higher for smooth animations; `FPS: 10` suffices for basic status updates.
+- **Inline apps** implement `LiveView() tui.View`. Create with `tui.NewInlineApp(opts...)` and call `runner.Run(&app)`. Use `tui.WithInlineFPS(30)` or higher for smooth animations; 10 suffices for basic status updates.
 - **Async operations** return a `tui.Cmd` (a `func() tui.Event`) from `HandleEvent`. The runtime runs it in a goroutine and delivers the result event. Use `SendEvent` inside Cmd goroutines to stream intermediate results.
 - **Custom events** must implement `Timestamp() time.Time` to satisfy the `tui.Event` interface.
 - **InlineApp scrollback**: `Print(view)` for styled output, `Printf()` for plain text. Animations only work in `LiveView()`, not in `Print()` output.

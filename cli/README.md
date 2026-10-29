@@ -323,7 +323,7 @@ func main() {
     // Command-specific middleware
     app.Command("dangerous").
         Description("Dangerous operation").
-        Use(cli.Confirm("Are you sure you want to continue?")).
+        Use(cli.ConfirmBefore("Are you sure you want to continue?")).
         Run(func(ctx *cli.Context) error {
             ctx.Println("Performing dangerous operation...")
             return nil

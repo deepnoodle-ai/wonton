@@ -99,16 +99,16 @@ type Article struct {
 type ArticleParser struct{}
 
 func (p *ArticleParser) Parse(ctx context.Context, page *fetch.Response) (any, error) {
-    parser := htmlparse.New(page.HTML)
-
-    title := parser.GetMetaTag("og:title")
-    summary := parser.GetMetaTag("og:description")
-    author := parser.GetMetaTag("article:author")
+    doc, err := htmlparse.Parse(page.RawHTML)
+    if err != nil {
+        return nil, err
+    }
+    meta := doc.Metadata()
 
     return &Article{
-        Title:   title,
-        Summary: summary,
-        Author:  author,
+        Title:   meta.Title,
+        Summary: meta.Description,
+        Author:  meta.Author,
     }, nil
 }
 

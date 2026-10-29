@@ -17,11 +17,11 @@ This pattern is ideal for:
 
 ## Design Goals
 
-1. **API consistency with tui.App** - Reuse existing interfaces (`EventHandler`, `Initializable`, `Destroyable`), option names, and event types
+1. **API consistency with tui.Runtime** - Reuse existing interfaces (`EventHandler`, `Initializable`, `Destroyable`), option names, and event types
 2. **Correct raw mode handling** - Properly manage terminal state and line endings
 3. **Flexible live region** - Support variable height, async updates, and focus
 4. **Composable** - Build on existing tui primitives (View, LivePrinter, Print)
-5. **Clean lifecycle** - Clear Run/Stop semantics matching tui.App
+5. **Clean lifecycle** - Clear Run/Stop semantics matching tui.Runtime
 
 ## Terminal Layout
 
@@ -144,7 +144,7 @@ The implementation tracks the previous height and:
 
 ## Threading Model
 
-InlineApp uses the **same threading model as tui.App**: a single-threaded event loop with async operations via the `Cmd` pattern.
+InlineApp uses the **same threading model as tui.Runtime**: a single-threaded event loop with async operations via the `Cmd` pattern.
 
 ### Architecture
 
@@ -275,7 +275,7 @@ func (app *MyApp) LiveView() tui.View {
 
 ## Event Types
 
-InlineApp uses the same event types as `tui.App`:
+InlineApp uses the same event types as `tui.Runtime`:
 
 | Event         | Description             | Fields                                             |
 | ------------- | ----------------------- | -------------------------------------------------- |
@@ -294,7 +294,7 @@ The live region supports full keyboard and mouse input, including focus manageme
 
 ### Focus Behaviors
 
-Focus works the same as in tui.App:
+Focus works the same as in tui.Runtime:
 
 ```go
 func (app *MyApp) LiveView() tui.View {
@@ -323,7 +323,7 @@ Mouse events work within the live region:
 
 ```go
 // Enable mouse tracking in options
-app := tui.NewInlineApp(tui.WithMouseTracking(true))
+app := tui.NewInlineApp(tui.WithInlineMouseTracking(true))
 
 // Clickable elements in LiveView work automatically
 func (app *MyApp) LiveView() tui.View {
@@ -373,7 +373,7 @@ type InlineApplication interface {
 }
 ```
 
-The following existing interfaces are supported (same as `tui.App`):
+The following existing interfaces are supported (same as `tui.Runtime`):
 
 | Interface       | Method                     | Description                           |
 | --------------- | -------------------------- | ------------------------------------- |
@@ -402,18 +402,19 @@ func NewInlineApp(opts ...InlineOption) *InlineApp
 type InlineOption func(*inlineConfig)
 ```
 
-**Supported Options** (same names as `tui.Run` where applicable):
+**Supported Options** (prefixed `WithInline` to stay distinct from `tui.Run` options):
 
-| Option                         | Description                                    | Default        |
-| ------------------------------ | ---------------------------------------------- | -------------- |
-| `WithWidth(w int)`             | Rendering width                                | terminal or 80 |
-| `WithOutput(w io.Writer)`      | Output writer                                  | `os.Stdout`    |
-| `WithInput(r io.Reader)`       | Input reader (useful for testing)              | `os.Stdin`     |
-| `WithFPS(fps int)`             | Frame rate for TickEvents                      | 0 (no ticks)   |
-| `WithMouseTracking(enabled)`   | Enable mouse event tracking in live region     | false          |
-| `WithBracketedPaste(enabled)`  | Enable bracketed paste mode                    | false          |
-| `WithPasteTabWidth(width int)` | Convert tabs to spaces in paste (0 = preserve) | 0              |
-| `WithKittyKeyboard(enabled)`   | Enable Kitty keyboard protocol (Shift+Enter)   | false          |
+| Option                               | Description                                    | Default        |
+| ------------------------------------ | ---------------------------------------------- | -------------- |
+| `WithInlineWidth(w int)`             | Rendering width                                | terminal or 80 |
+| `WithInlineOutput(w io.Writer)`      | Output writer                                  | `os.Stdout`    |
+| `WithInlineInput(r io.Reader)`       | Input reader (useful for testing)              | `os.Stdin`     |
+| `WithInlineFPS(fps int)`             | Frame rate for TickEvents                      | 0 (no ticks)   |
+| `WithInlineMouseTracking(enabled)`   | Enable mouse event tracking in live region     | false          |
+| `WithInlineBracketedPaste(enabled)`  | Enable bracketed paste mode                    | false          |
+| `WithInlinePasteTabWidth(width int)` | Convert tabs to spaces in paste (0 = preserve) | 0              |
+| `WithInlineKittyKeyboard(enabled)`   | Enable Kitty keyboard protocol (Shift+Enter)   | false          |
+| `WithInlineBackslashEnter(enabled)`  | Treat backslash then Enter as Shift+Enter      | false          |
 
 **Options NOT applicable to InlineApp** (these are for alternate screen mode):
 
@@ -543,7 +544,7 @@ func (app *BasicApp) HandleEvent(event tui.Event) []tui.Cmd {
 
 func main() {
     app := &BasicApp{}
-    app.runner = tui.NewInlineApp(tui.WithWidth(60))
+    app.runner = tui.NewInlineApp(tui.WithInlineWidth(60))
 
     if err := app.runner.Run(app); err != nil {
         log.Fatal(err)
@@ -653,8 +654,8 @@ func (app *ChatApp) generateResponse(input string) tui.Cmd {
 func main() {
     app := &ChatApp{status: "Ready"}
     app.runner = tui.NewInlineApp(
-        tui.WithWidth(80),
-        tui.WithBracketedPaste(true),
+        tui.WithInlineWidth(80),
+        tui.WithInlineBracketedPaste(true),
     )
 
     // Print welcome message before starting
@@ -866,7 +867,7 @@ InlineApp reuses these existing types and functions:
 
 | Component           | Usage                                                      |
 | ------------------- | ---------------------------------------------------------- |
-| `Cmd`               | Async operations, same pattern as tui.App                  |
+| `Cmd`               | Async operations, same pattern as tui.Runtime              |
 | `Quit()`            | Returns quit command to exit                               |
 | `Batch()`           | Execute multiple commands                                  |
 | `Tick()`, `After()` | Timer commands                                             |
@@ -890,7 +891,7 @@ func WithRawMode() PrintOption
 
 ## Testing
 
-InlineApp supports testability through the `WithInput()` and `WithOutput()` options:
+InlineApp supports testability through the `WithInlineInput()` and `WithInlineOutput()` options:
 
 ```go
 func TestMyInlineApp(t *testing.T) {
@@ -902,9 +903,9 @@ func TestMyInlineApp(t *testing.T) {
 
     app := &MyApp{}
     runner := tui.NewInlineApp(
-        tui.WithInput(input),
-        tui.WithOutput(&output),
-        tui.WithWidth(80),
+        tui.WithInlineInput(input),
+        tui.WithInlineOutput(&output),
+        tui.WithInlineWidth(80),
     )
 
     // Run with timeout
