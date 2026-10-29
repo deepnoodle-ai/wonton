@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -200,6 +201,16 @@ func TestKeyDecoder_TruncatedUTF8DoesNotSwallowFollowingKey(t *testing.T) {
 			want:  []KeyEvent{{Key: KeyUnknown}, {Rune: 'a'}, {Rune: 'b'}, {Rune: 'c'}},
 		},
 		{
+			name:  "surrogate is invalid but consumes only continuation bytes",
+			input: "\xed\xa0\x80a",
+			want:  []KeyEvent{{Key: KeyUnknown}, {Rune: 'a'}},
+		},
+		{
+			name:  "typed U+FFFD is a valid rune",
+			input: "\xef\xbf\xbd",
+			want:  []KeyEvent{{Rune: utf8.RuneError}},
+		},
+		{
 			name:  "Alt with truncated UTF-8 lead does not swallow next byte",
 			input: "\x1b\xc3a",
 			want:  []KeyEvent{{Key: KeyUnknown}, {Rune: 'a'}},
@@ -237,10 +248,11 @@ func TestKeyDecoder_LegacyMouseInterruptedByControlByte(t *testing.T) {
 	for _, readEvent := range []bool{true, false} {
 		// 1. \x1b[M\r -> interrupted at button byte by CR
 		// 2. \x1b[M!\x03 -> interrupted at X coordinate by Ctrl+C
-		// 3. \x1b[M \x00#a -> xterm out-of-range X coordinate (NUL at i=1):
-		//    must consume the whole 3-byte packet (' ', 0x00, '#') as one
-		//    KeyUnknown without leaking '#' as a keystroke before 'a'.
-		decoder := NewKeyDecoder(strings.NewReader("\x1b[M\r\x1b[M!\x03\x1b[M \x00#a"))
+		// 3. \x1b[M \x00#a -> xterm sends NUL for a column past 223: the
+		//    whole 3-byte report (' ', 0x00, '#') is one KeyUnknown, and '#'
+		//    does not leak as a keystroke before 'a'.
+		// 4. \x1b[M !\x00b -> the same for a row past 223.
+		decoder := NewKeyDecoder(strings.NewReader("\x1b[M\r\x1b[M!\x03\x1b[M \x00#a\x1b[M !\x00b"))
 
 		readNext := func() KeyEvent {
 			if readEvent {
@@ -259,8 +271,21 @@ func TestKeyDecoder_LegacyMouseInterruptedByControlByte(t *testing.T) {
 		assert.Equal(t, readNext(), KeyEvent{Key: KeyCtrlC, Ctrl: true})
 		assert.Equal(t, readNext(), KeyEvent{Key: KeyUnknown})
 		assert.Equal(t, readNext(), KeyEvent{Rune: 'a'})
+		assert.Equal(t, readNext(), KeyEvent{Key: KeyUnknown})
+		assert.Equal(t, readNext(), KeyEvent{Rune: 'b'})
 	}
 
 	_, err := ParseMouseEvent([]byte{0, 33, 33})
 	assert.Error(t, err)
+}
+
+// A terminal reply that arrives after DetectKittyProtocol gives up is left
+// for the input reader. It must decode as KeyUnknown, not as typed keys.
+func TestKeyDecoder_LateProbeReplyIsNotKeys(t *testing.T) {
+	decoder := NewKeyDecoder(strings.NewReader("\x1b[?1u\x1b[?62;22ca"))
+	for _, want := range []KeyEvent{{Key: KeyUnknown}, {Key: KeyUnknown}, {Rune: 'a'}} {
+		ev, err := decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, ev.(KeyEvent), want)
+	}
 }

@@ -455,29 +455,37 @@ func applyKeyModifiers(event KeyEvent, modifier int) KeyEvent {
 // decodeLegacyMouseEvent decodes legacy mouse format: ESC [ M followed by 3 bytes
 // We've already consumed ESC [ M
 func (kd *KeyDecoder) decodeLegacyMouseEvent() (Event, error) {
-	// Read the 3 bytes (each must be >= 0x20 per X10/legacy mouse encoding,
-	// except xterm sends NUL (0x00) for coordinate bytes i > 0 when X or Y
-	// exceeds 223).
-	buf := make([]byte, 3)
-	for i := 0; i < 3; i++ {
-		b, err := kd.reader.ReadByte()
-		if err != nil {
-			return KeyEvent{Key: KeyUnknown}, err
-		}
-		if b < 0x20 && (b != 0 || i == 0) {
-			// A C0 control byte (e.g. ESC, CR, Ctrl+C) cannot be part of a
-			// legacy mouse payload. Unread it so the next ReadEvent decodes it.
-			_ = kd.reader.UnreadByte()
-			return KeyEvent{Key: KeyUnknown}, nil
-		}
-		buf[i] = b
+	buf, err := kd.readLegacyMousePayload()
+	if buf == nil {
+		return KeyEvent{Key: KeyUnknown}, err
 	}
-
 	event, err := ParseMouseEvent(buf)
 	if err != nil {
 		return KeyEvent{Key: KeyUnknown}, nil
 	}
 	return *event, nil
+}
+
+// readLegacyMousePayload reads the 3 bytes after ESC [ M: the button, then
+// the column and row, each offset by 32. It returns nil if the payload is
+// cut short. The button byte is never below 0x20, and a coordinate byte is
+// below 0x20 only when xterm sends NUL for a column or row past 223. Any
+// other control byte, such as ESC, CR, or Ctrl+C, is a key that interrupted
+// the report, so it is put back for the next read.
+func (kd *KeyDecoder) readLegacyMousePayload() ([]byte, error) {
+	buf := make([]byte, 3)
+	for i := range buf {
+		b, err := kd.reader.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		if b < 0x20 && (i == 0 || b != 0) {
+			_ = kd.reader.UnreadByte()
+			return nil, nil
+		}
+		buf[i] = b
+	}
+	return buf, nil
 }
 
 // ReadKeyEvent reads a single key event from the input stream.
@@ -627,17 +635,8 @@ func (kd *KeyDecoder) decodeCSI() (KeyEvent, error) {
 	// Legacy mouse report on the key-only API: consume the 3 raw payload
 	// bytes to keep the stream in sync, then report unknown.
 	if first == 'M' {
-		for i := 0; i < 3; i++ {
-			b, err := kd.reader.ReadByte()
-			if err != nil {
-				return KeyEvent{Key: KeyUnknown}, err
-			}
-			if b < 0x20 && (b != 0 || i == 0) {
-				_ = kd.reader.UnreadByte()
-				return KeyEvent{Key: KeyUnknown}, nil
-			}
-		}
-		return KeyEvent{Key: KeyUnknown}, nil
+		_, err := kd.readLegacyMousePayload()
+		return KeyEvent{Key: KeyUnknown}, err
 	}
 
 	params, final, err := kd.readCSISequence(first)
@@ -973,8 +972,10 @@ func (kd *KeyDecoder) decodeUTF8(firstByte byte) (KeyEvent, error) {
 	}
 
 	// Decode the UTF-8 sequence
+	// An invalid sequence (overlong, surrogate, past U+10FFFF) decodes with
+	// size 1. A typed U+FFFD is valid and decodes with its full size.
 	r, size := utf8.DecodeRune(buf)
-	if r == utf8.RuneError || size != numBytes {
+	if size != numBytes {
 		return KeyEvent{Key: KeyUnknown}, nil
 	}
 
