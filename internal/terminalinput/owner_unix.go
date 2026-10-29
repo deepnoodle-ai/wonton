@@ -123,6 +123,7 @@ func (o *Owner) Read(dst []byte) (int, error) {
 
 // WaitReady waits up to timeout for input that Read can return without
 // blocking, and reports whether there is some. It does not consume input.
+// A hangup or terminal error also reports true, so the next Read returns it.
 // Pause and Stop end the wait early.
 func (o *Owner) WaitReady(timeout time.Duration) bool {
 	o.readMu.Lock()
