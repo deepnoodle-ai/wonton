@@ -93,7 +93,7 @@ func TestPrint_UnbufferedStripsControlCharacters(t *testing.T) {
 	got := out.String()
 	assert.False(t, strings.Contains(got, injectedTitle))
 	assert.False(t, strings.Contains(got, "\033[2J"))
-	assert.True(t, strings.Contains(got, "hi]0;pwned[2J\tthere\n"))
+	assert.True(t, strings.Contains(got, "hi]0;pwned[2J\tthere\x1b[0m\r\n"))
 }
 
 func TestPrintHyperlink_InvalidURLDropsStyleURL(t *testing.T) {

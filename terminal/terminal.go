@@ -1590,6 +1590,15 @@ func (t *Terminal) printUnbufferedLocked(startX, startY int, text string, style 
 		}
 	}
 
+	// Raw mode usually turns off OPOST, so a bare newline moves down without
+	// returning to column 0. Each newline is sent as CRLF. The style is reset
+	// around it, so a line scrolled in on the last line is not filled with
+	// the style's background, as buffered mode's scrollUp fills it blank.
+	newline := "\r\n"
+	if !style.IsEmpty() {
+		newline = "\033[0m\r\n" + style.String()
+	}
+
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
 	if scroll {
@@ -1598,7 +1607,7 @@ func (t *Terminal) printUnbufferedLocked(startX, startY int, text string, style 
 	if !style.IsEmpty() {
 		output.WriteString(style.String())
 	}
-	output.WriteString(text)
+	output.WriteString(strings.ReplaceAll(text, "\n", newline))
 	if !style.IsEmpty() {
 		output.WriteString("\033[0m")
 	}
@@ -1670,6 +1679,13 @@ func (t *Terminal) Println(text string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.printInternal(t.virtualX, t.virtualY, text, t.currentStyle, image.Rect(0, 0, t.width, t.height), true)
+
+	if !t.buffered {
+		// Write the newline from column 0 of the cursor's line, so on the
+		// last line it scrolls the screen as buffered mode does.
+		y := min(max(t.virtualY, 0), t.height-1)
+		t.writeScreenLocked(fmt.Sprintf("\033[%d;1H\n", y+1))
+	}
 
 	t.virtualX = 0
 	t.virtualY++
