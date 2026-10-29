@@ -29,14 +29,14 @@ func (app *App) View() tui.View {
 	return tui.Stack(
 		tui.Text(" Grapheme-aware Table ").Bold().Bg(tui.ColorBlue).Fg(tui.ColorWhite),
 		tui.Divider(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Table(app.columns, &app.selected).
 			Rows(app.rows).
 			Height(len(app.rows)+3).
 			UppercaseHeaders(true).
 			SelectedBg(tui.ColorBlue).
 			SelectedFg(tui.ColorWhite),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Arrow keys to move selection. Each column's right edge "+
 			"should stay flush across every row.").Dim(),
 		tui.Text("Press q to quit.").Dim(),

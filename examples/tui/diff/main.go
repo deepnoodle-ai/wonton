@@ -10,11 +10,11 @@ import (
 const sampleDiff = `diff --git a/server.go b/server.go
 --- a/server.go
 +++ b/server.go
-@@ -1,15 +1,18 @@
+@@ -1,15 +1,25 @@
  package main
 
  import (
--	"fmt"
+ 	"fmt"
 +	"log"
  	"net/http"
 +	"os"
@@ -127,11 +127,8 @@ func (app *DiffDemoApp) View() tui.View {
 }
 
 func main() {
-	app := &DiffDemoApp{}
-	if err := app.Init(); err != nil {
-		log.Fatal(err)
-	}
-	if err := tui.Run(app); err != nil {
+	// tui.Run calls Init, which parses the diff.
+	if err := tui.Run(&DiffDemoApp{}); err != nil {
 		log.Fatal(err)
 	}
 }

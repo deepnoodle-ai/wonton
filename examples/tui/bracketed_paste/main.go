@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -57,7 +59,7 @@ func (app *BracketedPasteDemoApp) handlePaste(content string) []tui.Cmd {
 	record := PasteRecord{
 		Content:   content,
 		LineCount: len(lines),
-		CharCount: len(content),
+		CharCount: utf8.RuneCountInString(content),
 	}
 	app.pastes = append(app.pastes, record)
 
@@ -156,14 +158,15 @@ func (app *BracketedPasteDemoApp) handleKey(e tui.KeyEvent) []tui.Cmd {
 }
 
 func (app *BracketedPasteDemoApp) moveCursorUp() {
-	text := string(app.buffer[:app.cursor])
-	lastNewline := strings.LastIndex(text, "\n")
+	// Positions are rune indexes into the buffer, matching app.cursor.
+	text := app.buffer[:app.cursor]
+	lastNewline := lastIndexRune(text, '\n')
 	if lastNewline == -1 {
 		return // Already on first line
 	}
 	colPos := app.cursor - lastNewline - 1
 	prevText := text[:lastNewline]
-	prevNewline := strings.LastIndex(prevText, "\n")
+	prevNewline := lastIndexRune(prevText, '\n')
 	lineStart := prevNewline + 1
 	lineLen := lastNewline - lineStart
 	newCol := colPos
@@ -174,18 +177,19 @@ func (app *BracketedPasteDemoApp) moveCursorUp() {
 }
 
 func (app *BracketedPasteDemoApp) moveCursorDown() {
-	text := string(app.buffer)
+	// Positions are rune indexes into the buffer, matching app.cursor.
+	text := app.buffer
 	if app.cursor >= len(app.buffer) {
 		return
 	}
 	// Find current line start and column
 	textBefore := text[:app.cursor]
-	lastNewline := strings.LastIndex(textBefore, "\n")
+	lastNewline := lastIndexRune(textBefore, '\n')
 	colPos := app.cursor - lastNewline - 1
 
 	// Find next line start
 	textAfter := text[app.cursor:]
-	nextNewline := strings.Index(textAfter, "\n")
+	nextNewline := slices.Index(textAfter, '\n')
 	if nextNewline == -1 {
 		return // Already on last line
 	}
@@ -197,7 +201,7 @@ func (app *BracketedPasteDemoApp) moveCursorDown() {
 
 	// Find next line length
 	remainingText := text[nextLineStart:]
-	nextNextNewline := strings.Index(remainingText, "\n")
+	nextNextNewline := slices.Index(remainingText, '\n')
 	var nextLineLen int
 	if nextNextNewline == -1 {
 		nextLineLen = len(remainingText)
@@ -229,8 +233,8 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		var lineContent string
 		if i < len(displayLines) {
 			lineContent = displayLines[i]
-			if len(lineContent) > 64 {
-				lineContent = lineContent[:61] + "..."
+			if r := []rune(lineContent); len(r) > 64 {
+				lineContent = string(r[:61]) + "..."
 			}
 		}
 		// Pad to consistent width
@@ -249,7 +253,7 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 	if app.message != "" {
 		statusSection = append(statusSection, tui.Text("%s", app.message).Fg(tui.ColorGreen))
 	} else {
-		statusSection = append(statusSection, tui.Spacer())
+		statusSection = append(statusSection, tui.Text(""))
 	}
 
 	// Build paste history section
@@ -265,8 +269,8 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 		for i := startIdx; i < len(app.pastes); i++ {
 			p := app.pastes[i]
 			preview := p.Content
-			if len(preview) > 40 {
-				preview = preview[:37] + "..."
+			if r := []rune(preview); len(r) > 40 {
+				preview = string(r[:37]) + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", "↵")
 			preview = strings.ReplaceAll(preview, "\t", "→")
@@ -294,22 +298,22 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 	return tui.Stack(
 		// Header
 		header,
-		tui.Spacer(),
+		tui.Text(""),
 
 		// Instructions
 		tui.Text("Try pasting text (Cmd+V / Ctrl+V). Paste events are detected!").Fg(tui.ColorYellow),
 		tui.Text("Type normally, use arrow keys to navigate, Enter for newlines.").Dim(),
 		tui.Text("Ctrl+U: clear input | Ctrl+L: clear history | Esc/Ctrl+C: quit").Dim(),
-		tui.Spacer(),
+		tui.Text(""),
 
 		// Input area
 		tui.Text("Input:").Bold(),
 		inputBox,
-		tui.Spacer(),
+		tui.Text(""),
 
 		// Status and message
 		tui.Stack(statusSection...),
-		tui.Spacer(),
+		tui.Text(""),
 
 		// Paste history
 		pasteHistorySection,
@@ -317,6 +321,15 @@ func (app *BracketedPasteDemoApp) View() tui.View {
 }
 
 // Helper functions
+func lastIndexRune(buffer []rune, r rune) int {
+	for i := len(buffer) - 1; i >= 0; i-- {
+		if buffer[i] == r {
+			return i
+		}
+	}
+	return -1
+}
+
 func insertRune(buffer []rune, pos int, r rune) []rune {
 	if pos < 0 || pos > len(buffer) {
 		return buffer
@@ -354,8 +367,9 @@ func splitLines(text string) []string {
 }
 
 func main() {
-	// Note: This example uses bracketed paste mode which requires direct terminal access.
-	// It cannot use the simplified tui.Run() API until WithBracketedPaste option is added.
+	// Note: This example drives the Runtime directly and enables bracketed paste
+	// itself in Init. tui.Run with tui.WithBracketedPaste(true) and
+	// tui.WithPasteTabWidth(2) does the same setup for you.
 	terminal, err := tui.NewTerminal()
 	if err != nil {
 		log.Fatalf("Failed to create terminal: %v\n", err)

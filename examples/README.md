@@ -5,7 +5,7 @@ of them with `go run`:
 
 ```bash
 go run ./examples/cli/basic --help
-go run ./examples/table
+go run ./examples/tui/table
 ```
 
 Most demos assume a real TTY for color and mouse support. Use `Ctrl+C` or the
@@ -14,34 +14,25 @@ built-in Quit instructions to exit.
 ## CLI highlights
 
 - `cli/basic`: Ground-up tour of commands, groups, aliases, and help output.
-- `cli/interactive`: Shows progressive interactivity with separate handlers for
-  non-TTY vs TTY sessions, plus selection dialogs.
-- `cli/streaming`: Demonstrates streaming output, JSON event mode, and progress
-  spinners.
-- `cli/wizard`: Multi-step configuration wizard that mixes prompts, validation,
-  and summaries.
-- `cli/todo`: Hybrid CLI/TUI task manager with keyboard navigation and data
-  persistence simulation.
 - `cli/flags` and `cli/global_flags`: Patterns for struct-based flag parsing and
   global configuration.
+- `env/config`: Loads typed configuration from environment variables, `.env`
+  files, and JSON with the `env` package.
 
 Run `go run ./examples/<name> --help` to inspect per-command usage.
 
 ## TUI runtime demos
 
-- `table` and `text`: Workhorse primitives for grids, typography, and
+- `tui/table` and `tui/text`: Workhorse primitives for grids, typography, and
   selection handling.
-- `markdown`: Renders markdown with syntax highlighting and adaptive layout.
-- `runtime_http`: Fetches GitHub data asynchronously and streams updates into
-  the UI.
-- `animation`: Demonstrates the fluent animation API (`.Rainbow()`, `.Pulse()`,
-  `.Wave()`) for text views.
-- `declarative_animation` and `runtime_animation`: Show `CanvasContext` for custom
-  animations with access to the frame counter via `ctx.Frame()`.
-- `progress_spinners` and `flicker_free`: Loading spinners, tick events, and
-  rendering optimizations.
-- `mouse` and `mouse_grid`: Pointer interaction patterns.
-- `file_picker`, `input_forms`, `checkbox`, and `password`:
+- `tui/markdown`: Renders markdown with syntax highlighting and adaptive layout.
+- `tui/text_animation`: Demonstrates text animations (`tui.Rainbow`,
+  `tui.Pulse`, `tui.Wave`, and more) applied with `.Animate()`.
+- `tui/animation`: Shows `CanvasContext` for custom animations with access to
+  the frame counter via `ctx.Frame()`.
+- `tui/progress_spinners`: Loading spinners and tick events.
+- `tui/mouse` and `tui/mouse_grid`: Pointer interaction patterns.
+- `tui/file_picker`, `tui/input_forms`, `tui/checkbox`, and `tui/password`:
   Ready-made widgets (pickers, forms, toggle inputs).
 - `tui/grapheme_input` and `tui/grapheme_table`: Exercise the in-tree
   `runewidth` package — ZWJ emoji, VS16 sequences, keycaps, and CJK —
@@ -60,14 +51,35 @@ Run `go run ./examples/<name> --help` to inspect per-command usage.
 
 ## Terminal techniques
 
-- `hyperlink`: Emits OSC 8 hyperlinks using the `terminal` package.
-- `runtime_animation` and `runtime_counter`: Show how to drive the TUI runtime
-  without the CLI framework.
-- `slog`: Uses the colorized `slog` handler to inspect structured logs.
+- `tui/hyperlink`: Emits OSC 8 hyperlinks from a declarative view.
+- `tui/counter`: Shows how to drive the TUI runtime without the CLI framework.
 - `termprobe`: Writes grapheme clusters to the host terminal and compares the
   reported cursor column against `runewidth.StringWidth` to surface renderer
   disagreements.
 - `gif/grapheme_eval`: Renders a corpus of grapheme clusters to GIF so you can
   eyeball how the `gif` package draws them.
+- `termsession/playback`: Plays an asciinema recording with pause and speed
+  controls.
+
+## Apps
+
+Small, complete tools built from several packages:
+
+- `browser`: Markdown-based terminal web browser with link navigation.
+- `clipstack`: Clipboard history manager.
+- `crawl`: Web crawler with `fetch`, `links`, and `meta` subcommands.
+- `envview`: Browser for environment variables and `.env` files.
+- `gif`, `gif/shapes`, and `gif/terminal`: Animated GIF creation, including
+  converting `.cast` recordings.
+- `gitgif`: Renders recent git commits to an animated GIF.
+- `gitscan`: Git history and diff browser.
+- `htmltomd`: Converts HTML from a URL, file, or stdin to Markdown.
+- `paletteer`: Terminal color palette designer.
+- `sessview` and `termrec`: Record, browse, replay, and export terminal
+  sessions.
+- `sitecheck`: Crawls a site and checks its links.
+- `sseview`: Server-Sent Events stream viewer.
+- `urlx`: Watches the clipboard and converts copied URLs to Markdown.
+- `webwatch`: Monitors a web page and prints diffs when it changes.
 
 Feel free to copy these examples as starting points for your own applications.

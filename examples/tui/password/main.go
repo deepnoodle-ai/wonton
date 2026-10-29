@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -40,7 +41,7 @@ func (app *PasswordDemoApp) View() tui.View {
 		return tui.Stack(
 			tui.Text("Password Input Demo").Style(headerStyle),
 			tui.Spacer(),
-			tui.Text("Password received (%d chars)", len(app.password)).Style(successStyle),
+			tui.Text("Password received (%d chars)", utf8.RuneCountInString(app.password)).Style(successStyle),
 			tui.Spacer(),
 			tui.Text("Press any key to exit").Style(infoStyle),
 		)

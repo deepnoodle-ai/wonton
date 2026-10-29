@@ -240,8 +240,9 @@ func TestLivePrinter_HeightChange(t *testing.T) {
 
 	output := buf.String()
 
-	// Should contain clear sequence for orphaned lines
-	assert.True(t, strings.Contains(output, "\033[0J"), "should clear orphaned lines")
+	// Should clear orphaned lines from column 0. In raw mode "\n" keeps the
+	// column, so without "\r" the start of the first orphaned line stays.
+	assert.True(t, strings.Contains(output, "\n\r\033[0J"), "should clear orphaned lines from column 0")
 
 	lp.Stop()
 }

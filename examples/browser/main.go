@@ -82,6 +82,7 @@ type BrowserApp struct {
 	links       []PageLink
 	metadata    PageMetadata
 	loading     bool
+	loadingURL  string // page being loaded
 	errorMsg    string
 	statusMsg   string
 	loadingTime time.Time
@@ -162,6 +163,7 @@ func main() {
 func (app *BrowserApp) loadPage(pageURL string) {
 	app.mu.Lock()
 	app.loading = true
+	app.loadingURL = pageURL
 	app.loadingTime = time.Now()
 	app.errorMsg = ""
 	app.statusMsg = "Loading..."
@@ -765,7 +767,7 @@ func (app *BrowserApp) buildMetadataView() tui.View {
 
 	if app.loading {
 		return tui.Width(w, tui.Bordered(
-			tui.Text(" Loading %s...", app.currentURL).Fg(tui.ColorYellow),
+			tui.Text(" Loading %s...", app.loadingURL).Fg(tui.ColorYellow),
 		).Border(&tui.RoundedBorder).Title("Page").BorderFg(tui.ColorYellow))
 	}
 
@@ -983,9 +985,9 @@ func (app *BrowserApp) buildFooter() tui.View {
 	case FocusURLBar:
 		helpText = "Enter: Navigate | Esc: Cancel | Tab: Next area"
 	case FocusLinks:
-		helpText = "j/k: Navigate | Enter: Follow | c: Copy URL | Tab: Next area | Esc: Content"
+		helpText = "j/k: Move | Enter: Follow | c: Copy URL | Tab: Next | Esc: Content"
 	default:
-		helpText = "Tab: Switch focus | j/k: Scroll | Enter: Follow link | l: Links | b/f: History | q: Quit"
+		helpText = "Tab: Focus | j/k: Scroll | Enter: Follow | b/f: History | q: Quit"
 	}
 
 	// Focus indicator
@@ -1008,7 +1010,7 @@ func (app *BrowserApp) buildFooter() tui.View {
 				tui.Text(" %s ", focusIndicator).BgRGB(60, 80, 100).FgRGB(200, 220, 255).Bold(),
 				tui.Text(" %s", helpText).FgRGB(140, 160, 180),
 				tui.Spacer(),
-				tui.Text("%s ", statusText).FgRGB(100, 120, 140),
+				tui.Text(" %s ", statusText).FgRGB(100, 120, 140),
 			),
 		),
 	))

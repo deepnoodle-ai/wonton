@@ -579,9 +579,10 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 
 	// If the new content is shorter than before, clear the extra lines.
 	// We move down one line first to avoid clearing the last content line,
-	// then clear from cursor to end of screen.
+	// then clear from cursor to end of screen. In raw mode "\n" keeps the
+	// column, so "\r" is needed to clear the orphaned line from its start.
 	if height < lp.lastHeight {
-		output.WriteString("\n")      // Move to first orphaned line
+		output.WriteString("\n\r")    // Move to first orphaned line
 		output.WriteString("\033[0J") // Clear from cursor to end of screen
 		output.WriteString("\033[A")  // Move back up to last content line
 	}

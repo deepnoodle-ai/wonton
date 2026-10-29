@@ -27,7 +27,7 @@ The markdown renderer supports a wide range of formatting options:
 
 - First item
 - Second item
-  - Nested item (coming soon)
+  - Nested item
 - Third item
 
 #### Ordered Lists

@@ -12,7 +12,7 @@ type AnimationDemoApp struct{}
 func (app *AnimationDemoApp) View() tui.View {
 	return tui.Stack(
 		tui.Text("Text Animation Styles").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Rainbow animations
 		tui.Group(
@@ -28,7 +28,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("Faster rainbow animation").Animate(tui.Rainbow(1)),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Pulse animations
 		tui.Group(
@@ -44,7 +44,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("Matrix-style pulse").Animate(tui.Pulse(tui.NewRGB(0, 255, 128), 10)),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Sparkle animations - twinkling star effect
 		tui.Group(
@@ -56,7 +56,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("Glittering treasure").Animate(tui.Sparkle(2, tui.NewRGB(180, 140, 0), tui.NewRGB(255, 240, 150))),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Typewriter animations - text reveal effect
 		tui.Group(
@@ -68,7 +68,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("System initialized successfully").Animate(tui.Typewriter(2, tui.NewRGB(255, 180, 0), tui.NewRGB(255, 100, 0)).Loop(true)),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Glitch animations - cyberpunk effect
 		tui.Group(
@@ -80,7 +80,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("NEURAL LINK ACTIVE").Animate(tui.Glitch(2, tui.NewRGB(0, 200, 255), tui.NewRGB(255, 0, 255))),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Slide animations
 		tui.Group(
@@ -92,7 +92,7 @@ func (app *AnimationDemoApp) View() tui.View {
 			tui.Text("Right to left shine").Animate(tui.Slide(2, tui.NewRGB(0, 100, 200), tui.NewRGB(100, 200, 255)).Reverse()),
 		),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Wave animations
 		tui.Group(
@@ -118,7 +118,7 @@ func (app *AnimationDemoApp) View() tui.View {
 
 		tui.Spacer(),
 		tui.Text("[q] quit").Fg(tui.ColorBrightBlack),
-	).Gap(1).Padding(1)
+	).Padding(1)
 }
 
 func (app *AnimationDemoApp) HandleEvent(event tui.Event) []tui.Cmd {

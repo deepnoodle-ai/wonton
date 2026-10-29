@@ -5,12 +5,13 @@ import (
 	"log"
 	"os"
 
+	"github.com/deepnoodle-ai/wonton/terminal"
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: playback_demo <recording.cast>")
+		fmt.Println("Usage: playback <recording.cast>")
 		fmt.Println("\nPlays back an asciinema v2 recording with interactive controls")
 		fmt.Println("\nControls:")
 		fmt.Println("  Space     - Pause/Resume")
@@ -51,15 +52,52 @@ func main() {
 	}
 	defer terminal.Close()
 
+	// Raw mode delivers each key press without waiting for Enter.
+	if err := terminal.EnableRawMode(); err != nil {
+		log.Fatalf("Failed to enable raw mode: %v\n", err)
+	}
+
+	// Play has no input handling of its own, so read keys here and drive
+	// the controller while Play runs.
+	go handleKeys(controller)
+
 	// Play the recording (blocking)
-	// Note: This doesn't use Runtime because Play() has its own event loop
-	// for handling playback controls. Converting it to Runtime would require
-	// significant refactoring of the playback system.
-	fmt.Println("Starting playback...")
+	fmt.Print("Starting playback...\r\n")
 	err = controller.Play(terminal)
+	terminal.DisableRawMode()
 	if err != nil {
 		log.Fatalf("\nPlayback error: %v\n", err)
 	}
 
 	fmt.Println("\n\nPlayback complete!")
+}
+
+// handleKeys maps the controls listed in the usage text to the controller.
+func handleKeys(controller *tui.PlaybackController) {
+	decoder := terminal.NewKeyDecoder(os.Stdin)
+	loop := false
+	for {
+		event, err := decoder.ReadKeyEvent()
+		if err != nil {
+			return
+		}
+		switch {
+		case event.Key == terminal.KeyEscape, event.Key == terminal.KeyCtrlC, event.Rune == 'q':
+			controller.Stop()
+			return
+		case event.Rune == ' ':
+			controller.TogglePause()
+		case event.Rune == '+', event.Rune == ']':
+			controller.SetSpeed(controller.Speed() * 2)
+		case event.Rune == '-', event.Rune == '[':
+			controller.SetSpeed(controller.Speed() / 2)
+		case event.Rune == '1':
+			controller.SetSpeed(1.0)
+		case event.Rune == '2':
+			controller.SetSpeed(2.0)
+		case event.Rune == 'l':
+			loop = !loop
+			controller.SetLoop(loop)
+		}
+	}
 }

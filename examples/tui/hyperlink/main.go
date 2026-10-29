@@ -47,28 +47,28 @@ func (app *HyperlinkApp) View() tui.View {
 	}
 
 	return tui.Stack(
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		// Title and description
 		tui.Text("OSC 8 Hyperlink Support Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Click the links below (if your terminal supports OSC 8)").Fg(tui.ColorWhite),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		// Separator
 		tui.Divider().Fg(tui.ColorBlue),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 1: Default styled hyperlink
 		tui.Group(
 			tui.Text("1. Default styled link: "),
-			tui.Link("https://github.com/myzie/wonton", "Wonton on GitHub"),
+			tui.Link("https://github.com/deepnoodle-ai/wonton", "Wonton on GitHub"),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 2: Custom styled hyperlink
 		tui.Group(
 			tui.Text("2. Custom styled link: "),
 			tui.Link("https://example.com", "Example.com").Fg(tui.ColorMagenta).Bold(),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 3: Multiple links on same line
 		tui.Group(
@@ -79,21 +79,21 @@ func (app *HyperlinkApp) View() tui.View {
 				tui.NewHyperlink("https://stackoverflow.com", "Stack Overflow"),
 			),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 4: Link with emoji
 		tui.Group(
 			tui.Text("4. Link with emoji: "),
 			tui.Link("https://www.anthropic.com", "🤖 Anthropic"),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 5: Fallback format (showing URL)
 		tui.Group(
 			tui.Text("5. Fallback format: "),
 			tui.Link("https://golang.org", "Go Programming").ShowURL(),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 6: Long URL
 		tui.Group(
@@ -103,7 +103,7 @@ func (app *HyperlinkApp) View() tui.View {
 				"Complex URL",
 			),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 7: Different link styles
 		tui.Group(
@@ -117,7 +117,7 @@ func (app *HyperlinkApp) View() tui.View {
 					WithStyle(tui.NewStyle().WithForeground(tui.ColorYellow).WithUnderline()),
 			),
 		).Gap(0),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 8: Links in a table-like layout
 		tui.Group(
@@ -131,7 +131,7 @@ func (app *HyperlinkApp) View() tui.View {
 			),
 			tui.Spacer(),
 		),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Information box at the bottom
 		tui.Group(
@@ -148,7 +148,7 @@ func (app *HyperlinkApp) View() tui.View {
 
 		// Footer with countdown
 		tui.Text("Press any key to exit (auto-exit in %.0fs)", remaining.Seconds()).Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	).Align(tui.AlignCenter)
 }
 

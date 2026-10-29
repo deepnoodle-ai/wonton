@@ -33,12 +33,13 @@ func (app *BorderApp) HandleEvent(event tui.Event) []tui.Cmd {
 // View returns the declarative view structure.
 func (app *BorderApp) View() tui.View {
 	// Info text at the top
-	info := fmt.Sprintf("Terminal: %dx%d (Press Ctrl+C to exit, try resizing the window!)",
-		app.width, app.height)
+	info := fmt.Sprintf("%dx%d · resize the window · Ctrl+C quits", app.width, app.height)
 
+	// Fill takes the full width and height. A Spacer would stretch only
+	// down the stack and leave the border two columns wide.
 	return tui.Stack(
 		tui.Text("%s", info).Fg(tui.ColorYellow),
-		tui.Bordered(tui.Spacer()).
+		tui.Bordered(tui.Fill(' ')).
 			BorderFg(tui.ColorCyan),
 	)
 }

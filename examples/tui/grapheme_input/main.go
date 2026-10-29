@@ -36,14 +36,14 @@ func (app *App) View() tui.View {
 		tui.Text("Grapheme-aware Input Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Edit the text below. Arrow keys move one cluster at a time; "+
 			"backspace removes whole clusters.").Dim(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.InputField(&app.value).
 			Label("Text: ").
 			Width(50).
 			Bordered(),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("bytes=%d  runes=%d  graphemes=%d  width=%d",
 			len(app.value),
 			utf8.RuneCountInString(app.value),
@@ -51,7 +51,7 @@ func (app *App) View() tui.View {
 			runewidth.StringWidth(app.value),
 		).Fg(tui.ColorGreen),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Cluster breakdown:").Bold(),
 		tui.Text("%s", clusterBreakdown(app.value)).Fg(tui.ColorBrightBlack),
 

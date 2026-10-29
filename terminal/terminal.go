@@ -2092,7 +2092,13 @@ func (t *Terminal) flushInternal() error {
 
 	for y := minY; y <= maxY; y++ {
 		rowChanged := false
-		for x := minX; x <= maxX; x++ {
+		// rewriteRest is set once a multi-rune cluster is written on this
+		// row. The terminal may draw such a cluster wider than its cell
+		// width, spilling over the cells after it, so the front buffer no
+		// longer describes them; write them again even when unchanged, up
+		// to the end of the row, past the dirty region.
+		rewriteRest := false
+		for x := minX; x <= maxX || (rewriteRest && x < t.width); x++ {
 			cell := t.backBuffer[y][x]
 			oldCell := t.frontBuffer[y][x]
 
@@ -2103,7 +2109,10 @@ func (t *Terminal) flushInternal() error {
 				continue
 			}
 
-			if !cell.Equal(oldCell) {
+			if rewriteRest || !cell.Equal(oldCell) {
+				if cell.Trailing != "" {
+					rewriteRest = true
+				}
 				rowChanged = true
 				// Move cursor if needed
 				if y != currentY || x != currentX {
@@ -2148,6 +2157,19 @@ func (t *Terminal) flushInternal() error {
 					}
 				}
 
+				// A multi-rune cluster may draw narrower than its cell width
+				// (terminals size Indic clusters and some emoji sequences
+				// differently), and its continuation cells are never written.
+				// Erase the cells it spans first (ECH leaves the cursor in
+				// place) so whatever was there in the last frame, such as an
+				// old border, cannot show through.
+				if cell.Width > 1 && cell.Trailing != "" {
+					fmt.Fprintf(&output, "\033[%dX", cell.Width)
+					if t.metricsEnabled {
+						ansiCodes++
+					}
+				}
+
 				// Write char, plus any trailing runes that belong to the same
 				// grapheme cluster (VS16, combining marks, ZWJ extensions, the
 				// second regional indicator of a flag, etc).
@@ -2173,7 +2195,13 @@ func (t *Terminal) flushInternal() error {
 				// cursor positioning command (CSI row;col H) before the next character
 				// write. This ensures correct rendering regardless of the terminal's
 				// cursor advancement behavior, at the cost of slightly more output bytes.
-				if cell.Width > 1 {
+				//
+				// Multi-rune grapheme clusters (cell.Trailing != "") get the same
+				// treatment even at width 1: terminals disagree on how far keycaps,
+				// VS16 emoji, and Indic clusters advance the cursor, and trusting
+				// our width would shift every later cell on the row, leaving stale
+				// glyphs (such as an old border) behind.
+				if cell.Width > 1 || cell.Trailing != "" {
 					currentX = -1 // Force cursor reposition on next character
 				} else {
 					currentX += cell.Width

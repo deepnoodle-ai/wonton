@@ -35,7 +35,7 @@ func (app *InputStylesApp) View() tui.View {
 		// Header
 		tui.Text("InputField Styles & Cursor Options Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Various InputField border styles and cursor configurations").Fg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// 1. Standard bordered input with block cursor
 		tui.InputField(&app.input1).
@@ -45,7 +45,7 @@ func (app *InputStylesApp) View() tui.View {
 			Bordered().
 			Width(60),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// 2. Horizontal bar border with underline cursor
 		tui.InputField(&app.input2).
@@ -56,7 +56,7 @@ func (app *InputStylesApp) View() tui.View {
 			CursorShape(tui.InputCursorUnderline).
 			CursorColor(tui.ColorCyan),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// 3. Prompt style with bar cursor
 		tui.InputField(&app.input3).
@@ -69,7 +69,7 @@ func (app *InputStylesApp) View() tui.View {
 			CursorColor(tui.ColorGreen).
 			Width(60),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// 4. Horizontal bar + prompt + custom cursor color
 		tui.InputField(&app.input4).
@@ -84,7 +84,7 @@ func (app *InputStylesApp) View() tui.View {
 			FocusBorderFg(tui.ColorYellow).
 			Width(60),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// 5. Simple input with blinking bar cursor
 		tui.InputField(&app.input5).

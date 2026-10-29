@@ -2,17 +2,17 @@
 //
 // Demonstrates global flags and config management:
 // - Global flags available to all commands
-// - Config file loading (YAML)
+// - A config file path flag, reported by middleware
 // - Environment variable fallbacks
 // - Middleware for common operations
 //
 // Run with:
 //
-//	go run examples/cli_global_flags/main.go --help
-//	go run examples/cli_global_flags/main.go run
-//	go run examples/cli_global_flags/main.go -v --config myconfig.yaml run
-//	go run examples/cli_global_flags/main.go --output json list
-//	go run examples/cli_global_flags/main.go -v users list
+//	go run ./examples/cli/global_flags --help
+//	go run ./examples/cli/global_flags run
+//	go run ./examples/cli/global_flags -v --config myconfig.yaml run
+//	go run ./examples/cli/global_flags --output json list
+//	go run ./examples/cli/global_flags -v users list
 package main
 
 import (

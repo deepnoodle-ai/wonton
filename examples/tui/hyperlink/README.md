@@ -16,10 +16,10 @@ This demo showcases Wonton's OSC 8 hyperlink support, which enables clickable li
 ## Running the Demo
 
 ```bash
-go run main.go
+go run ./examples/tui/hyperlink
 ```
 
-The demo will display for 30 seconds, then exit.
+The demo exits when you press any key, or on its own after 30 seconds.
 
 ## Terminal Support
 
@@ -59,21 +59,18 @@ The demo includes links to:
 
 ### Basic Link Creation
 ```go
-link := tui.NewHyperlink("https://github.com", "GitHub")
-frame.PrintHyperlink(x, y, link)
+tui.Link("https://github.com", "GitHub")
 ```
 
 ### Custom Styling
 ```go
-link := tui.NewHyperlink("https://example.com", "Example")
-customStyle := tui.NewStyle().WithForeground(tui.ColorMagenta).WithBold()
-link = link.WithStyle(customStyle)
+tui.Link("https://example.com", "Example.com").Fg(tui.ColorMagenta).Bold()
 ```
 
 ### Fallback Format
 ```go
-// Shows: "Example (https://example.com)"
-frame.PrintHyperlinkFallback(x, y, link)
+// Shows: "Go Programming (https://golang.org)"
+tui.Link("https://golang.org", "Go Programming").ShowURL()
 ```
 
 ## Testing in Different Terminals
@@ -87,11 +84,8 @@ Try running this demo in different terminals to see how OSC 8 support varies:
 
 ## Learn More
 
-See the full documentation in `/documentation/hyperlinks.md` for:
-- API reference
-- Security considerations
-- Best practices
-- More examples
+See the `tui.Link`, `tui.InlineLinks`, and `tui.LinkRow` documentation in the
+`tui` package, and the OSC 8 encoding in `terminal/hyperlink.go`.
 
 ## Source Code
 

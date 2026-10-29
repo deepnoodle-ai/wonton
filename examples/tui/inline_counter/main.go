@@ -6,7 +6,7 @@
 // - Event handling for keyboard input
 // - Graceful quit with Ctrl+C or 'q'
 //
-// Run with: go run ./examples/inline_counter
+// Run with: go run ./examples/tui/inline_counter
 package main
 
 import (

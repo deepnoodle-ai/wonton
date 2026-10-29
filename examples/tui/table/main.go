@@ -42,7 +42,7 @@ func (app *TableDemoApp) View() tui.View {
 		tui.Spacer().MinHeight(1),
 		tui.Text("Selected Row: %d", app.selected+1).Fg(tui.ColorGreen),
 		tui.Text("Features: Uppercase headers, max column width, color inversion, header border").Dim(),
-		tui.Text("Press Arrows to move, q to quit.").Dim(),
+		tui.Text("Press Arrows to move.").Dim(),
 		tui.Spacer(),
 		tui.Text(" Press 'q' to quit ").Bg(tui.ColorBrightBlack).Fg(tui.ColorWhite),
 	)

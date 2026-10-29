@@ -10,8 +10,9 @@ import (
 )
 
 func main() {
-	// Create a small terminal screen (40 columns x 10 rows)
-	screen := gif.NewTerminalScreen(40, 10)
+	// Create a small terminal screen (60 columns x 10 rows), wide enough
+	// for the longest line below
+	screen := gif.NewTerminalScreen(60, 10)
 
 	// Create renderer with 8px padding
 	renderer := gif.NewTerminalRenderer(screen, 8)
@@ -39,7 +40,7 @@ func main() {
 		renderer.RenderFrame(20) // 200ms pause between lines
 	}
 
-	// Add a few frames showing the final state with blinking cursor
+	// Hold the final state for a few seconds
 	for i := 0; i < 10; i++ {
 		renderer.RenderFrame(30) // 300ms per frame
 	}

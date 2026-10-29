@@ -302,3 +302,61 @@ func TestAnimatedBordered_MultiByteTitle(t *testing.T) {
 	assert.Equal(t, '本', term.GetCell(4, 0).Char)
 	assert.True(t, term.GetCell(6, 0).Char != utf8.RuneError, "title split a rune")
 }
+
+// positionBorderAnimation colors each border cell with its position, so a
+// test can read the position back from the rendered cell.
+type positionBorderAnimation struct{}
+
+func (positionBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, position, length int) Style {
+	return NewStyle().WithFgRGB(NewRGB(uint8(position), uint8(length), 0))
+}
+
+// Corners take their place on the perimeter, so a rainbow flows through
+// them instead of drawing every corner in the first color.
+func TestAnimatedBordered_CornersFollowPerimeter(t *testing.T) {
+	term := renderOnTerminal(AnimatedBordered(Text("x"), positionBorderAnimation{}), 5, 4)
+	// Clockwise from the top-left corner.
+	walk := [][2]int{
+		{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0},
+		{4, 1}, {4, 2}, {4, 3},
+		{3, 3}, {2, 3}, {1, 3}, {0, 3},
+		{0, 2}, {0, 1},
+	}
+	for i, p := range walk {
+		fg := term.GetCell(p[0], p[1]).Style.FgRGB
+		assert.NotNil(t, fg)
+		assert.Equal(t, int(fg.R), i, "position at %v", p)
+		assert.Equal(t, int(fg.G), len(walk), "length at %v", p)
+	}
+}
+
+// The lit corner fades into the edges on both sides of it.
+func TestCornerHighlight_FadesIntoBothEdges(t *testing.T) {
+	base, high := NewRGB(0, 0, 0), NewRGB(250, 250, 250)
+	anim := &CornerHighlightAnimation{Speed: 1, BaseColor: base, HighlightColor: high, Duration: 10}
+	w, h := 14, 8
+	// For each corner in turn: the corner, its neighbor on each edge, and
+	// a cell in the middle of the top edge.
+	cases := []struct{ corner, before, after [2]int }{
+		{[2]int{0, 0}, [2]int{0, 1}, [2]int{1, 0}},
+		{[2]int{w - 1, 0}, [2]int{w - 2, 0}, [2]int{w - 1, 1}},
+		{[2]int{w - 1, h - 1}, [2]int{w - 1, h - 2}, [2]int{w - 2, h - 1}},
+		{[2]int{0, h - 1}, [2]int{1, h - 1}, [2]int{0, h - 2}},
+	}
+	for i, c := range cases {
+		term := NewTestTerminal(w, h, &bytes.Buffer{})
+		frame, _ := term.BeginFrame()
+		AnimatedBordered(Text("x"), anim).render(NewRenderContext(frame, uint64(i*10)))
+		term.EndFrame(frame)
+		for _, p := range [][2]int{c.corner, c.before, c.after} {
+			assert.Equal(t, *term.GetCell(p[0], p[1]).Style.FgRGB, high, "corner %d, cell %v", i, p)
+		}
+		if i == 0 {
+			// (2, 0) is one cell into the top-left fade: blended, not lit.
+			fade := *term.GetCell(2, 0).Style.FgRGB
+			assert.NotEqual(t, fade, high, "fade cell (2, 0) fully lit")
+			assert.NotEqual(t, fade, base, "fade cell (2, 0) not lit")
+		}
+		assert.Equal(t, *term.GetCell(w/2, 0).Style.FgRGB, base, "corner %d, mid-edge", i)
+	}
+}

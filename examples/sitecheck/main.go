@@ -145,13 +145,13 @@ func (app *SiteCheckApp) View() tui.View {
 	stats := tui.Group(
 		tui.Text("Checked: %s", humanize.Number(int64(app.totalChecked))).
 			Fg(statsColor).Bold(),
-		tui.Spacer().MinWidth(3),
+		tui.Text("   "),
 		tui.Text("OK: %s", humanize.Number(int64(app.totalOK))).
 			Fg(tui.ColorGreen),
-		tui.Spacer().MinWidth(3),
+		tui.Text("   "),
 		tui.Text("Broken: %s", humanize.Number(int64(app.totalBroken))).
 			Fg(tui.ColorRed),
-		tui.Spacer().MinWidth(3),
+		tui.Text("   "),
 		tui.Text("Elapsed: %s", humanize.Duration(elapsed)).
 			Fg(tui.ColorCyan),
 	)
@@ -168,7 +168,7 @@ func (app *SiteCheckApp) View() tui.View {
 		if app.currentURL != "" {
 			currentView = tui.Group(
 				tui.Text("Checking:").Fg(tui.ColorBrightBlack),
-				tui.Spacer().MinWidth(1),
+				tui.Text(" "),
 				tui.Text("%s", app.currentURL).Fg(tui.ColorWhite).MaxWidth(80),
 			)
 		} else {
@@ -179,7 +179,7 @@ func (app *SiteCheckApp) View() tui.View {
 	// Recent results
 	var resultViews []tui.View
 	resultViews = append(resultViews, tui.Text("Recent results:").Bold().Fg(tui.ColorWhite))
-	resultViews = append(resultViews, tui.Spacer().MinHeight(1))
+	resultViews = append(resultViews, tui.Text(""))
 
 	if len(app.recentResults) == 0 {
 		resultViews = append(resultViews, tui.Text("No results yet...").Fg(tui.ColorBrightBlack))
@@ -196,13 +196,13 @@ func (app *SiteCheckApp) View() tui.View {
 	// Build the layout
 	return tui.Stack(
 		header,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		stats,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		currentView,
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Divider(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Stack(resultViews...),
 		tui.Spacer(),
 		footer,
@@ -247,9 +247,9 @@ func (app *SiteCheckApp) formatResult(status LinkStatus) tui.View {
 
 	return tui.Group(
 		tui.Text("%s", statusIcon).Fg(statusColor).Bold(),
-		tui.Spacer().MinWidth(1),
+		tui.Text(" "),
 		tui.Text("%s", paddedStatusText).Fg(statusColor),
-		tui.Spacer().MinWidth(1),
+		tui.Text(" "),
 		tui.Text("%s", status.URL).Fg(tui.ColorWhite),
 	)
 }
@@ -369,19 +369,21 @@ func runCrawler(ctx context.Context, app *SiteCheckApp, startURL string, maxURLs
 
 				app.SetCurrent(normalizedLink)
 
-				// Use retry for checking links
-				err = retry.DoSimple(ctx, func() error {
-					linkStatus := checkLink(ctx, normalizedLink)
-					app.Update(linkStatus)
-					return nil
+				// Use retry for checking links: a request that fails (as
+				// opposed to returning an error status) is tried again.
+				var linkStatus LinkStatus
+				retry.DoSimple(ctx, func() error {
+					linkStatus = checkLink(ctx, normalizedLink)
+					return linkStatus.Error
 				},
 					retry.WithMaxAttempts(2),
 					retry.WithBackoff(100*time.Millisecond, 1*time.Second),
 				)
-				if err != nil {
+				if ctx.Err() != nil {
 					// Context cancelled, stop
 					return
 				}
+				app.Update(linkStatus)
 			}
 		})
 

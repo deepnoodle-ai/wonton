@@ -22,6 +22,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -71,7 +72,21 @@ func main() {
 	defer term.Restore(fd, oldState)
 
 	out := os.Stdout
-	reader := bufio.NewReader(os.Stdin)
+
+	// A terminal's stdin does not support read deadlines, so read it on a
+	// goroutine and apply the timeout in readDSR.
+	input := make(chan byte, 64)
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			b, err := reader.ReadByte()
+			if err != nil {
+				close(input)
+				return
+			}
+			input <- b
+		}
+	}()
 
 	// Headline.
 	fmt.Fprint(out, "\r\n")
@@ -89,7 +104,7 @@ func main() {
 	results := make([]result, 0, len(cases))
 
 	for _, c := range cases {
-		got, err := measure(out, reader, c.cluster)
+		got, err := measure(out, input, c.cluster)
 		results = append(results, result{
 			name:     c.name,
 			cluster:  c.cluster,
@@ -128,7 +143,7 @@ func main() {
 // measure writes one cluster preceded by a CR (column 0), queries cursor
 // position, reads the response, and returns the 0-based column the terminal
 // reports. Any stray bytes read while the response is pending are dropped.
-func measure(out *os.File, r *bufio.Reader, cluster string) (int, error) {
+func measure(out *os.File, r <-chan byte, cluster string) (int, error) {
 	// Return to column 0, clear the line, write the cluster, then DSR.
 	fmt.Fprintf(out, "\r\x1b[2K%s\x1b[6n", cluster)
 
@@ -145,15 +160,20 @@ func measure(out *os.File, r *bufio.Reader, cluster string) (int, error) {
 // readDSR reads bytes from r until it sees a CSI cursor-position report
 // (\x1b[row;colR) and returns the column. Returns an error on timeout or
 // malformed response.
-func readDSR(r *bufio.Reader, timeout time.Duration) (int, error) {
-	os.Stdin.SetReadDeadline(time.Now().Add(timeout))
-	defer os.Stdin.SetReadDeadline(time.Time{})
+func readDSR(r <-chan byte, timeout time.Duration) (int, error) {
+	deadline := time.After(timeout)
 
 	var buf []byte
 	for {
-		b, err := r.ReadByte()
-		if err != nil {
-			return 0, err
+		var b byte
+		select {
+		case c, ok := <-r:
+			if !ok {
+				return 0, io.EOF
+			}
+			b = c
+		case <-deadline:
+			return 0, fmt.Errorf("no DSR response within %v", timeout)
 		}
 		buf = append(buf, b)
 		if b == 'R' {

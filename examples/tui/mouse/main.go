@@ -48,9 +48,9 @@ var scrollContent = []string{
 
 // HandleEvent processes events.
 //
-// Clicks on the buttons never reach here: the runtime dispatches those to the
-// Clickable callbacks in View. What is left for the app is the wheel, which no
-// view consumes on its own, and the keyboard.
+// Clicks on the buttons need no handling here: the runtime dispatches those to
+// the Clickable callbacks in View before passing the event on. What is left for
+// the app is the wheel, which no view consumes on its own, and the keyboard.
 func (app *MouseDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.ResizeEvent:

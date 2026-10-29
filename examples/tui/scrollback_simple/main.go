@@ -6,7 +6,7 @@
 //   - Multiple async processes updating different parts of the live region
 //   - Raw keyboard input for interactive control
 //
-// Run with: go run ./examples/scrollback_simple
+// Run with: go run ./examples/tui/scrollback_simple
 package main
 
 import (
@@ -41,7 +41,6 @@ func main() {
 	tui.Print(tui.Text("Press keys to add various views to scrollback:").Fg(tui.ColorCyan))
 	fmt.Println()
 	printKeyHelp()
-	fmt.Println()
 
 	// Enter raw mode for keyboard input
 	fd := int(os.Stdin.Fd())
@@ -207,7 +206,6 @@ func main() {
 					case 'h': // Help
 						live.Clear()
 						printKeyHelp()
-						fmt.Println()
 						live.Update(buildLiveView(process1, process2))
 					}
 				}
@@ -217,11 +215,12 @@ func main() {
 
 	close(done)
 	live.Clear()
-	fmt.Println("Goodbye!")
+	fmt.Print("Goodbye!\r\n")
 }
 
+// printKeyHelp runs both before and during raw mode, so it uses printRaw.
 func printKeyHelp() {
-	tui.Print(tui.Stack(
+	printRaw(tui.Stack(
 		tui.Group(tui.Text("  1").Fg(tui.ColorYellow), tui.Text(" - Simple text")),
 		tui.Group(tui.Text("  2").Fg(tui.ColorYellow), tui.Text(" - Styled text")),
 		tui.Group(tui.Text("  3").Fg(tui.ColorYellow), tui.Text(" - Bordered box")),

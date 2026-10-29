@@ -113,6 +113,9 @@ func runConvert(ctx *cli.Context) error {
 
 // isURL returns true if the input looks like a URL.
 func isURL(input string) bool {
+	if _, err := os.Stat(input); err == nil {
+		return false // an existing file, such as page.html
+	}
 	return strings.HasPrefix(input, "http://") ||
 		strings.HasPrefix(input, "https://") ||
 		// Treat domain-like inputs as URLs (contains dot, no path separator at start)

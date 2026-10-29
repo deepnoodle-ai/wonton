@@ -1,9 +1,14 @@
 // Example demonstrating the env package for configuration loading.
+//
+// Run with:
+//
+//	MYAPP_DB_NAME=app MYAPP_DB_PASSWORD=secret go run ./examples/env/config
 package main
 
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/env"
@@ -76,7 +81,7 @@ func main() {
 		} else {
 			log.Fatal(err)
 		}
-		return
+		os.Exit(1)
 	}
 
 	fmt.Println("\nConfiguration loaded successfully:")

@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -122,16 +123,17 @@ func runWatch(ctx *cli.Context) error {
 				continue
 			}
 
-			// Check if content is a URL
-			if !isURL(content) {
+			// Check if content is a URL (copied text often ends in a newline)
+			candidate := strings.TrimSpace(content)
+			if !isURL(candidate) {
 				lastContent = content
 				continue
 			}
 
-			ctx.Printf("\nDetected URL: %s\n", content)
+			ctx.Printf("\nDetected URL: %s\n", candidate)
 
 			// Fetch and convert
-			markdown, err := fetchAndConvert(sigCtx, fetcher, content, maxRetries)
+			markdown, err := fetchAndConvert(sigCtx, fetcher, candidate, maxRetries)
 			if err != nil {
 				ctx.Printf("Error: %v\n", err)
 				lastContent = content
@@ -153,20 +155,15 @@ func runWatch(ctx *cli.Context) error {
 
 // isURL checks if the string looks like a URL
 func isURL(s string) bool {
-	// Try parsing with web.NormalizeURL which handles common cases
-	_, err := web.NormalizeURL(s)
-	if err == nil {
+	// An http(s) URL with a host
+	if u, err := url.Parse(s); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
 		return true
 	}
 
-	// Fallback to standard URL parsing
-	u, err := url.Parse(s)
-	if err != nil {
-		return false
-	}
-
-	// Must have a scheme and host
-	return u.Scheme != "" && u.Host != ""
+	// A bare domain such as example.com/page. web.NormalizeURL adds https://
+	// to any single word, so also require a dotted host.
+	u, err := web.NormalizeURL(s)
+	return err == nil && strings.Contains(u.Hostname(), ".")
 }
 
 // fetchAndConvert fetches a URL and converts it to markdown with retries

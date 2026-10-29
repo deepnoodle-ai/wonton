@@ -12,7 +12,7 @@ This example comprehensively tests the `InlineApp` implementation to verify:
 ## Running the Example
 
 ```bash
-go run ./examples/inline_test
+go run ./examples/tui/inline_test
 ```
 
 ## Test Phases
@@ -20,18 +20,18 @@ go run ./examples/inline_test
 The example progresses through 5 phases that test different aspects:
 
 ### Phase 1: Minimal View
-- **Size**: Small (5 lines)
+- **Size**: Small (7 lines)
 - **Test**: Basic rendering
 - **Action**: Press `s` to start
 
 ### Phase 2: Expanded View
-- **Size**: Medium (8 lines)
+- **Size**: Medium (11 lines)
 - **Test**: Auto-incrementing items with scrollback printing
 - **Behavior**: Automatically adds items and prints to scrollback
 - **Action**: Wait for completion, then press `n`
 
 ### Phase 3: Large View with Sections
-- **Size**: Large (15-18 lines, dynamic)
+- **Size**: Large (13-17 lines, dynamic)
 - **Test**: Complex layouts with conditional sections
 - **Features**:
   - Progress section with checkmarks
@@ -40,12 +40,12 @@ The example progresses through 5 phases that test different aspects:
 - **Action**: Press `n` after batch print completes
 
 ### Phase 4: Minimal View (Shrink Test)
-- **Size**: Small (5 lines)
+- **Size**: Small (7 lines)
 - **Test**: View shrinking - verifies no residual lines
 - **Action**: Press `n`
 
 ### Phase 5: Styled Content
-- **Size**: Medium (8 lines)
+- **Size**: Medium (10 lines)
 - **Test**: Final test with styled text and colors
 - **Action**: Press `r` to restart or `q` to quit
 

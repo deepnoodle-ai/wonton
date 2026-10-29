@@ -156,14 +156,6 @@ func (app *ClipStackApp) HandleEvent(event tui.Event) []tui.Cmd {
 			if app.selected < len(app.items)-1 {
 				app.selected++
 			}
-		case tui.KeyEnter:
-			if app.selected >= 0 && app.selected < len(app.items) {
-				if err := clipboard.Write(app.items[app.selected].Content); err != nil {
-					app.statusMsg = fmt.Sprintf("Error: %v", err)
-				} else {
-					app.statusMsg = "Copied to clipboard"
-				}
-			}
 		}
 
 		switch e.Rune {
@@ -241,18 +233,32 @@ func (app *ClipStackApp) View() tui.View {
 			Height(tableHeight).
 			FillWidth().
 			SelectedBg(tui.ColorCyan).
-			SelectedFg(tui.ColorBlack)
+			SelectedFg(tui.ColorBlack).
+			OnSelect(app.copyItem) // the focused table consumes Enter
 	}
 
 	return tui.Stack(
 		tui.HeaderBar(fmt.Sprintf("Clipboard History [%d]", len(app.items))).
 			Bg(tui.ColorBlue).Fg(tui.ColorWhite),
-		tui.Bordered(tui.MinWidth(50, tui.MaxWidth(100, content))).
+		tui.Bordered(tui.MaxWidth(100, tui.MinWidth(50, content))).
 			Title("Clipboard History").
 			Border(&tui.SingleBorder).
 			BorderFg(tui.ColorBrightBlack),
 		tui.StatusBar(app.statusMsg),
 	)
+}
+
+// copyItem copies the item at row back to the clipboard.
+func (app *ClipStackApp) copyItem(row int) {
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	if row >= 0 && row < len(app.items) {
+		if err := clipboard.Write(app.items[row].Content); err != nil {
+			app.statusMsg = fmt.Sprintf("Error: %v", err)
+		} else {
+			app.statusMsg = "Copied to clipboard"
+		}
+	}
 }
 
 func hashContent(content string) string {
