@@ -324,7 +324,10 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 	if len(params) > 0 && params[0] == '<' && (final == 'M' || final == 'm') {
 		event, err := ParseMouseEvent(append([]byte(params), final))
 		if err != nil {
-			return KeyEvent{Key: KeyUnknown}, err
+			// The malformed report has been read to its end; drop it and
+			// keep reading. Its parse error is not a read error, and one
+			// that said io.EOF would end the caller's input loop.
+			return KeyEvent{Key: KeyUnknown}, nil
 		}
 		return *event, nil
 	}

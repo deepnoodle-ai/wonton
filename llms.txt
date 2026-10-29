@@ -12,7 +12,7 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 ## Packages
 
 - `cli` - CLI framework with commands, flags, groups, middleware, and shell completion
-- `tui` - Declarative terminal UI with layout engine, inputs, tables, lists, markdown rendering, animations, and mouse support
+- `tui` - Declarative terminal UI with layout engine, inputs, tables, lists, markdown rendering, animations, mouse support, resizable split layouts, and popup menus
 - `color` - ANSI colors (standard, 256, RGB), HSL conversion, and gradient generation
 - `env` - Configuration from environment variables, .env files, and JSON files with struct tag parsing
 - `fetch` - HTTP page fetching with metadata extraction, markdown conversion, and link discovery. Default clients are SSRF-guarded (no loopback/private addresses, no ambient proxy); supply a `Client` to reach one
@@ -36,6 +36,7 @@ Import only the packages you need. All public APIs have GoDoc comments. The
 - `termtest` - Golden-file testing for terminal output
 - `gif` - Animated GIF creation, including rendering terminal recordings to GIF
 - `thumbnail` - Preview images for files: downscaled rasters (PNG/JPEG/GIF/WebP) and synthetic cards for text, code, and unknown types
+- `tmux` - Live terminals backed by tmux sessions: mirror a pane's screen into a TUI, send keys, pastes, and mouse events; sessions outlive the program
 - `web` - URL utilities, host comparison, text normalization
 - `assert` - Test assertions with colored diffs
 

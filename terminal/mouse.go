@@ -123,7 +123,9 @@ func ParseMouseEvent(seq []byte) (*MouseEvent, error) {
 		coords := string(seq[1:end])
 
 		if _, err := fmt.Sscanf(coords, "%d;%d;%d", &button, &x, &y); err != nil {
-			return nil, err
+			// Not %w: Sscanf reports a short report as io.EOF, which callers
+			// would take for the end of their input.
+			return nil, fmt.Errorf("invalid mouse sequence %q: %v", seq, err)
 		}
 		if button < 0 {
 			return nil, fmt.Errorf("invalid mouse button code: %d", button)

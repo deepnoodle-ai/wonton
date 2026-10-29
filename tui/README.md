@@ -544,6 +544,87 @@ func (a *app) View() tui.View {
 }
 ```
 
+### Resizable Splits and Context Menus
+
+`Split` lays panes out in columns and rows that nest as deep as you like, with
+a one-cell gap between neighbors that the user drags to resize. `Menu` is a
+popup menu for right-click or keyboard use, and `HitMap` tells an event
+handler which tagged view is under the pointer. Like `ViewportState`, each
+keeps its state in a struct the application owns and passes to the view every
+frame, and takes events through `HandleMouse` and `HandleKey`. Positions are
+screen coordinates, so mouse events need no translating.
+
+```go
+type app struct {
+	split tui.SplitState
+	menu  tui.MenuState
+	hits  tui.HitMap
+	seq   int
+}
+
+func newWorkspace() *app {
+	a := &app{}
+	a.split.Append("editor", tui.SplitColumns)
+	a.split.Split("editor", "shell", tui.SplitRows) // shell below editor
+	a.split.Append("logs", tui.SplitColumns)        // a new column on the right
+	return a
+}
+
+func (a *app) View() tui.View {
+	a.hits.Reset()
+	return tui.ZStack(
+		tui.Split(&a.split, func(id string) tui.View {
+			return a.hits.Area("pane:"+id, tui.Bordered(tui.Text("%s", id)).Title(id))
+		}),
+		tui.Menu(&a.menu), // last, so it draws on top
+	)
+}
+
+func (a *app) HandleEvent(ev tui.Event) []tui.Cmd {
+	switch e := ev.(type) {
+	case tui.KeyEvent:
+		a.menu.HandleKey(e) // modal while open
+	case tui.MouseEvent:
+		if a.menu.HandleMouse(e) || a.split.HandleMouse(e) {
+			return nil // the menu is open, or a gap is being dragged
+		}
+		key, _ := a.hits.At(e.X, e.Y)
+		if id, ok := strings.CutPrefix(key, "pane:"); ok &&
+			e.Type == tui.MouseClick && e.Button == tui.MouseButtonRight {
+			a.menu.Open(e.X, e.Y, id, []tui.MenuItem{
+				{Label: "Split right", Hint: "|", Action: func() { a.split.Split(id, a.newID(), tui.SplitColumns) }},
+				{Label: "Split down", Hint: "-", Action: func() { a.split.Split(id, a.newID(), tui.SplitRows) }},
+				tui.MenuSeparator(),
+				{Label: "Close", Danger: true, Action: func() { a.split.Remove(id) }},
+			})
+		}
+	}
+	return nil
+}
+
+func (a *app) newID() string {
+	a.seq++
+	return fmt.Sprintf("pane-%d", a.seq)
+}
+```
+
+Run with `tui.WithMouseTracking(true)` so a gap lights up under the pointer
+(`WithMouseDrag` is enough for dragging alone). `SplitState` also answers
+`PaneAt`, `DividerAt` (for a menu on a gap), `Neighbor` (for moving focus with
+arrow keys), and `Bounds`; `Equalize` evens out every pane, and the tree in
+`Root` is plain data — `SplitNode`s with IDs, axes, and weights — that
+`encoding/json` saves and restores. Set `Tight` for panes that draw their own
+borders: neighbors then touch, and the border cells where they meet are the
+handle for dragging, lit up under the pointer.
+
+`Cells` draws a grid of `Cell`s exactly as given, with an optional block
+cursor: the way to show a screen your program did not lay out itself, such as
+a terminal mirrored by the [tmux](../tmux) package. `Select` highlights a
+`GridSelection`, which selects from one cell to another the way a terminal
+does; set its `Anchor` on a press, move its `Cursor` with the drag, and its
+`Text` is what to copy. `examples/corral` puts all of these together into a
+workspace of live terminals.
+
 ## API Reference
 
 ### Application Types
@@ -615,6 +696,11 @@ Stack(
 | `Button`       | Keyboard button            | `label string, onClick func()`       | `*ButtonView`        |
 | `Clickable`    | Mouse-only clickable       | `label string, onClick func()`       | `*ClickableView`     |
 | `PromptChoice` | Selection with inline input | `selected *int, inputText *string`  | `*PromptChoiceView`  |
+| `Split`        | Resizable columns and rows of panes | `state *SplitState, pane func(id string) View` | `*SplitView` |
+| `Menu`         | Popup / context menu       | `state *MenuState`                   | `*MenuView`          |
+
+`HitMap.Area(key, view)` tags a view so `HitMap.At(x, y)` can report what is
+under the pointer; call `HitMap.Reset` at the start of `View`.
 
 ### Display Views
 
@@ -625,6 +711,7 @@ Stack(
 | `Progress` | Progress indicator | `current, total int`                         | `*ProgressView`  |
 | `Loading`  | Loading spinner    | `frame uint64`                               | `*LoadingView`   |
 | `Divider`  | Horizontal line    | none                                         | `*DividerView`   |
+| `Cells`    | Raw cell grid, e.g. a terminal screen | `rows [][]Cell`           | `*CellsView`     |
 
 All list-shaped views (`Table`, `Tree`, `SelectList`, `FilterableList`,
 `CheckboxList`, `RadioList`) share one navigation key map when focused:
@@ -1082,5 +1169,6 @@ Run `go run ./examples/tui/terminal_handoff` or add `-inline` for a real editor.
 - [terminal](../terminal) - Low-level terminal control and ANSI sequences
 - [termsession](../termsession) - Terminal session recording and playback
 - [termtest](../termtest) - Terminal output testing with screen simulation
+- [tmux](../tmux) - Live tmux-backed terminals to show with `Cells`
 
 Source-aware transcript selection can preserve original text across Markdown and wrapping. See [source selection](../docs/source-selection.md) and `ExampleViewportSourceItems`.

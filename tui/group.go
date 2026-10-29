@@ -52,7 +52,7 @@ func (g *GroupView) flex() int {
 	// won't become flexible just because it contains a Spacer
 	for _, child := range g.children {
 		// Skip spacers - they're layout utilities, not content
-		if _, isSpacer := child.(*SpacerView); isSpacer {
+		if isSpacer(child) {
 			continue
 		}
 		if flex, ok := child.(Flexible); ok && flex.flex() > 0 {
@@ -199,7 +199,7 @@ func (g *GroupView) size(maxWidth, maxHeight int) (int, int) {
 func canShrinkInFlexRow(child View) bool {
 	// Wrapped text can reflow to the row's remaining width; treating its
 	// natural width as a minimum would make it clip before it gets to wrap.
-	if text, ok := child.(*TextView); ok {
+	if text, ok := unwrapHitArea(child).(*TextView); ok {
 		return text.wrap
 	}
 	return false
