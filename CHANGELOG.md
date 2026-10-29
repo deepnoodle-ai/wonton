@@ -16,6 +16,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
   after an ESC byte for the rest of an escape sequence. The default is
   `terminal.DefaultEscapeTimeout`, 50ms. Zero turns the wait off.
+- `gif.TerminalCell` has `Trailing`, `Width`, and `Continuation` fields and a
+  `Text` method, matching `terminal.Cell`. A cell holds a whole grapheme
+  cluster, and a wide cluster's second column is a continuation cell.
 
 ### Changed
 
@@ -33,6 +36,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
   it can poll its source: an `*os.File` on Unix, or the input owner that
   `tui` apps use on Linux and macOS. Any other `io.Reader`, and an
   `*os.File` on Windows, keeps the old behavior. (#116)
+- `gif.Emulator` and `gif.TerminalScreen.WriteString` give each grapheme
+  cluster one cell, or two for a wide one, and advance the cursor by display
+  width. CJK text, emoji, and combining marks in casts no longer push the
+  rest of the line out of place: after `世A` the cursor is at column 3, not
+  2. A cluster split across writes or around an escape sequence joins the
+  cell before the cursor, and writing or erasing over half of a wide cluster
+  blanks the other half. With a TTF font, the renderer draws combining marks
+  over their base character. Glyphs the bundled font lacks, such as CJK and
+  emoji, still render blank.
 
 ## [0.9.0] - 2026-10-24
 

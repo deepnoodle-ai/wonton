@@ -1,5 +1,17 @@
 # GIF Grapheme Rendering Investigation
 
+## Status
+
+Phase 1 is done ([#115](https://github.com/deepnoodle-ai/wonton/issues/115)).
+`TerminalCell` holds a whole cluster (`Char` plus `Trailing`) with a `Width`,
+and wide clusters get a `Continuation` cell. `TerminalScreen` and `Emulator`
+advance the cursor by display width, and the emulator joins a cluster that
+arrives across writes or escape sequences. Phase 2 is partly done: the renderer
+skips continuation cells and, with a TTF font, draws combining marks over their
+base. Font fallback (Phase 3) and shaping (Phase 4) remain, so glyphs missing
+from Inconsolata, such as CJK and emoji, still render blank. The findings below
+describe the code before this work.
+
 ## Summary
 
 The `gif` package does not currently render grapheme clusters correctly.
@@ -84,7 +96,7 @@ So even if storage were fixed, the renderer still has no place to render a full 
 
 Evaluation assets were added:
 
-- [gif/grapheme_characterization_test.go](../gif/grapheme_characterization_test.go)
+- [gif/grapheme_test.go](../gif/grapheme_test.go)
 - [examples/gif/grapheme_eval/main.go](../examples/gif/grapheme_eval/main.go)
 
 These were used to evaluate:
@@ -302,7 +314,7 @@ Risk:
 
 Keep and expand:
 
-- [gif/grapheme_characterization_test.go](../gif/grapheme_characterization_test.go)
+- [gif/grapheme_test.go](../gif/grapheme_test.go)
 
 Purpose:
 

@@ -102,6 +102,10 @@ func dumpCells(screen *gif.TerminalScreen, row, count int) {
 	}
 	for i := 0; i < count; i++ {
 		cell := screen.Cells[row][i]
-		fmt.Printf("  %02d: %q U+%04X\n", i, cell.Char, cell.Char)
+		if cell.Continuation {
+			fmt.Printf("  %02d: (continuation)\n", i)
+			continue
+		}
+		fmt.Printf("  %02d: %+q width=%d\n", i, cell.Text(), cell.Width)
 	}
 }
