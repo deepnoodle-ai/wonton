@@ -25,6 +25,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - **Breaking**: Wonton now requires Go 1.26. `golang.org/x/net` is upgraded
   to v0.62.0, which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser
   that `htmlparse` and `htmltomd` use, and that version requires Go 1.26.
+- **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
+  without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
+  compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
 
 ### Fixed
 
