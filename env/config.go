@@ -392,6 +392,8 @@ type structParser struct {
 	errors  *AggregateError
 }
 
+// parseStruct recursively populates exported struct fields in rv using prefix
+// as the current environment variable prefix.
 func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 	rt := rv.Type()
 
@@ -403,21 +405,9 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 			continue
 		}
 
-		// Handle embedded structs
-		if field.Anonymous && fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
-			p.parseStruct(fv, prefix)
-			continue
-		}
-
-		// Handle nested structs with envPrefix tag
+		// Handle embedded and nested structs
 		if fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
-			nestedPrefix := prefix
-			if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
-				nestedPrefix = prefix + prefixTag
-			} else {
-				nestedPrefix = prefix + toUpperSnakeCase(field.Name) + "_"
-			}
-			p.parseStruct(fv, nestedPrefix)
+			p.parseStruct(fv, nestedStructPrefix(field, prefix))
 			continue
 		}
 
@@ -428,18 +418,24 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 			if fv.IsNil() {
 				fv.Set(reflect.New(fv.Type().Elem()))
 			}
-			nestedPrefix := prefix
-			if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
-				nestedPrefix = prefix + prefixTag
-			} else {
-				nestedPrefix = prefix + toUpperSnakeCase(field.Name) + "_"
-			}
-			p.parseStruct(fv.Elem(), nestedPrefix)
+			p.parseStruct(fv.Elem(), nestedStructPrefix(field, prefix))
 			continue
 		}
 
 		p.parseField(field, fv, prefix)
 	}
+}
+
+// nestedStructPrefix returns the environment variable prefix to use when
+// recursing into a nested or embedded struct field.
+func nestedStructPrefix(field reflect.StructField, prefix string) string {
+	if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
+		return prefix + prefixTag
+	}
+	if !field.Anonymous {
+		return prefix + toUpperSnakeCase(field.Name) + "_"
+	}
+	return prefix
 }
 
 func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, prefix string) {

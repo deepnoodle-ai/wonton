@@ -260,3 +260,120 @@ func TestCompletionEscaping(t *testing.T) {
 	assert.Contains(t, bash.String(), "complete -F _my_app_v2_completions my-app.v2")
 	assert.Contains(t, zsh.String(), "__my_app_v2_group_dev_tools()")
 }
+
+// Negative numbers in positional arguments must not be rejected as unknown
+// short flags, and root boolean flags before positionals must not cause a
+// subsequent positional matching a subcommand name to dispatch to that
+// subcommand.
+func TestNegativeNumberPositionalsAndRootBoolSubcommandCollision(t *testing.T) {
+	app := TestApp("calc")
+	var gotArgs []string
+	app.Main().Args("nums...").Flags(Bool("verbose", "v")).Run(func(ctx *Context) error {
+		gotArgs = ctx.Args()
+		return nil
+	})
+	app.Command("add").Args("a", "b").Run(func(ctx *Context) error {
+		gotArgs = []string{ctx.Arg(0), ctx.Arg(1)}
+		return nil
+	})
+
+	assert.NoError(t, app.ExecuteArgs([]string{"-5", "-.5", "10"}))
+	assert.Equal(t, []string{"-5", "-.5", "10"}, gotArgs)
+
+	assert.NoError(t, app.ExecuteArgs([]string{"-.env"}))
+	assert.Equal(t, []string{"-.env"}, gotArgs)
+
+	assert.NoError(t, app.ExecuteArgs([]string{"add", "-5", "-3.14"}))
+	assert.Equal(t, []string{"-5", "-3.14"}, gotArgs)
+
+	// A registered numeric short flag (like -4 for --ipv4) still parses as a
+	// flag, while unregistered negative numbers remain positionals and "--"
+	// forces "-4" to be positional.
+	var ipv4 bool
+	var pattern string
+	var connectArgs []string
+	app.Command("connect").
+		Args("targets...").
+		Flags(Bool("ipv4", "4"), String("pattern", "p")).
+		Run(func(ctx *Context) error {
+			ipv4 = ctx.Bool("ipv4")
+			pattern = ctx.String("pattern")
+			connectArgs = ctx.Args()
+			return nil
+		})
+
+	assert.NoError(t, app.ExecuteArgs([]string{"connect", "-4", "--pattern", "-.env", "-5"}))
+	assert.True(t, ipv4)
+	assert.Equal(t, "-.env", pattern)
+	assert.Equal(t, []string{"-5"}, connectArgs)
+
+	ipv4 = false
+	connectArgs = nil
+	assert.NoError(t, app.ExecuteArgs([]string{"connect", "--", "-4"}))
+	assert.False(t, ipv4)
+	assert.Equal(t, []string{"-4"}, connectArgs)
+
+	// When a root boolean flag precedes positional arguments, the first
+	// positional ("first.txt") is a root positional argument, not the value of
+	// --verbose, so a second positional named "add" must remain a positional
+	// argument to the root command rather than dispatching to the "add"
+	// subcommand.
+	ranSub := false
+	app2 := TestApp("app")
+	var rootArgs []string
+	app2.Main().Args("files...").Flags(Bool("verbose", "v")).Run(func(ctx *Context) error {
+		rootArgs = ctx.Args()
+		assert.True(t, ctx.Bool("verbose"))
+		return nil
+	})
+	app2.Command("sub").Run(func(*Context) error {
+		ranSub = true
+		return nil
+	})
+	assert.NoError(t, app2.ExecuteArgs([]string{"--verbose", "first.txt", "sub"}))
+	assert.False(t, ranSub, "should run root command, not subcommand")
+	assert.Equal(t, []string{"first.txt", "sub"}, rootArgs)
+
+	rootArgs = nil
+	assert.NoError(t, app2.ExecuteArgs([]string{"-v", "first.txt", "sub"}))
+	assert.False(t, ranSub, "should run root command, not subcommand")
+	assert.Equal(t, []string{"first.txt", "sub"}, rootArgs)
+}
+
+// A registered numeric short flag after a flag that takes a value is that
+// value, as getopt does, so a negative number can follow a flag without "=".
+func TestRegisteredNumericShortAfterValueFlagIsTheValue(t *testing.T) {
+	app := TestApp("app")
+	var ipv4 bool
+	var pattern string
+	app.Command("connect").
+		Flags(Bool("ipv4", "4"), String("pattern", "p")).
+		Run(func(ctx *Context) error {
+			ipv4 = ctx.Bool("ipv4")
+			pattern = ctx.String("pattern")
+			return nil
+		})
+
+	assert.NoError(t, app.ExecuteArgs([]string{"connect", "--pattern", "-4"}))
+	assert.Equal(t, "-4", pattern)
+	assert.False(t, ipv4)
+}
+
+// A bundle ending in the built-in -h shows help. The h takes no value, so the
+// next positional must not be consumed as one and a later token that names a
+// subcommand must not dispatch to it.
+func TestBundleEndingInHelpShowsRootHelp(t *testing.T) {
+	for _, flag := range []Flag{Bool("ipv4", "4"), Bool("verbose", "v")} {
+		app := TestApp("app")
+		ranSub := false
+		app.Main().Args("files...").Flags(flag).Run(func(*Context) error { return nil })
+		app.Command("sub").Run(func(*Context) error {
+			ranSub = true
+			return nil
+		})
+		bundle := "-" + flag.GetShort() + "h"
+		err := app.ExecuteArgs([]string{bundle, "first", "sub"})
+		assert.True(t, IsHelpRequested(err), "%s: %v", bundle, err)
+		assert.False(t, ranSub, bundle)
+	}
+}

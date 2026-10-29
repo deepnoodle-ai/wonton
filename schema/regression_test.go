@@ -1,7 +1,9 @@
 package schema
 
 import (
+	"encoding"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -190,4 +192,217 @@ func TestGenerateUnexportedEmbedded(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotContains(t, s.Properties, "base")
 	assert.Equal(t, []string{"count"}, s.Required)
+}
+
+type customTextValue struct {
+	raw string
+}
+
+func (c customTextValue) MarshalText() ([]byte, error) {
+	return []byte(c.raw), nil
+}
+
+func (c *customTextValue) UnmarshalText(b []byte) error {
+	c.raw = string(b)
+	return nil
+}
+
+// textOutOnly has MarshalText but no UnmarshalText, so encoding/json decodes
+// it from a JSON number.
+type textOutOnly int
+
+func (t textOutOnly) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(int(t))), nil
+}
+
+// textInOnly has UnmarshalText but no MarshalText, so encoding/json decodes
+// it from a JSON string.
+type textInOnly int
+
+func (t *textInOnly) UnmarshalText(b []byte) error {
+	n, err := strconv.Atoi(string(b))
+	*t = textInOnly(n)
+	return err
+}
+
+// customJSONInt implements json.Marshaler, so encoding/json calls MarshalJSON
+// and ignores the ",string" option on fields of this type.
+type customJSONInt int
+
+func (c customJSONInt) MarshalJSON() ([]byte, error) {
+	return json.Marshal(int(c))
+}
+
+// namedIntPtr is a named pointer type; encoding/json ignores ",string" on it.
+type namedIntPtr *int
+
+// encoding/json decodes fields with json:",string" (for string, numeric, and
+// boolean types, or pointers to them) and types implementing
+// encoding.TextUnmarshaler from JSON strings.
+func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
+	type payload struct {
+		ID      int64                  `json:"id,string"`
+		Price   float64                `json:"price,string,omitempty"`
+		Enabled bool                   `json:"enabled,string"`
+		OptID   *int                   `json:"opt_id,string,omitempty"`
+		Slice   []int                  `json:"slice,string"` // ,string ignored by encoding/json on slices
+		Token   customTextValue        `json:"token"`
+		OptTok  *customTextValue       `json:"opt_token,omitempty"`
+		Iface   encoding.TextMarshaler `json:"iface,omitempty"`
+		Custom  customJSONInt          `json:"custom,string"`
+		Named   namedIntPtr            `json:"named,string"`
+		OutOnly textOutOnly            `json:"out_only"`
+		InOnly  textInOnly             `json:"in_only"`
+	}
+
+	s, err := Generate(payload{})
+	assert.NoError(t, err)
+	assert.Equal(t, String, s.Properties["id"].Type)
+	assert.Equal(t, String, s.Properties["price"].Type)
+	assert.Equal(t, String, s.Properties["enabled"].Type)
+	assert.Equal(t, String, s.Properties["opt_id"].Type)
+	assert.NotNil(t, s.Properties["opt_id"].Nullable)
+	assert.True(t, *s.Properties["opt_id"].Nullable)
+	assert.Equal(t, Array, s.Properties["slice"].Type)
+	assert.Equal(t, String, s.Properties["token"].Type)
+	assert.Equal(t, String, s.Properties["opt_token"].Type)
+	assert.NotNil(t, s.Properties["opt_token"].Nullable)
+	assert.True(t, *s.Properties["opt_token"].Nullable)
+	assert.Empty(t, s.Properties["iface"].Type)
+	assert.Equal(t, Integer, s.Properties["custom"].Type)
+	assert.Equal(t, Integer, s.Properties["named"].Type)
+	assert.Equal(t, Integer, s.Properties["out_only"].Type)
+	assert.Equal(t, String, s.Properties["in_only"].Type)
+
+	// Each schema type is one that json.Unmarshal accepts.
+	var p payload
+	assert.NoError(t, json.Unmarshal([]byte(`{"token":"x","out_only":1,"in_only":"2"}`), &p))
+
+	// A struct that embeds a TextUnmarshaler promotes UnmarshalText and
+	// decodes from a JSON string in encoding/json.
+	type embedsTextMarshaler struct {
+		customTextValue
+		Extra int `json:"extra"`
+	}
+	s, err = Generate(embedsTextMarshaler{})
+	assert.NoError(t, err)
+	assert.Equal(t, String, s.Type)
+}
+
+// encoding/json drops conflicting embedded fields at the same depth (unless one
+// is explicitly tagged and the other is untagged), and prefers shallower
+// embedded fields over deeper ones regardless of declaration order.
+func TestGenerateEmbeddedConflictAndDepthRules(t *testing.T) {
+	type EmbedA struct {
+		ID   string
+		Name string `json:"name"`
+	}
+	type EmbedB struct {
+		ID    int
+		Extra string `json:"extra"`
+	}
+	type ConflictingSiblingEmbeds struct {
+		EmbedA
+		EmbedB
+	}
+
+	// Both EmbedA.ID and EmbedB.ID are at depth 1 with the same tag status:
+	// encoding/json drops "ID" completely.
+	s, err := Generate(ConflictingSiblingEmbeds{}, GenerateOptions{DisallowAdditionalProperties: true})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "ID")
+	assert.Contains(t, s.Properties, "name")
+	assert.Contains(t, s.Properties, "extra")
+	assert.Equal(t, []string{"name", "extra"}, s.Required)
+
+	// At the same depth, an explicitly json-tagged field wins over an untagged field.
+	type UntaggedID struct {
+		ID int
+	}
+	type TaggedID struct {
+		ID string `json:"ID"`
+	}
+	type TaggedWins struct {
+		UntaggedID
+		TaggedID
+	}
+	s, err = Generate(TaggedWins{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "ID")
+	assert.Equal(t, String, s.Properties["ID"].Type)
+	assert.Equal(t, []string{"ID"}, s.Required)
+
+	// A shallower embedded field (depth 1) wins over a deeper embedded field
+	// (depth 2) even when the deeper struct is embedded first.
+	type DeepInner struct {
+		ID int `json:"id"`
+	}
+	type DeepHolder struct {
+		DeepInner
+	}
+	type ShallowHolder struct {
+		ID string `json:"id"`
+	}
+	type DeeperFirst struct {
+		DeepHolder
+		ShallowHolder
+	}
+	s, err = Generate(DeeperFirst{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "id")
+	assert.Equal(t, String, s.Properties["id"].Type)
+	assert.Equal(t, []string{"id"}, s.Required)
+
+	// When the same struct is embedded twice at the same depth (diamond
+	// embedding), its promoted fields conflict at that depth and are omitted.
+	type SharedLeaf struct {
+		Shared string
+	}
+	type LeftBranch struct {
+		SharedLeaf
+		Left string `json:"left"`
+	}
+	type RightBranch struct {
+		SharedLeaf
+		Right string `json:"right"`
+	}
+	type Diamond struct {
+		LeftBranch
+		RightBranch
+	}
+	s, err = Generate(Diamond{})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "Shared")
+	assert.Contains(t, s.Properties, "left")
+	assert.Contains(t, s.Properties, "right")
+	assert.Equal(t, []string{"left", "right"}, s.Required)
+}
+
+type EmbedLoopA struct {
+	*EmbedLoopB
+	A string `json:"a"`
+}
+
+type EmbedLoopB struct {
+	*EmbedLoopA
+	B    string      `json:"b"`
+	Next *EmbedLoopB `json:"next,omitempty"`
+}
+
+// Structs that embed each other terminate, and a struct reflected as a field
+// type still gets the fields it promotes from an embedded struct that is
+// already being reflected further up, as encoding/json encodes them.
+func TestGenerateEmbeddingCycle(t *testing.T) {
+	s, err := Generate(EmbedLoopA{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "a")
+	assert.Contains(t, s.Properties, "b")
+	assert.Contains(t, s.Properties, "next")
+	assert.Equal(t, []string{"a"}, s.Required)
+
+	next := s.Properties["next"]
+	assert.Equal(t, Object, next.Type)
+	assert.Contains(t, next.Properties, "a")
+	assert.Contains(t, next.Properties, "b")
+	assert.Contains(t, next.Properties["next"].Description, "recursive reference")
 }

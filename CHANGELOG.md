@@ -74,6 +74,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
   ends of the soft-wrapped row, so End in a long line stopped mid-word.
   None of the four stops at a CRLF, which the input draws without a line
   break. Before, Ctrl+U stopped after one. (#135)
+- **Breaking**: `env.Parse` and `env.ParseInto` flatten an embedded pointer
+  struct (`*Common`) without adding a `COMMON_` prefix, matching a
+  value-embedded `Common`, and apply an `envPrefix` tag on both value- and
+  pointer-embedded structs. Before, `*Common` without `envPrefix` read
+  `COMMON_HOST` instead of `HOST`, and `Common` ignored `envPrefix`. (#133)
 
 ### Fixed
 
@@ -224,6 +229,24 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `HighlightCurrentLine`, Down and End scroll by the area's rendered height,
   so a bordered area 2 rows tall, or an area a layout makes taller than its
   `Size`, no longer scrolls too far. (#135)
+- `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
+  string, integer, floating-point, and boolean types or pointers to them),
+  named types that `json.Unmarshal` decodes from a string because they
+  implement `encoding.TextUnmarshaler` without `json.Unmarshaler`
+  (including structs that inherit `UnmarshalText` from an embedded field),
+  and embedded struct field dominance rules: shallower
+  embedded fields shadow deeper ones regardless of field order, a single
+  `json`-tagged field at the shallowest depth wins over untagged siblings,
+  and conflicting fields at the shallowest depth are omitted. (#133)
+- `cli`: negative numbers and other `-.x` tokens passed as positional
+  arguments (such as `-5`, `-.5`, or `-.env`) are no longer rejected as
+  unknown short flags unless a matching short flag (such as `-4`) is
+  registered on the command. Right after a flag that needs a value, even a
+  registered `-4` is that value. A root-command boolean flag before
+  positional arguments no longer consumes the next positional as its value
+  when resolving subcommands. A bundle that ends in the built-in `-h`, such
+  as `-vh`, shows help. Before, it took the next argument as its value and
+  could run a subcommand named later on the line. (#133)
 
 ## [0.9.0] - 2026-10-24
 

@@ -1,12 +1,20 @@
 package schema
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	jsonMarshalerType   = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	jsonUnmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 )
 
 // GenerateOptions configures schema generation behavior.
@@ -102,6 +110,12 @@ func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool
 
 	// Byte slices marshal to base64 strings in encoding/json, not arrays.
 	if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+		return &Property{Type: String}, nil
+	}
+
+	// Types implementing encoding.TextUnmarshaler (and not json.Unmarshaler)
+	// decode from JSON strings in encoding/json.
+	if t.Kind() != reflect.Ptr && unmarshalsFromText(t) {
 		return &Property{Type: String}, nil
 	}
 
@@ -211,79 +225,32 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		}
 	}
 
-	// A field declared directly on the struct shadows a promoted field of
-	// the same JSON name from an embedded struct, wherever it is declared
-	// (as in encoding/json). Collect the direct names first.
-	directNames := make(map[string]bool)
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if !isJSONField(field) || (field.Anonymous && shouldFlattenEmbedded(field)) || field.Tag.Get("json") == "-" {
-			continue
-		}
-		name, _ := parseJSONTag(field)
-		directNames[name] = true
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-
-		// Skip fields that encoding/json ignores.
-		if !isJSONField(field) {
-			continue
-		}
-
-		// Handle embedded (anonymous) fields. Matching encoding/json semantics:
-		// embedded structs without a json name tag are flattened into the
-		// parent; embedded fields with a json name tag, and embedded
-		// non-struct types, are treated as regular named fields.
-		if field.Anonymous && shouldFlattenEmbedded(field) {
-			embedded, err := reflectType(field.Type, opt, seen)
-			if err != nil {
-				return nil, fmt.Errorf("failed to reflect embedded field %s: %w", field.Name, err)
-			}
-			// Merge embedded struct properties that are not shadowed by a
-			// direct field or by an earlier embedded struct.
-			added := make(map[string]bool)
-			for name, prop := range embedded.Properties {
-				if directNames[name] || properties[name] != nil {
-					continue
-				}
-				properties[name] = prop
-				added[name] = true
-			}
-			// Only merge required fields if the embedded struct is not a pointer.
-			// Pointer-embedded structs are optional, so their fields shouldn't be required.
-			if field.Type.Kind() != reflect.Ptr {
-				for _, name := range embedded.Required {
-					if added[name] {
-						addRequired(name)
-					}
-				}
-			}
-			continue
-		}
-
-		// json:"-" skips the field; json:"-," names it "-".
-		if field.Tag.Get("json") == "-" {
-			continue
-		}
-		jsonName, isRequired := parseJSONTag(field)
-
-		// Generate property schema for the field type
-		prop, err := reflectType(field.Type, opt, seen)
+	// Resolve direct and promoted embedded struct fields using encoding/json's
+	// dominance rules: shallower fields shadow deeper ones, a single tagged
+	// field at the shallowest depth wins over untagged siblings, and multiple
+	// conflicting fields at the shallowest depth cancel each other out.
+	for _, c := range dominantFields(collectStructFields(t, 0, false, map[reflect.Type]bool{t: true})) {
+		prop, err := reflectType(c.field.Type, opt, seen)
 		if err != nil {
-			return nil, fmt.Errorf("failed to reflect field %s: %w", field.Name, err)
+			return nil, fmt.Errorf("failed to reflect field %s: %w", c.field.Name, err)
+		}
+
+		// encoding/json encodes string, numeric, and boolean fields (or
+		// pointers to them) with the ",string" option as JSON strings.
+		if c.stringOpt && supportsJSONStringOption(c.field.Type) {
+			prop.Type = String
 		}
 
 		// Apply field tags to the property
-		applyFieldTags(prop, field)
+		applyFieldTags(prop, c.field)
 
-		// Check if field is required (from tag or default behavior)
-		if checkRequired(field, isRequired) {
-			addRequired(jsonName)
+		// Pointer-embedded structs are optional, so their promoted fields are
+		// not required on the enclosing struct.
+		if !c.fromPtrEmbed && checkRequired(c.field, c.isRequired) {
+			addRequired(c.jsonName)
 		}
 
-		properties[jsonName] = prop
+		properties[c.jsonName] = prop
 	}
 
 	prop := &Property{
@@ -296,6 +263,147 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		prop.AdditionalProperties = &additionalProps
 	}
 	return prop, nil
+}
+
+// structField is a direct or promoted struct field found while walking a
+// struct and its flattened embedded structs.
+type structField struct {
+	field        reflect.StructField
+	jsonName     string
+	isRequired   bool
+	tagged       bool
+	stringOpt    bool
+	depth        int
+	fromPtrEmbed bool
+}
+
+// collectStructFields walks t and its flattened embedded structs in
+// declaration order and returns every JSON field with its embedding depth.
+// path holds t and the struct types embedding it; an embedded type already on
+// the path is skipped, which ends embedding cycles. (encoding/json skips a
+// type it has visited at any shallower depth, but fields found that way always
+// lose to the shallower copies, so the result is the same.)
+func collectStructFields(t reflect.Type, depth int, fromPtrEmbed bool, path map[reflect.Type]bool) []structField {
+	var out []structField
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if !isJSONField(field) || field.Tag.Get("json") == "-" {
+			continue
+		}
+
+		if field.Anonymous && shouldFlattenEmbedded(field) {
+			elem, isPtr := field.Type, false
+			if elem.Kind() == reflect.Ptr {
+				elem, isPtr = elem.Elem(), true
+			}
+			if path[elem] {
+				continue
+			}
+			path[elem] = true
+			out = append(out, collectStructFields(elem, depth+1, fromPtrEmbed || isPtr, path)...)
+			delete(path, elem)
+			continue
+		}
+
+		jsonName, isRequired := parseJSONTag(field)
+		tagName, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		out = append(out, structField{
+			field:        field,
+			jsonName:     jsonName,
+			isRequired:   isRequired,
+			tagged:       tagName != "",
+			stringOpt:    hasJSONStringOption(field),
+			depth:        depth,
+			fromPtrEmbed: fromPtrEmbed,
+		})
+	}
+	return out
+}
+
+// dominantFields keeps, for each JSON name, the field encoding/json would
+// encode, in declaration order. As in encoding/json's dominantField, the
+// shallowest field wins, a tagged field beats an untagged one at the same
+// depth, and two fields at the same depth with the same tag status cancel
+// each other out.
+func dominantFields(fields []structField) []structField {
+	byName := make(map[string][]int)
+	for i, f := range fields {
+		byName[f.jsonName] = append(byName[f.jsonName], i)
+	}
+	keep := make([]bool, len(fields))
+	for _, idx := range byName {
+		sort.SliceStable(idx, func(a, b int) bool {
+			fa, fb := fields[idx[a]], fields[idx[b]]
+			if fa.depth != fb.depth {
+				return fa.depth < fb.depth
+			}
+			return fa.tagged && !fb.tagged
+		})
+		if len(idx) > 1 && fields[idx[0]].depth == fields[idx[1]].depth && fields[idx[0]].tagged == fields[idx[1]].tagged {
+			continue
+		}
+		keep[idx[0]] = true
+	}
+	var out []structField
+	for i, f := range fields {
+		if keep[i] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// unmarshalsFromText reports whether encoding/json decodes a JSON string into
+// t with encoding.TextUnmarshaler. Schemas describe input that is decoded, so
+// this follows decoding, not MarshalText: a type with only MarshalText still
+// decodes from its underlying kind. As in encoding/json, the methods of *t
+// count only for a named t, json.Unmarshaler takes precedence, and an
+// interface type (whose pointer has no methods) is never a match.
+func unmarshalsFromText(t reflect.Type) bool {
+	if t.Name() == "" {
+		return false
+	}
+	pt := reflect.PointerTo(t)
+	return pt.Implements(textUnmarshalerType) && !pt.Implements(jsonUnmarshalerType)
+}
+
+// implementsJSONMarshaler reports whether t or *t implements json.Marshaler.
+func implementsJSONMarshaler(t reflect.Type) bool {
+	return t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType)
+}
+
+// hasJSONStringOption reports whether field's json tag includes the ",string" option.
+func hasJSONStringOption(field reflect.StructField) bool {
+	_, opts, _ := strings.Cut(field.Tag.Get("json"), ",")
+	for _, opt := range strings.Split(opts, ",") {
+		if opt == "string" {
+			return true
+		}
+	}
+	return false
+}
+
+// supportsJSONStringOption reports whether encoding/json honors the ",string"
+// struct tag option for a field of type t: a string, integer, floating-point,
+// or boolean type, or an unnamed pointer to one, that does not implement
+// json.Marshaler (encoding/json then calls MarshalJSON and ignores ",string").
+func supportsJSONStringOption(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr && t.Name() == "" {
+		t = t.Elem()
+	}
+	if implementsJSONMarshaler(t) {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	default:
+		return false
+	}
 }
 
 // recursivePlaceholder is the permissive schema used where a type refers to

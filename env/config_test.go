@@ -1575,3 +1575,46 @@ func TestParse_ByteSliceField(t *testing.T) {
 	assert.NotNil(t, cfg.Ptr)
 	assert.Equal(t, []byte("pointed"), *cfg.Ptr)
 }
+
+func TestParse_EmbeddedPointerStructAndEnvPrefix(t *testing.T) {
+	type Common struct {
+		Host string `env:"HOST"`
+		Port int    `env:"PORT" envDefault:"8080"`
+	}
+
+	type ConfigWithPtrEmbed struct {
+		*Common
+		Name string `env:"NAME"`
+	}
+
+	// An embedded pointer struct should flatten without prepending COMMON_
+	// just like a value-embedded struct.
+	cfg, err := Parse[ConfigWithPtrEmbed](WithEnvironment(map[string]string{
+		"HOST": "localhost",
+		"PORT": "9090",
+		"NAME": "svc",
+	}))
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Common)
+	assert.Equal(t, "localhost", cfg.Host)
+	assert.Equal(t, 9090, cfg.Port)
+	assert.Equal(t, "svc", cfg.Name)
+
+	// Both value and pointer embedded structs should honor an explicit envPrefix tag.
+	type Extra struct {
+		Host string `env:"HOST"`
+	}
+	type ConfigWithPrefixedEmbeds struct {
+		Common `envPrefix:"PRIMARY_"`
+		*Extra `envPrefix:"SECONDARY_"`
+	}
+
+	prefixed, err := Parse[ConfigWithPrefixedEmbeds](WithEnvironment(map[string]string{
+		"PRIMARY_HOST":   "primary.local",
+		"SECONDARY_HOST": "secondary.local",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, "primary.local", prefixed.Common.Host)
+	assert.NotNil(t, prefixed.Extra)
+	assert.Equal(t, "secondary.local", prefixed.Extra.Host)
+}

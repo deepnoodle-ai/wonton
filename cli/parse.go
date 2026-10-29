@@ -66,7 +66,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 		}
 
 		// Check if this arg is a known command or group
-		if !looksLikeFlag(arg) {
+		if !looksLikeFlag(arg) && !p.hasShortFlag(arg) {
 			p.resolveCommandPosition(result, args, i)
 			return result, nil
 		}
@@ -102,6 +102,13 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						p.resolveCommandPosition(result, args, i+1)
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
+					}
+					// If this is a boolean flag on the root command, it takes no
+					// value; leave the next token to be resolved as a positional.
+					if p.isRootBoolFlag(name) {
+						result.GlobalFlags = append(result.GlobalFlags, arg)
+						i++
+						continue
 					}
 					// Next arg is not a known command.
 					// If it doesn't look like a flag, assume it's this flag's value.
@@ -141,15 +148,17 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 				continue
 			}
 
-			// Handle -h as help unless a global flag explicitly claims -h
-			if shorts == "h" && p.app.isHelpShort() {
+			// For bundled short flags like -abc, only the last one can take a value
+			lastShort := string(shorts[len(shorts)-1])
+
+			// Handle -h, alone or ending a bundle like -vh, as help unless a
+			// global flag explicitly claims -h. Help takes no value.
+			if lastShort == "h" && p.app.isHelpShort() {
 				result.GlobalFlags = append(result.GlobalFlags, arg)
 				i++
 				continue
 			}
 
-			// For bundled short flags like -abc, only the last one can take a value
-			lastShort := string(shorts[len(shorts)-1])
 			gf := p.app.findGlobalFlagByShort(lastShort)
 
 			if gf == nil {
@@ -160,6 +169,11 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						p.resolveCommandPosition(result, args, i+1)
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
+					}
+					if p.isRootBoolFlagByShort(lastShort) {
+						result.GlobalFlags = append(result.GlobalFlags, arg)
+						i++
+						continue
 					}
 					if !looksLikeFlag(next) {
 						result.GlobalFlags = append(result.GlobalFlags, arg, next)
@@ -373,6 +387,59 @@ func (p *parser) hasCommands() bool {
 		}
 	}
 	return len(p.app.groups) > 0
+}
+
+// isRootBoolFlag reports whether name is a boolean flag defined on the root command.
+func (p *parser) isRootBoolFlag(name string) bool {
+	rootCmd := p.app.commands[""]
+	return rootCmd != nil && isBoolFlag(rootCmd.findFlag(name))
+}
+
+// isRootBoolFlagByShort reports whether short is a boolean flag defined on the root command.
+func (p *parser) isRootBoolFlagByShort(short string) bool {
+	rootCmd := p.app.commands[""]
+	return rootCmd != nil && isBoolFlag(rootCmd.findFlagByShort(short))
+}
+
+// isBoolFlag reports whether f is a non-nil boolean flag.
+func isBoolFlag(f Flag) bool {
+	if f == nil {
+		return false
+	}
+	_, isBool := f.GetDefault().(bool)
+	return isBool
+}
+
+// hasShortFlag reports whether arg is a short flag (or bundle of short flags,
+// optionally with an "=value" suffix) whose flag characters are all registered
+// as global flags or on the root command.
+func (p *parser) hasShortFlag(arg string) bool {
+	rootCmd := p.app.commands[""]
+	return allShortsMatch(arg, func(r rune) bool {
+		if r == 'h' && p.app.isHelpShort() {
+			return true
+		}
+		s := string(r)
+		return p.app.findGlobalFlagByShort(s) != nil || (rootCmd != nil && rootCmd.findFlagByShort(s) != nil)
+	})
+}
+
+// allShortsMatch reports whether arg is a short-flag token (or bundle, with an
+// optional "=value" suffix) in which every flag character satisfies match.
+func allShortsMatch(arg string, match func(rune) bool) bool {
+	if !strings.HasPrefix(arg, "-") || strings.HasPrefix(arg, "--") || len(arg) <= 1 {
+		return false
+	}
+	shorts := arg[1:]
+	if idx := strings.IndexByte(shorts, '='); idx > 0 {
+		shorts = shorts[:idx]
+	}
+	for _, r := range shorts {
+		if !match(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // looksLikeFlag returns true if the string looks like a flag rather than a value.
