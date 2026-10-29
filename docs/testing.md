@@ -40,7 +40,7 @@ Linux job inside Docker without leaving your dev box:
 ./scripts/test-linux.sh -run TestSession_Resize ./termsession/
 ```
 
-The script builds `scripts/Dockerfile.linux` on first run (a `golang:1.25-alpine`
+The script builds `scripts/Dockerfile.linux` on first run (a `golang:1.26-alpine`
 base with `git` and the module cache pre-warmed), then mounts the working
 copy at `/src` and runs `go test`. Any arguments you pass are forwarded
 to `go test` inside the container.

@@ -11,6 +11,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Changed
+
+- Wonton now requires Go 1.26. `golang.org/x/net` is upgraded to v0.62.0,
+  which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser that
+  `htmlparse` and `htmltomd` use, and that version requires Go 1.26.
+
 ### Added
 
 - `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
