@@ -109,16 +109,17 @@ func (f *fillTracker) Read(p []byte) (int, error) {
 
 // standaloneEscape reports whether an ESC that was just read is a lone
 // Escape key press. Escape sequences arrive as a rapid burst, so if the
-// terminal sent one, the following bytes are normally already buffered. There
-// are two exceptions. If the ESC was the last byte of a read that filled the
-// buffer, the rest of the burst is still in the source. If the terminal wrote
-// the sequence in two pieces, the rest arrives shortly, so wait for it.
+// terminal sent one, the following bytes are normally already buffered. When
+// nothing is buffered, the decoder waits up to the escape timeout for more
+// input, which also catches a sequence the terminal wrote in two pieces.
+// Without a wait, it can only guess: if the ESC was the last byte of a read
+// that filled the buffer, the rest of the burst is probably still pending.
 func (kd *KeyDecoder) standaloneEscape() bool {
-	if kd.reader.Buffered() > 0 || kd.src.full {
+	if kd.reader.Buffered() > 0 {
 		return false
 	}
 	if kd.wait == nil || kd.escapeTimeout <= 0 {
-		return true
+		return !kd.src.full
 	}
 	return !kd.wait(kd.escapeTimeout)
 }
