@@ -281,6 +281,8 @@ func TestClusterSplitAcrossWrites(t *testing.T) {
 		{"around SGR", []string{"e\x1b[31m\u0301x"}, "e\u0301x", 2, "e\u0301", 1},
 		{"after wide", []string{"世", "\u0301x"}, "世\u0301x", 3, "世\u0301", 2},
 		{"after space", []string{" ", "\u0301x"}, " \u0301x", 2, " \u0301", 1},
+		// A blank cell reached by a cursor move joins too, as in gif.TerminalScreen.
+		{"after cursor move", []string{"\x1b[C", "\u0301x"}, " \u0301x", 2, " \u0301", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
