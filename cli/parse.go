@@ -103,6 +103,13 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
 					}
+					// If this is a boolean flag on the root command, it takes no
+					// value; leave the next token to be resolved as a positional.
+					if p.isRootBoolFlag(name) {
+						result.GlobalFlags = append(result.GlobalFlags, arg)
+						i++
+						continue
+					}
 					// Next arg is not a known command.
 					// If it doesn't look like a flag, assume it's this flag's value.
 					if !looksLikeFlag(next) {
@@ -160,6 +167,11 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						p.resolveCommandPosition(result, args, i+1)
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
+					}
+					if p.isRootBoolFlagByShort(lastShort) {
+						result.GlobalFlags = append(result.GlobalFlags, arg)
+						i++
+						continue
 					}
 					if !looksLikeFlag(next) {
 						result.GlobalFlags = append(result.GlobalFlags, arg, next)
@@ -375,6 +387,34 @@ func (p *parser) hasCommands() bool {
 	return len(p.app.groups) > 0
 }
 
+// isRootBoolFlag reports whether name is a boolean flag defined on the root command.
+func (p *parser) isRootBoolFlag(name string) bool {
+	rootCmd := p.app.commands[""]
+	if rootCmd == nil {
+		return false
+	}
+	f := rootCmd.findFlag(name)
+	if f == nil {
+		return false
+	}
+	_, isBool := f.GetDefault().(bool)
+	return isBool
+}
+
+// isRootBoolFlagByShort reports whether short is a boolean flag defined on the root command.
+func (p *parser) isRootBoolFlagByShort(short string) bool {
+	rootCmd := p.app.commands[""]
+	if rootCmd == nil {
+		return false
+	}
+	f := rootCmd.findFlagByShort(short)
+	if f == nil {
+		return false
+	}
+	_, isBool := f.GetDefault().(bool)
+	return isBool
+}
+
 // looksLikeFlag returns true if the string looks like a flag rather than a value.
 // This allows values like "-1" (negative numbers) while still treating "-v" as a flag.
 func looksLikeFlag(s string) bool {
@@ -391,7 +431,7 @@ func looksLikeFlag(s string) bool {
 		if second >= '0' && second <= '9' {
 			return false // looks like negative number
 		}
-		if second == '.' && len(s) > 2 {
+		if second == '.' && len(s) > 2 && s[2] >= '0' && s[2] <= '9' {
 			return false // looks like negative decimal
 		}
 	}

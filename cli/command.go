@@ -754,7 +754,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					return c.errorWithHelpHint(fmt.Sprintf("flag --%s requires a value", name))
 				}
 			}
-		} else if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+		} else if looksLikeFlag(arg) {
 			// Short flag(s). -o=value (or -vo=value) gives the last flag
 			// an inline value.
 			shorts := arg[1:]

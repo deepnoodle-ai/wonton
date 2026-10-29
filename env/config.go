@@ -403,18 +403,12 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 			continue
 		}
 
-		// Handle embedded structs
-		if field.Anonymous && fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
-			p.parseStruct(fv, prefix)
-			continue
-		}
-
-		// Handle nested structs with envPrefix tag
+		// Handle embedded and nested structs
 		if fv.Kind() == reflect.Struct && !p.isValueType(fv.Type()) {
 			nestedPrefix := prefix
 			if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
 				nestedPrefix = prefix + prefixTag
-			} else {
+			} else if !field.Anonymous {
 				nestedPrefix = prefix + toUpperSnakeCase(field.Name) + "_"
 			}
 			p.parseStruct(fv, nestedPrefix)
@@ -431,7 +425,7 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 			nestedPrefix := prefix
 			if prefixTag := field.Tag.Get("envPrefix"); prefixTag != "" {
 				nestedPrefix = prefix + prefixTag
-			} else {
+			} else if !field.Anonymous {
 				nestedPrefix = prefix + toUpperSnakeCase(field.Name) + "_"
 			}
 			p.parseStruct(fv.Elem(), nestedPrefix)

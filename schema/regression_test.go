@@ -191,3 +191,105 @@ func TestGenerateUnexportedEmbedded(t *testing.T) {
 	assert.NotContains(t, s.Properties, "base")
 	assert.Equal(t, []string{"count"}, s.Required)
 }
+
+type customTextValue struct {
+	raw string
+}
+
+func (c customTextValue) MarshalText() ([]byte, error) {
+	return []byte(c.raw), nil
+}
+
+// encoding/json encodes fields with json:",string" (for string, numeric, and
+// boolean types, or pointers to them) and types implementing
+// encoding.TextMarshaler as JSON strings.
+func TestGenerateJSONStringTagAndTextMarshaler(t *testing.T) {
+	type payload struct {
+		ID      int64            `json:"id,string"`
+		Price   float64          `json:"price,string,omitempty"`
+		Enabled bool             `json:"enabled,string"`
+		OptID   *int             `json:"opt_id,string,omitempty"`
+		Slice   []int            `json:"slice,string"` // ,string ignored by encoding/json on slices
+		Token   customTextValue  `json:"token"`
+		OptTok  *customTextValue `json:"opt_token,omitempty"`
+	}
+
+	s, err := Generate(payload{})
+	assert.NoError(t, err)
+	assert.Equal(t, String, s.Properties["id"].Type)
+	assert.Equal(t, String, s.Properties["price"].Type)
+	assert.Equal(t, String, s.Properties["enabled"].Type)
+	assert.Equal(t, String, s.Properties["opt_id"].Type)
+	assert.NotNil(t, s.Properties["opt_id"].Nullable)
+	assert.True(t, *s.Properties["opt_id"].Nullable)
+	assert.Equal(t, Array, s.Properties["slice"].Type)
+	assert.Equal(t, String, s.Properties["token"].Type)
+	assert.Equal(t, String, s.Properties["opt_token"].Type)
+	assert.NotNil(t, s.Properties["opt_token"].Nullable)
+	assert.True(t, *s.Properties["opt_token"].Nullable)
+}
+
+// encoding/json drops conflicting embedded fields at the same depth (unless one
+// is explicitly tagged and the other is untagged), and prefers shallower
+// embedded fields over deeper ones regardless of declaration order.
+func TestGenerateEmbeddedConflictAndDepthRules(t *testing.T) {
+	type EmbedA struct {
+		ID   string
+		Name string `json:"name"`
+	}
+	type EmbedB struct {
+		ID    int
+		Extra string `json:"extra"`
+	}
+	type ConflictingSiblingEmbeds struct {
+		EmbedA
+		EmbedB
+	}
+
+	// Both EmbedA.ID and EmbedB.ID are at depth 1 with the same tag status:
+	// encoding/json drops "ID" completely.
+	s, err := Generate(ConflictingSiblingEmbeds{}, GenerateOptions{DisallowAdditionalProperties: true})
+	assert.NoError(t, err)
+	assert.NotContains(t, s.Properties, "ID")
+	assert.Contains(t, s.Properties, "name")
+	assert.Contains(t, s.Properties, "extra")
+	assert.Equal(t, []string{"name", "extra"}, s.Required)
+
+	// At the same depth, an explicitly json-tagged field wins over an untagged field.
+	type UntaggedID struct {
+		ID int
+	}
+	type TaggedID struct {
+		ID string `json:"ID"`
+	}
+	type TaggedWins struct {
+		UntaggedID
+		TaggedID
+	}
+	s, err = Generate(TaggedWins{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "ID")
+	assert.Equal(t, String, s.Properties["ID"].Type)
+	assert.Equal(t, []string{"ID"}, s.Required)
+
+	// A shallower embedded field (depth 1) wins over a deeper embedded field
+	// (depth 2) even when the deeper struct is embedded first.
+	type DeepInner struct {
+		ID int `json:"id"`
+	}
+	type DeepHolder struct {
+		DeepInner
+	}
+	type ShallowHolder struct {
+		ID string `json:"id"`
+	}
+	type DeeperFirst struct {
+		DeepHolder
+		ShallowHolder
+	}
+	s, err = Generate(DeeperFirst{})
+	assert.NoError(t, err)
+	assert.Contains(t, s.Properties, "id")
+	assert.Equal(t, String, s.Properties["id"].Type)
+	assert.Equal(t, []string{"id"}, s.Required)
+}
