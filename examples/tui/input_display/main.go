@@ -16,7 +16,7 @@ type App struct {
 func (app *App) View() tui.View {
 	return tui.Stack(
 		tui.Text("Declarative Input Demo").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Group(
 			tui.Text("Name: "),
 			tui.Input(&app.name).Placeholder("Enter your name...").Width(30),

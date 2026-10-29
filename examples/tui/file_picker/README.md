@@ -46,14 +46,14 @@ tui.FilePicker(app.files, &app.filter, &app.selected).
     CurrentPath(app.currentDir).
     Height(pickerHeight).
     OnSelect(func(item tui.ListItem, index int) {
-        app.handleSelect()
+        app.handleSelect(item)
     })
 ```
 
 - `refreshFiles()` reads the directory, sorts directories first, prepends a
   `..` entry, and rebuilds the `ListItem` slice. Each item's `Value` carries
   the absolute path.
-- `handleSelect()` stats the chosen path: directories update `currentDir`
+- `handleSelect(item)` stats the chosen path: directories update `currentDir`
   and refresh the listing; files report their size in the status line.
 - `HandleEvent` only needs the keys the picker doesn't consume: F2 to toggle
   hidden files and Escape/Ctrl+C to quit. Navigation, filtering, and
@@ -66,4 +66,4 @@ This example is useful for learning:
 - How to bind application state to a declarative view
 - How a focused component's key handling composes with app-level
   `HandleEvent` (the app sees only unconsumed keys, plus Ctrl+C)
-- Building a small multi-pane layout with `Stack`, `Spacer`, and `Text`
+- Building a small multi-pane layout with `Stack` and `Text`

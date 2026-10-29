@@ -80,26 +80,26 @@ func (app *HTTPApp) View() tui.View {
 	return tui.Stack(
 		// Title
 		tui.Text("GitHub User Lookup").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Keys
 		tui.Group(
 			tui.Text("[1]").Fg(tui.ColorYellow),
 			tui.Text("golang").Fg(tui.ColorWhite),
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(2).Flex(0),
 			tui.Text("[2]").Fg(tui.ColorYellow),
 			tui.Text("torvalds").Fg(tui.ColorWhite),
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(2).Flex(0),
 			tui.Text("[3]").Fg(tui.ColorYellow),
 			tui.Text("antirez").Fg(tui.ColorWhite),
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(2).Flex(0),
 			tui.Text("[c]").Fg(tui.ColorYellow),
 			tui.Text("clear").Fg(tui.ColorWhite),
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(2).Flex(0),
 			tui.Text("[q]").Fg(tui.ColorYellow),
 			tui.Text("quit").Fg(tui.ColorWhite),
 		).Gap(1),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Content area
 		app.contentView(),

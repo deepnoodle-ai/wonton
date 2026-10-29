@@ -131,7 +131,8 @@ func fileAutocomplete(input string, cursorPos int) ([]string, int) {
 			for _, f := range parentFiles {
 				name := f.Name()
 				if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".go") {
-					matches = append(matches, name)
+					// Keep the "../" so the completion names the right file
+					matches = append(matches, "../"+name)
 				}
 			}
 		}

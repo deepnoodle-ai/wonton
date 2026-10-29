@@ -1,5 +1,4 @@
 // Package main demonstrates animation with the declarative API.
-// Compare with examples/runtime_animation which uses the imperative API.
 package main
 
 import (
@@ -13,12 +12,12 @@ type App struct{}
 func (app *App) View() tui.View {
 	return tui.Stack(
 		tui.Text("Animated Blocks Demo (60 FPS)").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		// Use CanvasContext to access the animation frame counter
 		tui.CanvasContext(func(ctx *tui.RenderContext) {
 			app.drawBlocks(ctx)
 		}),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Group(
 			tui.Text("Press 'q' to quit").Fg(tui.ColorYellow),
 			tui.Spacer(),

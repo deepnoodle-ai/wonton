@@ -58,7 +58,7 @@ func (app *TextAreaFeaturesApp) View() tui.View {
 		tui.Text("TextArea Features Demo").Bold().Fg(tui.ColorCyan),
 		tui.Text("Use arrow keys, PageUp/PageDown, Home/End to navigate").Fg(tui.ColorBrightBlack),
 		tui.Text("Tab/Shift+Tab to switch between viewers | ESC: quit").Fg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 1: Line numbers only
 		tui.Text("1. Line Numbers (no border)").Bold().Fg(tui.ColorYellow),
@@ -68,7 +68,7 @@ func (app *TextAreaFeaturesApp) View() tui.View {
 			LineNumberFg(tui.ColorBrightBlack).
 			Size(70, 8),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 2: Left border only with line numbers
 		tui.Text("2. Left Border + Line Numbers").Bold().Fg(tui.ColorYellow),
@@ -80,7 +80,7 @@ func (app *TextAreaFeaturesApp) View() tui.View {
 			LineNumberFg(tui.ColorBrightBlue).
 			Size(70, 8),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 3: Current line highlighting with line numbers
 		tui.Text("3. Current Line Highlighting + Line Numbers (arrow keys move cursor)").Bold().Fg(tui.ColorYellow),
@@ -97,7 +97,7 @@ func (app *TextAreaFeaturesApp) View() tui.View {
 			ScrollY(&app.scrollY).
 			Size(70, 10),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 4: Full border with all features
 		tui.Text("4. Full Border + All Features").Bold().Fg(tui.ColorYellow),

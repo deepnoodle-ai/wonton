@@ -6,7 +6,7 @@
 // - Verifies no extra newlines are printed
 // - Tests different view types and compositions
 //
-// Run with: go run ./examples/inline_test
+// Run with: go run ./examples/tui/inline_test
 package main
 
 import (

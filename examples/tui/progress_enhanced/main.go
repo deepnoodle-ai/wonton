@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -68,14 +69,14 @@ func (app *ProgressEnhancedApp) View() tui.View {
 	return tui.Stack(
 		// Header
 		tui.HeaderBar("Enhanced Progress Bar Demo").Bg(tui.ColorBlue).Fg(tui.ColorWhite),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 1: Standard progress with percentage (default)
 		tui.Text("Standard with percentage:").Bold(),
 		tui.Progress(app.progress1, 100).
 			Width(40).
 			Fg(tui.ColorGreen),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 2: Progress with custom empty pattern "·-"
 		tui.Text("Custom empty pattern '·-':").Bold(),
@@ -84,7 +85,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			Fg(tui.ColorCyan).
 			EmptyPattern("·-").
 			EmptyFg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 3: Progress with different empty pattern "░▒"
 		tui.Text("Custom empty pattern '░▒':").Bold(),
@@ -93,7 +94,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			Fg(tui.ColorYellow).
 			EmptyPattern("░▒").
 			EmptyFg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 4: Progress with custom percentage style
 		tui.Text("Custom percentage style (magenta):").Bold(),
@@ -103,7 +104,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			EmptyChar('·').
 			EmptyFg(tui.ColorBrightBlack).
 			PercentFg(tui.ColorMagenta),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 5: Progress without percentage
 		tui.Text("Without percentage:").Bold(),
@@ -111,7 +112,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			Width(40).
 			Fg(tui.ColorBlue).
 			HidePercent(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 6: Progress with fraction instead of percentage
 		tui.Text("With fraction:").Bold(),
@@ -119,7 +120,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			Width(40).
 			Fg(tui.ColorRed).
 			ShowFraction(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Example 7: Multiple patterns demonstration
 		tui.Text("More pattern examples:").Bold(),
@@ -127,15 +128,15 @@ func (app *ProgressEnhancedApp) View() tui.View {
 			tui.Stack(
 				tui.Text("Pattern: '━┅'").Dim(),
 				tui.Progress(app.progress3, 100).Width(20).EmptyPattern("━┅").Fg(tui.ColorGreen),
-				tui.Spacer().MinHeight(1),
+				tui.Text(""),
 				tui.Text("Pattern: '◼◻'").Dim(),
 				tui.Progress(app.progress4, 100).Width(20).EmptyPattern("◼◻").Fg(tui.ColorCyan),
 			),
-			tui.Spacer().MinWidth(2),
+			tui.Spacer().MinWidth(2).Flex(0),
 			tui.Stack(
 				tui.Text("Pattern: '▓▒░'").Dim(),
 				tui.Progress(app.progress1, 100).Width(20).EmptyPattern("▓▒░").Fg(tui.ColorYellow),
-				tui.Spacer().MinHeight(1),
+				tui.Text(""),
 				tui.Text("Pattern: '●○'").Dim(),
 				tui.Progress(app.progress2, 100).Width(20).EmptyPattern("●○").Fg(tui.ColorMagenta),
 			),
@@ -145,7 +146,7 @@ func (app *ProgressEnhancedApp) View() tui.View {
 
 		// Divider before footer
 		tui.Divider(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Bottom controls
 		tui.Group(
@@ -163,5 +164,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("\n✨ Demo complete!")
+	fmt.Println("\n✨ Demo complete!")
 }

@@ -115,13 +115,9 @@ func (app *FilePickerDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 	return nil
 }
 
-// handleSelect handles item selection.
-func (app *FilePickerDemoApp) handleSelect() {
-	if app.selected >= len(app.files) {
-		return
-	}
-
-	item := app.files[app.selected]
+// handleSelect handles item selection. The item comes from the picker
+// because app.selected indexes the filtered list, not app.files.
+func (app *FilePickerDemoApp) handleSelect(item tui.ListItem) {
 	path, ok := item.Value.(string)
 	if !ok {
 		return
@@ -153,31 +149,28 @@ func (app *FilePickerDemoApp) handleSelect() {
 
 // View returns the declarative view structure.
 func (app *FilePickerDemoApp) View() tui.View {
-	pickerHeight := app.height - 6
+	pickerHeight := app.height - 4
 	if pickerHeight < 5 {
 		pickerHeight = 5
 	}
 
 	return tui.Stack(
 		tui.Text("FILE PICKER DEMO").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.FilePicker(app.files, &app.filter, &app.selected).
 			CurrentPath(app.currentDir).
 			Height(pickerHeight).
 			OnSelect(func(item tui.ListItem, index int) {
-				app.handleSelect()
+				app.handleSelect(item)
 			}),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("%s", app.statusMsg).Fg(tui.ColorGreen),
 	)
 }
 
 func main() {
-	app := &FilePickerDemoApp{}
-	if err := app.Init(); err != nil {
-		log.Fatal(err)
-	}
-	if err := tui.Run(app, tui.WithMouseTracking(true)); err != nil {
+	// tui.Run calls Init, which loads the starting directory.
+	if err := tui.Run(&FilePickerDemoApp{}, tui.WithMouseTracking(true)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -25,11 +25,11 @@ func (app *App) View() tui.View {
 	return tui.Stack(
 		tui.Text("Composition Demo").Bold().Fg(tui.ColorCyan),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Counter: %d", app.counter).Fg(tui.ColorYellow),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Group(
 			tui.Clickable(" + ", func() { app.counter++ }).Fg(tui.ColorGreen),
@@ -37,7 +37,7 @@ func (app *App) View() tui.View {
 			tui.Clickable("Reset", func() { app.counter = 0 }),
 		).Gap(2),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Stack(
 			tui.Text("Nested VBox").Fg(tui.ColorMagenta),
@@ -46,7 +46,7 @@ func (app *App) View() tui.View {
 			tui.Text("Item 3"),
 		).Bordered().Border(&tui.SingleBorder),
 
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Click buttons or press 'q' to quit").Dim(),
 	).Bordered().Border(&tui.RoundedBorder)

@@ -22,12 +22,12 @@ import (
 func main() {
 	// Simple text with styling
 	fmt.Println("=== Simple Styled Text ===")
-	tui.Print(tui.Text("Hello from Print!").Bold().Fg(tui.ColorCyan))
+	tui.Println(tui.Text("Hello from Print!").Bold().Fg(tui.ColorCyan))
 	fmt.Println()
 
 	// Multiple lines with a Stack
 	fmt.Println("=== Stacked Content ===")
-	tui.Print(tui.Stack(
+	tui.Println(tui.Stack(
 		tui.Text("Status Report").Bold().Underline(),
 		tui.Text(""),
 		tui.Group(tui.Text("  Database: "), tui.Text("Connected").Fg(tui.ColorGreen)),
@@ -38,7 +38,7 @@ func main() {
 
 	// Bordered content
 	fmt.Println("=== Bordered Box ===")
-	tui.Print(
+	tui.Println(
 		tui.Bordered(
 			tui.Stack(
 				tui.Text("Important Notice").Bold().Fg(tui.ColorYellow),
@@ -53,7 +53,7 @@ func main() {
 
 	// Horizontal layout with Group
 	fmt.Println("=== Horizontal Layout ===")
-	tui.Print(
+	tui.Println(
 		tui.Group(
 			tui.Text("Left").Fg(tui.ColorRed),
 			tui.Spacer(),
@@ -145,7 +145,7 @@ func main() {
 
 	// Error message example
 	fmt.Println("=== Error Display ===")
-	tui.Print(
+	tui.Println(
 		tui.Bordered(
 			tui.Stack(
 				tui.Text(" Error ").Bg(tui.ColorRed).Fg(tui.ColorWhite).Bold(),

@@ -1,3 +1,15 @@
+// Example: inline_dive_like
+//
+// This example reproduces the live-region layout of an agent CLI such as
+// Dive: a multiline input between dividers, optional progress, todo, and
+// dialog views above it, and a fixed-height footer below it.
+//
+// Typed letters go to the input, so the layout toggles use Alt (Option):
+// Alt+p processing, Alt+d dialog, Alt+t todos, Alt+a autocomplete footer,
+// Alt+c compaction footer, Alt+e exit-hint footer, Alt+= / Alt+- tool
+// calls, Alt+x expanded tool calls. Ctrl+C quits.
+//
+// Run with: go run ./examples/tui/inline_dive_like
 package main
 
 import (
@@ -62,6 +74,7 @@ func (a *diveLikeApp) LiveView() tui.View {
 			MaxHeight(10).
 			History(a.history).
 			OnComplete(a.completeMention).
+			OnKey(a.handleToggle).
 			OnSubmit(func(value string) {
 				a.history = append(a.history, value)
 				a.inputText = ""
@@ -81,7 +94,7 @@ func (a *diveLikeApp) LiveView() tui.View {
 			}
 			prefix := "   "
 			if i == 1 {
-				prefix = " \u275f "
+				prefix = " \u276f "
 			}
 			footerViews = append(footerViews, tui.Text("%s@%s", prefix, match).Hint())
 		}
@@ -130,46 +143,65 @@ func (a *diveLikeApp) completeMention(value string) []string {
 func (a *diveLikeApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		switch e.Rune {
-		case 'q':
+		if e.Key == tui.KeyCtrlC {
 			return []tui.Cmd{tui.Quit()}
-		case 'p':
-			a.processing = !a.processing
-		case 'd':
-			a.showDialog = !a.showDialog
-		case 't':
-			a.showTodos = !a.showTodos
-		case 'a':
-			a.showAutocomplete = !a.showAutocomplete
-			if a.showAutocomplete {
-				a.showCompactionInfo = false
-				a.showExitHint = false
-			}
-		case 'c':
-			a.showCompactionInfo = !a.showCompactionInfo
-			if a.showCompactionInfo {
-				a.showAutocomplete = false
-				a.showExitHint = false
-			}
-		case 'e':
-			a.showExitHint = !a.showExitHint
-			if a.showExitHint {
-				a.showAutocomplete = false
-				a.showCompactionInfo = false
-			}
-		case '+':
-			a.toolCount++
-		case '-':
-			if a.toolCount > 0 {
-				a.toolCount--
-			}
-		case 'x':
-			a.expandedMsg = !a.expandedMsg
+		}
+		// The dialog replaces the input, so its keys arrive here.
+		if a.showDialog && e.Rune == 'd' {
+			a.showDialog = false
+		} else {
+			a.handleToggle(e)
 		}
 	case tui.TickEvent:
 		a.frame = e.Frame
 	}
 	return nil
+}
+
+// handleToggle runs before the focused input sees a key (and from HandleEvent
+// while the dialog hides the input). It consumes the Alt+letter layout
+// toggles so plain letters still reach the input.
+func (a *diveLikeApp) handleToggle(e tui.KeyEvent) bool {
+	if !e.Alt {
+		return false
+	}
+	switch e.Rune {
+	case 'p':
+		a.processing = !a.processing
+	case 'd':
+		a.showDialog = !a.showDialog
+	case 't':
+		a.showTodos = !a.showTodos
+	case 'a':
+		a.showAutocomplete = !a.showAutocomplete
+		if a.showAutocomplete {
+			a.showCompactionInfo = false
+			a.showExitHint = false
+		}
+	case 'c':
+		a.showCompactionInfo = !a.showCompactionInfo
+		if a.showCompactionInfo {
+			a.showAutocomplete = false
+			a.showExitHint = false
+		}
+	case 'e':
+		a.showExitHint = !a.showExitHint
+		if a.showExitHint {
+			a.showAutocomplete = false
+			a.showCompactionInfo = false
+		}
+	case '+', '=':
+		a.toolCount++
+	case '-':
+		if a.toolCount > 0 {
+			a.toolCount--
+		}
+	case 'x':
+		a.expandedMsg = !a.expandedMsg
+	default:
+		return false
+	}
+	return true
 }
 
 func (a *diveLikeApp) buildLiveView() tui.View {

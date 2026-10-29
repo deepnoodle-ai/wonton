@@ -28,16 +28,6 @@ func (app *PastePlaceholderApp) Init() error {
 func (app *PastePlaceholderApp) HandleEvent(event tui.Event) []tui.Cmd {
 	switch e := event.(type) {
 	case tui.KeyEvent:
-		// Update status on paste
-		if e.Paste != "" {
-			lines := strings.Split(e.Paste, "\n")
-			if len(lines) > 1 {
-				app.status = "Pasted as placeholder — Backspace deletes it all at once"
-			} else {
-				app.status = "Pasted (single line, no placeholder)"
-			}
-		}
-
 		switch e.Key {
 		case tui.KeyEscape, tui.KeyCtrlC:
 			return []tui.Cmd{tui.Quit()}
@@ -59,7 +49,7 @@ func (app *PastePlaceholderApp) View() tui.View {
 		tui.Text("Paste multi-line text to see it collapse into a placeholder.").Fg(tui.ColorBrightBlack),
 		tui.Text("Input has MaxHeight(3) - content scrolls with ▲/▼ indicators.").Fg(tui.ColorBrightBlack),
 		tui.Text("Tab/Shift+Tab to navigate between elements.").Fg(tui.ColorBrightBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// InputField combines label, input, and border with automatic focus styling
 		// The label and border automatically highlight when the input is focused
@@ -68,21 +58,31 @@ func (app *PastePlaceholderApp) View() tui.View {
 			Label("Input: ").
 			Placeholder("Type or paste here...").
 			PastePlaceholder(true).
+			// The focused input consumes the paste, so HandleEvent never sees
+			// it; OnPaste is where the app gets to look at it.
+			OnPaste(func(info tui.PasteInfo) (tui.PasteHandlerDecision, string) {
+				if info.LineCount > 1 {
+					app.status = "Pasted as placeholder — Backspace deletes it all at once"
+				} else {
+					app.status = "Pasted (single line, no placeholder)"
+				}
+				return tui.PasteAccept, ""
+			}).
 			Multiline(true).
 			Bordered().
 			MaxHeight(3). // Scrollable input with overflow indicators
 			Width(60),
 
 		// Status message
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("%s", app.status).Fg(tui.ColorGreen),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// TextArea is a high-level scrollable text viewer with automatic
 		// focus-aware styling and keyboard scroll handling
 		tui.TextArea(&app.input).
 			ID("content-viewer").
-			Title(fmt.Sprintf(" Actual Content (%d chars, %d lines) ", len(app.input), actualLines)).
+			Title(fmt.Sprintf("Actual Content (%d chars, %d lines)", len(app.input), actualLines)).
 			TitleStyle(tui.NewStyle().WithForeground(tui.ColorYellow)).
 			FocusTitleStyle(tui.NewStyle().WithForeground(tui.ColorCyan).WithBold()).
 			BorderFg(tui.ColorBrightBlack).

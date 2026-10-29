@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
@@ -129,9 +130,10 @@ func (d *ClaudeStyleDemo) handleKeyEvent(event tui.KeyEvent) []tui.Cmd {
 		}
 
 	case event.Key == tui.KeyBackspace:
-		// Delete character
+		// Delete character (a whole rune, not a byte)
 		if len(d.input) > 0 {
-			d.input = d.input[:len(d.input)-1]
+			_, size := utf8.DecodeLastRuneInString(d.input)
+			d.input = d.input[:len(d.input)-size]
 		}
 		// Reset history browsing when editing
 		d.historyIndex = -1
@@ -288,11 +290,11 @@ func (d *ClaudeStyleDemo) generateResponse(input string) string {
 	}
 
 	if strings.Contains(input, "feature") {
-		return "The Wonton library includes:\n\n• Flicker-free rendering with double buffering\n• 30+ FPS animations\n• Composable widget system\n• Mouse and keyboard input handling\n• Flexible layout managers (VBox, HBox, Flex)\n• Rich text styling and colors\n\nWould you like to learn more about any specific feature?"
+		return "The Wonton library includes:\n\n• Flicker-free rendering with double buffering\n• 30+ FPS animations\n• Composable widget system\n• Mouse and keyboard input handling\n• Flexible layout with Stack, Group, and Spacer\n• Rich text styling and colors\n\nWould you like to learn more about any specific feature?"
 	}
 
 	if strings.Contains(input, "example") {
-		return "Here are some examples you can run:\n\ngo run examples/all/main.go\ngo run examples/interactive/main.go\ngo run examples/composition_demo/main.go\n\nEach demonstrates different library features!"
+		return "Here are some examples you can run:\n\ngo run ./examples/tui/counter\ngo run ./examples/tui/composition\ngo run ./examples/tui/input_forms\n\nEach demonstrates different library features!"
 	}
 
 	// Default response

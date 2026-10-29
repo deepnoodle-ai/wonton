@@ -26,14 +26,14 @@ func (app *InputFormsApp) View() tui.View {
 		// Show success screen
 		return tui.Stack(
 			tui.Text("Wonton Input Forms Demo").Bold().Fg(tui.ColorCyan),
-			tui.Text("----------------------").Fg(tui.ColorCyan),
-			tui.Spacer().MinHeight(1),
+			tui.Divider().Fg(tui.ColorCyan),
+			tui.Text(""),
 			tui.Text("Form submitted successfully!").Fg(tui.ColorGreen),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Text("Name:     %s", app.name),
 			tui.Text("Email:    %s", app.email),
 			tui.Text("Password: %s", strings.Repeat("*", len(app.password))),
-			tui.Spacer().MinHeight(1),
+			tui.Text(""),
 			tui.Text("Press Enter to exit").Dim(),
 		).Padding(2)
 	}
@@ -44,8 +44,8 @@ func (app *InputFormsApp) View() tui.View {
 	// Title
 	children = append(children,
 		tui.Text("Wonton Input Forms Demo").Bold().Fg(tui.ColorCyan),
-		tui.Text("----------------------").Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Divider().Fg(tui.ColorCyan),
+		tui.Text(""),
 	)
 
 	// Name field
@@ -54,7 +54,7 @@ func (app *InputFormsApp) View() tui.View {
 			tui.Text("Name:     "),
 			tui.Input(&app.name).ID("name").Placeholder("Enter your name").Width(40),
 		),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	)
 
 	// Email field
@@ -63,7 +63,7 @@ func (app *InputFormsApp) View() tui.View {
 			tui.Text("Email:    "),
 			tui.Input(&app.email).ID("email").Placeholder("Enter your email").Width(40),
 		),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	)
 
 	// Password field
@@ -76,7 +76,7 @@ func (app *InputFormsApp) View() tui.View {
 				Width(40).
 				Mask('*'),
 		),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	)
 
 	// Show errors if any
@@ -86,7 +86,7 @@ func (app *InputFormsApp) View() tui.View {
 				tui.Text("- %s", err).Fg(tui.ColorRed),
 			)
 		}
-		children = append(children, tui.Spacer().MinHeight(1))
+		children = append(children, tui.Text(""))
 	}
 
 	// Submit button (focusable via Tab)
@@ -95,7 +95,7 @@ func (app *InputFormsApp) View() tui.View {
 			ID("submit-btn").
 			Fg(tui.ColorGreen).
 			FocusStyle(tui.NewStyle().WithBackground(tui.ColorGreen).WithForeground(tui.ColorBlack)),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 	)
 
 	// Help text

@@ -39,7 +39,7 @@ func (t *transcript) Item(i int) tui.View {
 	}
 	return tui.Stack(
 		tui.Text("%s", m.who).Bold().Fg(who),
-		tui.Text("%s", m.body),
+		tui.Text("%s", m.body).Wrap(),
 	)
 }
 

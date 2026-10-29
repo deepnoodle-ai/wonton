@@ -10,7 +10,7 @@
 //   - Enter to confirm, Escape to cancel
 //   - Custom styling and cursor
 //
-// Run with: go run ./examples/prompt_choice
+// Run with: go run ./examples/tui/prompt_choice
 package main
 
 import (

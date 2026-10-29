@@ -92,7 +92,7 @@ func (a *replApp) submit(value string) {
 }
 
 func (a *replApp) HandleEvent(event tui.Event) []tui.Cmd {
-	if key, ok := event.(tui.KeyEvent); ok && key.Ctrl && key.Rune == 'c' {
+	if key, ok := event.(tui.KeyEvent); ok && key.Key == tui.KeyCtrlC {
 		return []tui.Cmd{tui.Quit()}
 	}
 	return nil

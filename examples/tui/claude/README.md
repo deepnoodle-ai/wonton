@@ -5,16 +5,17 @@ This demo showcases a modern TUI interface similar to Claude Code, featuring:
 - **Fixed input area at the bottom** - A persistent command prompt where you type
 - **Scrollable message history above** - Shows conversation between you and the "assistant"
 - **Clean, polished design** - Styled output with color-coded messages
-- **Keyboard navigation** - Full keyboard support for input and scrolling
+- **Keyboard navigation** - Full keyboard support for input, history, and scrolling
 
 ## Features
 
 ### Input Area
 - Type your message and press Enter to send
 - **Shift+Enter** to add a new line (multi-line input supported in iTerm2 and other modern terminals)
-- **Alt+Enter** also adds a new line (for terminals that don't support Shift+Enter)
+- **\\+Enter** (a backslash, then Enter) also adds a new line, for terminals that don't report Shift+Enter
 - Input area expands automatically as you add lines
 - Backspace to delete characters
+- **Arrow Up/Down** - Browse previously sent messages
 - Ctrl+C to exit
 - Real-time cursor display
 
@@ -25,25 +26,26 @@ This demo showcases a modern TUI interface similar to Claude Code, featuring:
 - Spacing between messages
 
 ### Scrolling
-- **Arrow Up/Down** - Scroll message history one line at a time
-- **Page Up/Down** - Fast scroll (10 lines)
+- **Page Up/Down** - Scroll the message history one screen at a time
+- **Home/End** - Jump to the oldest or newest message
+- **Mouse wheel** - Scroll three lines at a time
 - Auto-scroll to bottom when sending new messages
 
 ## Running the Demo
 
 ```bash
-go run examples/claude_style/main.go
+go run ./examples/tui/claude
 ```
 
 ## How It Works
 
 The demo demonstrates several key Wonton library features:
 
-1. **Frame-based rendering** - Uses `BeginFrame()`/`EndFrame()` for flicker-free updates
-2. **KeyDecoder** - Reads individual keyboard events for interactive input
+1. **Declarative views** - `View()` returns the whole UI and `tui.Run` redraws only what changed
+2. **Viewport** - `tui.Viewport` builds only the messages on screen and follows the newest one
 3. **Styled text** - Different colors for different message types
-4. **Dynamic layouts** - Content area adjusts to terminal size
-5. **Event loop** - Non-blocking input with continuous rendering
+4. **Dynamic layouts** - The message area takes whatever height the input area leaves
+5. **Event handling** - `HandleEvent` receives key and mouse events from the runtime
 
 ## Try These Commands
 
@@ -57,10 +59,11 @@ Once running, try typing:
 
 The demo is structured as:
 - `ClaudeStyleDemo` struct holds all state
-- `render()` - Draws the entire UI each frame
-- `renderContent()` - Renders scrollable message history
-- `renderInput()` - Renders the fixed input area at bottom
-- `handleInput()` - Processes keyboard events
+- `View()` - Builds the entire UI from that state
+- `Len()`/`Item()` - Feed messages to the viewport, one view per message
+- `renderMessage()` - Renders a single message
+- `renderInputArea()` - Renders the fixed input area at bottom
+- `handleKeyEvent()`/`handleMouseEvent()` - Process input events
 - `sendMessage()` - Adds messages and generates responses
 
 This architecture can be adapted for chat clients, command interfaces, log viewers, and any application needing a fixed input with scrolling content.

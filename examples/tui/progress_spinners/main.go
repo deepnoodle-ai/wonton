@@ -99,7 +99,7 @@ func (app *ProgressDemoApp) HandleEvent(event tui.Event) []tui.Cmd {
 			}
 		}
 
-		// Auto-quit after all tasks complete and 2 seconds have passed
+		// Auto-quit at the 8-second mark once all tasks are complete
 		allComplete := true
 		for _, item := range app.items {
 			if !item.Complete {
@@ -130,7 +130,7 @@ func (app *ProgressDemoApp) View() tui.View {
 	return tui.Stack(
 		// Header
 		tui.HeaderBar("Multi-Progress Demo").Bg(tui.ColorCyan).Fg(tui.ColorBlack),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Progress items using declarative views with ForEach
 		tui.ForEach(app.items, func(item *ProgressItem, i int) tui.View {
@@ -151,7 +151,7 @@ func (app *ProgressDemoApp) View() tui.View {
 
 		// Divider before footer
 		tui.Divider(),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Bottom controls
 		tui.Group(
@@ -169,5 +169,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("\n✨ All tasks finished!")
+	fmt.Println("\n✨ All tasks finished!")
 }

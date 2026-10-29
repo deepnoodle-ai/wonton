@@ -68,7 +68,7 @@ func (app *CheckboxDemoApp) View() tui.View {
 		tui.Divider(),
 
 		// Spacing
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Checkbox list using new declarative view
 		tui.CheckboxList(items, app.checked, &app.cursor).
@@ -76,13 +76,13 @@ func (app *CheckboxDemoApp) View() tui.View {
 			CursorFg(tui.ColorGreen),
 
 		// Spacing
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Selected items display
 		tui.Text("%s", selectedMsg).Fg(tui.ColorGreen),
 
 		// Spacing
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		// Help text
 		tui.Text("Press Space to toggle, Arrows to move, q to quit.").Dim(),

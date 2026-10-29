@@ -9,7 +9,7 @@
 // This pattern is ideal for chat interfaces, REPL-style tools, and CLIs
 // where you want persistent history with a live status/input area.
 //
-// Run with: go run ./examples/scrollback_demo
+// Run with: go run ./examples/tui/scrollback_demo
 package main
 
 import (
@@ -133,13 +133,15 @@ func main() {
 		}
 	}
 
-	// Print final message to scrollback
-	fmt.Println("\nGoodbye!")
+	// Print final message to scrollback (still in raw mode, so end lines
+	// with \r\n)
+	fmt.Print("\r\nGoodbye!\r\n")
 }
 
 // printHeader prints the initial header that becomes part of scrollback history.
+// Ctrl+L calls it in raw mode, so lines end with \r\n.
 func printHeader() {
-	tui.Print(
+	tui.Println(
 		tui.Bordered(
 			tui.Stack(
 				tui.Text("Scrollback + Live Region Demo").Bold().Fg(tui.ColorCyan),
@@ -156,8 +158,9 @@ func printHeader() {
 			).Padding(1),
 		).Border(&tui.RoundedBorder).BorderFg(tui.ColorBrightBlack),
 		tui.WithWidth(60),
+		tui.WithRawMode(true),
 	)
-	fmt.Println()
+	fmt.Print("\r\n")
 }
 
 // handleKeyEvent processes a keyboard event.
@@ -278,7 +281,8 @@ func (s *AppState) updateStatus() {
 }
 
 // printMessageToScrollback prints a message to the scrollback history.
-// This uses tui.Print which outputs to the terminal and becomes permanent history.
+// This uses tui.Println which outputs to the terminal and becomes permanent
+// history. The terminal is in raw mode, so lines must end with \r\n.
 func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 	timestamp := time.Now().Format("15:04:05")
 
@@ -297,8 +301,7 @@ func (s *AppState) printMessageToScrollback(text string, isUser bool) {
 		)
 	}
 
-	tui.Print(view, tui.WithWidth(80))
-	fmt.Println() // Newline after each message
+	tui.Println(view, tui.WithWidth(80), tui.WithRawMode(true))
 }
 
 // generateResponse creates a simple response based on the input.

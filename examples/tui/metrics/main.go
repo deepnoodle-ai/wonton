@@ -67,7 +67,7 @@ func (app *MetricsApp) viewDemo() tui.View {
 	animatedLines := []tui.View{}
 	for i := 0; i < 10; i++ {
 		offset := int(app.frame) + i*5
-		char := "▓▒░ "[offset%4]
+		char := []rune("▓▒░ ")[offset%4]
 		colorIdx := (i + int(app.frame/5)) % len(app.colors)
 		line := ""
 		for j := 0; j < 40; j++ {
@@ -90,17 +90,17 @@ func (app *MetricsApp) viewDemo() tui.View {
 	colorIdx := int(app.frame/10) % len(app.colors)
 
 	return tui.Stack(
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("=== Performance Metrics Demo ===").Bold().Fg(app.colors[colorIdx]),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Stack(animatedLines...),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		// Use Progress view instead of manual string building
 		tui.Group(
 			tui.Text("Progress:").Fg(tui.ColorGreen),
 			tui.Progress(progressVal, 100).Width(40).Fg(tui.ColorGreen).HidePercent(),
 		).Gap(1),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("Live Metrics:").Bold(),
 		tui.Text("  Frames rendered: %d", app.metrics.TotalFrames),
 		tui.Text("  Frames skipped:  %d", app.metrics.SkippedFrames),
@@ -119,35 +119,35 @@ func (app *MetricsApp) viewDemo() tui.View {
 // viewFinalMetrics returns the final metrics screen view.
 func (app *MetricsApp) viewFinalMetrics() tui.View {
 	return tui.Stack(
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 		tui.Text("=== Final Performance Metrics ===").Bold().Fg(tui.ColorCyan),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Frames:").Fg(tui.ColorYellow),
 		tui.Text("  Total rendered:  %d", app.metrics.TotalFrames),
 		tui.Text("  Skipped:         %d", app.metrics.SkippedFrames),
 		tui.Text("  Average FPS:     %.2f", app.metrics.FPS()),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Rendering:").Fg(tui.ColorYellow),
 		tui.Text("  Cells updated:   %d", app.metrics.CellsUpdated),
 		tui.Text("  ANSI codes:      %d", app.metrics.ANSICodesEmitted),
 		tui.Text("  Bytes written:   %d (%.2f KB)", app.metrics.BytesWritten, float64(app.metrics.BytesWritten)/1024.0),
 		tui.Text("  Efficiency:      %.1f%%", app.metrics.Efficiency()),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Timing:").Fg(tui.ColorYellow),
 		tui.Text("  Min frame time:  %.2fms", app.metrics.MinFrameTime.Seconds()*1000),
 		tui.Text("  Max frame time:  %.2fms", app.metrics.MaxFrameTime.Seconds()*1000),
 		tui.Text("  Avg frame time:  %.2fms", app.metrics.AvgTimePerFrame.Seconds()*1000),
 		tui.Text("  Last frame time: %.2fms", app.metrics.LastFrameTime.Seconds()*1000),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Dirty Regions:").Fg(tui.ColorYellow),
 		tui.Text("  Last size:       %d cells", app.metrics.LastDirtyArea),
 		tui.Text("  Max size:        %d cells", app.metrics.MaxDirtyArea),
 		tui.Text("  Avg size:        %.0f cells", app.metrics.AvgDirtyArea),
-		tui.Spacer().MinHeight(1),
+		tui.Text(""),
 
 		tui.Text("Compact Summary:").Fg(tui.ColorYellow),
 		tui.Text("  %s", app.metrics.Compact()).Fg(tui.ColorGreen),

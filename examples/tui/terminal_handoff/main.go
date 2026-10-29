@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -74,7 +75,9 @@ func (a *editorApp) HandleEvent(event tui.Event) []tui.Cmd {
 		a.notice = "Editor output unreadable; draft retained"
 		return nil
 	}
-	a.draft = string(data)
+	// Editors end the file with a newline; drop it so a round trip without
+	// edits leaves the draft unchanged.
+	a.draft = strings.TrimSuffix(string(data), "\n")
 	a.notice = "Editor returned; draft restored without submission"
 	return nil
 }

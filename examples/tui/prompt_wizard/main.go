@@ -10,7 +10,7 @@
 //   - State management across steps
 //   - Summary at completion
 //
-// Run with: go run ./examples/prompt_wizard
+// Run with: go run ./examples/tui/prompt_wizard
 package main
 
 import (
