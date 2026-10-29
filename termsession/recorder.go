@@ -137,17 +137,17 @@ func DefaultRecordingOptions() RecordingOptions {
 //
 // Recorder is safe for concurrent use (all methods are thread-safe).
 type Recorder struct {
-	file          *os.File
-	writer        *bufio.Writer
-	gzipWriter    *gzip.Writer
-	startTime     time.Time
-	lastEventTime time.Time
-	pauseStart    time.Time
-	timeAdjust    time.Duration // cumulative time removed for idle clamping and pauses
-	mu            sync.Mutex
-	compress      bool
-	redactSecrets bool
-	idleTimeLimit time.Duration
+	file           *os.File
+	writer         *bufio.Writer
+	gzipWriter     *gzip.Writer
+	startTime      time.Time
+	lastEventTime  time.Time
+	pauseStart     time.Time
+	timeAdjust     time.Duration // cumulative time removed for idle clamping and pauses
+	mu             sync.Mutex
+	compress       bool
+	redactSecrets  bool
+	idleTimeLimit  time.Duration
 	paused         bool
 	closed         bool
 	width          int

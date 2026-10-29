@@ -30,6 +30,14 @@ import (
 //	renderer := gif.NewTerminalRenderer(emulator.Screen(), 8)
 //	renderer.RenderFrame(10)
 //	renderer.Save("output.gif")
+type Emulator struct {
+	screen  *TerminalScreen
+	fg      color.Color
+	bg      color.Color
+	pending string
+	skip    skipMode
+}
+
 type skipMode uint8
 
 const (
@@ -38,15 +46,6 @@ const (
 	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
 )
 
-type Emulator struct {
-	screen  *TerminalScreen
-	fg      color.Color
-	bg      color.Color
-	pending string
-	skip    skipMode
-	skipEsc bool
-}
-
 // maxPendingBytes bounds how many bytes of an incomplete escape sequence are
 // buffered between ProcessOutput calls before being dropped.
 const maxPendingBytes = 1 << 20
@@ -54,18 +53,6 @@ const maxPendingBytes = 1 << 20
 func (e *Emulator) savePending(s string) {
 	if len(s) <= maxPendingBytes {
 		e.pending = s
-		return
-	}
-	e.pending = ""
-	if len(s) >= 2 && s[0] == '\x1b' {
-		switch s[1] {
-		case ']':
-			e.skip = skipOSC
-			e.skipEsc = len(s) > 2 && s[len(s)-1] == '\x1b'
-		case 'P', 'X', '^', '_':
-			e.skip = skipST
-			e.skipEsc = len(s) > 2 && s[len(s)-1] == '\x1b'
-		}
 	}
 }
 
@@ -97,7 +84,6 @@ func (e *Emulator) Reset() {
 	e.bg = Black
 	e.pending = ""
 	e.skip = skipNone
-	e.skipEsc = false
 }
 
 // Resize changes the terminal dimensions, preserving as much existing content
@@ -156,27 +142,25 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 //   - OSC sequences (ESC]...): ignored (window title, etc.)
 //   - Control characters: \n, \r, \b, \t, and printable ASCII
 func (e *Emulator) ProcessOutput(data string) {
-	if data == "" {
-		return
-	}
-	if e.skip != skipNone {
-		if e.skipEsc {
-			data = "\x1b" + data
-			e.skipEsc = false
-		}
-		end, status := scanStringSequence(data, e.skip == skipOSC)
-		if status == seqIncomplete {
-			e.skipEsc = data[len(data)-1] == '\x1b'
-			return
-		}
-		e.skip = skipNone
-		data = data[end:]
-	}
 	if e.pending != "" {
 		data = e.pending + data
 		e.pending = ""
 	}
+	if data == "" {
+		return
+	}
 	i := 0
+	if e.skip != skipNone {
+		end, status := scanStringSequence(data, e.skip == skipOSC)
+		if status == seqIncomplete {
+			if data[len(data)-1] == '\x1b' {
+				e.pending = "\x1b"
+			}
+			return
+		}
+		e.skip = skipNone
+		i = end
+	}
 	for i < len(data) {
 		// Check for escape sequences
 		if data[i] == '\x1b' {
@@ -221,7 +205,10 @@ func (e *Emulator) ProcessOutput(data string) {
 				// OSC sequence: ESC ] ... (BEL | ESC \)
 				end, status := scanStringSequence(data[i+2:], true)
 				if status == seqIncomplete {
-					e.savePending(data[i:])
+					e.skip = skipOSC
+					if i+2 < len(data) && data[len(data)-1] == '\x1b' {
+						e.pending = "\x1b"
+					}
 					return
 				}
 				i += 2 + end
@@ -231,7 +218,10 @@ func (e *Emulator) ProcessOutput(data string) {
 				// DCS, SOS, PM, APC string sequence: ESC <type> ... ESC \
 				end, status := scanStringSequence(data[i+2:], false)
 				if status == seqIncomplete {
-					e.savePending(data[i:])
+					e.skip = skipST
+					if i+2 < len(data) && data[len(data)-1] == '\x1b' {
+						e.pending = "\x1b"
+					}
 					return
 				}
 				i += 2 + end

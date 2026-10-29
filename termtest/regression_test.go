@@ -280,6 +280,7 @@ func TestClusterSplitAcrossWrites(t *testing.T) {
 		{"flag", []string{"\U0001F1EF", "\U0001F1F5x"}, "\U0001F1EF\U0001F1F5x", 3, "\U0001F1EF\U0001F1F5", 2},
 		{"around SGR", []string{"e\x1b[31m\u0301x"}, "e\u0301x", 2, "e\u0301", 1},
 		{"after wide", []string{"世", "\u0301x"}, "世\u0301x", 3, "世\u0301", 2},
+		{"after space", []string{" ", "\u0301x"}, " \u0301x", 2, " \u0301", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -342,7 +343,7 @@ func TestDECSelectiveErase(t *testing.T) {
 func TestESCIntermediateSequencesConsumed(t *testing.T) {
 	s := NewScreen(20, 3)
 	// DECALN (ESC # 8), S7C1T (ESC SP F), UTF-8 charset (ESC % G)
-	s.Write([]byte("\x1b#8\x1b F\x1b") )
+	s.Write([]byte("\x1b#8\x1b F\x1b"))
 	s.Write([]byte("%GHello"))
 	assert.Equal(t, "Hello", s.Row(0))
 }
@@ -365,4 +366,3 @@ func TestOversizedStringSequenceSkippedAcrossWrites(t *testing.T) {
 
 	assert.Equal(t, "ok", s.Row(0))
 }
-

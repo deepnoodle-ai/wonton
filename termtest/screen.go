@@ -124,14 +124,6 @@ type Cell struct {
 	Continuation bool   // True if this cell is the continuation half of a wide glyph
 }
 
-type skipMode uint8
-
-const (
-	skipNone skipMode = iota
-	skipST            // skipping DCS/SOS/PM/APC payload until ST (ESC \)
-	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
-)
-
 // Screen represents a virtual terminal screen buffer that processes ANSI sequences.
 // It maintains a 2D grid of cells, cursor position, current text style, and handles
 // common terminal operations like scrolling, clearing, and cursor movement.
@@ -150,9 +142,16 @@ type Screen struct {
 	savedStyle  Style    // Saved style (ESC 7/8)
 	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
-	skip        skipMode // Non-zero while discarding an oversized OSC/DCS/SOS/PM/APC payload
-	skipEsc     bool     // True if the last discarded byte while skipping was ESC
+	skip        skipMode // Non-zero while discarding an incomplete OSC/DCS/SOS/PM/APC payload
 }
+
+type skipMode uint8
+
+const (
+	skipNone skipMode = iota
+	skipST            // skipping DCS/SOS/PM/APC payload until ST (ESC \)
+	skipOSC           // skipping OSC payload until BEL or ST (ESC \)
+)
 
 // NewScreen creates a new virtual terminal screen with the specified dimensions.
 // The screen is initialized with empty cells (spaces) and the cursor at position (0, 0).
@@ -369,10 +368,10 @@ func (s *Screen) extendPrevious(str string) string {
 		x--
 	}
 	prev := s.cells[y][x]
-	if prev.Char == 0 || (prev.Char == ' ' && prev.Trailing == "") {
+	if prev.Continuation || prev.Char == 0 {
 		return str
 	}
-	prevText := string(prev.Char) + prev.Trailing
+	prevText := cellGlyph(prev)
 	for cluster, width := range runewidth.Graphemes(prevText + str) {
 		if len(cluster) <= len(prevText) {
 			return str
@@ -451,47 +450,14 @@ const maxPendingBytes = 1 << 20
 //
 // Returns the number of bytes consumed (always len(p)) and no error.
 func (s *Screen) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
 	data := string(p)
-	if s.skip != skipNone {
-		if s.skipEsc {
-			data = "\x1b" + data
-			s.skipEsc = false
-		}
-		var end int
-		if s.skip == skipOSC {
-			end = s.parseOSC(data)
-		} else {
-			end = parseStringTerminator(data)
-		}
-		if end < 0 {
-			s.skipEsc = data[len(data)-1] == '\x1b'
-			return len(p), nil
-		}
-		s.skip = skipNone
-		data = data[end:]
-	}
 	if len(s.pending) > 0 {
 		data = string(s.pending) + data
 		s.pending = s.pending[:0]
 	}
 	consumed := s.processANSI(data)
-	if consumed < len(data) {
-		rem := data[consumed:]
-		if len(rem) <= maxPendingBytes {
-			s.pending = append(s.pending, rem...)
-		} else if len(rem) >= 2 && rem[0] == '\x1b' {
-			switch rem[1] {
-			case ']':
-				s.skip = skipOSC
-				s.skipEsc = len(rem) > 2 && rem[len(rem)-1] == '\x1b'
-			case 'P', 'X', '^', '_':
-				s.skip = skipST
-				s.skipEsc = len(rem) > 2 && rem[len(rem)-1] == '\x1b'
-			}
-		}
+	if consumed < len(data) && len(data)-consumed <= maxPendingBytes {
+		s.pending = append(s.pending, data[consumed:]...)
 	}
 	return len(p), nil
 }
@@ -524,7 +490,6 @@ func (s *Screen) Reset() {
 	s.savedStyle = Style{}
 	s.pending = nil
 	s.skip = skipNone
-	s.skipEsc = false
 }
 
 // ClearLine clears the current line.

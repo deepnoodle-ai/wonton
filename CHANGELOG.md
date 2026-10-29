@@ -107,19 +107,19 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `gif.Emulator` buffers an escape sequence or multi-byte UTF-8 character
   split across `ProcessOutput` or `Write` calls until the rest of the bytes
   arrive, instead of printing the tail of the sequence as text. It also
-  consumes DCS, SOS, PM, and APC string sequences and CAN/SUB-cancelled CSI
-  sequences, discards string payloads that pass 1 MiB through their
-  terminator, and treats an explicit `0` parameter as `1` in cursor movement
-  sequences (`CSI 0 A` through `G`, `d`, `H`, and `f`). (#134)
+  consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
+  string payloads across calls without buffering them) and CAN/SUB-cancelled
+  CSI sequences, and treats an explicit `0` parameter as `1` in cursor
+  movement sequences (`CSI 0 A` through `G`, `d`, `H`, and `f`). (#134)
 - `termtest.Screen` joins a combining mark, variation selector, or ZWJ
   continuation written in a separate `Write`, `WriteString`, or `WriteRune`
   call (or after an SGR sequence) onto the cell before the cursor, ignores
   standalone zero-width clusters instead of overwriting the current cell, and
-  discards string sequence payloads that pass 1 MiB through their terminator.
-  Its ANSI parser also ignores `<`-prefixed private CSI sequences and CSI
-  sequences with intermediate bytes, handles `CSI ? J` and `CSI ? K`
-  selective erases, and consumes intermediate `ESC` sequences such as
-  `ESC # 8`. (#134)
+  streams incomplete OSC, DCS, SOS, PM, and APC payloads across writes
+  without buffering them. Its ANSI parser also ignores `<`-prefixed private
+  CSI sequences and CSI sequences with intermediate bytes, handles `CSI ? J`
+  and `CSI ? K` selective erases, and consumes intermediate `ESC` sequences
+  such as `ESC # 8`. (#134)
 - `termsession.Player` honors `Seek` called before `Play`, caps an initial
   idle delay before the first event when `MaxIdle` is set, and holds its read
   lock across the end-of-events check and event read in `Play` so a

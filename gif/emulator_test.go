@@ -627,4 +627,3 @@ func TestEmulator_StringAndCancelledSequences(t *testing.T) {
 		}
 	})
 }
-

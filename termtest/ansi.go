@@ -11,7 +11,26 @@ import (
 // sequence or UTF-8 rune is left unconsumed so Write can buffer it until
 // the remaining bytes arrive.
 func (s *Screen) processANSI(data string) int {
+	if len(data) == 0 {
+		return 0
+	}
 	i := 0
+	if s.skip != skipNone {
+		var end int
+		if s.skip == skipOSC {
+			end = s.parseOSC(data)
+		} else {
+			end = parseStringTerminator(data)
+		}
+		if end < 0 {
+			if data[len(data)-1] == '\x1b' {
+				return len(data) - 1
+			}
+			return len(data)
+		}
+		s.skip = skipNone
+		i = end
+	}
 	for i < len(data) {
 		if data[i] == '\x1b' {
 			// Start of escape sequence
@@ -39,7 +58,11 @@ func (s *Screen) processANSI(data string) int {
 					i += 2 + end
 					continue
 				}
-				return i // Incomplete sequence
+				s.skip = skipOSC
+				if i+2 < len(data) && data[len(data)-1] == '\x1b' {
+					return len(data) - 1
+				}
+				return len(data)
 			case 'P', 'X', '^', '_':
 				// DCS/SOS/PM/APC: string sequence, consume payload through ST
 				end := parseStringTerminator(data[i+2:])
@@ -47,7 +70,11 @@ func (s *Screen) processANSI(data string) int {
 					i += 2 + end
 					continue
 				}
-				return i // Incomplete sequence
+				s.skip = skipST
+				if i+2 < len(data) && data[len(data)-1] == '\x1b' {
+					return len(data) - 1
+				}
+				return len(data)
 			case '7':
 				// Save cursor and attributes (DECSC)
 				s.savedX = s.cursorX

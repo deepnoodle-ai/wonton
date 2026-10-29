@@ -496,4 +496,3 @@ func TestRecorder_UpdateSizeWhilePausedRecordedOnResume(t *testing.T) {
 	assert.Equal(t, "o", events[1].Type)
 	assert.Equal(t, "after", events[1].Data)
 }
-
