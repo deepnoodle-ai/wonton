@@ -128,6 +128,43 @@ func TestTerminal_Unbuffered_PrintAtThenPrint(t *testing.T) {
 	assert.Equal(t, "\x1b[1;8H\x1b[1;8Hx\x1b[1;9Hy", out.String())
 }
 
+// Before SetStyle, the implicit style drew black on black (\x1b[0;30;40m).
+func TestTerminal_DefaultStyle_Unbuffered(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(10, 2)
+	term.Print("ab")
+	assert.Equal(t, "\x1b[1;1Hab", out.String())
+}
+
+func TestTerminal_DefaultStyle_Buffered(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTestTerminal(10, 1, &out)
+	term.PrintStyled("x", NewStyle().WithForeground(ColorRed))
+	term.Print("ab")
+	term.Flush()
+	assert.Equal(t, "\x1b[?2026h\x1b[?25l\x1b[1;1H\x1b[0;31mx\x1b[0mab\x1b[?25h\x1b[?2026l", out.String())
+}
+
+func TestTerminal_DefaultStyle_Cells(t *testing.T) {
+	tests := []struct {
+		name string
+		draw func(term *Terminal)
+	}{
+		{"Print", func(term *Terminal) { term.Print("a") }},
+		{"Println", func(term *Terminal) { term.Println("a") }},
+		{"Fill", func(term *Terminal) { term.Fill(0, 0, 1, 1, '#') }},
+		{"Clear", func(term *Terminal) { term.Clear() }},
+		{"ClearLine", func(term *Terminal) { term.ClearLine() }},
+		{"ClearToEndOfLine", func(term *Terminal) { term.ClearToEndOfLine() }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			term := NewTestTerminal(4, 2, &bytes.Buffer{})
+			tt.draw(term)
+			assert.Equal(t, NewStyle(), term.backBuffer[0][0].Style)
+		})
+	}
+}
+
 func TestTerminal_Unbuffered_CursorMovesMatchBuffered(t *testing.T) {
 	tests := []struct {
 		name  string
