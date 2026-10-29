@@ -85,6 +85,10 @@ func (e *Emulator) Resize(cols, rows int) {
 		for x := 0; x < maxCols; x++ {
 			newScreen.Cells[y][x] = e.screen.Cells[y][x]
 		}
+		// A wide cluster cut in half by the new right edge becomes a space.
+		if maxCols > 0 && newScreen.Cells[y][maxCols-1].Width == 2 {
+			newScreen.SetCell(maxCols-1, y, ' ', nil, newScreen.Cells[y][maxCols-1].BG)
+		}
 	}
 
 	// Adjust cursor position
@@ -169,11 +173,7 @@ func (e *Emulator) ProcessOutput(data string) {
 		switch r {
 		case '\n':
 			e.screen.CursorX = 0
-			e.screen.CursorY++
-			if e.screen.CursorY >= e.screen.Height {
-				e.screen.scrollUp()
-				e.screen.CursorY = e.screen.Height - 1
-			}
+			e.screen.lineFeed()
 		case '\r':
 			e.screen.CursorX = 0
 		case '\b':
@@ -189,16 +189,17 @@ func (e *Emulator) ProcessOutput(data string) {
 		case '\x07': // Bell - ignore
 		default:
 			if r >= 32 { // Printable character
-				if e.screen.CursorX >= e.screen.Width {
-					e.screen.CursorX = 0
-					e.screen.CursorY++
-					if e.screen.CursorY >= e.screen.Height {
-						e.screen.scrollUp()
-						e.screen.CursorY = e.screen.Height - 1
-					}
+				// Print the run up to the next control character or escape
+				// at once, so the screen can split it into grapheme
+				// clusters. ESC and the other controls are below 0x20, and
+				// multi-byte UTF-8 sequences contain no such bytes.
+				end := i + size
+				for end < len(data) && data[end] >= 0x20 {
+					end++
 				}
-				e.screen.SetCell(e.screen.CursorX, e.screen.CursorY, r, e.fg, e.bg)
-				e.screen.CursorX++
+				e.screen.print(data[i:end], e.fg, e.bg)
+				i = end
+				continue
 			}
 		}
 		i += size

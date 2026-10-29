@@ -2,14 +2,37 @@ package gif
 
 import (
 	"image/color"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // TerminalCell represents a single character cell in a terminal screen,
 // including the character itself and its foreground and background colors.
+//
+// A cell holds one grapheme cluster: Char is its first rune and Trailing
+// holds the rest, such as a combining mark, a variation selector, or the
+// other runes of an emoji ZWJ sequence. A wide cluster (CJK, most emoji)
+// occupies two columns: the cell in the first has Width 2, and the cell in
+// the second is a Continuation cell with no character of its own.
 type TerminalCell struct {
-	Char rune        // The Unicode character displayed in this cell
-	FG   color.Color // Foreground (text) color
-	BG   color.Color // Background color
+	Char         rune        // First rune of the grapheme cluster displayed in this cell
+	Trailing     string      // Remaining runes of a multi-rune cluster; usually empty
+	Width        int         // Columns the cluster occupies: 1 or 2, or 0 for a continuation cell
+	Continuation bool        // True if this cell is the second column of a wide cluster
+	FG           color.Color // Foreground (text) color
+	BG           color.Color // Background color
+}
+
+// Text returns the grapheme cluster displayed in the cell, or "" for a
+// continuation cell.
+func (c TerminalCell) Text() string {
+	if c.Continuation || c.Char == 0 {
+		return ""
+	}
+	return string(c.Char) + c.Trailing
 }
 
 // TerminalScreen represents a virtual terminal screen buffer with character
@@ -40,29 +63,25 @@ func NewTerminalScreen(cols, rows int) *TerminalScreen {
 	}
 	ts.Cells = make([][]TerminalCell, rows)
 	for y := 0; y < rows; y++ {
-		ts.Cells[y] = make([]TerminalCell, cols)
-		for x := 0; x < cols; x++ {
-			ts.Cells[y][x] = TerminalCell{
-				Char: ' ',
-				FG:   ts.DefaultFG,
-				BG:   ts.DefaultBG,
-			}
-		}
+		ts.Cells[y] = ts.blankRow()
 	}
 	return ts
+}
+
+// blankRow returns a row of spaces in the default colors.
+func (ts *TerminalScreen) blankRow() []TerminalCell {
+	row := make([]TerminalCell, ts.Width)
+	for x := range row {
+		row[x] = TerminalCell{Char: ' ', Width: 1, FG: ts.DefaultFG, BG: ts.DefaultBG}
+	}
+	return row
 }
 
 // Clear clears the entire screen, filling all cells with spaces using the
 // default foreground and background colors. The cursor is reset to position (0,0).
 func (ts *TerminalScreen) Clear() {
 	for y := 0; y < ts.Height; y++ {
-		for x := 0; x < ts.Width; x++ {
-			ts.Cells[y][x] = TerminalCell{
-				Char: ' ',
-				FG:   ts.DefaultFG,
-				BG:   ts.DefaultBG,
-			}
-		}
+		ts.Cells[y] = ts.blankRow()
 	}
 	ts.CursorX = 0
 	ts.CursorY = 0
@@ -71,6 +90,9 @@ func (ts *TerminalScreen) Clear() {
 // SetCell sets the character and colors for a cell at the specified position.
 // If the position is out of bounds, the call is silently ignored. Nil colors
 // are replaced with the default foreground or background colors.
+//
+// The character takes one column. Writing over either half of a wide
+// cluster blanks its other half, as a terminal does.
 func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 	if x < 0 || x >= ts.Width || y < 0 || y >= ts.Height {
 		return
@@ -81,7 +103,20 @@ func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 	if bg == nil {
 		bg = ts.DefaultBG
 	}
-	ts.Cells[y][x] = TerminalCell{Char: char, FG: fg, BG: bg}
+	ts.breakWide(x, y)
+	ts.Cells[y][x] = TerminalCell{Char: char, Width: 1, FG: fg, BG: bg}
+}
+
+// breakWide prepares the cell at (x, y) to be overwritten. If it is half of
+// a wide cluster, the other half becomes a space in the same colors, so no
+// orphaned half is left behind.
+func (ts *TerminalScreen) breakWide(x, y int) {
+	row := ts.Cells[y]
+	if row[x].Continuation && x > 0 {
+		row[x-1] = TerminalCell{Char: ' ', Width: 1, FG: row[x-1].FG, BG: row[x-1].BG}
+	} else if row[x].Width == 2 && x+1 < ts.Width && row[x+1].Continuation {
+		row[x+1] = TerminalCell{Char: ' ', Width: 1, FG: row[x+1].FG, BG: row[x+1].BG}
+	}
 }
 
 // WriteString writes a string to the screen starting at the current cursor
@@ -89,6 +124,10 @@ func (ts *TerminalScreen) SetCell(x, y int, char rune, fg, bg color.Color) {
 // the cursor to the start of the next line. Carriage returns (\r) move to the
 // start of the current line. The screen scrolls up if text extends beyond the
 // bottom row.
+//
+// Each grapheme cluster takes one cell, or two for a wide cluster, so the
+// cursor advances by display width rather than by rune. Zero-width text with
+// no cluster to join, such as a stray combining mark, takes no cell.
 func (ts *TerminalScreen) WriteString(s string, fg, bg color.Color) {
 	if ts.Height <= 0 || ts.Width <= 0 {
 		return
@@ -99,30 +138,116 @@ func (ts *TerminalScreen) WriteString(s string, fg, bg color.Color) {
 	if bg == nil {
 		bg = ts.DefaultBG
 	}
-	for _, r := range s {
-		if r == '\n' {
+	for len(s) > 0 {
+		switch s[0] {
+		case '\n':
 			ts.CursorX = 0
-			ts.CursorY++
-			if ts.CursorY >= ts.Height {
-				ts.scrollUp()
-				ts.CursorY = ts.Height - 1
-			}
+			ts.lineFeed()
+			s = s[1:]
+			continue
+		case '\r':
+			ts.CursorX = 0
+			s = s[1:]
 			continue
 		}
-		if r == '\r' {
-			ts.CursorX = 0
-			continue
+		end := strings.IndexAny(s, "\r\n")
+		if end < 0 {
+			end = len(s)
 		}
-		if ts.CursorX >= ts.Width {
-			ts.CursorX = 0
-			ts.CursorY++
-			if ts.CursorY >= ts.Height {
-				ts.scrollUp()
-				ts.CursorY = ts.Height - 1
-			}
+		ts.print(s[:end], fg, bg)
+		s = s[end:]
+	}
+}
+
+// print writes text containing no line breaks at the cursor, one grapheme
+// cluster per cell, or two cells for a wide cluster. Text that continues the
+// cluster before the cursor, such as a combining mark or variation selector
+// written separately from its base, joins that cluster.
+func (ts *TerminalScreen) print(s string, fg, bg color.Color) {
+	if ts.Height <= 0 || ts.Width <= 0 {
+		return
+	}
+	s = ts.extendPrevious(s)
+	for cluster, width := range runewidth.Graphemes(s) {
+		ts.putCluster(cluster, width, fg, bg)
+	}
+}
+
+// extendPrevious joins the start of s to the cluster in the cell before the
+// cursor when Unicode segmentation makes them one cluster, and returns the
+// rest of s.
+func (ts *TerminalScreen) extendPrevious(s string) string {
+	// ASCII never extends a cluster: only LF does, after CR.
+	if s == "" || s[0] < utf8.RuneSelf || ts.CursorX <= 0 {
+		return s
+	}
+	x, y := min(ts.CursorX, ts.Width)-1, ts.CursorY
+	if ts.Cells[y][x].Continuation && x > 0 {
+		x--
+	}
+	prev := ts.Cells[y][x]
+	prevText := prev.Text()
+	if prevText == "" {
+		return s
+	}
+	for cluster, width := range runewidth.Graphemes(prevText + s) {
+		if len(cluster) <= len(prevText) {
+			return s
 		}
-		ts.Cells[ts.CursorY][ts.CursorX] = TerminalCell{Char: r, FG: fg, BG: bg}
-		ts.CursorX++
+		// Rewrite the joined cluster in its base's place and colors. Its
+		// width can change, as when VS16 gives a symbol emoji presentation.
+		// If the wider cluster no longer fits before the right edge, it
+		// keeps its old width, so it stays where it was printed instead of
+		// wrapping to the next line.
+		if x+width > ts.Width {
+			width = max(prev.Width, 1)
+		}
+		ts.SetCell(x, y, ' ', prev.FG, prev.BG)
+		ts.CursorX = x
+		ts.putCluster(cluster, width, prev.FG, prev.BG)
+		return s[len(cluster)-len(prevText):]
+	}
+	return s
+}
+
+// putCluster writes one grapheme cluster at the cursor and advances the
+// cursor by its width, wrapping to the next line first if it does not fit.
+func (ts *TerminalScreen) putCluster(cluster string, width int, fg, bg color.Color) {
+	switch {
+	case width == 0:
+		// Zero-width text with no cluster to join, such as a combining
+		// mark at the start of a line, takes no cell.
+		return
+	case width > 2:
+		// runewidth gives U+2E3A and U+2E3B widths 3 and 4, but terminals
+		// draw them in one cell.
+		width = 1
+	}
+	if width > ts.Width {
+		// A wide cluster never fits a one-column screen.
+		return
+	}
+	if ts.CursorX+width > ts.Width {
+		ts.CursorX = 0
+		ts.lineFeed()
+	}
+	x, y := ts.CursorX, ts.CursorY
+	first, size := utf8.DecodeRuneInString(cluster)
+	ts.breakWide(x, y)
+	if width == 2 {
+		ts.breakWide(x+1, y)
+		ts.Cells[y][x+1] = TerminalCell{Continuation: true, FG: fg, BG: bg}
+	}
+	ts.Cells[y][x] = TerminalCell{Char: first, Trailing: cluster[size:], Width: width, FG: fg, BG: bg}
+	ts.CursorX += width
+}
+
+// lineFeed moves the cursor down one line, scrolling at the bottom row.
+func (ts *TerminalScreen) lineFeed() {
+	ts.CursorY++
+	if ts.CursorY >= ts.Height {
+		ts.scrollUp()
+		ts.CursorY = ts.Height - 1
 	}
 }
 
@@ -136,14 +261,7 @@ func (ts *TerminalScreen) scrollUp() {
 		ts.Cells[y-1] = ts.Cells[y]
 	}
 	// Clear the bottom line
-	ts.Cells[ts.Height-1] = make([]TerminalCell, ts.Width)
-	for x := 0; x < ts.Width; x++ {
-		ts.Cells[ts.Height-1][x] = TerminalCell{
-			Char: ' ',
-			FG:   ts.DefaultFG,
-			BG:   ts.DefaultBG,
-		}
-	}
+	ts.Cells[ts.Height-1] = ts.blankRow()
 }
 
 // MoveCursor moves the cursor to the specified position, clamping coordinates
@@ -311,33 +429,48 @@ func (tr *TerminalRenderer) RenderFrame(delay int) {
 		// Fill background
 		f.Fill(tr.screen.DefaultBG)
 
-		// Render each cell
+		// Fill every cell background before drawing any glyph, so the
+		// second column of a wide glyph is not painted over.
+		for y := 0; y < tr.screen.Height; y++ {
+			for x := 0; x < tr.screen.Width; x++ {
+				pixelX := tr.padding + x*tr.cellWidth
+				pixelY := tr.padding + y*tr.cellHeight
+				f.FillRect(pixelX, pixelY, tr.cellWidth, tr.cellHeight, tr.screen.Cells[y][x].BG)
+			}
+		}
+
+		// Draw characters. A continuation cell has no glyph of its own.
 		for y := 0; y < tr.screen.Height; y++ {
 			for x := 0; x < tr.screen.Width; x++ {
 				cell := tr.screen.Cells[y][x]
+				if cell.Continuation || cell.Char == 0 || (cell.Char == ' ' && cell.Trailing == "") {
+					continue
+				}
 				pixelX := tr.padding + x*tr.cellWidth
 				pixelY := tr.padding + y*tr.cellHeight
-
-				// Fill cell background
-				f.FillRect(pixelX, pixelY, tr.cellWidth, tr.cellHeight, cell.BG)
-
-				// Draw character
-				if cell.Char != ' ' && cell.Char != 0 {
-					tr.drawChar(f, pixelX, pixelY, cell.Char, cell.FG)
-				}
+				tr.drawCell(f, pixelX, pixelY, cell)
 			}
 		}
 	}, delay)
 }
 
-// drawChar draws a character at the given pixel position.
-func (tr *TerminalRenderer) drawChar(f *Frame, px, py int, char rune, fg color.Color) {
-	if tr.font != nil {
-		// Use TTF font
-		tr.font.DrawChar(f.img, px, py, char, fg)
-	} else {
-		// Use bitmap font
-		DrawBitmapChar(f, px, py, char, fg, tr.bitmapFont)
+// drawCell draws a cell's grapheme cluster at the given pixel position.
+//
+// A TTF font also draws the cluster's combining marks over its first rune.
+// The renderer does no mark positioning, so a mark drawn after its base
+// would land in the next cell. Other trailing runes, such as the rest of an
+// emoji ZWJ sequence, need text shaping and are not drawn. Bitmap fonts draw
+// only the first rune, since they draw a box for any glyph they lack.
+func (tr *TerminalRenderer) drawCell(f *Frame, px, py int, cell TerminalCell) {
+	if tr.font == nil {
+		DrawBitmapChar(f, px, py, cell.Char, cell.FG, tr.bitmapFont)
+		return
+	}
+	tr.font.DrawChar(f.img, px, py, cell.Char, cell.FG)
+	for _, r := range cell.Trailing {
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			tr.font.DrawChar(f.img, px, py, r, cell.FG)
+		}
 	}
 }
 
