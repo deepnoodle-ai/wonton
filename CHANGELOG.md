@@ -35,8 +35,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   the rest of an escape sequence after ESC. The default is 50ms.
 - The `gif` terminal renderer draws emoji and CJK text with fallback fonts,
   set by `RendererOptions.FallbackFonts` and `CastOptions.FallbackFonts`. The
-  default is an embedded Noto Emoji font, then installed CJK and symbol
-  fonts. The embedded font adds about 870 KB to programs that import `gif`.
+  default is an embedded Noto Emoji font (monochrome), then installed CJK
+  and symbol fonts. The embedded font adds about 870 KB to programs that
+  import `gif`.
 - `gif.TerminalCell` holds a whole grapheme cluster, with `Trailing`,
   `Width`, and `Continuation` fields and a `Text` method, like
   `terminal.Cell`.
@@ -60,7 +61,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   black on black until the first `SetStyle` or `Reset`.
 - In non-buffered mode, `terminal.Terminal` tracks the cursor as buffered
   mode does, so `Print` draws where `MoveCursor` put it (#125). It sends
-  newlines as CRLF, so text after a newline starts at column 0 (#130).
+  newlines as CRLF, so text after a newline starts at column 0, and
+  `Println` writes a newline, so on the last line it scrolls the screen
+  (#130).
 - In non-buffered mode, `terminal.Terminal.SetCell`, `Fill`, and
   `FillStyled` clip to the terminal. Before, they wrote outside it, and a
   negative width panicked. (#136)
@@ -77,8 +80,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   report, a cut-off legacy mouse report, or invalid UTF-8. Before, a
   malformed mouse report stopped `tui` input for good. (#136)
 - `terminal.Terminal.DetectKittyProtocol` works on a real terminal and no
-  longer swallows the next key typed. `tui` now turns on the Kitty keyboard
-  protocol where the terminal supports it. (#136)
+  longer swallows the next key typed. Keys typed while the probe waits for
+  the reply are dropped. `tui` now turns on the Kitty keyboard protocol where
+  the terminal supports it. (#136)
 - `terminal.Terminal` recordings include the alternate screen, cursor
   visibility, and non-buffered clears and cursor moves, so a replay matches
   the session. Input modes are still not recorded. (#109)
@@ -100,8 +104,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
   first delay, and no longer panics on a concurrent `Seek` past the end.
   `termsession.Recorder` records a resize made while paused. (#134)
 - `cli.Context.Input` and a single-line `tui.Input` or `tui.InputField`
-  submit on LF, Ctrl+J, Shift+Enter, and Alt+Enter. A multiline input still
-  inserts a newline. (#83)
+  submit on LF, Ctrl+J, Shift+Enter, and Alt+Enter where the terminal sends
+  it as ESC+CR. A multiline input still inserts a newline. (#83)
 - In `tui.Input` and `tui.InputField`, the cursor on a wrapped character
   draws at the start of the next row, and Up and Down move between wrapped
   rows correctly. (#135)
