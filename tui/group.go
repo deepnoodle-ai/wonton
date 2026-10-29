@@ -199,7 +199,7 @@ func (g *GroupView) size(maxWidth, maxHeight int) (int, int) {
 func canShrinkInFlexRow(child View) bool {
 	// Wrapped text can reflow to the row's remaining width; treating its
 	// natural width as a minimum would make it clip before it gets to wrap.
-	if text, ok := child.(*TextView); ok {
+	if text, ok := unwrapHitArea(child).(*TextView); ok {
 		return text.wrap
 	}
 	return false

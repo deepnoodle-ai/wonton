@@ -72,6 +72,19 @@ func (h *HitMap) Bounds(key string) (image.Rectangle, bool) {
 	return image.Rectangle{}, false
 }
 
+// unwrapHitArea returns the view inside any HitMap areas wrapped around v.
+// Layout code that checks a child's concrete type looks through areas with
+// it, so wrapping a view in an area does not change its layout.
+func unwrapHitArea(v View) View {
+	for {
+		area, ok := v.(*hitAreaView)
+		if !ok {
+			return v
+		}
+		v = area.child
+	}
+}
+
 type hitAreaView struct {
 	hits  *HitMap
 	key   string

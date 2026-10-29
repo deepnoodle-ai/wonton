@@ -88,3 +88,14 @@ func TestHitMapAreaAroundSpacerKeepsGroupFixed(t *testing.T) {
 	assert.Equal(t, screen.Row(1), "body")
 	assert.Equal(t, screen.Row(5), "footer")
 }
+
+func TestHitMapAreaAroundWrappedTextKeepsReflow(t *testing.T) {
+	var hits HitMap
+	// Wrapped text in a flex row reflows to the width left over. Wrapping it
+	// in an area must not make it clip at its natural width instead.
+	text := func() *TextView { return Text("alpha beta gamma delta").Wrap() }
+	plain := SprintScreen(Group(Text("label: "), text().Flex(1)), WithWidth(20), WithHeight(4))
+	wrapped := SprintScreen(Group(Text("label: "), hits.Area("text", text().Flex(1))), WithWidth(20), WithHeight(4))
+	assert.Equal(t, wrapped.Text(), plain.Text())
+	assert.Equal(t, plain.Row(1), "       gamma delta")
+}

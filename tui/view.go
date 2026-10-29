@@ -102,16 +102,8 @@ func (s *SpacerView) flex() int {
 // leaves layout alone (HitMap.Area). A container does not become flexible
 // because it holds a Spacer.
 func isSpacer(v View) bool {
-	for {
-		switch w := v.(type) {
-		case *SpacerView:
-			return true
-		case *hitAreaView:
-			v = w.child
-		default:
-			return false
-		}
-	}
+	_, ok := unwrapHitArea(v).(*SpacerView)
+	return ok
 }
 
 func (s *SpacerView) render(ctx *RenderContext) {
