@@ -113,6 +113,119 @@ func TestTerminal_SaveRestoreCursor(t *testing.T) {
 	assert.Equal(t, 10, term.virtualY)
 }
 
+func newUnbufferedTestTerminal(width, height int) (*Terminal, *bytes.Buffer) {
+	var out bytes.Buffer
+	term := NewTestTerminal(width, height, &out)
+	term.buffered = false
+	return term, &out
+}
+
+func TestTerminal_Unbuffered_PrintAtThenPrint(t *testing.T) {
+	// Issue #125: x was drawn at column 0, then y drew over it.
+	term, out := newUnbufferedTestTerminal(30, 2)
+	term.PrintAtStyled(7, 0, "x", NewStyle())
+	term.PrintStyled("y", NewStyle())
+	assert.Equal(t, "\x1b[1;8H\x1b[1;8Hx\x1b[1;9Hy", out.String())
+}
+
+func TestTerminal_Unbuffered_CursorMovesMatchBuffered(t *testing.T) {
+	tests := []struct {
+		name  string
+		moves func(term *Terminal)
+		x, y  int
+	}{
+		{"up", func(term *Terminal) { term.MoveCursor(5, 3); term.MoveCursorUp(2) }, 5, 1},
+		{"down", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorDown(2) }, 5, 3},
+		{"left", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorLeft(3) }, 2, 1},
+		{"right", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorRight(3) }, 8, 1},
+		{"up clamps", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorUp(9) }, 5, 0},
+		{"down clamps", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorDown(9) }, 5, 4},
+		{"left clamps", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorLeft(9) }, 0, 1},
+		{"right clamps", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorRight(99) }, 19, 1},
+		{"zero is a no-op", func(term *Terminal) { term.MoveCursor(5, 1); term.MoveCursorUp(0) }, 5, 1},
+		{"save and restore", func(term *Terminal) {
+			term.MoveCursor(4, 2)
+			term.SaveCursor()
+			term.MoveCursor(0, 0)
+			term.PrintStyled("abc", NewStyle())
+			term.RestoreCursor()
+		}, 4, 2},
+		{"print advances", func(term *Terminal) { term.PrintAtStyled(2, 1, "abc", NewStyle()) }, 5, 1},
+		{"wide characters", func(term *Terminal) { term.PrintAtStyled(0, 0, "世A", NewStyle()) }, 3, 0},
+		{"newline", func(term *Terminal) { term.PrintAtStyled(5, 0, "ab\ncd", NewStyle()) }, 2, 1},
+		{"tab takes no column", func(term *Terminal) { term.PrintAtStyled(0, 0, "a\tb", NewStyle()) }, 2, 0},
+		{"wraps at the right edge", func(term *Terminal) { term.PrintAtStyled(18, 0, "abcd", NewStyle()) }, 2, 1},
+		{"wide character wraps whole", func(term *Terminal) { term.PrintAtStyled(19, 0, "世", NewStyle()) }, 2, 1},
+		{"filled line", func(term *Terminal) { term.PrintAtStyled(17, 0, "abc", NewStyle()) }, 20, 0},
+		{"after filled line", func(term *Terminal) {
+			term.PrintAtStyled(17, 0, "abc", NewStyle())
+			term.PrintStyled("d", NewStyle())
+		}, 1, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buffered := NewTestTerminal(20, 5, &bytes.Buffer{})
+			unbuffered, _ := newUnbufferedTestTerminal(20, 5)
+			tt.moves(buffered)
+			tt.moves(unbuffered)
+
+			x, y := unbuffered.CursorPosition()
+			assert.Equal(t, tt.x, x)
+			assert.Equal(t, tt.y, y)
+			bx, by := buffered.CursorPosition()
+			assert.Equal(t, bx, x)
+			assert.Equal(t, by, y)
+		})
+	}
+}
+
+func TestTerminal_Unbuffered_PrintStartsAtMovedCursor(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(20, 5)
+	term.MoveCursor(5, 1)
+	term.MoveCursorRight(3)
+	term.MoveCursorDown(1)
+	out.Reset()
+	term.PrintStyled("a", NewStyle())
+	assert.Equal(t, "\x1b[3;9Ha", out.String())
+
+	term.SaveCursor()
+	term.PrintAtStyled(0, 0, "abc", NewStyle())
+	term.RestoreCursor()
+	out.Reset()
+	term.PrintStyled("z", NewStyle())
+	assert.Equal(t, "\x1b[3;10Hz", out.String())
+}
+
+func TestTerminal_Unbuffered_PrintAfterFilledLine(t *testing.T) {
+	term, out := newUnbufferedTestTerminal(10, 2)
+	term.PrintAtStyled(7, 0, "abc", NewStyle())
+	out.Reset()
+	term.PrintStyled("d", NewStyle())
+	assert.Equal(t, "\x1b[2;1Hd", out.String())
+
+	// On the last line, a newline scrolls the screen to make a new line.
+	term.PrintAtStyled(8, 1, "ef", NewStyle())
+	out.Reset()
+	term.PrintStyled("g", NewStyle())
+	assert.Equal(t, "\x1b[2;1H\ng", out.String())
+	x, y := term.CursorPosition()
+	assert.Equal(t, 1, x)
+	assert.Equal(t, 1, y)
+}
+
+func TestTerminal_Unbuffered_PrintPastLastLineScrolls(t *testing.T) {
+	term, _ := newUnbufferedTestTerminal(10, 2)
+	term.PrintAtStyled(0, 1, "a\nbc", NewStyle())
+	x, y := term.CursorPosition()
+	assert.Equal(t, 2, x)
+	assert.Equal(t, 1, y)
+
+	term.PrintAtStyled(8, 1, "wxyz", NewStyle())
+	x, y = term.CursorPosition()
+	assert.Equal(t, 2, x)
+	assert.Equal(t, 1, y)
+}
+
 func TestTerminal_BeginEndFrame(t *testing.T) {
 	term := NewTestTerminal(80, 24, &bytes.Buffer{})
 

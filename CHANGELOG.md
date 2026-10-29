@@ -74,6 +74,14 @@ bug fixes. Release notes identify incompatible changes explicitly.
   cell before the cursor, and writing or erasing over half of a wide cluster
   blanks the other half. With a TTF font, the renderer draws combining marks
   over their base character.
+- In non-buffered mode, `terminal.Terminal` now tracks the cursor the way
+  buffered mode does. `MoveCursor`, `MoveCursorUp`, `MoveCursorDown`,
+  `MoveCursorLeft`, `MoveCursorRight`, `SaveCursor`, and `RestoreCursor`
+  update the position that `Print` and `PrintStyled` draw at, and
+  `CursorPosition` reports. Each print advances the position by display
+  width, wraps at the right edge, and starts a new line at a newline. Before,
+  `PrintAtStyled(7, 0, "x", style)` drew `x` at column 0, and the next
+  `PrintStyled` drew over it. (#125)
 
 ## [0.9.0] - 2026-10-24
 
