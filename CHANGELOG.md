@@ -11,262 +11,120 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-29
+
 ### Added
 
-- `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits
-  after an ESC byte for the rest of an escape sequence. The default is
-  `terminal.DefaultEscapeTimeout`, 50ms. Zero turns the wait off.
-- `gif.TerminalCell` has `Trailing`, `Width`, and `Continuation` fields and a
-  `Text` method, matching `terminal.Cell`. A cell holds a whole grapheme
-  cluster, and a wide cluster's second column is a continuation cell.
-- The `gif` terminal renderer draws emoji and CJK text with fallback fonts
-  when its TTF font has no glyph for a character. `RendererOptions` and
-  `CastOptions` have a `FallbackFonts` field. By default the renderer uses
-  the embedded Noto Emoji font (monochrome), then installed CJK and symbol
-  fonts. Flags, keycaps, skin tones, and ZWJ sequences draw as one glyph.
-  `gif.ParseFallbackFont` loads another font, and `gif.EmojiFallbackFont`,
-  `gif.SystemFallbackFonts`, and `gif.DefaultFallbackFonts` return the
-  built-in choices. The embedded font adds about 870 KB to programs that
-  import `gif`.
-- `terminal.Redactor` redacts secrets in a stream that arrives in chunks,
-  such as PTY reads. `Redact` returns each chunk redacted, less the run of
-  text at its end, which the next chunk can continue. `Flush` returns that
-  text when the stream ends or pauses and resets the redactor. The zero
-  value is ready to use. (#126)
 - New `tmux` package: live terminals backed by tmux sessions. `Server.Open`
-  attaches a `Terminal` to a session (creating it if needed) over a
-  control-mode connection, captures the pane into a `Screen` of cells
-  whenever its program writes, and sends keys, pastes, and mouse events
-  back. Sessions outlive the program, so it can detach and reattach.
-  `Control` is the control-mode client underneath, and `Server` runs
-  one-shot commands and reads and writes user options.
-- `tui.Split` and `tui.SplitState`: columns and rows of panes that nest to
-  any depth, with gaps the user drags to resize. `SplitState` adds, splits,
-  removes, and equalizes panes, and reports `PaneAt`, `DividerAt`,
-  `Neighbor`, and `Bounds` in screen coordinates. Its tree is plain data
-  that `encoding/json` saves and restores. `Tight` drops the gaps for
-  panes with borders of their own, which then touch and are dragged by
-  the border cells where they meet.
-- `tui.Menu` and `tui.MenuState`: a popup menu for right-click and keyboard
-  use, with hints, separators, disabled and destructive entries. It opens
-  at a screen position, moves to stay on screen, and is modal while open.
-- `tui.HitMap` records where tagged views were drawn so an event handler can
-  ask which one is under the pointer.
-- `tui.Cells` draws a grid of `tui.Cell`s as given, with an optional block
-  cursor, such as a terminal screen from the `tmux` package. `Select`
-  highlights a `tui.GridSelection`, a terminal-style selection whose `Text`
-  is the text to copy.
-- `examples/corral`: a workspace of live terminals in resizable splits, with
-  a sidebar of spaces and panes, context menus, and a layout that survives
-  restarts.
+  attaches a `Terminal` to a session over control mode, captures the pane
+  into a `Screen` of cells, and sends keys, pastes, and mouse events back.
+  Sessions outlive the program, so it can detach and reattach.
+- `tui.Split` and `tui.SplitState`: nested rows and columns of panes that the
+  user resizes by dragging the gaps. The layout is plain data that
+  `encoding/json` saves and restores.
+- `tui.Menu` and `tui.MenuState`: a modal popup menu for right-click and
+  keyboard use, with hints, separators, and disabled and destructive entries.
+- `tui.HitMap` reports which tagged view is under the pointer.
+- `tui.Cells` draws a grid of `tui.Cell`s, such as a `tmux` screen, with an
+  optional cursor. `Select` highlights a `tui.GridSelection`, whose `Text` is
+  the text to copy.
+- `examples/corral`: a workspace of live terminals in resizable splits.
+- `terminal.Redactor` redacts secrets in a stream that arrives in chunks,
+  such as PTY reads. (#126)
+- `terminal.KeyDecoder.SetEscapeTimeout` sets how long the decoder waits for
+  the rest of an escape sequence after ESC. The default is 50ms.
+- The `gif` terminal renderer draws emoji and CJK text with fallback fonts,
+  set by `RendererOptions.FallbackFonts` and `CastOptions.FallbackFonts`. The
+  default is an embedded Noto Emoji font, then installed CJK and symbol
+  fonts. The embedded font adds about 870 KB to programs that import `gif`.
+- `gif.TerminalCell` holds a whole grapheme cluster, with `Trailing`,
+  `Width`, and `Continuation` fields and a `Text` method, like
+  `terminal.Cell`.
 
 ### Changed
 
-- **Breaking**: Wonton now requires Go 1.26. `golang.org/x/net` is upgraded
-  to v0.62.0, which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser
-  that `htmlparse` and `htmltomd` use, and that version requires Go 1.26.
-- **Breaking**: `gif.TerminalCell` has new fields, so a composite literal
-  without field names, such as `gif.TerminalCell{'x', fg, bg}`, no longer
-  compiles. Use field names: `gif.TerminalCell{Char: 'x', FG: fg, BG: bg}`.
+- **Breaking**: Wonton requires Go 1.26. It needs `golang.org/x/net`
+  v0.62.0, which fixes GO-2026-6860 and GO-2026-6866 in the HTML parser that
+  `htmlparse` and `htmltomd` use.
+- **Breaking**: `gif.TerminalCell` literals without field names, such as
+  `gif.TerminalCell{'x', fg, bg}`, no longer compile. Use field names.
+- **Breaking**: `env.Parse` and `env.ParseInto` flatten an embedded
+  `*Common` without a `COMMON_` prefix, as they do for `Common`, and apply
+  `envPrefix` to both. (#133)
 - In a multiline `tui.Input` or `tui.InputField`, Home and End (Ctrl+A and
-  Ctrl+E) move to the start and end of the line between newlines, as Ctrl+U
-  and Ctrl+K do and as a single-line input does. Before, they moved to the
-  ends of the soft-wrapped row, so End in a long line stopped mid-word.
-  None of the four stops at a CRLF, which the input draws without a line
-  break. Before, Ctrl+U stopped after one. (#135)
-- **Breaking**: `env.Parse` and `env.ParseInto` flatten an embedded pointer
-  struct (`*Common`) without adding a `COMMON_` prefix, matching a
-  value-embedded `Common`, and apply an `envPrefix` tag on both value- and
-  pointer-embedded structs. Before, `*Common` without `envPrefix` read
-  `COMMON_HOST` instead of `HOST`, and `Common` ignored `envPrefix`. (#133)
+  Ctrl+E) move to the ends of the line, not of the soft-wrapped row. (#135)
 
 ### Fixed
 
-- `terminal.KeyDecoder.ReadEvent` drops a malformed SGR mouse report and
-  keeps reading. Before, it returned the report's parse error, which was
-  `io.EOF`, and the TUI runtime stopped reading input for good.
-  `terminal.ParseMouseEvent` no longer returns a bare `io.EOF` for one.
-- `terminal.KeyDecoder` decodes an escape sequence that the terminal writes
-  in two pieces, such as `x\x1b` and then `[A`, as `x` and `KeyArrowUp`.
-  Before, it reported `x`, `KeyEscape`, `[`, and `A`. When ESC is the last
-  byte available, the decoder now waits up to 50ms for more input. A lone
-  Escape key press is reported after that wait. The decoder waits only when
-  it can poll its source: an `*os.File` on Unix, or the input owner that
-  `tui` apps use on Linux and macOS. Any other `io.Reader`, and an
-  `*os.File` on Windows, keeps the old behavior. (#116)
-- `terminal.Terminal` recordings now include the alternate screen, cursor
-  visibility, and, in non-buffered mode, `Clear`, `ClearLine`,
-  `ClearToEndOfLine`, cursor moves, and `Reset`. A replay switches screens
-  and hides the cursor as the session did. A recording started while the
-  alternate screen is on or the cursor is hidden begins in that state. Input
-  modes, such as mouse reporting and bracketed paste, are still not recorded.
-  `HideCursor`, `ShowCursor`, `EnableAlternateScreen`, and
-  `DisableAlternateScreen` now hold the terminal's lock. (#109)
-- Recording with `RedactSecrets` now redacts a secret that two writes split:
-  a value written in a separate call from its label, such as `"Token: "` and
-  then the value, or a token such as an AWS key that arrives in pieces. Each
-  event is matched together with the text recorded before it. A run of text
-  at the end of an event is held back until whitespace, a cursor move, the
-  next pause, or `StopRecording` ends it, so it can appear later in a replay.
-  Matching skips escape sequences, so a redaction no longer removes a style
-  reset or cursor move that follows a secret, and a secret in a hyperlink's
-  URL is redacted inside the OSC 8 sequence. `terminal.RedactCredentials`
-  also skips escape sequences. (#110)
-- `termsession.Recorder` with `RedactSecrets` now redacts a secret split
-  across PTY reads or `RecordOutput` and `RecordInput` calls: a value written
-  after its label in a separate write, a read that ends in the middle of a
-  token, and a secret typed key by key after its key. Output and input each
-  have their own `terminal.Redactor`. The run of text at the end of a chunk
-  is held back until whitespace, an escape sequence, `Pause`, or `Close`
-  ends it, so it can appear later in a replay. Redaction also holds back an
-  escape sequence that a read splits, so a redaction no longer lands inside
-  one. (#126)
-- `gif.Emulator` and `gif.TerminalScreen.WriteString` give each grapheme
-  cluster one cell, or two for a wide one, and advance the cursor by display
-  width. CJK text, emoji, and combining marks in casts no longer push the
-  rest of the line out of place: after `世A` the cursor is at column 3, not
-  2. A cluster split across writes or around an escape sequence joins the
-  cell before the cursor, and writing or erasing over half of a wide cluster
-  blanks the other half. With a TTF font, the renderer draws combining marks
-  over their base character.
-- In non-buffered mode, `terminal.Terminal` now tracks the cursor the way
-  buffered mode does. `MoveCursor`, `MoveCursorUp`, `MoveCursorDown`,
-  `MoveCursorLeft`, `MoveCursorRight`, `SaveCursor`, and `RestoreCursor`
-  update the position that `Print` and `PrintStyled` draw at, and
-  `CursorPosition` reports. Each print advances the position by display
-  width, wraps at the right edge, and starts a new line at a newline. Before,
-  `PrintAtStyled(7, 0, "x", style)` drew `x` at column 0, and the next
-  `PrintStyled` drew over it. (#125)
-- In non-buffered mode, `terminal.Terminal` sends each newline in printed
-  text as CRLF. Raw mode usually turns off output processing, so a bare LF
-  moved down without returning to column 0, and in `a\nbc` the `bc` was drawn
-  one column to the right. The style is reset around the newline, so a line
-  scrolled in on the last line is not filled with the style's background.
-  `Println` now writes a newline, so on the last line it scrolls the screen
-  instead of letting the next print draw over that line. (#130)
-- `cli.Context.Input` submits when the terminal sends LF for Enter, or on
-  Ctrl-J or Shift+Enter. The key decoder reports these as Shift+Enter, and a
-  single-line `tui.Input` consumed them without doing anything. A
-  single-line `tui.Input` or `tui.InputField` now treats Shift+Enter as
-  Enter, and so does Alt+Enter where the terminal sends it as ESC+CR. It
-  calls `OnSubmit`, or with no `OnSubmit` the key reaches the app's
-  `HandleEvent`. In a multiline input, Shift+Enter still inserts a newline.
-  (#83)
-- `terminal.Terminal` from `NewTerminal` or `NewTestTerminal` now starts with
-  `NewStyle()` as its current style. Before, the style was black on black
-  until the first `SetStyle` or `Reset`. `Print`, `Println`, and `Fill` drew
-  black text on a black background, and `Clear`, `ClearLine`, and
-  `ClearToEndOfLine` blanked cells with a black background. In non-buffered
-  mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
-  was written after any cell with another style in the same flush.
-- `gif.Emulator` buffers an escape sequence or multi-byte UTF-8 character
-  split across `ProcessOutput` or `Write` calls until the rest of the bytes
-  arrive, instead of printing the tail of the sequence as text. It also
-  consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
-  string payloads across calls without buffering them) and CAN/SUB-cancelled
-  CSI sequences, and treats an explicit `0` parameter as `1` in relative
-  cursor movement sequences (`CSI 0 A` through `CSI 0 F`), which before
-  did not move the cursor. (#134)
+- `terminal.Terminal` starts with `NewStyle()` as its style. Before, it drew
+  black on black until the first `SetStyle` or `Reset`.
+- In non-buffered mode, `terminal.Terminal` tracks the cursor as buffered
+  mode does, so `Print` draws where `MoveCursor` put it (#125). It sends
+  newlines as CRLF, so text after a newline starts at column 0 (#130).
+- In non-buffered mode, `terminal.Terminal.SetCell`, `Fill`, and
+  `FillStyled` clip to the terminal. Before, they wrote outside it, and a
+  negative width panicked. (#136)
+- `terminal.Terminal.ClearToEndOfLine` and a narrower resize no longer leave
+  half of a wide character behind. (#136)
+- `terminal.Terminal` moves the cursor to the right place after a multi-rune
+  grapheme cluster, such as a keycap or VS16 emoji. Before, a terminal that
+  drew one at another width shifted the rest of the row. (#139)
+- `terminal.KeyDecoder` decodes an escape sequence split across two reads.
+  When ESC is the last byte available, it waits up to 50ms for more input
+  before it reports Escape. It waits only on a pollable source: an
+  `*os.File` on Unix, or `tui` input on Linux and macOS. (#116)
+- `terminal.KeyDecoder` keeps the keys that follow a malformed SGR mouse
+  report, a cut-off legacy mouse report, or invalid UTF-8. Before, a
+  malformed mouse report stopped `tui` input for good. (#136)
+- `terminal.Terminal.DetectKittyProtocol` works on a real terminal and no
+  longer swallows the next key typed. `tui` now turns on the Kitty keyboard
+  protocol where the terminal supports it. (#136)
+- `terminal.Terminal` recordings include the alternate screen, cursor
+  visibility, and non-buffered clears and cursor moves, so a replay matches
+  the session. Input modes are still not recorded. (#109)
+- `RedactSecrets` in `terminal.Terminal` and `termsession.Recorder` redacts
+  a secret split across writes or PTY reads. Text at the end of a write is
+  held until whitespace, an escape sequence, a pause, or the end of the
+  recording. A redaction no longer removes or splits an escape sequence.
+  (#110, #126)
+- `gif.Emulator` and `gif.TerminalScreen` give each grapheme cluster one
+  cell, or two if wide, so CJK text, emoji, and combining marks no longer
+  push the rest of the line out of place.
+- `gif.Emulator` keeps an escape sequence or UTF-8 character split across
+  writes, skips DCS, SOS, PM, and APC strings, and moves the cursor by 1 for
+  `CSI 0 A` through `CSI 0 F`. (#134)
 - `termtest.Screen` joins a combining mark, variation selector, or ZWJ
-  continuation written in a separate `Write`, `WriteString`, or `WriteRune`
-  call (or after an SGR sequence) onto the cell before the cursor, ignores
-  standalone zero-width clusters instead of overwriting the current cell, and
-  streams incomplete OSC, DCS, SOS, PM, and APC payloads across writes
-  without buffering them. Its ANSI parser also ignores `<`-prefixed private
-  CSI sequences and CSI sequences with intermediate bytes, handles `CSI ? J`
-  and `CSI ? K` selective erases, and consumes intermediate `ESC` sequences
-  such as `ESC # 8`. (#134)
-- `termsession.Player` honors `Seek` called before `Play`, caps an initial
-  idle delay before the first event when `MaxIdle` is set, and holds its read
-  lock across the end-of-events check and event read in `Play` so a
-  concurrent `Seek` past the end cannot panic. `termsession.Recorder` records
-  a resize event on `Resume` when `UpdateSize` was called while paused. (#134)
-- `terminal.Terminal.DetectKittyProtocol` no longer loses the first key
-  typed after it. When `os.Stdin` was a file opened with `os.OpenFile`, such
-  as a PTY in a test, and the terminal did not answer, the probe left a read
-  behind that took the next key press. The probe also works on a real
-  terminal now. Before, it needed a read deadline on `os.Stdin`, which the
-  standard `os.Stdin` does not support, so it reported false without
-  asking. Terminals that support the Kitty keyboard protocol are now
-  detected, and `tui` turns the protocol on for them. The probe stops at the
-  end of the terminal's reply, so keys typed after it are kept. Keys typed
-  while it waits are dropped. If the terminal has not answered after 200ms,
-  or 400ms once it has started to answer, or after 1 KiB of input without
-  its reply, the probe discards pending input. A whole reply that arrives
-  later decodes as `KeyUnknown`, not as keys. (#136)
-- `terminal.KeyDecoder` no longer drops the keys that follow a cut-off or
-  invalid UTF-8 character, or a legacy `ESC [ M` mouse report cut off by a
-  key. Before, a bad character took up to three following bytes, such as
-  Enter or Ctrl+C, and a mouse report took a control byte as its payload. A
-  legacy mouse report past column or row 223, where xterm sends NUL, is
-  dropped instead of reported at a negative position. A typed U+FFFD is no
-  longer dropped. (#136)
-- `terminal.Terminal.ClearToEndOfLine` started on the second column of a wide
-  character blanks its first column too, and a narrower terminal blanks a
-  wide character cut by the new right edge. Before, half a glyph stayed in
-  the buffer. (#136)
-- In non-buffered mode, `terminal.Terminal.SetCell` returns `ErrOutOfBounds`
-  for a cell outside the terminal or a wide character that does not fit, as
-  in buffered mode. `Fill` and `FillStyled` clip the rectangle to the
-  terminal and step by the character's display width. Before, they wrote
-  outside the terminal, and a negative width panicked. (#136)
-- In `tui.Input` and `tui.InputField`, a cursor on a character that wraps
-  to the next row, including a wide character that does not fit at the end
-  of a row, now draws at column 0 of that row, and the input scrolls to show
-  it. Before, it drew at the end of the row above, past the right edge when
-  that row was full. In a multiline input, Up, Down, and history recall
-  treat that cursor as on the wrapped row. Before, Up there recalled history
-  instead of moving up a row. Up or Down onto a soft-wrapped row shorter
-  than the cursor's column lands on that row's last character. Before, it
-  landed on the first character of the following row. (#135)
-- `tui.DetectTerminalBackground` no longer accepts an OSC 11 reply that ends
-  in an invalid UTF-8 byte or `U+FFFD` instead of BEL or ST. (#135)
-- `tui.DiffRenderer` expands a tab after a wide character or combining mark
-  to the correct tab stop. A `TabWidth` of 0 or less uses 4 instead of
-  panicking, and `RenderDiff(nil)` returns nil instead of panicking. (#135)
-- `tui.TextArea` without an `ID` uses its focused border and title styles
-  when it takes focus as the first focusable element. With
-  `HighlightCurrentLine`, Down and End scroll by the area's rendered height,
-  so a bordered area 2 rows tall, or an area a layout makes taller than its
-  `Size`, no longer scrolls too far. (#135)
-- `tui.AnimatedBordered` gives each corner its own position along the
-  border, clockwise from the top-left corner. Before, every corner got
-  position 0, so a rainbow or gradient drew all four corners in its first
-  color. `tui.CornerHighlightAnimation` now fades the highlight into both
-  edges next to the lit corner. Before, it faded only into the top edge, and
-  also when the bottom-left corner was lit. A custom `BorderAnimation` now
-  gets different `position` values: the top-left corner is 0, the top edge
-  starts at 1, and the rest follow clockwise. A direct call to
-  `CornerHighlightAnimation.GetBorderStyle` lights only the active corner and
-  no longer fades into edge cells. (#139)
-- `terminal.Terminal` no longer trusts its own width for multi-rune
-  grapheme clusters such as keycaps, VS16 emoji, and Indic text when it
-  writes a frame. It repositions the cursor after each one, erases the cells
-  a wide one spans, and rewrites the rest of the row. Before, a terminal that
-  drew such a cluster at another width shifted the rest of the row or let
-  old cells show through, leaving stale glyphs such as an old border behind.
-  Rows of plain text produce the same output as before. (#139)
-- When `tui.LivePrinter`'s live region shrinks, it clears the leftover lines
-  from column 0. Before, in raw mode, the start of the first leftover line
-  stayed on screen. (#139)
-- `schema.Generate` matches `encoding/json` on `json:",string"` fields (for
-  string, integer, floating-point, and boolean types or pointers to them),
-  named types that `json.Unmarshal` decodes from a string because they
-  implement `encoding.TextUnmarshaler` without `json.Unmarshaler`
-  (including structs that inherit `UnmarshalText` from an embedded field),
-  and embedded struct field dominance rules: shallower
-  embedded fields shadow deeper ones regardless of field order, a single
-  `json`-tagged field at the shallowest depth wins over untagged siblings,
-  and conflicting fields at the shallowest depth are omitted. (#133)
-- `cli`: negative numbers and other `-.x` tokens passed as positional
-  arguments (such as `-5`, `-.5`, or `-.env`) are no longer rejected as
-  unknown short flags unless a matching short flag (such as `-4`) is
-  registered on the command. Right after a flag that needs a value, even a
-  registered `-4` is that value. A root-command boolean flag before
-  positional arguments no longer consumes the next positional as its value
-  when resolving subcommands. A bundle that ends in the built-in `-h`, such
-  as `-vh`, shows help. Before, it took the next argument as its value and
-  could run a subcommand named later on the line. (#133)
+  written separately onto the cell before the cursor, and parses more CSI
+  and ESC sequences correctly. (#134)
+- `termsession.Player` honors `Seek` before `Play`, applies `MaxIdle` to the
+  first delay, and no longer panics on a concurrent `Seek` past the end.
+  `termsession.Recorder` records a resize made while paused. (#134)
+- `cli.Context.Input` and a single-line `tui.Input` or `tui.InputField`
+  submit on LF, Ctrl+J, Shift+Enter, and Alt+Enter. A multiline input still
+  inserts a newline. (#83)
+- In `tui.Input` and `tui.InputField`, the cursor on a wrapped character
+  draws at the start of the next row, and Up and Down move between wrapped
+  rows correctly. (#135)
+- `tui.DetectTerminalBackground` rejects an OSC 11 reply that ends in
+  invalid UTF-8 instead of BEL or ST. (#135)
+- `tui.DiffRenderer` expands a tab after a wide character to the right stop.
+  A `TabWidth` of 0 or less uses 4, and `RenderDiff(nil)` returns nil.
+  Before, both panicked. (#135)
+- `tui.TextArea` without an `ID` uses its focused styles when it gets focus
+  first. With `HighlightCurrentLine`, it scrolls by its rendered height.
+  (#135)
+- `tui.AnimatedBordered` gives each corner its own position, so a gradient
+  no longer draws all four corners in its first color. A custom
+  `BorderAnimation` sees new positions: the top-left corner is 0, and the
+  rest follow clockwise. (#139)
+- When the live region of `tui.LivePrinter` shrinks, it clears the leftover
+  lines from column 0. (#139)
+- `schema.Generate` matches `encoding/json` for `json:",string"` fields,
+  types that decode from a string through `encoding.TextUnmarshaler`, and
+  embedded fields that shadow one another. (#133)
+- `cli` accepts a negative number such as `-5` as a positional argument
+  unless a matching short flag is registered. A root-command boolean flag no
+  longer takes the next argument as its value, and `-vh` shows help. (#133)
 
 ## [0.9.0] - 2026-10-24
 
