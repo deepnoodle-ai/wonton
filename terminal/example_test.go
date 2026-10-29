@@ -272,3 +272,16 @@ func ExampleFormat_untrustedURL() {
 	// "\x1b]8;;https://example.com/\\]0;pwned\x1b\\docs\x1b]8;;\x1b\\"
 	// docs
 }
+
+// ExampleRedactor redacts a token that a program writes in two pieces.
+func ExampleRedactor() {
+	var r terminal.Redactor
+	var out strings.Builder
+	for _, chunk := range []string{"Token: s3cr", "3tvalue\r\nok"} {
+		out.WriteString(r.Redact(chunk))
+	}
+	// Flush returns the text held back at the end of the stream.
+	out.WriteString(r.Flush())
+	fmt.Printf("%q\n", out.String())
+	// Output: "Token: [REDACTED]\r\nok"
+}
