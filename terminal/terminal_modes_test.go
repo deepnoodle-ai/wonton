@@ -99,6 +99,21 @@ func TestTerminal_EnableDisableEnhancedKeyboard(t *testing.T) {
 	assert.True(t, !term.IsKittyProtocolEnabled())
 }
 
+// Inside tmux, which ignores the Kitty protocol, enhanced keys also ask for
+// modifyOtherKeys so tmux forwards Shift+Enter, and release resets it.
+func TestTerminal_EnhancedKeyboardInsideTmux(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-501/default,123,0")
+	buf := &bytes.Buffer{}
+	term := NewTestTerminal(10, 5, buf)
+
+	term.EnableEnhancedKeyboard()
+	assert.Equal(t, buf.String(), "\033[>1u\033[>4;1m")
+
+	buf.Reset()
+	term.DisableEnhancedKeyboard()
+	assert.Equal(t, buf.String(), "\033[<u\033[>4m")
+}
+
 func TestTerminal_KittySupportAccessors(t *testing.T) {
 	term := NewTestTerminal(10, 5, &bytes.Buffer{})
 	assert.True(t, !term.IsKittyProtocolSupported())

@@ -142,10 +142,10 @@ func (r *Runtime) SetPasteTabWidth(width int) {
 // out either way.
 //
 // Use it when the probe's answer would be wrong or too expensive: it is skipped
-// under tmux and screen (TERM=screen*/tmux*) and in Apple Terminal, so a
-// multiplexed session loses Shift+Enter even when the outer terminal supports
-// it, and where it does run it costs up to 200 ms of startup. This is what
-// InlineApp's WithInlineKittyKeyboard does. Must be called before Run().
+// under screen (TERM=screen*) and in Apple Terminal, and where it does run it
+// costs up to 200 ms of startup. Inside tmux the runtime turns enhanced keys on
+// without this call. This is what InlineApp's WithInlineKittyKeyboard does.
+// Must be called before Run().
 func (r *Runtime) SetKittyKeyboard(enabled bool) {
 	r.kittyKeyboard = enabled
 }
@@ -213,10 +213,11 @@ func (r *Runtime) Run() error {
 			return fmt.Errorf("failed to enable raw mode: %w", err)
 		}
 
-		// Enable Kitty keyboard protocol if the terminal supports it
-		// This allows detection of modifier keys (Shift+Enter, etc.)
+		// Enable enhanced key reporting if the terminal supports it, so
+		// modified keys such as Shift+Enter arrive distinctly. tmux is never
+		// probed, but it understands the request (see EnableEnhancedKeyboard).
 		// For terminals that don't support it, backslash+Enter fallback is used
-		if r.kittyKeyboard || r.terminal.IsKittyProtocolSupported() {
+		if r.kittyKeyboard || r.terminal.IsKittyProtocolSupported() || terminalstate.InsideTmux() {
 			r.terminal.EnableEnhancedKeyboard()
 		}
 	}

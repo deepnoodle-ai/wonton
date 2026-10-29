@@ -112,7 +112,7 @@ func plainModes(alt, paste, kitty bool, mouse MouseMode) string {
 		b.WriteString("\x1b[?2004l")
 	}
 	if kitty {
-		b.WriteString("\x1b[<u")
+		b.WriteString(terminalstate.KeyboardRelease())
 	}
 	b.WriteString("\x1b[?25h")
 	if alt {
@@ -129,7 +129,7 @@ func activeModes(alt, hidden, paste, kitty bool, mouse MouseMode) string {
 		b.WriteString("\x1b[?2004h")
 	}
 	if kitty {
-		b.WriteString("\x1b[>1u")
+		b.WriteString(terminalstate.KeyboardEnable())
 	}
 	if mouse != MouseModeOff {
 		b.WriteString("\x1b[?1000h\x1b[?1006h")
@@ -167,7 +167,7 @@ func (t *Terminal) cleanupRuntime(raw, kitty bool) error {
 }
 
 func (t *Terminal) enableKeyboard() error {
-	complete, err := terminalstate.WriteControl(t.out, "\x1b[>1u")
+	complete, err := terminalstate.WriteControl(t.out, terminalstate.KeyboardEnable())
 	t.kittyEnabled, t.kittyFraming = complete, !complete
 	return err
 }
@@ -181,7 +181,7 @@ func (t *Terminal) releaseKeyboard() error {
 		framingErr = err
 	}
 	if t.kittyEnabled {
-		complete, err := terminalstate.WriteControl(t.out, "\x1b[<u")
+		complete, err := terminalstate.WriteControl(t.out, terminalstate.KeyboardRelease())
 		if complete {
 			t.kittyEnabled = false
 		}

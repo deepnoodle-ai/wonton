@@ -244,7 +244,7 @@ func checkedHandoffWrite(out io.Writer, sequence string) error {
 }
 
 func (r *InlineApp) enableKeyboard() error {
-	complete, err := terminalstate.WriteControl(r.output, "\x1b[>1u")
+	complete, err := terminalstate.WriteControl(r.output, terminalstate.KeyboardEnable())
 	r.kittyEnabled, r.kittyFraming = complete, !complete
 	return err
 }
@@ -258,7 +258,7 @@ func (r *InlineApp) releaseKeyboard() error {
 		framingErr = err
 	}
 	if r.kittyEnabled {
-		complete, err := terminalstate.WriteControl(r.output, "\x1b[<u")
+		complete, err := terminalstate.WriteControl(r.output, terminalstate.KeyboardRelease())
 		if complete {
 			r.kittyEnabled = false
 		}

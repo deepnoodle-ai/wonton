@@ -25,6 +25,23 @@ bug fixes. Release notes identify incompatible changes explicitly.
   schema was a plain string, and every value that followed it failed to
   decode. (#146)
 
+- Shift+Enter reaches applications inside tmux. tmux ignores the Kitty
+  keyboard protocol and forwards modified keys only to a pane that asks for
+  xterm's modifyOtherKeys. Inside tmux, `Terminal.EnableEnhancedKeyboard`,
+  `tui.WithInlineKittyKeyboard`, and `tui.Prompt` now also ask for
+  modifyOtherKeys mode 1 and reset it on release, including around a terminal
+  hand-off. The fullscreen `tui.Runtime`, which never probes tmux, turns this
+  on by itself there. `terminal.KeyDecoder` already reads both forms tmux
+  sends, `ESC[27;2;13~` and `ESC[13;2u`. tmux forwards the keys only when its
+  `extended-keys` option is on and it knows the outer terminal supports them:
+
+  ```
+  set -s extended-keys on
+  set -as terminal-features 'xterm*:extkeys'
+  ```
+
+  (#148)
+
 ## [0.10.2] - 2026-10-29
 
 ### Fixed
