@@ -96,6 +96,13 @@ bug fixes. Release notes identify incompatible changes explicitly.
   width, wraps at the right edge, and starts a new line at a newline. Before,
   `PrintAtStyled(7, 0, "x", style)` drew `x` at column 0, and the next
   `PrintStyled` drew over it. (#125)
+- In non-buffered mode, `terminal.Terminal` sends each newline in printed
+  text as CRLF. Raw mode usually turns off output processing, so a bare LF
+  moved down without returning to column 0, and in `a\nbc` the `bc` was drawn
+  one column to the right. The style is reset around the newline, so a line
+  scrolled in on the last line is not filled with the style's background.
+  `Println` now writes a newline, so on the last line it scrolls the screen
+  instead of letting the next print draw over that line. (#130)
 - `cli.Context.Input` submits when the terminal sends LF for Enter, or on
   Ctrl-J or Shift+Enter. The key decoder reports these as Shift+Enter, and a
   single-line `tui.Input` consumed them without doing anything. A
