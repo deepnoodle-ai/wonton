@@ -792,6 +792,12 @@ func (kd *KeyDecoder) decodeCSIu(codepoint string, modifier int) (KeyEvent, erro
 			ev.Shift, ev.Alt, ev.Ctrl = shift, alt, ctrl
 			return ev, nil
 		}
+		// Ctrl+J sends LF in legacy mode, which decodes as Shift+Enter, so
+		// decode the Kitty form the same way: a multiline input inserts a
+		// newline and a single-line input submits, whichever protocol is on.
+		if ctrl && !shift && cp == 'j' {
+			return KeyEvent{Key: KeyEnter, Shift: true, Alt: alt, Ctrl: true}, nil
+		}
 		// If Ctrl is pressed with a letter, return the appropriate KeyCtrl* constant
 		// This handles Kitty protocol sending Ctrl+C as codepoint 99 ('c') with Ctrl modifier
 		if ctrl && cp >= 'a' && cp <= 'z' {
