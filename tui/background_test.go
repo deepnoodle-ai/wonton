@@ -25,9 +25,11 @@ func TestParseBackgroundReply(t *testing.T) {
 		{"C1 ST", "\x1b]11;rgb:0000/0000/0000\x9c", RGB{}, true},
 		{"with DA1 and noise", "x\x1b]11;rgb:2020/2020/2020\x07\x1b[?62;22c", RGB{R: 32, G: 32, B: 32}, true},
 		{"bad reply then good", "\x1b]11;garbage\x07\x1b]11;rgb:ff/ff/ff\x07", RGB{R: 255, G: 255, B: 255}, true},
+		{"UTF-8 0x9c continuation byte before good reply", "\x1b]11;✓\x07\x1b]11;rgb:ff/ff/ff\x07", RGB{R: 255, G: 255, B: 255}, true},
 		{"unterminated", "\x1b]11;rgb:ffff/ffff/ffff", RGB{}, false},
 		{"unterminated invalid UTF-8", "\x1b]11;rgb:ffff/ffff/ffff\xff", RGB{}, false},
 		{"unterminated replacement char", "\x1b]11;rgb:ffff/ffff/ffff\xef\xbf\xbd", RGB{}, false},
+		{"unterminated UTF-8 0x9c continuation byte", "\x1b]11;rgb:ffff/ffff/ffff✓", RGB{}, false},
 		{"ESC that is not ST", "\x1b]11;rgb:ffff/ffff/ffff\x1b[c", RGB{}, false},
 		{"empty", "", RGB{}, false},
 		{"DA1 only", "\x1b[?62;22c", RGB{}, false},
@@ -47,6 +49,13 @@ func TestParseBackgroundReply(t *testing.T) {
 			assert.Equal(t, got, tt.want)
 		})
 	}
+}
+
+func TestIndexOSCTerminator(t *testing.T) {
+	// '✓' is \xe2\x9c\x93; its 0x9c continuation byte must not be treated as C1 ST.
+	assert.Equal(t, indexOSCTerminator([]byte("✓")), -1)
+	assert.Equal(t, indexOSCTerminator([]byte("✓\x07")), len("✓"))
+	assert.Equal(t, indexOSCTerminator([]byte("✓\x9c")), len("✓"))
 }
 
 func TestHasDeviceAttributesReply(t *testing.T) {

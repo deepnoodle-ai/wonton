@@ -96,10 +96,13 @@ func TestTextInput_WrappedLineNavigation(t *testing.T) {
 	assert.Equal(t, 0, ti.CursorPos)
 
 	// End on a soft-wrapped line stops at the last character on that visual line ('j', offset 9),
-	// not the first character of the next visual line ('k', offset 10).
+	// not the first character of the next visual line ('k', offset 10); typing then inserts before 'j'.
 	ti.CursorPos = 3
 	ti.HandleKey(KeyEvent{Key: KeyEnd})
 	assert.Equal(t, 9, ti.CursorPos)
+	ti.HandleKey(KeyEvent{Rune: 'X'})
+	assert.Equal(t, "abcdefghiXjklm", ti.Value())
+	assert.Equal(t, 10, ti.CursorPos)
 
 	// When row 0 wraps early before a wide char ("abcdefghi" + "中klmnopqr"),
 	// pressing Up from the end of row 1 (col 10) must land on row 0 ('i', offset 8),

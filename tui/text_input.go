@@ -606,8 +606,12 @@ func cursorLineIndex(lines []lineRange, pos int) int {
 
 // lineLastCursorPos returns the last byte offset within lines[i] where the
 // cursor still rests on lines[i]. For a soft-wrapped line, lines[i].end is the
-// first cluster of lines[i+1], so the last position on lines[i] is the start
-// of its final grapheme cluster.
+// first cluster of lines[i+1], and textInput tracks the cursor solely as a byte
+// offset without separate line-affinity state (while column width is outside
+// the [0, width-1] cell grid on a full row). The rightmost cursor stop on
+// lines[i] is therefore the start of its final grapheme cluster, so End on a
+// soft-wrapped row places the cursor on that final cluster and subsequent typing
+// inserts before it.
 func lineLastCursorPos(displayText string, lines []lineRange, i int) int {
 	line := lines[i]
 	if i+1 < len(lines) && line.end == lines[i+1].start && line.end > line.start {

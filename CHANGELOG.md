@@ -118,6 +118,15 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `ClearToEndOfLine` blanked cells with a black background. In non-buffered
   mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
   was written after any cell with another style in the same flush.
+- In `tui.Input` and `tui.InputField`, the cursor now draws at column 0 of a
+  soft-wrapped visual line instead of disappearing past the right edge of the
+  previous line, and `Up`, `Down`, `Home`, `End`, and history recall treat
+  soft-wrap boundaries as the start of the wrapped line. `tui.DetectTerminalBackground`
+  no longer treats invalid UTF-8 bytes or `U+FFFD` as an OSC 11 reply
+  terminator, `tui.DiffRenderer` expands tabs by grapheme display width and
+  handles `TabWidth <= 0` and `nil` diffs without panicking, and `tui.TextArea`
+  applies its focused border and title styles when auto-focused without an ID
+  and clamps small bordered scroll heights. (#135)
 
 ## [0.9.0] - 2026-10-24
 
