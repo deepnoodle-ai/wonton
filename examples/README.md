@@ -49,6 +49,15 @@ Run `go run ./examples/<name> --help` to inspect per-command usage.
 - `tui/reflow`: Compares naive and `runewidth`-aware reflow so you can see
   where grapheme-aware width math matters.
 
+## Workspaces
+
+- `corral`: A terminal workspace in the style of herdr or a tmux GUI. The main
+  area splits into columns and rows of live terminals, each a tmux session;
+  drag the edges to resize, right-click anything for a context menu, and pick
+  panes from the sidebar. Quit and run it again to pick up where you left off.
+  Built on `tmux.Terminal`, `tui.Split`, `tui.Menu`, `tui.HitMap`, and
+  `tui.Cells`. Requires tmux.
+
 ## Terminal techniques
 
 - `hyperlink`: Emits OSC 8 hyperlinks using the `terminal` package.

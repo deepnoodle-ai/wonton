@@ -33,6 +33,32 @@ bug fixes. Release notes identify incompatible changes explicitly.
   text at its end, which the next chunk can continue. `Flush` returns that
   text when the stream ends or pauses and resets the redactor. The zero
   value is ready to use. (#126)
+- New `tmux` package: live terminals backed by tmux sessions. `Server.Open`
+  attaches a `Terminal` to a session (creating it if needed) over a
+  control-mode connection, captures the pane into a `Screen` of cells
+  whenever its program writes, and sends keys, pastes, and mouse events
+  back. Sessions outlive the program, so it can detach and reattach.
+  `Control` is the control-mode client underneath, and `Server` runs
+  one-shot commands and reads and writes user options.
+- `tui.Split` and `tui.SplitState`: columns and rows of panes that nest to
+  any depth, with gaps the user drags to resize. `SplitState` adds, splits,
+  removes, and equalizes panes, and reports `PaneAt`, `DividerAt`,
+  `Neighbor`, and `Bounds` in screen coordinates. Its tree is plain data
+  that `encoding/json` saves and restores. `Tight` drops the gaps for
+  panes with borders of their own, which then touch and are dragged by
+  the border cells where they meet.
+- `tui.Menu` and `tui.MenuState`: a popup menu for right-click and keyboard
+  use, with hints, separators, disabled and destructive entries. It opens
+  at a screen position, moves to stay on screen, and is modal while open.
+- `tui.HitMap` records where tagged views were drawn so an event handler can
+  ask which one is under the pointer.
+- `tui.Cells` draws a grid of `tui.Cell`s as given, with an optional block
+  cursor, such as a terminal screen from the `tmux` package. `Select`
+  highlights a `tui.GridSelection`, a terminal-style selection whose `Text`
+  is the text to copy.
+- `examples/corral`: a workspace of live terminals in resizable splits, with
+  a sidebar of spaces and panes, context menus, and a layout that survives
+  restarts.
 
 ### Changed
 
@@ -45,6 +71,10 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ### Fixed
 
+- `terminal.KeyDecoder.ReadEvent` drops a malformed SGR mouse report and
+  keeps reading. Before, it returned the report's parse error, which was
+  `io.EOF`, and the TUI runtime stopped reading input for good.
+  `terminal.ParseMouseEvent` no longer returns a bare `io.EOF` for one.
 - `terminal.KeyDecoder` decodes an escape sequence that the terminal writes
   in two pieces, such as `x\x1b` and then `[A`, as `x` and `KeyArrowUp`.
   Before, it reported `x`, `KeyEscape`, `[`, and `A`. When ESC is the last

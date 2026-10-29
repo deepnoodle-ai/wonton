@@ -48,6 +48,7 @@ and CLI building blocks that work well together.
 | **termsession** | Session recording (asciinema format)           |
 | **termtest**    | Terminal output testing                        |
 | **thumbnail**   | Image and document thumbnails                  |
+| **tmux**        | Live tmux-backed terminals                     |
 | **tui**         | Declarative TUI with layout engine             |
 | **unidiff**     | Unified diff parsing                           |
 | **web**         | URL canonicalization, search abstractions      |
