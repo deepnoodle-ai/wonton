@@ -459,3 +459,41 @@ func TestInputState_EnterWithoutSubmitNotConsumed(t *testing.T) {
 	assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter}))
 	assert.True(t, submitted)
 }
+
+// A single-line input has no newline to insert, so Shift+Enter acts like
+// Enter. Terminals report LF (Ctrl-J) and ESC+CR as Shift+Enter.
+func TestInputState_SingleLineShiftEnterActsLikeEnter(t *testing.T) {
+	var text string
+	state := newTestInputState(t, inputConfig{binding: &text})
+	typeString(state, "ab")
+	assert.False(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter, Shift: true}))
+	assert.Equal(t, "ab", text)
+
+	submitted := ""
+	state = newTestInputState(t, inputConfig{binding: &text, onSubmit: func(v string) { submitted = v }})
+	assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter, Shift: true}))
+	assert.Equal(t, "ab", submitted)
+}
+
+// In a multiline input, Shift+Enter inserts a newline whether or not there
+// is an OnSubmit callback, and Enter still submits or propagates.
+func TestInputState_MultilineShiftEnterInsertsNewline(t *testing.T) {
+	for _, withSubmit := range []bool{false, true} {
+		var text string
+		submitted := false
+		cfg := inputConfig{binding: &text, multiline: true}
+		if withSubmit {
+			cfg.onSubmit = func(string) { submitted = true }
+		}
+		state := newTestInputState(t, cfg)
+		typeString(state, "a")
+		assert.True(t, state.HandleKeyEvent(KeyEvent{Key: KeyEnter, Shift: true}))
+		typeString(state, "b")
+		assert.Equal(t, "a\nb", text)
+		assert.False(t, submitted)
+
+		assert.Equal(t, withSubmit, state.HandleKeyEvent(KeyEvent{Key: KeyEnter}))
+		assert.Equal(t, withSubmit, submitted)
+		assert.Equal(t, "a\nb", text)
+	}
+}
