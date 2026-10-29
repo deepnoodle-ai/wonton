@@ -930,7 +930,6 @@ func (t *Terminal) MoveCursor(x, y int) {
 func (t *Terminal) moveCursorInternal(x, y int) {
 	if !t.buffered {
 		t.writeScreenLocked(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
-		return
 	}
 	t.virtualX = x
 	t.virtualY = y
@@ -942,10 +941,10 @@ func (t *Terminal) MoveCursorUp(n int) {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		if n > 0 {
-			t.writeScreenLocked(fmt.Sprintf("\033[%dA", n))
+		if n <= 0 {
+			return
 		}
-		return
+		t.writeScreenLocked(fmt.Sprintf("\033[%dA", n))
 	}
 	t.virtualY -= n
 	if t.virtualY < 0 {
@@ -959,10 +958,10 @@ func (t *Terminal) MoveCursorDown(n int) {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		if n > 0 {
-			t.writeScreenLocked(fmt.Sprintf("\033[%dB", n))
+		if n <= 0 {
+			return
 		}
-		return
+		t.writeScreenLocked(fmt.Sprintf("\033[%dB", n))
 	}
 	t.virtualY += n
 	if t.virtualY >= t.height {
@@ -976,10 +975,10 @@ func (t *Terminal) MoveCursorRight(n int) {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		if n > 0 {
-			t.writeScreenLocked(fmt.Sprintf("\033[%dC", n))
+		if n <= 0 {
+			return
 		}
-		return
+		t.writeScreenLocked(fmt.Sprintf("\033[%dC", n))
 	}
 	t.virtualX += n
 	if t.virtualX >= t.width {
@@ -993,10 +992,10 @@ func (t *Terminal) MoveCursorLeft(n int) {
 	defer t.mu.Unlock()
 
 	if !t.buffered {
-		if n > 0 {
-			t.writeScreenLocked(fmt.Sprintf("\033[%dD", n))
+		if n <= 0 {
+			return
 		}
-		return
+		t.writeScreenLocked(fmt.Sprintf("\033[%dD", n))
 	}
 	t.virtualX -= n
 	if t.virtualX < 0 {
@@ -1011,7 +1010,6 @@ func (t *Terminal) SaveCursor() {
 
 	if !t.buffered {
 		t.writeScreenLocked("\033[s")
-		return
 	}
 	t.savedCursor = Position{X: t.virtualX, Y: t.virtualY}
 }
@@ -1023,7 +1021,6 @@ func (t *Terminal) RestoreCursor() {
 
 	if !t.buffered {
 		t.writeScreenLocked("\033[u")
-		return
 	}
 	t.virtualX = t.savedCursor.X
 	t.virtualY = t.savedCursor.Y
@@ -1427,17 +1424,7 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	if !t.buffered {
 		// Non-buffered mode doesn't support clipping via buffer, direct print
 		// This will draw outside the clipRect if it's smaller than terminal size
-		var output strings.Builder
-		output.WriteString(fmt.Sprintf("\033[%d;%dH", startY+1, startX+1))
-		if !style.IsEmpty() {
-			output.WriteString(style.String())
-		}
-		output.WriteString(text)
-		if !style.IsEmpty() {
-			output.WriteString("\033[0m")
-		}
-
-		t.writeScreenLocked(output.String())
+		t.printUnbufferedLocked(startX, startY, text, style)
 		return nil
 	}
 
@@ -1561,6 +1548,104 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	t.virtualY = currentY
 
 	return nil
+}
+
+// printUnbufferedLocked writes text directly to the terminal from (startX,
+// startY) and advances the virtual cursor past it. Caller must hold t.mu.
+func (t *Terminal) printUnbufferedLocked(startX, startY int, text string, style Style) {
+	if text == "" {
+		// Nothing to draw, so the cursor stays where it is, as in
+		// buffered mode.
+		return
+	}
+
+	// Skip the clusters left of column 0, as buffered mode does. A newline
+	// starts the next line at column 0, so it ends the skipped run.
+	x := startX
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if x >= 0 || cluster == "\n" {
+			break
+		}
+		x += clusterWidth
+		text = text[len(cluster):]
+	}
+	if text == "" {
+		t.virtualX, t.virtualY = x, startY
+		return
+	}
+	x = max(x, 0)
+
+	// Start where the terminal really draws: it clamps a cursor move to
+	// the screen. Visible text that starts past the right edge, such as
+	// after a print that filled its line, goes on the next line as in
+	// buffered mode. On the last line, a newline scrolls up to make one.
+	y := min(max(startY, 0), t.height-1)
+	scroll := false
+	if x >= t.width && startsVisible(text) {
+		x = 0
+		if y == t.height-1 {
+			scroll = true
+		} else {
+			y++
+		}
+	}
+
+	var output strings.Builder
+	output.WriteString(fmt.Sprintf("\033[%d;%dH", y+1, x+1))
+	if scroll {
+		output.WriteString("\n")
+	}
+	if !style.IsEmpty() {
+		output.WriteString(style.String())
+	}
+	output.WriteString(text)
+	if !style.IsEmpty() {
+		output.WriteString("\033[0m")
+	}
+
+	t.writeScreenLocked(output.String())
+	t.virtualX, t.virtualY = t.advanceUnbuffered(x, y, text)
+}
+
+// startsVisible reports whether text has a cluster that takes a column
+// before its first newline. A newline starts the next line by itself.
+func startsVisible(text string) bool {
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if cluster == "\n" {
+			return false
+		}
+		if clusterWidth > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// advanceUnbuffered returns the cursor position after text is written
+// directly to the terminal from (x, y). It follows the buffered layout: each
+// grapheme cluster takes its display width, a cluster that does not fit
+// wraps to the next line, a newline starts the next line at column 0, and a
+// tab takes no column. Text past the last line scrolls the screen, so y stays
+// on the last line. As in buffered mode, x is t.width after text that fills
+// its line, and the next print starts on the line below.
+func (t *Terminal) advanceUnbuffered(x, y int, text string) (int, int) {
+	nextLine := func() {
+		x = 0
+		if y < t.height-1 {
+			y++
+		}
+	}
+	for cluster, clusterWidth := range runewidth.Graphemes(text) {
+		if cluster == "\n" {
+			nextLine()
+			continue
+		}
+		if x > 0 && x+clusterWidth > t.width {
+			nextLine()
+		}
+		x += clusterWidth
+	}
+	return x, y
 }
 
 // blankTail writes blank cells over the columns after a glyph wider than two
