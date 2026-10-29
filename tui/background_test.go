@@ -30,6 +30,7 @@ func TestParseBackgroundReply(t *testing.T) {
 		{"unterminated invalid UTF-8", "\x1b]11;rgb:ffff/ffff/ffff\xff", RGB{}, false},
 		{"unterminated replacement char", "\x1b]11;rgb:ffff/ffff/ffff\xef\xbf\xbd", RGB{}, false},
 		{"unterminated UTF-8 0x9c continuation byte", "\x1b]11;rgb:ffff/ffff/ffff✓", RGB{}, false},
+		{"ST split before its backslash", "\x1b]11;rgb:ffff/ffff/ffff\x1b", RGB{}, false},
 		{"ESC that is not ST", "\x1b]11;rgb:ffff/ffff/ffff\x1b[c", RGB{}, false},
 		{"empty", "", RGB{}, false},
 		{"DA1 only", "\x1b[?62;22c", RGB{}, false},

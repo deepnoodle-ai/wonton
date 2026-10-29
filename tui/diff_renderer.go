@@ -6,7 +6,6 @@ import (
 
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 // DiffTheme defines colors and styles for diff rendering
@@ -124,34 +123,14 @@ func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLi
 	return result
 }
 
-// expandTabs expands tab characters to spaces
+// expandTabs expands tab characters to spaces, using 4 columns per tab stop
+// when TabWidth is not positive.
 func (dr *DiffRenderer) expandTabs(s string) string {
-	if !strings.Contains(s, "\t") {
-		return s
-	}
-
 	tabWidth := dr.TabWidth
 	if tabWidth <= 0 {
 		tabWidth = 4
 	}
-
-	var result strings.Builder
-	result.Grow(len(s) * 2) // Estimate expanded size
-
-	col := 0
-	for cluster, w := range runewidth.Graphemes(s) {
-		if cluster == "\t" {
-			// Expand tab to reach next tab stop
-			spaces := tabWidth - (col % tabWidth)
-			result.WriteString(strings.Repeat(" ", spaces))
-			col += spaces
-		} else {
-			result.WriteString(cluster)
-			col += w
-		}
-	}
-
-	return result.String()
+	return expandTabStops(s, 0, tabWidth)
 }
 
 func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedDiffLine {

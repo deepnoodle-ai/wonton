@@ -572,7 +572,7 @@ func (t *TextAreaView) renderBordered(ctx *RenderContext, w, h int, content *Scr
 type textAreaFocusHandler struct {
 	area    *TextAreaView
 	bounds  image.Rectangle
-	height  int
+	height  int // rendered height, which clipped bounds may understate
 	focused bool
 }
 
@@ -592,18 +592,18 @@ func (h *textAreaFocusHandler) FocusBounds() image.Rectangle {
 	return h.bounds
 }
 
+// innerHeight returns the number of content rows the area shows: its
+// rendered height (or its set height before it renders) less the border,
+// and at least 1.
 func (h *textAreaFocusHandler) innerHeight() int {
-	_, viewHeight := h.area.size(0, 0)
-	if h.height > 0 && h.height < viewHeight {
-		viewHeight = h.height
+	viewHeight := h.height
+	if viewHeight <= 0 {
+		_, viewHeight = h.area.size(0, 0)
 	}
 	if h.area.bordered && !h.area.leftBorderOnly {
 		viewHeight -= 2 // account for border
 	}
-	if viewHeight < 1 {
-		viewHeight = 1
-	}
-	return viewHeight
+	return max(viewHeight, 1)
 }
 
 func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {

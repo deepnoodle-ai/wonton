@@ -171,31 +171,23 @@ func parseBackgroundReply(b []byte) (RGB, bool) {
 			return RGB{}, false
 		}
 		if b[end] == 0x1b && (end+1 >= len(b) || b[end+1] != '\\') {
-			b = b[end:]
 			continue // an ESC that does not start ST: not a well-formed reply
 		}
 		if c, ok := parseXColor(string(b[:end])); ok {
 			return c, true
 		}
-		b = b[end:]
 	}
 }
 
-// indexOSCTerminator returns the byte index of the first BEL (0x07), ESC (0x1b),
-// or standalone 8-bit ST (0x9c) in b, or -1 if none is present. Stepping by
-// decoded UTF-8 runes avoids both bytes.IndexAny (which decodes raw 0x9c in its
-// search string as utf8.RuneError and matches any invalid UTF-8 byte or U+FFFD)
-// and raw byte scanning (which would match a 0x9c continuation byte inside a
-// valid multi-byte UTF-8 rune such as '✓', \xe2\x9c\x93).
+// indexOSCTerminator returns the index of the first BEL, ESC, or 8-bit ST
+// (0x9c) in b, or -1. It steps by UTF-8 sequence, so the 0x9c continuation
+// byte of a character such as '✓' does not match. bytes.IndexAny cannot be
+// used: it decodes 0x9c as U+FFFD and matches any invalid byte or U+FFFD.
 func indexOSCTerminator(b []byte) int {
 	for i := 0; i < len(b); {
 		switch b[i] {
 		case 0x07, 0x1b, 0x9c:
 			return i
-		}
-		if b[i] < utf8.RuneSelf {
-			i++
-			continue
 		}
 		_, w := utf8.DecodeRune(b[i:])
 		i += w
