@@ -171,6 +171,10 @@ func TestHandoffPTYHelper(t *testing.T) {
 	if mode == "" {
 		t.Skip("subprocess helper")
 	}
+	if os.Getenv("WONTON_HANDOFF_TMUX") != "" {
+		// Set here, not by the parent: TestMain clears it in every process.
+		t.Setenv("TMUX", "/tmp/tmux-test/default,1,0")
+	}
 	report := os.NewFile(3, "report")
 	defer report.Close()
 	original, err := handoffTestAttributes(int(os.Stdin.Fd()))
@@ -213,9 +217,10 @@ func TestHandoffPTYHelper(t *testing.T) {
 }
 
 func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
-	for _, mode := range []string{"fullscreen", "inline"} {
+	for _, mode := range []string{"fullscreen", "inline", "fullscreen-tmux", "inline-tmux"} {
 		for _, scenario := range []string{"normal", "full-queue", "stop", "error", "panic"} {
 			t.Run(mode+"/"+scenario, func(t *testing.T) {
+				runner, tmux := strings.CutSuffix(mode, "-tmux")
 				readReport, writeReport, err := os.Pipe()
 				if err != nil {
 					t.Fatal(err)
@@ -227,7 +232,10 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer controlWrite.Close()
-				cmd.Env = append(os.Environ(), "WONTON_HANDOFF_PTY_HELPER="+mode, "WONTON_HANDOFF_SCENARIO="+scenario)
+				cmd.Env = append(os.Environ(), "WONTON_HANDOFF_PTY_HELPER="+runner, "WONTON_HANDOFF_SCENARIO="+scenario)
+				if tmux {
+					cmd.Env = append(cmd.Env, "WONTON_HANDOFF_TMUX=1")
+				}
 				cmd.ExtraFiles = []*os.File{writeReport, controlRead}
 				master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 				if err != nil {
@@ -257,6 +265,9 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 						t.Fatal("terminal output did not settle")
 					}
 					assertHandoffKeyboardStacks(t, output.String())
+					if tmux {
+						assertModifyOtherKeysAroundHandoff(t, output.String())
+					}
 				}
 				messages := make(chan handoffPTYMessage, 16)
 				go func() {
@@ -349,6 +360,29 @@ func TestHandoffUnsupportedAndNotRunningDoNotInvokeCallback(t *testing.T) {
 	inline.running = true
 	if operation, restore := inline.Handoff(callback); operation != ErrHandoffUnsupported || restore != nil {
 		t.Fatal(operation, restore)
+	}
+}
+
+// Inside tmux, each keyboard push comes with a modifyOtherKeys request and
+// each pop with its reset, so the child and the shell never see the mode on.
+func assertModifyOtherKeysAroundHandoff(t *testing.T, output string) {
+	t.Helper()
+	commands := regexp.MustCompile("\\x1b\\[(>1u|<u|>4;1m|>4m)").FindAllString(output, -1)
+	want := []string{"\x1b[>1u", "\x1b[>4;1m"}
+	on := false
+	for i := 0; i+1 < len(commands); i += 2 {
+		pair := commands[i : i+2]
+		switch {
+		case !on && pair[0] == "\x1b[>1u" && pair[1] == "\x1b[>4;1m":
+			on = true
+		case on && pair[0] == "\x1b[<u" && pair[1] == "\x1b[>4m":
+			on = false
+		default:
+			t.Fatalf("unpaired keyboard commands, want %q then its reset: %q", want, commands)
+		}
+	}
+	if len(commands) < 4 || len(commands)%2 != 0 || on {
+		t.Fatalf("modifyOtherKeys left on or never used: %q", commands)
 	}
 }
 

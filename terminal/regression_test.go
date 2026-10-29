@@ -53,6 +53,30 @@ func TestKeyDecoder_ModifyOtherKeys(t *testing.T) {
 	assert.True(t, event.Ctrl)
 }
 
+// The keys tmux sends a pane in modifyOtherKeys mode 1: the xterm form by
+// default and with extended-keys-format csi-u, and the CSI u form in tmux 3.2
+// to 3.4 and with extended-keys-format csi-u. Keys with a legacy encoding,
+// such as Ctrl+C, still arrive as their legacy bytes.
+func TestKeyDecoder_TmuxExtendedKeys(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  KeyEvent
+	}{
+		{"\x1b[27;2;13~", KeyEvent{Key: KeyEnter, Shift: true}},
+		{"\x1b[13;2u", KeyEvent{Key: KeyEnter, Shift: true}},
+		{"\x1b[27;5;13~", KeyEvent{Key: KeyEnter, Shift: true, Ctrl: true}},
+		{"\x1b[27;2;32~", KeyEvent{Rune: ' ', Shift: true}},
+		{"\x1b[27;5;9~", KeyEvent{Key: KeyTab, Ctrl: true}},
+		{"\x03", KeyEvent{Key: KeyCtrlC, Ctrl: true}},
+	} {
+		decoder := NewKeyDecoder(bytes.NewReader([]byte(tc.input)))
+		event, err := decoder.ReadKeyEvent()
+		assert.NoError(t, err)
+		got := KeyEvent{Key: event.Key, Rune: event.Rune, Shift: event.Shift, Alt: event.Alt, Ctrl: event.Ctrl}
+		assert.Equal(t, got, tc.want, "input %q", tc.input)
+	}
+}
+
 func TestKeyDecoder_ModifiedHomeEnd(t *testing.T) {
 	tests := []struct {
 		name  string

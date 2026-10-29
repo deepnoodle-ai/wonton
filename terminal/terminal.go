@@ -1183,6 +1183,12 @@ func (t *Terminal) DetectKittyProtocol() bool {
 // Supported terminals: kitty, WezTerm, foot, ghostty, iTerm2 (3.5+), and others.
 // Unsupported terminals will silently ignore this escape sequence.
 //
+// tmux ignores the Kitty protocol, so inside tmux this also asks for xterm's
+// modifyOtherKeys mode 1, which tmux forwards when its extended-keys option is
+// on; tmux then sends Shift+Enter as ESC[27;2;13~ (or ESC[13;2u with
+// extended-keys-format csi-u), which KeyDecoder reads as Shift+Enter. With the
+// option off, which is tmux's default, Shift+Enter still arrives as Enter.
+//
 // Call DisableEnhancedKeyboard() before exiting to restore normal keyboard mode.
 func (t *Terminal) EnableEnhancedKeyboard() {
 	if t.kittyEnabled {

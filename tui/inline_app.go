@@ -193,7 +193,9 @@ func WithInlinePasteTabWidth(width int) InlineOption {
 }
 
 // WithInlineKittyKeyboard enables the Kitty keyboard protocol, which lets
-// supporting terminals report keys (e.g. Shift+Enter) unambiguously.
+// supporting terminals report keys (e.g. Shift+Enter) unambiguously. Inside
+// tmux, which ignores that protocol, it asks for tmux's extended keys instead;
+// see terminal.Terminal.EnableEnhancedKeyboard.
 func WithInlineKittyKeyboard(enabled bool) InlineOption {
 	return func(c *inlineConfig) {
 		c.KittyKeyboard = enabled
@@ -404,7 +406,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 		enabled  *bool
 	}{
 		{r.config.BracketedPaste, "\x1b[?2004h", &r.pasteEnabled},
-		{r.config.KittyKeyboard, "\x1b[>1u", &r.kittyEnabled},
+		{r.config.KittyKeyboard, "", &r.kittyEnabled}, // enableKeyboard writes it
 		{r.config.MouseTracking, "\x1b[?1000h\x1b[?1006h", &r.mouseEnabled},
 	}
 	for _, feature := range features {

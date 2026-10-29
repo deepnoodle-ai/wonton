@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
 	"github.com/deepnoodle-ai/wonton/terminal"
 	"golang.org/x/term"
 )
@@ -197,8 +198,8 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	defer fmt.Fprint(cfg.output, "\033[?2004l")
 
 	// Enable enhanced keyboard mode for Shift+Enter detection
-	fmt.Fprint(cfg.output, "\033[>1u")
-	defer fmt.Fprint(cfg.output, "\033[<u")
+	fmt.Fprint(cfg.output, terminalstate.KeyboardEnable())
+	defer fmt.Fprint(cfg.output, terminalstate.KeyboardRelease())
 
 	// Initialize state
 	state := &promptState{
