@@ -48,6 +48,11 @@ type Recorder struct {
 	idleTimeLimit float64
 	paused        bool
 	writeErr      error // First error encountered during write (sticky)
+
+	// Redaction matches each event with the end of the events before it,
+	// so a value written after its key ("Token: ") is still redacted.
+	outputRedactor redactor
+	inputRedactor  redactor
 }
 
 // RecordingOptions configures recording behavior
@@ -69,7 +74,13 @@ func DefaultRecordingOptions() RecordingOptions {
 	}
 }
 
-// StartRecording begins recording a session to the specified file
+// StartRecording begins recording a session to the specified file.
+//
+// The recording holds what changes the screen: drawn output, the alternate
+// screen, cursor visibility, and in non-buffered mode clears and cursor moves.
+// A recording started while the alternate screen is on or the cursor is hidden
+// begins in that state. Input modes such as mouse reporting and bracketed
+// paste are not recorded.
 func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -131,6 +142,12 @@ func (t *Terminal) StartRecording(filename string, opts RecordingOptions) error 
 	}
 
 	t.recorder = recorder
+	if t.altScreen {
+		recorder.RecordOutput("\033[?1049h")
+	}
+	if t.cursorHidden {
+		recorder.RecordOutput("\033[?25l")
+	}
 	return nil
 }
 
@@ -166,8 +183,13 @@ func (t *Terminal) PauseRecording() {
 	if recorder != nil {
 		recorder.mu.Lock()
 		if !recorder.paused {
+			// Text written during the pause is not seen, so the text before
+			// it must not be joined to the text after it.
+			recorder.flushRedactorsLocked()
 			recorder.paused = true
 			recorder.pauseStart = time.Now()
+			recorder.outputRedactor = redactor{}
+			recorder.inputRedactor = redactor{}
 		}
 		recorder.mu.Unlock()
 	}
@@ -215,21 +237,20 @@ func (r *Recorder) RecordOutput(data string) {
 		return
 	}
 
+	if r.redactSecrets {
+		// The redactor can hold back the end of data until the next event.
+		data = r.outputRedactor.redact(data)
+	}
+
 	if len(data) == 0 {
 		return
 	}
 
-	event := RecordingEvent{
+	r.writeEvent(RecordingEvent{
 		Time: r.eventTimeLocked(time.Now()),
 		Type: "o",
 		Data: data,
-	}
-
-	if r.redactSecrets {
-		event.Data = redactSecretPatterns(event.Data)
-	}
-
-	r.writeEvent(event)
+	})
 }
 
 // eventTimeLocked computes the timestamp for an event occurring at now,
@@ -265,22 +286,32 @@ func (r *Recorder) RecordInput(data string) {
 		return
 	}
 
+	// Apply redaction to input as well (passwords, API keys typed by user)
+	if r.redactSecrets {
+		data = r.inputRedactor.redact(data)
+	}
+
 	if len(data) == 0 {
 		return
 	}
 
-	event := RecordingEvent{
+	r.writeEvent(RecordingEvent{
 		Time: r.eventTimeLocked(time.Now()),
 		Type: "i",
 		Data: data,
-	}
+	})
+}
 
-	// Apply redaction to input as well (passwords, API keys typed by user)
-	if r.redactSecrets {
-		event.Data = redactSecretPatterns(event.Data)
+// flushRedactorsLocked records the text the redactors hold back, when nothing
+// more can continue it. Caller must hold r.mu.
+func (r *Recorder) flushRedactorsLocked() {
+	now := time.Now()
+	if data := r.outputRedactor.flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "o", Data: data})
 	}
-
-	r.writeEvent(event)
+	if data := r.inputRedactor.flush(); data != "" {
+		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "i", Data: data})
+	}
 }
 
 // writeEvent writes a single event to the recording file
@@ -331,6 +362,7 @@ func (r *Recorder) close() error {
 	var firstErr error
 
 	if r.writer != nil {
+		r.flushRedactorsLocked()
 		if err := r.writer.Flush(); err != nil && firstErr == nil {
 			firstErr = err
 		}

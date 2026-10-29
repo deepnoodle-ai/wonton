@@ -311,9 +311,9 @@ func TestRecorder_SecretRedaction(t *testing.T) {
 	// Record output with a secret
 	r.RecordOutput("password: supersecret123")
 
-	r.writer.Flush()
-	tmpFile.Seek(0, 0)
-	content, err := io.ReadAll(tmpFile)
+	// Closing records the end of the output, which the redactor holds back.
+	assert.NoError(t, r.close())
+	content, err := os.ReadFile(tmpFile.Name())
 	assert.NoError(t, err)
 
 	// Secret should be redacted

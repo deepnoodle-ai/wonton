@@ -2,6 +2,9 @@ package terminal
 
 import (
 	"regexp"
+	"slices"
+	"strings"
+	"unicode/utf8"
 )
 
 // Common patterns for secrets that should be redacted. When a pattern has a
@@ -42,22 +45,266 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)((?:secret|key|token|password)[:\s=]+)[a-zA-Z0-9+/]{20,}={0,2}`),
 }
 
-// redactSecretPatterns applies pattern matching to redact secrets. The key
-// is found by the pattern's capture group, not by splitting the match on ':'
-// or '=': the secret itself can contain those characters (base64 padding,
-// URLs with credentials), and splitting there would leak part of it.
-func redactSecretPatterns(data string) string {
-	result := data
+// redactTailSize is how much settled text a redactor keeps from earlier
+// events: room for a key and its delimiter ("Authorization: Bearer ").
+const redactTailSize = 256
 
-	for _, pattern := range secretPatterns {
-		if pattern.NumSubexp() > 0 {
-			result = pattern.ReplaceAllString(result, "${1}[REDACTED]")
-		} else {
-			result = pattern.ReplaceAllLiteralString(result, "[REDACTED]")
+// redactHoldLimit caps how much text a redactor holds back. A run of text
+// longer than this is recorded before it ends.
+const redactHoldLimit = 8 << 10
+
+// redactor redacts secrets in a stream of terminal output or input, one event
+// at a time. Redacting each event alone misses a secret that two writes split:
+// a program that prints "Token: " and then the value records the value with no
+// key in front of it, and the first part of a token such as "AKIAIOSFODNN"
+// matches no pattern until the rest arrives.
+//
+// So a redactor matches each event together with the settled text before it
+// (the tail), and holds back the run of text at the end of the event, since
+// the next write can continue it. A secret is always a run of text with no
+// whitespace, so text that ends in whitespace or a break is settled. The held
+// text is recorded with the next event, or by flush.
+//
+// Matching runs on the text, with escape sequences taken out, so a style change
+// between a key and its value does not hide the value, and a redaction never
+// removes an escape sequence. Any other escape sequence, such as a cursor move,
+// separates the text on either side like a line break: a key still matches a
+// value drawn after a cursor move, but a value does not run on into the next
+// text drawn elsewhere. The payload of a string sequence, such as an OSC 8
+// hyperlink's URL, is redacted on its own.
+type redactor struct {
+	tail string // settled text before held, before redaction
+	held string // the end of the stream, which the next write can continue
+}
+
+// redact returns the stream up to the end of data, with each secret replaced
+// by [REDACTED], less the text it holds back.
+func (r *redactor) redact(data string) string {
+	return r.settle(r.held+data, false)
+}
+
+// flush returns the text the redactor holds back, redacted. Call it when
+// nothing more will continue the stream.
+func (r *redactor) flush() string {
+	return r.settle(r.held, true)
+}
+
+// settle redacts chunk, the held text and the new data. Unless final, it holds
+// back the run of text at the end of chunk.
+func (r *redactor) settle(chunk string, final bool) string {
+	// Split chunk into text and escape sequences, and join the text.
+	type part struct {
+		s   string
+		raw int // offset of s in chunk
+		at  int // offset of the text in text, or -1 for an escape sequence
+	}
+	var parts []part
+	var text strings.Builder
+	for i := 0; i < len(chunk); {
+		if chunk[i] == '\x1b' {
+			n := escapeLen(chunk[i:])
+			parts = append(parts, part{chunk[i : i+n], i, -1})
+			if breaksText(chunk[i : i+n]) {
+				text.WriteByte('\n')
+			}
+			i += n
+			continue
+		}
+		n := strings.IndexByte(chunk[i:], '\x1b')
+		if n < 0 {
+			n = len(chunk) - i
+		}
+		parts = append(parts, part{chunk[i : i+n], i, text.Len()})
+		text.WriteString(chunk[i : i+n])
+		i += n
+	}
+
+	// Find the run of text at the end, which the next write can continue.
+	// The whitespace is what \s matches in the patterns.
+	joined := r.tail + text.String()
+	from := len(r.tail)
+	holdAt, hold := text.Len(), len(chunk)
+	if !final {
+		run := strings.LastIndexAny(joined, " \t\n\f\r") + 1
+		run = max(run, from)
+		if run < len(joined) {
+			for _, p := range parts {
+				if p.at >= 0 && p.at+len(p.s) > run-from {
+					holdAt, hold = run-from, p.raw+run-from-p.at
+					break
+				}
+			}
+			if len(chunk)-hold > redactHoldLimit {
+				holdAt, hold = text.Len(), len(chunk)
+			}
 		}
 	}
 
-	return result
+	spans := secretSpans(joined, from)
+	var b strings.Builder
+	for _, p := range parts {
+		if p.raw >= hold {
+			break
+		}
+		if p.at < 0 {
+			b.WriteString(redactEscape(p.s))
+			continue
+		}
+		writeRedacted(&b, p.s[:min(len(p.s), hold-p.raw)], p.at, spans)
+	}
+	r.tail = lastBytes(joined[:from+holdAt], redactTailSize)
+	r.held = chunk[hold:]
+	return b.String()
+}
+
+// span is a byte range [start, end).
+type span struct{ start, end int }
+
+// secretSpans returns the byte ranges of the secrets in s that end after from,
+// sorted, merged, and relative to from. A secret that starts before from has a
+// negative start. A pattern's capture group is the key and delimiter in
+// front of the secret, which are kept. The key is found by the capture group,
+// not by splitting the match on ':' or '=': the secret itself can contain
+// those characters (base64 padding, URLs with credentials), and splitting
+// there would leak part of it.
+func secretSpans(s string, from int) []span {
+	var spans []span
+	for _, pattern := range secretPatterns {
+		for _, m := range pattern.FindAllStringSubmatchIndex(s, -1) {
+			start, end := m[0], m[1]
+			if len(m) > 2 && m[3] >= 0 {
+				start = m[3]
+			}
+			if end <= from || start >= end {
+				continue
+			}
+			spans = append(spans, span{start - from, end - from})
+		}
+	}
+	slices.SortFunc(spans, func(a, b span) int { return a.start - b.start })
+	merged := spans[:0]
+	for _, sp := range spans {
+		if n := len(merged); n > 0 && sp.start <= merged[n-1].end {
+			merged[n-1].end = max(merged[n-1].end, sp.end)
+			continue
+		}
+		merged = append(merged, sp)
+	}
+	return merged
+}
+
+// writeRedacted writes s, the text at offset at, with the parts that spans
+// cover replaced. A span that started in earlier text was marked there, so its
+// rest is dropped.
+func writeRedacted(b *strings.Builder, s string, at int, spans []span) {
+	pos := 0
+	for _, sp := range spans {
+		start, end := sp.start-at, sp.end-at
+		if end <= pos || start >= len(s) {
+			continue
+		}
+		if start >= pos {
+			b.WriteString(s[pos:start])
+			b.WriteString("[REDACTED]")
+		}
+		pos = min(end, len(s))
+	}
+	b.WriteString(s[pos:])
+}
+
+// isStringSequence reports whether ESC c starts a sequence that carries a
+// string payload: OSC, DCS, SOS, PM, or APC.
+func isStringSequence(c byte) bool {
+	return c == ']' || c == 'P' || c == 'X' || c == '^' || c == '_'
+}
+
+// escapeLen returns the length of the escape sequence at the start of s,
+// which begins with ESC. An unterminated sequence runs to the end of s.
+func escapeLen(s string) int {
+	if len(s) < 2 {
+		return len(s)
+	}
+	switch c := s[1]; {
+	case c == '[':
+		// CSI: parameter and intermediate bytes, then a final byte.
+		for i := 2; i < len(s); i++ {
+			if s[i] >= 0x40 && s[i] <= 0x7e {
+				return i + 1
+			}
+		}
+		return len(s)
+	case isStringSequence(c):
+		// The payload ends with BEL or ST (ESC \). Any other ESC ends it too.
+		for i := 2; i < len(s); i++ {
+			if s[i] == '\a' {
+				return i + 1
+			}
+			if s[i] == '\x1b' {
+				if i+1 < len(s) && s[i+1] == '\\' {
+					return i + 2
+				}
+				return i
+			}
+		}
+		return len(s)
+	default:
+		// Intermediate bytes, then a final byte.
+		i := 1
+		for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
+			i++
+		}
+		return min(i+1, len(s))
+	}
+}
+
+// breaksText reports whether the escape sequence seq separates the text on
+// either side. Only SGR sequences, which set the style, and string sequences
+// do not. The rest move the cursor or change the screen or its modes, and no
+// key and value are written with one of them in between.
+func breaksText(seq string) bool {
+	if len(seq) < 2 || isStringSequence(seq[1]) {
+		return false
+	}
+	return seq[1] != '[' || seq[len(seq)-1] != 'm'
+}
+
+// redactEscape redacts the payload of a string sequence, which can carry text
+// such as a hyperlink's URL. Other escape sequences are returned unchanged.
+func redactEscape(seq string) string {
+	if len(seq) < 3 || !isStringSequence(seq[1]) {
+		return seq
+	}
+	end := len(seq)
+	if strings.HasSuffix(seq, "\a") {
+		end--
+	} else if strings.HasSuffix(seq[2:], "\x1b\\") {
+		end -= 2
+	}
+	payload := seq[2:end]
+	var b strings.Builder
+	b.WriteString(seq[:2])
+	writeRedacted(&b, payload, 0, secretSpans(payload, 0))
+	b.WriteString(seq[end:])
+	return b.String()
+}
+
+// lastBytes returns at most the last n bytes of s, starting on a rune boundary.
+func lastBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[len(s)-n:]
+	for len(s) > 0 && !utf8.RuneStart(s[0]) {
+		s = s[1:]
+	}
+	return s
+}
+
+// redactSecretPatterns redacts the secrets in data on its own, with no text
+// from earlier events.
+func redactSecretPatterns(data string) string {
+	var r redactor
+	return r.redact(data) + r.flush()
 }
 
 // RedactCredentials can be called manually to test redaction
