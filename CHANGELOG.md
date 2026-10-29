@@ -234,7 +234,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
   position 0, so a rainbow or gradient drew all four corners in its first
   color. `tui.CornerHighlightAnimation` now fades the highlight into both
   edges next to the lit corner. Before, it faded only into the top edge, and
-  also when the bottom-left corner was lit. (#139)
+  also when the bottom-left corner was lit. A custom `BorderAnimation` now
+  gets different `position` values: the top-left corner is 0, the top edge
+  starts at 1, and the rest follow clockwise. A direct call to
+  `CornerHighlightAnimation.GetBorderStyle` lights only the active corner and
+  no longer fades into edge cells. (#139)
 - `terminal.Terminal` no longer trusts its own width for multi-rune
   grapheme clusters such as keycaps, VS16 emoji, and Indic text when it
   writes a frame. It repositions the cursor after each one, erases the cells

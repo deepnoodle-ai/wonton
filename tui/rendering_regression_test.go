@@ -351,6 +351,12 @@ func TestCornerHighlight_FadesIntoBothEdges(t *testing.T) {
 		for _, p := range [][2]int{c.corner, c.before, c.after} {
 			assert.Equal(t, *term.GetCell(p[0], p[1]).Style.FgRGB, high, "corner %d, cell %v", i, p)
 		}
+		if i == 0 {
+			// (2, 0) is one cell into the top-left fade: blended, not lit.
+			fade := *term.GetCell(2, 0).Style.FgRGB
+			assert.NotEqual(t, fade, high, "fade cell (2, 0) fully lit")
+			assert.NotEqual(t, fade, base, "fade cell (2, 0) not lit")
+		}
 		assert.Equal(t, *term.GetCell(w/2, 0).Style.FgRGB, base, "corner %d, mid-edge", i)
 	}
 }
