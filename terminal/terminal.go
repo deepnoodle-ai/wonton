@@ -2095,9 +2095,10 @@ func (t *Terminal) flushInternal() error {
 		// rewriteRest is set once a multi-rune cluster is written on this
 		// row. The terminal may draw such a cluster wider than its cell
 		// width, spilling over the cells after it, so the front buffer no
-		// longer describes them; write them again even when unchanged.
+		// longer describes them; write them again even when unchanged, up
+		// to the end of the row, past the dirty region.
 		rewriteRest := false
-		for x := minX; x <= maxX; x++ {
+		for x := minX; x <= maxX || (rewriteRest && x < t.width); x++ {
 			cell := t.backBuffer[y][x]
 			oldCell := t.frontBuffer[y][x]
 

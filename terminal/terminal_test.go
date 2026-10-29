@@ -662,6 +662,15 @@ func TestTerminal_FlushDoesNotTrustClusterWidth(t *testing.T) {
 		out := render(term, buf, "a\u0301ab")
 		assert.Contains(t, out, "a\u0301\033[1;2Hab")
 	})
+
+	t.Run("rewrite continues past the dirty region", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		term := NewTestTerminal(10, 1, buf)
+		render(term, buf, "e\u0301ab")
+		// Only the cluster is drawn, so it is the rightmost dirty column.
+		out := render(term, buf, "a\u0301")
+		assert.Contains(t, out, "a\u0301\033[1;2Hab")
+	})
 }
 
 func TestTerminal_FillStyled(t *testing.T) {
