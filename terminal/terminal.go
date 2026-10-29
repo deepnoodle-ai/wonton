@@ -1139,11 +1139,11 @@ func shouldSkipTerminalQuery() bool {
 // Returns true if the terminal supports the protocol.
 //
 // The detection works by:
-// 1. Temporarily enabling raw mode
-// 2. Sending a query for progressive enhancement support (\x1b[?u)
-// 3. Sending a device attributes query (\x1b[c)
-// 4. Polling for and reading the response one byte at a time with a 200ms timeout
-//    (extended once by 200ms if a partial response is already in flight)
+//  1. Temporarily enabling raw mode
+//  2. Sending a query for progressive enhancement support (\x1b[?u)
+//  3. Sending a device attributes query (\x1b[c)
+//  4. Reading the replies up to the end of the device attributes reply, for
+//     up to 200ms, or 400ms if the terminal has started to answer
 //
 // Detection is skipped when TERM indicates a multiplexer (tmux/screen) or
 // dumb terminal, or when TERM_PROGRAM identifies a terminal known not to
@@ -1154,9 +1154,11 @@ func shouldSkipTerminalQuery() bool {
 // Caveats:
 //   - Detection is supported on Unix terminals; on other platforms it returns
 //     false immediately.
-//   - Keys typed during the probe window (before the terminal's DA1 reply
-//     arrives, or before a timeout flushes unread input) are consumed with the
-//     reply; keys typed after the reply (or after timeout) are preserved.
+//   - Keys typed while the probe waits for the reply are dropped. Keys typed
+//     after the reply arrives, or after the probe gives up, are not.
+//   - When the probe gives up, it discards pending input. A reply that
+//     arrives later is left for the input reader; KeyDecoder reads a whole
+//     reply as KeyUnknown events, not as typed keys.
 //
 // This is the same approach used by Gemini CLI and other terminal applications.
 func (t *Terminal) DetectKittyProtocol() bool {
@@ -1167,24 +1169,6 @@ func (t *Terminal) DetectKittyProtocol() bool {
 
 	t.kittySupported = probeKittyProtocol(os.Stdin, t.out, 200*time.Millisecond)
 	return t.kittySupported
-}
-
-// hasCSIQuestionReply reports whether b contains a CSI ? <params> <final>
-// response, where params consists of one or more digits or semicolons.
-func hasCSIQuestionReply(b []byte, final byte) bool {
-	for i := 0; i+3 < len(b); i++ {
-		if b[i] != 0x1b || b[i+1] != '[' || b[i+2] != '?' {
-			continue
-		}
-		j := i + 3
-		for j < len(b) && ((b[j] >= '0' && b[j] <= '9') || b[j] == ';') {
-			j++
-		}
-		if j > i+3 && j < len(b) && b[j] == final {
-			return true
-		}
-	}
-	return false
 }
 
 // EnableEnhancedKeyboard enables enhanced keyboard mode (CSI u / kitty keyboard protocol).

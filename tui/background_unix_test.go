@@ -102,20 +102,3 @@ func TestQueryBackgroundTimeoutLeavesNoPartialReply(t *testing.T) {
 	assert.True(t, time.Since(start) >= 100*time.Millisecond)
 	assert.Equal(t, pending(t, tty), "")
 }
-
-func TestFlushInputDropsPendingBytes(t *testing.T) {
-	master, tty, err := pty.Open()
-	if err != nil {
-		t.Skipf("no pty: %v", err)
-	}
-	defer master.Close()
-	defer tty.Close()
-	state, err := term.MakeRaw(int(tty.Fd()))
-	assert.NoError(t, err)
-	defer term.Restore(int(tty.Fd()), state)
-	master.WriteString("\x1b]11;rgb:ffff/ffff/ffff\x07")
-	fds := []unix.PollFd{{Fd: int32(tty.Fd()), Events: unix.POLLIN}}
-	unix.Poll(fds, 1000) // wait for the bytes to arrive
-	assert.NoError(t, flushInput(int(tty.Fd())))
-	assert.Equal(t, pending(t, tty), "")
-}

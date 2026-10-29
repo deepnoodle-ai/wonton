@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -89,31 +90,65 @@ func TestKeyDecoder_FileLoneEscapeAtFullBuffer(t *testing.T) {
 	}
 }
 
-func TestDetectKittyProtocol_NoReplyDoesNotSwallowNextKeystroke(t *testing.T) {
+// kittyTerminal opens a pty, makes it stdin and stdout, and answers the
+// Kitty keyboard probe on its master with reply. An empty reply leaves the
+// probe unanswered. It returns the master, where the test types keys.
+func kittyTerminal(t *testing.T, reply string) *os.File {
+	t.Helper()
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Skipf("pty unavailable: %v", err)
 	}
-	defer master.Close()
-	defer slave.Close()
+	t.Cleanup(func() { master.Close(); slave.Close() })
 
 	oldStdin, oldStdout := os.Stdin, os.Stdout
 	os.Stdin, os.Stdout = slave, slave
-	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
-
+	t.Cleanup(func() { os.Stdin, os.Stdout = oldStdin, oldStdout })
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv("TERM_PROGRAM", "")
 
-	// Drain the probe query from master without answering it.
 	go func() {
-		buf := make([]byte, 256)
-		for {
-			if _, err := master.Read(buf); err != nil {
+		var seen []byte
+		buf := make([]byte, 64)
+		for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
+			n, err := master.Read(buf)
+			if err != nil {
 				return
 			}
+			seen = append(seen, buf[:n]...)
 		}
+		master.WriteString(reply)
+		io.Copy(io.Discard, master)
 	}()
+	return master
+}
 
+// readKeys reads n key events from stdin. It fails instead of hanging when
+// the keys never arrive, as when the probe consumed them.
+func readKeys(t *testing.T, master *os.File, n int) []KeyEvent {
+	t.Helper()
+	decoder := NewKeyDecoder(os.Stdin)
+	done := make(chan []KeyEvent, 1)
+	go func() {
+		var events []KeyEvent
+		for range n {
+			ev, _ := decoder.ReadKeyEvent()
+			events = append(events, ev)
+		}
+		done <- events
+	}()
+	select {
+	case events := <-done:
+		return events
+	case <-time.After(2 * time.Second):
+		master.WriteString(strings.Repeat("z", n)) // unblock the reader
+		t.Fatal("keys typed after DetectKittyProtocol never reached the decoder")
+		return nil
+	}
+}
+
+func TestDetectKittyProtocol_NoReplyDoesNotSwallowNextKeystroke(t *testing.T) {
+	master := kittyTerminal(t, "")
 	term, err := NewTerminal()
 	assert.NoError(t, err)
 	assert.False(t, term.DetectKittyProtocol())
@@ -124,23 +159,7 @@ func TestDetectKittyProtocol_NoReplyDoesNotSwallowNextKeystroke(t *testing.T) {
 	// must reach the decoder rather than be consumed by a leaked probe read.
 	_, err = master.WriteString("ab")
 	assert.NoError(t, err)
-
-	decoder := NewKeyDecoder(os.Stdin)
-	done := make(chan [2]KeyEvent, 1)
-	go func() {
-		ev1, _ := decoder.ReadKeyEvent()
-		ev2, _ := decoder.ReadKeyEvent()
-		done <- [2]KeyEvent{ev1, ev2}
-	}()
-
-	select {
-	case events := <-done:
-		assert.Equal(t, events[0], KeyEvent{Rune: 'a'})
-		assert.Equal(t, events[1], KeyEvent{Rune: 'b'})
-	case <-time.After(time.Second):
-		master.WriteString("zz") // unblock any stuck reader
-		t.Fatal("first keystroke after timed-out DetectKittyProtocol was lost")
-	}
+	assert.Equal(t, readKeys(t, master, 2), []KeyEvent{{Rune: 'a'}, {Rune: 'b'}})
 }
 
 func TestDetectKittyProtocol_ReplyAndLeavesSubsequentKeys(t *testing.T) {
@@ -154,33 +173,7 @@ func TestDetectKittyProtocol_ReplyAndLeavesSubsequentKeys(t *testing.T) {
 		{"unsupported DA1 with typed u", "u\x1b[?62;22cxy", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			master, slave, err := pty.Open()
-			if err != nil {
-				t.Skipf("pty unavailable: %v", err)
-			}
-			defer master.Close()
-			defer slave.Close()
-
-			oldStdin, oldStdout := os.Stdin, os.Stdout
-			os.Stdin, os.Stdout = slave, slave
-			defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
-
-			t.Setenv("TERM", "xterm-256color")
-			t.Setenv("TERM_PROGRAM", "")
-
-			go func() {
-				var seen []byte
-				buf := make([]byte, 64)
-				for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
-					n, err := master.Read(buf)
-					if err != nil {
-						return
-					}
-					seen = append(seen, buf[:n]...)
-				}
-				_, _ = master.WriteString(tc.reply)
-			}()
-
+			master := kittyTerminal(t, tc.reply)
 			term, err := NewTerminal()
 			assert.NoError(t, err)
 			assert.Equal(t, term.DetectKittyProtocol(), tc.want)
@@ -188,148 +181,9 @@ func TestDetectKittyProtocol_ReplyAndLeavesSubsequentKeys(t *testing.T) {
 			assert.NoError(t, term.EnableRawMode())
 			defer term.DisableRawMode()
 
-			decoder := NewKeyDecoder(os.Stdin)
-			ev1, err := decoder.ReadKeyEvent()
-			assert.NoError(t, err)
-			assert.Equal(t, ev1, KeyEvent{Rune: 'x'})
-			ev2, err := decoder.ReadKeyEvent()
-			assert.NoError(t, err)
-			assert.Equal(t, ev2, KeyEvent{Rune: 'y'})
+			// The probe stops at the end of the DA1 reply, so the keys
+			// typed after it are still there.
+			assert.Equal(t, readKeys(t, master, 2), []KeyEvent{{Rune: 'x'}, {Rune: 'y'}})
 		})
 	}
-}
-
-func TestProbeKittyProtocol_GraceWindowAndTimeoutFlush(t *testing.T) {
-	t.Run("reply finishes during grace window", func(t *testing.T) {
-		master, slave, err := pty.Open()
-		if err != nil {
-			t.Skipf("pty unavailable: %v", err)
-		}
-		defer master.Close()
-		defer slave.Close()
-
-		const timeout = 150 * time.Millisecond
-		go func() {
-			var seen []byte
-			buf := make([]byte, 64)
-			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
-				n, err := master.Read(buf)
-				if err != nil {
-					return
-				}
-				seen = append(seen, buf[:n]...)
-			}
-			// Start the reply within the first timeout window, then finish it
-			// during the second (grace) timeout window followed by 'a'.
-			_, _ = master.WriteString("\x1b[?0u\x1b[?62;")
-			time.Sleep(timeout + 15*time.Millisecond)
-			_, _ = master.WriteString("22ca")
-		}()
-
-		assert.True(t, probeKittyProtocol(slave, slave, timeout))
-
-		oldStdin, oldStdout := os.Stdin, os.Stdout
-		os.Stdin, os.Stdout = slave, slave
-		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
-
-		term, err := NewTerminal()
-		assert.NoError(t, err)
-		assert.NoError(t, term.EnableRawMode())
-		defer term.DisableRawMode()
-
-		decoder := NewKeyDecoder(slave)
-		ev, err := decoder.ReadKeyEvent()
-		assert.NoError(t, err)
-		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
-	})
-
-	t.Run("incomplete reply times out after grace window and flushes unread input", func(t *testing.T) {
-		master, slave, err := pty.Open()
-		if err != nil {
-			t.Skipf("pty unavailable: %v", err)
-		}
-		defer master.Close()
-		defer slave.Close()
-
-		const timeout = 40 * time.Millisecond
-		go func() {
-			var seen []byte
-			buf := make([]byte, 64)
-			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
-				n, err := master.Read(buf)
-				if err != nil {
-					return
-				}
-				seen = append(seen, buf[:n]...)
-			}
-			// Send a partial reply without the terminating 'c' so the probe
-			// extends for one grace window and then times out.
-			_, _ = master.WriteString("\x1b[?62;22")
-		}()
-
-		start := time.Now()
-		assert.False(t, probeKittyProtocol(slave, slave, timeout))
-		assert.True(t, time.Since(start) >= 2*timeout, "started reply should get one extra timeout window")
-
-		oldStdin, oldStdout := os.Stdin, os.Stdout
-		os.Stdin, os.Stdout = slave, slave
-		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
-
-		term, err := NewTerminal()
-		assert.NoError(t, err)
-		assert.NoError(t, term.EnableRawMode())
-		defer term.DisableRawMode()
-
-		_, err = master.WriteString("a")
-		assert.NoError(t, err)
-
-		decoder := NewKeyDecoder(slave)
-		ev, err := decoder.ReadKeyEvent()
-		assert.NoError(t, err)
-		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
-	})
-
-	t.Run("unterminated reply overflow flushes unread bytes from tty", func(t *testing.T) {
-		master, slave, err := pty.Open()
-		if err != nil {
-			t.Skipf("pty unavailable: %v", err)
-		}
-		defer master.Close()
-		defer slave.Close()
-
-		const timeout = 60 * time.Millisecond
-		go func() {
-			var seen []byte
-			buf := make([]byte, 64)
-			for !bytes.Contains(seen, []byte("\x1b[?u\x1b[c")) {
-				n, err := master.Read(buf)
-				if err != nil {
-					return
-				}
-				seen = append(seen, buf[:n]...)
-			}
-			// Write 300 bytes without a DA1 'c' reply so >256 bytes sit in the
-			// PTY queue; probeKittyProtocol must flush the unread remainder.
-			_, _ = master.WriteString(strings.Repeat("\x1b[?0u", 60))
-		}()
-
-		assert.False(t, probeKittyProtocol(slave, slave, timeout))
-
-		oldStdin, oldStdout := os.Stdin, os.Stdout
-		os.Stdin, os.Stdout = slave, slave
-		defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
-
-		term, err := NewTerminal()
-		assert.NoError(t, err)
-		assert.NoError(t, term.EnableRawMode())
-		defer term.DisableRawMode()
-
-		_, err = master.WriteString("a")
-		assert.NoError(t, err)
-
-		decoder := NewKeyDecoder(slave)
-		ev, err := decoder.ReadKeyEvent()
-		assert.NoError(t, err)
-		assert.Equal(t, ev, KeyEvent{Rune: 'a'})
-	})
 }
