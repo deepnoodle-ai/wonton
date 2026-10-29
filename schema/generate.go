@@ -241,7 +241,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		// string literal inside that string; see describeEncodedString.
 		encodedString := false
 		if c.stringOpt && supportsJSONStringOption(c.field.Type) {
-			if prop.Type == String {
+			if prop.Type == String && !decodesWithUnmarshalJSON(c.field.Type) {
 				describeEncodedString(prop)
 				encodedString = true
 			}
@@ -251,7 +251,7 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 		// Apply field tags to the property
 		applyFieldTags(prop, c.field)
 		if encodedString {
-			encodeTagValues(prop)
+			adjustEncodedStringTags(prop)
 		}
 
 		// Pointer-embedded structs are optional, so their promoted fields are
@@ -434,41 +434,74 @@ const encodedStringDescription = `a JSON-encoded string, such as "\"abc\""`
 // pattern and a description saying so.
 //
 // Field tags apply after this. A description or pattern tag replaces the
-// generated one; a pattern tag, like format, minLength, and maxLength, is
-// matched against the encoded value, quotes included. Nullable is unaffected:
-// a pattern does not apply to null. Enum, default, and example tags name Go
-// values, and encodeTagValues encodes them.
+// generated one; a pattern tag is matched against the encoded value, quotes
+// included. Nullable is unaffected: a pattern does not apply to null.
+// adjustEncodedStringTags then encodes the enum, default, and example tags,
+// which name Go values, and drops the format, minLength, and maxLength tags.
+//
+// A type that implements json.Unmarshaler is not described this way:
+// encoding/json passes it the raw content of the outer string, whatever that
+// is, so its own decoder decides what it accepts.
 func describeEncodedString(prop *Property) {
 	pattern := encodedStringPattern
 	prop.Pattern = &pattern
 	prop.Description = encodedStringDescription
 }
 
-// encodeTagValues JSON-encodes the enum, default, and example values of a
-// field described by describeEncodedString, so enum:"red" becomes "\"red\"",
-// the value encoding/json decodes to red.
-func encodeTagValues(prop *Property) {
-	for i, v := range prop.Enum {
-		prop.Enum[i] = encodeTagValue(v)
+// adjustEncodedStringTags fixes the tag values of a field described by
+// describeEncodedString after applyFieldTags sets them.
+//
+// Enum, default, and example values name Go values, so they are JSON-encoded:
+// enum:"red" becomes "\"red\"", the value encoding/json decodes to red. Each
+// enum value is listed in both of encoding/json's spellings, with HTML
+// characters escaped (as json.Marshal writes them) and unescaped, because a
+// validator compares the encoded text and both decode to the same value.
+//
+// Format, minLength, and maxLength are dropped. They would check the encoded
+// value, quotes and escapes included, so format:"email" could never pass and
+// a length limit would count the quotes.
+func adjustEncodedStringTags(prop *Property) {
+	if prop.Enum != nil {
+		enum := make([]any, 0, len(prop.Enum))
+		for _, v := range prop.Enum {
+			plain := encodeTagValue(v, false)
+			enum = append(enum, plain)
+			if escaped := encodeTagValue(v, true); escaped != plain {
+				enum = append(enum, escaped)
+			}
+		}
+		prop.Enum = enum
 	}
-	prop.Default = encodeTagValue(prop.Default)
-	prop.Example = encodeTagValue(prop.Example)
+	prop.Default = encodeTagValue(prop.Default, false)
+	prop.Example = encodeTagValue(prop.Example, false)
+	prop.Format = nil
+	prop.MinLength = nil
+	prop.MaxLength = nil
 }
 
 // encodeTagValue returns v as a JSON string literal if v is a string, and v
-// otherwise. HTML characters are left unescaped to keep the value readable.
-func encodeTagValue(v any) any {
+// otherwise. escapeHTML selects whether <, >, and & are escaped, as
+// json.Marshal does, or left as they are.
+func encodeTagValue(v any, escapeHTML bool) any {
 	s, ok := v.(string)
 	if !ok {
 		return v
 	}
 	var b strings.Builder
 	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(s); err != nil {
-		return v
-	}
+	enc.SetEscapeHTML(escapeHTML)
+	// Encoding a string cannot fail: invalid UTF-8 becomes U+FFFD.
+	_ = enc.Encode(s)
 	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// decodesWithUnmarshalJSON reports whether encoding/json decodes a field of
+// type t, or of the type an unnamed pointer t points to, with UnmarshalJSON.
+func decodesWithUnmarshalJSON(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr && t.Name() == "" {
+		t = t.Elem()
+	}
+	return t.Implements(jsonUnmarshalerType) || reflect.PointerTo(t).Implements(jsonUnmarshalerType)
 }
 
 // recursivePlaceholder is the permissive schema used where a type refers to

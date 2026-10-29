@@ -423,12 +423,15 @@ func TestGenerateJSONStringTagOnStringField(t *testing.T) {
 		Plain    string      `json:"plain"`
 		Slice    []string    `json:"slice,string"` // ,string ignored by encoding/json on slices
 		Custom   customTextS `json:"custom,string"`
+		Email    string      `json:"email,string" format:"email" minLength:"1" maxLength:"10"`
+		Raw      rawString   `json:"raw,string"`
+		OptRaw   *rawString  `json:"opt_raw,string"`
 	}
 
 	s, err := Generate(payload{})
 	assert.NoError(t, err)
 
-	for _, name := range []string{"name", "opt_name", "text", "color", "nullable"} {
+	for _, name := range []string{"name", "opt_name", "text", "color", "nullable", "email"} {
 		p := s.Properties[name]
 		assert.Equal(t, String, p.Type, name)
 		assert.NotNil(t, p.Pattern, name)
@@ -445,9 +448,28 @@ func TestGenerateJSONStringTagOnStringField(t *testing.T) {
 
 	// Enum, default, and example values are encoded like the field's value.
 	color := s.Properties["color"]
-	assert.Equal(t, []any{`"red"`, `"a<b"`}, color.Enum)
+	assert.Equal(t, []any{`"red"`, `"a<b"`, `"a\u003cb"`}, color.Enum)
 	assert.Equal(t, any(`"red"`), color.Default)
 	assert.Equal(t, any(`"a<b"`), color.Example)
+
+	// Format and length tags would check the quoted value, so they are dropped.
+	email := s.Properties["email"]
+	assert.Nil(t, email.Format)
+	assert.Nil(t, email.MinLength)
+	assert.Nil(t, email.MaxLength)
+
+	// encoding/json passes the outer string's raw content to UnmarshalJSON,
+	// so a type with its own decoder gets no pattern.
+	for _, name := range []string{"raw", "opt_raw"} {
+		assert.Equal(t, String, s.Properties[name].Type, name)
+		assert.Nil(t, s.Properties[name].Pattern, name)
+		assert.Empty(t, s.Properties[name].Description, name)
+	}
+	var raw struct {
+		Raw rawString `json:"raw,string"`
+	}
+	assert.NoError(t, json.Unmarshal([]byte(`{"raw":"42"}`), &raw))
+	assert.Equal(t, rawString("42"), raw.Raw)
 
 	// Fields without an honored ",string" option are unchanged.
 	assert.Nil(t, s.Properties["plain"].Pattern)
@@ -465,6 +487,15 @@ func TestGenerateJSONStringTagOnStringField(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Nil(t, s.Properties["id"].Pattern)
 	assert.Nil(t, s.Properties["ok"].Pattern)
+}
+
+// rawString implements json.Unmarshaler but not json.Marshaler, so
+// encoding/json honors ",string" on it and calls UnmarshalJSON.
+type rawString string
+
+func (r *rawString) UnmarshalJSON(b []byte) error {
+	*r = rawString(b)
+	return nil
 }
 
 // customTextS implements json.Marshaler, so encoding/json ignores ",string"
@@ -507,8 +538,10 @@ func TestEncodedStringPatternMatchesDecoding(t *testing.T) {
 		assert.Error(t, json.Unmarshal(body, &p), value)
 	}
 
-	// The schema's encoded enum value decodes to the Go value.
-	var p payload
-	assert.NoError(t, json.Unmarshal([]byte(`{"name":"\"a<b\""}`), &p))
-	assert.Equal(t, "a<b", p.Name)
+	// Both spellings of an encoded enum value decode to the Go value.
+	for _, body := range []string{`{"name":"\"a<b\""}`, `{"name":"\"a\\u003cb\""}`} {
+		var p payload
+		assert.NoError(t, json.Unmarshal([]byte(body), &p), body)
+		assert.Equal(t, "a<b", p.Name, body)
+	}
 }
