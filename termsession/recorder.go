@@ -247,7 +247,9 @@ func NewRecorder(filename string, width, height int, opts RecordingOptions) (*Re
 // If RedactSecrets is enabled, passwords and API keys will be automatically
 // redacted, including a secret split across calls. The run of text at the end
 // of data is then held back until whitespace, an escape sequence, the next
-// Pause, or Close ends it, so it can appear later in a replay.
+// Pause, or Close ends it, so it can appear later in a replay. For example,
+// a prompt with no trailing space, such as "Continue? [y/N]", is recorded
+// with the next output, which is often the echo of the answer.
 // Recording is skipped if the recorder is paused or if data is empty.
 //
 // This method is safe to call from multiple goroutines.
@@ -461,7 +463,9 @@ func (r *Recorder) writeEvent(event RecordingEvent) {
 // Flush writes any buffered data to the underlying file.
 //
 // Events are buffered for performance. Call Flush to ensure all
-// recorded events are written to disk immediately.
+// recorded events are written to disk immediately. With RedactSecrets,
+// Flush does not write the text held back for redaction, since that would
+// split a secret that the next chunk continues; Pause or Close writes it.
 func (r *Recorder) Flush() error {
 	if r == nil {
 		return nil
