@@ -262,3 +262,137 @@ func TestDiffInsertedLineDoesNotCascade(t *testing.T) {
 func TestDiffEqualStrings(t *testing.T) {
 	assert.Equal(t, "", Diff("same\n", "same\n"))
 }
+
+// --- Grapheme clusters split across writes & zero-width handling ---
+
+func TestClusterSplitAcrossWrites(t *testing.T) {
+	cases := []struct {
+		name       string
+		writes     []string
+		wantRow    string
+		wantCursor int
+		wantGlyph0 string
+		wantWidth0 int
+	}{
+		{"combining mark", []string{"e", "\u0301x"}, "e\u0301x", 2, "e\u0301", 1},
+		{"VS16 widens", []string{"\u2764", "\uFE0Fx"}, "\u2764\uFE0Fx", 3, "\u2764\uFE0F", 2},
+		{"ZWJ sequence", []string{"\U0001F468\u200D", "\U0001F469x"}, "\U0001F468\u200D\U0001F469x", 3, "\U0001F468\u200D\U0001F469", 2},
+		{"flag", []string{"\U0001F1EF", "\U0001F1F5x"}, "\U0001F1EF\U0001F1F5x", 3, "\U0001F1EF\U0001F1F5", 2},
+		{"around SGR", []string{"e\x1b[31m\u0301x"}, "e\u0301x", 2, "e\u0301", 1},
+		{"after wide", []string{"世", "\u0301x"}, "世\u0301x", 3, "世\u0301", 2},
+		{"after space", []string{" ", "\u0301x"}, " \u0301x", 2, " \u0301", 1},
+		// A blank cell reached by a cursor move joins too, as in gif.TerminalScreen.
+		{"after cursor move", []string{"\x1b[C", "\u0301x"}, " \u0301x", 2, " \u0301", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewScreen(20, 3)
+			for _, w := range tc.writes {
+				s.Write([]byte(w))
+			}
+			assert.Equal(t, tc.wantRow, s.Row(0))
+			x, _ := s.Cursor()
+			assert.Equal(t, tc.wantCursor, x)
+			assert.Equal(t, tc.wantGlyph0, s.CellGlyph(0, 0))
+			assert.Equal(t, tc.wantWidth0, s.Cell(0, 0).Width)
+		})
+	}
+}
+
+func TestZeroWidthClusterDoesNotClobberCell(t *testing.T) {
+	s := NewScreen(10, 2)
+	s.Write([]byte("AB\rA\u200B"))
+	assert.Equal(t, "AB", s.Row(0))
+	assert.Equal(t, 'B', s.Cell(1, 0).Char)
+}
+
+func TestWideClusterOnOneColumnScreen(t *testing.T) {
+	s := NewScreen(1, 2)
+	s.Write([]byte("世A"))
+	assert.Equal(t, "A", s.Row(0))
+	assert.Equal(t, "", s.Row(1))
+}
+
+// --- CSI private markers, intermediates, DECSED/DECSEL, ESC intermediates ---
+
+func TestCSIPrivateLessThanPrefixIgnored(t *testing.T) {
+	s := NewScreen(20, 3)
+	s.Write([]byte("\x1b[1mHello\x1b[<u\x1b[<0;10;5M\x1b[<0;10;5m!"))
+	assert.Equal(t, "Hello!", s.Row(0))
+	assert.True(t, s.Cell(5, 0).Style.Bold)
+	assert.False(t, s.Cell(5, 0).Style.Blink)
+}
+
+func TestCSIIntermediatesIgnoredAndKeepDeferredWrap(t *testing.T) {
+	s := NewScreen(5, 3)
+	// Fill row 0 so wrapPending is true, then send DECSCUSR (CSI 2 SP q) and
+	// ECMA-48 SR (CSI 1 SP A); neither may move the cursor or cancel wrapPending.
+	s.Write([]byte("12345\x1b[2 q\x1b[1 AX"))
+	assert.Equal(t, "12345", s.Row(0))
+	assert.Equal(t, "X", s.Row(1))
+}
+
+func TestDECSelectiveErase(t *testing.T) {
+	s := NewScreen(10, 3)
+	s.Write([]byte("abc\r\ndef\x1b[1;1H\x1b[?2J"))
+	assert.Equal(t, "", s.Row(0))
+	assert.Equal(t, "", s.Row(1))
+
+	s.Write([]byte("hello\x1b[1;3H\x1b[?0K"))
+	assert.Equal(t, "he", s.Row(0))
+}
+
+func TestESCIntermediateSequencesConsumed(t *testing.T) {
+	s := NewScreen(20, 3)
+	// DECALN (ESC # 8), S7C1T (ESC SP F), UTF-8 charset (ESC % G)
+	s.Write([]byte("\x1b#8\x1b F\x1b"))
+	s.Write([]byte("%GHello"))
+	assert.Equal(t, "Hello", s.Row(0))
+}
+
+func TestOversizedStringSequenceSkippedAcrossWrites(t *testing.T) {
+	s := NewScreen(20, 3)
+	chunk := []byte(strings.Repeat("A", 64*1024))
+	s.Write([]byte("\x1bPq"))
+	for i := 0; i < 24; i++ { // 1.5 MiB, more than maxPendingBytes
+		s.Write(chunk)
+	}
+	s.Write([]byte("\x1b"))
+	s.Write([]byte("\\o"))
+
+	s.Write([]byte("\x1b]52;c;"))
+	for i := 0; i < 24; i++ {
+		s.Write(chunk)
+	}
+	s.Write([]byte("\x07k"))
+
+	assert.Equal(t, "ok", s.Row(0))
+	assert.Len(t, s.pending, 0)
+}
+
+// TestSplitAtEveryByte checks that splitting a stream at any byte gives the
+// same screen as writing it whole. The stream covers OSC with BEL and ST, BEL
+// inside a DCS payload, CAN and SUB aborts, an OSC ended by the ESC of a
+// following CSI, intermediate escapes, multi-byte UTF-8, and a combining mark.
+func TestSplitAtEveryByte(t *testing.T) {
+	const stream = "a\x1b]0;title\x07b\x1b]2;t\x1b\\c\x1bP1$r\x07x\x1b\\d\x1b_G\x18e" +
+		"\x1b]0;t\x1b[31mf\x1b[12\x1ag\x1b(Bh\x1b#8i\u00e9jk\u0301"
+
+	whole := NewScreen(20, 3)
+	whole.Write([]byte(stream))
+	assert.Equal(t, whole.Row(0), "abcdefghi\u00e9jk\u0301")
+	assert.Equal(t, whole.Cell(5, 0).Style.Foreground, Color{Type: ColorBasic, Value: 1})
+
+	for k := 1; k < len(stream); k++ {
+		s := NewScreen(20, 3)
+		s.Write([]byte(stream[:k]))
+		s.Write([]byte(stream[k:]))
+		assert.Equal(t, s.cells, whole.cells, "split at byte %d", k)
+	}
+
+	s := NewScreen(20, 3)
+	for i := 0; i < len(stream); i++ {
+		s.Write([]byte{stream[i]})
+	}
+	assert.Equal(t, s.cells, whole.cells, "byte at a time")
+}

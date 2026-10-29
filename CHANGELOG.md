@@ -118,6 +118,28 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `ClearToEndOfLine` blanked cells with a black background. In non-buffered
   mode every print wrote `\x1b[0;30;40m`. In buffered mode the black style
   was written after any cell with another style in the same flush.
+- `gif.Emulator` buffers an escape sequence or multi-byte UTF-8 character
+  split across `ProcessOutput` or `Write` calls until the rest of the bytes
+  arrive, instead of printing the tail of the sequence as text. It also
+  consumes DCS, SOS, PM, and APC string sequences (streaming incomplete
+  string payloads across calls without buffering them) and CAN/SUB-cancelled
+  CSI sequences, and treats an explicit `0` parameter as `1` in relative
+  cursor movement sequences (`CSI 0 A` through `CSI 0 F`), which before
+  did not move the cursor. (#134)
+- `termtest.Screen` joins a combining mark, variation selector, or ZWJ
+  continuation written in a separate `Write`, `WriteString`, or `WriteRune`
+  call (or after an SGR sequence) onto the cell before the cursor, ignores
+  standalone zero-width clusters instead of overwriting the current cell, and
+  streams incomplete OSC, DCS, SOS, PM, and APC payloads across writes
+  without buffering them. Its ANSI parser also ignores `<`-prefixed private
+  CSI sequences and CSI sequences with intermediate bytes, handles `CSI ? J`
+  and `CSI ? K` selective erases, and consumes intermediate `ESC` sequences
+  such as `ESC # 8`. (#134)
+- `termsession.Player` honors `Seek` called before `Play`, caps an initial
+  idle delay before the first event when `MaxIdle` is set, and holds its read
+  lock across the end-of-events check and event read in `Play` so a
+  concurrent `Seek` past the end cannot panic. `termsession.Recorder` records
+  a resize event on `Resume` when `UpdateSize` was called while paused. (#134)
 
 ## [0.9.0] - 2026-10-24
 
