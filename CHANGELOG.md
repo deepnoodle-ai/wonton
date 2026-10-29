@@ -150,9 +150,9 @@ bug fixes. Release notes identify incompatible changes explicitly.
   detected, and `tui` turns the protocol on for them. The probe stops at the
   end of the terminal's reply, so keys typed after it are kept. Keys typed
   while it waits are dropped. If the terminal has not answered after 200ms,
-  or 400ms once it has started to answer, the probe discards pending input.
-  A whole reply that arrives later decodes as `KeyUnknown`, not as keys.
-  (#136)
+  or 400ms once it has started to answer, or after 1 KiB of input without
+  its reply, the probe discards pending input. A whole reply that arrives
+  later decodes as `KeyUnknown`, not as keys. (#136)
 - `terminal.KeyDecoder` no longer drops the keys that follow a cut-off or
   invalid UTF-8 character, or a legacy `ESC [ M` mouse report cut off by a
   key. Before, a bad character took up to three following bytes, such as
