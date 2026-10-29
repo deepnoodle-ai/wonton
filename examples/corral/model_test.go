@@ -107,3 +107,40 @@ func TestGapMenuSkipsAGapThatIsGone(t *testing.T) {
 	assert.Equal(t, sp.split.Leaves(), []string{"b", "a"})
 	assert.Equal(t, a.status, "")
 }
+
+// Choosing Zoom on one pane while another is zoomed zooms the chosen pane.
+func TestZoomMenuMovesZoomToThePane(t *testing.T) {
+	server := &tmux.Server{Socket: fmt.Sprintf("corral-zoom-%d", os.Getpid()), Config: "/dev/null"}
+	if !server.Available() {
+		t.Skip("tmux is not installed")
+	}
+	t.Cleanup(func() { _ = server.Kill(context.Background()) })
+	a := newApp(server)
+	sp := a.newSpaceValue(t.TempDir())
+	a.spaces = []*space{sp}
+	var panes []*pane
+	for range 2 {
+		p, err := a.openPane(sp, sp.dir, 20, 5)
+		assert.NoError(t, err)
+		sp.split.Append(p.id, tui.SplitColumns)
+		panes = append(panes, p)
+	}
+	t.Cleanup(a.saver.wait)
+
+	choose := func(p *pane, label string) {
+		t.Helper()
+		for _, it := range a.paneMenu(p, true) {
+			if it.Label == label {
+				it.Action()
+				return
+			}
+		}
+		t.Fatalf("no %q item", label)
+	}
+	a.toggleZoom(panes[0].id)
+	choose(panes[1], "Zoom")
+	assert.Equal(t, sp.zoom, panes[1].id)
+	assert.Equal(t, sp.focus, panes[1].id)
+	choose(panes[1], "Unzoom")
+	assert.Equal(t, sp.zoom, "")
+}

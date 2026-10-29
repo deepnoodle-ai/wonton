@@ -71,8 +71,10 @@ func (a *app) paneMenu(p *pane, fromSidebar bool) []tui.MenuItem {
 		})},
 		tui.MenuSeparator(),
 		tui.MenuItem{Label: zoom, Hint: "^B z", Action: func() {
-			a.focusPane(p.id)
+			// Toggle first: focusPane moves another pane's zoom to this one,
+			// which toggleZoom would then undo.
 			a.toggleZoom(p.id)
+			a.focusPane(p.id)
 		}},
 		tui.MenuItem{Label: "Rename…", Hint: "^B ,", Action: a.run(func() []tui.Cmd {
 			return a.renamePane(p.id)
