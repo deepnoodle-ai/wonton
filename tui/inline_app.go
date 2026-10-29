@@ -401,26 +401,26 @@ func (r *InlineApp) Run(app InlineApplication) error {
 
 	// Track attempted enables so failed startup also terminates partial sequences.
 	features := []struct {
-		wanted   bool
-		sequence string
-		enabled  *bool
+		wanted bool
+		enable func() error
 	}{
-		{r.config.BracketedPaste, "\x1b[?2004h", &r.pasteEnabled},
-		{r.config.KittyKeyboard, "", &r.kittyEnabled}, // enableKeyboard writes it
-		{r.config.MouseTracking, "\x1b[?1000h\x1b[?1006h", &r.mouseEnabled},
+		{r.config.BracketedPaste, func() error {
+			r.pasteEnabled = true
+			return checkedHandoffWrite(r.output, "\x1b[?2004h")
+		}},
+		{r.config.KittyKeyboard, func() error {
+			return errors.Join(r.enableKeyboard(), terminalstate.Flush(r.output))
+		}},
+		{r.config.MouseTracking, func() error {
+			r.mouseEnabled = true
+			return checkedHandoffWrite(r.output, "\x1b[?1000h\x1b[?1006h")
+		}},
 	}
 	for _, feature := range features {
 		if !feature.wanted {
 			continue
 		}
-		var enableErr error
-		if feature.enabled == &r.kittyEnabled {
-			enableErr = errors.Join(r.enableKeyboard(), terminalstate.Flush(r.output))
-		} else {
-			*feature.enabled = true
-			enableErr = checkedHandoffWrite(r.output, feature.sequence)
-		}
-		if err := enableErr; err != nil {
+		if err := feature.enable(); err != nil {
 			cleanupErr := r.cleanup()
 			r.mu.Lock()
 			r.running = false
