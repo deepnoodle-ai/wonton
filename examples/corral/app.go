@@ -399,7 +399,11 @@ func (a *app) closeSpace(sp *space) []tui.Cmd {
 	}
 	a.spaces = slices.Delete(a.spaces, i, i+1)
 	if len(a.spaces) == 0 {
-		return a.newSpace(sp.dir)
+		a.newSpace(sp.dir)
+		if len(a.spaces) == 0 {
+			// No pane would open, but there must still be a space to show.
+			a.spaces = append(a.spaces, a.newSpaceValue(sp.dir))
+		}
 	}
 	if a.current >= len(a.spaces) {
 		a.current = len(a.spaces) - 1

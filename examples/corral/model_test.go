@@ -10,6 +10,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/tmux"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // Saves made while one is being written are stored in order, and only the
@@ -64,4 +65,45 @@ func TestRestoreKeepsSessionSizes(t *testing.T) {
 	size, err := server.Run(ctx, "display-message", "-p", "-t", "=p1:", "#{window_width}x#{window_height}")
 	assert.NoError(t, err)
 	assert.Equal(t, strings.TrimSpace(size), "120x40")
+}
+
+// Closing the last space replaces it. When no pane can open in the new one,
+// an empty space takes its place rather than none.
+func TestCloseLastSpaceKeepsASpace(t *testing.T) {
+	a := newApp(&tmux.Server{Binary: "/nonexistent/tmux"}) // no pane can open
+	sp := a.newSpaceValue(t.TempDir())
+	a.spaces = []*space{sp}
+
+	a.closeSpace(sp)
+	a.saver.wait()
+	assert.Equal(t, len(a.spaces), 1)
+	assert.NotEqual(t, a.space(), sp)
+	assert.Equal(t, len(a.space().split.Leaves()), 0)
+}
+
+// A pane can exit while a gap's menu is open. Its actions then leave the
+// layout alone instead of acting on whatever took the gap's place.
+func TestGapMenuSkipsAGapThatIsGone(t *testing.T) {
+	a := newApp(&tmux.Server{Binary: "/nonexistent/tmux"}) // saves go nowhere
+	sp := a.newSpaceValue(t.TempDir())
+	sp.split.Append("a", tui.SplitColumns)
+	sp.split.Append("b", tui.SplitColumns)
+	sp.split.Split("b", "c", tui.SplitRows) // a | (b over c)
+	rows := sp.split.Root.Children[1]
+	items := a.gapMenu(sp, rows, 0)
+
+	sp.split.Remove("c") // the rows branch becomes the leaf b
+	for _, it := range items[:3] {
+		it.Action()
+	}
+	assert.Equal(t, sp.split.Leaves(), []string{"a", "b"})
+	assert.Equal(t, a.status, "that gap is gone")
+
+	// A gap that is still there is acted on.
+	a.status = ""
+	items = a.gapMenu(sp, sp.split.Root, 0)
+	items[1].Action() // Swap sides
+	a.saver.wait()
+	assert.Equal(t, sp.split.Leaves(), []string{"b", "a"})
+	assert.Equal(t, a.status, "")
 }

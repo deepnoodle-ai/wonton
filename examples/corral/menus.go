@@ -2,6 +2,7 @@ package main
 
 import (
 	"image"
+	"slices"
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -13,7 +14,7 @@ func (a *app) openMenu(key string, x, y int) {
 	sp := a.space()
 	if sp.zoom == "" {
 		if branch, index, ok := sp.split.DividerAt(x, y); ok {
-			a.menu.Open(x, y, "edge", a.gapMenu(branch, index))
+			a.menu.Open(x, y, "edge", a.gapMenu(sp, branch, index))
 			return
 		}
 	}
@@ -109,32 +110,39 @@ func (a *app) spaceMenu(sp *space) []tui.MenuItem {
 
 // gapMenu acts on the two neighbors a gap separates, and on the run of
 // panes it belongs to.
-func (a *app) gapMenu(branch *tui.SplitNode, index int) []tui.MenuItem {
+func (a *app) gapMenu(sp *space, branch *tui.SplitNode, index int) []tui.MenuItem {
 	rotate := "Stack as rows"
 	if branch.Axis == tui.SplitRows {
 		rotate = "Arrange as columns"
 	}
-	return []tui.MenuItem{
-		{Label: "Even out these two", Action: a.run(func() []tui.Cmd {
-			w := (branch.Children[index].Weight + branch.Children[index+1].Weight) / 2
-			branch.Children[index].Weight, branch.Children[index+1].Weight = w, w
-			a.save()
-			return nil
-		})},
-		{Label: "Swap sides", Action: a.run(func() []tui.Cmd {
+	left, right := branch.Children[index], branch.Children[index+1]
+	// A pane can exit while the menu is open and reshape the layout, so an
+	// action runs only if the gap is still between the same two neighbors.
+	onGap := func(act func(c []*tui.SplitNode)) func() {
+		return func() {
 			c := branch.Children
-			c[index], c[index+1] = c[index+1], c[index]
+			if index+1 >= len(c) || c[index] != left || c[index+1] != right || !inLayout(sp.split.Root, branch) {
+				a.setStatus("that gap is gone")
+				return
+			}
+			act(c)
 			a.save()
-			return nil
+		}
+	}
+	return []tui.MenuItem{
+		{Label: "Even out these two", Action: onGap(func(c []*tui.SplitNode) {
+			w := (c[index].Weight + c[index+1].Weight) / 2
+			c[index].Weight, c[index+1].Weight = w, w
 		})},
-		{Label: rotate, Action: a.run(func() []tui.Cmd {
+		{Label: "Swap sides", Action: onGap(func(c []*tui.SplitNode) {
+			c[index], c[index+1] = c[index+1], c[index]
+		})},
+		{Label: rotate, Action: onGap(func([]*tui.SplitNode) {
 			if branch.Axis == tui.SplitColumns {
 				branch.Axis = tui.SplitRows
 			} else {
 				branch.Axis = tui.SplitColumns
 			}
-			a.save()
-			return nil
 		})},
 		tui.MenuSeparator(),
 		{Label: "Equalize all", Hint: "^B =", Action: a.run(func() []tui.Cmd {
@@ -143,6 +151,16 @@ func (a *app) gapMenu(branch *tui.SplitNode, index int) []tui.MenuItem {
 			return nil
 		})},
 	}
+}
+
+// inLayout reports whether n is in the layout under root.
+func inLayout(root, n *tui.SplitNode) bool {
+	if root == n {
+		return true
+	}
+	return root != nil && slices.ContainsFunc(root.Children, func(c *tui.SplitNode) bool {
+		return inLayout(c, n)
+	})
 }
 
 func (a *app) workspaceMenu() []tui.MenuItem {
