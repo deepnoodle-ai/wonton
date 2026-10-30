@@ -72,6 +72,9 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 	}
 
 	response, err := fetcher.Fetch(ctx, req)
+	if err == nil && response == nil {
+		err = errNilResponse
+	}
 	var fetchErr *fetch.Error
 	if (err != nil && errors.As(err, &fetchErr) && fetchErr.StatusCode >= 500) ||
 		(err == nil && response.StatusCode >= 500) {

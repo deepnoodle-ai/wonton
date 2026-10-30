@@ -308,6 +308,25 @@ func TestPermanentFetchErrorsAreNotRetried(t *testing.T) {
 	assert.Equal(t, int32(3), atomic.LoadInt32(&fetcher.calls))
 }
 
+// A Fetcher that returns neither a response nor an error fails the URL
+// instead of crashing the crawl.
+func TestCrawlReportsNilFetcherResponse(t *testing.T) {
+	for _, respectRobots := range []bool{false, true} {
+		t.Run(fmt.Sprintf("robots=%v", respectRobots), func(t *testing.T) {
+			c, err := New(Options{
+				DefaultFetcher:   &countingFetcher{},
+				RespectRobotsTxt: BoolPtr(respectRobots),
+			})
+			assert.NoError(t, err)
+			var gotErr error
+			assert.NoError(t, c.Crawl(context.Background(), []string{"https://example.com/x"}, func(_ context.Context, r *Result) {
+				gotErr = r.Error
+			}))
+			assert.ErrorIs(t, gotErr, errNilResponse)
+		})
+	}
+}
+
 // BUG-073: items preloaded into a caller's frontier honor MaxURLs,
 // KnownURLs, normalization, and deduplication.
 func TestPreloadedFrontierHonorsLimits(t *testing.T) {
