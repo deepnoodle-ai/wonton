@@ -11,8 +11,9 @@ import (
 	"golang.org/x/term"
 )
 
-// maxReply bounds how much Query reads while it waits for the DA1 reply.
-const maxReply = 1024
+// maxReply bounds how much Query reads while it waits for the DA1 reply. It
+// is a var so that a test can lower it below the pty input queue size.
+var maxReply = 1024
 
 // Query writes query to out and returns what the terminal on fd sends back.
 // query must end with a primary device attributes request (ESC [ c). Every
