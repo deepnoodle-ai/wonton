@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -131,6 +132,9 @@ func (r *Repository) LatestTag(ctx context.Context) (*Tag, error) {
 // TagsForCommit returns tags pointing directly at a specific commit.
 // The ref can be a commit hash, branch, or any valid git reference.
 func (r *Repository) TagsForCommit(ctx context.Context, ref string) ([]Tag, error) {
+	if ref == "" {
+		return nil, fmt.Errorf("%w: empty ref", ErrInvalidArgument)
+	}
 	return r.Tags(ctx, TagOptions{PointsAt: ref})
 }
 
