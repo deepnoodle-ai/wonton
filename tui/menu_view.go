@@ -111,12 +111,13 @@ func (m *MenuState) Items() []MenuItem { return m.items }
 func (m *MenuState) Selected() int { return m.selected }
 
 // Bounds returns where the menu was drawn at the last render, in screen
-// coordinates. It is empty while the menu is closed.
+// coordinates. It is empty while the menu is closed, and when the screen
+// was too small to draw it.
 func (m *MenuState) Bounds() image.Rectangle { return m.bounds }
 
 // Choose closes the menu and runs entry i's action, if it can be chosen.
 func (m *MenuState) Choose(i int) bool {
-	if i < 0 || i >= len(m.items) || !m.items[i].selectable() {
+	if i < 0 || i >= m.shown || !m.items[i].selectable() {
 		return false
 	}
 	m.Close()
@@ -142,6 +143,7 @@ func (m *MenuState) move(dir int) {
 			return
 		}
 	}
+	m.selected = -1 // no shown entry can be chosen
 }
 
 // HandleKey handles a key while the menu is open: Up and Down (or Tab) move
@@ -349,6 +351,10 @@ func (v *MenuView) render(ctx *RenderContext) {
 	w := min(inner+2, screen.Dx())
 	h := min(len(m.items)+header+2, screen.Dy())
 	if w < 4 || h < 3 {
+		// Too small to draw: nothing is shown, so nothing can be chosen.
+		m.bounds = image.Rectangle{}
+		m.shown = 0
+		m.selected = -1
 		return
 	}
 
@@ -366,7 +372,7 @@ func (v *MenuView) render(ctx *RenderContext) {
 	// A box cut short by the screen shows only the items that fit; the keys
 	// and the mouse reach only those.
 	m.shown = max(0, min(len(m.items), h-2-header))
-	if m.selected >= m.shown {
+	if m.selected < 0 || m.selected >= m.shown {
 		m.selected = -1
 		m.move(1)
 	}

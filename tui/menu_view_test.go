@@ -180,3 +180,46 @@ func TestMenuCutShortReachesOnlyShownItems(t *testing.T) {
 	m.HandleKey(KeyEvent{Key: KeyEnter})
 	assert.Equal(t, chosen, "")
 }
+
+func TestMenuEndWithNothingShownSelectable(t *testing.T) {
+	// The only shown entry is disabled; the one that could be chosen is
+	// clipped off the bottom of the screen and must stay out of reach.
+	chosen := false
+	m := &MenuState{}
+	m.Open(0, 0, "", []MenuItem{
+		{Label: "Disabled", Disabled: true},
+		{Label: "Clipped", Action: func() { chosen = true }},
+	})
+	renderMenu(m, 20, 3)
+
+	m.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, m.Selected(), -1)
+	m.HandleKey(KeyEvent{Key: KeyEnter})
+	assert.False(t, chosen, "a clipped entry must not run")
+	assert.False(t, m.Choose(1), "Choose must not reach a clipped entry")
+}
+
+func TestMenuEndWithNoSelectableEntries(t *testing.T) {
+	m := &MenuState{}
+	m.Open(0, 0, "", []MenuItem{{Label: "A", Disabled: true}, MenuSeparator()})
+	m.HandleKey(KeyEvent{Key: KeyEnd})
+	assert.Equal(t, m.Selected(), -1)
+}
+
+func TestMenuTooSmallToDrawSelectsNothing(t *testing.T) {
+	chosen := ""
+	m := &MenuState{}
+	m.Open(0, 0, "", testMenu(&chosen))
+	renderMenu(m, 40, 10)
+	assert.False(t, m.Bounds().Empty())
+
+	renderMenu(m, 3, 2) // shrinks below the smallest box
+	assert.True(t, m.Bounds().Empty())
+	assert.Equal(t, m.Selected(), -1)
+	m.HandleKey(KeyEvent{Key: KeyEnter})
+	m.HandleKey(KeyEvent{Rune: 'c'})
+	assert.Equal(t, chosen, "", "an undrawn menu must not choose anything")
+
+	renderMenu(m, 40, 10) // and grows back
+	assert.Equal(t, m.Selected(), 0)
+}
