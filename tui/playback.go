@@ -34,7 +34,8 @@ type PlaybackController struct {
 	mu           sync.RWMutex
 	stopChan     chan struct{}
 	stopped      bool
-	seekTo       float64 // position set by a Seek before the first Play
+	stopTime     time.Time // when Stop froze the clock
+	seekTo       float64   // position set by a Seek before the first Play
 }
 
 // LoadRecording loads a .cast file and returns a playback controller
@@ -292,7 +293,7 @@ func (p *PlaybackController) Pause() {
 
 	if !p.paused {
 		p.paused = true
-		p.pauseTime = time.Now()
+		p.pauseTime = p.nowLocked()
 	}
 }
 
@@ -303,7 +304,7 @@ func (p *PlaybackController) Resume() {
 
 	if p.paused {
 		p.paused = false
-		pauseDuration := time.Since(p.pauseTime)
+		pauseDuration := p.nowLocked().Sub(p.pauseTime)
 		p.totalPaused += pauseDuration
 	}
 }
@@ -335,6 +336,7 @@ func (p *PlaybackController) Stop() {
 
 	if !p.stopped {
 		p.stopped = true
+		p.stopTime = time.Now()
 		close(p.stopChan)
 	}
 }
@@ -454,11 +456,20 @@ func (p *PlaybackController) GetProgress() float64 {
 	return p.positionLocked() / duration
 }
 
+// nowLocked returns the playback clock's current time. After Stop, the
+// clock stays at the stop time until the next Play. Caller must hold p.mu.
+func (p *PlaybackController) nowLocked() time.Time {
+	if p.stopped {
+		return p.stopTime
+	}
+	return time.Now()
+}
+
 // elapsedLocked returns the playback time elapsed in seconds, excluding
 // pauses. While paused, the clock stops at the pause time, because Resume
 // adds the current pause to totalPaused. Caller must hold p.mu.
 func (p *PlaybackController) elapsedLocked() float64 {
-	now := time.Now()
+	now := p.nowLocked()
 	if p.paused {
 		now = p.pauseTime
 	}

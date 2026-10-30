@@ -315,3 +315,24 @@ func TestPlayback_SeekAndPauseBeforePlay(t *testing.T) {
 	waitDone(t, done)
 	assert.Equal(t, out.String(), "b")
 }
+
+func TestPlayback_PositionHoldsAfterStop(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	done := playAsync(p, NewTestTerminal(10, 2, &syncBuffer{}))
+	time.Sleep(50 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+
+	pos := p.GetPosition()
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, p.GetPosition(), pos)
+
+	// A Pause and Resume after Stop do not move the stopped clock.
+	p.Pause()
+	time.Sleep(20 * time.Millisecond)
+	p.Resume()
+	assert.Equal(t, p.GetPosition(), pos)
+}
