@@ -597,3 +597,76 @@ func TestFocusManager_RemovedViewportItemMovesFocus(t *testing.T) {
 	assert.NotEqual(t, "field-9", r.focusMgr.GetFocusedID(), "a removed item does not keep focus")
 	assert.NotNil(t, r.focusMgr.GetFocused(), "a remaining field has focus")
 }
+
+func TestFocusManager_UnnamedFocusableKeepsTabFocus(t *testing.T) {
+	fm := NewFocusManager()
+	a := &mockFocusable{id: "a"}
+	anon := &mockFocusable{id: ""}
+	b := &mockFocusable{id: "b"}
+
+	renderFocusables(fm, a, anon, b)
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, a, anon, b)
+	assert.True(t, anon.focused, "the unnamed focusable keeps focus after a re-render")
+	assert.False(t, a.focused)
+	assert.True(t, fm.GetFocused() == Focusable(anon))
+	assert.Equal(t, fm.GetFocusedID(), "")
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, a, anon, b)
+	assert.True(t, b.focused, "Tab moves past the unnamed focusable")
+}
+
+func TestFocusManager_TwoUnnamedFocusablesRouteKeysToFocused(t *testing.T) {
+	fm := NewFocusManager()
+	first := &mockFocusable{id: ""}
+	second := &mockFocusable{id: ""}
+
+	renderFocusables(fm, first, second)
+	assert.True(t, first.focused)
+	assert.False(t, second.focused)
+	assert.True(t, fm.GetFocused() == Focusable(first))
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, first, second)
+	assert.False(t, first.focused)
+	assert.True(t, second.focused)
+	assert.True(t, fm.GetFocused() == Focusable(second))
+}
+
+// unnamedListItems is Viewport content of one-row lists with no ID.
+type unnamedListItems struct{ lists []*CheckboxListView }
+
+func (it *unnamedListItems) Len() int        { return len(it.lists) }
+func (it *unnamedListItems) Item(i int) View { return it.lists[i] }
+
+type unnamedViewportApp struct {
+	vp    ViewportState
+	items *unnamedListItems
+}
+
+func (a *unnamedViewportApp) View() View { return Height(2, Viewport(&a.vp, a.items)) }
+
+func TestFocusManager_UnnamedFocusableKeepsFocusWhenViewportScrolls(t *testing.T) {
+	items := &unnamedListItems{}
+	for range 4 {
+		items.lists = append(items.lists, CheckboxListStrings([]string{"x"}, []bool{false}, new(int)))
+	}
+	app := &unnamedViewportApp{items: items}
+	r := NewRuntime(NewTestTerminal(20, 5, io.Discard), app, 30)
+	r.render()
+	app.vp.ScrollBy(1) // items 1 and 2 show
+	r.render()
+	r.focusMgr.FocusNext() // focus was on item 0, now out of view
+	r.render()
+	assert.True(t, items.lists[1].IsFocused())
+	r.processEvent(KeyEvent{Key: KeyTab})
+	r.render()
+	assert.True(t, items.lists[2].IsFocused())
+
+	app.vp.ScrollBy(1) // items 2 and 3 show
+	r.render()
+	assert.True(t, items.lists[2].IsFocused(), "the focused item keeps focus after the scroll")
+	assert.False(t, items.lists[3].IsFocused())
+	assert.True(t, r.focusMgr.GetFocused() == Focusable(items.lists[2]))
+}

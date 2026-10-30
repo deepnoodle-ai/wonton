@@ -301,6 +301,7 @@ type InlineApp struct {
 	mousePressX      int
 	mousePressY      int
 	mousePressButton MouseButton
+	clicks           clickCounter
 	mousePressed     bool
 }
 
@@ -936,12 +937,13 @@ func (r *InlineApp) processMouseEvent(event Event) (Event, Event) {
 			mouseEvent.Y == r.mousePressY {
 			r.mousePressed = false
 			clickEvent := MouseEvent{
-				X:         mouseEvent.X,
-				Y:         mouseEvent.Y,
-				Button:    r.mousePressButton,
-				Type:      MouseClick,
-				Modifiers: mouseEvent.Modifiers,
-				Time:      mouseEvent.Time,
+				X:          mouseEvent.X,
+				Y:          mouseEvent.Y,
+				Button:     r.mousePressButton,
+				Type:       MouseClick,
+				Modifiers:  mouseEvent.Modifiers,
+				Time:       mouseEvent.Time,
+				ClickCount: r.clicks.next(mouseEvent, r.mousePressButton),
 			}
 			return event, clickEvent
 		}

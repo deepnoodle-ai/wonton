@@ -2,6 +2,8 @@ package tui
 
 import (
 	"image"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,7 +47,19 @@ type FocusManager struct {
 	// Viewport sets it when it leaves items unrendered, because the focused
 	// element can be one that scrolled out of view.
 	keep bool
+	// unnamed counts the elements with an empty FocusID registered this
+	// frame. Each gets a key from its position among them, so unnamed
+	// elements keep focus across frames and do not share one map entry.
+	unnamed int
+	// unnamedScope prefixes the keys of unnamed elements. A Viewport sets
+	// it for each item, so the keys depend on the item index and not on
+	// which items scrolled into view.
+	unnamedScope string
 }
+
+// unnamedKeyPrefix starts the key of an element with an empty FocusID. The
+// NUL byte keeps it apart from any ID an application would choose.
+const unnamedKeyPrefix = "\x00unnamed-"
 
 // NewFocusManager creates a new focus manager instance.
 func NewFocusManager() *FocusManager {
@@ -62,6 +76,8 @@ func (fm *FocusManager) Clear() {
 		fm.dropStaleLocked()
 	}
 	fm.keep = false
+	fm.unnamed = 0
+	fm.unnamedScope = ""
 	fm.order = fm.order[:0]
 	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
 	for k := range fm.focusables {
@@ -76,20 +92,44 @@ func (fm *FocusManager) Register(f Focusable) {
 	defer fm.mu.Unlock()
 
 	id := f.FocusID()
-	// An element with an empty ID can hold focus while focusedID is "", so
-	// a later element must not also auto-focus.
-	_, emptyFocused := fm.focusables[""]
+	if id == "" {
+		id = unnamedKeyPrefix + fm.unnamedScope + strconv.Itoa(fm.unnamed)
+		fm.unnamed++
+	}
 	fm.focusables[id] = f
 	fm.order = append(fm.order, id)
 
 	// Auto-focus first element if none focused
-	if fm.focusedID == "" && !emptyFocused {
+	if fm.focusedID == "" {
 		fm.focusedID = id
-		f.SetFocused(true)
-	} else {
-		// An element with an empty ID only holds focus when it auto-focused
-		// above; a later one must not match the empty focusedID.
-		f.SetFocused(id != "" && fm.focusedID == id)
+	}
+	f.SetFocused(fm.focusedID == id)
+}
+
+// reserveUnnamedScope takes one unnamed position and returns a scope name
+// for it. A view that renders only some of its children, such as a
+// Viewport, passes the name and a child index to enterUnnamedScope.
+func (fm *FocusManager) reserveUnnamedScope() string {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	name := fm.unnamedScope + strconv.Itoa(fm.unnamed)
+	fm.unnamed++
+	return name
+}
+
+// enterUnnamedScope keys the unnamed elements that register next by child
+// of the scope from reserveUnnamedScope. It returns the function that
+// restores the previous scope.
+func (fm *FocusManager) enterUnnamedScope(name string, child int) func() {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	prevScope, prevCount := fm.unnamedScope, fm.unnamed
+	fm.unnamedScope = name + "." + strconv.Itoa(child) + "/"
+	fm.unnamed = 0
+	return func() {
+		fm.mu.Lock()
+		defer fm.mu.Unlock()
+		fm.unnamedScope, fm.unnamed = prevScope, prevCount
 	}
 }
 
@@ -98,8 +138,7 @@ func (fm *FocusManager) Register(f Focusable) {
 func (fm *FocusManager) wouldAutoFocus() bool {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	_, emptyFocused := fm.focusables[""]
-	return fm.focusedID == "" && !emptyFocused
+	return fm.focusedID == ""
 }
 
 // GetFocused returns the currently focused element, or nil if none.
@@ -112,10 +151,14 @@ func (fm *FocusManager) GetFocused() Focusable {
 	return fm.focusables[fm.focusedID]
 }
 
-// GetFocusedID returns the ID of the currently focused element.
+// GetFocusedID returns the ID of the currently focused element. It returns
+// "" when nothing is focused or the focused element has an empty FocusID.
 func (fm *FocusManager) GetFocusedID() string {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
+	if strings.HasPrefix(fm.focusedID, unnamedKeyPrefix) {
+		return ""
+	}
 	return fm.focusedID
 }
 
