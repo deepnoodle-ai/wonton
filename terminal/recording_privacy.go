@@ -245,6 +245,9 @@ func escapeLen(s string) (n int, done bool) {
 			if s[i] >= 0x40 && s[i] <= 0x7e {
 				return i + 1, true
 			}
+			if s[i] == '\x1b' {
+				return i, true // an ESC cancels the CSI and starts anew
+			}
 		}
 		return len(s), false
 	case isStringSequence(c):

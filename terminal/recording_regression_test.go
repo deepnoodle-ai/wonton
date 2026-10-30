@@ -211,6 +211,11 @@ func TestRedactorKeepsEscapeSequences(t *testing.T) {
 			"\033\033]0;password=mysecret\ahello\n",
 			"\033\033]0;password=[REDACTED]\ahello\n",
 		},
+		{
+			"an unfinished CSI does not swallow the next sequence's ESC",
+			"\033[31\033]8;;https://x.test/?token=abc123\033\\link",
+			"\033[31\033]8;;https://x.test/?token=[REDACTED]\033\\link",
+		},
 	}
 	for _, tt := range tests {
 		var r Redactor
