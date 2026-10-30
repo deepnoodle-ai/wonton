@@ -68,6 +68,7 @@ func TestInlineEdgeWhitespace(t *testing.T) {
 		{"<p>See<a href=\"/x\"> link </a>here</p>", "See [link](/x) here"},
 		{"<p>Hello <b> world</b> and <i>x </i> y</p>", "Hello **world** and *x* y"},
 		{"<p>a<b> </b>b</p>", "a b"},
+		{"<p>Hello <b> </b>world</p>", "Hello world"},
 	}
 	for _, tt := range tests {
 		assert.Equal(t, Convert(tt.input), tt.want, tt.input)

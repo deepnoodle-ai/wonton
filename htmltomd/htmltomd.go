@@ -429,10 +429,18 @@ func wrapInline(n *html.Node, content, delim string) string {
 func splitEdgeSpace(n *html.Node, content string) (lead, text, trail string) {
 	content = whitespaceRegex.ReplaceAllString(content, " ")
 	text = strings.TrimSpace(content)
-	if strings.HasPrefix(content, " ") && !textEndsWithSpace(n.PrevSibling) {
+	prevSpace, nextSpace := textEndsWithSpace(n.PrevSibling), textStartsWithSpace(n.NextSibling)
+	if text == "" {
+		// Whitespace-only content is one space, unless a neighbor has one.
+		if content != "" && !prevSpace && !nextSpace {
+			lead = " "
+		}
+		return lead, "", ""
+	}
+	if strings.HasPrefix(content, " ") && !prevSpace {
 		lead = " "
 	}
-	if strings.HasSuffix(content, " ") && !textStartsWithSpace(n.NextSibling) && (text != "" || lead == "") {
+	if strings.HasSuffix(content, " ") && !nextSpace {
 		trail = " "
 	}
 	return lead, text, trail
