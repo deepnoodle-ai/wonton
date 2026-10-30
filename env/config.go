@@ -204,8 +204,7 @@ func WithParser[T any](parser func(string) (T, error)) Option {
 		if o.FuncMap == nil {
 			o.FuncMap = make(map[reflect.Type]ParserFunc)
 		}
-		var zero T
-		o.FuncMap[reflect.TypeOf(zero)] = func(s string) (any, error) {
+		o.FuncMap[reflect.TypeFor[T]()] = func(s string) (any, error) {
 			return parser(s)
 		}
 	}
@@ -642,7 +641,12 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 			if err != nil {
 				return err
 			}
-			fv.Set(reflect.ValueOf(parsed))
+			v := reflect.ValueOf(parsed)
+			if !v.IsValid() {
+				// A parser for an interface type returned nil.
+				v = reflect.Zero(fv.Type())
+			}
+			fv.Set(v)
 			return nil
 		}
 	}

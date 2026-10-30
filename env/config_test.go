@@ -1093,6 +1093,47 @@ func TestParse_CustomParserError(t *testing.T) {
 	assert.Contains(t, err.Error(), "custom parser error")
 }
 
+type greeter interface{ Greet() string }
+
+type greeting string
+
+func (g greeting) Greet() string { return string(g) }
+
+func TestParse_CustomParserInterfaceType(t *testing.T) {
+	type Config struct {
+		Value greeter `env:"VALUE"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"VALUE": "hi",
+		}),
+		WithParser(func(s string) (greeter, error) {
+			return greeting(s), nil
+		}),
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg.Value)
+	assert.Equal(t, "hi", cfg.Value.Greet())
+}
+
+func TestParse_CustomParserInterfaceTypeNil(t *testing.T) {
+	type Config struct {
+		Value greeter `env:"VALUE"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"VALUE": "none",
+		}),
+		WithParser(func(s string) (greeter, error) {
+			return nil, nil
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Value)
+}
+
 func TestParse_StageWithPrefix(t *testing.T) {
 	type Config struct {
 		Host string `env:"HOST"`

@@ -19,8 +19,9 @@ type DiffOptions struct {
 	To   string
 	// Path filters diff to this file or directory path.
 	Path string
-	// ContextLines is the number of context lines to show (default is 3).
-	// Set to 0 to show only changed lines.
+	// ContextLines is the number of context lines to show. Zero or a
+	// negative value uses git's default, which is 3 unless diff.context is
+	// set. No DiffOptions value requests zero context lines.
 	ContextLines int
 	// IncludePatch includes the actual unified diff content in the Patch field.
 	IncludePatch bool
