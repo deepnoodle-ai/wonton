@@ -384,6 +384,9 @@ func (p *PlaybackController) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// The recording starts at 0; an earlier target would delay playback.
+	seconds = max(seconds, 0)
+
 	// Resume at the first event not yet due; past the end, none are left.
 	targetIndex := len(p.events)
 	for i, event := range p.events {

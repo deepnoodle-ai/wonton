@@ -336,3 +336,19 @@ func TestPlayback_PositionHoldsAfterStop(t *testing.T) {
 	p.Resume()
 	assert.Equal(t, p.GetPosition(), pos)
 }
+
+func TestPlayback_NegativeSeekStartsAtZero(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	p.Seek(-5)
+	assert.Equal(t, p.GetPosition(), 0.0)
+
+	out := &syncBuffer{}
+	done := playAsync(p, NewTestTerminal(10, 2, out))
+	time.Sleep(100 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+	assert.Equal(t, out.String(), "a")
+}
