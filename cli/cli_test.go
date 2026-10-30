@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -1997,6 +1999,41 @@ func TestCaptureOutput(t *testing.T) {
 	// Should capture without error
 	assert.NotNil(t, stdout)
 	assert.NotNil(t, stderr)
+}
+
+func TestCaptureOutputLargerThanPipeBuffer(t *testing.T) {
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	big := strings.Repeat("x", 256*1024)
+
+	// Before the fix, fn blocked writing once the pipe buffer filled.
+	done := make(chan struct{})
+	var stdout, stderr string
+	go func() {
+		defer close(done)
+		stdout, stderr = CaptureOutput(func() {
+			fmt.Fprint(os.Stdout, big)
+			fmt.Fprint(os.Stderr, big)
+		})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		os.Stdout, os.Stderr = oldStdout, oldStderr
+		t.Fatal("CaptureOutput deadlocked on large output")
+	}
+	assert.Equal(t, len(stdout), len(big))
+	assert.Equal(t, len(stderr), len(big))
+}
+
+func TestCaptureOutputRestoresOnPanic(t *testing.T) {
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	func() {
+		defer func() { assert.NotNil(t, recover()) }()
+		CaptureOutput(func() { panic("boom") })
+	}()
+	restored := os.Stdout == oldStdout && os.Stderr == oldStderr
+	os.Stdout, os.Stderr = oldStdout, oldStderr
+	assert.True(t, restored, "stdout and stderr were not restored")
 }
 
 func TestBeforeMiddlewareError(t *testing.T) {

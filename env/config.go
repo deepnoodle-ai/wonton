@@ -375,6 +375,7 @@ func ParseInto(v any, opts ...Option) error {
 		options: options,
 		environ: environ,
 		errors:  &AggregateError{},
+		parsing: map[reflect.Type]bool{},
 	}
 
 	parser.parseStruct(rv, "")
@@ -390,12 +391,16 @@ type structParser struct {
 	options *Options
 	environ map[string]string
 	errors  *AggregateError
+	// parsing holds the struct types on the current recursion path.
+	parsing map[reflect.Type]bool
 }
 
 // parseStruct recursively populates exported struct fields in rv using prefix
 // as the current environment variable prefix.
 func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 	rt := rv.Type()
+	p.parsing[rt] = true
+	defer delete(p.parsing, rt)
 
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
@@ -416,6 +421,11 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 		if fv.Kind() == reflect.Ptr && fv.Type().Elem().Kind() == reflect.Struct &&
 			!p.isValueType(fv.Type()) && !p.isValueType(fv.Type().Elem()) {
 			if fv.IsNil() {
+				// A self-referencing type (type Node struct{ Next *Node })
+				// would allocate forever, so leave its pointer nil.
+				if p.parsing[fv.Type().Elem()] {
+					continue
+				}
 				fv.Set(reflect.New(fv.Type().Elem()))
 			}
 			p.parseStruct(fv.Elem(), nestedStructPrefix(field, prefix))

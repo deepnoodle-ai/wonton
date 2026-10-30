@@ -81,7 +81,8 @@ type Result struct {
 // Render produces a thumbnail for the request. It never returns an error for
 // an unsupported or malformed source: image failures and non-image types fall
 // through to a deterministic typed card, so every input gets a stable visual.
-// A non-nil error indicates an encoding fault, not bad input.
+// A non-nil error indicates a target box larger than DefaultMaxSourcePixels
+// in area, or an encoding fault; it is never caused by the source.
 //
 // Width and Height default to 320x200 when unset.
 func Render(req Request) (res Result, err error) {
@@ -89,6 +90,11 @@ func Render(req Request) (res Result, err error) {
 	if w <= 0 || h <= 0 {
 		v := defaultVariant()
 		w, h = v.w, v.h
+	}
+	// The canvas allocates roughly w*h*4 bytes, so hold it to the same area
+	// cap as a decoded source. Multiply in int64 so the product cannot wrap.
+	if int64(w)*int64(h) > DefaultMaxSourcePixels {
+		return Result{}, fmt.Errorf("target %dx%d exceeds pixel cap", w, h)
 	}
 	req.Width, req.Height = w, h
 

@@ -1618,3 +1618,27 @@ func TestParse_EmbeddedPointerStructAndEnvPrefix(t *testing.T) {
 	assert.NotNil(t, prefixed.Extra)
 	assert.Equal(t, "secondary.local", prefixed.Extra.Host)
 }
+
+func TestParse_SelfReferencingStructPointer(t *testing.T) {
+	type Node struct {
+		Name string `env:"NAME"`
+		Next *Node
+	}
+
+	// Before the fix, Parse allocated Next, Next.Next, ... forever.
+	done := make(chan struct{})
+	var cfg Node
+	var err error
+	go func() {
+		defer close(done)
+		cfg, err = Parse[Node](WithEnvironment(map[string]string{"NAME": "root"}))
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Parse did not return for a self-referencing struct")
+	}
+	assert.NoError(t, err)
+	assert.Equal(t, "root", cfg.Name)
+	assert.Nil(t, cfg.Next)
+}

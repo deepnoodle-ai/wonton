@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -173,16 +174,25 @@ func CaptureOutput(fn func()) (stdout, stderr string) {
 	os.Stdout = wOut
 	os.Stderr = wErr
 
-	fn()
-
-	wOut.Close()
-	wErr.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
+	// Drain the pipes while fn runs, so output larger than the pipe buffer
+	// can't block it.
 	var bufOut, bufErr bytes.Buffer
-	io.Copy(&bufOut, rOut)
-	io.Copy(&bufErr, rErr)
+	var wg sync.WaitGroup
+	wg.Go(func() { io.Copy(&bufOut, rOut) })
+	wg.Go(func() { io.Copy(&bufErr, rErr) })
 
-	return bufOut.String(), bufErr.String()
+	// Restore stdout/stderr even if fn panics.
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+		wOut.Close()
+		wErr.Close()
+		wg.Wait()
+		rOut.Close()
+		rErr.Close()
+		stdout, stderr = bufOut.String(), bufErr.String()
+	}()
+
+	fn()
+	return
 }
