@@ -340,6 +340,64 @@ func TestDiffCopiedFile(t *testing.T) {
 	}
 }
 
+// A rename or copy inside a directory whose name has braces keeps its paths
+// and status. git prints such a numstat path as "routes/{id}/{z.txt => b.txt}".
+func TestDiffRenameAndCopyInBraceDirectory(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	runGit(t, repo.Path, "config", "diff.renames", "copies")
+	if err := os.MkdirAll(filepath.Join(repo.Path, "routes", "{id}"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	addFile(t, repo, "routes/{id}/z.txt", "a\nb\nc\nd\n")
+	addFile(t, repo, "routes/{id}/old.txt", "1\n2\n3\n4\n")
+	commit(t, repo, "initial")
+	addFile(t, repo, "routes/{id}/b.txt", "a\nb\nc\nd\n")
+	addFile(t, repo, "routes/{id}/z.txt", "a\nb\nc\nd\ne\n")
+	runGit(t, repo.Path, "mv", "routes/{id}/old.txt", "routes/{id}/new.txt")
+
+	diff, err := repo.Diff(ctx, git.DiffOptions{Staged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]git.DiffFile{}
+	for _, f := range diff.Files {
+		files[f.Path] = f
+	}
+	if f := files["routes/{id}/b.txt"]; f.Status != "copied" || f.OldPath != "routes/{id}/z.txt" {
+		t.Errorf("b.txt = %+v, want copied from routes/{id}/z.txt (all: %+v)", f, diff.Files)
+	}
+	if f := files["routes/{id}/new.txt"]; f.Status != "renamed" || f.OldPath != "routes/{id}/old.txt" {
+		t.Errorf("new.txt = %+v, want renamed from routes/{id}/old.txt (all: %+v)", f, diff.Files)
+	}
+	if f := files["routes/{id}/z.txt"]; f.Status != "modified" {
+		t.Errorf("z.txt status = %q, want modified (all: %+v)", f.Status, diff.Files)
+	}
+}
+
+// Diff returns a non-ASCII path as the path itself, not git's quoted form.
+func TestDiffNonASCIIPath(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "café.txt", "one\n")
+	commit(t, repo, "initial")
+	if err := os.WriteFile(filepath.Join(repo.Path, "café.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := repo.Diff(ctx, git.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Files) != 1 || diff.Files[0].Path != "café.txt" || diff.Files[0].Status != "modified" {
+		t.Errorf("files = %+v, want café.txt modified", diff.Files)
+	}
+}
+
 func TestDiffLongLinePatch(t *testing.T) {
 	repo, cleanup := setupTestRepo(t)
 	defer cleanup()

@@ -29,6 +29,12 @@ bug fixes. Release notes identify incompatible changes explicitly.
   which ended the crawl early. `Crawl` then returned `context.Canceled` and
   never fetched the seeds.
 
+- `git.Repository.Diff` returns the correct `Path`, `OldPath`, and `Status`
+  for a rename or copy inside a directory whose name has braces, such as
+  `routes/{id}/`. Before, the paths came back cut at the braces, and a copy
+  was reported as `"renamed"`. Non-ASCII paths now come back unquoted:
+  `café.txt` was returned as git's quoted form, `"caf\303\251.txt"`.
+
 ## [0.10.3] - 2026-10-29
 
 ### Fixed
