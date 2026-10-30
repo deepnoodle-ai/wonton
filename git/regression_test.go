@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -96,6 +97,90 @@ func TestOptionInjectionRejected(t *testing.T) {
 				t.Errorf("git wrote %s: option was injected", target)
 			}
 		})
+	}
+}
+
+// Without -z, git status C-quotes a path that has a non-ASCII byte, '"', '\',
+// or a control character. Status must return the path itself.
+func TestStatusQuotedPaths(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "café.txt", "one\n")
+	addFile(t, repo, "old.txt", "content\n")
+	commit(t, repo, "initial")
+	if err := os.WriteFile(filepath.Join(repo.Path, "café.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo.Path, "mv", "old.txt", "déjà.txt")
+	addFile(t, repo, "zürich.txt", "new\n")
+	untracked := []string{"ünt.txt"}
+	if runtime.GOOS != "windows" {
+		untracked = append(untracked, "tab\tq\"uote.txt")
+	}
+	for _, name := range untracked {
+		if err := os.WriteFile(filepath.Join(repo.Path, name), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	status, err := repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(status.Unstaged) != 1 || status.Unstaged[0].Path != "café.txt" || status.Unstaged[0].Status != "modified" {
+		t.Errorf("unstaged = %+v, want café.txt modified", status.Unstaged)
+	}
+	staged := map[string]git.FileStatus{}
+	for _, fs := range status.Staged {
+		staged[fs.Path] = fs
+	}
+	if len(staged) != 2 {
+		t.Errorf("staged = %+v, want déjà.txt and zürich.txt", status.Staged)
+	}
+	if fs := staged["déjà.txt"]; fs.OldPath != "old.txt" || fs.Status != "renamed" {
+		t.Errorf("rename entry = %+v, want déjà.txt renamed from old.txt", fs)
+	}
+	if fs := staged["zürich.txt"]; fs.Status != "added" {
+		t.Errorf("zürich.txt entry = %+v, want added", fs)
+	}
+	slices.Sort(status.Untracked)
+	slices.Sort(untracked)
+	if !slices.Equal(status.Untracked, untracked) {
+		t.Errorf("untracked = %q, want %q", status.Untracked, untracked)
+	}
+}
+
+func TestStatusConflictQuotedPath(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "naïve file.txt", "base\n")
+	commit(t, repo, "initial")
+	runGit(t, repo.Path, "checkout", "-q", "-b", "other")
+	addFile(t, repo, "naïve file.txt", "other\n")
+	commit(t, repo, "other")
+	runGit(t, repo.Path, "checkout", "-q", "-")
+	addFile(t, repo, "naïve file.txt", "main\n")
+	commit(t, repo, "main")
+	merge := exec.Command("git", "merge", "other")
+	merge.Dir = repo.Path
+	if err := merge.Run(); err == nil {
+		t.Fatal("merge succeeded, want a conflict")
+	}
+
+	status, err := repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(status.Conflicts, []string{"naïve file.txt"}) {
+		t.Errorf("conflicts = %q, want [naïve file.txt]", status.Conflicts)
+	}
+	if status.IsClean {
+		t.Error("IsClean = true with a conflict")
 	}
 }
 
