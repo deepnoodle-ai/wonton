@@ -21,60 +21,67 @@ PR describes its user-visible and incompatible changes in its body.
 
 These fixes change behavior that existing callers can notice.
 
-- `cli`: an app without `App.Version` has no built-in version. `myapp version`
-  is an unknown command and `myapp --version` is an unknown flag. Before, both
-  exited with success and printed nothing. (#179)
+- **Breaking**: `cli`: an app without `App.Version` has no built-in version.
+  `myapp version` is an unknown command and `myapp --version` is an unknown
+  flag. Before, both exited with success and printed nothing. (#179)
 
-- `git.Repository.FileExists` returns true only for one tracked file at that
-  exact path. Before, a directory name or a glob such as `*.go` returned true.
-  A tracked file whose name has glob characters, such as `a[1].go`, also
-  matches. Use `LsFiles` to test whether anything matches. (#173)
+- **Breaking**: `git.Repository.FileExists` returns true only for one tracked
+  file at that exact path. Before, a directory name or a glob such as `*.go`
+  returned true. A tracked file whose name has glob characters, such as
+  `a[1].go`, also matches. Use `LsFiles` to test whether anything matches.
+  (#173)
 
-- `git.Repository.FileExists(ctx, "")`, `TagsForCommit(ctx, "")`, and
-  `DiffFile(ctx, "", opts)` return `git.ErrInvalidArgument`. Before,
+- **Breaking**: `git.Repository.FileExists(ctx, "")`, `TagsForCommit(ctx,
+  "")`, and `DiffFile(ctx, "", opts)` return `git.ErrInvalidArgument`. Before,
   `FileExists` returned true when any file was tracked, `TagsForCommit`
-  returned all tags, and `DiffFile` returned the first file of the whole
-  diff. (#173)
+  returned all tags, and `DiffFile` returned the first file of the whole diff.
+  (#173)
 
-- `env`: with `WithStage`, the `WithOnSet` callback receives the variable
-  that supplied the value, such as `PROD_HOST`. Before, it always received
-  the unstaged name, `HOST`. (#174)
+- **Breaking**: `env`: with `WithStage`, the `WithOnSet` callback receives the
+  variable that supplied the value, such as `PROD_HOST`. Before, it always
+  received the unstaged name, `HOST`. (#174)
 
-- `htmlparse.Document.FilteredLinks` with `External: true` no longer returns
-  links without a host, such as `mailto:`, `tel:`, `javascript:`, or `data:`.
-  To collect them, use `Links()` and filter by scheme. (#196)
+- **Breaking**: `htmlparse.Document.FilteredLinks` with `External: true` no
+  longer returns links without a host, such as `mailto:`, `tel:`,
+  `javascript:`, or `data:`. To collect them, use `Links()` and filter by
+  scheme. (#196)
 
-- `web.NormalizeURL` returns an error for `"."`, `".."`, `"./about"`, and
-  `"../about"`. Before, it returned URLs such as `https://..`. A final `.` or
-  `..` segment keeps the trailing slash, as RFC 3986 says: `/a/b/..` becomes
-  `/a/`, not `/a`. Stored URL sets keyed on the old form can see a one-time
-  change for those URLs. (#178)
+- **Breaking**: `web.NormalizeURL` returns an error for `"."`, `".."`,
+  `"./about"`, and `"../about"`. Before, it returned URLs such as
+  `https://..`. A final `.` or `..` segment keeps the trailing slash, as RFC
+  3986 says: `/a/b/..` becomes `/a/`, not `/a`. Stored URL sets keyed on the
+  old form can see a one-time change for those URLs. (#178)
 
-- `tui`: `FocusableView`, `AnimatedBordered`, `MinWidth`, `MinHeight`, and
-  `MinSize` keep a flexible child flexible, as `Bordered` and `Padding` do.
-  In `Stack(Text("Header"), FocusableView(Scroll(...), h), Text("Footer"))`,
-  the `Scroll` now gets the free space. Before, it took its full content
-  height and pushed `"Footer"` off the screen. `MinHeight(3, Fill('.'))` now
-  fills the free space instead of stopping at 3 rows. (#183)
+- **Breaking**: `humanize.Percentage` prints whole percentages as whole
+  numbers: `Percentage(7, 100)` returns `"7%"`, not `"7.0%"`,
+  `Percentage(99.96, 100)` returns `"100%"`, and `Percentage(0, -100)` returns
+  `"0%"`, not `"-0%"`. `humanize.Float` treats a negative precision as 0
+  instead of returning `"%!(BADPREC)..."`. (#195)
 
-- `thumbnail.Render` scales document and fallback cards by
-  `min(Width, Height) / 200`. Landscape and square cards, including the
-  default 320x200, look the same. Cards taller than they are wide now have
-  smaller text: a 320x600 card goes from scale 3.0 to 1.6. Before, a
-  `Width: 80, Height: 600` card showed only "…", and a
-  `Width: 1, Height: 1_000_000` request could use many gigabytes of memory.
-  (#184)
-
-- `gif.GIF.Encode` writes the canvas at the size given to `New`. A first
-  frame from `AddImage` can now be smaller than the canvas or offset in it.
-  Before, `Encode` failed with "frame bounds larger than image bounds". A
-  frame larger than the canvas now fails in `Encode`; before, `Encode` used
+- **Breaking**: `gif.GIF.Encode` writes the canvas at the size given to `New`.
+  A first frame from `AddImage` can now be smaller than the canvas or offset
+  in it. Before, `Encode` failed with "frame bounds larger than image bounds".
+  A frame larger than the canvas now fails in `Encode`; before, `Encode` used
   that frame's size as the canvas. (#185)
 
-- `runewidth.StringWidth` and `runewidth.Graphemes` give width 2 to
-  skin-tone emoji on text-default bases, such as `✌🏽`, `☝🏽`, `✍🏽`, and
-  `🕵🏽`. Before, they had width 1. The `gif` terminal screen uses
-  `runewidth`, so these clusters take two cells there too. (#189)
+- `tui`: `FocusableView`, `AnimatedBordered`, `MinWidth`, `MinHeight`, and
+  `MinSize` keep a flexible child flexible, as `Bordered` and `Padding` do. In
+  `Stack(Text("Header"), FocusableView(Scroll(...), h), Text("Footer"))`, the
+  `Scroll` now gets the free space. Before, it took its full content height
+  and pushed `"Footer"` off the screen. `MinHeight(3, Fill('.'))` now fills
+  the free space instead of stopping at 3 rows. (#183)
+
+- `thumbnail.Render` scales document and fallback cards by `min(Width, Height)
+  / 200`. Landscape and square cards, including the default 320x200, look the
+  same. Cards taller than they are wide now have smaller text: a 320x600 card
+  goes from scale 3.0 to 1.6. Before, a `Width: 80, Height: 600` card showed
+  only "…", and a `Width: 1, Height: 1_000_000` request could use many
+  gigabytes of memory. (#184)
+
+- `runewidth.StringWidth` and `runewidth.Graphemes` give width 2 to skin-tone
+  emoji on text-default bases, such as `✌🏽`, `☝🏽`, `✍🏽`, and `🕵🏽`. Before,
+  they had width 1. The `gif` terminal screen uses `runewidth`, so these
+  clusters take two cells there too. (#189)
 
 ### Fixed
 
@@ -163,12 +170,6 @@ These fixes change behavior that existing callers can notice.
 
 - `htmltomd.ConvertWithOptions` no longer writes to the caller's `*Options`,
   so one `Options` value can be shared across goroutines. (#197)
-
-- `humanize.Percentage` prints whole percentages as whole numbers:
-  `Percentage(7, 100)` returns `"7%"`, not `"7.0%"`, `Percentage(99.96, 100)`
-  returns `"100%"`, and `Percentage(0, -100)` returns `"0%"`, not `"-0%"`.
-  `humanize.Float` treats a negative precision as 0 instead of returning
-  `"%!(BADPREC)..."`. (#195)
 
 - `terminal.RedactCredentials` and `terminal.Redactor`: a lone ESC or an
   unfinished CSI before another escape sequence no longer swallows its ESC.
