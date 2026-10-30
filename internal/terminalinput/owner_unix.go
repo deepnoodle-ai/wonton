@@ -113,8 +113,12 @@ func (o *Owner) Read(dst []byte) (int, error) {
 		}
 		if descriptors[0].Revents&(unix.POLLHUP|unix.POLLERR) != 0 {
 			// Drain any final queued input before reporting a hung-up terminal.
+			// A concurrent Pause may have captured it, so check under the lock.
+			o.mu.Lock()
 			count, err := availableBytes(o.fd)
-			if err != nil || count == 0 {
+			hungUp := !o.paused && (err != nil || count == 0)
+			o.mu.Unlock()
+			if hungUp {
 				return 0, io.EOF
 			}
 		}

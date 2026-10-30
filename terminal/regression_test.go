@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -344,4 +345,53 @@ func TestFrameTitleWideCharsKeepsBorderWidth(t *testing.T) {
 	assert.Equal(t, []rune(f.Border.TopRight)[0], corner.Char)
 	// Nothing may spill past the frame edge.
 	assert.Equal(t, ' ', term.GetCell(12, 0).Char)
+}
+
+// --- WatchResize / StopWatchResize / Close concurrency ---
+
+// TestWatchResizeConcurrentStopAndClose races WatchResize against
+// StopWatchResize and Close. Signal registration must happen under the lock,
+// or it races with a concurrent stop (reported under -race).
+func TestWatchResizeConcurrentStopAndClose(t *testing.T) {
+	for i := 0; i < 5000; i++ {
+		term := NewTestTerminal(20, 5, &bytes.Buffer{})
+		term.fd = 0 // WatchResize is a no-op on the test terminal's -1 fd
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			<-start
+			term.WatchResize()
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			term.StopWatchResize()
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_ = term.Close()
+		}()
+		close(start)
+		wg.Wait()
+
+		term.StopWatchResize()
+	}
+}
+
+func TestWatchResizeAfterCloseIsNoop(t *testing.T) {
+	term := NewTestTerminal(20, 5, &bytes.Buffer{})
+	term.fd = 0 // WatchResize is a no-op on the test terminal's -1 fd
+	assert.NoError(t, term.Close())
+
+	term.WatchResize()
+	defer term.StopWatchResize()
+
+	term.mu.Lock()
+	resizing := term.resizing
+	term.mu.Unlock()
+	assert.False(t, resizing)
 }
