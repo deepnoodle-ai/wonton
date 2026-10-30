@@ -52,6 +52,7 @@ package unidiff
 import (
 	"bufio"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -211,8 +212,10 @@ type Diff struct {
 //   - Binary files (marked with IsBinary=true)
 //   - Plain diff -u output, including tab-separated timestamps in headers
 //
-// The parser strips a/ and b/ prefixes from file paths (common in git diffs)
-// and preserves both the raw line (with markers) and cleaned content. Hunk
+// The parser strips a/ and b/ prefixes from file paths (common in git diffs),
+// unquotes paths that git C-quoted (such as "a/caf\303\251.txt"), and keeps
+// files with no hunks (empty, binary, mode-only, or pure renames). It
+// preserves both the raw line (with markers) and cleaned content. Hunk
 // line counts from the @@ header are used to parse hunk content, so changed
 // lines that resemble file headers (e.g., a removed line starting with "--")
 // are handled correctly.
@@ -242,6 +245,8 @@ func Parse(diffText string) (*Diff, error) {
 
 	var currentFile *File
 	var currentHunk *Hunk
+	// sawOldHeader reports whether the current file already has a "--- " header.
+	var sawOldHeader bool
 	oldLineNum := 0
 	newLineNum := 0
 	// Lines remaining in the current hunk according to its header counts.
@@ -331,23 +336,19 @@ func Parse(diffText string) (*Diff, error) {
 		if strings.HasPrefix(line, "diff --git") {
 			flushFile()
 			currentFile = &File{}
-			// Try to parse paths from diff --git line as fallback
-			// Format: diff --git a/old b/new
-			// Note: This simple parsing fails for filenames with spaces,
-			// but serves as a reasonable default for binary files.
-			parts := strings.Fields(line)
-			if len(parts) >= 4 {
-				currentFile.OldPath = strings.TrimPrefix(parts[2], "a/")
-				currentFile.NewPath = strings.TrimPrefix(parts[3], "b/")
-			}
+			sawOldHeader = false
+			// Paths from the "diff --git" line are a fallback for diffs
+			// with no "---"/"+++" headers (binary, empty, or mode-only).
+			currentFile.OldPath, currentFile.NewPath = gitHeaderPaths(strings.TrimPrefix(line, "diff --git "))
 		} else if strings.HasPrefix(line, "--- ") {
 			// Plain "diff -u" output has no "diff --git" line, so this header
 			// starts a new file. In git diffs the preceding "diff --git" line
 			// already created a fresh file, which is reused here.
-			if currentFile == nil || len(currentFile.Hunks) > 0 || currentHunk != nil {
+			if currentFile == nil || sawOldHeader || len(currentFile.Hunks) > 0 || currentHunk != nil {
 				flushFile()
 				currentFile = &File{}
 			}
+			sawOldHeader = true
 			path := headerPath(strings.TrimPrefix(line, "--- "))
 			path = strings.TrimPrefix(path, "a/")
 			currentFile.OldPath = path
@@ -374,12 +375,12 @@ func Parse(diffText string) (*Diff, error) {
 		} else if strings.HasPrefix(line, "rename from ") {
 			if currentFile != nil {
 				currentFile.IsRename = true
-				currentFile.OldPath = strings.TrimPrefix(line, "rename from ")
+				currentFile.OldPath = unquotePath(strings.TrimPrefix(line, "rename from "))
 			}
 		} else if strings.HasPrefix(line, "rename to ") {
 			if currentFile != nil {
 				currentFile.IsRename = true
-				currentFile.NewPath = strings.TrimPrefix(line, "rename to ")
+				currentFile.NewPath = unquotePath(strings.TrimPrefix(line, "rename to "))
 			}
 		} else if strings.HasPrefix(line, "Binary files") || line == "GIT binary patch" {
 			if currentFile != nil {
@@ -468,16 +469,54 @@ func Parse(diffText string) (*Diff, error) {
 
 // headerPath extracts the file path from a "---" or "+++" header value,
 // stripping the tab-separated timestamp that traditional diff -u appends
-// (e.g., "file.txt\t2024-01-01 12:00:00.000000000 +0000"). Quoted paths
-// (which may legitimately contain tabs) are returned unchanged.
+// (e.g., "file.txt\t2024-01-01 12:00:00.000000000 +0000"). A path that git
+// C-quoted (because it has a tab, a quote, or a non-ASCII byte) is unquoted.
 func headerPath(value string) string {
 	if strings.HasPrefix(value, `"`) {
-		return value
+		return unquotePath(value)
 	}
 	if idx := strings.IndexByte(value, '\t'); idx >= 0 {
 		return value[:idx]
 	}
 	return value
+}
+
+// unquotePath undoes git's C-style quoting of a path, as in
+// "caf\303\251.txt". Values that are not quoted are returned unchanged.
+func unquotePath(s string) string {
+	if strings.HasPrefix(s, `"`) {
+		if u, err := strconv.Unquote(s); err == nil {
+			return u
+		}
+	}
+	return s
+}
+
+// gitHeaderPaths returns the old and new paths from the "a/<old> b/<new>"
+// part of a "diff --git" line. Paths may contain spaces, so it first tries
+// the case where both sides name the same path, then quoted sides, then the
+// last " b/", then the same path with no prefix (git diff --no-prefix).
+func gitHeaderPaths(s string) (oldPath, newPath string) {
+	if n := len(s) - len("a/ b/"); n > 0 && n%2 == 0 {
+		p := s[2 : 2+n/2]
+		if s == "a/"+p+" b/"+p {
+			return p, p
+		}
+	}
+	if strings.HasSuffix(s, `"`) {
+		if i := strings.LastIndex(s, ` "b/`); i >= 0 {
+			oldPath = strings.TrimPrefix(unquotePath(s[:i]), "a/")
+			newPath = strings.TrimPrefix(unquotePath(s[i+1:]), "b/")
+			return oldPath, newPath
+		}
+	}
+	if i := strings.LastIndex(s, " b/"); i >= 0 {
+		return strings.TrimPrefix(unquotePath(s[:i]), "a/"), s[i+len(" b/"):]
+	}
+	if n := len(s) - 1; n > 0 && n%2 == 0 && s == s[:n/2]+" "+s[:n/2] {
+		return s[:n/2], s[:n/2]
+	}
+	return "", ""
 }
 
 // Stats contains summary statistics about changes in a diff.
