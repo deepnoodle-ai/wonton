@@ -3,6 +3,7 @@ package termsession
 import (
 	"errors"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -143,7 +144,7 @@ func (p *Player) Play() error {
 	}
 	now := time.Now()
 	if p.hasInitialSeek {
-		p.startTime = now.Add(-time.Duration((p.initialSeek / p.speed) * float64(time.Second)))
+		p.startTime = now.Add(-secondsToDuration(p.initialSeek / p.speed))
 		p.hasInitialSeek = false
 	} else {
 		p.startTime = now
@@ -385,6 +386,13 @@ func (p *Player) elapsedLocked() float64 {
 	return elapsed.Seconds()
 }
 
+// secondsToDuration converts seconds to a Duration, rounding to the nearest
+// nanosecond. A plain conversion truncates, so a clock moved by Seek could read
+// a nanosecond short of the target, such as 6.9999999 for 7.
+func secondsToDuration(s float64) time.Duration {
+	return time.Duration(math.Round(s * float64(time.Second)))
+}
+
 // SetSpeed changes the playback speed multiplier.
 //
 // The speed is adjusted smoothly to prevent jumps in playback position.
@@ -408,7 +416,7 @@ func (p *Player) SetSpeed(speed float64) {
 		if elapsed > 0 {
 			position := elapsed * p.speed
 			adjustment := elapsed - position/speed
-			p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+			p.startTime = p.startTime.Add(secondsToDuration(adjustment))
 		}
 	}
 
@@ -462,7 +470,7 @@ func (p *Player) Seek(seconds float64) {
 		// Adjust start time to account for the seek
 		elapsed := p.elapsedLocked()
 		adjustment := elapsed - (seconds / p.speed)
-		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+		p.startTime = p.startTime.Add(secondsToDuration(adjustment))
 	} else {
 		p.initialSeek = seconds
 		p.hasInitialSeek = true

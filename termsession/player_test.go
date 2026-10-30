@@ -355,3 +355,13 @@ func ExamplePlayer_SetSpeed() {
 	// Initial speed: 1.0x
 	// New speed: 2.0x
 }
+
+// Seek and SetSpeed move the clock by a float number of seconds. The
+// conversion back must be exact, or a position read on the same clock tick,
+// as on Windows, falls short of the target.
+func TestSecondsToDurationRoundTrips(t *testing.T) {
+	for i := range 100000 {
+		d := time.Duration(-3_000_000_000 + i*1237)
+		assert.Equal(t, secondsToDuration(d.Seconds()), d)
+	}
+}
