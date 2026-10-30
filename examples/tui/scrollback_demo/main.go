@@ -38,9 +38,6 @@ type AppState struct {
 	// Status text shown in the live region
 	status string
 
-	// Counter for async activity simulation
-	activityCounter int
-
 	// Whether the app is running
 	running bool
 }
@@ -91,31 +88,12 @@ func main() {
 	// Render initial state
 	live.Update(state.buildLiveView())
 
-	// Start async activity simulation in background
-	activityChan := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				activityChan <- struct{}{}
-			case <-activityChan:
-				return
-			}
-		}
-	}()
-
 	// Main input loop
 	decoder := terminal.NewKeyDecoder(os.Stdin)
 
 	for state.running {
-		// Use a timeout-based approach to handle both input and async updates
-		// In a real app, you'd use a select with channels
-
-		// Check for keyboard input (non-blocking would be ideal, but we'll use ReadKeyEvent)
-		// For demo purposes, we'll just do blocking reads
-
+		// Block on each key. To also redraw on async updates, read keys
+		// in a goroutine and select on channels, as scrollback_simple does.
 		event, err := decoder.ReadKeyEvent()
 		if err != nil {
 			if err == io.EOF {
