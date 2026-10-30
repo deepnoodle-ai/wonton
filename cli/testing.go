@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -168,21 +169,49 @@ func CaptureOutput(fn func()) (stdout, stderr string) {
 	oldStdout := os.Stdout
 	oldStderr := os.Stderr
 
-	rOut, wOut, _ := os.Pipe()
-	rErr, wErr, _ := os.Pipe()
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		fn()
+		return "", ""
+	}
+	rErr, wErr, err := os.Pipe()
+	if err != nil {
+		_ = rOut.Close()
+		_ = wOut.Close()
+		fn()
+		return "", ""
+	}
+
 	os.Stdout = wOut
 	os.Stderr = wErr
 
+	var bufOut, bufErr bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(&bufOut, rOut)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(&bufErr, rErr)
+	}()
+
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+		_ = wOut.Close()
+		_ = wErr.Close()
+		wg.Wait()
+		_ = rOut.Close()
+		_ = rErr.Close()
+	}()
+
 	fn()
 
-	wOut.Close()
-	wErr.Close()
-	os.Stdout = oldStdout
-	os.Stderr = oldStderr
-
-	var bufOut, bufErr bytes.Buffer
-	io.Copy(&bufOut, rOut)
-	io.Copy(&bufErr, rErr)
+	_ = wOut.Close()
+	_ = wErr.Close()
+	wg.Wait()
 
 	return bufOut.String(), bufErr.String()
 }

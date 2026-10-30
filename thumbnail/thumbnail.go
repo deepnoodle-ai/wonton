@@ -41,6 +41,13 @@ import (
 // roughly width*height*4 bytes).
 const DefaultMaxSourcePixels = 24 * 1000 * 1000 // 24 MP
 
+const (
+	// maxDimension caps target Width and Height to prevent oversized canvas allocations.
+	maxDimension = 16384
+	// maxTargetPixels is the 100 MP limit for the target thumbnail canvas.
+	maxTargetPixels = 100_000_000
+)
+
 const jpegQuality = 82
 
 // Renderer names reported in [Result.Renderer] for diagnostics.
@@ -81,7 +88,8 @@ type Result struct {
 // Render produces a thumbnail for the request. It never returns an error for
 // an unsupported or malformed source: image failures and non-image types fall
 // through to a deterministic typed card, so every input gets a stable visual.
-// A non-nil error indicates an encoding fault, not bad input.
+// A non-nil error is returned only when the requested target dimensions exceed
+// the maximum allowed canvas size or when encoding the final output image fails.
 //
 // Width and Height default to 320x200 when unset.
 func Render(req Request) (res Result, err error) {
@@ -89,6 +97,9 @@ func Render(req Request) (res Result, err error) {
 	if w <= 0 || h <= 0 {
 		v := defaultVariant()
 		w, h = v.w, v.h
+	}
+	if w > maxDimension || h > maxDimension || int64(w)*int64(h) > maxTargetPixels {
+		return Result{}, fmt.Errorf("thumbnail: target dimensions %dx%d exceed maximum allowed size", w, h)
 	}
 	req.Width, req.Height = w, h
 

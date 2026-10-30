@@ -459,17 +459,21 @@ func Percentage(value, total float64) string {
 //	Ordinal(100)  // "100th"
 //	Ordinal(101)  // "101st"
 func Ordinal(n int) string {
-	absN := n
-	if absN < 0 {
-		absN = -absN
+	rem100 := n % 100
+	if rem100 < 0 {
+		rem100 = -rem100
+	}
+	rem10 := n % 10
+	if rem10 < 0 {
+		rem10 = -rem10
 	}
 
 	suffix := "th"
-	switch absN % 100 {
+	switch rem100 {
 	case 11, 12, 13:
 		// Special case for 11th, 12th, 13th
 	default:
-		switch absN % 10 {
+		switch rem10 {
 		case 1:
 			suffix = "st"
 		case 2:

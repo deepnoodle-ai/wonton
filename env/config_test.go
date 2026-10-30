@@ -2,6 +2,7 @@ package env
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1617,4 +1618,77 @@ func TestParse_EmbeddedPointerStructAndEnvPrefix(t *testing.T) {
 	assert.Equal(t, "primary.local", prefixed.Common.Host)
 	assert.NotNil(t, prefixed.Extra)
 	assert.Equal(t, "secondary.local", prefixed.Extra.Host)
+}
+
+func TestParse_SpecialTypesAndPointers(t *testing.T) {
+	type CustomStruct struct {
+		Host string
+		Port string
+	}
+
+	type Config struct {
+		Loc       time.Location  `env:"LOC"`
+		LocPtr    *time.Location `env:"LOC_PTR"`
+		TimePtr   *time.Time     `env:"TIME_PTR"`
+		URL       url.URL        `env:"URL"`
+		URLPtr    *url.URL       `env:"URL_PTR"`
+		Custom    CustomStruct   `env:"CUSTOM"`
+		CustomPtr *CustomStruct  `env:"CUSTOM_PTR"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"LOC":        "UTC",
+			"LOC_PTR":    "America/New_York",
+			"TIME_PTR":   "2025-01-02T03:04:05Z",
+			"URL":        "https://example.com/path",
+			"URL_PTR":    "https://deepnoodle.ai",
+			"CUSTOM":     "localhost:8080",
+			"CUSTOM_PTR": "db:5432",
+		}),
+		WithParser(func(s string) (CustomStruct, error) {
+			host, port, ok := strings.Cut(s, ":")
+			if !ok {
+				return CustomStruct{}, fmt.Errorf("expected host:port")
+			}
+			return CustomStruct{Host: host, Port: port}, nil
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "UTC", cfg.Loc.String())
+	assert.NotNil(t, cfg.LocPtr)
+	assert.Equal(t, "America/New_York", cfg.LocPtr.String())
+	assert.NotNil(t, cfg.TimePtr)
+	assert.Equal(t, time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC), *cfg.TimePtr)
+	assert.Equal(t, "https://example.com/path", cfg.URL.String())
+	assert.NotNil(t, cfg.URLPtr)
+	assert.Equal(t, "https://deepnoodle.ai", cfg.URLPtr.String())
+	assert.Equal(t, CustomStruct{Host: "localhost", Port: "8080"}, cfg.Custom)
+	assert.NotNil(t, cfg.CustomPtr)
+	assert.Equal(t, CustomStruct{Host: "db", Port: "5432"}, *cfg.CustomPtr)
+}
+
+func TestParse_RecursiveStructPointer(t *testing.T) {
+	type Node struct {
+		Name string `env:"NAME"`
+		Next *Node
+	}
+
+	cfg, err := Parse[Node](WithEnvironment(map[string]string{
+		"NAME": "root",
+	}))
+	assert.NoError(t, err)
+	assert.Equal(t, "root", cfg.Name)
+	assert.Nil(t, cfg.Next)
+}
+
+func TestParse_DefaultWithoutEnvTagPreservesExistingValue(t *testing.T) {
+	type Config struct {
+		Host string `json:"host" envDefault:"default-host"`
+	}
+
+	cfg := Config{Host: "prepopulated"}
+	err := ParseInto(&cfg, WithEnvironment(map[string]string{}))
+	assert.NoError(t, err)
+	assert.Equal(t, "prepopulated", cfg.Host)
 }

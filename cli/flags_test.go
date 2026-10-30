@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 )
@@ -228,4 +232,120 @@ func TestBindFlagsFromContext(t *testing.T) {
 		assert.True(t, cfg.Flag1)
 		assert.True(t, cfg.Flag2)
 	})
+
+	t.Run("supports time.Duration, pointers, and unexported fields", func(t *testing.T) {
+		type Config struct {
+			Timeout  time.Duration  `flag:"timeout,t" default:"5s"`
+			Delay    *time.Duration `flag:"delay" default:"250ms"`
+			Name     *string        `flag:"name,n"`
+			internal string         `flag:"internal"`
+		}
+
+		app := New("test")
+		cmd := app.Command("run")
+		ParseFlags[Config](cmd)
+
+		var got *Config
+		cmd.Run(func(ctx *Context) error {
+			var err error
+			got, err = BindFlags[Config](ctx)
+			return err
+		})
+
+		err := app.ExecuteArgs([]string{"run", "--timeout", "15s", "--name", "worker"})
+		assert.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Equal(t, 15*time.Second, got.Timeout)
+		assert.NotNil(t, got.Delay)
+		assert.Equal(t, 250*time.Millisecond, *got.Delay)
+		assert.NotNil(t, got.Name)
+		assert.Equal(t, "worker", *got.Name)
+		assert.Equal(t, "", got.internal)
+	})
+}
+
+func TestCaptureOutputLargeAndPanicRestore(t *testing.T) {
+	large := strings.Repeat("x", 256*1024)
+	out, errOut := CaptureOutput(func() {
+		_, _ = fmt.Fprint(os.Stdout, large)
+		_, _ = fmt.Fprint(os.Stderr, large)
+	})
+	assert.Equal(t, len(large), len(out))
+	assert.Equal(t, len(large), len(errOut))
+
+	origOut, origErr := os.Stdout, os.Stderr
+	assert.Panics(t, func() {
+		CaptureOutput(func() {
+			panic("boom")
+		})
+	})
+	assert.Equal(t, origOut, os.Stdout)
+	assert.Equal(t, origErr, os.Stderr)
+}
+
+func TestEndOfFlagsWithFlagLikePositionalOnRoot(t *testing.T) {
+	var gotArgs []string
+	app := New("test").
+		Args("args?...").
+		GlobalFlags(Bool("verbose", "v")).
+		Run(func(ctx *Context) error {
+			gotArgs = ctx.Args()
+			return nil
+		})
+
+	err := app.ExecuteArgs([]string{"--", "-v"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"-v"}, gotArgs)
+}
+
+func TestGroupMiddlewareAndFlagsOnSubcommand(t *testing.T) {
+	var order []string
+	var envVal string
+
+	app := New("test")
+	app.Use(func(next Handler) Handler {
+		return func(ctx *Context) error {
+			order = append(order, "app")
+			return next(ctx)
+		}
+	})
+
+	grp := app.Group("deploy").
+		Flags(String("env", "e").Default("staging")).
+		Use(func(next Handler) Handler {
+			return func(ctx *Context) error {
+				order = append(order, "group")
+				return next(ctx)
+			}
+		})
+
+	grp.Command("service").
+		Use(func(next Handler) Handler {
+			return func(ctx *Context) error {
+				order = append(order, "cmd")
+				return next(ctx)
+			}
+		}).
+		Run(func(ctx *Context) error {
+			order = append(order, "handler")
+			envVal = ctx.String("env")
+			return nil
+		})
+
+	err := app.ExecuteArgs([]string{"deploy", "service", "--env", "prod"})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"app", "group", "cmd", "handler"}, order)
+	assert.Equal(t, "prod", envVal)
+
+	// Subcommand flag takes precedence over group flag of the same name (Q1).
+	var countVal int
+	grp.Command("override").
+		Flags(Int("env", "e").Default(42)).
+		Run(func(ctx *Context) error {
+			countVal = ctx.Int("env")
+			return nil
+		})
+	err = app.ExecuteArgs([]string{"deploy", "override", "--env", "7"})
+	assert.NoError(t, err)
+	assert.Equal(t, 7, countVal)
 }

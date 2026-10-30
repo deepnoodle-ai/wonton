@@ -1121,3 +1121,65 @@ func TestGenerate_TaggedEmbeddedStructIsNested(t *testing.T) {
 	assert.Contains(t, s.Properties, "c")
 	assert.Equal(t, []string{"named", "IntEmbed", "c"}, s.Required)
 }
+
+type recursiveSlice []recursiveSlice
+type recursiveMapType map[string]recursiveMapType
+type recursivePtr *recursivePtr
+
+func TestGenerate_RecursiveNonStructTypes(t *testing.T) {
+	sSlice, err := schema.Generate(recursiveSlice{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.Array, sSlice.Type)
+	assert.NotNil(t, sSlice.Items)
+	assert.Equal(t, schema.Array, sSlice.Items.Type)
+
+	sMap, err := schema.Generate(recursiveMapType{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.Object, sMap.Type)
+	assert.NotNil(t, sMap.AdditionalPropertiesSchema)
+	assert.Equal(t, schema.Object, sMap.AdditionalPropertiesSchema.Type)
+
+	var p recursivePtr
+	sPtr, err := schema.Generate(p)
+	assert.NoError(t, err)
+	assert.NotNil(t, sPtr.Nullable)
+	assert.True(t, *sPtr.Nullable)
+}
+
+func TestGenerate_EmbeddedTimeNotDropped(t *testing.T) {
+	type Event struct {
+		time.Time
+		Name string `json:"name"`
+	}
+
+	s, err := schema.Generate(Event{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.String, s.Type)
+	assert.NotNil(t, s.Format)
+	assert.Equal(t, "date-time", *s.Format)
+
+	type PtrEvent struct {
+		*time.Time
+		Name string `json:"name"`
+	}
+
+	sPtr, err := schema.Generate(PtrEvent{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.String, sPtr.Type)
+	assert.NotNil(t, sPtr.Format)
+	assert.Equal(t, "date-time", *sPtr.Format)
+
+	type Base struct {
+		time.Time
+	}
+	type NestedEvent struct {
+		Base
+		Name string `json:"name"`
+	}
+
+	sNested, err := schema.Generate(NestedEvent{})
+	assert.NoError(t, err)
+	assert.Equal(t, schema.String, sNested.Type)
+	assert.NotNil(t, sNested.Format)
+	assert.Equal(t, "date-time", *sNested.Format)
+}

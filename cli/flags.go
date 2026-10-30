@@ -28,9 +28,10 @@ import (
 //	ParseFlags[Flags](cmd)
 //
 // Use BindFlags in the handler to populate the struct with parsed values.
+var durationType = reflect.TypeFor[time.Duration]()
+
 func ParseFlags[T any](c *Command) *Command {
-	var zero T
-	parseStructFlags(c, reflect.TypeOf(zero))
+	parseStructFlags(c, reflect.TypeFor[T]())
 	return c
 }
 
@@ -61,8 +62,9 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
+		fv := rv.Field(i)
 		tag := field.Tag.Get("flag")
-		if tag == "" || !field.IsExported() {
+		if tag == "" || !field.IsExported() || !fv.CanSet() {
 			continue
 		}
 
@@ -72,7 +74,7 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 		if !ctx.IsSet(name) {
 			// Try default from tag
 			if def := field.Tag.Get("default"); def != "" {
-				if err := setFieldValue(rv.Field(i), def); err != nil {
+				if err := setFieldValue(fv, def); err != nil {
 					return nil, fmt.Errorf("invalid default for %s: %w", name, err)
 				}
 			}
@@ -80,7 +82,7 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 		}
 
 		value := ctx.flags[name]
-		if err := setFieldFromAny(rv.Field(i), value); err != nil {
+		if err := setFieldFromAny(fv, value); err != nil {
 			return nil, fmt.Errorf("invalid value for --%s: %w", name, err)
 		}
 	}
@@ -89,7 +91,7 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 }
 
 func parseStructFlags(c *Command, t reflect.Type) {
-	if t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -98,6 +100,9 @@ func parseStructFlags(c *Command, t reflect.Type) {
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
 		tag := field.Tag.Get("flag")
 		if tag == "" || !field.IsExported() {
 			continue
@@ -120,8 +125,13 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		_, required := field.Tag.Lookup("required")
 		_, hidden := field.Tag.Lookup("hidden")
 
+		ft := field.Type
+		for ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+
 		// time.Duration has kind Int64, so check it before the kind switch.
-		if field.Type == durationType {
+		if ft == durationType {
 			var defVal time.Duration
 			if def := field.Tag.Get("default"); def != "" {
 				if v, err := time.ParseDuration(def); err == nil {
@@ -141,10 +151,10 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		}
 
 		// Create typed flag based on field type
-		switch field.Type.Kind() {
+		switch ft.Kind() {
 		case reflect.Slice:
 			def := field.Tag.Get("default")
-			switch field.Type.Elem().Kind() {
+			switch ft.Elem().Kind() {
 			case reflect.String:
 				var defVal []string
 				if def != "" {
@@ -219,6 +229,24 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				Hidden:   hidden,
 			})
 		case reflect.Int64:
+			if ft == durationType {
+				var defVal time.Duration
+				if def := field.Tag.Get("default"); def != "" {
+					if v, err := time.ParseDuration(def); err == nil {
+						defVal = v
+					}
+				}
+				c.flags = append(c.flags, &DurationFlag{
+					Name:     name,
+					Short:    short,
+					Help:     help,
+					Value:    defVal,
+					EnvVar:   envVar,
+					Required: required,
+					Hidden:   hidden,
+				})
+				continue
+			}
 			defVal := int64(0)
 			if def := field.Tag.Get("default"); def != "" {
 				if v, err := strconv.ParseInt(def, 10, 64); err == nil {
@@ -254,8 +282,6 @@ func parseStructFlags(c *Command, t reflect.Type) {
 	}
 }
 
-var durationType = reflect.TypeOf(time.Duration(0))
-
 // splitList splits a comma-separated tag value, trimming spaces. An empty
 // string yields no elements.
 func splitList(s string) []string {
@@ -270,6 +296,12 @@ func splitList(s string) []string {
 }
 
 func setFieldValue(v reflect.Value, s string) error {
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
 	if v.Type() == durationType {
 		d, err := time.ParseDuration(s)
 		if err != nil {
@@ -301,6 +333,14 @@ func setFieldValue(v reflect.Value, s string) error {
 	case reflect.Bool:
 		v.SetBool(s == "true" || s == "1" || s == "yes")
 	case reflect.Int, reflect.Int64:
+		if v.Type() == durationType {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return err
+			}
+			v.SetInt(int64(d))
+			return nil
+		}
 		i, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
 			return err
@@ -319,6 +359,12 @@ func setFieldValue(v reflect.Value, s string) error {
 }
 
 func setFieldFromAny(v reflect.Value, val any) error {
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
 	switch v.Kind() {
 	case reflect.Slice:
 		rv := reflect.ValueOf(val)
@@ -339,6 +385,25 @@ func setFieldFromAny(v reflect.Value, val any) error {
 			v.SetBool(b == "true" || b == "1" || b == "yes")
 		}
 	case reflect.Int, reflect.Int64:
+		if v.Type() == durationType {
+			switch d := val.(type) {
+			case time.Duration:
+				v.SetInt(int64(d))
+			case int64:
+				v.SetInt(d)
+			case int:
+				v.SetInt(int64(d))
+			case string:
+				parsed, err := time.ParseDuration(d)
+				if err != nil {
+					return err
+				}
+				v.SetInt(int64(parsed))
+			default:
+				return fmt.Errorf("unsupported duration value type: %T", val)
+			}
+			return nil
+		}
 		switch i := val.(type) {
 		case time.Duration:
 			v.SetInt(int64(i))

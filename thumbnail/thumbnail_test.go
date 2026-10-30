@@ -291,3 +291,58 @@ func TestIsTextMime(t *testing.T) {
 		assert.False(t, IsTextMime(tc.mime, tc.name), "IsTextMime(%q, %q)", tc.mime, tc.name)
 	}
 }
+
+func TestRenderConcurrentIsRaceFree(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			res, err := Render(Request{
+				MimeType: "text/markdown",
+				Name:     "concurrent.md",
+				Source:   []byte("# Heading\nSome body text that gets measured and truncated if long enough.\n"),
+				Width:    320,
+				Height:   200,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, res.Renderer, RendererDocument)
+		}()
+		go func() {
+			defer wg.Done()
+			res, err := Render(Request{
+				MimeType: "application/pdf",
+				Name:     "document-with-a-very-long-filename-that-requires-truncation.pdf",
+				Width:    320,
+				Height:   200,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, res.Renderer, RendererFallback)
+		}()
+	}
+	wg.Wait()
+}
+
+func TestRenderLongLineDoesNotHang(t *testing.T) {
+	longLine := strings.Repeat("abcdefghij", 20000) // 200k chars
+	res, err := Render(Request{
+		MimeType: "text/plain",
+		Name:     "long.txt",
+		Source:   []byte(longLine),
+		Width:    320,
+		Height:   200,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, res.Renderer, RendererDocument)
+}
+
+func TestRenderOversizedTargetDimensionsReturnsError(t *testing.T) {
+	_, err := Render(Request{
+		MimeType: "text/plain",
+		Name:     "huge.txt",
+		Source:   []byte("hello"),
+		Width:    50000,
+		Height:   50000,
+	})
+	assert.Error(t, err)
+}

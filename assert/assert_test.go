@@ -1301,3 +1301,37 @@ func TestErrorContainsWithMessage(t *testing.T) {
 		}
 	})
 }
+
+func TestContainsWithUnexportedFields(t *testing.T) {
+	type item struct {
+		name   string
+		secret int
+	}
+
+	slice := []item{{name: "a", secret: 1}, {name: "b", secret: 2}}
+	m := &mockT{}
+	Contains(m, slice, item{name: "b", secret: 2})
+	if m.failed {
+		t.Error("Contains should pass for struct with matching unexported fields")
+	}
+
+	NotContains(m, slice, item{name: "b", secret: 999})
+	if m.failed {
+		t.Error("NotContains should pass for struct with differing unexported fields")
+	}
+
+	mp := map[item]bool{{name: "k", secret: 7}: true}
+	Contains(m, mp, item{name: "k", secret: 7})
+	if m.failed {
+		t.Error("Contains should pass for map key struct with unexported fields")
+	}
+}
+
+func TestRegexpWithTypedNil(t *testing.T) {
+	m := &mockT{}
+	var re *regexp.Regexp
+	Regexp(m, re, "hello")
+	if !m.failed {
+		t.Error("Regexp should fail gracefully when given a typed-nil *regexp.Regexp")
+	}
+}

@@ -87,6 +87,8 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 	return schema, nil
 }
 
+var timeType = reflect.TypeFor[time.Time]()
+
 // reflectType recursively analyzes a reflect.Type and returns a Property
 // that describes its JSON Schema representation.
 //
@@ -98,7 +100,7 @@ func Generate(v any, opts ...GenerateOptions) (*Schema, error) {
 // so non-cyclic shared types still produce full schemas at each occurrence.
 func reflectType(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bool) (*Property, error) {
 	// Check for time.Time first (before struct handling)
-	if t == reflect.TypeOf(time.Time{}) {
+	if t == timeType {
 		format := "date-time"
 		return &Property{Type: String, Format: &format}, nil
 	}
@@ -214,6 +216,11 @@ func reflectStruct(t reflect.Type, opt GenerateOptions, seen map[reflect.Type]bo
 	}
 	seen[t] = true
 	defer delete(seen, t)
+
+	if embedsUntaggedTime(t) {
+		format := "date-time"
+		return &Property{Type: String, Format: &format}, nil
+	}
 
 	properties := make(map[string]*Property)
 	var required []string
@@ -530,6 +537,47 @@ func isJSONField(field reflect.StructField) bool {
 		return true
 	}
 	return field.Anonymous && field.Type.Kind() == reflect.Struct
+}
+
+// embedsUntaggedTime reports whether t anonymously embeds time.Time or
+// *time.Time (directly or through untagged embedded structs) without an
+// explicit json field name. When it does, Go promotes time.Time's MarshalJSON
+// and UnmarshalJSON methods to t, so encoding/json marshals and unmarshals the
+// entire struct as a date-time string.
+func embedsUntaggedTime(t reflect.Type) bool {
+	return embedsUntaggedTimeSeen(t, map[reflect.Type]bool{})
+}
+
+func embedsUntaggedTimeSeen(t reflect.Type, visited map[reflect.Type]bool) bool {
+	if visited[t] {
+		return false
+	}
+	visited[t] = true
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if !field.Anonymous {
+			continue
+		}
+		jsonTag := field.Tag.Get("json")
+		if jsonTag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(jsonTag, ",")
+		if name != "" {
+			continue
+		}
+		ft := field.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+		if ft == timeType {
+			return true
+		}
+		if ft.Kind() == reflect.Struct && embedsUntaggedTimeSeen(ft, visited) {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldFlattenEmbedded reports whether an anonymous struct field's

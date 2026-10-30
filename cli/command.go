@@ -614,6 +614,7 @@ func (f *IntSliceFlag) GetEnum() []string     { return nil }
 func (f *IntSliceFlag) Validate(string) error { return nil }
 
 // allFlags returns all flags including global flags from the app,
+// group flags (if the command belongs to a group), and command-specific flags,
 // minus any global flags omitted for this command via OmitGlobalFlag.
 func (c *Command) allFlags() []Flag {
 	var all []Flag
@@ -624,6 +625,9 @@ func (c *Command) allFlags() []Flag {
 			}
 			all = append(all, f)
 		}
+	}
+	if c.group != nil {
+		all = append(all, c.group.flags...)
 	}
 	all = append(all, c.flags...)
 	return all
@@ -867,6 +871,14 @@ func (c *Command) findFlag(name string) Flag {
 			return f
 		}
 	}
+	// Finally check group flags if command belongs to a group
+	if c.group != nil {
+		for _, f := range c.group.flags {
+			if f.GetName() == name {
+				return f
+			}
+		}
+	}
 	return nil
 }
 
@@ -881,6 +893,14 @@ func (c *Command) findFlagByShort(short string) Flag {
 	for _, f := range c.flags {
 		if f.GetShort() == short {
 			return f
+		}
+	}
+	// Finally check group flags if command belongs to a group
+	if c.group != nil {
+		for _, f := range c.group.flags {
+			if f.GetShort() == short {
+				return f
+			}
 		}
 	}
 	return nil

@@ -280,6 +280,15 @@ func TestPlural(t *testing.T) {
 	assert.Equal(t, "items", Plural(0, "item", "items"))
 }
 
+func TestMinIntEdgeCases(t *testing.T) {
+	assert.Equal(t, "-8.0 EiB", Bytes(math.MinInt64))
+	assert.Equal(t, "-9.2 EB", BytesSI(math.MinInt64))
+	assert.Equal(t, "-106751d 23h", Duration(time.Duration(math.MinInt64)))
+	assert.Equal(t, "-106751d", DurationShort(time.Duration(math.MinInt64)))
+	ord := Ordinal(math.MinInt)
+	assert.True(t, len(ord) > 2)
+}
+
 // Example functions for godoc
 
 func ExampleBytes() {

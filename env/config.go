@@ -204,8 +204,7 @@ func WithParser[T any](parser func(string) (T, error)) Option {
 		if o.FuncMap == nil {
 			o.FuncMap = make(map[reflect.Type]ParserFunc)
 		}
-		var zero T
-		o.FuncMap[reflect.TypeOf(zero)] = func(s string) (any, error) {
+		o.FuncMap[reflect.TypeFor[T]()] = func(s string) (any, error) {
 			return parser(s)
 		}
 	}
@@ -387,15 +386,22 @@ func ParseInto(v any, opts ...Option) error {
 
 // structParser handles the reflection-based parsing.
 type structParser struct {
-	options *Options
-	environ map[string]string
-	errors  *AggregateError
+	options     *Options
+	environ     map[string]string
+	errors      *AggregateError
+	visiting    map[reflect.Type]bool
+	visitedPtrs map[uintptr]bool
 }
 
 // parseStruct recursively populates exported struct fields in rv using prefix
 // as the current environment variable prefix.
 func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 	rt := rv.Type()
+	if p.visiting == nil {
+		p.visiting = make(map[reflect.Type]bool)
+	}
+	p.visiting[rt] = true
+	defer delete(p.visiting, rt)
 
 	for i := 0; i < rt.NumField(); i++ {
 		field := rt.Field(i)
@@ -415,8 +421,22 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 		// *url.URL, custom parser types) are parsed as fields instead.
 		if fv.Kind() == reflect.Ptr && fv.Type().Elem().Kind() == reflect.Struct &&
 			!p.isValueType(fv.Type()) && !p.isValueType(fv.Type().Elem()) {
+			elemType := fv.Type().Elem()
 			if fv.IsNil() {
-				fv.Set(reflect.New(fv.Type().Elem()))
+				if p.visiting[elemType] {
+					continue
+				}
+				fv.Set(reflect.New(elemType))
+			} else {
+				ptr := fv.Pointer()
+				if p.visitedPtrs[ptr] {
+					continue
+				}
+				if p.visitedPtrs == nil {
+					p.visitedPtrs = make(map[uintptr]bool)
+				}
+				p.visitedPtrs[ptr] = true
+				defer delete(p.visitedPtrs, ptr)
 			}
 			p.parseStruct(fv.Elem(), nestedStructPrefix(field, prefix))
 			continue
@@ -657,7 +677,7 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 
 	// Special case for url.URL, which implements UnmarshalBinary but not
 	// UnmarshalText.
-	if t == reflect.TypeOf(url.URL{}) {
+	if t == urlType {
 		u, err := url.Parse(value)
 		if err != nil {
 			return fmt.Errorf("invalid url: %w", err)
@@ -667,7 +687,7 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 	}
 
 	// Special case for time.Location
-	if t == reflect.TypeOf(time.Location{}) {
+	if t == timeLocationType {
 		loc, err := time.LoadLocation(value)
 		if err != nil {
 			return fmt.Errorf("invalid timezone: %w", err)
@@ -813,18 +833,27 @@ func (p *structParser) setMapValue(fv reflect.Value, value string, sf reflect.St
 	return nil
 }
 
+var (
+	textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
+	timeLocationType    = reflect.TypeFor[time.Location]()
+	timeType            = reflect.TypeFor[time.Time]()
+	urlType             = reflect.TypeFor[url.URL]()
+)
+
 // isValueType reports whether t is parsed from a single value rather than
 // treated as a nested config struct: types with a custom parser, text
 // unmarshalers (time.Time, ...), url.URL, and time.Location.
 func (p *structParser) isValueType(t reflect.Type) bool {
-	if _, ok := p.options.FuncMap[t]; ok {
+	if p.options != nil && p.options.FuncMap != nil {
+		if _, ok := p.options.FuncMap[t]; ok {
+			return true
+		}
+	}
+	if t == timeLocationType || t == timeType || t == urlType {
 		return true
 	}
-	if t == reflect.TypeOf(time.Location{}) || t == reflect.TypeOf(url.URL{}) {
-		return true
-	}
-	textUnmarshaler := reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
-	return t.Implements(textUnmarshaler) || reflect.PointerTo(t).Implements(textUnmarshaler)
+	return t.Implements(textUnmarshalerType) ||
+		reflect.PointerTo(t).Implements(textUnmarshalerType)
 }
 
 // toUpperSnakeCase converts CamelCase to UPPER_SNAKE_CASE.
