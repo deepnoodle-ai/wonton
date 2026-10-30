@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -309,5 +310,83 @@ func TestCrawler_ReuseAfterStopCrawlsQueuedURLs(t *testing.T) {
 	assert.NoError(t, c.Crawl(ctx, pages, callback))
 	for _, u := range pages {
 		assert.Equal(t, crawled[u], 1, u)
+	}
+}
+
+// TestCrawler_FailedFirstRequestOpensHostGate verifies that with robots.txt
+// respected, a failed first request to a host still lets the rest of that
+// host's pages run.
+func TestCrawler_FailedFirstRequestOpensHostGate(t *testing.T) {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddError("https://example.com/robots.txt", &fetch.Error{StatusCode: http.StatusNotFound})
+	mockFetcher.AddError("https://example.com/a", &fetch.Error{StatusCode: http.StatusNotFound})
+	for _, u := range []string{"https://example.com/b", "https://example.com/c"} {
+		mockFetcher.AddResponse(u, &fetch.Response{URL: u, HTML: "<html><body>ok</body></html>"})
+	}
+	c, err := New(Options{
+		Workers:          2,
+		DefaultFetcher:   mockFetcher,
+		FollowBehavior:   FollowNone,
+		RespectRobotsTxt: BoolPtr(true),
+		HostPolicy:       HostPolicy{MaxConcurrent: 2},
+	})
+	assert.NoError(t, err)
+
+	var mu sync.Mutex
+	var ok, failed int
+	err = c.Crawl(context.Background(), []string{"https://example.com/a", "https://example.com/b", "https://example.com/c"}, func(_ context.Context, r *Result) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.Error != nil {
+			failed++
+		} else {
+			ok++
+		}
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, failed, 1)
+	assert.Equal(t, ok, 2)
+}
+
+// plainFrontier hides the MemoryFrontier type, so the crawler treats it as a
+// caller's own Frontier implementation.
+type plainFrontier struct{ Frontier }
+
+// TestCrawler_StopKeepsCallerFrontierURLs verifies that URLs the scheduler
+// took from a caller's frontier, but never dispatched, go back on it when
+// the crawl stops.
+func TestCrawler_StopKeepsCallerFrontierURLs(t *testing.T) {
+	for name, frontier := range map[string]Frontier{
+		"memory": NewMemoryFrontier(0),
+		"plain":  plainFrontier{NewMemoryFrontier(0)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mockFetcher := fetch.NewMockFetcher()
+			mockFetcher.AddResponse("https://example.com", &fetch.Response{
+				URL:   "https://example.com",
+				HTML:  "<html><body>root</body></html>",
+				Links: []fetch.Link{{URL: "/p1"}, {URL: "/p2"}, {URL: "/p3"}},
+			})
+			c, err := New(Options{
+				Workers:        1,
+				DefaultFetcher: mockFetcher,
+				FollowBehavior: FollowSameDomain,
+				Frontier:       frontier,
+				// Hold the linked pages in the scheduler after the root.
+				HostPolicy: HostPolicy{MinDelay: time.Hour},
+			})
+			assert.NoError(t, err)
+
+			go func() {
+				deadline := time.Now().Add(5 * time.Second)
+				for c.Pending() < 3 && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				c.Stop()
+			}()
+			_ = c.Crawl(context.Background(), []string{"https://example.com"}, func(context.Context, *Result) {})
+			assert.Equal(t, frontier.Len(), 3)
+			assert.Equal(t, c.Pending(), 3)
+		})
 	}
 }
