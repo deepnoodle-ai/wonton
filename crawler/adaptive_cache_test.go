@@ -280,6 +280,32 @@ func TestAdaptiveThrottleWithoutRetryAfterDoublesDelay(t *testing.T) {
 	assert.Equal(t, 35*time.Millisecond, state.currentDelay)
 }
 
+func TestAdaptiveZeroRetryAfterKeepsBackoff(t *testing.T) {
+	scheduler := newHostScheduler(NewMemoryFrontier(0), HostPolicy{MinDelay: 10 * time.Millisecond}, true, nil, 0)
+	state := &schedulerHostState{minDelay: 10 * time.Millisecond, currentDelay: 400 * time.Millisecond}
+	scheduler.applyObservation(state, requestObservation{statusCode: 429, hasRetryAfter: true})
+	assert.Equal(t, state.currentDelay, 400*time.Millisecond)
+	scheduler.applyObservation(state, requestObservation{statusCode: 429, retryAfter: time.Second, hasRetryAfter: true})
+	assert.Equal(t, state.currentDelay, time.Second)
+}
+
+func TestSchedulerSendsOneRequestPerHostUntilFirstCompletes(t *testing.T) {
+	waiting := newHostWaitingQueues()
+	waiting.add(scheduledItem{host: "example.com"})
+	states := map[string]*schedulerHostState{"example.com": {inFlight: 1}}
+	policy := HostPolicy{MaxConcurrent: 4}
+	now := time.Now()
+
+	_, eligible, _ := nextEligibleItem(waiting, states, policy, true, now)
+	assert.False(t, eligible, "a second request must wait for the first to complete")
+	_, eligible, _ = nextEligibleItem(waiting, states, policy, false, now)
+	assert.True(t, eligible)
+
+	states["example.com"].completed = true
+	_, eligible, _ = nextEligibleItem(waiting, states, policy, true, now)
+	assert.True(t, eligible)
+}
+
 func TestCrawlerFreshTypedCacheAvoidsNetworkAndKeepsLinks(t *testing.T) {
 	memory := cache.NewInMemoryCache()
 	entry := &cache.Entry{

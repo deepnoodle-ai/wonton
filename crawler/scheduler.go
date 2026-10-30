@@ -19,7 +19,9 @@ const (
 // HostPolicy controls how work is dispatched to each host.
 type HostPolicy struct {
 	// MaxConcurrent is the maximum number of in-flight pages per host.
-	// Values less than one default to one.
+	// Values less than one default to one. When robots.txt is respected, a
+	// host gets one request at a time until its first request completes, so
+	// its Crawl-delay is known before more requests start.
 	MaxConcurrent int
 
 	// MinDelay is the minimum interval between starting requests to the same
@@ -72,6 +74,8 @@ type schedulerHostState struct {
 	latencyEWMA    time.Duration
 	healthy        int
 	latencyBackoff bool
+	// completed is set once any request to the host has completed.
+	completed bool
 }
 
 type hostWaitingQueues struct {
@@ -150,6 +154,10 @@ type hostScheduler struct {
 	stats      *hostStatsCollector
 	maxPending int
 	cancel     context.CancelFunc
+	// oneUntilCompleted limits each host to one request in flight until
+	// its first request completes, so a robots.txt Crawl-delay learned
+	// from that request also applies to the requests after it.
+	oneUntilCompleted bool
 
 	ready     chan scheduledItem
 	completed chan completedItem
@@ -157,6 +165,9 @@ type hostScheduler struct {
 	failed    chan error
 	err       error
 	wg        sync.WaitGroup
+
+	unsentMu sync.Mutex
+	unsent   []scheduledItem
 }
 
 func newHostScheduler(frontier Frontier, policy HostPolicy, adaptive bool, stats *hostStatsCollector, maxPending int) *hostScheduler {
@@ -234,7 +245,7 @@ func (s *hostScheduler) run(ctx context.Context) {
 
 	for {
 		now := time.Now()
-		candidate, eligible, nextEligibleAt := nextEligibleItem(waiting, states, s.policy, now)
+		candidate, eligible, nextEligibleAt := nextEligibleItem(waiting, states, s.policy, s.oneUntilCompleted, now)
 
 		var ready chan scheduledItem
 		var next scheduledItem
@@ -311,6 +322,7 @@ func (s *hostScheduler) run(ctx context.Context) {
 			if completion.scheduled.leased && leasedInFlight > 0 {
 				leasedInFlight--
 			}
+			state.completed = true
 			if completion.crawlDelay > state.minDelay {
 				state.minDelay = completion.crawlDelay
 				next := state.lastStarted.Add(state.minDelay)
@@ -379,6 +391,9 @@ func (s *hostScheduler) pump(ctx context.Context, incoming chan<- frontierResult
 			if leased {
 				s.releaseLease()
 			}
+			if ok {
+				s.addUnsent(scheduledItem{item: item, attempt: 1})
+			}
 			return
 		case incoming <- result:
 		}
@@ -392,6 +407,7 @@ func nextEligibleItem(
 	waiting *hostWaitingQueues,
 	states map[string]*schedulerHostState,
 	policy HostPolicy,
+	oneUntilCompleted bool,
 	now time.Time,
 ) (scheduledItem, bool, time.Time) {
 	var nextEligibleAt time.Time
@@ -401,7 +417,7 @@ func nextEligibleItem(
 			continue
 		}
 		state := stateForHost(states, host, policy.MinDelay)
-		if state.inFlight >= policy.MaxConcurrent {
+		if state.inFlight >= policy.MaxConcurrent || (oneUntilCompleted && !state.completed && state.inFlight > 0) {
 			continue
 		}
 		if !now.Before(state.nextEligibleAt) {
@@ -431,8 +447,25 @@ func (s *hostScheduler) releaseWaiting(waiting *hostWaitingQueues) {
 			if item.leased {
 				s.releaseLease()
 			}
+			s.addUnsent(item)
 		}
 	}
+}
+
+// addUnsent records an item taken from the frontier that is waiting to be
+// dispatched, for a first attempt or a retry, when the scheduler stops.
+func (s *hostScheduler) addUnsent(item scheduledItem) {
+	s.unsentMu.Lock()
+	s.unsent = append(s.unsent, item)
+	s.unsentMu.Unlock()
+}
+
+// takeUnsent returns the items recorded by addUnsent. Call it only after
+// wait returns.
+func (s *hostScheduler) takeUnsent() []scheduledItem {
+	items := s.unsent
+	s.unsent = nil
+	return items
 }
 
 func stateForHost(states map[string]*schedulerHostState, host string, minDelay time.Duration) *schedulerHostState {
@@ -452,7 +485,11 @@ func (s *hostScheduler) applyObservation(state *schedulerHostState, observation 
 	if observation.statusCode == 429 || observation.statusCode == 503 {
 		state.healthy = 0
 		delay := observation.retryAfter
-		if !observation.hasRetryAfter {
+		if observation.hasRetryAfter {
+			// A Retry-After of zero or in the past must not undo the
+			// backoff built up so far.
+			delay = max(delay, effectiveHostDelay(state))
+		} else {
 			delay = effectiveHostDelay(state) * 2
 			if delay <= 0 {
 				delay = defaultAdaptiveInitialDelay

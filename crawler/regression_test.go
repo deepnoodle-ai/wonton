@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -191,6 +192,44 @@ func TestParseRobotsTxtGroupsAndComments(t *testing.T) {
 	assert.Equal(t, []string{"/admin"}, data.disallowRules)
 	assert.Equal(t, []string{"/admin/public"}, data.allowRules)
 	assert.Equal(t, 5*time.Second, data.crawlDelay)
+}
+
+func TestParseRobotsTxtUsesMostSpecificAgent(t *testing.T) {
+	content := "User-agent: Googlebot\nDisallow: /\n\nUser-agent: Googlebot-Image\nDisallow: /private\n"
+	data := parseRobotsTxt(content, "Googlebot-Image")
+	assert.Equal(t, data.disallowRules, []string{"/private"})
+	data = parseRobotsTxt(content, "Googlebot")
+	assert.Equal(t, data.disallowRules, []string{"/"})
+
+	// A longer match later in the file replaces a shorter earlier one, and
+	// groups for the same agent are merged.
+	content = "User-agent: bot\nDisallow: /a\nUser-agent: wontonbot\nDisallow: /b\nUser-agent: WontonBot\nDisallow: /c\n"
+	data = parseRobotsTxt(content, "WontonBot/1.0")
+	assert.Equal(t, data.disallowRules, []string{"/b", "/c"})
+}
+
+func TestParseRobotsTxtOtherDirectiveEndsUserAgentLines(t *testing.T) {
+	content := "User-agent: A\nSitemap: https://example.com/sitemap.xml\nUser-agent: B\nDisallow: /\n"
+	data := parseRobotsTxt(content, "A")
+	assert.Empty(t, data.disallowRules)
+	data = parseRobotsTxt(content, "B")
+	assert.Equal(t, data.disallowRules, []string{"/"})
+}
+
+func TestRobotsRulesMatchPercentEncodedPaths(t *testing.T) {
+	c := &Crawler{respectRobotsTxt: true}
+	data := parseRobotsTxt("User-agent: *\nDisallow: /private%20docs/\nDisallow: /café\n", "AnyBot")
+	data.fetchedAt = time.Now()
+	c.robotsCache.Store("https://example.com", data)
+	for _, raw := range []string{
+		"https://example.com/private%20docs/secret",
+		"https://example.com/private docs/secret",
+		"https://example.com/caf%C3%A9",
+	} {
+		u, err := url.Parse(raw)
+		assert.NoError(t, err)
+		assert.False(t, c.isAllowedByRobots(context.Background(), u), raw)
+	}
 }
 
 // BUG-059: HTTP error pages are failures: 5xx is retried, 4xx is not, and
