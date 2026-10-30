@@ -428,3 +428,32 @@ func TestInputField_Render_MultilineCRLF(t *testing.T) {
 	termtest.AssertRowContains(t, screen, 3, "╰")
 	assert.Equal(t, "ab\r\ncd", value)
 }
+
+func TestInputField_Render_BorderedWithPrompt(t *testing.T) {
+	value := "john"
+	field := InputField(&value).Prompt(">").Width(20).Bordered()
+	screen := SprintScreen(field, WithWidth(30))
+	termtest.AssertRowContains(t, screen, 1, "│> john")
+}
+
+// With a fill width, the label takes room from the input, so the wrapped
+// height must count it.
+func TestInputField_Size_LabelNarrowsWrapWidth(t *testing.T) {
+	value := "abcdefghij"
+	field := InputField(&value).ID("label-wrap").Label("Name:")
+	_, h := field.size(14, 10)
+	// "Name: " leaves 8 columns, so 10 characters wrap to 2 rows.
+	assert.Equal(t, h, 2)
+
+	// A label that takes all the room leaves no input to wrap.
+	_, h = field.size(6, 10)
+	assert.Equal(t, h, 1)
+}
+
+func TestInputField_MaskChangesAfterFirstFrame(t *testing.T) {
+	value := "secret"
+	SprintScreen(InputField(&value).ID("mask-change").Width(20), WithWidth(30))
+	screen := SprintScreen(InputField(&value).ID("mask-change").Mask('*').Width(20), WithWidth(30))
+	termtest.AssertRowContains(t, screen, 0, "******")
+	termtest.AssertNotContains(t, screen, "secret")
+}

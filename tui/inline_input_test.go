@@ -275,3 +275,40 @@ func TestPromptState_Validator(t *testing.T) {
 	err = cfg.validator(string(state.input))
 	assert.Nil(t, err)
 }
+
+func TestPromptState_AutocompleteRespectsMaxLength(t *testing.T) {
+	cfg := defaultPromptConfig()
+	cfg.maxLength = 4
+	state := &promptState{
+		config:    cfg,
+		input:     []rune("ap"),
+		cursorPos: 2,
+		acActive:  true,
+		acMatches: []string{"application"},
+	}
+	state.applyAutocomplete()
+	assert.Equal(t, string(state.input), "appl")
+	assert.Equal(t, state.cursorPos, 4)
+}
+
+func TestPromptState_EmptyMaskKeepsCursor(t *testing.T) {
+	cfg := defaultPromptConfig()
+	WithMask("")(&cfg)
+	state := &promptState{config: cfg, prompt: "> ", input: []rune("secret"), cursorPos: 6}
+	out := Sprint(state.buildView(), WithWidth(20), WithColor(true))
+	assert.Contains(t, out, "\x1b[0;7m \x1b[0m", "the reverse-video cursor is drawn")
+	assert.NotContains(t, out, "secret")
+}
+
+func TestPromptState_AutocompleteShowsSelectionPastFifth(t *testing.T) {
+	state := &promptState{
+		config:     defaultPromptConfig(),
+		prompt:     "> ",
+		acActive:   true,
+		acMatches:  []string{"m0", "m1", "m2", "m3", "m4", "m5", "m6"},
+		acSelected: 6,
+	}
+	out := Sprint(state.buildView(), WithWidth(20))
+	assert.Contains(t, out, "→ m6")
+	assert.NotContains(t, out, "m0")
+}

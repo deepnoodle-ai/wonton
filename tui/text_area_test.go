@@ -571,6 +571,17 @@ func TestTextAreaFocusHandler_HandleKeyEvent_WithHighlightCurrentLine(t *testing
 		assert.Equal(t, 2, ta.getCursorLine())
 	})
 
+	t.Run("cursor past shrunk content moves from the last line", func(t *testing.T) {
+		ta := TextArea(nil).Content("line1\nline2\nline3").HighlightCurrentLine(true)
+		ta.internalCursorLine = 19 // content had 20 lines before
+		handler := &textAreaFocusHandler{area: ta}
+
+		handled := handler.HandleKeyEvent(KeyEvent{Key: KeyArrowUp})
+
+		assert.True(t, handled)
+		assert.Equal(t, ta.getCursorLine(), 1)
+	})
+
 	t.Run("page up moves cursor by 5", func(t *testing.T) {
 		ta := TextArea(nil).Content("0\n1\n2\n3\n4\n5\n6\n7\n8\n9").HighlightCurrentLine(true)
 		ta.internalCursorLine = 8

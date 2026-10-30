@@ -376,6 +376,9 @@ func (t *textInput) Draw(frame RenderFrame) {
 				cursorLine = t.ScrollOffset
 				cursorX = min(runewidth.StringWidth(displayText[:min(t.CursorPos, len(displayText))]), width-1)
 			}
+			// A line that exactly fills the width leaves the cursor one
+			// past the last column; keep it in the last column.
+			cursorX = min(cursorX, width-1)
 
 			// Only draw cursor if it's in the visible range
 			screenLine := cursorLine - t.ScrollOffset
@@ -1162,6 +1165,9 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	case KeyEnter:
 		if event.Shift && t.MultilineMode {
 			// Shift+Enter in multiline mode: insert newline
+			if t.atMaxLength() {
+				return true // Consumed but ignored
+			}
 			t.insertNewline()
 			if t.OnChange != nil {
 				t.OnChange(t.Value())
@@ -1179,7 +1185,7 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 
 	if event.Rune != 0 && event.Rune >= 32 { // Printable characters
 		// Check max length before inserting
-		if t.MaxLength > 0 && utf8.RuneCountInString(t.Value()) >= t.MaxLength {
+		if t.atMaxLength() {
 			return true // Consumed but ignored
 		}
 		t.insertAtCursor(string(event.Rune))
@@ -1190,6 +1196,11 @@ func (t *textInput) HandleKey(event KeyEvent) bool {
 	}
 
 	return false
+}
+
+// atMaxLength reports whether the value has reached MaxLength runes.
+func (t *textInput) atMaxLength() bool {
+	return t.MaxLength > 0 && utf8.RuneCountInString(t.Value()) >= t.MaxLength
 }
 
 // SetFocused sets focus state
@@ -1219,6 +1230,16 @@ func (t *textInput) HandleMouse(event MouseEvent) bool {
 func (t *textInput) HandlePaste(content string) bool {
 	if content == "" {
 		return false
+	}
+	if t.MaxLength > 0 {
+		// Keep only what fits under MaxLength (in runes, as typing counts).
+		room := t.MaxLength - utf8.RuneCountInString(t.Value())
+		if room <= 0 {
+			return true // Consumed but ignored
+		}
+		if utf8.RuneCountInString(content) > room {
+			content = string([]rune(content)[:room])
+		}
 	}
 
 	lines := strings.Split(content, "\n")

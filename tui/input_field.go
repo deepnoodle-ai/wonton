@@ -361,22 +361,29 @@ func (f *InputFieldView) size(maxWidth, maxHeight int) (int, int) {
 		promptW++ // Add space after prompt
 	}
 
-	// Inner width for content calculation (input area inside border and prompt)
-	innerW := totalW
-	if f.bordered && !f.horizontalBarOnly {
-		innerW = totalW - borderSize
-		if innerW < 1 {
-			innerW = 1
-		}
+	// A full border embeds the label in its top edge and a horizontal bar
+	// draws it in the top bar; otherwise the label sits left of the input.
+	labelW := 0
+	if !(f.bordered && f.border != nil) && !f.horizontalBarOnly && f.label != "" {
+		labelW, _ = MeasureText(f.labelText())
+	}
+	if (!f.bordered || f.horizontalBarOnly) && f.label != "" {
+		w, _ := MeasureText(f.labelText())
+		totalW += w
 	}
 	if f.hasPrompt {
-		innerW -= promptW
-		if innerW < 1 {
-			innerW = 1
-		}
+		totalW += promptW
+	}
+	if maxWidth > 0 && totalW > maxWidth {
+		totalW = maxWidth
 	}
 
-	// Calculate height based on content wrapping
+	// Inner width for content calculation: what render leaves the input
+	// after the border, label, and prompt.
+	innerW := totalW - borderSize - labelW - promptW
+
+	// Calculate height based on content wrapping. With no room, render
+	// draws no input, so the field stays one row.
 	h := 1
 	if f.binding != nil && *f.binding != "" && innerW > 0 {
 		displayText := *f.binding
@@ -391,18 +398,6 @@ func (f *InputFieldView) size(maxWidth, maxHeight int) (int, int) {
 		h = f.maxHeight
 	}
 
-	// If bordered (full border), label is embedded in border, so no extra width needed
-	// If not bordered or horizontal bar only, add label width to total
-	if (!f.bordered || f.horizontalBarOnly) && f.label != "" {
-		labelW, _ := MeasureText(f.label)
-		totalW += labelW
-	}
-
-	// Add prompt width to total
-	if f.hasPrompt {
-		totalW += promptW
-	}
-
 	totalH := h
 	if f.bordered && !f.horizontalBarOnly {
 		totalH += borderSize
@@ -411,9 +406,6 @@ func (f *InputFieldView) size(maxWidth, maxHeight int) (int, int) {
 	}
 
 	// Apply constraints
-	if maxWidth > 0 && totalW > maxWidth {
-		totalW = maxWidth
-	}
 	if maxHeight > 0 && totalH > maxHeight {
 		totalH = maxHeight
 	}
@@ -457,11 +449,7 @@ func (f *InputFieldView) render(ctx *RenderContext) {
 					labelStyle = NewStyle().WithForeground(ColorCyan).WithBold()
 				}
 			}
-			// Add space after label if it doesn't already have one
-			labelText := f.label
-			if !strings.HasSuffix(labelText, " ") {
-				labelText += " "
-			}
+			labelText := f.labelText()
 			labelW, _ := MeasureText(labelText)
 			ctx.PrintTruncated(x, 0, labelText, labelStyle)
 			x += labelW
@@ -487,6 +475,15 @@ func (f *InputFieldView) render(ctx *RenderContext) {
 		inputCtx := ctx.SubContext(inputBounds)
 		f.renderInput(inputCtx, isFocused)
 	}
+}
+
+// labelText returns the label as drawn left of the input, with a space
+// after it.
+func (f *InputFieldView) labelText() string {
+	if strings.HasSuffix(f.label, " ") {
+		return f.label
+	}
+	return f.label + " "
 }
 
 func (f *InputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, isFocused bool) {
@@ -563,10 +560,21 @@ func (f *InputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, is
 		}
 	}
 
-	// Inner content area
+	// Inner content area: the prompt, then the input
 	if innerBounds, ok := insetBounds(w, h, 1, 1, 1, 1); ok {
-		innerCtx := ctx.SubContext(innerBounds.Add(image.Pt(x, 0)))
-		f.renderInput(innerCtx, isFocused)
+		innerBounds = innerBounds.Add(image.Pt(x, 0))
+		if f.hasPrompt && f.prompt != "" {
+			promptStyle := f.promptStyle
+			if promptStyle.IsEmpty() {
+				promptStyle = NewStyle().WithForeground(ColorBrightBlack)
+			}
+			ctx.SubContext(innerBounds).PrintTruncated(0, 0, f.prompt+" ", promptStyle)
+			promptW, _ := MeasureText(f.prompt)
+			innerBounds.Min.X += promptW + 1
+		}
+		if innerBounds.Dx() > 0 {
+			f.renderInput(ctx.SubContext(innerBounds), isFocused)
+		}
 	}
 }
 

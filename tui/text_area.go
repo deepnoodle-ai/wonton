@@ -403,7 +403,9 @@ func (t *TextAreaView) render(ctx *RenderContext) {
 		lines := strings.Split(content, "\n")
 		lineViews := make([]View, len(lines))
 		lnWidth := t.lineNumberWidth()
-		cursorLine := t.getCursorLine()
+		// The content can shrink below the cursor line; highlight the
+		// last line then, as key handling moves from there.
+		cursorLine := min(t.getCursorLine(), len(lines)-1)
 
 		// Determine line number style
 		lnStyle := t.lineNumberStyle
@@ -616,6 +618,7 @@ func (h *textAreaFocusHandler) HandleKeyEvent(event KeyEvent) bool {
 	content := h.area.getContent()
 	lines := strings.Split(content, "\n")
 	maxLine := len(lines) - 1
+	cursorLine = max(min(cursorLine, maxLine), 0)
 	handled := false
 
 	switch event.Key {
