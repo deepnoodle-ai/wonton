@@ -81,7 +81,7 @@ fmt.Println(humanize.Float(3.14159265, 4))                 // "3.1416"
 
 ```go
 fmt.Println(humanize.Percentage(75, 100))                  // "75%"
-fmt.Println(humanize.Percentage(33, 100))                  // "33.0%"
+fmt.Println(humanize.Percentage(33, 100))                  // "33%"
 fmt.Println(humanize.Percentage(3, 7))                     // "42.9%"
 fmt.Println(humanize.Percentage(0, 0))                     // "0%"
 ```

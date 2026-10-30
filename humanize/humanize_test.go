@@ -158,6 +158,11 @@ func TestPercentage(t *testing.T) {
 		{33, 100, "33%"},
 		{1, 3, "33.3%"},
 		{0, 0, "0%"},
+		{7, 100, "7%"},       // 7/100*100 is 7.000000000000001
+		{57, 100, "57%"},     // float error must not print "57.0%"
+		{99.96, 100, "100%"}, // rounds to a whole percentage
+		{0, -100, "0%"},      // no negative zero
+		{-25, 100, "-25%"},
 	}
 
 	for _, tt := range tests {
@@ -265,6 +270,7 @@ func TestFloat(t *testing.T) {
 	assert.Equal(t, "3.14", Float(3.14159, 2))
 	assert.Equal(t, "2.0000", Float(2, 4))
 	assert.Equal(t, "-0.50", Float(-0.5, 2))
+	assert.Equal(t, Float(3.6, -1), "4") // negative precision acts as 0
 }
 
 func TestTime(t *testing.T) {

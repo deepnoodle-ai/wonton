@@ -405,7 +405,8 @@ func NumberWithSeparator(n int64, sep string) string {
 // formatting.
 //
 // The precision parameter controls how many digits appear after the decimal
-// point. The number is rounded to fit the specified precision.
+// point. The number is rounded to fit the specified precision. A negative
+// precision is treated as 0.
 //
 // Examples:
 //
@@ -414,6 +415,9 @@ func NumberWithSeparator(n int64, sep string) string {
 //	Float(2.0, 4)        // "2.0000"
 //	Float(-0.5, 2)       // "-0.50"
 func Float(f float64, precision int) string {
+	if precision < 0 {
+		precision = 0
+	}
 	return fmt.Sprintf("%.*f", precision, f)
 }
 
@@ -435,11 +439,13 @@ func Percentage(value, total float64) string {
 	if total == 0 {
 		return "0%"
 	}
-	pct := (value / total) * 100
-	if pct == math.Trunc(pct) {
-		return fmt.Sprintf("%.0f%%", pct)
+	// Round to one decimal first, then drop a ".0", so float error such as
+	// 7.000000000000001 still prints as "7%".
+	pct := strings.TrimSuffix(fmt.Sprintf("%.1f", value/total*100), ".0")
+	if pct == "-0" {
+		pct = "0"
 	}
-	return fmt.Sprintf("%.1f%%", pct)
+	return pct + "%"
 }
 
 // Ordinal returns the ordinal form of a number with the appropriate English
