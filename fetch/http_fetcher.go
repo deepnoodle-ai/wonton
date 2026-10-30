@@ -324,7 +324,10 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 // Returns a Response with the processed content and metadata, or an error if
 // HTML parsing fails.
 func ProcessRequest(request *Request, htmlContent string) (*Response, error) {
-	if strings.TrimSpace(htmlContent) == "" {
+	// RawHTML is the input as given; the rest works on the trimmed form.
+	rawHTML := htmlContent
+	htmlContent = strings.TrimSpace(htmlContent)
+	if htmlContent == "" {
 		return &Response{
 			URL:        request.URL,
 			StatusCode: 200,
@@ -440,7 +443,7 @@ func ProcessRequest(request *Request, htmlContent string) (*Response, error) {
 		resp.HTML = renderedHTML
 	}
 	if includeRawHTML {
-		resp.RawHTML = htmlContent
+		resp.RawHTML = rawHTML
 	}
 
 	return resp, nil
