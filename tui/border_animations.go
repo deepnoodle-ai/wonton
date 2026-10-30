@@ -40,7 +40,7 @@ func (r *RainbowBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, p
 		offset = -offset
 	}
 
-	colors := SmoothRainbow(length)
+	colors := SmoothRainbow(max(length, 1))
 	colorIndex := (position + offset) % len(colors)
 	if colorIndex < 0 {
 		colorIndex += len(colors)
@@ -119,7 +119,8 @@ func (w *WaveBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, posi
 
 	offset := int(frame) / w.Speed
 	// Calculate position in wave
-	wavePos := (position + offset) % (length + w.WaveWidth)
+	period := length + w.WaveWidth
+	wavePos := ((position+offset)%period + period) % period
 
 	// Determine which color to use based on position
 	colorCycle := len(w.Colors)
@@ -246,7 +247,7 @@ func (g *GradientBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, 
 	}
 
 	// Create a gradient across the entire border
-	gradient := MultiGradient(g.Colors, length)
+	gradient := MultiGradient(g.Colors, max(length, 1))
 
 	colorIndex := (position + offset) % len(gradient)
 	if colorIndex < 0 {

@@ -46,15 +46,16 @@ func (r *RainbowAnimation) Length(length int) *RainbowAnimation {
 
 // GetStyle returns the style for a character at a given frame
 func (r *RainbowAnimation) GetStyle(frame uint64, charIndex int, totalChars int) Style {
-	if r.length <= 0 {
-		r.length = totalChars
+	length := r.length
+	if length <= 0 {
+		length = max(totalChars, 1)
 	}
 	if r.speed <= 0 {
 		r.speed = 3
 	}
 
 	// Get rainbow colors and apply directly
-	colors := SmoothRainbow(r.length)
+	colors := SmoothRainbow(length)
 	offset := int(frame) / r.speed
 	if r.reversed {
 		offset = -offset
