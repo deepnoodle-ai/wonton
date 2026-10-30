@@ -491,23 +491,28 @@ func (p *Player) GetDuration() float64 {
 
 // GetPosition returns the current playback position in seconds.
 //
-// This is the timestamp of the current event being played.
-// If MaxIdle was configured, returns the adjusted position.
+// During playback this is the time on the playback clock, which advances
+// through idle gaps between events. Otherwise it is the position Seek chose,
+// or the time of the last event played. If MaxIdle was configured, returns
+// the adjusted position.
 func (p *Player) GetPosition() float64 {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	events := p.activeEvents()
-	if p.currentIndex >= len(events) {
-		if len(events) == 0 {
-			return 0
-		}
-		return events[len(events)-1].Time
-	}
-	if p.currentIndex == 0 {
+	if len(events) == 0 {
 		return 0
 	}
-	return events[p.currentIndex].Time
+	duration := events[len(events)-1].Time
+	switch {
+	case p.playing:
+		return min(max(p.elapsedLocked()*p.speed, 0), duration)
+	case p.hasInitialSeek:
+		return min(p.initialSeek, duration)
+	case p.currentIndex == 0:
+		return 0
+	}
+	return events[min(p.currentIndex, len(events))-1].Time
 }
 
 // GetProgress returns playback progress as a fraction between 0.0 and 1.0.

@@ -6,6 +6,25 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
+// Huge CSI counts are clamped, so they neither overflow the cursor nor
+// loop once per count.
+func TestANSIHugeParams(t *testing.T) {
+	s := NewScreen(20, 5)
+	s.Write([]byte("\n\x1b[9223372036854775807B\x1b[2K"))
+	x, y := s.Cursor()
+	assert.Equal(t, x, 0)
+	assert.Equal(t, y, 4)
+
+	s.Write([]byte("\x1b[1;5H\x1b[99999999999999999999C\x1b[K"))
+	x, y = s.Cursor()
+	assert.Equal(t, x, 19)
+	assert.Equal(t, y, 0)
+
+	s.Write([]byte("\x1b[1;1Hab\x1b[1;1H\x1b[9223372036854775807E\x1b[999999999999L\x1b[999999999999M"))
+	s.Write([]byte("\x1b[1;1H\x1b[9223372036854775807P\x1b[9223372036854775807@\x1b[9223372036854775807X"))
+	assert.Equal(t, s.Row(0), "")
+}
+
 func TestANSICursorMovement(t *testing.T) {
 	t.Run("cursor up", func(t *testing.T) {
 		s := NewScreen(20, 10)

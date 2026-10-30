@@ -171,6 +171,29 @@ func TestPlayer_GetDuration(t *testing.T) {
 	assert.Equal(t, 5.0, player.GetDuration())
 }
 
+// The position follows the playback clock, not the time of the next event.
+func TestPlayer_GetPosition(t *testing.T) {
+	filename := createTestRecording(t, []RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "A"},
+		{Time: 10.0, Type: "o", Data: "B"},
+	})
+	player, err := NewPlayer(filename, PlayerOptions{Output: &bytes.Buffer{}})
+	assert.NoError(t, err)
+	assert.Equal(t, player.GetPosition(), 0.0)
+
+	player.Seek(4)
+	assert.Equal(t, player.GetPosition(), 4.0)
+	assert.Equal(t, player.GetProgress(), 0.4)
+
+	done := make(chan error)
+	go func() { done <- player.Play() }()
+	time.Sleep(100 * time.Millisecond)
+	pos := player.GetPosition()
+	assert.True(t, pos >= 4 && pos < 5, "position %v", pos)
+	player.Stop()
+	assert.NoError(t, <-done)
+}
+
 func TestPlayer_MaxIdle(t *testing.T) {
 	filename := createTestRecording(t, []RecordingEvent{
 		{Time: 0.0, Type: "o", Data: "A"},
