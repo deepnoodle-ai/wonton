@@ -15,6 +15,289 @@ PR describes its user-visible and incompatible changes in its body.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-30
+
+### Changed
+
+These fixes change behavior that existing callers can notice.
+
+- `cli`: an app without `App.Version` has no built-in version. `myapp version`
+  is an unknown command and `myapp --version` is an unknown flag. Before, both
+  exited with success and printed nothing. (#179)
+
+- `git.Repository.FileExists` returns true only for one tracked file at that
+  exact path. Before, a directory name or a glob such as `*.go` returned true.
+  A tracked file whose name has glob characters, such as `a[1].go`, also
+  matches. Use `LsFiles` to test whether anything matches. (#173)
+
+- `git.Repository.FileExists(ctx, "")`, `TagsForCommit(ctx, "")`, and
+  `DiffFile(ctx, "", opts)` return `git.ErrInvalidArgument`. Before,
+  `FileExists` returned true when any file was tracked, `TagsForCommit`
+  returned all tags, and `DiffFile` returned the first file of the whole
+  diff. (#173)
+
+- `env`: with `WithStage`, the `WithOnSet` callback receives the variable
+  that supplied the value, such as `PROD_HOST`. Before, it always received
+  the unstaged name, `HOST`. (#174)
+
+- `htmlparse.Document.FilteredLinks` with `External: true` no longer returns
+  links without a host, such as `mailto:`, `tel:`, `javascript:`, or `data:`.
+  To collect them, use `Links()` and filter by scheme. (#196)
+
+- `web.NormalizeURL` returns an error for `"."`, `".."`, `"./about"`, and
+  `"../about"`. Before, it returned URLs such as `https://..`. A final `.` or
+  `..` segment keeps the trailing slash, as RFC 3986 says: `/a/b/..` becomes
+  `/a/`, not `/a`. Stored URL sets keyed on the old form can see a one-time
+  change for those URLs. (#178)
+
+- `tui`: `FocusableView`, `AnimatedBordered`, `MinWidth`, `MinHeight`, and
+  `MinSize` keep a flexible child flexible, as `Bordered` and `Padding` do.
+  In `Stack(Text("Header"), FocusableView(Scroll(...), h), Text("Footer"))`,
+  the `Scroll` now gets the free space. Before, it took its full content
+  height and pushed `"Footer"` off the screen. `MinHeight(3, Fill('.'))` now
+  fills the free space instead of stopping at 3 rows. (#183)
+
+- `thumbnail.Render` scales document and fallback cards by
+  `min(Width, Height) / 200`. Landscape and square cards, including the
+  default 320x200, look the same. Cards taller than they are wide now have
+  smaller text: a 320x600 card goes from scale 3.0 to 1.6. Before, a
+  `Width: 80, Height: 600` card showed only "…", and a
+  `Width: 1, Height: 1_000_000` request could use many gigabytes of memory.
+  (#184)
+
+- `gif.GIF.Encode` writes the canvas at the size given to `New`. A first
+  frame from `AddImage` can now be smaller than the canvas or offset in it.
+  Before, `Encode` failed with "frame bounds larger than image bounds". A
+  frame larger than the canvas now fails in `Encode`; before, `Encode` used
+  that frame's size as the canvas. (#185)
+
+- `runewidth.StringWidth` and `runewidth.Graphemes` give width 2 to
+  skin-tone emoji on text-default bases, such as `✌🏽`, `☝🏽`, `✍🏽`, and
+  `🕵🏽`. Before, they had width 1. The `gif` terminal screen uses
+  `runewidth`, so these clusters take two cells there too. (#189)
+
+### Fixed
+
+- `assert.EqualOpts` compares unexported fields, like `assert.Equal`.
+  Before, a struct with an unexported field made go-cmp panic. (#198)
+
+- `assert.Empty` and `assert.NotEmpty` stop at a pointer cycle, such as
+  `p = &p`. Before, they overflowed the stack. (#198)
+
+- `assert.Contains` and `assert.NotContains` use the same equality rule as
+  `assert.Equal`. `Contains(t, []error{errors.New("x")}, errors.New("x"))`
+  now passes. (#198)
+
+- `cli`: `app.Command("version")` and `app.Command("help")` run. Before, the
+  built-ins always won. `myapp --version serve` prints the version. Before,
+  it failed with `unknown flag: --version`. (#179)
+
+- `cli`: a `--color`, `--no-color`, or `--force-color` flag that the app
+  defines is parsed normally. Before, `myapp run --color never` failed with
+  `unexpected argument: never`. (#179)
+
+- `cli.ParseFlags`: `required:"false"` and `hidden:"false"` turn the marker
+  off. Before, any value meant true. A group's `-h` check honors a global
+  flag that claims `-h`, as the root already does. `App.Test` keeps an
+  earlier `ForceInteractive(true)`. (#179)
+
+- `clipboard.ReadContext` and `clipboard.ReadWithTimeout` return
+  `ErrTimeout` at the deadline. Before, a read could hang past the deadline
+  if the clipboard helper started a child process that kept stdout or stderr
+  open. (#193)
+
+- `crawler`: a `Crawler` reused after `Stop()` or a canceled context crawls
+  the URLs that were queued but never crawled, and they no longer use up
+  `MaxURLs`. After `Crawl` returns, `Pending()` is zero for the default
+  frontier. With a caller's `Options.Frontier`, URLs that were taken but
+  never started go back onto it. (#177)
+
+- `crawler` follows robots.txt more closely. Rules match percent-encoded and
+  decoded URLs alike, so `Disallow: /private%20docs/` blocks
+  `/private%20docs/secret`. Only the groups for the longest matching
+  `User-agent` apply, and any directive, such as `Sitemap`, ends a group's
+  `User-agent` lines. With `RespectRobotsTxt`, each host gets one request
+  until its first one completes, so `Crawl-delay` applies from the start,
+  also with `HostPolicy.MaxConcurrent` above one. (#177)
+
+- `crawler`: with adaptive throttling, a `Retry-After` of zero or a past
+  date no longer resets the backoff for that host. (#177)
+
+- `env.Parse`: a struct or `*struct` field tagged `env:"-"` is ignored.
+  Before, `Parse` allocated a nil pointer and parsed its inner fields, and a
+  `required` inner field failed the whole parse. (#174)
+
+- `fetch`: `HTTPFetcherOptions.Timeout` and `Request.Timeout` work above 30
+  seconds with the default client. `ProcessRequest` returns
+  `Response.RawHTML` exactly as given, without trimming whitespace. (#176)
+
+- `gif`: `NewTerminalScreen`, `NewEmulator`, and `Emulator.Resize` treat
+  negative sizes as 0. Before, they panicked. On a 0x0 screen, the cursor
+  stays at (0, 0). A fallback font with a crafted GSUB table can no longer
+  stall font loading, and a short coverage table no longer puts a ligature
+  on `.notdef`. ASCII text written after a Prepend rune in a separate write
+  joins its cluster. (#185)
+
+- `git.Repository.Contributors(ctx, "")` returns contributors to the whole
+  repository. Before, it always failed with `fatal: --follow requires
+  exactly one pathspec`. (#173)
+
+- `git.Repository.LsFiles`, `TrackedFiles`, `UntrackedFiles`,
+  `ModifiedFiles`, and `IgnoredFiles` return paths as they are on disk.
+  Before, `café.txt` came back as `"caf\303\251.txt"`. (#173)
+
+- `git.Repository.DefaultBranch` falls back only to a branch named `main` or
+  `master`. Before, a tag named `main` also matched. (#173)
+
+- `git.Repository.Diff` with `IncludePatch` returns each file's patch when
+  the user's git config sets `diff.noprefix` or `diff.mnemonicPrefix`.
+  Before, every `Patch` was empty. (#175)
+
+- `htmlparse.Document.HTML()` on a zero-value `Document` returns `""`.
+  Before, it panicked. (#196)
+
+- `htmltomd`: spaces at the edge of `<strong>`, `<em>`, `<del>`, and `<a>`
+  move outside the Markdown delimiters. `<p>Hello<strong> world</strong></p>`
+  gives `Hello **world**`, not `Hello**world**`. A `<br>` inside a heading
+  becomes a space. (#197)
+
+- `htmltomd.ConvertWithOptions` no longer writes to the caller's `*Options`,
+  so one `Options` value can be shared across goroutines. (#197)
+
+- `humanize.Percentage` prints whole percentages as whole numbers:
+  `Percentage(7, 100)` returns `"7%"`, not `"7.0%"`, `Percentage(99.96, 100)`
+  returns `"100%"`, and `Percentage(0, -100)` returns `"0%"`, not `"-0%"`.
+  `humanize.Float` treats a negative precision as 0 instead of returning
+  `"%!(BADPREC)..."`. (#195)
+
+- `terminal.RedactCredentials` and `terminal.Redactor`: a lone ESC or an
+  unfinished CSI before another escape sequence no longer swallows its ESC.
+  Before, `"\x1b\x1b]0;password=x\ahello"` lost the BEL and `hello`. (#188)
+
+- `terminal.Terminal`: buffered recordings with `RedactSecrets: true` keep
+  OSC 8 hyperlinks. `Box.Draw` fills the right padding columns on vertical
+  padding rows. `BypassInput` clears a wide character that a new wide
+  character half covers, and flush redraws the rest of a row after a
+  multi-rune cluster is overwritten. (#188)
+
+- `terminal.KeyDecoder` decodes application-cursor arrows (`ESC O A/B/C/D`).
+  An ESC or other control byte after `ESC O` starts the next event, and the
+  `ESC O` is Alt+O. (#188)
+
+- `termsession.Player.GetPosition` and `GetProgress` follow the playback
+  clock. Before, they jumped to the next event's time during an idle gap and
+  after `Seek`. A paused position holds steady, and a `Seek` reads back as
+  its exact target at any speed. (#187, #202)
+
+- `termtest.Screen` no longer panics or loops for a very long time when a
+  CSI sequence has a huge count, such as `ESC[9223372036854775807B`. (#187)
+
+- `tmux`: `Terminal.SendText`, `Paste`, `SendKey`, `Rename`,
+  `Server.RenameSession`, `Server.NewSession`, `Server.SetOption`, and
+  `Server.GetOption` accept text, names, and commands that start with `-`.
+  Before, tmux read them as flags: the text was silently dropped, or
+  `SendText("-R")` reset the pane. (#186)
+
+- `tmux.Control.Command` no longer hangs on a line with an empty command
+  (`a ; ; b`) or a `#` comment. A line with only comments or separators
+  returns an error. (#186)
+
+- `tmux`: `Terminal.WrappedRows` reports the right rows when a wide
+  character wraps with one column left and when trailing spaces wrap.
+  `MouseSequence` returns `ok == false` for negative coordinates. (#186)
+
+- `tui.MenuState` no longer selects an entry that the user cannot see.
+  `HandleKey` with `KeyEnd` sets `Selected()` to -1 when no shown entry can
+  be chosen, and `Choose(i)` returns false for a clipped entry. Before,
+  `Items()[Selected()]` could panic and `Enter` could run a clipped entry.
+  When the screen is too small to draw the menu, `Bounds()` is empty and
+  `Selected()` is -1. (#180)
+
+- `tui`: `RainbowBorderAnimation` and `GradientBorderAnimation` no longer
+  panic for a length of 0 or less, `WaveBorderAnimation` no longer panics
+  for a negative position, and `RainbowAnimation.GetStyle` no longer panics
+  on empty text. An unset `RainbowAnimation` length follows each text's
+  length instead of the first text's. (#181)
+
+- `tui.HitMap` areas inside a `Viewport` keep their screen positions. Before,
+  the viewport's off-screen renders added areas at (0, 0) that hid the real
+  ones. A source-bound view in `hits.Area(...)` returns its text from
+  `SelectedText()`. (#182)
+
+- `tui.ViewportState`: `ScrollBy` moves the right number of lines after the
+  anchored item shrinks. `ScrollToItem` before the first render takes effect
+  on the first frame. Scrolling during a selection keeps the user's position
+  when the selection ends, instead of snapping back to the bottom. (#182)
+
+- `tui`: `Group` shrinks the natural widths of flexible children when they
+  do not fit, as `Stack` does for heights. `Panel` measures its content
+  inside the border and inside `.Width(w)` or `.Height(h)`. `Split(nil, ...)`
+  renders nothing instead of panicking, and `SplitState.Split` and `Append`
+  clear stale gutters. A `NaN` or infinite `SplitNode.Weight` counts as 1.
+  `Scroll` sets `*scrollY` to 0 when the content fits. (#183)
+
+- `tui.FocusManager`: a focusable view with no `ID` keeps focus across
+  re-renders, and Tab and clicks can move focus to it and past it. Its focus
+  follows render order, so give the view an `ID` to pin focus when views
+  above it come and go. `InlineApp` sets `MouseEvent.ClickCount` on
+  synthesized clicks, as `Runtime` does. (#190)
+
+- `tui` list views (`SelectList`, `RadioList`, `CheckboxList`,
+  `FilterableList`, `FilePicker`, and `PromptChoice`): when the bound index
+  is out of range, keys act on the highlighted item. A key press can write
+  the clamped index back to the app's variable. `PromptChoice(&selected,
+  nil)` keeps and submits the text typed into its `InputOption`. (#191)
+
+- `tui` text inputs: `InputField` and `Input` keep the cursor visible when
+  the text exactly fills the width, and apply changes to `Mask`,
+  `PastePlaceholder`, and `CursorBlink` after the first frame. A bordered
+  `InputField` draws its `Prompt`, and one with a `Label` and no `Width`
+  measures wrapped text correctly. `Prompt`'s `WithMaxLength` limits an
+  accepted autocomplete, `WithMask("")` keeps the cursor visible, and the
+  autocomplete dropdown scrolls past the fifth match. `TextArea` highlights
+  the last line when the content shrinks below the cursor. (#192)
+
+- `tui` content views: `CellsView` highlights a wide character when the
+  selection starts on its second half, and `GridSelection.Text` no longer
+  adds a trailing newline. `TableView` pads short rows so the selection
+  spans the full width, and clamps `*selected` when the rows shrink.
+  `TreeView` measures each node's own indicator and truncates at the right
+  edge. `CodeView` reserves the line-number width it draws and shows
+  negative line numbers. `MeterView` without a label no longer reserves
+  space for `": "`. Wrapped Markdown list items fit in `MaxWidth`. (#199)
+
+- `tui.PlaybackController`: `Seek` resumes at the first event at or after
+  the target, a seek past the end no longer replays the final event, and a
+  negative seek is treated as 0. `GetPosition` and `GetProgress` follow the
+  playback clock. A `Seek`, `Pause`, or `SetSpeed` made before the first
+  `Play` holds. (#199)
+
+- `unidiff.Parse` keeps a file with no hunks, such as an empty new or
+  deleted file, a binary file, or a pure rename, when the next file starts
+  with `--- `. Before, it dropped that file, and the next file inherited its
+  `IsNew`, `IsDelete`, `IsBinary`, or `IsRename` flag. (#175)
+
+- `unidiff.Parse` unquotes C-quoted paths in `---`/`+++`, `rename from`,
+  `rename to`, and `diff --git` lines. Before, `OldPath` was
+  `"a/caf\303\251.txt"`, quotes and prefix included. Paths taken from a
+  `diff --git` line can contain spaces. (#175)
+
+- `web.NormalizeURL` resolves dot segments in a path with its own encoding:
+  `/a/../b/c%2Fd` becomes `/b/c%2Fd`. Escaped dot segments such as `%2e` and
+  `%2e%2e` resolve like `.` and `..`. (#178)
+
+- Examples: in `corral`, a divider drag ends when you zoom or switch spaces
+  while holding the mouse button, and `^B m` always opens the focused pane's
+  menu. The `browser` URL bar edits whole runes. (#200)
+
+### Security
+
+- `fetch.Download` into a directory refuses to write through a symlink that
+  points outside `OutputPath`. Before, a server could name such a symlink in
+  `Content-Disposition` and overwrite a file outside the output directory.
+  A symlink to a file inside the directory still works, and an explicit file
+  `OutputPath` still follows its symlink. (#176)
+
 ## [0.11.0] - 2026-10-30
 
 ### Removed
