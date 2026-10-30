@@ -382,6 +382,9 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 			// Skip commit hash
 		case strings.HasPrefix(line, "# branch.head"):
 			status.Branch = strings.TrimPrefix(line, "# branch.head ")
+			if status.Branch == "(detached)" {
+				status.Branch = ""
+			}
 		case strings.HasPrefix(line, "# branch.upstream"):
 			status.Upstream = strings.TrimPrefix(line, "# branch.upstream ")
 		case strings.HasPrefix(line, "# branch.ab"):

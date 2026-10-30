@@ -254,8 +254,8 @@ func Parse(diffText string) (*Diff, error) {
 	flushHunk := func() {
 		if currentFile != nil && currentHunk != nil {
 			currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
-			currentHunk = nil
 		}
+		currentHunk = nil
 		oldRemaining = 0
 		newRemaining = 0
 	}

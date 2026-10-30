@@ -37,3 +37,14 @@ func TestParseStopsAtExhaustedSide(t *testing.T) {
 	assert.Equal(t, "next.go", diff.Files[1].OldPath)
 	assert.Equal(t, 2, len(diff.Files[0].Hunks[0].Lines))
 }
+
+// A hunk before any file header belongs to no file and must not attach to
+// the next one.
+func TestParseDropsHunkBeforeFileHeader(t *testing.T) {
+	diff, err := Parse("@@ -1 +1 @@\n-orphan\n+orphan\ndiff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1 +1 @@\n-old\n+new\n")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(diff.Files))
+	assert.Equal(t, "f.txt", diff.Files[0].NewPath)
+	assert.Equal(t, 1, len(diff.Files[0].Hunks))
+	assert.Equal(t, "old", diff.Files[0].Hunks[0].Lines[0].Content)
+}

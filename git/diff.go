@@ -163,30 +163,29 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 		status := parts[0]
 		path := parts[len(parts)-1]
 
-		// Find the file in our list
+		// Find the file in our list by its new path. Matching OldPath too
+		// would let a copy source's own entry overwrite the copy.
 		for i := range diff.Files {
-			if diff.Files[i].Path == path || diff.Files[i].OldPath == path {
-				if diff.Files[i].Status == "" {
-					switch status[0] {
-					case 'A':
-						diff.Files[i].Status = "added"
-					case 'D':
-						diff.Files[i].Status = "deleted"
-					case 'M':
-						diff.Files[i].Status = "modified"
-					case 'R':
-						diff.Files[i].Status = "renamed"
-						if len(parts) >= 3 {
-							diff.Files[i].OldPath = parts[1]
-							diff.Files[i].Path = parts[2]
-						}
-					case 'C':
-						diff.Files[i].Status = "copied"
-					case 'T':
-						diff.Files[i].Status = "typechange"
-					default:
-						diff.Files[i].Status = "modified"
+			if diff.Files[i].Path == path {
+				switch status[0] {
+				case 'A':
+					diff.Files[i].Status = "added"
+				case 'D':
+					diff.Files[i].Status = "deleted"
+				case 'M':
+					diff.Files[i].Status = "modified"
+				case 'R':
+					diff.Files[i].Status = "renamed"
+					if len(parts) >= 3 {
+						diff.Files[i].OldPath = parts[1]
+						diff.Files[i].Path = parts[2]
 					}
+				case 'C':
+					diff.Files[i].Status = "copied"
+				case 'T':
+					diff.Files[i].Status = "typechange"
+				default:
+					diff.Files[i].Status = "modified"
 				}
 				break
 			}
