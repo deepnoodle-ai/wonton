@@ -154,6 +154,7 @@ func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 //
 // Use this when you need to customize comparison behavior beyond the defaults.
 // Useful for ignoring fields, custom comparers, or transforming values.
+// As with Equal, unexported fields are compared.
 //
 // Example:
 //
@@ -164,6 +165,10 @@ func Equal(t testing.TB, got, want any, msgAndArgs ...any) {
 //	assert.EqualOpts(t, got, want, opts...)
 func EqualOpts(t testing.TB, got, want any, opts ...gocmp.Option) {
 	t.Helper()
+	// Compare unexported fields like Equal does. Only the Exporter default is
+	// added: a second EquateErrors would make go-cmp panic on ambiguous
+	// options if the caller passes their own.
+	opts = append([]gocmp.Option{defaultOpts[1]}, opts...)
 	if diff := gocmp.Diff(want, got, opts...); diff != "" {
 		t.Fatalf("\n%s", formatDiff(diff))
 	}
@@ -688,12 +693,29 @@ func isEmpty(v any) bool {
 	case reflect.String:
 		return rv.Len() == 0
 	case reflect.Ptr:
-		if rv.IsNil() {
-			return true
+		// Follow the pointer chain, stopping at a cycle such as p = &p.
+		seen := map[uintptr]bool{}
+		for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+			if rv.IsNil() {
+				return true
+			}
+			if rv.Kind() == reflect.Ptr {
+				if seen[rv.Pointer()] {
+					return false
+				}
+				seen[rv.Pointer()] = true
+			}
+			rv = rv.Elem()
 		}
-		return isEmpty(rv.Elem().Interface())
+		return isEmpty(rv.Interface())
 	}
 	return rv.IsZero()
+}
+
+// equal reports whether a and b are equal by the same rule as Equal: either
+// reflect.DeepEqual or go-cmp with the default options.
+func equal(a, b any) bool {
+	return reflect.DeepEqual(a, b) || gocmp.Equal(a, b, defaultOpts...)
 }
 
 // contains checks if haystack contains needle based on the haystack type.
@@ -713,13 +735,13 @@ func contains(haystack, needle any) bool {
 		return strings.Contains(hv.String(), nv.String())
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < hv.Len(); i++ {
-			if gocmp.Equal(hv.Index(i).Interface(), needle, defaultOpts...) {
+			if equal(hv.Index(i).Interface(), needle) {
 				return true
 			}
 		}
 	case reflect.Map:
 		for _, k := range hv.MapKeys() {
-			if gocmp.Equal(k.Interface(), needle, defaultOpts...) {
+			if equal(k.Interface(), needle) {
 				return true
 			}
 		}
