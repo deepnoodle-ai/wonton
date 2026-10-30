@@ -214,7 +214,7 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 
 		// Width accumulation rules matching uniseg v0.4.7:
 		//   - Extended_Pictographic clusters take their width from the base rune
-		//     plus VS15/VS16 overrides.
+		//     plus VS15/VS16 and skin tone overrides.
 		//   - Regional indicator and Hangul syllable clusters (L/V/T/LV/LVT)
 		//     take their width from the base rune; trailing Jamo do not add
 		//     additional width to the syllable block.
@@ -233,10 +233,14 @@ func firstGraphemeCluster(s string) (cluster, rest string, width int) {
 				incbSub = incbInitial(r2)
 			}
 		} else if firstProp == gbExtendedPictographic {
-			switch r2 {
-			case 0xFE0E:
+			// VS15 asks for text presentation and VS16 for emoji. A skin
+			// tone modifier makes an emoji modifier sequence, which UTS #51
+			// shows as emoji, so a text-default base such as U+270C turns
+			// wide too. uniseg v0.4.7 leaves those at width 1.
+			switch {
+			case r2 == 0xFE0E:
 				width = 1
-			case 0xFE0F:
+			case r2 == 0xFE0F, r2 >= 0x1F3FB && r2 <= 0x1F3FF:
 				width = 2
 			}
 		} else if firstProp != gbRegionalIndicator &&

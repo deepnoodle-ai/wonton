@@ -49,6 +49,8 @@ var cases = []probeCase{
 	{"0 keycap", "0\uFE0F\u20E3"},
 	{"waving hand", "\U0001F44B"},
 	{"waving hand + skin", "\U0001F44B\U0001F3FD"},
+	{"victory hand + skin", "✌\U0001F3FD"},
+	{"index up + skin", "☝\U0001F3FD"},
 	{"JP flag", "\U0001F1EF\U0001F1F5"},
 	{"US flag", "\U0001F1FA\U0001F1F8"},
 	{"rainbow flag", "\U0001F3F3\uFE0F\u200D\U0001F308"},

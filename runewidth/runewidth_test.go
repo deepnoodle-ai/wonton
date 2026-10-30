@@ -297,6 +297,13 @@ func TestStringWidth_SkinTone(t *testing.T) {
 		{"wave medium skin", "\U0001F44B\U0001F3FD", 2},
 		// 👍🏿 = U+1F44D U+1F3FF
 		{"thumbsup dark skin", "\U0001F44D\U0001F3FF", 2},
+		// Text-default bases turn wide with a skin tone.
+		{"victory medium skin", "\u270C\U0001F3FD", 2},
+		{"index up medium skin", "\u261D\U0001F3FD", 2},
+		{"writing hand medium skin", "\u270D\U0001F3FD", 2},
+		{"weight lifter medium skin", "\U0001F3CB\U0001F3FD", 2},
+		{"detective medium skin", "\U0001F575\U0001F3FD", 2},
+		{"victory skin then text", "\u270C\U0001F3FDa", 3},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
