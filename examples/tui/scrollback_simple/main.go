@@ -15,6 +15,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/terminal"
@@ -23,7 +24,10 @@ import (
 )
 
 // AsyncState represents the state of an async process shown in the live region.
+// Its goroutine updates it while the main goroutine renders it, so mu guards
+// the fields below. The update channels only signal that a redraw is due.
 type AsyncState struct {
+	mu       sync.Mutex
 	name     string
 	progress int
 	status   string
@@ -415,6 +419,9 @@ func printRandomView(n int) {
 // === Async process updaters ===
 
 func updateProcess1(p *AsyncState) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.progress >= 100 {
 		// Reset and start new download
 		p.progress = 0
@@ -433,6 +440,9 @@ func updateProcess1(p *AsyncState) {
 }
 
 func updateProcess2(p *AsyncState) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.progress >= 100 {
 		// Reset and start new task
 		p.progress = 0
@@ -476,6 +486,9 @@ func buildLiveView(p1, p2 *AsyncState) tui.View {
 }
 
 func buildProcessView(p *AsyncState) tui.View {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	// Build progress bar
 	barWidth := 20
 	filled := (p.progress * barWidth) / 100
