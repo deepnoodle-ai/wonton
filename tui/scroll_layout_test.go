@@ -174,6 +174,8 @@ func TestContainersDrawNoContentWhenTheFrameFillsTheSpace(t *testing.T) {
 		{"AnimatedBordered", Size(1, 4, AnimatedBordered(Text("XXXXX"), nil))},
 		{"TextArea", Size(1, 4, TextArea(&text).Bordered())},
 		{"TextAreaShort", Size(5, 1, TextArea(&text).Bordered())},
+		{"InputField", Size(1, 4, InputField(&text).Bordered())},
+		{"InputFieldShort", Size(5, 1, InputField(&text).Bordered())},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,7 +208,7 @@ func TestGridClicksStopAtTheVisibleArea(t *testing.T) {
 			)
 			r := NewRuntime(NewTestTerminal(10, 1, &bytes.Buffer{}), &staticApp{view: view}, 30)
 			assert.NoError(t, r.renderChecked())
-			// Column 6 shows the button. The grid's third cell would sit
+			// Column 6 shows the button. The grid's fourth cell would sit
 			// there, but Width(4) hides it.
 			r.processEvent(MouseEvent{X: 6, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
 			assert.Equal(t, 1, buttonClicks)
