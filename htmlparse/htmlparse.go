@@ -423,7 +423,7 @@ func (d *Document) FilteredLinks(f LinkFilter) []Link {
 			// and data: links have no host but do not point at the site.
 			webLink := linkURL.Scheme == "" || strings.EqualFold(linkURL.Scheme, "http") ||
 				strings.EqualFold(linkURL.Scheme, "https")
-			isInternal := webLink && (linkURL.Host == "" || linkURL.Host == baseURL.Host)
+			isInternal := webLink && (linkURL.Host == "" || strings.EqualFold(linkURL.Host, baseURL.Host))
 			if f.Internal && !isInternal {
 				return true
 			}
