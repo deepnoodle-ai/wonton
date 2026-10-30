@@ -201,7 +201,12 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 
 	// Get actual patch content if requested
 	if opts.IncludePatch {
-		patchOut, err := r.run(ctx, withPath(args)...)
+		// Fix the header prefixes, so that diff.noprefix or
+		// diff.mnemonicPrefix in user config cannot change what
+		// patchHeaderPath reads.
+		patchArgs := append([]string{}, args...)
+		patchArgs = append(patchArgs, "--src-prefix=a/", "--dst-prefix=b/")
+		patchOut, err := r.run(ctx, withPath(patchArgs)...)
 		if err != nil {
 			return nil, err
 		}

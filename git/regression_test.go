@@ -527,6 +527,34 @@ func TestDiffPatchQuotedPath(t *testing.T) {
 	}
 }
 
+// TestDiffPatchIgnoresPrefixConfig guards against user config that changes
+// the a/ and b/ prefixes in "diff --git" headers. With diff.noprefix or
+// diff.mnemonicPrefix set, the patch for each file used to be lost.
+func TestDiffPatchIgnoresPrefixConfig(t *testing.T) {
+	for _, setting := range []string{"diff.noprefix", "diff.mnemonicPrefix"} {
+		t.Run(setting, func(t *testing.T) {
+			repo, cleanup := setupTestRepo(t)
+			defer cleanup()
+			ctx := context.Background()
+
+			addFile(t, repo, "a.txt", "one\n")
+			commit(t, repo, "initial")
+			runGit(t, repo.Path, "config", setting, "true")
+			if err := os.WriteFile(filepath.Join(repo.Path, "a.txt"), []byte("two\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			f, err := repo.DiffFile(ctx, "a.txt", git.DiffOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f == nil || !strings.Contains(f.Patch, "+two") {
+				t.Errorf("DiffFile(a.txt) = %+v, want a patch with +two", f)
+			}
+		})
+	}
+}
+
 func TestDiffLongLinePatch(t *testing.T) {
 	repo, cleanup := setupTestRepo(t)
 	defer cleanup()
