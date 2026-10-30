@@ -232,7 +232,16 @@ func (a *app) focusPane(id string) {
 
 func (a *app) switchSpace(i int) {
 	if i >= 0 && i < len(a.spaces) {
+		cancelDrag(a.space())
 		a.current = i
+	}
+}
+
+// cancelDrag ends a divider drag in progress. Zooming or switching spaces
+// hides the split, so it would never see the button release.
+func cancelDrag(sp *space) {
+	if sp.split.Dragging() {
+		sp.split.HandleMouse(tui.MouseEvent{Type: tui.MouseDragCancel})
 	}
 }
 
@@ -342,6 +351,7 @@ func (a *app) toggleZoom(id string) {
 	if p == nil {
 		return
 	}
+	cancelDrag(p.space)
 	if p.space.zoom == id {
 		p.space.zoom = ""
 	} else {
@@ -380,6 +390,9 @@ func (a *app) newSpace(dir string) []tui.Cmd {
 	}
 	sp.split.Append(p.id, tui.SplitColumns)
 	sp.focus = p.id
+	for _, old := range a.spaces {
+		cancelDrag(old)
+	}
 	a.spaces = append(a.spaces, sp)
 	a.current = len(a.spaces) - 1
 	a.save()
