@@ -427,6 +427,7 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	}
 
 	clampCursor(p.selected, total)
+	p.updateInputFocus() // the clamp can land on the input option
 	selected := 0
 	if p.selected != nil {
 		selected = *p.selected

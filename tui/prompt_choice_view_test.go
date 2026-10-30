@@ -267,6 +267,18 @@ func TestPromptChoice_InputOptionWithoutBinding(t *testing.T) {
 	assert.Equal(t, got, "hi")
 }
 
+func TestPromptChoice_OutOfRangeSelectionTypesIntoInput(t *testing.T) {
+	selected := 5
+	text := ""
+	view := PromptChoice(&selected, &text).ID("out-of-range-input").
+		Option("Yes").Option("No").InputOption("Other...")
+	view.SetFocused(true)
+	SprintScreen(view, WithWidth(20))
+
+	view.HandleKeyEvent(KeyEvent{Rune: 'h'})
+	assert.Equal(t, text, "h", "the first key reaches the highlighted input row")
+}
+
 func TestPromptChoice_OutOfRangeSelection(t *testing.T) {
 	selected := 7
 	got := -1
