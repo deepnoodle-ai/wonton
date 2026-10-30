@@ -193,6 +193,32 @@ func TestTerminal_BypassInputPreservesGraphemeClusters(t *testing.T) {
 	assert.Equal(t, 0, term.virtualY)
 }
 
+// A wide character written one cell into another leaves no orphaned
+// continuation cell behind.
+func TestTerminal_BypassInputOverlappingWideCharacters(t *testing.T) {
+	term := NewTestTerminal(10, 2, &bytes.Buffer{})
+	term.BypassInput("a世")
+	term.virtualX = 0
+	term.BypassInput("界")
+
+	assert.Equal(t, term.backBuffer[0][0].Char, '界')
+	assert.True(t, term.backBuffer[0][1].Continuation)
+	assert.False(t, term.backBuffer[0][2].Continuation)
+	assert.Equal(t, term.backBuffer[0][2].Char, ' ')
+	assert.False(t, term.frontBuffer[0][2].Continuation)
+}
+
+// Overwriting a multi-rune cluster, which the terminal may have drawn wider
+// than its cells, rewrites the rest of the row.
+func TestTerminal_FlushRewritesRowAfterOverwrittenCluster(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTestTerminal(10, 1, &out)
+	drawFrame(t, term, func(f RenderFrame) { f.PrintStyled(0, 0, "#️⃣ab", NewStyle()) })
+	out.Reset()
+	drawFrame(t, term, func(f RenderFrame) { f.PrintStyled(0, 0, "xy", NewStyle()) })
+	assert.Contains(t, out.String(), "xyab")
+}
+
 func TestTerminal_FlushIsWrappedInSynchronizedOutput(t *testing.T) {
 	buf := &bytes.Buffer{}
 	term := NewTestTerminal(10, 5, buf)

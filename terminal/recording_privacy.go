@@ -245,6 +245,9 @@ func escapeLen(s string) (n int, done bool) {
 			if s[i] >= 0x40 && s[i] <= 0x7e {
 				return i + 1, true
 			}
+			if s[i] == '\x1b' {
+				return i, true // an ESC cancels the CSI and starts anew
+			}
 		}
 		return len(s), false
 	case isStringSequence(c):
@@ -272,6 +275,11 @@ func escapeLen(s string) (n int, done bool) {
 		}
 		if i == len(s) {
 			return len(s), false
+		}
+		if s[i] < 0x30 || s[i] > 0x7e {
+			// Not a final byte, such as a second ESC: the sequence ends
+			// before it, and the byte is read on its own.
+			return i, true
 		}
 		return i + 1, true
 	}

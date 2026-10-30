@@ -169,3 +169,16 @@ func TestResizeBuffersClearsBisectedWideCharacter(t *testing.T) {
 	assert.False(t, c.Width == 2, "wide lead with no continuation at resized edge: %+v", c)
 	assert.Equal(t, ' ', c.Char)
 }
+
+// The padding rows of a Box are blank across the whole inside, including
+// the right padding columns.
+func TestBoxPaddingRowsAreBlank(t *testing.T) {
+	term := NewTestTerminal(10, 5, &bytes.Buffer{})
+	drawFrame(t, term, func(fr RenderFrame) {
+		assert.NoError(t, fr.FillStyled(0, 0, 10, 5, 'x', NewStyle()))
+		NewBox([]string{"ab"}).Draw(fr, 0, 0)
+	})
+	assert.Equal(t, rowChars(term, 1, 6), "│    │")
+	assert.Equal(t, rowChars(term, 2, 6), "│ ab │")
+	assert.Equal(t, rowChars(term, 3, 6), "│    │")
+}
