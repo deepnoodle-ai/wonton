@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -415,6 +416,24 @@ func TestProcessRequest_WithRawHTML(t *testing.T) {
 	}, html)
 	assert.NoError(t, err)
 	assert.Equal(t, html, resp.RawHTML)
+}
+
+func TestProcessRequest_RawHTMLKeepsWhitespace(t *testing.T) {
+	html := "\n  <html><body><p>Test</p></body></html>\n"
+	resp, err := ProcessRequest(&Request{URL: "https://example.com", Formats: []string{"raw_html", "html"}}, html)
+	assert.NoError(t, err)
+	assert.Equal(t, html, resp.RawHTML)
+
+	// The processed HTML is the same as for the trimmed input.
+	trimmed, err := ProcessRequest(&Request{URL: "https://example.com", Formats: []string{"html"}}, strings.TrimSpace(html))
+	assert.NoError(t, err)
+	assert.Equal(t, resp.HTML, trimmed.HTML)
+}
+
+func TestNewHTTPFetcher_DefaultClientDoesNotCapTimeout(t *testing.T) {
+	f := NewHTTPFetcher(HTTPFetcherOptions{Timeout: 2 * DefaultTimeout})
+	assert.Equal(t, time.Duration(0), f.client.Timeout)
+	assert.Equal(t, DefaultTimeout, DefaultHTTPClient.Timeout, "the shared default must not change")
 }
 
 func TestProcessRequest_WithLinks(t *testing.T) {
