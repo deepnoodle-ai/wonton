@@ -113,6 +113,34 @@ func TestRunCommandWithStdinDeadlineDuringWaitDelay(t *testing.T) {
 	assert.Error(t, ctx.Err(), "the deadline must have passed during the wait")
 }
 
+// A read that times out must return once the command is killed, even if
+// a child it started still holds stdout open.
+func TestRunCommandTimeoutWithBackgroundChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := runCommand(ctx, "sh", "-c", "sleep 3 & sleep 5")
+	assert.ErrorIs(t, err, ErrTimeout)
+	assert.True(t, time.Since(start) < 2*time.Second, "took %v", time.Since(start))
+}
+
+// A read whose command exits 0 returns its output, even if a child it
+// started still holds stdout open.
+func TestRunCommandBackgroundChildKeepsOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	start := time.Now()
+	out, err := runCommand(context.Background(), "sh", "-c", "echo hi; sleep 3 &")
+	assert.NoError(t, err)
+	assert.Equal(t, string(out), "hi\n")
+	assert.True(t, time.Since(start) < 2*time.Second, "took %v", time.Since(start))
+}
+
 func TestRunCommandWithStdinKeepsStderr(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs sh")

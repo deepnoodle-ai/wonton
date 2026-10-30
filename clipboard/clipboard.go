@@ -235,8 +235,17 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// A child process that inherits stdout or stderr keeps the pipes open
+	// after the command exits or is killed. Without a WaitDelay, Run would
+	// wait for that child too, past the context deadline.
+	cmd.WaitDelay = stderrWaitDelay
 
 	err := cmd.Run()
+	if cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		// The command exited 0, so its output is complete. Run returns
+		// exec.ErrWaitDelay if a child still held a pipe open.
+		return stdout.Bytes(), nil
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, ErrTimeout
 	}
@@ -246,8 +255,8 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 	return stdout.Bytes(), nil
 }
 
-// stderrWaitDelay bounds how long runCommandWithStdin waits for stderr to
-// close after the command exits. It is a variable so tests can widen it.
+// stderrWaitDelay bounds how long a command's pipes may stay open after it
+// exits or is killed. It is a variable so tests can widen it.
 var stderrWaitDelay = 100 * time.Millisecond
 
 // runCommandWithStdin executes a command with stdin input.
