@@ -510,6 +510,8 @@ func (r *Recorder) writeEvent(event RecordingEvent) {
 // recorded events are written to disk immediately. With RedactSecrets,
 // Flush does not write the text held back for redaction, since that would
 // split a secret that the next chunk continues; Pause or Close writes it.
+// Flush likewise holds back the start of a UTF-8 character that the next
+// chunk completes.
 func (r *Recorder) Flush() error {
 	if r == nil {
 		return nil

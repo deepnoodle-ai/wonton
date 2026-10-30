@@ -319,6 +319,25 @@ func TestRecorder_CharacterSplitAcrossReads(t *testing.T) {
 	}
 }
 
+// TestRecorder_PauseAndCloseWriteHeldPartialCharacter verifies that the start
+// of a UTF-8 character held back for the next chunk is written, not dropped,
+// when nothing more can complete it.
+func TestRecorder_PauseAndCloseWriteHeldPartialCharacter(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "partial.cast")
+	r, err := NewRecorder(filename, 80, 24, RecordingOptions{RedactSecrets: false})
+	assert.NoError(t, err)
+	r.RecordOutput("ab\xe2\x94")
+	r.Pause()
+	r.Resume()
+	r.RecordOutput("cd\xe2\x94")
+	assert.NoError(t, r.Close())
+
+	_, events, err := LoadCastFile(filename)
+	assert.NoError(t, err)
+	// JSON encoding turns each held byte into U+FFFD.
+	assert.Equal(t, eventData(events, "o"), "ab\ufffd\ufffdcd\ufffd\ufffd")
+}
+
 // TestRecordingEvent_ResizeRoundTrip verifies resize events survive a
 // save/load cycle through the JSON array encoding.
 func TestRecordingEvent_ResizeRoundTrip(t *testing.T) {
