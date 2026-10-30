@@ -266,8 +266,11 @@ func looksLikeHostPort(u *url.URL) bool {
 func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 	// A hostname of only dots comes from a relative path such as "../about"
 	// read as a bare hostname.
-	if strings.Trim(u.Hostname(), ".") == "" {
+	if u.Hostname() == "" {
 		return nil, fmt.Errorf("invalid url missing hostname: %s", u)
+	}
+	if strings.Trim(u.Hostname(), ".") == "" {
+		return nil, fmt.Errorf("invalid url: hostname is only dots: %s", u)
 	}
 
 	// Credentials embedded in a URL are a fetch concern, not part of the
@@ -307,7 +310,7 @@ func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 	// its own encoding (RawPath set) is cleaned in escaped form, so an
 	// escaped slash such as %2F stays part of its segment.
 	if u.RawPath != "" {
-		raw := cleanPath(u.EscapedPath())
+		raw := cleanPath(decodeDotSegments(u.EscapedPath()))
 		if p, err := url.PathUnescape(raw); err == nil {
 			u.Path, u.RawPath = p, raw
 		}
@@ -318,6 +321,21 @@ func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 		u.Path = ""
 	}
 	return u, nil
+}
+
+// decodeDotSegments decodes escaped dot segments such as "%2e" and "%2E%2e"
+// in an escaped path, so cleanPath resolves them like "." and "..".
+func decodeDotSegments(p string) string {
+	segments := strings.Split(p, "/")
+	for i, segment := range segments {
+		switch strings.ToLower(segment) {
+		case "%2e":
+			segments[i] = "."
+		case "%2e%2e", ".%2e", "%2e.":
+			segments[i] = ".."
+		}
+	}
+	return strings.Join(segments, "/")
 }
 
 // cleanPath resolves dot segments while preserving a trailing slash, which

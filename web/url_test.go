@@ -584,6 +584,8 @@ func TestNormalizeURLRejectsRelativeDotPaths(t *testing.T) {
 		u, err := NormalizeURL(input)
 		if err == nil {
 			t.Errorf("NormalizeURL(%q) = %q, want error", input, u)
+		} else {
+			assert.Contains(t, err.Error(), "only dots", input)
 		}
 	}
 }
@@ -595,6 +597,9 @@ func TestNormalizeURLResolvesDotSegments(t *testing.T) {
 		"https://example.com/a/..":             "https://example.com",
 		"https://example.com/a/../b/c%2Fd":     "https://example.com/b/c%2Fd",
 		"https://example.com/a/./b/c%2Fd/../e": "https://example.com/a/b/e",
+		"https://example.com/a/%2e%2e/b":       "https://example.com/b",
+		"https://example.com/a/%2E/b":          "https://example.com/a/b",
+		"https://example.com/a/.%2E/b%2Fc":     "https://example.com/b%2Fc",
 	} {
 		u, err := NormalizeURL(input)
 		assert.NoError(t, err, input)
