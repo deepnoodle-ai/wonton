@@ -204,8 +204,7 @@ func WithParser[T any](parser func(string) (T, error)) Option {
 		if o.FuncMap == nil {
 			o.FuncMap = make(map[reflect.Type]ParserFunc)
 		}
-		var zero T
-		o.FuncMap[reflect.TypeOf(zero)] = func(s string) (any, error) {
+		o.FuncMap[reflect.TypeFor[T]()] = func(s string) (any, error) {
 			return parser(s)
 		}
 	}
