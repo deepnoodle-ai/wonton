@@ -2313,7 +2313,7 @@ func max(a, b int) int {
 
 // WatchResize starts watching for terminal resize signals (SIGWINCH)
 // and automatically updates the terminal dimensions when the window is resized.
-// Call StopWatchResize() or Close() to stop watching.
+// Call StopWatchResize() or Close() to stop watching. After Close, it does nothing.
 func (t *Terminal) WatchResize() {
 	t.mu.Lock()
 	if t.closed || t.resizing || t.fd == -1 {
