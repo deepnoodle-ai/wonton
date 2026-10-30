@@ -2313,10 +2313,10 @@ func max(a, b int) int {
 
 // WatchResize starts watching for terminal resize signals (SIGWINCH)
 // and automatically updates the terminal dimensions when the window is resized.
-// Call StopWatchResize() or Close() to stop watching.
+// Call StopWatchResize() or Close() to stop watching. After Close, it does nothing.
 func (t *Terminal) WatchResize() {
 	t.mu.Lock()
-	if t.resizing || t.fd == -1 {
+	if t.closed || t.resizing || t.fd == -1 {
 		t.mu.Unlock()
 		return
 	}
@@ -2325,6 +2325,10 @@ func (t *Terminal) WatchResize() {
 	t.stopResize = make(chan struct{})
 	t.resizing = true
 
+	// Register for resize signals while holding the lock, so a concurrent
+	// StopWatchResize or Close can't stop or clear t.resizeChan first.
+	t.setupResizeSignal()
+
 	// Capture the channels so the goroutine never reads the struct fields,
 	// which StopWatchResize mutates under the lock (and a Stop/Watch restart
 	// replaces). This avoids a data race and ensures the old goroutine can't
@@ -2332,9 +2336,6 @@ func (t *Terminal) WatchResize() {
 	resizeCh := t.resizeChan
 	stopCh := t.stopResize
 	t.mu.Unlock()
-
-	// Set up platform-specific resize signal handling
-	t.setupResizeSignal()
 
 	go func() {
 		for {
@@ -2351,8 +2352,13 @@ func (t *Terminal) WatchResize() {
 // StopWatchResize stops watching for resize signals
 func (t *Terminal) StopWatchResize() {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.stopWatchResizeLocked()
+}
+
+// stopWatchResizeLocked stops watching for resize signals. Caller must hold t.mu.
+func (t *Terminal) stopWatchResizeLocked() {
 	if !t.resizing {
-		t.mu.Unlock()
 		return
 	}
 
@@ -2362,7 +2368,6 @@ func (t *Terminal) StopWatchResize() {
 		close(t.stopResize)
 		t.resizeChan = nil
 	}
-	t.mu.Unlock()
 }
 
 // OnResize registers a callback to be called when the terminal is resized.
@@ -2467,17 +2472,11 @@ func (t *Terminal) Close() error {
 		return nil // Already closed
 	}
 
-	// Mark closed before temporarily releasing the lock below, so a
-	// concurrent Close or BeginFrame can't slip in and run a second
-	// teardown (or start a frame) mid-close.
+	// Mark closed so a later Close, BeginFrame or WatchResize does nothing.
 	t.closed = true
 
 	// Stop resize watching
-	if t.resizing && t.resizeChan != nil {
-		t.mu.Unlock() // Unlock before calling StopWatchResize
-		t.StopWatchResize()
-		t.mu.Lock()
-	}
+	t.stopWatchResizeLocked()
 
 	// Stop any active recording
 	if t.recorder != nil {

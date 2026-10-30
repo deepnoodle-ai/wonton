@@ -229,3 +229,52 @@ func TestWaitReadyWaitsForInputWithoutConsumingIt(t *testing.T) {
 		t.Fatal("pause did not wake the wait")
 	}
 }
+
+// TestOwnerHangupKeepsInputCapturedByPause pauses and then hangs up while a
+// Read is parked in poll. When the Read wakes to the hangup it must still
+// return what Pause captured. The loss depends on scheduling, so repeat.
+func TestOwnerHangupKeepsInputCapturedByPause(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		master, slave, err := pty.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fd := int(slave.Fd())
+		state, err := term.MakeRaw(fd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner, err := New(slave)
+		if err != nil {
+			t.Fatal(err)
+		}
+		type readResult struct {
+			data []byte
+			err  error
+		}
+		result := make(chan readResult, 1)
+		go func() { data, err := io.ReadAll(owner); result <- readResult{data, err} }()
+		time.Sleep(time.Millisecond) // let Read reach poll
+		if _, err := master.Write([]byte("saved")); err != nil {
+			t.Fatal(err)
+		}
+		// Wait for the PTY to deliver the bytes, unless Read already took them.
+		_, _ = unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 100)
+		if err := owner.Pause(); err != nil {
+			t.Fatal(err)
+		}
+		master.Close()
+		var got readResult
+		select {
+		case got = <-result:
+		case <-time.After(time.Second):
+			t.Fatal("hung-up read did not settle")
+		}
+		owner.Close()
+		term.Restore(fd, state)
+		slave.Close()
+		if string(got.data) != "saved" || (got.err != nil && !errors.Is(got.err, Boundary)) {
+			t.Fatalf("iteration %d: read=%q %v, want %q", i, got.data, got.err, "saved")
+		}
+	}
+}
