@@ -268,11 +268,17 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 	// symlink already in that directory must not redirect the write outside
 	// it.
 	if outputIsDir && target != outputPath {
+		// EvalSymlinks keeps a relative path relative, so compare absolute
+		// paths.
 		base, err := filepath.EvalSymlinks(opts.OutputPath)
 		if err == nil {
 			base, err = filepath.Abs(base)
 		}
-		if err != nil || !withinDir(base, target) {
+		absTarget := target
+		if err == nil {
+			absTarget, err = filepath.Abs(target)
+		}
+		if err != nil || !withinDir(base, absTarget) {
 			return nil, errors.New("path traversal detected: output path escapes base directory")
 		}
 	}

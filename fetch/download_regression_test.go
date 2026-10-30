@@ -109,6 +109,28 @@ func TestDownloadFollowsSymlinkInsideOutputDir(t *testing.T) {
 	assert.Equal(t, "new", string(data))
 }
 
+func TestDownloadFollowsSymlinkInsideRelativeOutputDir(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="link.txt"`)
+		w.Write([]byte("new"))
+	}))
+	defer server.Close()
+
+	t.Chdir(t.TempDir())
+	assert.NoError(t, os.Mkdir("downloads", 0o755))
+	assert.NoError(t, os.WriteFile(filepath.Join("downloads", "target.txt"), []byte("old"), 0o644))
+	if err := os.Symlink("target.txt", filepath.Join("downloads", "link.txt")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := Download(context.Background(), server.URL+"/x", &DownloadOptions{
+		OutputPath: "downloads" + string(os.PathSeparator),
+	})
+	assert.NoError(t, err)
+	data, _ := os.ReadFile(filepath.Join("downloads", "target.txt"))
+	assert.Equal(t, string(data), "new")
+}
+
 func TestDownloadWritesThroughSymlink(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("new"))
