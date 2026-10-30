@@ -500,7 +500,7 @@ func (app *BrowserApp) handleURLBarInput(e tui.KeyEvent) []tui.Cmd {
 	// Handle printable characters
 	if e.Rune != 0 && e.Key == tui.KeyUnknown {
 		app.urlInput = app.urlInput[:app.urlCursor] + string(e.Rune) + app.urlInput[app.urlCursor:]
-		app.urlCursor += utf8.RuneLen(e.Rune)
+		app.urlCursor += len(string(e.Rune))
 	}
 
 	return nil
