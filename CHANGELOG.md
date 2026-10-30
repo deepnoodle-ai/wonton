@@ -11,6 +11,19 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Fixed
+
+- `git.Repository.Status` reports an empty `Branch` on a detached HEAD, as
+  documented. Before, it reported `"(detached)"`.
+
+- `git.Repository.Diff` reports a copied file with status `"copied"` when git
+  detects copies, such as with `diff.renames=copies`. Before, the copy was
+  reported as `"renamed"`, and the modified source file it was copied from
+  had no status.
+
+- `unidiff.Parse` drops a hunk that comes before any file header. Before,
+  that hunk was added to the next file.
+
 ## [0.10.3] - 2026-10-29
 
 ### Fixed

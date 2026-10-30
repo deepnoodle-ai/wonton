@@ -242,6 +242,24 @@ func TestBranchesDetachedHead(t *testing.T) {
 	}
 }
 
+func TestStatusDetachedHead(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "file.txt", "content")
+	commit(t, repo, "initial")
+	runGit(t, repo.Path, "checkout", "-q", "--detach")
+
+	status, err := repo.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Branch != "" {
+		t.Errorf("Branch = %q, want empty for detached HEAD", status.Branch)
+	}
+}
+
 // Diff must match status and patch for paths with spaces, handle renames out
 // of subdirectories, and not drop long lines (BUG-069).
 func TestDiffPathsWithSpaces(t *testing.T) {
@@ -290,6 +308,35 @@ func TestDiffRenameOutOfSubdirectory(t *testing.T) {
 	f := diff.Files[0]
 	if f.Path != "dir/file.txt" || f.OldPath != "dir/sub/file.txt" || f.Status != "renamed" {
 		t.Errorf("file = %+v", f)
+	}
+}
+
+// With diff.renames=copies, a copy is reported as copied, and the modified
+// copy source keeps its own status.
+func TestDiffCopiedFile(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	runGit(t, repo.Path, "config", "diff.renames", "copies")
+	addFile(t, repo, "z.txt", "a\nb\nc\nd\n")
+	commit(t, repo, "initial")
+	addFile(t, repo, "b.txt", "a\nb\nc\nd\n")
+	addFile(t, repo, "z.txt", "a\nb\nc\nd\ne\n")
+
+	diff, err := repo.Diff(ctx, git.DiffOptions{Staged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]git.DiffFile{}
+	for _, f := range diff.Files {
+		files[f.Path] = f
+	}
+	if f := files["b.txt"]; f.Status != "copied" || f.OldPath != "z.txt" {
+		t.Errorf("b.txt = %+v, want copied from z.txt (all: %+v)", f, diff.Files)
+	}
+	if f := files["z.txt"]; f.Status != "modified" {
+		t.Errorf("z.txt status = %q, want modified (all: %+v)", f.Status, diff.Files)
 	}
 }
 
