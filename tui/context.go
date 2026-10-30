@@ -193,10 +193,11 @@ func (c *RenderContext) AbsoluteBounds() image.Rectangle {
 	return c.frame.GetBounds()
 }
 
-// registerClick registers a click region in absolute screen coordinates. A
-// Scroll hides the rows it has scrolled past, so only the part of the region
-// that is on screen takes clicks; the rest must not catch clicks meant for
-// the views drawn below or above the Scroll.
+// registerClick registers a click region in absolute screen coordinates.
+// Only the part of the region inside this context, and on screen, takes
+// clicks. A view can draw nothing outside its context, and a Scroll hides
+// the rows it has scrolled past, so the rest must not catch clicks meant for
+// the views drawn there.
 func (c *RenderContext) registerClick(bounds image.Rectangle, callback func()) {
 	bounds = c.clickArea(bounds)
 	if bounds.Empty() {
@@ -206,14 +207,12 @@ func (c *RenderContext) registerClick(bounds image.Rectangle, callback func()) {
 }
 
 // clickArea returns the part of bounds, in absolute screen coordinates, that
-// is on screen and can take clicks. Inside a Scroll, that excludes the rows
-// it has scrolled past. The result can be empty.
+// is inside this context and on screen, and so can take clicks. Inside a
+// Scroll, that excludes the rows it has scrolled past. The result can be
+// empty.
 func (c *RenderContext) clickArea(bounds image.Rectangle) image.Rectangle {
-	if _, ok := c.frame.(*scrollRenderFrame); ok {
-		_, clip := screenArea(c.frame)
-		bounds = bounds.Intersect(clip)
-	}
-	return bounds
+	_, clip := screenArea(c.frame)
+	return bounds.Intersect(clip)
 }
 
 // WithFrame creates a new context using a different RenderFrame but preserving

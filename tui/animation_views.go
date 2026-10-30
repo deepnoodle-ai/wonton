@@ -1,10 +1,6 @@
 package tui
 
-import (
-	"image"
-
-	"github.com/deepnoodle-ai/wonton/runewidth"
-)
+import "github.com/deepnoodle-ai/wonton/runewidth"
 
 // AnimatedBorderedView wraps a view with an animated border.
 type AnimatedBorderedView struct {
@@ -93,8 +89,7 @@ func (f *AnimatedBorderedView) render(ctx *RenderContext) {
 	}
 
 	// Inner content
-	innerBounds := image.Rect(1, 1, w-1, h-1)
-	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+	if innerBounds, ok := insetBounds(w, h, 1, 1, 1, 1); ok {
 		innerCtx := ctx.SubContext(innerBounds)
 		f.inner.render(innerCtx)
 	}

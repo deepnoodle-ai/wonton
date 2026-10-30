@@ -564,9 +564,8 @@ func (f *InputFieldView) renderBorderedInput(ctx *RenderContext, x, w, h int, is
 	}
 
 	// Inner content area
-	innerBounds := image.Rect(x+1, 1, x+w-1, h-1)
-	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
-		innerCtx := ctx.SubContext(innerBounds)
+	if innerBounds, ok := insetBounds(w, h, 1, 1, 1, 1); ok {
+		innerCtx := ctx.SubContext(innerBounds.Add(image.Pt(x, 0)))
 		f.renderInput(innerCtx, isFocused)
 	}
 }
