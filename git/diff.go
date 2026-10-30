@@ -21,7 +21,7 @@ type DiffOptions struct {
 	Path string
 	// ContextLines is the number of context lines to show. Zero or a
 	// negative value uses git's default, which is 3 unless diff.context is
-	// set. There is no way to request zero context lines.
+	// set. No DiffOptions value requests zero context lines.
 	ContextLines int
 	// IncludePatch includes the actual unified diff content in the Patch field.
 	IncludePatch bool
