@@ -390,6 +390,9 @@ func (a *app) newSpace(dir string) []tui.Cmd {
 	}
 	sp.split.Append(p.id, tui.SplitColumns)
 	sp.focus = p.id
+	for _, old := range a.spaces {
+		cancelDrag(old)
+	}
 	a.spaces = append(a.spaces, sp)
 	a.current = len(a.spaces) - 1
 	a.save()
