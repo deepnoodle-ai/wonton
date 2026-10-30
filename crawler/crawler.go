@@ -559,7 +559,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	if c.frontierProvided {
 		// Runs before the sweep in the deferred call above, and after
 		// scheduler.wait on every return path.
-		defer scheduler.requeueUnsent()
+		defer func() { c.requeueUnsent(frontier, scheduler.takeUnsent()) }()
 	}
 	scheduler.start(ctx, cancel)
 	admitter := newFrontierAdmitter(c, frontier, cancel)
@@ -694,6 +694,32 @@ func (c *Crawler) claimScheduledURL(scheduled *scheduledItem) bool {
 	}
 	scheduled.item.URL = value
 	return true
+}
+
+// requeueUnsent pushes items the scheduler took from a caller's frontier,
+// but never dispatched, back onto it, so a later Crawl call can crawl them.
+// A waiting retry was already claimed, so its claim is released too. A failed
+// Push does not stop the rest; the first error is logged.
+func (c *Crawler) requeueUnsent(frontier Frontier, items []scheduledItem) {
+	var firstErr error
+	for _, scheduled := range items {
+		if scheduled.attempt > 1 {
+			c.releaseClaim(scheduled.item.URL)
+		}
+		if err := frontier.Push(context.Background(), scheduled.item); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr != nil {
+		c.logger.Warn("failed to return unsent urls to the frontier", slog.String("error", firstErr.Error()))
+	}
+}
+
+// releaseClaim forgets a dispatched URL and returns its MaxURLs slot.
+func (c *Crawler) releaseClaim(value string) {
+	if c.processedURLs.CompareAndDelete(value, urlDispatched) && c.maxURLs > 0 {
+		atomic.AddInt64(&c.enqueuedURLs, -1)
+	}
 }
 
 // releaseUncrawled runs after a Crawl call ends, once its goroutines have

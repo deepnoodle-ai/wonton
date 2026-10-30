@@ -2,8 +2,10 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -389,4 +391,77 @@ func TestCrawler_StopKeepsCallerFrontierURLs(t *testing.T) {
 			assert.Equal(t, c.Pending(), 3)
 		})
 	}
+}
+
+// flakyOnceFetcher fails its first request with a retryable error and
+// succeeds after that.
+type flakyOnceFetcher struct{ calls int32 }
+
+func (f *flakyOnceFetcher) Fetch(_ context.Context, req *fetch.Request) (*fetch.Response, error) {
+	if atomic.AddInt32(&f.calls, 1) == 1 {
+		return nil, errors.New("flaky")
+	}
+	return &fetch.Response{URL: req.URL, HTML: "<html><body>ok</body></html>"}, nil
+}
+
+// TestCrawler_StopKeepsWaitingRetry verifies that a retry waiting for its
+// backoff when the crawl stops goes back on a caller's frontier, and that a
+// later Crawl crawls it.
+func TestCrawler_StopKeepsWaitingRetry(t *testing.T) {
+	fetcher := &flakyOnceFetcher{}
+	frontier := NewMemoryFrontier(0)
+	c, err := New(Options{
+		Workers:          1,
+		DefaultFetcher:   fetcher,
+		FollowBehavior:   FollowNone,
+		Frontier:         frontier,
+		RespectRobotsTxt: BoolPtr(false),
+		RetryOptions:     &RetryOptions{MaxAttempts: 3, InitialBackoff: time.Hour, MaxBackoff: time.Hour},
+	})
+	assert.NoError(t, err)
+
+	go func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for atomic.LoadInt32(&fetcher.calls) < 1 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		time.Sleep(20 * time.Millisecond) // let the retry reach the scheduler
+		c.Stop()
+	}()
+	_ = c.Crawl(context.Background(), []string{"https://example.com/x"}, func(context.Context, *Result) {})
+	assert.Equal(t, frontier.Len(), 1)
+
+	var crawled int
+	assert.NoError(t, c.Crawl(context.Background(), nil, func(_ context.Context, r *Result) {
+		if r.Error == nil {
+			crawled++
+		}
+	}))
+	assert.Equal(t, crawled, 1)
+}
+
+// failOncePushFrontier fails its first Push.
+type failOncePushFrontier struct {
+	Frontier
+	failed bool
+}
+
+func (f *failOncePushFrontier) Push(ctx context.Context, items ...URLItem) error {
+	if !f.failed {
+		f.failed = true
+		return errors.New("push failed")
+	}
+	return f.Frontier.Push(ctx, items...)
+}
+
+func TestCrawler_RequeueContinuesAfterPushError(t *testing.T) {
+	c, err := New(Options{DefaultFetcher: fetch.NewMockFetcher()})
+	assert.NoError(t, err)
+	frontier := &failOncePushFrontier{Frontier: NewMemoryFrontier(0)}
+	c.requeueUnsent(frontier, []scheduledItem{
+		{item: URLItem{URL: "https://example.com/a"}, attempt: 1},
+		{item: URLItem{URL: "https://example.com/b"}, attempt: 1},
+		{item: URLItem{URL: "https://example.com/c"}, attempt: 1},
+	})
+	assert.Equal(t, frontier.Len(), 2)
 }

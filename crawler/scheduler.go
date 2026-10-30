@@ -167,7 +167,7 @@ type hostScheduler struct {
 	wg        sync.WaitGroup
 
 	unsentMu sync.Mutex
-	unsent   []URLItem
+	unsent   []scheduledItem
 }
 
 func newHostScheduler(frontier Frontier, policy HostPolicy, adaptive bool, stats *hostStatsCollector, maxPending int) *hostScheduler {
@@ -392,7 +392,7 @@ func (s *hostScheduler) pump(ctx context.Context, incoming chan<- frontierResult
 				s.releaseLease()
 			}
 			if ok {
-				s.addUnsent(item)
+				s.addUnsent(scheduledItem{item: item, attempt: 1})
 			}
 			return
 		case incoming <- result:
@@ -447,31 +447,25 @@ func (s *hostScheduler) releaseWaiting(waiting *hostWaitingQueues) {
 			if item.leased {
 				s.releaseLease()
 			}
-			// A retry was already attempted and is marked as processed.
-			if item.attempt == 1 {
-				s.addUnsent(item.item)
-			}
+			s.addUnsent(item)
 		}
 	}
 }
 
-// addUnsent records an item taken from the frontier but never dispatched.
-func (s *hostScheduler) addUnsent(item URLItem) {
+// addUnsent records an item taken from the frontier that is waiting to be
+// dispatched, for a first attempt or a retry, when the scheduler stops.
+func (s *hostScheduler) addUnsent(item scheduledItem) {
 	s.unsentMu.Lock()
 	s.unsent = append(s.unsent, item)
 	s.unsentMu.Unlock()
 }
 
-// requeueUnsent pushes items taken from the frontier but never dispatched
-// back onto it, so a later Crawl call can crawl them. Call it only after
+// takeUnsent returns the items recorded by addUnsent. Call it only after
 // wait returns.
-func (s *hostScheduler) requeueUnsent() {
-	for _, item := range s.unsent {
-		if err := s.frontier.Push(context.Background(), item); err != nil {
-			return
-		}
-	}
+func (s *hostScheduler) takeUnsent() []scheduledItem {
+	items := s.unsent
 	s.unsent = nil
+	return items
 }
 
 func stateForHost(states map[string]*schedulerHostState, host string, minDelay time.Duration) *schedulerHostState {
