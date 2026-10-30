@@ -321,6 +321,10 @@ func TestServerOptions(t *testing.T) {
 	v, err := s.GetOption(ctx, "@layout")
 	assert.NoError(t, err)
 	assert.Equal(t, v, `{"a": "b c"}`)
+	assert.NoError(t, s.SetOption(ctx, "@dash", "-x"))
+	v, err = s.GetOption(ctx, "@dash")
+	assert.NoError(t, err)
+	assert.Equal(t, v, "-x")
 	assert.Error(t, s.NewSession(ctx, SessionOptions{Name: "a.b"}))
 }
 
