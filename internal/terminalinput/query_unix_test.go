@@ -99,10 +99,31 @@ func TestQueryFinishesReplyDuringGraceWindow(t *testing.T) {
 }
 
 func TestQueryFlushesOverlongReply(t *testing.T) {
-	tty := answerQuery(t, func(master *os.File) {
-		master.WriteString(strings.Repeat("x", maxReply+100))
-	})
-	reply, err := Query(int(tty.Fd()), tty, testQuery, time.Second)
+	master, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pty: %v", err)
+	}
+	t.Cleanup(func() { master.Close(); tty.Close() })
+	// Queue the whole reply before Query runs. Written while Query reads,
+	// the tail can reach the tty after the flush, which Query leaves unread
+	// by design. A macOS pty queues less than the default maxReply, so lower
+	// it to fit the reply in the queue.
+	defer func(old int) { maxReply = old }(maxReply)
+	maxReply = 64
+	fd := int(tty.Fd())
+	// Raw mode, so the tty neither echoes the bytes nor holds them for a
+	// newline.
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := master.WriteString(strings.Repeat("x", maxReply+100)); err != nil {
+		t.Fatal(err)
+	}
+	term.Restore(fd, state)
+	go io.Copy(io.Discard, master)
+
+	reply, err := Query(fd, tty, testQuery, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
