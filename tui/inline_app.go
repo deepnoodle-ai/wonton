@@ -1,18 +1,70 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"runtime/debug"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
 	"github.com/deepnoodle-ai/wonton/terminal"
 	"golang.org/x/term"
 )
+
+// reentrantLock is a goroutine-reentrant mutex used to serialize HandleEvent
+// and LiveView calls across goroutines while allowing HandleEvent to call
+// Print, PrintRaw, or ClearScrollback synchronously on the event-loop
+// goroutine without deadlocking.
+type reentrantLock struct {
+	mu        sync.Mutex
+	owner     int64
+	recursion int
+}
+
+// curGoroutineID extracts the current goroutine ID from runtime.Stack so
+// reentrantLock can detect when Print, PrintRaw, or ClearScrollback is called
+// reentrantly from inside HandleEvent on the event-loop goroutine, while still
+// blocking concurrent Print calls from background Cmd goroutines so LiveView
+// and HandleEvent never execute concurrently.
+func curGoroutineID() int64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	field := bytes.TrimPrefix(buf[:n], []byte("goroutine "))
+	if idx := bytes.IndexByte(field, ' '); idx >= 0 {
+		field = field[:idx]
+	}
+	id, err := strconv.ParseInt(string(field), 10, 64)
+	if err != nil {
+		return -1
+	}
+	return id
+}
+
+func (l *reentrantLock) Lock() {
+	gid := curGoroutineID()
+	if gid >= 0 && atomic.LoadInt64(&l.owner) == gid {
+		l.recursion++
+		return
+	}
+	l.mu.Lock()
+	atomic.StoreInt64(&l.owner, gid)
+	l.recursion = 1
+}
+
+func (l *reentrantLock) Unlock() {
+	l.recursion--
+	if l.recursion == 0 {
+		atomic.StoreInt64(&l.owner, -1)
+		l.mu.Unlock()
+	}
+}
 
 // =============================================================================
 // INLINE APPLICATION
@@ -281,7 +333,8 @@ type InlineApp struct {
 	output io.Writer
 
 	// Synchronization
-	mu            sync.Mutex // Protects Print operations and running state
+	appMu         reentrantLock // Serializes HandleEvent and LiveView calls
+	mu            sync.Mutex    // Protects Print operations and running state
 	running       bool
 	managedInput  *managedInput
 	outputMu      sync.Mutex
@@ -343,6 +396,7 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 		live:          live,
 		focusMgr:      NewFocusManager(),
 		reg:           reg,
+		appMu:         reentrantLock{owner: -1},
 	}
 }
 
@@ -688,52 +742,7 @@ func (r *InlineApp) processEventWithQuitCheck(event Event) bool {
 
 // processEvent calls the application's HandleEvent (if implemented) and queues any returned commands.
 func (r *InlineApp) processEvent(event Event) {
-	// Handle resize events
-	if resize, ok := event.(ResizeEvent); ok {
-		r.mu.Lock()
-		r.config.Width = resize.Width
-		r.live.SetWidth(resize.Width)
-		if resize.Height > 0 {
-			r.live.SetMaxHeight(resize.Height)
-		}
-		r.mu.Unlock()
-	}
-
-	// Handle focus events from commands
-	switch e := event.(type) {
-	case FocusSetEvent:
-		r.focusMgr.SetFocus(e.ID)
-		return
-	case FocusNextEvent:
-		r.focusMgr.FocusNext()
-		return
-	case FocusPrevEvent:
-		r.focusMgr.FocusPrev()
-		return
-	}
-
-	// Route events to interactive elements via focus manager
-	switch e := event.(type) {
-	case MouseEvent:
-		if e.Type == MouseClick {
-			r.focusMgr.HandleClick(e.X, e.Y)
-			r.reg.interactive.HandleClick(e.X, e.Y)
-		}
-	case KeyEvent:
-		// A key consumed by the focused element is NOT delivered to the app,
-		// so typing into a focused input can't trigger app shortcuts.
-		// Ctrl+C is always delivered so apps can implement a reliable quit
-		// shortcut regardless of focus.
-		if r.focusMgr.HandleKey(e) && !isInterruptKey(e) {
-			return
-		}
-	}
-
-	// Call user's event handler
-	var cmds []Cmd
-	if handler, ok := r.app.(EventHandler); ok {
-		cmds = handler.HandleEvent(event)
-	}
+	cmds := r.handleEventLocked(event)
 
 	for _, cmd := range cmds {
 		if cmd == nil {
@@ -761,8 +770,62 @@ func (r *InlineApp) processEvent(event Event) {
 	}
 }
 
+func (r *InlineApp) handleEventLocked(event Event) []Cmd {
+	r.appMu.Lock()
+	defer r.appMu.Unlock()
+
+	// Handle resize events
+	if resize, ok := event.(ResizeEvent); ok {
+		r.mu.Lock()
+		r.config.Width = resize.Width
+		r.live.SetWidth(resize.Width)
+		if resize.Height > 0 {
+			r.live.SetMaxHeight(resize.Height)
+		}
+		r.mu.Unlock()
+	}
+
+	// Handle focus events from commands
+	switch e := event.(type) {
+	case FocusSetEvent:
+		r.focusMgr.SetFocus(e.ID)
+		return nil
+	case FocusNextEvent:
+		r.focusMgr.FocusNext()
+		return nil
+	case FocusPrevEvent:
+		r.focusMgr.FocusPrev()
+		return nil
+	}
+
+	// Route events to interactive elements via focus manager
+	switch e := event.(type) {
+	case MouseEvent:
+		if e.Type == MouseClick {
+			r.focusMgr.HandleClick(e.X, e.Y)
+			r.reg.interactive.HandleClick(e.X, e.Y)
+		}
+	case KeyEvent:
+		// A key consumed by the focused element is NOT delivered to the app,
+		// so typing into a focused input can't trigger app shortcuts.
+		// Ctrl+C is always delivered so apps can implement a reliable quit
+		// shortcut regardless of focus.
+		if r.focusMgr.HandleKey(e) && !isInterruptKey(e) {
+			return nil
+		}
+	}
+
+	// Call user's event handler
+	if handler, ok := r.app.(EventHandler); ok {
+		return handler.HandleEvent(event)
+	}
+	return nil
+}
+
 // render calls the application's LiveView() and updates the live region.
 func (r *InlineApp) render() {
+	r.appMu.Lock()
+	defer r.appMu.Unlock()
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
 	if r.stopping() {
@@ -774,12 +837,12 @@ func (r *InlineApp) render() {
 func (r *InlineApp) renderChecked() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.renderLiveLocked(true)
+	return r.renderLiveViewLocked(true)
 }
 
-// renderLiveLocked calls LiveView and draws the live region. The caller holds
-// r.mu and the output gate.
-func (r *InlineApp) renderLiveLocked(useSync bool) error {
+// renderLiveViewLocked calls LiveView and draws the live region. The caller
+// holds r.appMu, r.outputMu, and r.mu.
+func (r *InlineApp) renderLiveViewLocked(useSync bool) error {
 	if app, ok := r.app.(InlineApplication); ok {
 		// Clear registries before render
 		r.focusMgr.Clear()
@@ -798,24 +861,6 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 		r.reg.textAreas.Prune()
 	}
 	return nil
-}
-
-// restoreLiveLocked draws the live region again after scrollback output.
-// lines is the frame the live region showed before it was cleared.
-//
-// Print and PrintRaw may run on a Cmd goroutine, so they must not call
-// LiveView while the event loop is inside HandleEvent. They redraw the last
-// frame instead; the event loop draws a fresh frame after the next event.
-// Only before Run, when there is no event loop and no frame yet, does this
-// render LiveView. The caller holds r.mu and the output gate.
-func (r *InlineApp) restoreLiveLocked(lines []string, useSync bool) {
-	if len(lines) > 0 {
-		_ = r.live.redraw(lines, useSync)
-		return
-	}
-	if !r.running {
-		_ = r.renderLiveLocked(useSync)
-	}
 }
 
 // inputReader reads keyboard and mouse events from stdin (Goroutine 2).
@@ -1015,6 +1060,8 @@ func (r *InlineApp) commandExecutor() {
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
 func (r *InlineApp) Print(view View) {
+	r.appMu.Lock()
+	defer r.appMu.Unlock()
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
 	r.mu.Lock()
@@ -1028,7 +1075,6 @@ func (r *InlineApp) Print(view View) {
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
 	// Clear live region (moves cursor back)
-	liveLines := r.live.lastLines
 	r.live.Clear()
 
 	// Print to scrollback with raw mode line endings
@@ -1037,8 +1083,8 @@ func (r *InlineApp) Print(view View) {
 	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
-	// Restore live region (skip its internal sync since we're already in one)
-	r.restoreLiveLocked(liveLines, false)
+	// Re-render live region (skip its internal sync since we're already in one)
+	_ = r.renderLiveViewLocked(false)
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
@@ -1058,6 +1104,8 @@ func (r *InlineApp) Printf(format string, args ...any) {
 //
 // Thread-safe: Can be called from HandleEvent or from a Cmd goroutine.
 func (r *InlineApp) PrintRaw(data []byte) {
+	r.appMu.Lock()
+	defer r.appMu.Unlock()
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
 	r.mu.Lock()
@@ -1069,11 +1117,10 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
-	liveLines := r.live.lastLines
 	r.live.Clear()
 	r.output.Write(data)
 
-	r.restoreLiveLocked(liveLines, false)
+	_ = r.renderLiveViewLocked(false)
 }
 
 // Stop requests shutdown without waiting for event dispatch or cleanup.
@@ -1107,6 +1154,8 @@ func (r *InlineApp) SendEvent(event Event) {
 // This sends the ANSI escape sequence to clear the scrollback buffer.
 // Safe to call from HandleEvent.
 func (r *InlineApp) ClearScrollback() {
+	r.appMu.Lock()
+	defer r.appMu.Unlock()
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
 	r.mu.Lock()
@@ -1116,15 +1165,14 @@ func (r *InlineApp) ClearScrollback() {
 		return
 	}
 	// Clear live region first
-	liveLines := r.live.lastLines
 	r.live.Clear()
 
 	// Clear screen and scrollback
 	// \033[3J clears scrollback, \033[2J clears screen, \033[H moves to top
 	fmt.Fprint(r.output, "\033[3J\033[2J\033[H")
 
-	// Restore live region
-	r.restoreLiveLocked(liveLines, true)
+	// Re-render live region
+	_ = r.renderLiveViewLocked(true)
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.

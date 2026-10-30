@@ -11,6 +11,42 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Added
+
+- `fetch.HTTPFetcher` now accepts `text/plain` responses and populates `HTML`,
+  `RawHTML`, and `Markdown` with the raw response body instead of rejecting
+  `text/plain` as an unsupported content type. (#153)
+
+### Fixed
+
+- `tui.Prompt` with `WithMask("")` now hides typed characters completely (like
+  `sudo`) instead of echoing plaintext, and masked prompts no longer print the
+  plaintext input to the terminal on submit. (#153)
+- `sse.Client` now clears `LastEventID` when receiving an empty `id:` line per
+  the WHATWG Server-Sent Events specification and synchronizes access to
+  `LastEventID` across goroutines. (#153)
+- `tui.Button` and other clickable views inside a `tui.Scroll` now clip their
+  registered click regions to the visible scroll viewport so scrolled-off
+  views no longer intercept clicks outside the viewport. (#153)
+- `tui.InlineApp` (`Runner`) now preserves focus styling and interactive region
+  registrations when `Print`, `PrintRaw`, or `ClearScrollback` re-renders the
+  live view, and serializes `LiveView()` rendering with `HandleEvent`. (#153)
+- `tui.PromptChoice` now uses UTF-8 byte offsets and display widths when
+  rendering the text input cursor and checks whether the text input option is
+  selected before intercepting number keys `1`–`9`. (#153)
+- `tui` multiline text inputs now place and navigate the cursor on the next
+  visual line when `CursorPos` is at a soft-wrap boundary. (#153)
+- `crawler` now parses `/robots.txt` inline `#` comments and consecutive
+  `User-agent:` lines in a group per RFC 9309, and submits seed URLs before
+  starting worker goroutines so preloaded frontiers cannot exit prematurely.
+  (#153)
+- `httpguard` now blocks `0000::/8` and `::ffff:0:0/96` as non-public IPv6
+  ranges and detects HTTPS-to-HTTP-to-HTTPS redirect downgrades across the full
+  redirect chain. (#153)
+- `web.NormalizeURL` now only treats `scheme:opaque` as a schemeless
+  `host:port` when the opaque part begins with a valid port number (`1`–`65535`),
+  rejecting `mailto:` and `tel:` URIs with numeric local parts. (#153)
+
 ## [0.10.3] - 2026-10-29
 
 ### Fixed

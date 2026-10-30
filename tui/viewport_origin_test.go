@@ -210,3 +210,172 @@ func TestEdgeRowsUseTheVisiblePartOfAClippedViewport(t *testing.T) {
 	assert.True(t, strings.HasPrefix(text, "22\nL23\n"),
 		"the selection starts on the first visible row, got %q", text)
 }
+
+type scrollInteractiveApp struct {
+	scrollY int
+	clicked string
+}
+
+func (a *scrollInteractiveApp) View() View {
+	return Stack(
+		Text("header1"),
+		Text("header2"),
+		Scroll(Stack(
+			Clickable("btn0", func() { a.clicked = "btn0" }),
+			Clickable("btn1", func() { a.clicked = "btn1" }),
+			Clickable("btn2", func() { a.clicked = "btn2" }),
+			Clickable("btn3", func() { a.clicked = "btn3" }),
+		), &a.scrollY),
+	)
+}
+
+func (a *scrollInteractiveApp) HandleEvent(e Event) []Cmd { return nil }
+
+func TestScrollView_ChildAbsoluteBoundsRespectOriginAndScroll(t *testing.T) {
+	// 2 header rows + 2 visible scroll rows (total height 4).
+	// When scrollY = 1, btn1 is at screen row 2 and btn2 is at screen row 3.
+	a := &scrollInteractiveApp{scrollY: 1}
+	r := NewRuntime(NewTestTerminal(20, 4, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+
+	r.processEvent(MouseEvent{X: 1, Y: 2, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "btn1", a.clicked)
+
+	r.processEvent(MouseEvent{X: 1, Y: 3, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "btn2", a.clicked)
+}
+
+type scrollButtonApp struct {
+	scrollY int
+	clicked string
+}
+
+func (a *scrollButtonApp) View() View {
+	return Stack(
+		Text("header1"),
+		Text("header2"),
+		Scroll(Stack(
+			Button("btn0", func() { a.clicked = "btn0" }),
+			Button("btn1", func() { a.clicked = "btn1" }),
+			Button("btn2", func() { a.clicked = "btn2" }),
+			Button("btn3", func() { a.clicked = "btn3" }),
+		), &a.scrollY),
+	)
+}
+
+func (a *scrollButtonApp) HandleEvent(e Event) []Cmd { return nil }
+
+func TestScrollView_ScrolledOutButtonDoesNotFireOnClick(t *testing.T) {
+	// 2 header rows + 2 visible scroll rows (total height 4).
+	// When scrollY = 1, btn0 is scrolled out above the viewport (at screen row 1,
+	// where header2 sits), btn1 is visible at screen row 2, btn2 is visible at
+	// screen row 3, and btn3 is scrolled out below the viewport (screen row 4).
+	a := &scrollButtonApp{scrollY: 1}
+	r := NewRuntime(NewTestTerminal(20, 4, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+
+	// Clicking screen row 1 (where btn0 would sit without clipping) must NOT fire btn0.
+	r.processEvent(MouseEvent{X: 1, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "", a.clicked, "scrolled-out button above viewport must not fire")
+
+	// Clicking screen row 4 (where btn3 would sit without clipping) must NOT fire btn3.
+	r.processEvent(MouseEvent{X: 1, Y: 4, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "", a.clicked, "scrolled-out button below viewport must not fire")
+
+	// Clicking visible buttons at rows 2 and 3 DOES fire their callbacks.
+	r.processEvent(MouseEvent{X: 1, Y: 2, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "btn1", a.clicked)
+
+	r.processEvent(MouseEvent{X: 1, Y: 3, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, "btn2", a.clicked)
+}
+
+type scrollClippedListApp struct {
+	scrollY     int
+	selectedIdx int
+	clickedIdx  int
+}
+
+func (a *scrollClippedListApp) View() View {
+	items := []ListItem{
+		{Label: "item0"},
+		{Label: "item1"},
+		{Label: "item2"},
+		{Label: "item3"},
+	}
+	return Stack(
+		Text("header1"),
+		Text("header2"),
+		Scroll(
+			SelectList(items, &a.selectedIdx).OnSelect(func(item ListItem, idx int) {
+				a.clickedIdx = idx
+			}),
+			&a.scrollY,
+		),
+	)
+}
+
+func (a *scrollClippedListApp) HandleEvent(e Event) []Cmd { return nil }
+
+func TestScrollView_ClippedSelectListRegistersCorrectRowOrigins(t *testing.T) {
+	// 2 header rows + 2 visible scroll rows (total height 4).
+	// When scrollY = 1, item0 is clipped above the viewport, item1 is at screen
+	// row 2, and item2 is at screen row 3.
+	a := &scrollClippedListApp{scrollY: 1, clickedIdx: -1}
+	r := NewRuntime(NewTestTerminal(20, 4, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+
+	// Clicking row 1 (header2) must not trigger item0.
+	r.processEvent(MouseEvent{X: 1, Y: 1, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, -1, a.clickedIdx)
+
+	// Clicking row 2 triggers item1 (not item0!).
+	r.processEvent(MouseEvent{X: 1, Y: 2, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 1, a.clickedIdx)
+
+	// Clicking row 3 triggers item2.
+	r.processEvent(MouseEvent{X: 1, Y: 3, Button: MouseButtonLeft, Type: MouseClick})
+	assert.Equal(t, 2, a.clickedIdx)
+}
+
+type scrollSplitApp struct {
+	scrollY int
+	split   SplitState
+}
+
+func (a *scrollSplitApp) View() View {
+	return Stack(
+		Text("header1"),
+		Text("header2"),
+		Scroll(
+			Height(7, Split(&a.split, func(id string) View {
+				if id == "top" {
+					return Text("TOP_PANE")
+				}
+				return Text("BOT_PANE")
+			})),
+			&a.scrollY,
+		),
+	)
+}
+
+func (a *scrollSplitApp) HandleEvent(e Event) []Cmd { return nil }
+
+func TestScrollView_ClippedSplitViewPlacesPanesOnExpectedRows(t *testing.T) {
+	// 2 header rows + 4 visible scroll rows (total height 6).
+	// The SplitView has height 7: top pane (3 rows), divider (1 row), bottom pane (3 rows).
+	// When scrollY = 2, the top 2 rows of the SplitView are scrolled above the viewport,
+	// so top pane sits at screen rows 0..3 (row 2 visible), divider at row 3, and
+	// bottom pane at screen rows 4..7.
+	a := &scrollSplitApp{scrollY: 2}
+	a.split.Append("top", SplitRows)
+	assert.True(t, a.split.Split("top", "bot", SplitRows))
+
+	r := NewRuntime(NewTestTerminal(20, 6, &bytes.Buffer{}), a, 30)
+	assert.NoError(t, r.renderChecked())
+
+	assert.Equal(t, 0, a.split.Node("top").Bounds().Min.Y)
+	assert.Equal(t, 3, a.split.Node("top").Bounds().Max.Y)
+	assert.Equal(t, 4, a.split.Node("bot").Bounds().Min.Y)
+	assert.Equal(t, 7, a.split.Node("bot").Bounds().Max.Y)
+}

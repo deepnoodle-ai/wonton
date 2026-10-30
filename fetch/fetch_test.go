@@ -673,3 +673,21 @@ func ExampleRequest_contentFiltering() {
 	// OnlyMainContent: true
 	// Excluded tags: 3
 }
+
+func TestHTTPFetcher_Fetch_TextPlainPopulatesAllBodyFields(t *testing.T) {
+	const plainBody = "User-agent: *\nDisallow: /private\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(plainBody))
+	}))
+	defer server.Close()
+
+	fetcher := NewHTTPFetcher(HTTPFetcherOptions{Client: server.Client()})
+	resp, err := fetcher.Fetch(context.Background(), &Request{URL: server.URL})
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, plainBody, resp.HTML)
+	assert.Equal(t, plainBody, resp.RawHTML)
+	assert.Equal(t, plainBody, resp.Markdown)
+}

@@ -112,10 +112,17 @@ func (c *Crawler) fetchRobotsTxt(ctx context.Context, targetURL *url.URL) (*robo
 }
 
 // parseRobotsTxt parses robots.txt content for the given user agent.
-// It follows the standard robots.txt spec: if there's a specific user-agent
-// match, only those rules apply. Otherwise, wildcard (*) rules apply.
+// It follows the standard robots.txt spec (RFC 9309): if there's a specific
+// user-agent match, only those rules apply. Otherwise, wildcard (*) rules apply.
 func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
-	// First pass: collect rules for specific user agent and wildcard
+	// If a custom HTML fetcher wrapped a plain-text body in <html><head></head><body>...</body></html>,
+	// strip the outer HTML wrapper before line-by-line parsing.
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "<html><head></head><body>") && strings.HasSuffix(trimmed, "</body></html>") {
+		content = strings.TrimSuffix(strings.TrimPrefix(trimmed, "<html><head></head><body>"), "</body></html>")
+	}
+
+	// Collect rules for specific user agent and wildcard
 	specificData := &robotsTxtData{}
 	wildcardData := &robotsTxtData{}
 

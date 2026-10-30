@@ -242,7 +242,7 @@ func (b *ButtonView) render(ctx *RenderContext) {
 	// Register the click region too: the focus manager only moves focus on
 	// a click, so without this a mouse click would never run the callback.
 	if b.callback != nil {
-		ctx.registries().interactive.RegisterRegion(bounds, b.callback)
+		ctx.registerClick(bounds, b.callback)
 	}
 
 	// Choose style based on focus state

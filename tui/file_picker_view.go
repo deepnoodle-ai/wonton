@@ -190,7 +190,7 @@ func (f *FilePickerView) render(ctx *RenderContext) {
 	ctx.PrintStyled(0, dividerY, strings.Repeat("─", width), dividerStyle)
 
 	// Overlay path on divider
-	if f.currentPath != "" {
+	if f.currentPath != "" && width > 4 {
 		pathLabel := " " + f.currentPath + " "
 		if runewidth.StringWidth(pathLabel) > width-4 {
 			tail, _ := runewidth.FitRight(pathLabel, width-7)

@@ -134,7 +134,7 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 		p.mu.Unlock()
 		return nil
 	}
-	if p.stopped {
+	if p.stopped || p.stopChan == nil {
 		// A previous Stop closed the channel; give this run a fresh one.
 		p.stopChan = make(chan struct{})
 	}
@@ -326,7 +326,9 @@ func (p *PlaybackController) Stop() {
 
 	if !p.stopped {
 		p.stopped = true
-		close(p.stopChan)
+		if p.stopChan != nil {
+			close(p.stopChan)
+		}
 	}
 }
 

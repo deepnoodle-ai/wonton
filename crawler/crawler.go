@@ -565,16 +565,19 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 		return parentCtx.Err()
 	}
 
-	// Start workers before admitting seeds so a bounded frontier can drain while
-	// the admission goroutine applies backpressure.
+	// Submit seed URLs before starting workers so a preloaded Frontier cannot
+	// finish its initial items and trigger cancelIfIdle() before seeds are
+	// admitted. admitter.submit is non-blocking (it queues a batch and
+	// increments active).
+	seedErr := admitter.submit(ctx, urls, nil)
+	if seedErr != nil {
+		cancel()
+	}
+
 	var wg sync.WaitGroup
 	for i := 0; i < c.workers; i++ {
 		wg.Add(1)
 		go c.worker(ctx, cancel, scheduler, admitter, &wg, callback)
-	}
-	seedErr := admitter.submit(ctx, urls, nil)
-	if seedErr != nil {
-		cancel()
 	}
 
 	if c.showProgress {

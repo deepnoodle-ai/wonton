@@ -879,3 +879,32 @@ func TestClient_DefaultHTTPClient(t *testing.T) {
 	event := <-events
 	assert.Equal(t, event.Data, "default")
 }
+
+func TestClientLastEventID_EmptyIDResetsToEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// First event has no id: (should inherit "123"), second has empty id: (should reset to "")
+		w.Write([]byte("data: keep\n\nid:\ndata: reset\n\n"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	client.LastEventID = "123"
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	events, errs := client.Connect(ctx)
+	var got []Event
+	for ev := range events {
+		// Reading via GetLastEventID while consuming events must not race.
+		_ = client.GetLastEventID()
+		got = append(got, ev)
+	}
+	assert.NoError(t, <-errs)
+	assert.Len(t, got, 2)
+	assert.Equal(t, "123", got[0].ID)
+	assert.Equal(t, "", got[1].ID)
+	assert.Equal(t, "", client.LastEventID)
+}

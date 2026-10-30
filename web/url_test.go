@@ -92,6 +92,11 @@ func TestNormalizeURL(t *testing.T) {
 			expectError: true,
 		},
 		{
+			name:        "mailto URL starting with digits should be rejected",
+			input:       "mailto:123@example.com",
+			expectError: true,
+		},
+		{
 			name:        "javascript URL should be rejected",
 			input:       "javascript:void(0)",
 			expectError: true,
@@ -99,6 +104,11 @@ func TestNormalizeURL(t *testing.T) {
 		{
 			name:        "tel URL should be rejected",
 			input:       "tel:+1234567890",
+			expectError: true,
+		},
+		{
+			name:        "tel URL starting with digits should be rejected",
+			input:       "tel:18005551234",
 			expectError: true,
 		},
 		{

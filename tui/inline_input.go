@@ -53,7 +53,7 @@ type promptConfig struct {
 	validator    func(string) error
 	maxLength    int
 	mask         string
-	masked       bool // set by WithMask, so WithMask("") hides input
+	maskSet      bool // set by WithMask, so WithMask("") hides input
 	promptStyle  Style
 	inputStyle   Style
 	output       io.Writer
@@ -118,7 +118,7 @@ func WithMaxLength(n int) PromptOption {
 func WithMask(char string) PromptOption {
 	return func(c *promptConfig) {
 		c.mask = char
-		c.masked = true
+		c.maskSet = true
 	}
 }
 
@@ -214,11 +214,15 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	lp := NewLivePrinter(WithWidth(80), WithOutput(cfg.output))
 	defer lp.Stop() // restores the cursor the live printer hid
 
+	return runPromptLoop(state, os.Stdin, lp)
+}
+
+func runPromptLoop(state *promptState, input io.Reader, lp *LivePrinter) (string, error) {
 	// Render initial view
 	lp.Update(state.buildView())
 
 	// Input loop
-	decoder := terminal.NewKeyDecoder(os.Stdin)
+	decoder := terminal.NewKeyDecoder(input)
 	for {
 		event, err := decoder.ReadKeyEvent()
 		if err != nil {
@@ -230,10 +234,10 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 		}
 
 		// Handle the key event
-		result, done, keyErr := state.handleKey(event, prompt)
+		result, done, keyErr := state.handleKey(event, state.prompt)
 		if done {
 			lp.Clear()
-			state.printFinal(cfg.output, prompt)
+			state.printFinal(state.config.output, state.prompt)
 			return result, keyErr
 		}
 
@@ -543,7 +547,8 @@ func (s *promptState) applyAutocomplete() {
 	completion := s.acMatches[s.acSelected]
 
 	// Replace from acFrom to cursor with completion
-	before := s.input[:s.acFrom]
+	from := max(0, min(s.acFrom, s.cursorPos))
+	before := s.input[:from]
 	after := s.input[s.cursorPos:]
 	s.input = append(before, append([]rune(completion), after...)...)
 	s.cursorPos = len(before) + len([]rune(completion))
@@ -565,19 +570,20 @@ func (s *promptState) buildView() View {
 	} else {
 		// Get display input (may be masked for passwords)
 		displayInput := s.getDisplayInput()
+		displayCursorPos := min(s.cursorPos, len([]rune(displayInput)))
 
 		// Split into lines for proper multiline rendering
 		lines := strings.Split(displayInput, "\n")
 
 		// Find which line the cursor is on and position within that line
 		cursorLine := 0
-		cursorCol := s.cursorPos
+		cursorCol := displayCursorPos
 		pos := 0
 		for i, line := range lines {
 			lineLen := len([]rune(line))
-			if pos+lineLen >= s.cursorPos {
+			if pos+lineLen >= displayCursorPos {
 				cursorLine = i
-				cursorCol = s.cursorPos - pos
+				cursorCol = displayCursorPos - pos
 				break
 			}
 			pos += lineLen + 1 // +1 for the newline
@@ -688,7 +694,10 @@ func (s *promptState) buildView() View {
 
 // getDisplayInput returns the input as it should be displayed (with masking if configured)
 func (s *promptState) getDisplayInput() string {
-	if s.config.masked || s.config.mask != "" {
+	if s.config.maskSet || s.config.mask != "" {
+		if s.config.mask == "" {
+			return ""
+		}
 		return strings.Repeat(s.config.mask, len(s.input))
 	}
 	return string(s.input)

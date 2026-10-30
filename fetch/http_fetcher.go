@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -253,13 +252,12 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 		return bareResponse, nil
 	}
 
-	// Confirm the content type indicates HTML. Plain text (robots.txt, for
-	// example) is accepted only when the caller asked for the raw body.
+	// Confirm the content type indicates HTML or plain text
 	contentType := resp.Header.Get("Content-Type")
 	mediaType := strings.ToLower(contentType)
 	isHTML := strings.Contains(mediaType, "text/html")
-	isRawText := !isHTML && strings.Contains(mediaType, "text/plain") && slices.Contains(req.Formats, "raw_html")
-	if !isHTML && !isRawText {
+	isPlainText := !isHTML && strings.Contains(mediaType, "text/plain")
+	if !isHTML {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			// Read to EOF (within the normal cap) so the transport can reuse the
 			// connection. The non-HTML body is intentionally not exposed as HTML.
@@ -271,7 +269,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 		if resp.StatusCode >= http.StatusBadRequest {
 			return nil, &Error{StatusCode: resp.StatusCode, URL: req.URL}
 		}
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedContentType, contentType)
+		if !isPlainText {
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedContentType, contentType)
+		}
 	}
 
 	// Use LimitReader to prevent reading excessive data
@@ -286,9 +286,12 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 		return nil, fmt.Errorf("response size exceeds limit of %d bytes", f.maxBodySize)
 	}
 
-	if isRawText {
+	if !isHTML {
 		// Plain text is returned as-is; it is not parsed as HTML.
-		bareResponse.RawHTML = string(body)
+		rawBody := string(body)
+		bareResponse.HTML = rawBody
+		bareResponse.RawHTML = rawBody
+		bareResponse.Markdown = rawBody
 		return bareResponse, nil
 	}
 

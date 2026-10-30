@@ -3,6 +3,8 @@ package crawler
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -731,4 +733,109 @@ func Example_withCache() {
 
 	// Output:
 	// Loaded from cache
+}
+
+func TestParseRobotsTxt_InlineCommentsAndConsecutiveUserAgents(t *testing.T) {
+	robots := `
+User-agent: OtherBot # comment
+User-agent: WontonBot # target bot in multi-agent group
+User-agent: AnotherBot
+Disallow: /secret # inline comment
+Allow: /secret/public # inline comment
+Crawl-delay: 2 # seconds
+
+User-agent: *
+Disallow: /wildcard-blocked
+`
+	data := parseRobotsTxt(robots, "WontonBot/1.0")
+	assert.Equal(t, []string{"/secret"}, data.disallowRules)
+	assert.Equal(t, []string{"/secret/public"}, data.allowRules)
+	assert.Equal(t, 2*time.Second, data.crawlDelay)
+}
+
+func TestCrawler_RespectRobotsTxtWithHTTPFetcher(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/robots.txt":
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte("User-agent: *\nUser-agent: WontonBot # comment\nDisallow: /private # inline comment\n"))
+		case "/public":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><body>public</body></html>"))
+		case "/private":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><body>private</body></html>"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	httpFetcher := fetch.NewHTTPFetcher(fetch.HTTPFetcherOptions{
+		Client: server.Client(),
+	})
+
+	respect := true
+	c, err := New(Options{
+		Workers:            1,
+		MaxURLs:            10,
+		DefaultFetcher:     httpFetcher,
+		RespectRobotsTxt:   &respect,
+		RobotsTxtUserAgent: "WontonBot",
+		FollowBehavior:     FollowNone,
+		AllowHTTP:          true,
+	})
+	assert.NoError(t, err)
+
+	var visited []string
+	var mu sync.Mutex
+	err = c.Crawl(context.Background(), []string{server.URL + "/public", server.URL + "/private"}, func(ctx context.Context, res *Result) {
+		if res.Error == nil && res.Response != nil {
+			mu.Lock()
+			visited = append(visited, res.URL.Path)
+			mu.Unlock()
+		}
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"/public"}, visited)
+}
+
+func TestCrawler_PreloadedFrontierDoesNotRaceSeedSubmission(t *testing.T) {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://example.com/preloaded", &fetch.Response{
+		URL:        "https://example.com/preloaded",
+		StatusCode: 200,
+		HTML:       "<html><body>preloaded</body></html>",
+	})
+	mockFetcher.AddResponse("https://example.com/seed", &fetch.Response{
+		URL:        "https://example.com/seed",
+		StatusCode: 200,
+		HTML:       "<html><body>seed</body></html>",
+	})
+
+	for i := 0; i < 20; i++ {
+		frontier := NewMemoryFrontier(0)
+		err := frontier.Push(context.Background(), URLItem{URL: "https://example.com/preloaded"})
+		assert.NoError(t, err)
+
+		c, err := New(Options{
+			Workers:        4,
+			MaxURLs:        10,
+			DefaultFetcher: mockFetcher,
+			Frontier:       frontier,
+			FollowBehavior: FollowNone,
+		})
+		assert.NoError(t, err)
+
+		var mu sync.Mutex
+		seen := map[string]bool{}
+		err = c.Crawl(context.Background(), []string{"https://example.com/seed"}, func(ctx context.Context, res *Result) {
+			mu.Lock()
+			seen[res.URL.String()] = true
+			mu.Unlock()
+		})
+		assert.NoError(t, err)
+		assert.True(t, seen["https://example.com/preloaded"], "expected preloaded URL to be crawled")
+		assert.True(t, seen["https://example.com/seed"], "expected seed URL to be crawled")
+	}
 }

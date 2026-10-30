@@ -87,6 +87,8 @@ var nonPublicRanges = []*net.IPNet{
 	mustCIDR("198.51.100.0/24"), // TEST-NET-2
 	mustCIDR("203.0.113.0/24"),  // TEST-NET-3
 	mustCIDR("240.0.0.0/4"),     // reserved
+	mustCIDR("0000::/8"),        // RFC 4291 reserved by IETF (includes ::/96 IPv4-compatible)
+	mustCIDR("::ffff:0:0:0/96"), // SIIT IPv4-translated (RFC 2765)
 	mustCIDR("64:ff9b::/96"),    // IPv4/IPv6 translation
 	mustCIDR("64:ff9b:1::/48"),  // IPv4/IPv6 translation (local use)
 	mustCIDR("::/96"),           // IPv4-compatible IPv6 (deprecated, RFC 4291)
@@ -428,19 +430,23 @@ var credentialHeaders = []string{
 }
 
 // isDowngrade reports whether target is plain HTTP while some earlier request
-// in the chain was HTTPS. The whole chain matters, not just the previous hop:
-// the standard client copies credential headers forward from the original
-// request, so that is where the secret entered.
+// in the chain was HTTPS, or whether an earlier hop in via already downgraded
+// from HTTPS to HTTP (e.g. https -> http -> https). The whole chain matters,
+// not just the previous hop: the standard client copies credential headers
+// forward from the original request, so that is where the secret entered.
 func isDowngrade(target *url.URL, via []*http.Request) bool {
-	if !strings.EqualFold(target.Scheme, "http") {
-		return false
-	}
+	seenHTTPS := false
 	for _, previous := range via {
-		if previous != nil && previous.URL != nil && strings.EqualFold(previous.URL.Scheme, "https") {
+		if previous == nil || previous.URL == nil {
+			continue
+		}
+		if strings.EqualFold(previous.URL.Scheme, "https") {
+			seenHTTPS = true
+		} else if seenHTTPS && strings.EqualFold(previous.URL.Scheme, "http") {
 			return true
 		}
 	}
-	return false
+	return seenHTTPS && target != nil && strings.EqualFold(target.Scheme, "http")
 }
 
 func stripCredentials(header http.Header) {

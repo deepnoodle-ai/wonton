@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -240,7 +241,7 @@ func TestPromptState_MaxLength(t *testing.T) {
 
 func TestPromptState_Mask(t *testing.T) {
 	cfg := defaultPromptConfig()
-	cfg.mask = "*"
+	WithMask("*")(&cfg)
 
 	state := &promptState{
 		config:    cfg,
@@ -250,6 +251,54 @@ func TestPromptState_Mask(t *testing.T) {
 
 	display := state.getDisplayInput()
 	assert.Equal(t, "********", display)
+}
+
+func TestPromptSubmit_DoesNotPrintPlaintextPassword(t *testing.T) {
+	for _, mask := range []string{"*", ""} {
+		var out bytes.Buffer
+		cfg := defaultPromptConfig()
+		WithMask(mask)(&cfg)
+		WithPromptOutput(&out)(&cfg)
+
+		state := &promptState{
+			config:     cfg,
+			prompt:     "Password: ",
+			input:      []rune{},
+			cursorPos:  0,
+			historyIdx: -1,
+		}
+		lp := NewLivePrinter(WithWidth(80), WithOutput(&out))
+
+		got, err := runPromptLoop(state, strings.NewReader("s3cr3t!\r"), lp)
+		assert.NoError(t, err)
+		assert.Equal(t, "s3cr3t!", got)
+		assert.False(t, strings.Contains(out.String(), "s3cr3t!"), "terminal output must not contain plaintext password (mask=%q): %q", mask, out.String())
+	}
+}
+
+func TestPromptState_AutocompleteClampsBounds(t *testing.T) {
+	cfg := defaultPromptConfig()
+	state := &promptState{
+		config:     cfg,
+		input:      []rune("hello"),
+		cursorPos:  2,
+		acActive:   true,
+		acMatches:  []string{"world"},
+		acSelected: 0,
+		acFrom:     -5,
+	}
+
+	state.applyAutocomplete()
+	assert.Equal(t, "worldllo", string(state.input))
+
+	state.input = []rune("hello")
+	state.cursorPos = 2
+	state.acActive = true
+	state.acMatches = []string{"world"}
+	state.acSelected = 0
+	state.acFrom = 99
+	state.applyAutocomplete()
+	assert.Equal(t, "heworldllo", string(state.input))
 }
 
 func TestPromptState_Validator(t *testing.T) {

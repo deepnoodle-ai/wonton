@@ -464,21 +464,12 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	}
 
-	// Handle number keys (1-9) for quick selection. While the custom input
-	// is selected, digits are typed into it instead.
-	if event.Rune >= '1' && event.Rune <= '9' && !p.isInputSelected() {
-		idx := int(event.Rune - '1')
-		if idx < total {
-			p.setSelected(idx)
-			p.updateInputFocus()
-			return true
-		}
-	}
-
-	// If input option is selected, route character input to textInput
+	// If input option is selected, route character input to textInput before
+	// intercepting number keys so digits 1-9 can be typed into the input field.
 	if p.isInputSelected() {
 		ti := p.reg.promptChoices.Get(p.id)
 		if ti != nil {
+			ti.SetFocused(true)
 			// Handle paste events
 			if event.Paste != "" {
 				ti.HandlePaste(event.Paste)
@@ -494,6 +485,16 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 				}
 				return true
 			}
+		}
+	}
+
+	// Handle number keys (1-9) for quick selection
+	if event.Rune >= '1' && event.Rune <= '9' {
+		idx := int(event.Rune - '1')
+		if idx < total {
+			p.setSelected(idx)
+			p.updateInputFocus()
+			return true
 		}
 	}
 

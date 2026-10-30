@@ -188,3 +188,33 @@ func TestTextInput_CRLFBreaksLine(t *testing.T) {
 		assert.Equal(t, "ab\r\nXcd", ti.Value())
 	})
 }
+
+func TestTextInput_SoftWrapBoundaryCursorPositionAndNavigation(t *testing.T) {
+	ti := newTextInput()
+	ti.WithMultilineMode(true)
+	ti.SetFocused(true)
+	// Width 5: "abcdefgh" wraps into line 0 ("abcde", [0..5]) and line 1 ("fgh", [5..8])
+	ti.SetBounds(image.Rect(0, 0, 5, 2))
+	ti.SetValue("abcdefgh")
+
+	// Place cursor at byte 5 (the start of the wrapped line "fgh")
+	ti.CursorPos = 5
+	assert.Equal(t, 1, ti.getCursorLine(5))
+	assert.Equal(t, 0, ti.getCursorXInLine(5))
+
+	start, end := ti.getCurrentLineRange(ti.DisplayText())
+	assert.Equal(t, 5, start)
+	assert.Equal(t, 8, end)
+
+	// CursorUp from start of line 1 (pos 5, x=0) should move to start of line 0 (pos 0)
+	assert.Equal(t, 0, ti.cursorUp(ti.DisplayText()))
+
+	// On line 0, End should move to the last character of line 0 (pos 4), not pos 5 (which is line 1)
+	ti.CursorPos = 0
+	s0, e0 := ti.getCurrentLineRange(ti.DisplayText())
+	assert.Equal(t, 0, s0)
+	assert.Equal(t, 4, e0)
+
+	// CursorDown from pos 0 should move to pos 5 (start of line 1)
+	assert.Equal(t, 5, ti.cursorDown(ti.DisplayText()))
+}

@@ -73,11 +73,14 @@ func TestPromptChoice_NumberKeys(t *testing.T) {
 	view.HandleKeyEvent(KeyEvent{Rune: '3'})
 	assert.Equal(t, 2, selected)
 
-	// On the input option, digits are typed instead; arrows navigate away
+	// When input option is selected, pressing '1' types into the input instead of jumping
+	view.HandleKeyEvent(KeyEvent{Rune: '1'})
+	assert.Equal(t, 2, selected)
+	assert.Equal(t, "1", inputText)
+
+	// Move back to non-input option, then press '1' to jump to first option
 	view.HandleKeyEvent(KeyEvent{Key: KeyArrowUp})
 	assert.Equal(t, 1, selected)
-
-	// Press '1' to jump back
 	view.HandleKeyEvent(KeyEvent{Rune: '1'})
 	assert.Equal(t, 0, selected)
 
@@ -244,4 +247,34 @@ func TestPromptChoice_CustomCursor(t *testing.T) {
 
 func TestPromptChoice_NoNumbers(t *testing.T) {
 	t.Skip("Render test requires different terminal setup - skipping for now")
+}
+
+func TestPromptChoice_NilSelectedDoesNotPanic(t *testing.T) {
+	inputText := ""
+	view := PromptChoice(nil, &inputText).
+		Option("Yes").
+		Option("No")
+
+	view.focused = true
+	assert.True(t, view.HandleKeyEvent(KeyEvent{Key: KeyArrowDown}))
+	assert.True(t, view.HandleKeyEvent(KeyEvent{Key: KeyArrowUp}))
+	assert.True(t, view.HandleKeyEvent(KeyEvent{Rune: '2'}))
+}
+
+func TestPromptChoice_RenderMultibyteInput(t *testing.T) {
+	selected := 1
+	inputText := "日本語abc"
+	view := PromptChoice(&selected, &inputText).
+		Option("Yes").
+		InputOption("入力してください")
+	view.focused = true
+
+	// Position cursor at byte offset 6 (after "日本", on "語")
+	ti := view.reg.promptChoices.Get(view.id)
+	ti.SetValue(inputText)
+	ti.CursorPos = 6
+
+	screen := SprintScreen(view, WithWidth(40))
+	// Prefix is "❯ 2. " (5 cells), "日本" is 4 cells -> cursorX should be 5 + 4 = 9 on '語'
+	assert.Equal(t, '語', screen.Cell(9, 1).Char)
 }

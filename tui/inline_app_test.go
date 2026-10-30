@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"strings"
 	"sync"
@@ -1000,4 +1001,149 @@ func TestInlineApp_ProcessMouseEvent_DifferentButtons(t *testing.T) {
 	assert.NotNil(t, click)
 	clickedEvent := click.(MouseEvent)
 	assert.Equal(t, MouseButtonLeft, clickedEvent.Button) // Original press button
+}
+
+type focusAndClickApp struct {
+	runner *InlineApp
+	clicks int
+	value  string
+	count  int
+}
+
+func (a *focusAndClickApp) LiveView() View {
+	_ = a.count // read state modified in HandleEvent to verify race-free serialization
+	return Stack(
+		InputField(&a.value).ID("main-input"),
+		Clickable("[ Click Me ]", func() {
+			a.clicks++
+		}),
+	)
+}
+
+func (a *focusAndClickApp) HandleEvent(event Event) []Cmd {
+	a.count++
+	if key, ok := event.(KeyEvent); ok && key.Rune == 'p' && a.runner != nil {
+		a.runner.Print(Text("printed from HandleEvent %d", a.count))
+	}
+	return nil
+}
+
+func TestInlineApp_PrintPreservesFocusAndClearsInteractiveRegions(t *testing.T) {
+	var buf bytes.Buffer
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
+	app := &focusAndClickApp{runner: runner}
+	runner.app = app
+
+	runner.render()
+	assert.Equal(t, "main-input", runner.focusMgr.GetFocusedID())
+
+	// Print, PrintRaw, and ClearScrollback should preserve focus and not duplicate clickable regions.
+	runner.Print(Text("hello"))
+	runner.PrintRaw([]byte("raw\r\n"))
+	runner.ClearScrollback()
+
+	assert.Equal(t, "main-input", runner.focusMgr.GetFocusedID())
+
+	// Clicking the clickable region on row 1 should invoke the callback exactly once, not 4 times.
+	runner.processEvent(MouseEvent{X: 2, Y: 1, Button: MouseButtonLeft, Type: MouseClick, Time: time.Now()})
+	assert.Equal(t, 1, app.clicks)
+}
+
+func TestInlineApp_PrintAndHandleEventSerialized(t *testing.T) {
+	var buf bytes.Buffer
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(80))
+	app := &focusAndClickApp{runner: runner}
+	runner.app = app
+
+	runner.render()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			runner.processEvent(KeyEvent{Rune: 'p'})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			runner.Print(Text("msg %d", i))
+		}
+	}()
+	wg.Wait()
+}
+
+func TestPlaybackController_PlayAfterStopAndConcurrentAccess(t *testing.T) {
+	var buf bytes.Buffer
+	term := NewTestTerminal(80, 24, &buf)
+	pc := &PlaybackController{
+		events: []RecordingEvent{
+			{Time: 0.0, Type: "o", Data: "hello"},
+			{Time: 0.02, Type: "o", Data: " world"},
+		},
+		speed:    1.0,
+		stopChan: make(chan struct{}),
+	}
+
+	// Stop before Play finishes, then call Play again to ensure stopChan is recreated.
+	pc.Stop()
+	err := pc.Play(term)
+	assert.NoError(t, err)
+}
+
+func TestFilePickerView_NarrowWidthDoesNotPanic(t *testing.T) {
+	filter := ""
+	selected := 0
+	items := []ListItem{{Label: "file.txt"}}
+	picker := FilePicker(items, &filter, &selected).
+		CurrentPath("/very/long/path/with/日本語/characters")
+
+	for w := 1; w <= 12; w++ {
+		var buf bytes.Buffer
+		term := NewTestTerminal(w, 5, &buf)
+		frame, err := term.BeginFrame()
+		assert.NoError(t, err)
+		ctx := NewRenderContext(frame, 1)
+		picker.render(ctx)
+		term.EndFrame(frame)
+	}
+}
+
+type failingInitApp struct{}
+
+func (a *failingInitApp) Init() error { return errors.New("init boom") }
+func (a *failingInitApp) View() View  { return Text("unused") }
+
+func TestRuntime_RunResetsRunningOnInitError(t *testing.T) {
+	var buf bytes.Buffer
+	term := NewTestTerminal(80, 24, &buf)
+	rt := NewRuntime(term, &failingInitApp{}, 30)
+
+	err1 := rt.Run()
+	assert.ErrorContains(t, err1, "init boom")
+
+	// A second Run() call must not report "runtime is already running".
+	err2 := rt.Run()
+	assert.ErrorContains(t, err2, "init boom")
+}
+
+type stubInputSource struct{}
+
+func (s *stubInputSource) ReadEvent() (Event, error) { return QuitEvent{}, nil }
+func (s *stubInputSource) SetPasteTabWidth(int)      {}
+
+func TestWithInput_ConfiguresRunConfig(t *testing.T) {
+	cfg := defaultRunConfig()
+	src := &stubInputSource{}
+	WithInput(src)(&cfg)
+	assert.Equal(t, InputSource(src), cfg.inputSource)
+
+	var buf bytes.Buffer
+	term := NewTestTerminal(80, 24, &buf)
+	rt := NewRuntime(term, &failingInitApp{}, cfg.fps)
+	if cfg.inputSource != nil {
+		rt.SetInputSource(cfg.inputSource)
+	}
+	assert.Equal(t, InputSource(src), rt.inputSource)
 }

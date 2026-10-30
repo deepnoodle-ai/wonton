@@ -21,17 +21,20 @@ func contentTypeServer(t *testing.T, contentType, body string) *httptest.Server 
 }
 
 func TestHTTPFetcherReturnsPlainTextForRawRequests(t *testing.T) {
-	server := contentTypeServer(t, "text/plain; charset=utf-8", "User-agent: *\nDisallow: /\n")
+	body := "User-agent: *\nDisallow: /\n"
+	server := contentTypeServer(t, "text/plain; charset=utf-8", body)
 	fetcher := NewHTTPFetcher(HTTPFetcherOptions{Client: server.Client()})
 
 	resp, err := fetcher.Fetch(context.Background(), &Request{URL: server.URL, Formats: []string{"raw_html"}})
 	assert.NoError(t, err)
-	assert.Equal(t, "User-agent: *\nDisallow: /\n", resp.RawHTML)
-	assert.Equal(t, "", resp.HTML)
+	assert.Equal(t, body, resp.RawHTML)
+	assert.Equal(t, body, resp.HTML)
+	assert.Equal(t, body, resp.Markdown)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	// Without a raw request, plain text is still refused.
-	_, err = fetcher.Fetch(context.Background(), &Request{URL: server.URL})
+	// Unsupported binary content types are still refused.
+	binServer := contentTypeServer(t, "application/octet-stream", "\x00\x01\x02")
+	_, err = fetcher.Fetch(context.Background(), &Request{URL: binServer.URL})
 	assert.ErrorIs(t, err, ErrUnsupportedContentType)
 }
 
@@ -48,6 +51,20 @@ func TestHTTPFetcherReportsHTTPErrorsWithNonHTMLBodies(t *testing.T) {
 	var fetchErr *Error
 	assert.True(t, errors.As(err, &fetchErr), "got %v", err)
 	assert.Equal(t, http.StatusInternalServerError, fetchErr.StatusCode)
+
+	// Plain-text 404/5xx error responses must also return *Error rather than a 200-style Response.
+	plainErrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("404 page not found"))
+	}))
+	t.Cleanup(plainErrServer.Close)
+	plainFetcher := NewHTTPFetcher(HTTPFetcherOptions{Client: plainErrServer.Client()})
+
+	_, err = plainFetcher.Fetch(context.Background(), &Request{URL: plainErrServer.URL})
+	fetchErr = nil
+	assert.True(t, errors.As(err, &fetchErr), "got %v", err)
+	assert.Equal(t, http.StatusNotFound, fetchErr.StatusCode)
 }
 
 func TestHTTPFetcherMatchesContentTypeCaseInsensitively(t *testing.T) {

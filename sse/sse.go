@@ -80,6 +80,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Event represents a single Server-Sent Event.
@@ -399,6 +400,8 @@ type Client struct {
 	// If zero, the default of 64KB is used. Set this for events with
 	// very long data lines (e.g., large JSON payloads or base64 data).
 	BufferSize int
+
+	mu sync.Mutex
 }
 
 // NewClient creates a new SSE client for the given URL.
@@ -444,14 +447,30 @@ func (c *Client) Connect(ctx context.Context) (<-chan Event, <-chan error) {
 	events := make(chan Event)
 	errs := make(chan error, 1)
 
-	go c.run(ctx, events, errs)
+	lastEventID := c.GetLastEventID()
+
+	go c.run(ctx, lastEventID, events, errs)
 
 	return events, errs
 }
 
-func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error) {
-	defer close(events)
+// GetLastEventID returns the most recently received event ID in a thread-safe manner.
+func (c *Client) GetLastEventID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.LastEventID
+}
+
+// SetLastEventID sets the Last-Event-ID value in a thread-safe manner.
+func (c *Client) SetLastEventID(id string) {
+	c.mu.Lock()
+	c.LastEventID = id
+	c.mu.Unlock()
+}
+
+func (c *Client) run(ctx context.Context, lastEventID string, events chan<- Event, errs chan<- error) {
 	defer close(errs)
+	defer close(events)
 
 	httpClient := c.HTTPClient
 	if httpClient == nil {
@@ -475,8 +494,8 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 	}
 
 	// Set Last-Event-ID if available
-	if c.LastEventID != "" {
-		req.Header.Set("Last-Event-ID", c.LastEventID)
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
 	}
 
 	resp, err := httpClient.Do(req)
@@ -511,15 +530,12 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 	reader := NewReader(resp.Body)
 	// Seed the reader so events after a reconnect carry the previous ID
 	// until the server sends a new one.
-	reader.lastEventID = c.LastEventID
+	reader.lastEventID = lastEventID
 	if c.BufferSize > 0 {
 		reader.Buffer(c.BufferSize)
 	}
-	// LastEventID is written only as the stream ends, before errs is sent
-	// to and before events is closed. A caller that reads it after the
-	// events channel closes, or after receiving from errs, never races.
 	fail := func(err error) {
-		c.LastEventID = reader.LastEventID()
+		c.SetLastEventID(reader.LastEventID())
 		errs <- err
 	}
 	for {
@@ -532,7 +548,7 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 
 		event, err := reader.Read()
 		if err == io.EOF {
-			c.LastEventID = reader.LastEventID()
+			c.SetLastEventID(reader.LastEventID())
 			return
 		}
 		if err != nil {
@@ -540,6 +556,7 @@ func (c *Client) run(ctx context.Context, events chan<- Event, errs chan<- error
 			return
 		}
 
+		c.SetLastEventID(event.ID)
 		select {
 		case events <- event:
 		case <-ctx.Done():

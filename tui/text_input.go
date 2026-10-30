@@ -489,6 +489,10 @@ func (t *textInput) getCursorXY(startX, startY, width int) (x, y int) {
 			x = startX
 		}
 		if offset >= t.CursorPos {
+			if offset == t.CursorPos && cluster != "\n" && x > startX && x+cw > startX+width {
+				y++
+				x = startX
+			}
 			break
 		}
 		if isLineBreak(cluster) {
@@ -602,6 +606,16 @@ func cursorLineIndex(lines []lineRange, pos int) int {
 		}
 	}
 	return len(lines) - 1
+}
+
+// getCurrentLineRange returns the start and end byte positions of the current visual line.
+func (t *textInput) getCurrentLineRange(displayText string) (start, end int) {
+	lines := t.getVisualLines(displayText)
+	if len(lines) > 0 {
+		idx := cursorLineIndex(lines, t.CursorPos)
+		return lines[idx].start, lineLastCursorPos(displayText, lines, idx)
+	}
+	return 0, len(displayText)
 }
 
 // lineLastCursorPos returns the last byte offset on lines[i] that still draws

@@ -647,9 +647,13 @@ func TestValidatePublicIPRejectsRecentlyReservedRanges(t *testing.T) {
 	// IANA keeps adding non-globally-reachable space; these three postdate the
 	// ranges Go's own predicates know about.
 	for _, value := range []string{
-		"3fff::1",    // documentation (RFC 9637)
-		"5f00::1",    // SRv6 SIDs (RFC 9602)
-		"2001:10::1", // ORCHID (deprecated)
+		"3fff::1",            // documentation (RFC 9637)
+		"5f00::1",            // SRv6 SIDs (RFC 9602)
+		"2001:10::1",         // ORCHID (deprecated)
+		"0000:1::1",          // RFC 4291 reserved 0000::/8
+		"::0.0.0.2",          // IPv4-compatible IPv6 in ::/96 (0000::/8)
+		"::ffff:0:127.0.0.1", // SIIT IPv4-translated (::ffff:0:0:0/96)
+		"::ffff:0:8.8.8.8",   // SIIT IPv4-translated (::ffff:0:0:0/96)
 	} {
 		assert.ErrorIs(t, ValidatePublicIP(net.ParseIP(value)), ErrNonPublicAddress, "ValidatePublicIP(%q)", value)
 	}
@@ -722,4 +726,25 @@ func TestClientKeepsTheZoneOfAResolvedAddress(t *testing.T) {
 	_, err := transportOf(t, client).DialContext(context.Background(), "tcp", "printer.local:80")
 	assert.ErrorIs(t, err, sentinel)
 	assert.Equal(t, dialed, []string{"[fe80::1%en0]:80"})
+}
+
+func TestClientDropsCredentialsOnHTTPSViaHTTPToHTTPSRedirect(t *testing.T) {
+	// Once a redirect chain downgrades from https -> http, a subsequent
+	// redirect back to https (https -> http -> https) must still strip
+	// credentials because they already traversed or were exposed to an
+	// untrusted plaintext hop.
+	client := NewClient(WithMaxRedirects(3), WithHTTPRedirects())
+
+	hop1, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
+	assert.NoError(t, err)
+	hop2, err := http.NewRequest(http.MethodGet, "http://example.com/plain", nil)
+	assert.NoError(t, err)
+	hop3, err := http.NewRequest(http.MethodGet, "https://example.com/final", nil)
+	assert.NoError(t, err)
+	hop3.Header.Set("Authorization", "Bearer secret")
+	hop3.Header.Set("Cookie", "session=secret")
+
+	assert.NoError(t, client.CheckRedirect(hop3, []*http.Request{hop1, hop2}))
+	assert.Equal(t, hop3.Header.Get("Authorization"), "")
+	assert.Equal(t, hop3.Header.Get("Cookie"), "")
 }
