@@ -363,16 +363,18 @@ func (r *Repository) IsClean(ctx context.Context) (bool, error) {
 // This provides a comprehensive view of the repository state, similar to
 // running "git status" but with structured data.
 func (r *Repository) Status(ctx context.Context) (*Status, error) {
-	out, err := r.run(ctx, "status", "--porcelain=v2", "--branch")
+	out, err := r.run(ctx, "status", "--porcelain=v2", "--branch", "-z")
 	if err != nil {
 		return nil, err
 	}
 
 	status := &Status{}
-	scanner := newScanner(out)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	// With -z, each entry ends in NUL and paths are not quoted. A rename or
+	// copy entry is followed by its original path as a separate field.
+	fields := strings.Split(string(out), "\x00")
+	for i := 0; i < len(fields); i++ {
+		line := fields[i]
 		if len(line) == 0 {
 			continue
 		}
@@ -395,7 +397,12 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 			}
 		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
 			// Changed entry
-			staged, unstaged := parseStatusEntry(line)
+			var origPath string
+			if line[0] == '2' && i+1 < len(fields) {
+				origPath = fields[i+1]
+				i++
+			}
+			staged, unstaged := parseStatusEntry(line, origPath)
 			if staged != nil {
 				status.Staged = append(status.Staged, *staged)
 			}
@@ -421,17 +428,19 @@ func (r *Repository) Status(ctx context.Context) (*Status, error) {
 		len(status.Untracked) == 0 &&
 		len(status.Conflicts) == 0
 
-	return status, scanner.Err()
+	return status, nil
 }
 
-// parseStatusEntry parses a porcelain v2 changed entry and returns the staged
-// and unstaged sides separately; either may be nil. The formats are:
+// parseStatusEntry parses a porcelain v2 changed entry from -z output and
+// returns the staged and unstaged sides separately; either may be nil. The
+// formats are:
 //
 //	1 XY sub mH mI mW hH hI <path>
-//	2 XY sub mH mI mW hH hI <score> <path>\t<origPath>
+//	2 XY sub mH mI mW hH hI <score> <path>
 //
-// Paths may contain spaces, so only the fixed fields are split off.
-func parseStatusEntry(line string) (staged, unstaged *FileStatus) {
+// origPath is the field that follows a "2" entry. Paths may contain spaces,
+// so only the fixed fields are split off.
+func parseStatusEntry(line, origPath string) (staged, unstaged *FileStatus) {
 	var xy, path, oldPath string
 	switch {
 	case strings.HasPrefix(line, "1 "):
@@ -445,8 +454,7 @@ func parseStatusEntry(line string) (staged, unstaged *FileStatus) {
 		if len(parts) < 10 {
 			return nil, nil
 		}
-		xy = parts[1]
-		path, oldPath, _ = strings.Cut(parts[9], "\t")
+		xy, path, oldPath = parts[1], parts[9], origPath
 	default:
 		return nil, nil
 	}
