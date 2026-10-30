@@ -416,10 +416,12 @@ func (p *PlaybackController) positionLocked() float64 {
 	if p.currentIndex >= len(p.events) {
 		return p.durationLocked()
 	}
-	if p.currentIndex == 0 {
-		return 0
+	if p.startTime.IsZero() {
+		return 0 // not started
 	}
-	return p.events[p.currentIndex].Time
+	// Follow the playback clock, in recording time, not the time of the
+	// next unplayed event.
+	return min(max(p.elapsedLocked()*p.speed, 0), p.durationLocked())
 }
 
 // GetProgress returns playback progress as a value between 0.0 and 1.0

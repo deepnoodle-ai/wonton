@@ -272,3 +272,17 @@ func TestPlayback_SeekPicksNextEvent(t *testing.T) {
 	p.Seek(10)
 	assert.Equal(t, p.currentIndex, 2)
 }
+
+func TestPlayback_PositionFollowsClock(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	assert.Equal(t, p.GetPosition(), 0.0)
+
+	// 2s into playback, the next event is still the one at 10s.
+	p.startTime = time.Now().Add(-2 * time.Second)
+	p.currentIndex = 1
+	pos := p.GetPosition()
+	assert.True(t, pos > 1.9 && pos < 2.1, "position = %v, want ~2", pos)
+}
