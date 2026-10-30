@@ -98,3 +98,35 @@ func TestWriteEnvFileQuotesCarriageReturn(t *testing.T) {
 		assert.Equal(t, value, got["K"], fmt.Sprintf("round trip of %q", value))
 	}
 }
+
+// H18: env:"-" skips nested struct and *struct fields too.
+func TestIgnoreTagSkipsNestedStructs(t *testing.T) {
+	type Internal struct {
+		Secret string `env:"SECRET,required"`
+	}
+	type Config struct {
+		Ptr    *Internal `env:"-"`
+		Nested Internal  `env:"-"`
+	}
+	cfg, err := Parse[Config](WithEnvironment(map[string]string{}))
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Ptr)
+}
+
+// M33: WithOnSet reports the stage-prefixed variable that supplied the value.
+func TestOnSetReportsStagedEnvVar(t *testing.T) {
+	type Config struct {
+		Host string `env:"HOST"`
+		Port string `env:"PORT"`
+	}
+	got := map[string]string{}
+	_, err := Parse[Config](
+		WithEnvironment(map[string]string{"PROD_HOST": "h", "PORT": "1"}),
+		WithStage("PROD"),
+		WithOnSet(func(field, envVar string, value any, isDefault bool) {
+			got[field] = envVar
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]string{"Host": "PROD_HOST", "Port": "PORT"}, got)
+}

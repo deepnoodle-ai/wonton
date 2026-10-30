@@ -405,7 +405,7 @@ func (p *structParser) parseStruct(rv reflect.Value, prefix string) {
 		field := rt.Field(i)
 		fv := rv.Field(i)
 
-		if !fv.CanSet() {
+		if !fv.CanSet() || field.Tag.Get(p.options.TagName) == "-" {
 			continue
 		}
 
@@ -460,10 +460,7 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	var envVar string
 	var required, notEmpty, loadFile, expand, unset bool
 
-	if envTag == "-" {
-		return // Ignored field
-	}
-
+	// parseStruct already skips fields tagged env:"-".
 	if envTag != "" {
 		parts := strings.Split(envTag, ",")
 		envVar = parts[0]
@@ -596,8 +593,13 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	}
 
 	if p.options.OnSet != nil {
-		isDefault := !p.hasEnvVar(fullEnvVar)
-		p.options.OnSet(field.Name, fullEnvVar, fv.Interface(), isDefault)
+		// Report the variable that supplied the value, which may be the
+		// stage-prefixed one.
+		envVar, isDefault := usedEnvVar, usedEnvVar == ""
+		if isDefault {
+			envVar = fullEnvVar
+		}
+		p.options.OnSet(field.Name, envVar, fv.Interface(), isDefault)
 	}
 
 	// Unset the env var after reading (useful for secrets)
@@ -612,16 +614,6 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 			os.Unsetenv(usedEnvVar)
 		}
 	}
-}
-
-func (p *structParser) hasEnvVar(name string) bool {
-	if p.options.Stage != "" {
-		if _, ok := p.environ[p.options.Stage+"_"+name]; ok {
-			return true
-		}
-	}
-	_, ok := p.environ[name]
-	return ok
 }
 
 // expandEnv expands $VAR and ${VAR} references using the environ map.
