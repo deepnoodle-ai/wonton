@@ -453,6 +453,11 @@ type ViewportView struct {
 // backward from the end), building and measuring only the items that intersect
 // the viewport and caching each one it touches. A list of ten thousand items
 // costs the same per frame as a list of ten.
+//
+// A focusable view with no ID inside an item keeps its focus as the viewport
+// scrolls, because it is keyed by its item's index. If an item is inserted or
+// removed above it, focus moves to the view now at that index. Give the view
+// an ID when focus must follow it through such changes.
 func Viewport(state *ViewportState, items ViewportItems) *ViewportView {
 	return &ViewportView{state: state, items: items}
 }
