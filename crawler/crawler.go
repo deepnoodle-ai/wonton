@@ -556,6 +556,11 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 
 	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats, c.queueSize)
 	scheduler.oneUntilCompleted = c.respectRobotsTxt
+	if c.frontierProvided {
+		// Runs before the sweep in the deferred call above, and after
+		// scheduler.wait on every return path.
+		defer scheduler.requeueUnsent()
+	}
 	scheduler.start(ctx, cancel)
 	admitter := newFrontierAdmitter(c, frontier, cancel)
 	admitter.start(ctx)
