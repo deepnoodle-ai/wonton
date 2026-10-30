@@ -517,6 +517,10 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	// usually cut off at the top, which is what the offset frame is for.
 	s.layout = s.layout[:0]
 	fm := ctx.FocusManager()
+	scope := ""
+	if fm != nil {
+		scope = fm.reserveUnnamedScope()
+	}
 	y := -s.anchorLine
 	for i := s.anchorItem; i >= 0 && i < s.len() && y < height; i = s.nextVisible(i) {
 		h := s.heightOf(i)
@@ -524,10 +528,14 @@ func (v *ViewportView) render(ctx *RenderContext) {
 			frame := newScrollFrame(ctx.RenderFrame(), -y, width, height, h)
 			view := s.viewOf(i)
 			registered := 0
+			exitScope := func() {}
 			if fm != nil {
 				registered = fm.registeredCount()
+				// Key unnamed focusables by item, so scrolling keeps them.
+				exitScope = fm.enterUnnamedScope(scope, i)
 			}
 			view.render(ctx.WithFrame(frame))
+			exitScope()
 			if fm != nil {
 				// Remember what the item registered, so focus can stay on it
 				// once it scrolls out of view.

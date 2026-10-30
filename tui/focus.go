@@ -51,6 +51,10 @@ type FocusManager struct {
 	// frame. Each gets a key from its position among them, so unnamed
 	// elements keep focus across frames and do not share one map entry.
 	unnamed int
+	// unnamedScope prefixes the keys of unnamed elements. A Viewport sets
+	// it for each item, so the keys depend on the item index and not on
+	// which items scrolled into view.
+	unnamedScope string
 }
 
 // unnamedKeyPrefix starts the key of an element with an empty FocusID. The
@@ -73,6 +77,7 @@ func (fm *FocusManager) Clear() {
 	}
 	fm.keep = false
 	fm.unnamed = 0
+	fm.unnamedScope = ""
 	fm.order = fm.order[:0]
 	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
 	for k := range fm.focusables {
@@ -88,7 +93,7 @@ func (fm *FocusManager) Register(f Focusable) {
 
 	id := f.FocusID()
 	if id == "" {
-		id = unnamedKeyPrefix + strconv.Itoa(fm.unnamed)
+		id = unnamedKeyPrefix + fm.unnamedScope + strconv.Itoa(fm.unnamed)
 		fm.unnamed++
 	}
 	fm.focusables[id] = f
@@ -99,6 +104,33 @@ func (fm *FocusManager) Register(f Focusable) {
 		fm.focusedID = id
 	}
 	f.SetFocused(fm.focusedID == id)
+}
+
+// reserveUnnamedScope takes one unnamed position and returns a scope name
+// for it. A view that renders only some of its children, such as a
+// Viewport, passes the name and a child index to enterUnnamedScope.
+func (fm *FocusManager) reserveUnnamedScope() string {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	name := fm.unnamedScope + strconv.Itoa(fm.unnamed)
+	fm.unnamed++
+	return name
+}
+
+// enterUnnamedScope keys the unnamed elements that register next by child
+// of the scope from reserveUnnamedScope. It returns the function that
+// restores the previous scope.
+func (fm *FocusManager) enterUnnamedScope(name string, child int) func() {
+	fm.mu.Lock()
+	defer fm.mu.Unlock()
+	prevScope, prevCount := fm.unnamedScope, fm.unnamed
+	fm.unnamedScope = name + "." + strconv.Itoa(child) + "/"
+	fm.unnamed = 0
+	return func() {
+		fm.mu.Lock()
+		defer fm.mu.Unlock()
+		fm.unnamedScope, fm.unnamed = prevScope, prevCount
+	}
 }
 
 // wouldAutoFocus reports whether the next registered element would take
