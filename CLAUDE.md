@@ -68,3 +68,11 @@ go run ./examples/cli/basic
 # Coverage
 make cover-text
 ```
+
+## Changelog
+
+Feature and fix PRs do not edit `CHANGELOG.md`, so parallel PRs do not
+conflict in `[Unreleased]`. Describe user-visible and incompatible changes in
+the PR body under "What changes for the user" and "Risk and rollout". The
+release PR (`chore(release): prepare vX.Y.Z`) writes the changelog entries
+from the bodies of the PRs merged since the previous release.
