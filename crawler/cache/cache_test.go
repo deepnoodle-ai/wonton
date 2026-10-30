@@ -140,6 +140,20 @@ func TestInMemoryCache_NilValue(t *testing.T) {
 	assert.Nil(t, value)
 }
 
+func TestInMemoryCache_GetReturnsCopy(t *testing.T) {
+	cache := NewInMemoryCache()
+	ctx := context.Background()
+
+	assert.NoError(t, cache.Set(ctx, "key", []byte("value")))
+	value, err := cache.Get(ctx, "key")
+	assert.NoError(t, err)
+	value[0] = 'X'
+
+	value, err = cache.Get(ctx, "key")
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("value"), value)
+}
+
 func TestInMemoryCache_ResponseEntries(t *testing.T) {
 	memory := NewInMemoryCache()
 	ctx := context.Background()

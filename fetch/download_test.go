@@ -90,6 +90,21 @@ func TestFilenameFromContentDisposition(t *testing.T) {
 			header:   `attachment; FILENAME="test.pdf"`,
 			expected: "test.pdf",
 		},
+		{
+			name:     "other parameter ending in filename",
+			header:   `attachment; x-filename="evil.bin"`,
+			expected: "",
+		},
+		{
+			name:     "non-compliant other parameter ending in filename",
+			header:   `attachment; x-filename=evil bin.bin`,
+			expected: "",
+		},
+		{
+			name:     "non-compliant filename after other parameter",
+			header:   `attachment; x-filename=evil bin.bin; filename=real bin.bin`,
+			expected: "real bin.bin",
+		},
 	}
 
 	for _, tt := range tests {

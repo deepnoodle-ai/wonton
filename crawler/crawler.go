@@ -64,6 +64,10 @@ import (
 	"github.com/deepnoodle-ai/wonton/web"
 )
 
+// errNilResponse reports a Fetcher that returned neither a response nor an
+// error.
+var errNilResponse = errors.New("fetcher returned nil response")
+
 // FollowBehavior determines which discovered links the crawler will follow.
 // This controls how the crawler expands beyond the initial seed URLs.
 type FollowBehavior string
@@ -865,6 +869,9 @@ func (c *Crawler) processURL(ctx context.Context, scheduled scheduledItem, callb
 		started := time.Now()
 		c.hostStats.requestStarted(scheduled.host, started)
 		response, err = fetcher.Fetch(ctx, req)
+		if err == nil && response == nil {
+			err = errNilResponse
+		}
 		latency := time.Since(started)
 		c.hostStats.requestFinished(scheduled.host, latency, response, err)
 		observation = requestObservation{

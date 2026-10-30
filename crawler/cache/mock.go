@@ -36,7 +36,10 @@ func (m *InMemoryCache) Get(ctx context.Context, key string) ([]byte, error) {
 	defer m.mutex.RUnlock()
 
 	if value, exists := m.data[key]; exists {
-		return value, nil
+		if value == nil {
+			return nil, nil
+		}
+		return append([]byte{}, value...), nil
 	}
 	return nil, NotFound
 }

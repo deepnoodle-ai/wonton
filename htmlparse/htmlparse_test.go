@@ -230,6 +230,19 @@ func TestFilteredLinks_ExternalOnly(t *testing.T) {
 	assert.Equal(t, "https://other.com", links[0].URL)
 }
 
+func TestFilteredLinks_HostCaseInsensitive(t *testing.T) {
+	html := `<a href="https://EXAMPLE.com/a">Upper</a><a href="https://other.com">External</a>`
+	doc, _ := Parse(html)
+
+	internal := doc.FilteredLinks(LinkFilter{BaseURL: "https://example.com/", Internal: true})
+	assert.Equal(t, 1, len(internal))
+	assert.Equal(t, "https://EXAMPLE.com/a", internal[0].URL)
+
+	external := doc.FilteredLinks(LinkFilter{BaseURL: "https://example.com/", External: true})
+	assert.Equal(t, 1, len(external))
+	assert.Equal(t, "https://other.com", external[0].URL)
+}
+
 func TestTransform_Basic(t *testing.T) {
 	html := `<html><body><p>Hello</p></body></html>`
 	doc, _ := Parse(html)
