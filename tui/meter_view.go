@@ -77,8 +77,11 @@ func (m *MeterView) ShowValue(show bool) *MeterView {
 }
 
 func (m *MeterView) size(maxWidth, maxHeight int) (int, int) {
-	labelW, _ := MeasureText(m.label)
-	w := labelW + 2 + m.width // label + ": " + bar
+	w := m.width
+	if m.label != "" {
+		labelW, _ := MeasureText(m.label)
+		w += labelW + 2 // label + ": "
+	}
 	if m.showValue {
 		w += len(fmt.Sprintf(" %d%%", 100))
 	}

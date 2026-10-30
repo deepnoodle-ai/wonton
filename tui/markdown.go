@@ -411,10 +411,22 @@ func (mr *MarkdownRenderer) renderListItem(node *ast.ListItem, ctx *renderContex
 			}
 
 			if hasInline {
-				for i, line := range mr.wrapSegments(segments, mr.MaxWidth-ctx.indent) {
+				// Wrap the text to the width left after the marker, so
+				// continuation lines, indented to align with the text after
+				// the marker, fit within MaxWidth too.
+				wrapWidth := mr.MaxWidth - ctx.indent - markerWidth
+				if mr.MaxWidth > 0 {
+					wrapWidth = max(wrapWidth, 1)
+				}
+				lines := mr.wrapSegments(segments[1:], wrapWidth)
+				if len(lines) == 0 {
+					lines = [][]StyledSegment{nil}
+				}
+				for i, line := range lines {
 					indent := ctx.indent
-					if i > 0 {
-						// Continuation lines align with text after marker
+					if i == 0 {
+						line = append([]StyledSegment{segments[0]}, line...)
+					} else {
 						indent += markerWidth
 					}
 					ctx.result.Lines = append(ctx.result.Lines, StyledLine{

@@ -162,3 +162,11 @@ func TestTreeBranchChars(t *testing.T) {
 	assert.Equal(t, "|", ascii.Vertical)
 	assert.Equal(t, "`", ascii.Corner)
 }
+
+func TestTreeViewSizeUsesEachNodesIndicator(t *testing.T) {
+	root := NewTreeNode("root").AddChildren(NewTreeNode("child"))
+	view := Tree(root).ExpandChar("v").CollapseChar(">>>")
+	w, _ := view.size(0, 0)
+	// Collapsed root: ">>>" + " " + "root".
+	assert.Equal(t, w, 8)
+}

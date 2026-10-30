@@ -259,3 +259,16 @@ func TestPlayback_PauseStopPlayRunsOneLoop(t *testing.T) {
 	// "a" from the first run, then "abc" from the second run only.
 	assert.Equal(t, "aabc", out.String())
 }
+
+func TestPlayback_SeekPicksNextEvent(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 2, Type: "o", Data: "b"},
+	)
+	p.startTime = time.Now()
+	p.Seek(1.5)
+	assert.Equal(t, p.currentIndex, 1)
+	// Past the end, no event is left to replay.
+	p.Seek(10)
+	assert.Equal(t, p.currentIndex, 2)
+}

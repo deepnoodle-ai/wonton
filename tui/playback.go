@@ -368,13 +368,13 @@ func (p *PlaybackController) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Binary search to find the event closest to the target time
-	targetIndex := 0
+	// Resume at the first event not yet due; past the end, none are left.
+	targetIndex := len(p.events)
 	for i, event := range p.events {
-		if event.Time > seconds {
+		if event.Time >= seconds {
+			targetIndex = i
 			break
 		}
-		targetIndex = i
 	}
 
 	p.currentIndex = targetIndex

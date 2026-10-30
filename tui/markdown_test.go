@@ -1720,3 +1720,23 @@ func TestMarkdownRenderer_BlockQuotePrefixKeepsCodePanelBlankRows(t *testing.T) 
 		}
 	}
 }
+
+func TestMarkdownRenderer_ListContinuationFitsMaxWidth(t *testing.T) {
+	renderer := NewMarkdownRenderer()
+	renderer.MaxWidth = 12
+	result, err := renderer.Render("- one two three four five six")
+	assert.NoError(t, err)
+	assert.True(t, len(result.Lines) > 1, "item should wrap")
+	for i, line := range result.Lines {
+		w := line.Indent
+		for _, seg := range line.Segments {
+			w += runewidth.StringWidth(seg.Text)
+		}
+		assert.True(t, w <= 12, "line %d is %d wide", i, w)
+	}
+}
+
+func TestMeterSizeWithoutLabel(t *testing.T) {
+	w, _ := Meter("", 5, 10).Width(10).ShowValue(false).size(0, 0)
+	assert.Equal(t, w, 10)
+}
