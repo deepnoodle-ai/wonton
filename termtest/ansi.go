@@ -467,6 +467,10 @@ func parseExtendedColor(params []sgrParam, i int) (Color, int, bool) {
 	return Color{}, 0, false
 }
 
+// maxParam is the largest CSI parameter value kept; larger values are
+// clamped to it.
+const maxParam = 65535
+
 // parseParams parses semicolon-separated parameters.
 // Colon-separated sub-parameters are only meaningful for SGR, which uses
 // parseSGRParams; here only each parameter's primary value is kept.
@@ -490,7 +494,10 @@ func parseParams(s string) []int {
 		if idx := strings.IndexByte(p, ':'); idx >= 0 {
 			p = p[:idx]
 		}
-		result[i], _ = strconv.Atoi(p)
+		v, _ := strconv.Atoi(p)
+		// Clamp as terminals do, so a huge count cannot overflow cursor
+		// arithmetic or run a loop billions of times.
+		result[i] = min(v, maxParam)
 	}
 	return result
 }
@@ -594,6 +601,7 @@ func (s *Screen) scrollDown() {
 
 // insertLines inserts n blank lines at the cursor position.
 func (s *Screen) insertLines(n int) {
+	n = min(n, s.height-s.cursorY)
 	for i := 0; i < n; i++ {
 		for y := s.height - 1; y > s.cursorY; y-- {
 			s.cells[y] = s.cells[y-1]
@@ -607,6 +615,7 @@ func (s *Screen) insertLines(n int) {
 
 // deleteLines deletes n lines at the cursor position.
 func (s *Screen) deleteLines(n int) {
+	n = min(n, s.height-s.cursorY)
 	for i := 0; i < n; i++ {
 		for y := s.cursorY; y < s.height-1; y++ {
 			s.cells[y] = s.cells[y+1]
