@@ -191,7 +191,10 @@ func TestPlayer_GetPosition(t *testing.T) {
 	pos := player.GetPosition()
 	assert.True(t, pos >= 4 && pos < 5, "position %v", pos)
 
-	// Seek during playback moves the clock; Pause holds it.
+	// Seek during playback moves the clock; Pause holds it. At 3x, 7/3 is
+	// not a whole number of nanoseconds, so a clock that divides the target
+	// by the speed reads short.
+	player.SetSpeed(3)
 	player.Seek(7)
 	pos = player.GetPosition()
 	assert.True(t, pos >= 7 && pos < 7.5, "position after seek %v", pos)
@@ -354,4 +357,30 @@ func ExamplePlayer_SetSpeed() {
 	// Output:
 	// Initial speed: 1.0x
 	// New speed: 2.0x
+}
+
+// A paused clock does not advance, so GetPosition must return the Seek target
+// exactly, at any speed and for any target.
+func TestPlayer_SeekWhilePausedIsExact(t *testing.T) {
+	filename := createTestRecording(t, []RecordingEvent{
+		{Time: 0.0, Type: "o", Data: "A"},
+		{Time: 20.0, Type: "o", Data: "B"},
+	})
+	player, err := NewPlayer(filename, PlayerOptions{Output: &bytes.Buffer{}})
+	assert.NoError(t, err)
+
+	done := make(chan error)
+	go func() { done <- player.Play() }()
+	time.Sleep(50 * time.Millisecond)
+	player.Pause()
+
+	for _, speed := range []float64{0.3, 1, 3, 7.7} {
+		player.SetSpeed(speed)
+		for _, target := range []float64{0, 1e-9, 0.1, 7.0 / 3, 7, 13.000000001, 19.999999999} {
+			player.Seek(target)
+			assert.Equal(t, player.GetPosition(), target, "speed %v", speed)
+		}
+	}
+	player.Stop()
+	assert.NoError(t, <-done)
 }

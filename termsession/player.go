@@ -24,9 +24,10 @@ type Player struct {
 	header         RecordingHeader
 	output         io.Writer
 	currentIndex   int
-	startTime      time.Time
+	anchorTime     time.Time // clock time when the position was anchorPos
+	anchorPos      float64   // position in recording seconds at anchorTime
 	pauseTime      time.Time
-	totalPaused    time.Duration
+	totalPaused    time.Duration // paused time since anchorTime
 	paused         bool
 	speed          float64
 	loop           bool
@@ -141,16 +142,14 @@ func (p *Player) Play() error {
 		p.mu.Unlock()
 		return ErrPlayerStopped
 	}
-	now := time.Now()
+	p.paused = false
 	if p.hasInitialSeek {
-		p.startTime = now.Add(-time.Duration((p.initialSeek / p.speed) * float64(time.Second)))
+		p.reanchorLocked(p.initialSeek)
 		p.hasInitialSeek = false
 	} else {
-		p.startTime = now
+		p.reanchorLocked(0)
 		p.currentIndex = 0
 	}
-	p.paused = false
-	p.totalPaused = 0
 	p.playing = true
 	p.mu.Unlock()
 
@@ -183,8 +182,7 @@ func (p *Player) Play() error {
 				p.mu.RUnlock()
 				p.mu.Lock()
 				p.currentIndex = 0
-				p.startTime = time.Now()
-				p.totalPaused = 0
+				p.reanchorLocked(0)
 				p.mu.Unlock()
 				continue
 			} else {
@@ -203,14 +201,11 @@ func (p *Player) Play() error {
 		speed := p.speed
 		currentIndex := p.currentIndex
 		seekGen := p.seekGen
-		elapsed := p.elapsedLocked()
+		position := p.positionLocked()
 		p.mu.RUnlock()
 
-		// Calculate when this event should fire
-		targetTime := event.Time / speed
-
-		if elapsed < targetTime {
-			sleepDuration := time.Duration((targetTime - elapsed) * float64(time.Second))
+		if position < event.Time {
+			sleepDuration := time.Duration((event.Time - position) / speed * float64(time.Second))
 			// Only sleep if duration is meaningful (>= 10ms)
 			const minSleepDuration = 10 * time.Millisecond
 			if sleepDuration >= minSleepDuration {
@@ -372,17 +367,31 @@ func (p *Player) activeEvents() []RecordingEvent {
 	return p.events
 }
 
-// elapsedLocked returns the playback-clock seconds elapsed since Play started,
-// excluding paused time (including the in-flight pause, if currently paused).
+// positionLocked returns the playback position in recording seconds: the
+// anchored position plus the clock time since, excluding paused time
+// (including the in-flight pause, if currently paused), scaled by speed.
 // Caller must hold p.mu (read or write).
-func (p *Player) elapsedLocked() float64 {
+func (p *Player) positionLocked() float64 {
 	// Read the clock once, so a paused player reports a steady value.
 	now := time.Now()
-	elapsed := now.Sub(p.startTime) - p.totalPaused
+	elapsed := now.Sub(p.anchorTime) - p.totalPaused
 	if p.paused {
 		elapsed -= now.Sub(p.pauseTime)
 	}
-	return elapsed.Seconds()
+	return p.anchorPos + elapsed.Seconds()*p.speed
+}
+
+// reanchorLocked sets the playback clock to read pos now. The position is
+// stored as given, not converted through the speed, so a read on the same
+// clock tick returns pos exactly. Caller must hold p.mu for writing.
+func (p *Player) reanchorLocked(pos float64) {
+	now := time.Now()
+	p.anchorTime = now
+	p.anchorPos = pos
+	p.totalPaused = 0
+	if p.paused {
+		p.pauseTime = now
+	}
 }
 
 // SetSpeed changes the playback speed multiplier.
@@ -401,15 +410,8 @@ func (p *Player) SetSpeed(speed float64) {
 	defer p.mu.Unlock()
 
 	if p.playing {
-		// Adjust the start time so the current position in the recording is
-		// preserved: position (in recording seconds) is elapsed * speed, and it
-		// must be unchanged under the new speed.
-		elapsed := p.elapsedLocked()
-		if elapsed > 0 {
-			position := elapsed * p.speed
-			adjustment := elapsed - position/speed
-			p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
-		}
+		// Keep the current position; only the rate it advances at changes.
+		p.reanchorLocked(p.positionLocked())
 	}
 
 	p.speed = speed
@@ -459,10 +461,7 @@ func (p *Player) Seek(seconds float64) {
 	p.currentIndex = targetIndex
 	p.seekGen++
 	if p.playing {
-		// Adjust start time to account for the seek
-		elapsed := p.elapsedLocked()
-		adjustment := elapsed - (seconds / p.speed)
-		p.startTime = p.startTime.Add(time.Duration(adjustment * float64(time.Second)))
+		p.reanchorLocked(seconds)
 	} else {
 		p.initialSeek = seconds
 		p.hasInitialSeek = true
@@ -508,7 +507,7 @@ func (p *Player) GetPosition() float64 {
 	duration := events[len(events)-1].Time
 	switch {
 	case p.playing:
-		return min(max(p.elapsedLocked()*p.speed, 0), duration)
+		return min(max(p.positionLocked(), 0), duration)
 	case p.hasInitialSeek:
 		return min(p.initialSeek, duration)
 	case p.currentIndex == 0:
