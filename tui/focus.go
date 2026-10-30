@@ -2,6 +2,8 @@ package tui
 
 import (
 	"image"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,7 +47,15 @@ type FocusManager struct {
 	// Viewport sets it when it leaves items unrendered, because the focused
 	// element can be one that scrolled out of view.
 	keep bool
+	// unnamed counts the elements with an empty FocusID registered this
+	// frame. Each gets a key from its position among them, so unnamed
+	// elements keep focus across frames and do not share one map entry.
+	unnamed int
 }
+
+// unnamedKeyPrefix starts the key of an element with an empty FocusID. The
+// NUL byte keeps it apart from any ID an application would choose.
+const unnamedKeyPrefix = "\x00unnamed-"
 
 // NewFocusManager creates a new focus manager instance.
 func NewFocusManager() *FocusManager {
@@ -62,6 +72,7 @@ func (fm *FocusManager) Clear() {
 		fm.dropStaleLocked()
 	}
 	fm.keep = false
+	fm.unnamed = 0
 	fm.order = fm.order[:0]
 	// Clear map to prevent memory leaks from transient IDs (e.g. Buttons with closures)
 	for k := range fm.focusables {
@@ -76,21 +87,18 @@ func (fm *FocusManager) Register(f Focusable) {
 	defer fm.mu.Unlock()
 
 	id := f.FocusID()
-	// An element with an empty ID can hold focus while focusedID is "", so
-	// a later element must not also auto-focus.
-	_, emptyFocused := fm.focusables[""]
+	if id == "" {
+		id = unnamedKeyPrefix + strconv.Itoa(fm.unnamed)
+		fm.unnamed++
+	}
 	fm.focusables[id] = f
 	fm.order = append(fm.order, id)
 
 	// Auto-focus first element if none focused
-	if fm.focusedID == "" && !emptyFocused {
+	if fm.focusedID == "" {
 		fm.focusedID = id
-		f.SetFocused(true)
-	} else {
-		// An element with an empty ID only holds focus when it auto-focused
-		// above; a later one must not match the empty focusedID.
-		f.SetFocused(id != "" && fm.focusedID == id)
 	}
+	f.SetFocused(fm.focusedID == id)
 }
 
 // wouldAutoFocus reports whether the next registered element would take
@@ -98,8 +106,7 @@ func (fm *FocusManager) Register(f Focusable) {
 func (fm *FocusManager) wouldAutoFocus() bool {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
-	_, emptyFocused := fm.focusables[""]
-	return fm.focusedID == "" && !emptyFocused
+	return fm.focusedID == ""
 }
 
 // GetFocused returns the currently focused element, or nil if none.
@@ -112,10 +119,14 @@ func (fm *FocusManager) GetFocused() Focusable {
 	return fm.focusables[fm.focusedID]
 }
 
-// GetFocusedID returns the ID of the currently focused element.
+// GetFocusedID returns the ID of the currently focused element. It returns
+// "" when nothing is focused or the focused element has an empty FocusID.
 func (fm *FocusManager) GetFocusedID() string {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
+	if strings.HasPrefix(fm.focusedID, unnamedKeyPrefix) {
+		return ""
+	}
 	return fm.focusedID
 }
 

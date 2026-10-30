@@ -597,3 +597,39 @@ func TestFocusManager_RemovedViewportItemMovesFocus(t *testing.T) {
 	assert.NotEqual(t, "field-9", r.focusMgr.GetFocusedID(), "a removed item does not keep focus")
 	assert.NotNil(t, r.focusMgr.GetFocused(), "a remaining field has focus")
 }
+
+func TestFocusManager_UnnamedFocusableKeepsTabFocus(t *testing.T) {
+	fm := NewFocusManager()
+	a := &mockFocusable{id: "a"}
+	anon := &mockFocusable{id: ""}
+	b := &mockFocusable{id: "b"}
+
+	renderFocusables(fm, a, anon, b)
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, a, anon, b)
+	assert.True(t, anon.focused, "the unnamed focusable keeps focus after a re-render")
+	assert.False(t, a.focused)
+	assert.True(t, fm.GetFocused() == Focusable(anon))
+	assert.Equal(t, fm.GetFocusedID(), "")
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, a, anon, b)
+	assert.True(t, b.focused, "Tab moves past the unnamed focusable")
+}
+
+func TestFocusManager_TwoUnnamedFocusablesRouteKeysToFocused(t *testing.T) {
+	fm := NewFocusManager()
+	first := &mockFocusable{id: ""}
+	second := &mockFocusable{id: ""}
+
+	renderFocusables(fm, first, second)
+	assert.True(t, first.focused)
+	assert.False(t, second.focused)
+	assert.True(t, fm.GetFocused() == Focusable(first))
+
+	fm.HandleKey(KeyEvent{Key: KeyTab})
+	renderFocusables(fm, first, second)
+	assert.False(t, first.focused)
+	assert.True(t, second.focused)
+	assert.True(t, fm.GetFocused() == Focusable(second))
+}

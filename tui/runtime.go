@@ -71,11 +71,7 @@ type Runtime struct {
 	// Click-count state: repeated clicks on the same cell with the same button
 	// inside doubleClickThreshold count up, so views get double- and
 	// triple-click for free rather than each keeping its own timer.
-	lastClickTime   time.Time
-	lastClickX      int
-	lastClickY      int
-	lastClickButton MouseButton
-	clickCount      int
+	clicks clickCounter
 
 	// Suspend state. suspendKeys is non-nil exactly while Suspend is running
 	// fn; the input reader diverts events into it instead of the event loop.
@@ -840,7 +836,7 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 				Type:       MouseClick,
 				Modifiers:  mouseEvent.Modifiers,
 				Time:       mouseEvent.Time,
-				ClickCount: r.countClick(mouseEvent),
+				ClickCount: r.clicks.next(mouseEvent, r.mousePressButton),
 			}
 			return event, clickEvent
 		}
@@ -864,27 +860,36 @@ func (r *Runtime) processMouseEvent(event Event) (Event, Event) {
 // still count as part of the same multi-click. Matches MouseHandler.
 const doubleClickThreshold = 500 * time.Millisecond
 
-// countClick advances the multi-click counter for a click at ev's position and
-// returns the resulting count.
-func (r *Runtime) countClick(ev MouseEvent) int {
-	sameSpot := ev.X == r.lastClickX && ev.Y == r.lastClickY &&
-		r.mousePressButton == r.lastClickButton
-	if sameSpot && !r.lastClickTime.IsZero() && ev.Time.Sub(r.lastClickTime) <= doubleClickThreshold {
-		r.clickCount++
+// clickCounter counts repeated clicks for the synthetic MouseClick events
+// that Runtime and InlineApp make from a press and release.
+type clickCounter struct {
+	lastTime   time.Time
+	lastX      int
+	lastY      int
+	lastButton MouseButton
+	count      int
+}
+
+// next advances the multi-click counter for a click of button at ev's
+// position and returns the resulting count.
+func (c *clickCounter) next(ev MouseEvent, button MouseButton) int {
+	sameSpot := ev.X == c.lastX && ev.Y == c.lastY && button == c.lastButton
+	if sameSpot && !c.lastTime.IsZero() && ev.Time.Sub(c.lastTime) <= doubleClickThreshold {
+		c.count++
 		// A terminal cycles word, line, word: the click after a triple starts
 		// a new run rather than counting on to four. Without this, every click
 		// past the third stays a line select for as long as the user keeps
 		// clicking.
-		if r.clickCount > 3 {
-			r.clickCount = 1
+		if c.count > 3 {
+			c.count = 1
 		}
 	} else {
-		r.clickCount = 1
+		c.count = 1
 	}
-	r.lastClickTime = ev.Time
-	r.lastClickX, r.lastClickY = ev.X, ev.Y
-	r.lastClickButton = r.mousePressButton
-	return r.clickCount
+	c.lastTime = ev.Time
+	c.lastX, c.lastY = ev.X, ev.Y
+	c.lastButton = button
+	return c.count
 }
 
 // commandExecutor runs async commands (Goroutine 3).

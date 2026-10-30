@@ -232,6 +232,20 @@ func TestInlineApp_MouseClickSynthesis(t *testing.T) {
 	assert.Nil(t, click)
 }
 
+func TestInlineApp_MouseClickCount(t *testing.T) {
+	runner := NewInlineApp()
+	now := time.Now()
+	click := func(at time.Time) int {
+		runner.processMouseEvent(MouseEvent{X: 3, Y: 1, Button: MouseButtonLeft, Type: MousePress, Time: at})
+		_, ev := runner.processMouseEvent(MouseEvent{X: 3, Y: 1, Button: MouseButtonLeft, Type: MouseRelease, Time: at})
+		return ev.(MouseEvent).ClickCount
+	}
+	assert.Equal(t, click(now), 1)
+	assert.Equal(t, click(now.Add(100*time.Millisecond)), 2)
+	assert.Equal(t, click(now.Add(200*time.Millisecond)), 3)
+	assert.Equal(t, click(now.Add(2*time.Second)), 1)
+}
+
 // TestInlineApp_ProcessEventWithQuitCheck tests quit detection
 func TestInlineApp_ProcessEventWithQuitCheck(t *testing.T) {
 	runner := NewInlineApp()
