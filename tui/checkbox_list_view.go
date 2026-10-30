@@ -90,6 +90,7 @@ func (c *CheckboxListView) FocusBounds() image.Rectangle {
 }
 
 func (c *CheckboxListView) HandleKeyEvent(event KeyEvent) bool {
+	clampCursor(c.cursor, len(c.items))
 	if nav := listNavForKey(event, true); nav != listNavNone && c.cursor != nil {
 		visible := listViewport(c.lastHeight, c.height, 10)
 		next, moved := moveListCursor(nav, *c.cursor, len(c.items), visible)
@@ -102,7 +103,7 @@ func (c *CheckboxListView) HandleKeyEvent(event KeyEvent) bool {
 
 	// Handle space to toggle
 	if event.Rune == ' ' {
-		if c.cursor != nil && *c.cursor >= 0 && *c.cursor < len(c.checked) {
+		if c.cursor != nil && *c.cursor < len(c.items) && *c.cursor < len(c.checked) {
 			c.checked[*c.cursor] = !c.checked[*c.cursor]
 			if c.onToggle != nil {
 				c.onToggle(*c.cursor, c.checked[*c.cursor])

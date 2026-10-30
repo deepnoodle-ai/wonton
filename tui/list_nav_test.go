@@ -275,3 +275,33 @@ func TestFilterableListViKeysDisabledWithFilter(t *testing.T) {
 	assert.True(t, list2.HandleKeyEvent(KeyEvent{Rune: 'j'}))
 	assert.Equal(t, pos+1, list2sel)
 }
+
+// An out-of-range index highlights the nearest item, so keys must act on
+// that item too.
+func TestListViews_OutOfRangeIndexActsOnHighlightedItem(t *testing.T) {
+	items := []ListItem{{Label: "A"}, {Label: "B"}}
+
+	selected := 4
+	got := -1
+	SelectList(items, &selected).
+		OnSelect(func(_ ListItem, idx int) { got = idx }).
+		HandleKeyEvent(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, got, 1, "SelectList Enter selects the highlighted last item")
+
+	selected = 4
+	SelectList(items, &selected).HandleKeyEvent(KeyEvent{Key: KeyArrowUp})
+	assert.Equal(t, selected, 0, "ArrowUp moves from the highlighted item")
+
+	selected = -3
+	got = -1
+	RadioList(items, &selected).
+		OnSelect(func(idx int) { got = idx }).
+		HandleKeyEvent(KeyEvent{Rune: ' '})
+	assert.Equal(t, got, 0, "RadioList Space selects the highlighted first item")
+
+	cursor := 4
+	checked := []bool{false, false, false, false, false}
+	CheckboxList(items, checked, &cursor).HandleKeyEvent(KeyEvent{Rune: ' '})
+	assert.Equal(t, checked, []bool{false, true, false, false, false},
+		"CheckboxList Space toggles the highlighted item, not a hidden one")
+}

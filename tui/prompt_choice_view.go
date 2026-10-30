@@ -426,6 +426,7 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		return false
 	}
 
+	clampCursor(p.selected, total)
 	selected := 0
 	if p.selected != nil {
 		selected = *p.selected
@@ -455,11 +456,7 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 		return true
 	case KeyEnter:
 		if p.onSelect != nil {
-			inputText := ""
-			if p.inputText != nil {
-				inputText = *p.inputText
-			}
-			p.onSelect(selected, inputText)
+			p.onSelect(selected, p.currentInputText())
 		}
 		return true
 	}
@@ -500,7 +497,18 @@ func (p *PromptChoiceView) HandleKeyEvent(event KeyEvent) bool {
 	return false
 }
 
-// updateInputFocus updates the textInput focus based on current selection
+// currentInputText returns the custom input's text: the bound string, or
+// the text typed into the internal input when nothing is bound.
+func (p *PromptChoiceView) currentInputText() string {
+	if p.inputText != nil {
+		return *p.inputText
+	}
+	if p.reg == nil {
+		return ""
+	}
+	return p.reg.promptChoices.Get(p.id).Value()
+}
+
 // setSelected stores the selection. A nil selected pointer has nowhere to
 // keep it, so the selection stays at option 0.
 func (p *PromptChoiceView) setSelected(idx int) {
@@ -509,6 +517,7 @@ func (p *PromptChoiceView) setSelected(idx int) {
 	}
 }
 
+// updateInputFocus updates the textInput focus based on current selection
 func (p *PromptChoiceView) updateInputFocus() {
 	if ti := p.reg.promptChoices.Get(p.id); ti != nil {
 		ti.SetFocused(p.focused && p.isInputSelected())
@@ -568,7 +577,7 @@ func (p *PromptChoiceView) render(ctx *RenderContext) {
 
 	selected := 0
 	if p.selected != nil {
-		selected = *p.selected
+		selected = max(min(*p.selected, p.totalOptions()-1), 0)
 	}
 
 	// Sync input text to textInput
@@ -648,10 +657,7 @@ func (p *PromptChoiceView) renderInputOption(ctx *RenderContext, y, idx int, isS
 	}
 
 	// Draw input content or placeholder
-	inputValue := ""
-	if p.inputText != nil {
-		inputValue = *p.inputText
-	}
+	inputValue := ti.Value()
 
 	if inputValue == "" {
 		// Show placeholder

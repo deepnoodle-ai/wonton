@@ -159,6 +159,7 @@ func (l *FilterableListView) HandleKeyEvent(event KeyEvent) bool {
 	// Vi-style navigation keys are only active when typing is not being
 	// captured by the filter input.
 	allowVi := !(l.showFilter && l.filterText != nil)
+	clampCursor(l.selected, len(l.filteredIdxs))
 	if nav := listNavForKey(event, allowVi); nav != listNavNone && l.selected != nil {
 		if next, moved := moveListCursor(nav, *l.selected, len(l.filteredIdxs), visibleHeight); moved {
 			*l.selected = next
@@ -431,13 +432,7 @@ func (l *FilterableListView) applyFilter() {
 	}
 
 	// Clamp selected index to filtered list bounds
-	if l.selected != nil && *l.selected >= len(l.filteredIdxs) {
-		if len(l.filteredIdxs) > 0 {
-			*l.selected = len(l.filteredIdxs) - 1
-		} else {
-			*l.selected = 0
-		}
-	}
+	clampCursor(l.selected, len(l.filteredIdxs))
 }
 
 func (l *FilterableListView) size(maxWidth, maxHeight int) (int, int) {
