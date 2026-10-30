@@ -190,6 +190,15 @@ func TestPlayer_GetPosition(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	pos := player.GetPosition()
 	assert.True(t, pos >= 4 && pos < 5, "position %v", pos)
+
+	// Seek during playback moves the clock; Pause holds it.
+	player.Seek(7)
+	pos = player.GetPosition()
+	assert.True(t, pos >= 7 && pos < 7.5, "position after seek %v", pos)
+	player.Pause()
+	held := player.GetPosition()
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, player.GetPosition(), held)
 	player.Stop()
 	assert.NoError(t, <-done)
 }
