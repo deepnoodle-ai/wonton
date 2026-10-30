@@ -76,3 +76,13 @@ func TestParseQuotedAndSpacedPaths(t *testing.T) {
 	assert.Equal(t, "my image.png", diff.Files[1].NewPath)
 	assert.Equal(t, "tab\there.bin", diff.Files[2].NewPath)
 }
+
+// A "diff --git" line from git diff --no-prefix has no a/ or b/, so a
+// mode-only change still takes its path from that line.
+func TestParseNoPrefixModeOnlyChange(t *testing.T) {
+	diff, err := Parse("diff --git run.sh run.sh\nold mode 100644\nnew mode 100755\n")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(diff.Files))
+	assert.Equal(t, "run.sh", diff.Files[0].OldPath)
+	assert.Equal(t, "run.sh", diff.Files[0].NewPath)
+}

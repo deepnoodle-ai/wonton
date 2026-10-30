@@ -212,8 +212,10 @@ type Diff struct {
 //   - Binary files (marked with IsBinary=true)
 //   - Plain diff -u output, including tab-separated timestamps in headers
 //
-// The parser strips a/ and b/ prefixes from file paths (common in git diffs)
-// and preserves both the raw line (with markers) and cleaned content. Hunk
+// The parser strips a/ and b/ prefixes from file paths (common in git diffs),
+// unquotes paths that git C-quoted (such as "a/caf\303\251.txt"), and keeps
+// files with no hunks (empty, binary, mode-only, or pure renames). It
+// preserves both the raw line (with markers) and cleaned content. Hunk
 // line counts from the @@ header are used to parse hunk content, so changed
 // lines that resemble file headers (e.g., a removed line starting with "--")
 // are handled correctly.
@@ -493,7 +495,7 @@ func unquotePath(s string) string {
 // gitHeaderPaths returns the old and new paths from the "a/<old> b/<new>"
 // part of a "diff --git" line. Paths may contain spaces, so it first tries
 // the case where both sides name the same path, then quoted sides, then the
-// last " b/".
+// last " b/", then the same path with no prefix (git diff --no-prefix).
 func gitHeaderPaths(s string) (oldPath, newPath string) {
 	if n := len(s) - len("a/ b/"); n > 0 && n%2 == 0 {
 		p := s[2 : 2+n/2]
@@ -510,6 +512,9 @@ func gitHeaderPaths(s string) (oldPath, newPath string) {
 	}
 	if i := strings.LastIndex(s, " b/"); i >= 0 {
 		return strings.TrimPrefix(unquotePath(s[:i]), "a/"), s[i+len(" b/"):]
+	}
+	if n := len(s) - 1; n > 0 && n%2 == 0 && s == s[:n/2]+" "+s[:n/2] {
+		return s[:n/2], s[:n/2]
 	}
 	return "", ""
 }
