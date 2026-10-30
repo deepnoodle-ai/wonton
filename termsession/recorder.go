@@ -74,6 +74,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/terminal"
 )
@@ -159,6 +160,11 @@ type Recorder struct {
 	// a secret split across PTY reads is still redacted.
 	outputRedactor terminal.Redactor
 	inputRedactor  terminal.Redactor
+
+	// The start of a UTF-8 character split across calls, held back until
+	// the rest arrives, so it is not written to the JSON as invalid UTF-8.
+	outPartial string
+	inPartial  string
 }
 
 // NewRecorder creates a new recorder that writes to the specified file.
@@ -273,6 +279,7 @@ func (r *Recorder) RecordOutput(data string) {
 		// The redactor can hold back the end of data until the next event.
 		data = r.outputRedactor.Redact(data)
 	}
+	data, r.outPartial = splitIncompleteRune(r.outPartial + data)
 
 	if len(data) == 0 {
 		return
@@ -339,6 +346,7 @@ func (r *Recorder) RecordInput(data string) {
 	if r.redactSecrets {
 		data = r.inputRedactor.Redact(data)
 	}
+	data, r.inPartial = splitIncompleteRune(r.inPartial + data)
 
 	if len(data) == 0 {
 		return
@@ -351,16 +359,34 @@ func (r *Recorder) RecordInput(data string) {
 	})
 }
 
-// flushRedactorsLocked records the text the redactors hold back, when nothing
-// more can continue it, and resets them. Caller must hold r.mu.
+// flushRedactorsLocked records the text the redactors hold back, and any
+// partial UTF-8 character, when nothing more can continue it, and resets
+// them. Caller must hold r.mu.
 func (r *Recorder) flushRedactorsLocked() {
 	now := time.Now()
-	if data := r.outputRedactor.Flush(); data != "" {
+	if data := r.outPartial + r.outputRedactor.Flush(); data != "" {
 		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "o", Data: data})
 	}
-	if data := r.inputRedactor.Flush(); data != "" {
+	if data := r.inPartial + r.inputRedactor.Flush(); data != "" {
 		r.writeEvent(RecordingEvent{Time: r.eventTimeLocked(now), Type: "i", Data: data})
 	}
+	r.outPartial, r.inPartial = "", ""
+}
+
+// splitIncompleteRune splits s before the start of an incomplete multi-byte
+// UTF-8 character at its end. partial is empty if s ends on a character
+// boundary, or with bytes that can never become a valid character.
+func splitIncompleteRune(s string) (complete, partial string) {
+	for back := 1; back <= utf8.UTFMax && back <= len(s); back++ {
+		b := s[len(s)-back]
+		if utf8.RuneStart(b) {
+			if b >= 0xC0 && !utf8.FullRuneInString(s[len(s)-back:]) {
+				return s[:len(s)-back], s[len(s)-back:]
+			}
+			break
+		}
+	}
+	return s, ""
 }
 
 // Pause temporarily suspends recording.

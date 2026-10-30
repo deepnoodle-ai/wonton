@@ -298,6 +298,27 @@ func TestRecorder_CloseFlushesHeldText(t *testing.T) {
 	assert.Equal(t, eventData(events, "o"), "hello world")
 }
 
+// TestRecorder_CharacterSplitAcrossReads verifies that a UTF-8 character
+// split across calls is recorded whole, with or without redaction, and not
+// as U+FFFD.
+func TestRecorder_CharacterSplitAcrossReads(t *testing.T) {
+	for _, redact := range []bool{false, true} {
+		filename := filepath.Join(t.TempDir(), "split.cast")
+		r, err := NewRecorder(filename, 80, 24, RecordingOptions{RedactSecrets: redact})
+		assert.NoError(t, err)
+		r.RecordOutput("ab\xe2\x94")
+		r.RecordOutput("\x80cd\n")
+		r.RecordInput("\xe4\xb8")
+		r.RecordInput("\xad")
+		assert.NoError(t, r.Close())
+
+		_, events, err := LoadCastFile(filename)
+		assert.NoError(t, err)
+		assert.Equal(t, eventData(events, "o"), "ab─cd\n")
+		assert.Equal(t, eventData(events, "i"), "中")
+	}
+}
+
 // TestRecordingEvent_ResizeRoundTrip verifies resize events survive a
 // save/load cycle through the JSON array encoding.
 func TestRecordingEvent_ResizeRoundTrip(t *testing.T) {
