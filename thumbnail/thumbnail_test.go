@@ -251,6 +251,8 @@ func TestCardScaleIsCappedByWidth(t *testing.T) {
 		assert.True(t, scale <= float64(req.Width)/200, "%dx%d: scale %v", req.Width, req.Height, scale)
 	}
 	assert.Equal(t, cardScale(Request{Width: 320, Height: 200}), 1.0)
+	// A tall card scales by its width, so its text fits across it.
+	assert.Equal(t, cardScale(Request{Width: 320, Height: 600}), 1.6)
 
 	res, err := Render(Request{MimeType: "application/octet-stream", Name: "file.bin", Width: 1, Height: 1_000_000})
 	assert.NoError(t, err)
