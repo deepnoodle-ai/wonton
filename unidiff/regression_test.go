@@ -48,3 +48,31 @@ func TestParseDropsHunkBeforeFileHeader(t *testing.T) {
 	assert.Equal(t, 1, len(diff.Files[0].Hunks))
 	assert.Equal(t, "old", diff.Files[0].Hunks[0].Lines[0].Content)
 }
+
+// H20: a file with no hunks, such as an empty new file, is kept when the next
+// file starts with "--- ", and the next file does not inherit its flags.
+func TestParseKeepsHunklessFile(t *testing.T) {
+	diff, err := Parse("--- /dev/null\n+++ b/empty.txt\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-old\n+new\n")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(diff.Files))
+	assert.Equal(t, "empty.txt", diff.Files[0].NewPath)
+	assert.True(t, diff.Files[0].IsNew)
+	assert.Equal(t, "existing.txt", diff.Files[1].NewPath)
+	assert.False(t, diff.Files[1].IsNew)
+}
+
+// M34: git C-quoted paths are unquoted, in "---"/"+++" headers and in the
+// "diff --git" fallback, and unquoted paths may contain spaces.
+func TestParseQuotedAndSpacedPaths(t *testing.T) {
+	diff, err := Parse("diff --git \"a/caf\\303\\251.txt\" \"b/caf\\303\\251.txt\"\n" +
+		"--- \"a/caf\\303\\251.txt\"\n+++ \"b/caf\\303\\251.txt\"\n@@ -1 +1 @@\n-old\n+new\n" +
+		"diff --git a/my image.png b/my image.png\nnew file mode 100644\nBinary files /dev/null and b/my image.png differ\n" +
+		"diff --git \"a/tab\\there.bin\" \"b/tab\\there.bin\"\nnew file mode 100644\n")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(diff.Files))
+	assert.Equal(t, "café.txt", diff.Files[0].OldPath)
+	assert.Equal(t, "café.txt", diff.Files[0].NewPath)
+	assert.Equal(t, "my image.png", diff.Files[1].OldPath)
+	assert.Equal(t, "my image.png", diff.Files[1].NewPath)
+	assert.Equal(t, "tab\there.bin", diff.Files[2].NewPath)
+}
