@@ -631,7 +631,12 @@ func (p *structParser) setFieldValue(fv reflect.Value, value string, sf reflect.
 			if err != nil {
 				return err
 			}
-			fv.Set(reflect.ValueOf(parsed))
+			v := reflect.ValueOf(parsed)
+			if !v.IsValid() {
+				// A parser for an interface type returned nil.
+				v = reflect.Zero(fv.Type())
+			}
+			fv.Set(v)
 			return nil
 		}
 	}

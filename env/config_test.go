@@ -1117,6 +1117,23 @@ func TestParse_CustomParserInterfaceType(t *testing.T) {
 	assert.Equal(t, "hi", cfg.Value.Greet())
 }
 
+func TestParse_CustomParserInterfaceTypeNil(t *testing.T) {
+	type Config struct {
+		Value greeter `env:"VALUE"`
+	}
+
+	cfg, err := Parse[Config](
+		WithEnvironment(map[string]string{
+			"VALUE": "none",
+		}),
+		WithParser(func(s string) (greeter, error) {
+			return nil, nil
+		}),
+	)
+	assert.NoError(t, err)
+	assert.Nil(t, cfg.Value)
+}
+
 func TestParse_StageWithPrefix(t *testing.T) {
 	type Config struct {
 		Host string `env:"HOST"`
