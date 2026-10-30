@@ -181,6 +181,10 @@ func TestTerminalRenameAndKill(t *testing.T) {
 	assert.Equal(t, term.Session(), "after")
 	assert.True(t, s.HasSession(ctx, "after"))
 	assert.Error(t, term.Rename("bad:name"))
+	assert.NoError(t, term.Rename("-dash"))
+	assert.True(t, s.HasSession(ctx, "-dash"))
+	assert.NoError(t, s.RenameSession(ctx, "-dash", "-again"))
+	assert.NoError(t, s.RenameSession(ctx, "-again", "after"))
 
 	assert.NoError(t, term.Kill())
 	assert.True(t, term.Exited())
@@ -317,6 +321,10 @@ func TestServerOptions(t *testing.T) {
 	v, err := s.GetOption(ctx, "@layout")
 	assert.NoError(t, err)
 	assert.Equal(t, v, `{"a": "b c"}`)
+	assert.NoError(t, s.SetOption(ctx, "@dash", "-x"))
+	v, err = s.GetOption(ctx, "@dash")
+	assert.NoError(t, err)
+	assert.Equal(t, v, "-x")
 	assert.Error(t, s.NewSession(ctx, SessionOptions{Name: "a.b"}))
 }
 
@@ -351,4 +359,44 @@ func TestTerminalWrappedRows(t *testing.T) {
 	wrapped, err := term.WrappedRows()
 	assert.NoError(t, err)
 	assert.Equal(t, wrapped, []bool{true, false, false, false})
+}
+
+// Text that starts with a dash is typed, not read as a tmux flag.
+func TestTerminalSendsTextStartingWithDash(t *testing.T) {
+	s := testServer(t)
+	term, err := s.Open(context.Background(), TerminalOptions{Session: "dash", Command: "cat", Width: 30, Height: 5})
+	assert.NoError(t, err)
+	defer term.Kill()
+
+	assert.NoError(t, term.SendText("-R"))
+	assert.NoError(t, term.Paste("--help"))
+	assert.NoError(t, term.SendKey(terminal.KeyEvent{Paste: "-v"}))
+	waitFor(t, "typed text", func() bool { return strings.Contains(term.Screen().Text(), "-R--help-v") })
+}
+
+func TestServerNewSessionCommandStartingWithDash(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	// Without "--" tmux reads the command as a flag and fails.
+	assert.NoError(t, s.NewSession(ctx, SessionOptions{Name: "cmd", Command: "-zsh"}))
+}
+
+// tmux replies to neither an empty command nor a comment, so a line with
+// them gets only the replies of its real commands.
+func TestControlSkipsEmptyCommandsAndComments(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	assert.NoError(t, s.NewSession(ctx, SessionOptions{Name: "ctl", Command: "cat"}))
+	ctl, err := s.Attach(ctx, "ctl", nil)
+	assert.NoError(t, err)
+	defer ctl.Close()
+
+	out, err := ctl.Command("display-message -p one ; ; display-message -p two")
+	assert.NoError(t, err)
+	assert.Equal(t, out, []string{"one", "two"})
+	out, err = ctl.Command("display-message -p a ; # display-message -p b")
+	assert.NoError(t, err)
+	assert.Equal(t, out, []string{"a"})
+	_, err = ctl.Command("# only a comment")
+	assert.Error(t, err)
 }

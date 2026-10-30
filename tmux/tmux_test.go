@@ -190,6 +190,10 @@ func TestMouseSequence(t *testing.T) {
 	assert.Equal(t, seq, "\x1b[M#!!")
 	_, ok = MouseSequence(press, 300, 0, false)
 	assert.False(t, ok)
+	_, ok = MouseSequence(press, -5, 0, true)
+	assert.False(t, ok)
+	_, ok = MouseSequence(press, 0, -1, false)
+	assert.False(t, ok)
 
 	_, ok = MouseSequence(terminal.MouseEvent{Type: terminal.MouseClick}, 0, 0, true)
 	assert.False(t, ok)
@@ -324,6 +328,15 @@ func TestCountCommands(t *testing.T) {
 	assert.Equal(t, countCommands("display -p a; display -p b"), 2)
 	assert.Equal(t, countCommands("display -p a ;"), 1)
 	assert.Equal(t, countCommands("display -p a ; ; "), 1)
+	// tmux skips empty commands and comments, and replies to neither.
+	assert.Equal(t, countCommands("display -p one ; ; display -p two"), 2)
+	assert.Equal(t, countCommands("display -p a ; # comment ; display -p b"), 1)
+	assert.Equal(t, countCommands("display -p a #b ; display -p c"), 1)
+	assert.Equal(t, countCommands("display -p a ;# x"), 1)
+	assert.Equal(t, countCommands("display -p a#b ; display -p c"), 2)
+	assert.Equal(t, countCommands(`display -p "#{session_name}" ; display -p '#'`), 2)
+	assert.Equal(t, countCommands("# only a comment"), 0)
+	assert.Equal(t, countCommands(" ; "), 0)
 }
 
 // tmux skips the rest of a list after a failed command, so the error
@@ -384,6 +397,12 @@ func TestWrappedRows(t *testing.T) {
 	}
 	joined := []string{"klmno", "xy", "hello wor ld", "日本語日本語x", ""}
 	assert.Equal(t, wrappedRows(rows, joined), []bool{false, false, true, false, true, false, false})
+
+	// As tmux captures a 9-column pane: a wide character that does not fit
+	// leaves a padding cell, and trailing spaces wrap onto further rows.
+	rows = []string{"日本語日 ", "本語日本 ", "語  ", "hello    ", "         ", "    ", "ab  "}
+	joined = []string{"日本語日本語日本語", "hello               ", "ab"}
+	assert.Equal(t, wrappedRows(rows, joined), []bool{true, true, false, true, true, false, false})
 }
 
 func TestParseSnapshotEscapedHeader(t *testing.T) {

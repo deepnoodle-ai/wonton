@@ -178,7 +178,7 @@ func (s *Server) NewSession(ctx context.Context, opts SessionOptions) error {
 		args = append(args, "-e", kv)
 	}
 	if opts.Command != "" {
-		args = append(args, opts.Command)
+		args = append(args, "--", opts.Command)
 	}
 	// "=name:" is the session's current window, matched exactly; the
 	// window and pane commands do not accept a bare session target.
@@ -209,7 +209,7 @@ func (s *Server) KillSession(ctx context.Context, name string) error {
 
 // RenameSession renames a session.
 func (s *Server) RenameSession(ctx context.Context, from, to string) error {
-	_, err := s.Run(ctx, "rename-session", "-t", "="+from, to)
+	_, err := s.Run(ctx, "rename-session", "-t", "="+from, "--", to)
 	return err
 }
 
@@ -276,7 +276,7 @@ func (s *Server) Sessions(ctx context.Context) ([]SessionInfo, error) {
 // GetOption returns the value of a global user option (one whose name starts
 // with "@"), or "" when it is unset or the server is not running.
 func (s *Server) GetOption(ctx context.Context, name string) (string, error) {
-	out, err := s.Run(ctx, "show-options", "-gqv", name)
+	out, err := s.Run(ctx, "show-options", "-gqv", "--", name)
 	if err != nil && isNoServer(err) {
 		return "", nil
 	}
@@ -287,7 +287,7 @@ func (s *Server) GetOption(ctx context.Context, name string) (string, error) {
 // server, which makes them a place to keep state that belongs with the
 // sessions, such as how a program had laid them out.
 func (s *Server) SetOption(ctx context.Context, name, value string) error {
-	_, err := s.Run(ctx, "set-option", "-g", name, value)
+	_, err := s.Run(ctx, "set-option", "-g", "--", name, value)
 	return err
 }
 

@@ -176,6 +176,12 @@ func (c *Control) send(command string) (chan reply, error) {
 	if strings.ContainsAny(command, "\r\n") {
 		return nil, errors.New("tmux: command contains a newline; quote it with Quote")
 	}
+	// tmux sends no reply to a line of only comments and separators, so
+	// waiting for one would wait forever.
+	count := countCommands(command)
+	if count == 0 {
+		return nil, errors.New("tmux: command line has no commands")
+	}
 	ch := make(chan reply, 1)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -186,7 +192,7 @@ func (c *Control) send(command string) (chan reply, error) {
 	c.pending = append(c.pending, pendingCommand{
 		command:   command,
 		reply:     ch,
-		remaining: countCommands(command),
+		remaining: count,
 	})
 	if _, err := io.WriteString(c.stdin, command+"\n"); err != nil {
 		c.pending = c.pending[:len(c.pending)-1]
@@ -314,30 +320,46 @@ func (c *Control) deliver(output []string, err error) {
 }
 
 // countCommands counts the commands in a command line: tmux answers each
-// with its own reply. Any ';' outside quotes and not escaped separates two
-// commands, unless nothing but spaces follows it.
+// with its own reply. Any ';' outside quotes and not escaped ends a command;
+// a command with no words gets no reply. An unquoted '#' at the start of a
+// word comments out the rest of the line.
 func countCommands(line string) int {
-	n := 1
+	n := 0
+	inCommand := false // the current command has a word
+	wordStart := true
 	var quote byte
 	for i := 0; i < len(line); i++ {
 		ch := line[i]
+		atWordStart := wordStart
+		wordStart = false
 		switch {
 		case quote == '\'':
 			if ch == '\'' {
 				quote = 0
 			}
+			continue
+		case quote == '"' && ch == '"':
+			quote = 0
+			continue
+		case quote == '"' && ch != '\\':
+			continue
+		case ch == '#' && atWordStart:
+			return n
+		case ch == ';':
+			inCommand = false
+			wordStart = true
+			continue
+		case ch == ' ' || ch == '\t':
+			wordStart = true
+			continue
 		case ch == '\\':
 			i++ // the escaped character is never special
-		case quote == '"':
-			if ch == '"' {
-				quote = 0
-			}
 		case ch == '\'' || ch == '"':
 			quote = ch
-		case ch == ';':
-			if strings.TrimLeft(line[i+1:], " \t;") != "" {
-				n++
-			}
+		}
+		if !inCommand {
+			inCommand = true
+			n++
 		}
 	}
 	return n

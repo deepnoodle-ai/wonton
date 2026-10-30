@@ -105,6 +105,9 @@ func KeyName(ev terminal.KeyEvent) (name string, literal bool, ok bool) {
 // program would not be sent, such as a click synthesized from a press and
 // release that were already sent.
 func MouseSequence(ev terminal.MouseEvent, x, y int, sgr bool) (seq string, ok bool) {
+	if x < 0 || y < 0 {
+		return "", false // outside the pane
+	}
 	var code int
 	release := false
 	switch ev.Button {
