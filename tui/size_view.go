@@ -92,6 +92,19 @@ func MinSize(w, h int, inner View) View {
 	return &sizeView{inner: inner, minWidth: w, minHeight: h}
 }
 
+// flex forwards the inner view's flex when the wrapper only sets minimums.
+// A fixed or maximum size stays fixed: the wrapper cannot tell which axis its
+// container distributes, and a flexible share could exceed the size it pins.
+func (s *sizeView) flex() int {
+	if s.width > 0 || s.height > 0 || s.maxWidth > 0 || s.maxHeight > 0 {
+		return 0
+	}
+	if flex, ok := s.inner.(Flexible); ok {
+		return flex.flex()
+	}
+	return 0
+}
+
 func (s *sizeView) size(maxWidth, maxHeight int) (int, int) {
 	// Apply max constraints
 	constrainedMaxW := maxWidth

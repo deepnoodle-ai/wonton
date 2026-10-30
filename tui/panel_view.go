@@ -123,7 +123,20 @@ func (b *PanelView) size(maxWidth, maxHeight int) (int, int) {
 	// If content provided and no explicit size, size to content
 	if b.content != nil && (w == 0 || h == 0) {
 		if sizer, ok := b.content.(interface{ size(int, int) (int, int) }); ok {
-			cw, ch := sizer.size(maxWidth, maxHeight)
+			// Measure the content in the space it will render in: inside
+			// the border and within an explicit width or height.
+			limitW, limitH := maxWidth, maxHeight
+			if w > 0 && (limitW == 0 || w < limitW) {
+				limitW = w
+			}
+			if h > 0 && (limitH == 0 || h < limitH) {
+				limitH = h
+			}
+			if b.borderStyle != BorderNone {
+				limitW, _ = insetLimit(limitW, 2)
+				limitH, _ = insetLimit(limitH, 2)
+			}
+			cw, ch := sizer.size(limitW, limitH)
 			if w == 0 {
 				w = cw
 				if b.borderStyle != BorderNone {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"math"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -17,6 +18,37 @@ func renderSplit(s *SplitState, width, height int) *termtest.Screen {
 		})
 	})
 	return SprintScreen(view, WithWidth(width), WithHeight(height))
+}
+
+func TestSplitNilStateRendersNothing(t *testing.T) {
+	SprintScreen(Split(nil, func(string) View { return nil }), WithWidth(10), WithHeight(3))
+}
+
+func TestSplitIgnoresNonFiniteWeights(t *testing.T) {
+	s := &SplitState{}
+	s.Append("a", SplitColumns)
+	s.Append("b", SplitColumns)
+	s.Root.Children[0].Weight = math.NaN()
+	s.Root.Children[1].Weight = math.Inf(1)
+	screen := renderSplit(s, 21, 2)
+	assert.Equal(t, screen.Row(0), "aaaaaaaaaa bbbbbbbbbb")
+}
+
+func TestSplitAndAppendDropStaleGutters(t *testing.T) {
+	s := &SplitState{}
+	s.Append("a", SplitColumns)
+	s.Append("b", SplitColumns)
+	renderSplit(s, 21, 5)
+	s.HandleMouse(MouseEvent{Type: MouseMove, X: 10, Y: 2})
+	assert.NotNil(t, s.hover)
+
+	s.Split("a", "c", SplitRows)
+	assert.Nil(t, s.hover, "the gutter belongs to the old tree")
+	renderSplit(s, 21, 5)
+	s.HandleMouse(MouseEvent{Type: MouseMove, X: 10, Y: 2})
+	assert.NotNil(t, s.hover)
+	s.Append("d", SplitRows)
+	assert.Nil(t, s.hover)
 }
 
 func TestSplitLayoutColumnsAndRows(t *testing.T) {

@@ -139,6 +139,10 @@ func (g *GroupView) size(maxWidth, maxHeight int) (int, int) {
 			minWidths[i] = minW
 			totalMinWidth += minW
 		}
+		// As in Stack: a flexible child's natural width can exceed what is
+		// left, and unclamped it would push the children after it off the
+		// row.
+		totalMinWidth = fitMinimums(minWidths, totalMinWidth, remainingWidth)
 
 		// Calculate extra space beyond minimums
 		extraWidth := remainingWidth - totalMinWidth

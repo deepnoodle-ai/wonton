@@ -43,7 +43,7 @@ func (n *SplitNode) IsLeaf() bool { return len(n.Children) == 0 }
 func (n *SplitNode) Bounds() image.Rectangle { return n.bounds }
 
 func (n *SplitNode) weight() float64 {
-	if n.Weight <= 0 {
+	if n.Weight <= 0 || math.IsNaN(n.Weight) || math.IsInf(n.Weight, 0) {
 		return 1
 	}
 	return n.Weight
@@ -188,6 +188,8 @@ func (s *SplitState) find(id string) (parent, leaf *SplitNode) {
 // new pane gets an equal share. On an empty layout it becomes the only pane.
 func (s *SplitState) Append(id string, axis SplitAxis) {
 	leaf := &SplitNode{ID: id}
+	// The gutters from the last render describe the old tree.
+	s.drag, s.hover, s.dividers = nil, nil, nil
 	switch {
 	case s.Root == nil:
 		s.Root = leaf
@@ -221,6 +223,8 @@ func (s *SplitState) Split(target, id string, axis SplitAxis) bool {
 	if leaf == nil {
 		return false
 	}
+	// The gutters from the last render describe the old tree.
+	s.drag, s.hover, s.dividers = nil, nil, nil
 	half := leaf.weight() / 2
 	added := &SplitNode{ID: id, Weight: half}
 	if parent != nil && parent.Axis == axis {
@@ -596,6 +600,9 @@ func (v *SplitView) size(maxWidth, maxHeight int) (int, int) {
 
 func (v *SplitView) render(ctx *RenderContext) {
 	s := v.state
+	if s == nil {
+		return
+	}
 	s.dividers = s.dividers[:0]
 	if s.Root == nil {
 		return

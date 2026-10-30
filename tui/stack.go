@@ -148,20 +148,7 @@ func (s *StackView) size(maxWidth, maxHeight int) (int, int) {
 		// full height of everything it scrolls. Left unclamped it overruns the
 		// stack and pushes the children after it off the bottom, so scale the
 		// minimums down to what is actually available.
-		if totalMinHeight > remainingHeight {
-			assigned := 0
-			for i := range minHeights {
-				scaled := 0
-				if totalMinHeight > 0 {
-					scaled = minHeights[i] * remainingHeight / totalMinHeight
-				}
-				minHeights[i] = scaled
-				assigned += scaled
-			}
-			// Integer division can leave a row or two unassigned.
-			minHeights[0] += remainingHeight - assigned
-			totalMinHeight = remainingHeight
-		}
+		totalMinHeight = fitMinimums(minHeights, totalMinHeight, remainingHeight)
 
 		// Calculate extra space beyond minimums
 		extraHeight := remainingHeight - totalMinHeight
@@ -267,4 +254,24 @@ func (s *StackView) render(ctx *RenderContext) {
 		currentY += size.Y
 		renderedVisible = true
 	}
+}
+
+// fitMinimums scales flexible children's minimum sizes down proportionally
+// when together they exceed the space available, and returns their new total.
+func fitMinimums(mins []int, total, avail int) int {
+	if total <= avail {
+		return total
+	}
+	assigned := 0
+	for i := range mins {
+		scaled := 0
+		if total > 0 {
+			scaled = mins[i] * avail / total
+		}
+		mins[i] = scaled
+		assigned += scaled
+	}
+	// Integer division can leave a cell or two unassigned.
+	mins[0] += avail - assigned
+	return avail
 }
