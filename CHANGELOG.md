@@ -24,6 +24,11 @@ bug fixes. Release notes identify incompatible changes explicitly.
 - `unidiff.Parse` drops a hunk that comes before any file header. Before,
   that hunk was added to the next file.
 
+- `crawler.Crawl` runs its seed URLs when the `Frontier` already holds items.
+  Before, a worker could finish those items before the seeds were submitted,
+  which ended the crawl early. `Crawl` then returned `context.Canceled` and
+  never fetched the seeds.
+
 ## [0.10.3] - 2026-10-29
 
 ### Fixed

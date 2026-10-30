@@ -259,6 +259,47 @@ func TestCrawlerProcessesPreloadedFrontier(t *testing.T) {
 	assert.Equal(t, discoveredAt, result.DiscoveredAt)
 }
 
+func TestCrawlerRunsSeedsWithPreloadedFrontier(t *testing.T) {
+	mockFetcher := fetch.NewMockFetcher()
+	mockFetcher.AddResponse("https://example.com/preloaded", &fetch.Response{
+		URL:  "https://example.com/preloaded",
+		HTML: "<html></html>",
+	})
+	mockFetcher.AddResponse("https://example.com/seed", &fetch.Response{
+		URL:  "https://example.com/seed",
+		HTML: "<html></html>",
+	})
+
+	// If seeds were submitted after workers start, the first worker could
+	// finish the preloaded item and end the crawl first. Starting many workers
+	// widens that window, and repeating makes a regression fail reliably.
+	for i := 0; i < 20; i++ {
+		frontier := NewMemoryFrontier(0)
+		assert.NoError(t, frontier.Push(context.Background(), URLItem{URL: "https://example.com/preloaded"}))
+		c, err := New(Options{
+			Workers:          2000,
+			Frontier:         frontier,
+			DefaultFetcher:   mockFetcher,
+			FollowBehavior:   FollowNone,
+			RespectRobotsTxt: BoolPtr(false),
+		})
+		assert.NoError(t, err)
+
+		var mu sync.Mutex
+		seen := map[string]bool{}
+		err = c.Crawl(context.Background(), []string{"https://example.com/seed"}, func(_ context.Context, res *Result) {
+			mu.Lock()
+			seen[res.URL.String()] = true
+			mu.Unlock()
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]bool{
+			"https://example.com/preloaded": true,
+			"https://example.com/seed":      true,
+		}, seen)
+	}
+}
+
 func TestCrawlerReportsDepthReferrerAndDiscoveryTime(t *testing.T) {
 	mockFetcher := fetch.NewMockFetcher()
 	mockFetcher.AddResponse("https://example.com", &fetch.Response{
