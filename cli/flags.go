@@ -117,8 +117,8 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		if enumStr != "" {
 			enum = strings.Split(enumStr, ",")
 		}
-		_, required := field.Tag.Lookup("required")
-		_, hidden := field.Tag.Lookup("hidden")
+		required := boolTag(field.Tag, "required")
+		hidden := boolTag(field.Tag, "hidden")
 
 		// time.Duration has kind Int64, so check it before the kind switch.
 		if field.Type == durationType {
@@ -267,6 +267,17 @@ func splitList(s string) []string {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
 	return parts
+}
+
+// boolTag reports whether a marker tag such as `required:""` is set. The tag
+// counts as set when present, unless its value parses as false.
+func boolTag(tag reflect.StructTag, key string) bool {
+	v, ok := tag.Lookup(key)
+	if !ok {
+		return false
+	}
+	b, err := strconv.ParseBool(v)
+	return err != nil || b
 }
 
 func setFieldValue(v reflect.Value, s string) error {

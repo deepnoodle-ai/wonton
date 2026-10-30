@@ -161,7 +161,9 @@ import (
 //	app.Command("serve").Description("Start server").Run(handler)
 //	app.Group("users").Command("list").Run(listUsersHandler)
 //
-// The App automatically provides built-in help and version commands.
+// The App provides a built-in help command, and a version command when a
+// version is set. A command the app defines with either name replaces the
+// built-in.
 type App struct {
 	name        string
 	description string
@@ -454,23 +456,23 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		if gf == "--help" || (gf == "-h" && a.isHelpShort()) {
 			return a.showHelp()
 		}
-		if gf == "--version" {
-			if a.version != "" {
-				fmt.Fprintln(a.stdout, a.version)
-			}
+		if gf == "--version" && a.isBuiltinVersionFlag() {
+			fmt.Fprintln(a.stdout, a.version)
 			return nil
 		}
 	}
 
-	// Handle built-in commands
-	switch result.Command {
-	case "help":
-		return a.showHelp()
-	case "version":
-		if a.version != "" {
-			fmt.Fprintln(a.stdout, a.version)
+	// Handle built-in commands, unless the app defines a command by that name
+	if a.commands[result.Command] == nil {
+		switch result.Command {
+		case "help":
+			return a.showHelp()
+		case "version":
+			if a.version != "" {
+				fmt.Fprintln(a.stdout, a.version)
+				return nil
+			}
 		}
-		return nil
 	}
 
 	// Build the full argument list for the command.
@@ -501,7 +503,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 			if len(result.CommandArgs) > 0 {
 				firstArg := result.CommandArgs[0]
 				// Check if it's a help flag
-				if firstArg == "--help" || firstArg == "-h" {
+				if firstArg == "--help" || (firstArg == "-h" && a.isHelpShort()) {
 					return group.showHelp()
 				}
 				// Not a flag - could be an unknown subcommand
@@ -648,11 +650,52 @@ func (a *App) isHelpShort() bool {
 	return a.findGlobalFlagByShort("h") == nil
 }
 
+// isBuiltinVersionFlag reports whether --version prints the app version: the
+// app has a version and no global flag claims the name.
+func (a *App) isBuiltinVersionFlag() bool {
+	return a.version != "" && a.findGlobalFlag("version") == nil
+}
+
+// definesFlag reports whether the app, any group, or any command defines a
+// flag with the given long name.
+func (a *App) definesFlag(name string) bool {
+	has := func(flags []Flag) bool {
+		for _, f := range flags {
+			if f.GetName() == name {
+				return true
+			}
+		}
+		return false
+	}
+	if has(a.globalFlags) {
+		return true
+	}
+	for _, c := range a.commands {
+		if c != nil && has(c.flags) {
+			return true
+		}
+	}
+	for _, g := range a.groups {
+		if g == nil {
+			continue
+		}
+		if has(g.flags) {
+			return true
+		}
+		for _, c := range g.commands {
+			if c != nil && has(c.flags) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // applyColorOverrides scans args for --no-color, --color, and --force-color
 // flags and updates the app's color setting accordingly. The recognized
 // flags are stripped from the returned args so downstream parsing is not
-// affected. Command-line flags take precedence over env vars and TTY
-// detection.
+// affected. A flag the app defines itself is left for normal parsing.
+// Command-line flags take precedence over env vars and TTY detection.
 func (a *App) applyColorOverrides(args []string) []string {
 	out := make([]string, 0, len(args))
 	for i, arg := range args {
@@ -661,6 +704,10 @@ func (a *App) applyColorOverrides(args []string) []string {
 		if arg == "--" {
 			out = append(out, args[i:]...)
 			return out
+		}
+		if strings.HasPrefix(arg, "--") && a.definesFlag(arg[2:]) {
+			out = append(out, arg)
+			continue
 		}
 		switch arg {
 		case "--no-color", "--no-colour":
