@@ -268,7 +268,7 @@ func (asb *AnimatedStatusBar) Draw(frame RenderFrame) {
 		if item.Value != "" {
 			if item.Animation != nil {
 				// Apply animation to value
-				// GetStyle also sizes a RainbowAnimation that has no Length.
+				// A RainbowAnimation with no Length spans total, the value's length.
 				forEachAnimatedCluster(item.Value, func(j, total, col int, cluster string, _ int) bool {
 					style := item.Animation.GetStyle(asb.currentFrame, j, total)
 					// Combine with background

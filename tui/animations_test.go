@@ -25,8 +25,36 @@ func TestRainbowAnimation_Defaults(t *testing.T) {
 	// Should use defaults when speed/length are 0
 	style := anim.GetStyle(0, 0, 10)
 	assert.NotNil(t, style)
-	assert.Equal(t, 3, anim.speed)   // default
-	assert.Equal(t, 10, anim.length) // set to totalChars
+	assert.Equal(t, 3, anim.speed) // default
+	// An unset length follows each text's own length rather than locking
+	// in the first one seen.
+	assert.Equal(t, 0, anim.length)
+	assert.Equal(t, anim.GetStyle(0, 0, 20), (&RainbowAnimation{length: 20}).GetStyle(0, 0, 20))
+}
+
+func TestRainbowAnimation_EmptyText(t *testing.T) {
+	anim := &RainbowAnimation{}
+	assert.NotNil(t, anim.GetStyle(0, 0, 0).FgRGB)
+}
+
+func TestBorderAnimationsWithEmptyBorder(t *testing.T) {
+	// AnimatedBordered always passes a length of at least 1, but a custom
+	// view can call GetBorderStyle directly with an empty or negative
+	// length. The animations must not divide by zero.
+	for _, anim := range []BorderAnimation{
+		&RainbowBorderAnimation{},
+		&GradientBorderAnimation{},
+		&WaveBorderAnimation{},
+	} {
+		SprintScreen(Size(1, 1, AnimatedBordered(Text("x"), anim)), WithWidth(1), WithHeight(1))
+		anim.GetBorderStyle(0, BorderPartTop, 0, 0)
+		anim.GetBorderStyle(0, BorderPartTop, 3, -10) // -WaveWidth by default
+	}
+}
+
+func TestWaveBorderAnimationNegativePosition(t *testing.T) {
+	w := &WaveBorderAnimation{}
+	assert.NotNil(t, w.GetBorderStyle(0, BorderPartTop, -35, 10).FgRGB)
 }
 
 func TestRainbowAnimation_Reversed(t *testing.T) {
