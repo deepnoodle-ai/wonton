@@ -316,15 +316,6 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 	if !exists {
 		// Create new textInput widget
 		ti := newTextInput()
-		if cfg.mask != 0 {
-			ti.WithMask(cfg.mask)
-		}
-		if cfg.pastePlaceholder {
-			ti.WithPastePlaceholderMode(true)
-		}
-		if cfg.cursorBlink {
-			ti.WithCursorBlink(true)
-		}
 		if cfg.multiline {
 			ti.WithMultilineMode(true)
 		}
@@ -373,6 +364,13 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 		state.input.Style = *cfg.textStyle
 	}
 	state.input.Highlight = cfg.highlight
+
+	// Sync options the builder can change between frames.
+	state.input.MaskChar = cfg.mask
+	state.input.PastePlaceholderMode = cfg.pastePlaceholder
+	state.pastePlaceholder = cfg.pastePlaceholder
+	state.input.CursorBlink = cfg.cursorBlink
+	state.cursorBlink = cfg.cursorBlink
 
 	// Sync multiline mode (in case it changed)
 	state.input.MultilineMode = cfg.multiline

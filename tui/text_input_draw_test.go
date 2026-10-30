@@ -131,3 +131,31 @@ func TestTextInputDrawsCRLFAsLineBreak(t *testing.T) {
 		t.Fatalf("Value() = %q, want the CRLF kept", ti.Value())
 	}
 }
+
+// Text that exactly fills the width leaves the cursor in the last column.
+func TestTextInputCursorAtExactFullWidth(t *testing.T) {
+	ti := newTextInput()
+	ti.SetFocused(true)
+	ti.SetValue("abcdefghij")
+	cell := drawTextInput(t, ti, 10, 1)
+	if cursorCells(cell, ti, 10, 1) != 1 {
+		t.Fatal("cursor is not drawn when the text fills the width")
+	}
+}
+
+// MaxLength also limits pasted text and Shift+Enter newlines.
+func TestTextInputMaxLengthLimitsPasteAndNewline(t *testing.T) {
+	ti := newTextInput().WithMultilineMode(true)
+	ti.MaxLength = 5
+	ti.HandlePaste("abc\ndefgh")
+	if ti.Value() != "abc\nd" {
+		t.Fatalf("Value() = %q, want the paste cut to 5 runes", ti.Value())
+	}
+	ti.HandleKey(KeyEvent{Key: KeyEnter, Shift: true})
+	if ti.Value() != "abc\nd" {
+		t.Fatalf("Value() = %q, want Shift+Enter ignored at MaxLength", ti.Value())
+	}
+	if !ti.HandlePaste("x") || ti.Value() != "abc\nd" {
+		t.Fatalf("Value() = %q, want a paste at MaxLength consumed and ignored", ti.Value())
+	}
+}

@@ -540,13 +540,16 @@ func (s *promptState) applyAutocomplete() {
 		return
 	}
 
-	completion := s.acMatches[s.acSelected]
+	completion := []rune(s.acMatches[s.acSelected])
 
 	// Replace from acFrom to cursor with completion
 	before := s.input[:s.acFrom]
 	after := s.input[s.cursorPos:]
-	s.input = append(before, append([]rune(completion), after...)...)
-	s.cursorPos = len(before) + len([]rune(completion))
+	if m := s.config.maxLength; m > 0 && len(before)+len(completion)+len(after) > m {
+		completion = completion[:max(m-len(before)-len(after), 0)]
+	}
+	s.input = append(before, append(completion, after...)...)
+	s.cursorPos = len(before) + len(completion)
 
 	s.acActive = false
 }
@@ -583,6 +586,12 @@ func (s *promptState) buildView() View {
 			pos += lineLen + 1 // +1 for the newline
 			cursorLine = i + 1
 			cursorCol = 0
+		}
+		if cursorLine >= len(lines) {
+			// The display is shorter than the input (WithMask("") shows
+			// nothing); keep the cursor at the end of the last line.
+			cursorLine = len(lines) - 1
+			cursorCol = len([]rune(lines[cursorLine]))
 		}
 
 		// Build each line as a view
@@ -662,7 +671,9 @@ func (s *promptState) buildView() View {
 	maxShow := 5
 	items := []View{}
 
-	for i := 0; i < len(s.acMatches) && i < maxShow; i++ {
+	// Scroll the window so the selected match stays visible.
+	start := max(s.acSelected-maxShow+1, 0)
+	for i := start; i < len(s.acMatches) && i < start+maxShow; i++ {
 		var item View
 		if i == s.acSelected {
 			item = Group(
