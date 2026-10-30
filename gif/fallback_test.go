@@ -108,6 +108,43 @@ func TestParseLigatures_Truncated(t *testing.T) {
 	}
 }
 
+// TestCoverageCountsGlyphsAsWork checks that a format 2 range charges
+// work per glyph. Six bytes can cover 65,536 glyphs, so counting reads
+// alone let a crafted table run for billions of steps.
+func TestCoverageCountsGlyphsAsWork(t *testing.T) {
+	// Format 2, one range: glyphs 0 to 999 at coverage index 0.
+	b := []byte{0, 2, 0, 1, 0, 0, 0x03, 0xE7, 0, 0}
+	r := &gsubReader{b: b}
+	if got := r.coverage(0, 1000); len(got) != 1000 {
+		t.Fatalf("coverage returned %d glyphs, want 1000", len(got))
+	}
+	if r.work < 1000 {
+		t.Errorf("work = %d after covering 1000 glyphs, want at least 1000", r.work)
+	}
+}
+
+// TestLigatureSkipsUncoveredSlots checks that a coverage table shorter
+// than the ligature set count adds no ligature on glyph 0, .notdef.
+func TestLigatureSkipsUncoveredSlots(t *testing.T) {
+	b := []byte{
+		0, 1, // format 1
+		0, 10, // coverage offset
+		0, 2, // ligature set count
+		0, 16, 0, 16, // both sets at offset 16
+		0, 1, 0, 1, 0, 5, // coverage format 1: one glyph, 5
+		0, 1, 0, 4, // set: one ligature at offset 4
+		0, 9, 0, 2, 0, 7, // ligature: glyph 9 replaces the first glyph, then 7
+	}
+	table := ligatureLookup{}
+	(&gsubReader{b: b}).readLigatureSubst(table, 0)
+	if len(table[5]) != 1 {
+		t.Fatalf("glyph 5 has %d ligatures, want 1", len(table[5]))
+	}
+	if len(table[0]) != 0 {
+		t.Errorf("glyph 0 (.notdef) has %d ligatures, want 0", len(table[0]))
+	}
+}
+
 // litPixels counts the pixels brighter than mid-gray in the given cells of
 // a rendered row, with no padding.
 func litPixels(tr *TerminalRenderer, firstCell, cells int) int {

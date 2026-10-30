@@ -370,6 +370,7 @@ func (g *GIF) AddImage(img *image.Paletted, delay int) *GIF {
 // Encode writes the GIF to an io.Writer.
 func (g *GIF) Encode(w io.Writer) error {
 	anim := &gif.GIF{
+		Config:    image.Config{Width: g.width, Height: g.height, ColorModel: g.palette},
 		Image:     g.images,
 		Delay:     g.delays,
 		LoopCount: g.loopCount,

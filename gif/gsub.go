@@ -105,6 +105,12 @@ func (r *gsubReader) readLigatureSubst(table ligatureLookup, sub int) {
 	setCount := r.u16(sub + 4)
 	firsts := r.coverage(sub+r.u16(sub+2), setCount)
 	for i, first := range firsts {
+		if first == 0 {
+			// A coverage table that lists fewer glyphs than setCount
+			// leaves slots at 0, .notdef. A ligature on .notdef would
+			// match runes the font lacks.
+			continue
+		}
 		set := sub + r.u16(sub+6+i*2)
 		for j, n := 0, r.u16(set); j < n && r.ok(); j++ {
 			lig := set + r.u16(set+2+j*2)
@@ -139,6 +145,7 @@ func (r *gsubReader) coverage(off, n int) []sfnt.GlyphIndex {
 			rec := off + 4 + i*6
 			start, end, index := r.u16(rec), r.u16(rec+2), r.u16(rec+4)
 			for g := start; g <= end && index+g-start < n && r.ok(); g++ {
+				r.work++ // a range can cover 65,536 glyphs in 6 bytes
 				glyphs[index+g-start] = sfnt.GlyphIndex(g)
 			}
 		}
@@ -152,15 +159,15 @@ func (r *gsubReader) coverage(off, n int) []sfnt.GlyphIndex {
 }
 
 // gsubReader reads big-endian values from a font table. An out-of-range
-// read, or more reads than maxGSUBWork, marks the reader bad, and every
-// later read returns zero.
+// read, or more work than maxGSUBWork, marks the reader bad, and every
+// later read returns zero. Work counts reads and coverage glyphs.
 type gsubReader struct {
 	b    []byte
 	work int
 	bad  bool
 }
 
-func (r *gsubReader) ok() bool { return !r.bad }
+func (r *gsubReader) ok() bool { return !r.bad && r.work <= maxGSUBWork }
 
 func (r *gsubReader) bytes(off, n int) []byte {
 	r.work++

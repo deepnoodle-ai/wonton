@@ -254,7 +254,7 @@ func (e *Emulator) ProcessOutput(data string) {
 			// Tab to next 8-column boundary
 			e.screen.CursorX = ((e.screen.CursorX / 8) + 1) * 8
 			if e.screen.CursorX >= e.screen.Width {
-				e.screen.CursorX = e.screen.Width - 1
+				e.screen.CursorX = max(e.screen.Width-1, 0)
 			}
 		case '\x07': // Bell - ignore
 		default:
@@ -392,13 +392,13 @@ func (e *Emulator) processCSI(params, cmd string) {
 		n := parseParam(params, 1)
 		e.screen.CursorY += n
 		if e.screen.CursorY >= e.screen.Height {
-			e.screen.CursorY = e.screen.Height - 1
+			e.screen.CursorY = max(e.screen.Height-1, 0)
 		}
 	case "C": // Cursor Forward
 		n := parseParam(params, 1)
 		e.screen.CursorX += n
 		if e.screen.CursorX >= e.screen.Width {
-			e.screen.CursorX = e.screen.Width - 1
+			e.screen.CursorX = max(e.screen.Width-1, 0)
 		}
 	case "D": // Cursor Back
 		n := parseParam(params, 1)
@@ -439,7 +439,7 @@ func (e *Emulator) processCSI(params, cmd string) {
 			e.screen.CursorX = 0
 		}
 		if e.screen.CursorX >= e.screen.Width {
-			e.screen.CursorX = e.screen.Width - 1
+			e.screen.CursorX = max(e.screen.Width-1, 0)
 		}
 	case "d": // Cursor Vertical Absolute
 		row := parseParam(params, 1)
@@ -448,14 +448,14 @@ func (e *Emulator) processCSI(params, cmd string) {
 			e.screen.CursorY = 0
 		}
 		if e.screen.CursorY >= e.screen.Height {
-			e.screen.CursorY = e.screen.Height - 1
+			e.screen.CursorY = max(e.screen.Height-1, 0)
 		}
 	case "E": // Cursor Next Line
 		n := parseParam(params, 1)
 		e.screen.CursorX = 0
 		e.screen.CursorY += n
 		if e.screen.CursorY >= e.screen.Height {
-			e.screen.CursorY = e.screen.Height - 1
+			e.screen.CursorY = max(e.screen.Height-1, 0)
 		}
 	case "F": // Cursor Previous Line
 		n := parseParam(params, 1)
