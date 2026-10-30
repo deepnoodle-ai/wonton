@@ -3480,17 +3480,22 @@ func TestShowHelpWithGroups(t *testing.T) {
 	assert.Contains(t, output, "users")
 }
 
-// Test for version with no version set
+// Without a version, "version" and "--version" are not built in, so they do
+// not silently succeed.
 
 func TestVersionWithNoVersion(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")
 	app.SetStdout(&buf)
+	app.Command("serve").Run(func(*Context) error { return nil })
 
-	// No version set
 	err := app.ExecuteArgs([]string{"version"})
-	assert.NoError(t, err)
-	assert.Empty(t, buf.String())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command: version")
+
+	err = app.ExecuteArgs([]string{"--version", "serve"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag: --version")
 }
 
 // Test for command without handler

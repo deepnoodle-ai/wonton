@@ -81,10 +81,13 @@ func (a *App) Test(t *testing.T, opts ...TestOption) *TestResult {
 		opt(cfg)
 	}
 
-	// Force non-interactive, no-color for deterministic test output
+	// Force no color, and non-interactive unless the caller already chose
+	// with ForceInteractive, for deterministic test output
 	origForceInteractive := a.forceInteractive
 	origColorEnabled := a.colorEnabled
-	a.ForceInteractive(false)
+	if a.forceInteractive == nil {
+		a.ForceInteractive(false)
+	}
 	a.colorEnabled = false
 	defer func() {
 		a.forceInteractive = origForceInteractive

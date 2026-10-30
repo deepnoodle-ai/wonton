@@ -82,8 +82,8 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 				continue
 			}
 
-			// Handle --help specially
-			if name == "help" {
+			// Handle the built-in --help and --version specially
+			if name == "help" || (name == "version" && p.app.isBuiltinVersionFlag()) {
 				result.GlobalFlags = append(result.GlobalFlags, arg)
 				i++
 				continue
@@ -267,13 +267,13 @@ func (p *parser) resolveCommandPosition(result *parseResult, args []string, pos 
 // Returns (commandName, groupName). For a direct command, groupName is empty.
 // For a group, commandName is empty. For group:command syntax, both are set.
 func (p *parser) resolveCommand(arg string) (command, group string) {
-	// Built-in commands are always recognized
-	if arg == "help" || arg == "version" {
+	// Check direct commands
+	if _, ok := p.app.commands[arg]; ok {
 		return arg, ""
 	}
 
-	// Check direct commands
-	if _, ok := p.app.commands[arg]; ok {
+	// Built-in commands, unless a command above already claimed the name
+	if arg == "help" || (arg == "version" && p.app.version != "") {
 		return arg, ""
 	}
 

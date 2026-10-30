@@ -377,3 +377,78 @@ func TestBundleEndingInHelpShowsRootHelp(t *testing.T) {
 		assert.False(t, ranSub, bundle)
 	}
 }
+
+// M30: an app's own "version" or "help" command runs instead of the built-in.
+func TestCustomVersionAndHelpCommands(t *testing.T) {
+	app := TestApp("app").Version("1.2.3")
+	ran := ""
+	app.Command("version").Run(func(*Context) error { ran = "version"; return nil })
+	app.Command("help").Run(func(*Context) error { ran = "help"; return nil })
+
+	assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+	assert.Equal(t, "version", ran)
+	assert.NoError(t, app.ExecuteArgs([]string{"help"}))
+	assert.Equal(t, "help", ran)
+}
+
+// M31: --version takes no value, so it may come before a command.
+func TestVersionFlagBeforeCommand(t *testing.T) {
+	app := TestApp("app").Version("1.2.3")
+	ran := false
+	app.Command("serve").Run(func(*Context) error { ran = true; return nil })
+
+	res := app.Test(t, TestArgs("--version", "serve"))
+	assert.NoError(t, res.Err)
+	assert.Equal(t, "1.2.3\n", res.Stdout)
+	assert.False(t, ran)
+}
+
+// M32: an app's own --color flag is parsed normally, and struct tags
+// required:"false" and hidden:"false" turn those markers off.
+func TestUserColorFlagAndFalseTags(t *testing.T) {
+	app := TestApp("app")
+	var mode string
+	app.Command("run").Flags(String("color")).Run(func(ctx *Context) error {
+		mode = ctx.String("color")
+		return nil
+	})
+	assert.NoError(t, app.ExecuteArgs([]string{"run", "--color", "never"}))
+	assert.Equal(t, "never", mode)
+
+	type Flags struct {
+		Name string `flag:"name" required:"false" hidden:"false"`
+		ID   string `flag:"id" required:"" hidden:"true"`
+	}
+	cmd := ParseFlags[Flags](app.Command("tags"))
+	byName := map[string]Flag{}
+	for _, f := range cmd.flags {
+		byName[f.GetName()] = f
+	}
+	assert.False(t, byName["name"].IsRequired())
+	assert.False(t, byName["name"].IsHidden())
+	assert.True(t, byName["id"].IsRequired())
+	assert.True(t, byName["id"].IsHidden())
+}
+
+// L12: a group with a handler gets -h as a flag when a global flag claims
+// it, and App.Test keeps an earlier ForceInteractive(true).
+func TestGroupShortHelpClaimedAndTestKeepsInteractive(t *testing.T) {
+	app := TestApp("app")
+	app.GlobalFlags(String("host", "h"))
+	var host string
+	app.Group("db").Run(func(ctx *Context) error {
+		host = ctx.String("host")
+		return nil
+	})
+	assert.NoError(t, app.ExecuteArgs([]string{"db", "-h", "example.com"}))
+	assert.Equal(t, "example.com", host)
+
+	app2 := TestApp("app")
+	ran := ""
+	app2.Command("run").
+		Interactive(func(*Context) error { ran = "interactive"; return nil }).
+		NonInteractive(func(*Context) error { ran = "non-interactive"; return nil })
+	app2.ForceInteractive(true)
+	assert.NoError(t, app2.Test(t, TestArgs("run")).Err)
+	assert.Equal(t, "interactive", ran)
+}
