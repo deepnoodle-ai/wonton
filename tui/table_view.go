@@ -601,8 +601,9 @@ func (t *TableView) render(ctx *RenderContext) {
 	selectedRow := -1
 	if t.selected != nil {
 		// Keep the selection on a row when the rows shrink under it.
-		if len(t.rows) > 0 {
-			*t.selected = max(0, min(*t.selected, len(t.rows)-1))
+		// A negative index means no row is selected, so leave it alone.
+		if len(t.rows) > 0 && *t.selected >= len(t.rows) {
+			*t.selected = len(t.rows) - 1
 		}
 		selectedRow = *t.selected
 

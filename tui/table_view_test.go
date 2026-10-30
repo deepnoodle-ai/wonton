@@ -249,3 +249,13 @@ func TestTable_ClampsSelectionWhenRowsShrink(t *testing.T) {
 	assert.Equal(t, selected, 1)
 	assert.True(t, screen.Cell(0, 1).Style.Reverse, "last row highlighted")
 }
+
+func TestTable_KeepsNoSelectionWithRows(t *testing.T) {
+	selected := -1
+	table := Table([]TableColumn{{Title: "Name"}}, &selected).
+		Rows([][]string{{"Alice"}, {"Bob"}}).
+		ShowHeader(false)
+	screen := SprintScreen(table, WithWidth(20), WithHeight(2))
+	assert.Equal(t, selected, -1)
+	assert.False(t, screen.Cell(0, 0).Style.Reverse, "no row highlighted")
+}
