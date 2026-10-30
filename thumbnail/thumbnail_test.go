@@ -138,6 +138,14 @@ func TestRenderOverPixelCapFallsBack(t *testing.T) {
 	assert.Equal(t, res.Renderer, RendererFallback)
 }
 
+func TestRenderRejectsOversizedTarget(t *testing.T) {
+	for _, size := range [][2]int{{5000, 5000}, {50000, 50000}} {
+		_, err := Render(Request{MimeType: "text/plain", Name: "a.txt", Source: []byte("hi"), Width: size[0], Height: size[1]})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds pixel cap")
+	}
+}
+
 // gifHeader returns a GIF header and logical screen descriptor claiming
 // w x h pixels. image.DecodeConfig reads only this far.
 func gifHeader(w, h uint16) []byte {
