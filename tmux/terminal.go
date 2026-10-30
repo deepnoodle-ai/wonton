@@ -225,7 +225,7 @@ func (t *Terminal) Rename(name string) error {
 	if name == "" || strings.ContainsAny(name, ":.") {
 		return fmt.Errorf("tmux: invalid session name %q", name)
 	}
-	_, err := t.ctl.Command("rename-session -t " + Quote(t.sessID) + " " + Quote(name))
+	_, err := t.ctl.Command("rename-session -t " + Quote(t.sessID) + " -- " + Quote(name))
 	if err == nil {
 		t.mu.Lock()
 		t.session = name
@@ -298,9 +298,9 @@ func (t *Terminal) SendKey(ev terminal.KeyEvent) error {
 		}
 	}
 	if literal {
-		return t.async(fmt.Sprintf("send-keys -t %s -l %s", t.pane, Quote(name)))
+		return t.async(fmt.Sprintf("send-keys -t %s -l -- %s", t.pane, Quote(name)))
 	}
-	return t.async(fmt.Sprintf("send-keys -t %s %s", t.pane, Quote(name)))
+	return t.async(fmt.Sprintf("send-keys -t %s -- %s", t.pane, Quote(name)))
 }
 
 // modeKey maps the keys that navigate scrollback to copy-mode commands.
@@ -327,7 +327,7 @@ func (t *Terminal) SendText(text string) error {
 	if text == "" {
 		return nil
 	}
-	return t.async(fmt.Sprintf("send-keys -t %s -l %s", t.pane, Quote(text)))
+	return t.async(fmt.Sprintf("send-keys -t %s -l -- %s", t.pane, Quote(text)))
 }
 
 // Paste pastes text into the pane. If the pane's program has turned on
@@ -338,7 +338,7 @@ func (t *Terminal) Paste(text string) error {
 		return nil
 	}
 	text = stripPasteEnd(text)
-	return t.async(fmt.Sprintf("set-buffer -b %s %s ; paste-buffer %s-p -d -b %s -t %s",
+	return t.async(fmt.Sprintf("set-buffer -b %s -- %s ; paste-buffer %s-p -d -b %s -t %s",
 		t.buffer, Quote(text), t.verbatim, t.buffer, t.pane))
 }
 
@@ -354,7 +354,7 @@ func stripPasteEnd(text string) string {
 
 // write sends bytes to the pane's program unchanged.
 func (t *Terminal) write(data string) error {
-	return t.async(fmt.Sprintf("set-buffer -b %s %s ; paste-buffer %s-r -d -b %s -t %s",
+	return t.async(fmt.Sprintf("set-buffer -b %s -- %s ; paste-buffer %s-r -d -b %s -t %s",
 		t.buffer, Quote(data), t.verbatim, t.buffer, t.pane))
 }
 
@@ -562,6 +562,12 @@ func (t *Terminal) WrappedRows() ([]bool, error) {
 
 // wrappedRows matches rows to the joined lines they make up. A row that is
 // not a whole line on its own is the start of its line, so it wraps.
+//
+// A joined line keeps the trailing spaces that were written, so rows that
+// match its text but not yet its length, as when spaces at its end wrapped,
+// continue on the next row. Trailing spaces in a wrapped row that the line
+// does not have are padding, such as the cell a wide character left empty
+// when it moved to the next row, and are dropped.
 func wrappedRows(rows, joined []string) []bool {
 	wrapped := make([]bool, len(rows))
 	i := 0
@@ -571,8 +577,11 @@ func wrappedRows(rows, joined []string) []bool {
 		}
 		want := strings.TrimRight(line, " ")
 		acc := rows[i]
-		for strings.TrimRight(acc, " ") != want && i+1 < len(rows) &&
-			strings.HasPrefix(line, strings.TrimRight(acc, " ")) {
+		for i+1 < len(rows) && strings.HasPrefix(line, strings.TrimRight(acc, " ")) &&
+			(strings.TrimRight(acc, " ") != want || len(acc) < len(line)) {
+			if !strings.HasPrefix(line, acc) {
+				acc = strings.TrimRight(acc, " ")
+			}
 			wrapped[i] = true
 			i++
 			acc += rows[i]

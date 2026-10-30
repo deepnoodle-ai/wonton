@@ -178,7 +178,7 @@ func (s *Server) NewSession(ctx context.Context, opts SessionOptions) error {
 		args = append(args, "-e", kv)
 	}
 	if opts.Command != "" {
-		args = append(args, opts.Command)
+		args = append(args, "--", opts.Command)
 	}
 	// "=name:" is the session's current window, matched exactly; the
 	// window and pane commands do not accept a bare session target.
@@ -209,7 +209,7 @@ func (s *Server) KillSession(ctx context.Context, name string) error {
 
 // RenameSession renames a session.
 func (s *Server) RenameSession(ctx context.Context, from, to string) error {
-	_, err := s.Run(ctx, "rename-session", "-t", "="+from, to)
+	_, err := s.Run(ctx, "rename-session", "-t", "="+from, "--", to)
 	return err
 }
 
