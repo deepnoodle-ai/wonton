@@ -371,6 +371,12 @@ func (app *SSEViewApp) HandleEvent(event tui.Event) []tui.Cmd {
 			app.autoScroll = true
 		}
 
+		// Moving down on an empty list clamps to len(app.events)-1, which
+		// is -1. Keep the selection a valid index for the next event.
+		if app.selected < 0 {
+			app.selected = 0
+		}
+
 		// Commands
 		switch e.Rune {
 		case 'j':
