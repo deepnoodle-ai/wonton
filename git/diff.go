@@ -98,7 +98,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 
 	// Get numstat for precise counts
 	numstatArgs := append([]string{}, args...)
-	numstatArgs = append(numstatArgs, "--numstat")
+	numstatArgs = append(numstatArgs, "--numstat", "-z")
 	numstatOut, err := r.run(ctx, withPath(numstatArgs)...)
 	if err != nil {
 		return nil, err
@@ -112,30 +112,32 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 		diff.Stats = statLines[len(statLines)-1]
 	}
 
-	// Parse numstat for file details
+	// Parse numstat for file details. With -z, each entry ends in NUL and
+	// paths are not quoted. A rename or copy has an empty path field followed
+	// by the old and new paths as separate fields.
 	fileStats := make(map[string]*DiffFile)
-	scanner := newScanner(numstatOut)
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, "\t")
+	fields := strings.Split(string(numstatOut), "\x00")
+	for i := 0; i < len(fields); i++ {
+		parts := strings.SplitN(fields[i], "\t", 3)
 		if len(parts) < 3 {
 			continue
 		}
 
 		df := &DiffFile{Path: parts[2]}
+		if df.Path == "" {
+			if i+2 >= len(fields) {
+				break
+			}
+			df.OldPath, df.Path = fields[i+1], fields[i+2]
+			df.Status = "renamed"
+			i += 2
+		}
 
 		if parts[0] == "-" {
 			df.Binary = true
 		} else {
 			df.Additions, _ = strconv.Atoi(parts[0])
 			df.Deletions, _ = strconv.Atoi(parts[1])
-		}
-
-		// Check for rename (old -> new format in path)
-		if strings.Contains(parts[2], " => ") {
-			// Handle various rename formats
-			df.Path, df.OldPath = parseRenamePath(parts[2])
-			df.Status = "renamed"
 		}
 
 		diff.TotalAdded += df.Additions
@@ -146,23 +148,30 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 
 	// Determine file status from name-status
 	nameStatusArgs := append([]string{}, args...)
-	nameStatusArgs = append(nameStatusArgs, "--name-status")
+	nameStatusArgs = append(nameStatusArgs, "--name-status", "-z")
 	nameStatusOut, err := r.run(ctx, withPath(nameStatusArgs)...)
 	if err != nil {
 		return nil, err
 	}
 
-	scanner = newScanner(nameStatusOut)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Fields are tab-separated; paths may contain spaces.
-		parts := strings.Split(line, "\t")
-		if len(parts) < 2 {
+	// With -z, the status and each path are separate NUL-terminated fields.
+	// A rename or copy has two paths, old then new.
+	fields = strings.Split(string(nameStatusOut), "\x00")
+	for f := 0; f+1 < len(fields); f++ {
+		status := fields[f]
+		if status == "" {
 			continue
 		}
-
-		status := parts[0]
-		path := parts[len(parts)-1]
+		path := fields[f+1]
+		f++
+		var oldPath string
+		if status[0] == 'R' || status[0] == 'C' {
+			if f+1 >= len(fields) {
+				break
+			}
+			oldPath, path = path, fields[f+1]
+			f++
+		}
 
 		// Find the file in our list by its new path. Matching OldPath too
 		// would let a copy source's own entry overwrite the copy.
@@ -177,10 +186,7 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 					diff.Files[i].Status = "modified"
 				case 'R':
 					diff.Files[i].Status = "renamed"
-					if len(parts) >= 3 {
-						diff.Files[i].OldPath = parts[1]
-						diff.Files[i].Path = parts[2]
-					}
+					diff.Files[i].OldPath = oldPath
 				case 'C':
 					diff.Files[i].Status = "copied"
 				case 'T':
@@ -230,37 +236,6 @@ func (r *Repository) DiffFile(ctx context.Context, path string, opts DiffOptions
 	return &diff.Files[0], nil
 }
 
-// parseRenamePath handles git's rename path formats like:
-// - "old => new"
-// - "{old => new}/file"
-// - "dir/{old => new}"
-func parseRenamePath(path string) (newPath, oldPath string) {
-	if strings.Contains(path, "{") && strings.Contains(path, "}") {
-		// Format: prefix{old => new}suffix
-		start := strings.Index(path, "{")
-		end := strings.Index(path, "}")
-		if start < end {
-			prefix := path[:start]
-			suffix := path[end+1:]
-			inner := path[start+1 : end]
-			parts := strings.Split(inner, " => ")
-			if len(parts) == 2 {
-				oldPath = joinRenamePart(prefix, parts[0], suffix)
-				newPath = joinRenamePart(prefix, parts[1], suffix)
-				return
-			}
-		}
-	}
-
-	// Simple format: "old => new"
-	parts := strings.Split(path, " => ")
-	if len(parts) == 2 {
-		return strings.TrimSpace(parts[1]), strings.TrimSpace(parts[0])
-	}
-
-	return path, ""
-}
-
 // patchHeaderPath returns the new path from the "a/<old> b/<new>" part of a
 // "diff --git" header. Paths may contain spaces, so it first tries the common
 // case where both sides name the same path, then falls back to the last " b/".
@@ -275,17 +250,6 @@ func patchHeaderPath(header string) string {
 		return header[i+len(" b/"):]
 	}
 	return ""
-}
-
-// joinRenamePart rebuilds one side of a "prefix{old => new}suffix" rename.
-// When the braced part is empty (a move into or out of a directory, such as
-// "dir/{sub => }/file"), the separator it would have carried is dropped so the
-// result has no leading or doubled slash.
-func joinRenamePart(prefix, mid, suffix string) string {
-	if mid == "" && strings.HasPrefix(suffix, "/") && (prefix == "" || strings.HasSuffix(prefix, "/")) {
-		suffix = suffix[1:]
-	}
-	return prefix + mid + suffix
 }
 
 // parsePatchContent splits a unified diff into per-file patches.
