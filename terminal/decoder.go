@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -1010,7 +1011,7 @@ func normalizePasteContent(s string, tabWidth int) string {
 // decodeBracketedPaste decodes a bracketed paste sequence
 // We've already consumed ESC [ 200 ~, now read until ESC [ 201 ~
 func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
-	const endMarker = "\x1b[201~"
+	endSeq := []byte("\x1b[201~")
 	var content []byte
 
 	// Append every byte and check for the end marker as a suffix. Matching on
@@ -1027,9 +1028,10 @@ func (kd *KeyDecoder) decodeBracketedPaste() (KeyEvent, error) {
 			// Return what we have so far (with normalized line endings)
 			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, err
 		}
+
 		content = append(content, b)
-		if b == '~' && len(content) >= len(endMarker) && string(content[len(content)-len(endMarker):]) == endMarker {
-			content = content[:len(content)-len(endMarker)]
+		if bytes.HasSuffix(content, endSeq) {
+			content = content[:len(content)-len(endSeq)]
 			return KeyEvent{Paste: normalizePasteContent(string(content), kd.pasteTabWidth)}, nil
 		}
 	}

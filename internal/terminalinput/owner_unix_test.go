@@ -229,3 +229,67 @@ func TestWaitReadyWaitsForInputWithoutConsumingIt(t *testing.T) {
 		t.Fatal("pause did not wake the wait")
 	}
 }
+
+func TestOwnerHangupAfterPausePreservesCapturedBytes(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slave.Close()
+	fd := int(slave.Fd())
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Restore(fd, state)
+	owner, err := New(slave)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+
+	// Start a goroutine that blocks inside unix.Poll in owner.Read before
+	// any bytes arrive.
+	type readOutcome struct {
+		data []byte
+		err  error
+	}
+	done := make(chan readOutcome, 1)
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		data, err := io.ReadAll(owner)
+		done <- readOutcome{data: data, err: err}
+	}()
+	<-started
+	time.Sleep(20 * time.Millisecond)
+
+	// Hold owner.mu while writing bytes and closing master so the blocked
+	// Read wakes from unix.Poll with POLLHUP, and Pause drains the bytes
+	// into owner.captured before Read can inspect availableBytes.
+	owner.mu.Lock()
+	if _, err := master.Write([]byte("saved")); err != nil {
+		owner.mu.Unlock()
+		t.Fatal(err)
+	}
+	ready := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	if _, err := unix.Poll(ready, 1000); err != nil || ready[0].Revents&unix.POLLIN == 0 {
+		owner.mu.Unlock()
+		t.Fatal("bytes not ready before pause")
+	}
+	owner.mu.Unlock()
+
+	if err := owner.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	_ = master.Close()
+
+	select {
+	case res := <-done:
+		if string(res.data) != "saved" || !errors.Is(res.err, Boundary) {
+			t.Fatalf("got=%q err=%v, want %q and Boundary", res.data, res.err, "saved")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for ReadAll to complete")
+	}
+}

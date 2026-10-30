@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"golang.org/x/term"
@@ -318,21 +319,7 @@ func (s *Session) ExitCode() int {
 func (s *Session) Close() error {
 	s.mu.Lock()
 
-	// Restore terminal state
-	if s.oldState != nil {
-		if f, ok := s.input.(*os.File); ok {
-			term.Restore(int(f.Fd()), s.oldState)
-		}
-		s.oldState = nil
-	}
-
-	// Close recorder
-	if s.recorder != nil {
-		s.recorder.Close()
-		s.recorder = nil
-	}
-
-	// Close PTY
+	// Close PTY first to unblock copyOutput
 	if s.pty != nil {
 		s.pty.Close()
 		s.pty = nil
@@ -344,7 +331,7 @@ func (s *Session) Close() error {
 
 	// Closing the PTY sends SIGHUP to the child's process group, but some
 	// programs ignore SIGHUP. Kill the process if it hasn't exited yet so
-	// cmd.Wait (and therefore Wait) is guaranteed to return.
+	// cmd.Wait (and therefore Wait and copyOutput) is guaranteed to return.
 	if started && cmd != nil && cmd.Process != nil {
 		select {
 		case <-s.done:
@@ -353,6 +340,37 @@ func (s *Session) Close() error {
 			// Kill is a no-op (ErrProcessDone) if the process has exited
 			cmd.Process.Kill()
 		}
+	}
+
+	// Wait for copyOutput to finish so it cannot write to s.output or s.recorder
+	// after terminal state is restored and Close returns.
+	if started && cmd != nil {
+		select {
+		case <-s.done:
+		case <-time.After(2 * time.Second):
+			// copyOutput is still running; leave terminal state restoration
+			// and recorder finalization to copyOutput's defer so we do not
+			// race with active output or recorder writes.
+			return fmt.Errorf("termsession: timed out waiting for session output to finish")
+		}
+	}
+
+	s.mu.Lock()
+	// Restore terminal state (if copyOutput hasn't already)
+	if s.oldState != nil {
+		if f, ok := s.input.(*os.File); ok {
+			term.Restore(int(f.Fd()), s.oldState)
+		}
+		s.oldState = nil
+	}
+
+	// Close recorder (if copyOutput hasn't already)
+	recorder := s.recorder
+	s.recorder = nil
+	s.mu.Unlock()
+
+	if recorder != nil {
+		recorder.Close()
 	}
 
 	return nil
@@ -553,17 +571,17 @@ func (s *Session) copyOutput() {
 			}
 			s.oldState = nil
 		}
+		if s.pty != nil {
+			s.pty.Close()
+			s.pty = nil
+		}
 		recorder := s.recorder
+		s.recorder = nil
 		s.mu.Unlock()
 
 		if recorder != nil {
 			recorder.Flush()
 			recorder.Close()
-			s.mu.Lock()
-			if s.recorder == recorder {
-				s.recorder = nil
-			}
-			s.mu.Unlock()
 		}
 
 		// Wait for the process to exit and capture exit code

@@ -332,7 +332,7 @@ func TestEmulator_PrivateSGRKeepsColors(t *testing.T) {
 
 func TestEmulator_ColonSGRColors(t *testing.T) {
 	em := NewEmulator(20, 3)
-	em.ProcessOutput("\x1b[38:2::10:20:30mA\x1b[38:5:196mB\x1b[31;4:3mC")
+	em.ProcessOutput("\x1b[38:2::10:20:30mA\x1b[38:5:196mB\x1b[31;4:3mC\x1b[38:2:255:0:0;48:5:21mD\x1b[48:2:1:2:3mE")
 	cells := em.Screen().Cells[0]
 	if cells[0].FG != RGB(10, 20, 30) {
 		t.Errorf("A fg = %v, want (10,20,30)", cells[0].FG)
@@ -342,6 +342,12 @@ func TestEmulator_ColonSGRColors(t *testing.T) {
 	}
 	if cells[2].FG != ansiColor(1) {
 		t.Errorf("C fg = %v, want red (4:3 must not reset)", cells[2].FG)
+	}
+	if cells[3].FG != RGB(255, 0, 0) || cells[3].BG != color256(21) {
+		t.Errorf("D fg/bg = %v/%v, want (255,0,0)/color256(21)", cells[3].FG, cells[3].BG)
+	}
+	if cells[4].BG != RGB(1, 2, 3) {
+		t.Errorf("E bg = %v, want (1,2,3)", cells[4].BG)
 	}
 }
 
@@ -476,6 +482,35 @@ func TestFrameDrawRectEmpty(t *testing.T) {
 			t.Fatal("DrawRect with zero size drew pixels")
 		}
 	}
+}
+
+func TestEmulator_UnmatchedEscapeDoesNotDeleteOutput(t *testing.T) {
+	em := NewEmulator(80, 24)
+
+	// DECSCUSR (\x1b[2 q) has an intermediate space before the final byte,
+	// and \x1b7 / \x1b8 are simple cursor save/restore escapes. None of them
+	// may jump ahead to a later escape sequence and eat the text in between.
+	em.ProcessOutput("\x1b[2 qHello \x1b7World\x1b[0m")
+
+	screen := em.Screen()
+	expected := "Hello World"
+	for i, ch := range expected {
+		if screen.Cells[0][i].Char != ch {
+			t.Fatalf("position %d: expected %q, got %q", i, ch, screen.Cells[0][i].Char)
+		}
+	}
+}
+
+func TestEmulator_ResizeClampsNonPositiveDimensions(t *testing.T) {
+	em := NewEmulator(80, 24)
+	em.Resize(0, -5)
+
+	if em.Screen().Width < 1 || em.Screen().Height < 1 {
+		t.Fatalf("expected positive dimensions after Resize(0, -5), got %dx%d", em.Screen().Width, em.Screen().Height)
+	}
+
+	// Subsequent output must not panic.
+	em.ProcessOutput("A\nB")
 }
 
 func TestEmulator_WriteAfterResizeToZero(t *testing.T) {

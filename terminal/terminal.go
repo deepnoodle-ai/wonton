@@ -1408,10 +1408,15 @@ func (t *Terminal) printInternal(startX, startY int, text string, style Style, c
 	skipLine := false // set when truncating: drop the remainder of the line
 
 	for cluster, clusterWidth := range runewidth.Graphemes(text) {
-		if cluster == "\n" {
+		if cluster == "\n" || cluster == "\r\n" {
 			skipLine = false
 			currentX = clipRect.Min.X // New line starts at the beginning of the clipRect
 			currentY++
+			continue
+		}
+		if cluster == "\r" {
+			skipLine = false
+			currentX = clipRect.Min.X
 			continue
 		}
 		if skipLine {
@@ -2316,7 +2321,7 @@ func max(a, b int) int {
 // Call StopWatchResize() or Close() to stop watching.
 func (t *Terminal) WatchResize() {
 	t.mu.Lock()
-	if t.resizing || t.fd == -1 {
+	if t.closed || t.resizing || t.fd == -1 {
 		t.mu.Unlock()
 		return
 	}
@@ -2325,6 +2330,10 @@ func (t *Terminal) WatchResize() {
 	t.stopResize = make(chan struct{})
 	t.resizing = true
 
+	// Set up platform-specific resize signal handling while holding t.mu
+	// so StopWatchResize cannot nil out or stop t.resizeChan before signal.Notify runs.
+	t.setupResizeSignal()
+
 	// Capture the channels so the goroutine never reads the struct fields,
 	// which StopWatchResize mutates under the lock (and a Stop/Watch restart
 	// replaces). This avoids a data race and ensures the old goroutine can't
@@ -2332,9 +2341,6 @@ func (t *Terminal) WatchResize() {
 	resizeCh := t.resizeChan
 	stopCh := t.stopResize
 	t.mu.Unlock()
-
-	// Set up platform-specific resize signal handling
-	t.setupResizeSignal()
 
 	go func() {
 		for {
@@ -2351,8 +2357,12 @@ func (t *Terminal) WatchResize() {
 // StopWatchResize stops watching for resize signals
 func (t *Terminal) StopWatchResize() {
 	t.mu.Lock()
+	t.stopWatchResizeLocked()
+	t.mu.Unlock()
+}
+
+func (t *Terminal) stopWatchResizeLocked() {
 	if !t.resizing {
-		t.mu.Unlock()
 		return
 	}
 
@@ -2362,7 +2372,6 @@ func (t *Terminal) StopWatchResize() {
 		close(t.stopResize)
 		t.resizeChan = nil
 	}
-	t.mu.Unlock()
 }
 
 // OnResize registers a callback to be called when the terminal is resized.
@@ -2473,11 +2482,7 @@ func (t *Terminal) Close() error {
 	t.closed = true
 
 	// Stop resize watching
-	if t.resizing && t.resizeChan != nil {
-		t.mu.Unlock() // Unlock before calling StopWatchResize
-		t.StopWatchResize()
-		t.mu.Lock()
-	}
+	t.stopWatchResizeLocked()
 
 	// Stop any active recording
 	if t.recorder != nil {

@@ -229,7 +229,7 @@ func (s *Screen) parseCSI(data string) int {
 	// modifyOtherKeys have their own command namespaces; consume and ignore
 	// them, except DECSED (CSI ? J) and DECSEL (CSI ? K) which erase like
 	// standard ED/EL.
-	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
+	if len(params) > 0 && (params[0] == '?' || params[0] == '>' || params[0] == '=' || params[0] == '<') {
 		if params[0] == '?' && (cmd == 'J' || cmd == 'K') {
 			params = params[1:]
 		} else {

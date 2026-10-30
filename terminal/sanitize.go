@@ -19,11 +19,12 @@ func stripControl(s string) string {
 	}, s)
 }
 
-// stripTextControl is stripControl for display text: it keeps newlines and
-// tabs, which print as layout rather than as commands to the terminal.
+// stripTextControl is stripControl for display text: it keeps newlines,
+// carriage returns, and tabs, which print as layout rather than as commands
+// to the terminal.
 func stripTextControl(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+		if r != '\n' && r != '\r' && r != '\t' && unicode.IsControl(r) {
 			return -1
 		}
 		return r

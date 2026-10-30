@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -344,4 +345,138 @@ func TestFrameTitleWideCharsKeepsBorderWidth(t *testing.T) {
 	assert.Equal(t, []rune(f.Border.TopRight)[0], corner.Char)
 	// Nothing may spill past the frame edge.
 	assert.Equal(t, ' ', term.GetCell(12, 0).Char)
+}
+
+// --- WatchResize / StopWatchResize / Close concurrency ---
+
+func TestWatchResizeConcurrentStopAndClose(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		var out bytes.Buffer
+		term := NewTestTerminal(20, 5, &out)
+		term.fd = 0 // non-negative fd so WatchResize activates
+
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			term.WatchResize()
+		}()
+		go func() {
+			defer wg.Done()
+			term.StopWatchResize()
+		}()
+		go func() {
+			defer wg.Done()
+			_ = term.Close()
+		}()
+		wg.Wait()
+
+		// Calling WatchResize after Close must be a no-op.
+		term.WatchResize()
+		term.mu.Lock()
+		resizing := term.resizing
+		term.mu.Unlock()
+		assert.False(t, resizing)
+	}
+}
+
+// --- printInternal CRLF handling ---
+
+func TestPrintStyledCRLF(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTestTerminal(10, 4, &out)
+
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintStyled(1, 0, "ab\r\ncd", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+
+	assert.Equal(t, 'a', term.GetCell(1, 0).Char)
+	assert.Equal(t, 'b', term.GetCell(2, 0).Char)
+	assert.Equal(t, ' ', term.GetCell(3, 0).Char)
+	assert.Equal(t, 'c', term.GetCell(0, 1).Char)
+	assert.Equal(t, 'd', term.GetCell(1, 1).Char)
+}
+
+func TestPrintTruncatedCarriageReturnResetsSkipLine(t *testing.T) {
+	var out bytes.Buffer
+	term := NewTestTerminal(5, 2, &out)
+
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintTruncated(0, 0, "abcdefgh\rZ", NewStyle()))
+	assert.NoError(t, term.EndFrame(frame))
+
+	want := []rune{'Z', 'b', 'c', 'd', 'e'}
+	for x, r := range want {
+		assert.Equal(t, r, term.GetCell(x, 0).Char)
+	}
+}
+
+// --- Bracketed paste with ESC immediately preceding closing sequence ---
+
+func TestKeyDecoder_BracketedPastePrecededByEscape(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantPaste string
+		wantNext  rune
+	}{
+		{
+			name:      "ESC before end marker",
+			input:     "\x1b[200~hello\x1b\x1b[201~x",
+			wantPaste: "hello\x1b",
+			wantNext:  'x',
+		},
+		{
+			name:      "partial end marker before end marker",
+			input:     "\x1b[200~hello\x1b[20\x1b[201~y",
+			wantPaste: "hello\x1b[20",
+			wantNext:  'y',
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := NewKeyDecoder(strings.NewReader(tt.input))
+
+			ev, err := decoder.ReadEvent()
+			assert.NoError(t, err)
+			keyEv, ok := ev.(KeyEvent)
+			assert.True(t, ok)
+			assert.Equal(t, tt.wantPaste, keyEv.Paste)
+
+			ev2, err := decoder.ReadEvent()
+			assert.NoError(t, err)
+			keyEv2, ok := ev2.(KeyEvent)
+			assert.True(t, ok)
+			assert.Equal(t, tt.wantNext, keyEv2.Rune)
+		})
+	}
+}
+
+// --- Malformed SGR mouse sequence must not return io.EOF ---
+
+func TestKeyDecoder_MalformedSGRMouseDoesNotReturnEOF(t *testing.T) {
+	// \x1b[<M has no numeric parameters so fmt.Sscanf returns io.EOF;
+	// ReadEvent must report KeyUnknown with a nil error, not io.EOF.
+	decoder := NewKeyDecoder(strings.NewReader("\x1b[<M\x1b[<0;10ma"))
+
+	ev1, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	key1, ok := ev1.(KeyEvent)
+	assert.True(t, ok)
+	assert.Equal(t, KeyUnknown, key1.Key)
+
+	ev2, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	key2, ok := ev2.(KeyEvent)
+	assert.True(t, ok)
+	assert.Equal(t, KeyUnknown, key2.Key)
+
+	ev3, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	key3, ok := ev3.(KeyEvent)
+	assert.True(t, ok)
+	assert.Equal(t, 'a', key3.Rune)
 }

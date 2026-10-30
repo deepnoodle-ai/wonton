@@ -396,3 +396,32 @@ func TestSplitAtEveryByte(t *testing.T) {
 	}
 	assert.Equal(t, s.cells, whole.cells, "byte at a time")
 }
+
+func TestKittyKeyboardPopSequenceIgnored(t *testing.T) {
+	// Kitty keyboard pop sequence (\x1b[<u) must not be interpreted as CSI u (restoreCursor).
+	s := NewScreen(20, 5)
+	s.Write([]byte("Hello\x1b[<u!"))
+	assert.Equal(t, "Hello!", s.Row(0))
+}
+
+func TestZeroWidthClusterDoesNotOverwriteCell(t *testing.T) {
+	s := NewScreen(5, 2)
+	s.Write([]byte("AB\u200BC"))
+	assert.Equal(t, "ABC", s.Row(0))
+
+	// Zero-width cluster at the right margin must not trigger deferred wrap or overwrite the last cell.
+	s2 := NewScreen(3, 2)
+	s2.Write([]byte("XYZ\u200B"))
+	assert.Equal(t, "XYZ", s2.Row(0))
+	assert.Equal(t, "", s2.Row(1))
+}
+
+func TestNewScreenClampsNonPositiveDimensions(t *testing.T) {
+	s := NewScreen(0, -1)
+	w, h := s.Size()
+	assert.Equal(t, 1, w)
+	assert.Equal(t, 1, h)
+	s.SetCursor(5, 5)
+	s.Write([]byte("A"))
+	assert.Equal(t, "A", s.Row(0))
+}
