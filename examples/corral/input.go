@@ -99,8 +99,11 @@ func (a *app) command(e tui.KeyEvent) []tui.Cmd {
 		a.save()
 		return nil
 	case 'm':
-		if b, ok := a.hits.Bounds("pane:" + focus); ok {
-			a.openMenu("pane:"+focus, b.Min.X+2, b.Min.Y+1)
+		// Open the pane menu directly: on a small pane the anchor point
+		// can sit on a divider, where openMenu would pick the edge menu.
+		p := a.panes[focus]
+		if b, ok := a.hits.Bounds("pane:" + focus); ok && p != nil {
+			a.menu.Open(b.Min.X+2, b.Min.Y+1, p.label(), a.paneMenu(p, false))
 		}
 	case '?':
 		a.openHelp()

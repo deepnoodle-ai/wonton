@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/clipboard"
@@ -451,26 +452,30 @@ func (app *BrowserApp) handleURLBarInput(e tui.KeyEvent) []tui.Cmd {
 
 	case tui.KeyBackspace:
 		if app.urlCursor > 0 {
-			app.urlInput = app.urlInput[:app.urlCursor-1] + app.urlInput[app.urlCursor:]
-			app.urlCursor--
+			_, n := utf8.DecodeLastRuneInString(app.urlInput[:app.urlCursor])
+			app.urlInput = app.urlInput[:app.urlCursor-n] + app.urlInput[app.urlCursor:]
+			app.urlCursor -= n
 		}
 		return nil
 
 	case tui.KeyDelete:
 		if app.urlCursor < len(app.urlInput) {
-			app.urlInput = app.urlInput[:app.urlCursor] + app.urlInput[app.urlCursor+1:]
+			_, n := utf8.DecodeRuneInString(app.urlInput[app.urlCursor:])
+			app.urlInput = app.urlInput[:app.urlCursor] + app.urlInput[app.urlCursor+n:]
 		}
 		return nil
 
 	case tui.KeyArrowLeft:
 		if app.urlCursor > 0 {
-			app.urlCursor--
+			_, n := utf8.DecodeLastRuneInString(app.urlInput[:app.urlCursor])
+			app.urlCursor -= n
 		}
 		return nil
 
 	case tui.KeyArrowRight:
 		if app.urlCursor < len(app.urlInput) {
-			app.urlCursor++
+			_, n := utf8.DecodeRuneInString(app.urlInput[app.urlCursor:])
+			app.urlCursor += n
 		}
 		return nil
 
@@ -495,7 +500,7 @@ func (app *BrowserApp) handleURLBarInput(e tui.KeyEvent) []tui.Cmd {
 	// Handle printable characters
 	if e.Rune != 0 && e.Key == tui.KeyUnknown {
 		app.urlInput = app.urlInput[:app.urlCursor] + string(e.Rune) + app.urlInput[app.urlCursor:]
-		app.urlCursor++
+		app.urlCursor += utf8.RuneLen(e.Rune)
 	}
 
 	return nil
