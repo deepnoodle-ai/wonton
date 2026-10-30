@@ -1740,3 +1740,12 @@ func TestMeterSizeWithoutLabel(t *testing.T) {
 	w, _ := Meter("", 5, 10).Width(10).ShowValue(false).size(0, 0)
 	assert.Equal(t, w, 10)
 }
+
+func TestMeterSizeFitsValueOverMax(t *testing.T) {
+	view := Meter("", 10000, 100).Width(4)
+	w, _ := view.size(0, 0)
+	// 4 bar columns + " 10000%"
+	assert.Equal(t, w, 11)
+	screen := SprintScreen(view, WithWidth(w), WithHeight(1))
+	assert.True(t, strings.HasSuffix(screen.Row(0), " 10000%"), "row = %q", screen.Row(0))
+}

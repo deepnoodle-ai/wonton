@@ -83,7 +83,13 @@ func (m *MeterView) size(maxWidth, maxHeight int) (int, int) {
 		w += labelW + 2 // label + ": "
 	}
 	if m.showValue {
-		w += len(fmt.Sprintf(" %d%%", 100))
+		// Reserve room for 100% so the width holds as the value changes,
+		// and more when the value is over the max.
+		valueW := len(fmt.Sprintf(" %d%%", 100))
+		if m.max > 0 {
+			valueW = max(valueW, len(fmt.Sprintf(" %d%%", (m.value*100)/m.max)))
+		}
+		w += valueW
 	}
 	if maxWidth > 0 && w > maxWidth {
 		w = maxWidth
