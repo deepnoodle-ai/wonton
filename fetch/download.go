@@ -388,9 +388,7 @@ func filenameFromContentDisposition(cd string) string {
 	// Try standard mime parsing first
 	_, params, err := mime.ParseMediaType(cd)
 	if err == nil {
-		if filename, ok := params["filename"]; ok && filename != "" {
-			return trimQuotes(filename)
-		}
+		return trimQuotes(params["filename"])
 	}
 
 	// Fallback: simple parsing for non-compliant headers. Header values are
@@ -400,10 +398,19 @@ func filenameFromContentDisposition(cd string) string {
 	if len(lower) != len(cd) {
 		lower = cd
 	}
+	// Match the parameter name only at the start of a parameter, so that
+	// names such as "x-filename=" are not mistaken for it.
 	const filenamePrefix = "filename="
-	idx := strings.Index(lower, filenamePrefix)
-	if idx < 0 {
-		return ""
+	idx := -1
+	for start := 0; idx < 0; start += len(filenamePrefix) {
+		i := strings.Index(lower[start:], filenamePrefix)
+		if i < 0 {
+			return ""
+		}
+		start += i
+		if before := strings.TrimRight(lower[:start], " \t"); before == "" || strings.HasSuffix(before, ";") {
+			idx = start
+		}
 	}
 	filename := cd[idx+len(filenamePrefix):]
 

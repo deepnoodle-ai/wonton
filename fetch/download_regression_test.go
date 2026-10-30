@@ -35,6 +35,24 @@ func TestDownloadFallsBackToURLWhenContentDispositionIsUnusable(t *testing.T) {
 	}
 }
 
+func TestDownloadIgnoresParameterEndingInFilename(t *testing.T) {
+	for _, header := range []string{`attachment; x-filename="evil.bin"`, `attachment; x-filename=evil bin.bin`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Disposition", header)
+			w.Write([]byte("data"))
+		}))
+		dir := t.TempDir()
+		result, err := Download(context.Background(), server.URL+"/real.txt", &DownloadOptions{
+			OutputPath: dir + string(os.PathSeparator),
+			Client:     server.Client(),
+		})
+		server.Close()
+		assert.NoError(t, err, header)
+		assert.Equal(t, "real.txt", result.Filename, header)
+		assert.Equal(t, filepath.Join(dir, "real.txt"), result.Path, header)
+	}
+}
+
 func TestDownloadLongFilename(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("data"))
