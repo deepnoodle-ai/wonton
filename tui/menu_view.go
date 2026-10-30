@@ -111,7 +111,8 @@ func (m *MenuState) Items() []MenuItem { return m.items }
 func (m *MenuState) Selected() int { return m.selected }
 
 // Bounds returns where the menu was drawn at the last render, in screen
-// coordinates. It is empty while the menu is closed.
+// coordinates. It is empty while the menu is closed, and when the screen
+// was too small to draw it.
 func (m *MenuState) Bounds() image.Rectangle { return m.bounds }
 
 // Choose closes the menu and runs entry i's action, if it can be chosen.
