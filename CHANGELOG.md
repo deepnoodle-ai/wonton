@@ -11,6 +11,16 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+### Removed
+
+- `tui`: the global animation coordinator. This is an incompatible change.
+  `AnimationCoordinator`, `NewAnimationCoordinator`,
+  `GlobalAnimationCoordinator`, `AnimationSubscriber`, `GlobalEffect`,
+  `NewGlobalEffect`, `GlobalEffectType` and its constants, `CoordinatedView`,
+  and `Coordinated` are gone. The coordinator never notified its subscribers,
+  `GlobalEffect.Value` raced with `Update`, and nothing in the module used it.
+  Per-view animations are unchanged.
+
 ### Fixed
 
 - `git.Repository.Status` reports an empty `Branch` on a detached HEAD, as
