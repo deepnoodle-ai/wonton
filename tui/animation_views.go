@@ -50,6 +50,15 @@ func (f *AnimatedBorderedView) StaticBorderStyle(s Style) *AnimatedBorderedView 
 	return f
 }
 
+// flex forwards the inner view's flex, so a border around flexible content
+// keeps it flexible.
+func (f *AnimatedBorderedView) flex() int {
+	if flex, ok := f.inner.(Flexible); ok {
+		return flex.flex()
+	}
+	return 0
+}
+
 func (f *AnimatedBorderedView) size(maxWidth, maxHeight int) (int, int) {
 	borderSize := 0
 	if f.border != nil {

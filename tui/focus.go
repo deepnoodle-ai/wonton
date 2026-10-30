@@ -476,6 +476,15 @@ func (f *focusableWrapper) HandleKeyEvent(event KeyEvent) bool {
 
 // View interface implementation
 
+// flex forwards the inner view's flex, so making a view focusable does not
+// change its layout.
+func (f *focusableWrapper) flex() int {
+	if flex, ok := f.inner.(Flexible); ok {
+		return flex.flex()
+	}
+	return 0
+}
+
 func (f *focusableWrapper) size(maxWidth, maxHeight int) (int, int) {
 	return f.inner.size(maxWidth, maxHeight)
 }

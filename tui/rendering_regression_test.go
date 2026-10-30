@@ -360,3 +360,44 @@ func TestCornerHighlight_FadesIntoBothEdges(t *testing.T) {
 		assert.Equal(t, *term.GetCell(w/2, 0).Style.FgRGB, base, "corner %d, mid-edge", i)
 	}
 }
+
+// Wrappers that leave a view's size alone must keep it flexible, or a Stack
+// measures it unconstrained and a Scroll's full content pushes the rest off.
+func TestWrappersKeepFlex(t *testing.T) {
+	lines := make([]View, 50)
+	for i := range lines {
+		lines[i] = Text("line")
+	}
+	wrappers := map[string]func(View) View{
+		"FocusableView": func(v View) View { return FocusableView(v, &FocusHandler{ID: "f"}) },
+		"AnimatedBordered": func(v View) View {
+			return AnimatedBordered(v, &RainbowBorderAnimation{})
+		},
+		"MinHeight": func(v View) View { return MinHeight(2, v) },
+	}
+	for name, wrap := range wrappers {
+		scrollY := 0
+		view := Stack(Text("Header"), wrap(Scroll(Stack(lines...), &scrollY)), Text("Footer"))
+		screen := SprintScreen(view, WithWidth(20), WithHeight(10))
+		assert.Equal(t, screen.Row(9), "Footer", name)
+	}
+}
+
+func TestGroupScalesFlexibleMinimumsToFit(t *testing.T) {
+	view := Group(Stack(Text("%s", strings.Repeat("x", 40))).Flex(1), Text("END"))
+	screen := SprintScreen(view, WithWidth(20), WithHeight(1))
+	assert.Equal(t, screen.Row(0), strings.Repeat("x", 17)+"END")
+}
+
+func TestPanelMeasuresContentInsideBorderAndWidth(t *testing.T) {
+	view := Panel(Text("one two three four").Wrap()).Width(10).Border(BorderSingle)
+	w, h := view.size(80, 0)
+	assert.Equal(t, w, 10)
+	assert.Equal(t, h, 5, "text wraps to the 8 columns inside the border")
+}
+
+func TestScrollResetsOffsetWhenContentFits(t *testing.T) {
+	scrollY := 7
+	SprintScreen(Scroll(Text("short"), &scrollY), WithWidth(20), WithHeight(5))
+	assert.Equal(t, scrollY, 0)
+}

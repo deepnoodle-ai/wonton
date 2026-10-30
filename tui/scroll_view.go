@@ -78,6 +78,9 @@ func (s *ScrollView) render(ctx *RenderContext) {
 
 	// If content fits in viewport, just render directly
 	if contentHeight <= viewportHeight {
+		if s.scrollY != nil {
+			*s.scrollY = 0 // nothing to scroll; don't keep a stale offset
+		}
 		s.inner.render(ctx)
 		return
 	}
