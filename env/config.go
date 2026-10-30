@@ -460,10 +460,7 @@ func (p *structParser) parseField(field reflect.StructField, fv reflect.Value, p
 	var envVar string
 	var required, notEmpty, loadFile, expand, unset bool
 
-	if envTag == "-" {
-		return // Ignored field
-	}
-
+	// parseStruct already skips fields tagged env:"-".
 	if envTag != "" {
 		parts := strings.Split(envTag, ",")
 		envVar = parts[0]
