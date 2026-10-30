@@ -111,8 +111,11 @@ func SetColorEnabled(enabled bool) { colorEnabled = enabled }
 // - Exporter allows comparing unexported fields (like reflect.DeepEqual)
 var defaultOpts = []gocmp.Option{
 	cmpopts.EquateErrors(),
-	gocmp.Exporter(func(reflect.Type) bool { return true }),
+	exportAll,
 }
+
+// exportAll lets go-cmp compare unexported fields.
+var exportAll = gocmp.Exporter(func(reflect.Type) bool { return true })
 
 // Equal asserts that got and want are deeply equal.
 //
@@ -168,7 +171,7 @@ func EqualOpts(t testing.TB, got, want any, opts ...gocmp.Option) {
 	// Compare unexported fields like Equal does. Only the Exporter default is
 	// added: a second EquateErrors would make go-cmp panic on ambiguous
 	// options if the caller passes their own.
-	opts = append([]gocmp.Option{defaultOpts[1]}, opts...)
+	opts = append([]gocmp.Option{exportAll}, opts...)
 	if diff := gocmp.Diff(want, got, opts...); diff != "" {
 		t.Fatalf("\n%s", formatDiff(diff))
 	}
@@ -416,7 +419,8 @@ func Len(t testing.TB, v any, want int, msgAndArgs ...any) {
 // Checks for emptiness based on type:
 //   - nil values: always empty
 //   - strings, slices, maps, channels: empty if length is 0
-//   - pointers: empty if nil or pointing to empty value
+//   - pointers: empty if nil or pointing to empty value; a pointer cycle
+//     (such as p = &p) is not empty
 //   - other types: empty if zero value (via reflect.Value.IsZero)
 //
 // Example:
