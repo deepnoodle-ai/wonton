@@ -427,7 +427,10 @@ func (d *Document) FilteredLinks(f LinkFilter) []Link {
 			if f.Internal && !isInternal {
 				return true
 			}
-			if f.External && isInternal {
+			// External links need a host of their own, so host-less links
+			// such as mailto: are neither internal nor external.
+			isExternal := linkURL.Host != "" && !strings.EqualFold(linkURL.Host, baseURL.Host)
+			if f.External && !isExternal {
 				return true
 			}
 		}
@@ -707,6 +710,9 @@ func (d *Document) Transform(opts *TransformOptions) string {
 // all elements, scripts, styles, and formatting. For a cleaned
 // version, use Transform instead.
 func (d *Document) HTML() string {
+	if d.root == nil {
+		return ""
+	}
 	var buf strings.Builder
 	html.Render(&buf, d.root)
 	return buf.String()

@@ -21,7 +21,8 @@ func TestMetadataIgnoresSVGTitle(t *testing.T) {
 // BUG-033: non-http links are not internal.
 func TestFilteredLinksInternalExcludesNonHTTPSchemes(t *testing.T) {
 	doc, err := Parse(`<a href="/a">a</a><a href="mailto:x@other.com">m</a><a href="tel:123">t</a>` +
-		`<a href="javascript:void(0)">j</a><a href="data:text/plain,hi">d</a><a href="https://other.com/b">b</a>`)
+		`<a href="javascript:void(0)">j</a><a href="data:text/plain,hi">d</a><a href="https://other.com/b">b</a>` +
+		`<a href="ftp://other.com/c">c</a>`)
 	assert.NoError(t, err)
 
 	internal := doc.FilteredLinks(LinkFilter{BaseURL: "https://example.com", Internal: true})
@@ -30,6 +31,21 @@ func TestFilteredLinksInternalExcludesNonHTTPSchemes(t *testing.T) {
 		urls = append(urls, l.URL)
 	}
 	assert.Equal(t, []string{"https://example.com/a"}, urls)
+
+	// M37: host-less links are not external either, but a non-web link to
+	// another host is.
+	external := doc.FilteredLinks(LinkFilter{BaseURL: "https://example.com", External: true})
+	urls = nil
+	for _, l := range external {
+		urls = append(urls, l.URL)
+	}
+	assert.Equal(t, urls, []string{"https://other.com/b", "ftp://other.com/c"})
+}
+
+// H23: HTML on a zero-value Document returns "" like the other methods.
+func TestZeroDocumentHTML(t *testing.T) {
+	var doc Document
+	assert.Equal(t, doc.HTML(), "")
 }
 
 // BUG-033: Transform with Include emits only text inside included elements.
