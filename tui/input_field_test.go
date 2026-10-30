@@ -444,6 +444,10 @@ func TestInputField_Size_LabelNarrowsWrapWidth(t *testing.T) {
 	_, h := field.size(14, 10)
 	// "Name: " leaves 8 columns, so 10 characters wrap to 2 rows.
 	assert.Equal(t, h, 2)
+
+	// A label that takes all the room leaves no input to wrap.
+	_, h = field.size(6, 10)
+	assert.Equal(t, h, 1)
 }
 
 func TestInputField_MaskChangesAfterFirstFrame(t *testing.T) {

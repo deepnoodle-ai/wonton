@@ -380,9 +380,10 @@ func (f *InputFieldView) size(maxWidth, maxHeight int) (int, int) {
 
 	// Inner width for content calculation: what render leaves the input
 	// after the border, label, and prompt.
-	innerW := max(totalW-borderSize-labelW-promptW, 1)
+	innerW := totalW - borderSize - labelW - promptW
 
-	// Calculate height based on content wrapping
+	// Calculate height based on content wrapping. With no room, render
+	// draws no input, so the field stays one row.
 	h := 1
 	if f.binding != nil && *f.binding != "" && innerW > 0 {
 		displayText := *f.binding
