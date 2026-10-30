@@ -286,3 +286,32 @@ func TestPlayback_PositionFollowsClock(t *testing.T) {
 	pos := p.GetPosition()
 	assert.True(t, pos > 1.9 && pos < 2.1, "position = %v, want ~2", pos)
 }
+
+func TestPlayback_SeekAndPauseBeforePlay(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 5, Type: "o", Data: "b"},
+		RecordingEvent{Time: 10, Type: "o", Data: "c"},
+	)
+	p.SetSpeed(2)
+	p.Seek(5)
+	p.Pause()
+	assert.Equal(t, p.GetPosition(), 5.0)
+	assert.Equal(t, p.GetProgress(), 0.5)
+
+	// Play starts paused at the seek position.
+	out := &syncBuffer{}
+	done := playAsync(p, NewTestTerminal(10, 2, out))
+	time.Sleep(100 * time.Millisecond)
+	assert.True(t, p.IsPaused())
+	pos := p.GetPosition()
+	assert.True(t, pos > 4.9 && pos < 5.1, "position = %v, want ~5", pos)
+	assert.Equal(t, out.String(), "")
+
+	// On resume, the event at 5s plays and the one at 10s does not yet.
+	p.Resume()
+	time.Sleep(150 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+	assert.Equal(t, out.String(), "b")
+}

@@ -34,6 +34,7 @@ type PlaybackController struct {
 	mu           sync.RWMutex
 	stopChan     chan struct{}
 	stopped      bool
+	seekTo       float64 // position set by a Seek before the first Play
 }
 
 // LoadRecording loads a .cast file and returns a playback controller
@@ -140,9 +141,17 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 	}
 	stopChan := p.stopChan
 	p.terminal = terminal
-	p.startTime = time.Now()
-	p.currentIndex = 0
-	p.paused = false
+	offset := 0.0
+	if p.startTime.IsZero() {
+		// The first Play keeps a Seek or Pause made before it.
+		offset = p.seekTo
+	} else {
+		p.currentIndex = 0
+		p.paused = false
+	}
+	now := time.Now()
+	p.startTime = now.Add(-time.Duration(offset / p.speed * float64(time.Second)))
+	p.pauseTime = now
 	p.stopped = false
 	p.totalPaused = 0
 	p.mu.Unlock()
@@ -339,6 +348,11 @@ func (p *PlaybackController) SetSpeed(speed float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.startTime.IsZero() {
+		p.speed = speed // not started: there is no clock to adjust
+		return
+	}
+
 	// Adjust timing to keep the recording position when speed changes.
 	// This also applies while paused, so Resume continues from the same spot.
 	elapsed := p.elapsedLocked()
@@ -378,6 +392,10 @@ func (p *PlaybackController) Seek(seconds float64) {
 	}
 
 	p.currentIndex = targetIndex
+	if p.startTime.IsZero() {
+		p.seekTo = seconds // not started: Play starts here
+		return
+	}
 	// Adjust start time to account for the seek
 	elapsed := p.elapsedLocked()
 	adjustment := elapsed - (seconds / p.speed)
@@ -417,7 +435,7 @@ func (p *PlaybackController) positionLocked() float64 {
 		return p.durationLocked()
 	}
 	if p.startTime.IsZero() {
-		return 0 // not started
+		return min(max(p.seekTo, 0), p.durationLocked()) // not started
 	}
 	// Follow the playback clock, in recording time, not the time of the
 	// next unplayed event.
