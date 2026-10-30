@@ -289,5 +289,6 @@ When using JSON files with `envDefault`, explicit zero values in JSON (0, false,
 
 - Missing config files are silently skipped unless `WithRequireConfigFile()` is used
 - Nested structs can use `envPrefix` tag or auto-generate PREFIX_FIELDNAME_ format
+- A nil pointer to a struct type that is already being parsed, such as `Next *Node` inside `Node`, stays nil
 - Embedded structs (value or pointer) add no prefix unless an `envPrefix` tag is set
 - Aggregate errors provide detailed information about all parsing failures

@@ -4,7 +4,7 @@ Render small preview images for files: a downscaled version of a raster image, o
 
 ## Summary
 
-`Render` never fails on bad input. An undecodable image, an oversized one, or a format the package cannot read all degrade to a typed card, so every file gets a stable visual and callers need no fallback path of their own. A non-nil error means an encoding fault, not bad input.
+`Render` never fails on bad input. An undecodable image, an oversized one, or a format the package cannot read all degrade to a typed card, so every file gets a stable visual and callers need no fallback path of their own. A non-nil error means the target `Width` times `Height` exceeds `DefaultMaxSourcePixels`, or an encoding fault. It is never caused by the source.
 
 The package is pure Go and depends only on the standard library and `golang.org/x/image`: stdlib decoders for PNG/JPEG/GIF, `x/image/webp` for WebP, `x/image/draw` for Catmull-Rom downscaling, and `x/image/font` with the embedded Go fonts for the cards. There is no FFmpeg, Chromium, or ImageMagick dependency and no system-font requirement, so it runs unchanged in a minimal container image.
 
@@ -123,7 +123,7 @@ Decoder panics on corrupt input are recovered and turned into a fallback card.
 
 | Function                | Description                                              | Returns           |
 | ----------------------- | -------------------------------------------------------- | ----------------- |
-| `Render(req)`           | Renders a thumbnail, degrading to a card on bad input    | `Result`, `error` |
+| `Render(req)`           | Renders a thumbnail, degrading to a card on bad input; errors on a target over `DefaultMaxSourcePixels` | `Result`, `error` |
 | `IsImageMime(mime)`     | Whether the MIME is a raster format this package decodes | `bool`            |
 | `IsTextMime(mime, name)`| Whether the MIME/name should render as a document card   | `bool`            |
 
