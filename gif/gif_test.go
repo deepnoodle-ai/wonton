@@ -374,6 +374,24 @@ func TestAddImageNilValidation(t *testing.T) {
 	}
 }
 
+// TestAddImageSmallerFrame checks that a first frame smaller than the
+// canvas, or offset in it, encodes at the GIF's own size.
+func TestAddImageSmallerFrame(t *testing.T) {
+	g := New(10, 10)
+	g.AddImage(image.NewPaletted(image.Rect(2, 2, 6, 6), g.palette), 10)
+	data, err := g.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes() error: %v", err)
+	}
+	decoded, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("DecodeAll() error: %v", err)
+	}
+	if decoded.Config.Width != 10 || decoded.Config.Height != 10 {
+		t.Errorf("canvas = %dx%d, want 10x10", decoded.Config.Width, decoded.Config.Height)
+	}
+}
+
 func TestAddImageNegativeDelay(t *testing.T) {
 	g := New(10, 10)
 	img := image.NewPaletted(image.Rect(0, 0, 10, 10), g.palette)

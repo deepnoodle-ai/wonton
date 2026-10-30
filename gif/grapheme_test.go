@@ -68,6 +68,7 @@ func TestEmulator_ClusterSplitAcrossWrites(t *testing.T) {
 		{"around SGR", []string{"e\x1b[31m\u0301x"}, 2, []string{"e\u0301", "x"}},
 		{"after wide", []string{"世", "\u0301x"}, 3, []string{"世\u0301", cont, "x"}},
 		{"no join", []string{"世", "界"}, 4, []string{"世", cont, "界", cont}},
+		{"Prepend then ASCII", []string{"\u0600", "12"}, 3, []string{"\u06001", cont, "2"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

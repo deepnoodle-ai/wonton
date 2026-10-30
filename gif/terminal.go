@@ -57,7 +57,9 @@ type TerminalScreen struct {
 
 // NewTerminalScreen creates a new terminal screen buffer with the specified
 // dimensions. All cells are initialized with space characters and default colors.
+// Negative dimensions are treated as 0.
 func NewTerminalScreen(cols, rows int) *TerminalScreen {
+	cols, rows = max(cols, 0), max(rows, 0)
 	ts := &TerminalScreen{
 		Width:     cols,
 		Height:    rows,
@@ -180,8 +182,7 @@ func (ts *TerminalScreen) print(s string, fg, bg color.Color) {
 // cursor when Unicode segmentation makes them one cluster, and returns the
 // rest of s.
 func (ts *TerminalScreen) extendPrevious(s string) string {
-	// ASCII never extends a cluster: only LF does, after CR.
-	if s == "" || s[0] < utf8.RuneSelf || ts.CursorX <= 0 {
+	if s == "" || ts.CursorX <= 0 {
 		return s
 	}
 	x, y := min(ts.CursorX, ts.Width)-1, ts.CursorY
@@ -191,6 +192,11 @@ func (ts *TerminalScreen) extendPrevious(s string) string {
 	prev := ts.Cells[y][x]
 	prevText := prev.Text()
 	if prevText == "" {
+		return s
+	}
+	// ASCII printable text extends a cluster only after a Prepend rune
+	// (GB9b), which is rare. Test one byte before joining all of s.
+	if s[0] < utf8.RuneSelf && !joinsCluster(prevText, s[:1]) {
 		return s
 	}
 	for cluster, width := range runewidth.Graphemes(prevText + s) {
@@ -211,6 +217,14 @@ func (ts *TerminalScreen) extendPrevious(s string) string {
 		return s[len(cluster)-len(prevText):]
 	}
 	return s
+}
+
+// joinsCluster reports whether next continues the last cluster of prev.
+func joinsCluster(prev, next string) bool {
+	for cluster := range runewidth.Graphemes(prev + next) {
+		return len(cluster) > len(prev)
+	}
+	return false
 }
 
 // putCluster writes one grapheme cluster at the cursor and advances the
@@ -250,7 +264,7 @@ func (ts *TerminalScreen) lineFeed() {
 	ts.CursorY++
 	if ts.CursorY >= ts.Height {
 		ts.scrollUp()
-		ts.CursorY = ts.Height - 1
+		ts.CursorY = max(ts.Height-1, 0)
 	}
 }
 
@@ -271,20 +285,8 @@ func (ts *TerminalScreen) scrollUp() {
 // to valid screen bounds. Negative values are clamped to 0, and values beyond
 // the screen dimensions are clamped to the maximum valid position.
 func (ts *TerminalScreen) MoveCursor(x, y int) {
-	if x < 0 {
-		x = 0
-	}
-	if x >= ts.Width {
-		x = ts.Width - 1
-	}
-	if y < 0 {
-		y = 0
-	}
-	if y >= ts.Height {
-		y = ts.Height - 1
-	}
-	ts.CursorX = x
-	ts.CursorY = y
+	ts.CursorX = max(0, min(x, ts.Width-1))
+	ts.CursorY = max(0, min(y, ts.Height-1))
 }
 
 // TerminalRenderer converts a TerminalScreen buffer into animated GIF frames.

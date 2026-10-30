@@ -376,6 +376,23 @@ func TestEmulator_ResizeFromZero(t *testing.T) {
 	}
 }
 
+func TestEmulator_NegativeAndZeroSize(t *testing.T) {
+	em := NewEmulator(-1, -5) // must not panic
+	em.Resize(-3, -3)
+	em.ProcessOutput("a\tb\nc\x1b[5B\x1b[5C\x1b[9G\x1b[9d\x1b[2E")
+	s := em.Screen()
+	if s.Width != 0 || s.Height != 0 {
+		t.Errorf("size = %dx%d, want 0x0", s.Width, s.Height)
+	}
+	if s.CursorX != 0 || s.CursorY != 0 {
+		t.Errorf("cursor = (%d, %d), want (0, 0)", s.CursorX, s.CursorY)
+	}
+	s.MoveCursor(3, 3)
+	if s.CursorX != 0 || s.CursorY != 0 {
+		t.Errorf("after MoveCursor, cursor = (%d, %d), want (0, 0)", s.CursorX, s.CursorY)
+	}
+}
+
 func TestEmulator_PrivateCSI(t *testing.T) {
 	em := NewEmulator(80, 24)
 
