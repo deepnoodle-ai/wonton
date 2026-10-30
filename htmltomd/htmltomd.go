@@ -70,6 +70,7 @@ import (
 // Precompiled regexes for efficiency
 var (
 	whitespaceRegex = regexp.MustCompile(`\s+`)
+	multiSpaceRegex = regexp.MustCompile(` {2,}`)
 	tagStripRegex   = regexp.MustCompile(`<[^>]*>`)
 	listItemPattern = regexp.MustCompile(`^[-*+][ ]|^\d+\.[ ]`)
 )
@@ -991,6 +992,15 @@ func (c *converter) postProcess(s string) string {
 			}
 			if !keepIndent {
 				line = trimmed
+			}
+			// Inline elements can leave two spaces where their edges meet,
+			// as in "*x*  **y**". Text nodes are already collapsed, so any
+			// run of spaces after the indent is one of these. Skip indented
+			// code, blockquotes (which may quote code), and table rows.
+			if leadingSpaces < 4 && !strings.HasPrefix(line, "\t") &&
+				!strings.HasPrefix(trimmed, ">") && !strings.HasPrefix(trimmed, "|") {
+				indent := line[:len(line)-len(trimmed)]
+				line = indent + multiSpaceRegex.ReplaceAllString(line[len(indent):], " ")
 			}
 			// An opening fence is 3+ backticks plus an optional info string
 			// without backticks; inline code such as "``` x ```" is not one.
