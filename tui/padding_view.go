@@ -104,21 +104,25 @@ func insetLimit(limit, inset int) (inner int, full bool) {
 	return limit - inset, false
 }
 
+// insetBounds returns the area inside a width by height space that an inset
+// of left, top, right and bottom cells leaves, such as padding or a border.
+// ok is false when the inset leaves no room. image.Rect would swap the
+// corners instead and return an area that overlaps the inset.
+func insetBounds(width, height, left, top, right, bottom int) (r image.Rectangle, ok bool) {
+	if width-right <= left || height-bottom <= top {
+		return image.Rectangle{}, false
+	}
+	return image.Rect(left, top, width-right, height-bottom), true
+}
+
 func (p *paddingView) render(ctx *RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
 	}
 
-	// Calculate inner bounds
-	innerBounds := image.Rect(
-		p.left,
-		p.top,
-		width-p.right,
-		height-p.bottom,
-	)
-
-	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+	innerBounds, ok := insetBounds(width, height, p.left, p.top, p.right, p.bottom)
+	if ok {
 		innerCtx := ctx.SubContext(innerBounds)
 		p.inner.render(innerCtx)
 	}

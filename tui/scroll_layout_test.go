@@ -160,6 +160,61 @@ func TestColorGridClickNormalizesAnInvalidState(t *testing.T) {
 	assert.Equal(t, 1, state[0][0])
 }
 
+func TestContainersDrawNoContentWhenTheFrameFillsTheSpace(t *testing.T) {
+	text := "XXXXX"
+	tests := []struct {
+		name string
+		view View
+	}{
+		{"Padding", Size(3, 1, PaddingHV(2, 0, Text("XXXXX")))},
+		{"Bordered", Size(1, 4, Bordered(Text("XXXXX")))},
+		{"BorderedShort", Size(5, 1, Bordered(Text("XXXXX")))},
+		{"Panel", Size(1, 4, Panel(Text("XXXXX")).Border(BorderSingle))},
+		{"PanelShort", Size(5, 1, Panel(Text("XXXXX")).Border(BorderSingle))},
+		{"AnimatedBordered", Size(1, 4, AnimatedBordered(Text("XXXXX"), nil))},
+		{"TextArea", Size(1, 4, TextArea(&text).Bordered())},
+		{"TextAreaShort", Size(5, 1, TextArea(&text).Bordered())},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			screen := SprintScreen(tc.view, WithWidth(5))
+			assert.False(t, strings.Contains(screen.Text(), "X"),
+				"content must not be drawn over the frame: %q", screen.Text())
+		})
+	}
+}
+
+func TestGridClicksStopAtTheVisibleArea(t *testing.T) {
+	tests := []struct {
+		name string
+		grid func(onClick func()) View
+	}{
+		{"CellGrid", func(onClick func()) View {
+			return CellGrid(10, 1).CellSize(2, 1).OnClick(func(int, int) { onClick() })
+		}},
+		{"ColorGrid", func(onClick func()) View {
+			return ColorGrid(10, 1, nil, []Color{ColorRed}).CellSize(2, 1).
+				OnStateChange(func(int, int, int) { onClick() })
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var gridClicks, buttonClicks int
+			view := Group(
+				Width(4, tc.grid(func() { gridClicks++ })),
+				Clickable("BBBB", func() { buttonClicks++ }),
+			)
+			r := NewRuntime(NewTestTerminal(10, 1, &bytes.Buffer{}), &staticApp{view: view}, 30)
+			assert.NoError(t, r.renderChecked())
+			// Column 6 shows the button. The grid's third cell would sit
+			// there, but Width(4) hides it.
+			r.processEvent(MouseEvent{X: 6, Y: 0, Button: MouseButtonLeft, Type: MouseClick})
+			assert.Equal(t, 1, buttonClicks)
+			assert.Equal(t, 0, gridClicks)
+		})
+	}
+}
+
 type staticApp struct{ view View }
 
 func (a *staticApp) View() View              { return a.view }

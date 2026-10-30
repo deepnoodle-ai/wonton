@@ -1,10 +1,6 @@
 package tui
 
-import (
-	"image"
-
-	"github.com/deepnoodle-ai/wonton/runewidth"
-)
+import "github.com/deepnoodle-ai/wonton/runewidth"
 
 // PanelView displays a filled rectangle with optional border
 type PanelView struct {
@@ -211,7 +207,11 @@ func (b *PanelView) render(ctx *RenderContext) {
 	if b.content != nil {
 		contentCtx := ctx
 		if b.borderStyle != BorderNone {
-			contentCtx = ctx.SubContext(image.Rect(1, 1, width-1, height-1))
+			innerBounds, ok := insetBounds(width, height, 1, 1, 1, 1)
+			if !ok {
+				return
+			}
+			contentCtx = ctx.SubContext(innerBounds)
 		}
 		b.content.render(contentCtx)
 	}

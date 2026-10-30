@@ -561,8 +561,7 @@ func (t *TextAreaView) renderBordered(ctx *RenderContext, w, h int, content *Scr
 	}
 
 	// Inner content area
-	innerBounds := image.Rect(1, 1, w-1, h-1)
-	if innerBounds.Dx() > 0 && innerBounds.Dy() > 0 {
+	if innerBounds, ok := insetBounds(w, h, 1, 1, 1, 1); ok {
 		innerCtx := ctx.SubContext(innerBounds)
 		content.render(innerCtx)
 	}
