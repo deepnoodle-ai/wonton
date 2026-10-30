@@ -89,6 +89,7 @@ func (l *SelectListView) HandleKeyEvent(event KeyEvent) bool {
 	if l.selected == nil {
 		return false
 	}
+	clampCursor(l.selected, len(l.items))
 
 	if nav := listNavForKey(event, true); nav != listNavNone {
 		visible := listViewport(l.lastHeight, l.height, 10)

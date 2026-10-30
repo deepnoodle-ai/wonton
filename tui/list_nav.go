@@ -88,6 +88,18 @@ func moveListCursor(nav listNav, cursor, count, page int) (int, bool) {
 	return next, next != cursor
 }
 
+// clampCursor clamps *cursor into [0, count), or to 0 when count is 0. The
+// list views highlight the clamped item when the app's index is out of
+// range (for example after the items shrink), so key handling clamps the
+// stored index first and acts on the item the user sees. A nil cursor is a
+// no-op.
+func clampCursor(cursor *int, count int) {
+	if cursor == nil {
+		return
+	}
+	*cursor = max(min(*cursor, count-1), 0)
+}
+
 // listViewport returns the effective viewport height for paging and
 // scroll-follow: the height observed at the last render when available,
 // otherwise the configured height, otherwise fallback.

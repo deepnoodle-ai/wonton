@@ -84,6 +84,7 @@ func (r *RadioListView) FocusBounds() image.Rectangle {
 }
 
 func (r *RadioListView) HandleKeyEvent(event KeyEvent) bool {
+	clampCursor(r.selected, len(r.items))
 	if nav := listNavForKey(event, true); nav != listNavNone && r.selected != nil {
 		visible := listViewport(r.lastHeight, r.height, 10)
 		next, moved := moveListCursor(nav, *r.selected, len(r.items), visible)

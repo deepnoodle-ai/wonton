@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 func TestPromptChoice_Basic(t *testing.T) {
@@ -244,4 +245,49 @@ func TestPromptChoice_CustomCursor(t *testing.T) {
 
 func TestPromptChoice_NoNumbers(t *testing.T) {
 	t.Skip("Render test requires different terminal setup - skipping for now")
+}
+
+func TestPromptChoice_InputOptionWithoutBinding(t *testing.T) {
+	selected := 1
+	var got string
+	view := PromptChoice(&selected, nil).
+		ID("unbound-input").
+		Option("Yes").
+		InputOption("Other...").
+		OnSelect(func(_ int, text string) { got = text })
+	view.SetFocused(true)
+
+	view.HandleKeyEvent(KeyEvent{Rune: 'h'})
+	view.HandleKeyEvent(KeyEvent{Rune: 'i'})
+
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertRowContains(t, screen, 1, "hi")
+
+	view.HandleKeyEvent(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, got, "hi")
+}
+
+func TestPromptChoice_OutOfRangeSelectionTypesIntoInput(t *testing.T) {
+	selected := 5
+	text := ""
+	view := PromptChoice(&selected, &text).ID("out-of-range-input").
+		Option("Yes").Option("No").InputOption("Other...")
+	view.SetFocused(true)
+	SprintScreen(view, WithWidth(20))
+
+	view.HandleKeyEvent(KeyEvent{Rune: 'h'})
+	assert.Equal(t, text, "h", "the first key reaches the highlighted input row")
+}
+
+func TestPromptChoice_OutOfRangeSelection(t *testing.T) {
+	selected := 7
+	got := -1
+	view := PromptChoice(&selected, nil).Option("Yes").Option("No").
+		OnSelect(func(idx int, _ string) { got = idx })
+
+	screen := SprintScreen(view, WithWidth(20))
+	termtest.AssertRowContains(t, screen, 1, "❯")
+
+	view.HandleKeyEvent(KeyEvent{Key: KeyEnter})
+	assert.Equal(t, got, 1, "Enter reports the highlighted in-range option")
 }

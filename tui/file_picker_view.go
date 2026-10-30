@@ -203,13 +203,7 @@ func (f *FilePickerView) render(ctx *RenderContext) {
 	items := f.filteredItems()
 
 	// Adjust selected index if out of bounds
-	if f.selected != nil && *f.selected >= len(items) {
-		if len(items) > 0 {
-			*f.selected = len(items) - 1
-		} else {
-			*f.selected = 0
-		}
-	}
+	clampCursor(f.selected, len(items))
 
 	// Create list view
 	FilterableListView := SelectList(items, f.selected).
