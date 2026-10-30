@@ -11,6 +11,8 @@ bug fixes. Release notes identify incompatible changes explicitly.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
 ### Removed
 
 - `tui`: the global animation coordinator. This is an incompatible change.
@@ -19,31 +21,112 @@ bug fixes. Release notes identify incompatible changes explicitly.
   `NewGlobalEffect`, `GlobalEffectType` and its constants, `CoordinatedView`,
   and `Coordinated` are gone. The coordinator never notified its subscribers,
   `GlobalEffect.Value` raced with `Update`, and nothing in the module used it.
-  Per-view animations are unchanged.
+  Per-view animations are unchanged. (#167)
 
 ### Fixed
 
 - `git.Repository.Status` reports an empty `Branch` on a detached HEAD, as
-  documented. Before, it reported `"(detached)"`.
+  documented. Before, it reported `"(detached)"`. (#151)
+
+- `git.Repository.Status` returns each path as itself in `Staged`,
+  `Unstaged`, `Untracked`, and `Conflicts`. Before, a changed `café.txt` came
+  back as git's quoted form, `"caf\303\251.txt"`, quotes included. Paths with
+  `"`, `\`, a tab, or a newline had the same problem. (#171)
 
 - `git.Repository.Diff` reports a copied file with status `"copied"` when git
   detects copies, such as with `diff.renames=copies`. Before, the copy was
   reported as `"renamed"`, and the modified source file it was copied from
-  had no status.
-
-- `unidiff.Parse` drops a hunk that comes before any file header. Before,
-  that hunk was added to the next file.
-
-- `crawler.Crawl` runs its seed URLs when the `Frontier` already holds items.
-  Before, a worker could finish those items before the seeds were submitted,
-  which ended the crawl early. `Crawl` then returned `context.Canceled` and
-  never fetched the seeds.
+  had no status. (#151)
 
 - `git.Repository.Diff` returns the correct `Path`, `OldPath`, and `Status`
   for a rename or copy inside a directory whose name has braces, such as
   `routes/{id}/`. Before, the paths came back cut at the braces, and a copy
   was reported as `"renamed"`. Non-ASCII paths now come back unquoted:
-  `café.txt` was returned as git's quoted form, `"caf\303\251.txt"`.
+  `café.txt` was returned as git's quoted form, `"caf\303\251.txt"`. (#165)
+
+- `git.Repository.Diff` with `IncludePatch` and `git.Repository.DiffFile`
+  return the `Patch` for a file whose path git quotes, such as `café.txt` or
+  a path with `"`, `\`, a tab, or a newline. Before, the `Patch` was empty.
+  (#169)
+
+- The `git.DiffOptions.ContextLines` doc comment says that 0 uses git's
+  default of 3 context lines. Before, it said 0 showed only changed lines,
+  which `Diff` never did. Behavior is unchanged. (#160)
+
+- `unidiff.Parse` drops a hunk that comes before any file header. Before,
+  that hunk was added to the next file. (#151)
+
+- `crawler.Crawl` runs its seed URLs when the `Frontier` already holds items.
+  Before, a worker could finish those items before the seeds were submitted,
+  which ended the crawl early. `Crawl` then returned `context.Canceled` and
+  never fetched the seeds. (#154)
+
+- `crawler.Crawl` no longer crashes when a `Fetcher` returns `(nil, nil)`.
+  The URL fails with the error "fetcher returned nil response", and the
+  robots.txt check treats it as a failed fetch and allows the URL. (#161)
+
+- `cache.InMemoryCache.Get` returns a copy. Changing the result no longer
+  changes the cache. (#161)
+
+- `htmlparse.Document.FilteredLinks` compares hosts without regard to case.
+  `https://EXAMPLE.com/a` is now internal to `https://example.com/`, for both
+  `Internal` and `External`. (#161)
+
+- `fetch.Download` no longer takes the saved file name from a parameter such
+  as `x-filename=`. It falls back to the name from the URL. (#161)
+
+- `thumbnail.Render` returns an error when the target `Width` × `Height`
+  exceeds `DefaultMaxSourcePixels`. Before, a target such as 50000×50000
+  allocated that canvas and hung or ran out of memory. (#155)
+
+- `env.Parse` and `env.ParseInto` leave a nil pointer nil when its struct
+  type is already being parsed, such as `Next *Node` inside `Node`. Before,
+  they allocated nested values forever. (#155)
+
+- `env.WithParser` works when its type is an interface, and sets fields of
+  that interface type. Before, `Parse` failed with "unsupported type:
+  interface". (#160)
+
+- `cli.CaptureOutput` reads stdout and stderr while the function runs, so
+  output larger than the pipe buffer no longer deadlocks. It also restores
+  `os.Stdout` and `os.Stderr` when the function panics. (#155)
+
+- `terminal.Terminal.WatchResize` no longer races with a concurrent
+  `StopWatchResize` or `Close`, which could also panic with a nil channel.
+  After `Close`, `WatchResize` does nothing. Before, it started a watcher
+  that nothing stopped. (#156)
+
+- `tui.Runtime.Handoff` and `tui.InlineApp.Handoff` keep the input typed just
+  before a hand-off, even when the terminal hangs up at the same moment.
+  Before, the input reader could report end of input and drop those keys.
+  (#156)
+
+- `terminal.MouseHandler` and `tui.MouseHandler` use `TripleClickThreshold`
+  for the third click. Before, the field was never read, and
+  `DoubleClickThreshold` timed every click. (#163)
+
+- `terminal.KeyDecoder` stops a malformed CSI sequence at a non-ASCII byte.
+  `ESC [ 中 x` gives `KeyUnknown`, then `中`, then `x`. Before, `中` was eaten
+  as part of the sequence. (#163)
+
+- `termsession.Recorder` with `RedactSecrets: false` records a UTF-8
+  character split across two `RecordOutput` or `RecordInput` calls whole.
+  Before, the .cast file got U+FFFD. (#163)
+
+- `tui`: `Padding`, `Bordered`, `AnimatedBordered`, a bordered `Panel`, and a
+  bordered `TextArea` draw no content when the padding or border fills all
+  the space they get. Before, the content was drawn over the padding or
+  border, so `Size(1, 4, Bordered(Text("XXXXX")))` showed `X` in place of the
+  left border. (#164)
+
+- `tui`: `CellGrid` and `ColorGrid` cells that a smaller size hides no longer
+  take clicks. Before, a click on a view next to a clipped grid could go to a
+  hidden grid cell. (#164)
+
+- Examples: `examples/tui/scrollback_simple` no longer has a data race,
+  `examples/sseview` no longer panics with `index out of range [-1]` after
+  paging on an empty list, and `examples/tui/scrollback_demo` no longer
+  starts a goroutine that blocks forever. (#162)
 
 ## [0.10.3] - 2026-10-29
 
