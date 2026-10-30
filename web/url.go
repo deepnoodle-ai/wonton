@@ -264,7 +264,9 @@ func looksLikeHostPort(u *url.URL) bool {
 // canonicalize applies the shared normalization transformations to a parsed
 // http(s) URL. The URL is modified in place and returned.
 func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
-	if u.Hostname() == "" {
+	// A hostname of only dots comes from a relative path such as "../about"
+	// read as a bare hostname.
+	if strings.Trim(u.Hostname(), ".") == "" {
 		return nil, fmt.Errorf("invalid url missing hostname: %s", u)
 	}
 
@@ -301,10 +303,15 @@ func canonicalize(u *url.URL, cfg normalizeConfig) (*url.URL, error) {
 	u.Fragment = ""
 	u.RawFragment = ""
 
-	// Resolve dot segments so "/a/../b" and "/b" compare equal. Skip paths
-	// with their own encoding (RawPath set) — cleaning the decoded form
-	// could change which characters are escaped.
-	if u.RawPath == "" && u.Path != "" {
+	// Resolve dot segments so "/a/../b" and "/b" compare equal. A path with
+	// its own encoding (RawPath set) is cleaned in escaped form, so an
+	// escaped slash such as %2F stays part of its segment.
+	if u.RawPath != "" {
+		raw := cleanPath(u.EscapedPath())
+		if p, err := url.PathUnescape(raw); err == nil {
+			u.Path, u.RawPath = p, raw
+		}
+	} else if u.Path != "" {
 		u.Path = cleanPath(u.Path)
 	}
 	if u.Path == "/" {
@@ -320,7 +327,10 @@ func cleanPath(p string) string {
 	if cleaned == "." {
 		return ""
 	}
-	if strings.HasSuffix(p, "/") && !strings.HasSuffix(cleaned, "/") {
+	// A final "." or ".." segment names a directory, as in RFC 3986:
+	// "/a/b/.." resolves to "/a/".
+	endsInDir := strings.HasSuffix(p, "/") || strings.HasSuffix(p, "/.") || strings.HasSuffix(p, "/..")
+	if endsInDir && !strings.HasSuffix(cleaned, "/") {
 		cleaned += "/"
 	}
 	return cleaned

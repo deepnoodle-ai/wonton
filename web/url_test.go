@@ -579,6 +579,29 @@ func TestResolveLinkInvalidBase(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestNormalizeURLRejectsRelativeDotPaths(t *testing.T) {
+	for _, input := range []string{".", "..", "../about", "./about", "..."} {
+		u, err := NormalizeURL(input)
+		if err == nil {
+			t.Errorf("NormalizeURL(%q) = %q, want error", input, u)
+		}
+	}
+}
+
+func TestNormalizeURLResolvesDotSegments(t *testing.T) {
+	for input, want := range map[string]string{
+		"https://example.com/a/b/..":           "https://example.com/a/",
+		"https://example.com/a/b/.":            "https://example.com/a/b/",
+		"https://example.com/a/..":             "https://example.com",
+		"https://example.com/a/../b/c%2Fd":     "https://example.com/b/c%2Fd",
+		"https://example.com/a/./b/c%2Fd/../e": "https://example.com/a/b/e",
+	} {
+		u, err := NormalizeURL(input)
+		assert.NoError(t, err, input)
+		assert.Equal(t, u.String(), want, input)
+	}
+}
+
 // Example demonstrates basic URL normalization.
 func ExampleNormalizeURL() {
 	// Normalize a URL with query parameters and fragment
