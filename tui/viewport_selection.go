@@ -351,14 +351,10 @@ func (s *ViewportState) DragAutoScroll() bool {
 		return false
 	}
 	item, line := s.anchorItem, s.anchorLine
+	// ScrollBy leaves Follow off while the selection holds it, so reaching
+	// the bottom mid-drag cannot re-pin the viewport and let streaming
+	// content move the very words being selected.
 	s.ScrollBy(s.dragEdge)
-	// ScrollBy sets Follow when it lands on the end of the content, which is
-	// right for a user scrolling and wrong here: reaching the bottom mid-drag
-	// would re-pin the viewport and let streaming content move the very words
-	// being selected. The selection owns Follow until it is dismissed.
-	if s.followSuspended {
-		s.Follow = false
-	}
 	if s.anchorItem == item && s.anchorLine == line {
 		return false
 	}
@@ -580,7 +576,9 @@ func (s *ViewportState) renderItemLines(item int) []itemLine {
 		return nil
 	}
 	frame.Fill(' ', NewStyle())
-	view.render(NewRenderContext(frame, 0))
+	ctx := NewRenderContext(frame, 0)
+	ctx.offscreen = true
+	view.render(ctx)
 	term.EndFrame(frame)
 
 	lines := make([]itemLine, height)

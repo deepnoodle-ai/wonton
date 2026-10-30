@@ -320,6 +320,7 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 		if err == nil {
 			ctx := NewRenderContext(frame, 0)
 			ctx.source = l
+			ctx.offscreen = true
 			view.render(ctx)
 			term.EndFrame(frame)
 		} else {

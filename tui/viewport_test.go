@@ -284,9 +284,35 @@ func TestViewportScrollMethodsAreNoOpsBeforeFirstRender(t *testing.T) {
 	state := &ViewportState{}
 	state.ScrollBy(-5)
 	state.PageUp()
-	state.ScrollToItem(3)
 	item, line := state.Anchor()
 	assert.Equal(t, 0, item)
+	assert.Equal(t, 0, line)
+}
+
+func TestViewportScrollToItemBeforeFirstRender(t *testing.T) {
+	// An application opening a transcript at a given message asks for it
+	// before anything has been drawn; the first frame honors it.
+	state := &ViewportState{}
+	state.ScrollToItem(3)
+	items := &heightItems{heights: heightsOf(10, 2)}
+	assert.Equal(t, []string{"3.0", "3.1", "4.0", "4.1"}, visible(renderViewport(t, state, items, 20, 4, 0)))
+}
+
+func TestViewportScrollByAfterAnchoredItemShrinks(t *testing.T) {
+	items := &heightItems{heights: []int{20, 5, 5}}
+	state := &ViewportState{}
+	renderViewport(t, state, items, 20, 4, 0)
+	state.ScrollBy(15)
+	item, line := state.Anchor()
+	assert.Equal(t, 0, item)
+	assert.Equal(t, 15, line)
+
+	// Item 0 collapses to 2 lines and the app scrolls before the next frame.
+	items.heights[0] = 2
+	state.Invalidate(0)
+	state.ScrollBy(1)
+	item, line = state.Anchor()
+	assert.Equal(t, 1, item, "one line down from the collapsed item's last line")
 	assert.Equal(t, 0, line)
 }
 

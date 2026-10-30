@@ -19,6 +19,7 @@ type RenderContext struct {
 	source       *sourceLayout
 	sourceOrigin image.Point
 	screen       image.Rectangle // absolute bounds of the root frame
+	offscreen    bool            // a scratch render whose positions are not on screen
 }
 
 // NewRenderContext creates a new render context.
@@ -44,6 +45,7 @@ func (c *RenderContext) WithFocusManager(fm *FocusManager) *RenderContext {
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin,
 		screen:       c.screen,
+		offscreen:    c.offscreen,
 	}
 }
 
@@ -60,6 +62,7 @@ func (c *RenderContext) withRegistries(reg *registries) *RenderContext {
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin,
 		screen:       c.screen,
+		offscreen:    c.offscreen,
 	}
 }
 
@@ -118,6 +121,7 @@ func (c *RenderContext) SubContext(bounds image.Rectangle) *RenderContext {
 		source:       c.source,
 		sourceOrigin: c.sourceOrigin.Add(clippedBounds.Min),
 		screen:       c.screen,
+		offscreen:    c.offscreen,
 	}
 }
 
@@ -233,5 +237,6 @@ func (c *RenderContext) WithFrame(frame RenderFrame) *RenderContext {
 		source:       c.source,
 		sourceOrigin: origin,
 		screen:       c.screen,
+		offscreen:    c.offscreen,
 	}
 }
