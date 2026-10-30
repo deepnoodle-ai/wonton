@@ -367,7 +367,7 @@ func (b *Box) Draw(t RenderFrame, x, y int) {
 			}
 		} else {
 			// Just empty space for vertical padding
-			t.FillStyled(contentX, currentY, width-2-(b.Padding*2), 1, ' ', NewStyle())
+			t.FillStyled(contentX, currentY, width-2-b.Padding, 1, ' ', NewStyle())
 		}
 
 		// Right border

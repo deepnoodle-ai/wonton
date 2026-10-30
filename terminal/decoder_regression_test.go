@@ -24,6 +24,23 @@ func TestKeyDecoder_BracketedPasteEndingWithEscape(t *testing.T) {
 	assert.Equal(t, event.(KeyEvent).Rune, 'q')
 }
 
+func TestKeyDecoder_SS3ArrowsAndControlByte(t *testing.T) {
+	// Application cursor mode sends arrows as SS3. An ESC after ESC O starts
+	// the next key, so the ESC O was Alt+O.
+	decoder := NewKeyDecoder(strings.NewReader("\x1bOA\x1bOB\x1bOC\x1bOD\x1bO\x1b[A"))
+	for _, want := range []Key{KeyArrowUp, KeyArrowDown, KeyArrowRight, KeyArrowLeft} {
+		event, err := decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, event.(KeyEvent).Key, want)
+	}
+	event, err := decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent), KeyEvent{Rune: 'O', Alt: true})
+	event, err = decoder.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, event.(KeyEvent).Key, KeyArrowUp)
+}
+
 func TestKeyDecoder_BracketedPasteWithEmbeddedEscapes(t *testing.T) {
 	for _, content := range []string{"a\x1b[20b", "\x1b\x1b[2\x1b[201", "x\x1b[200~y", "\x1b[2\x1b[20\x1b"} {
 		decoder := NewKeyDecoder(strings.NewReader("\x1b[200~" + content + "\x1b[201~z"))

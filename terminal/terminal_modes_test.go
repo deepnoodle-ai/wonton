@@ -193,6 +193,21 @@ func TestTerminal_BypassInputPreservesGraphemeClusters(t *testing.T) {
 	assert.Equal(t, 0, term.virtualY)
 }
 
+// A wide character written one cell into another leaves no orphaned
+// continuation cell behind.
+func TestTerminal_BypassInputOverlappingWideCharacters(t *testing.T) {
+	term := NewTestTerminal(10, 2, &bytes.Buffer{})
+	term.BypassInput("a世")
+	term.virtualX = 0
+	term.BypassInput("界")
+
+	assert.Equal(t, term.backBuffer[0][0].Char, '界')
+	assert.True(t, term.backBuffer[0][1].Continuation)
+	assert.False(t, term.backBuffer[0][2].Continuation)
+	assert.Equal(t, term.backBuffer[0][2].Char, ' ')
+	assert.False(t, term.frontBuffer[0][2].Continuation)
+}
+
 func TestTerminal_FlushIsWrappedInSynchronizedOutput(t *testing.T) {
 	buf := &bytes.Buffer{}
 	term := NewTestTerminal(10, 5, buf)

@@ -111,6 +111,23 @@ func TestRecordingRedactsValueRedrawnWithoutLabel(t *testing.T) {
 	assert.True(t, strings.Contains(recorded, "Token: [REDACTED]"), "recorded: %q", recorded)
 }
 
+func TestRecordingRedactedKeepsHyperlinks(t *testing.T) {
+	term := NewTestTerminal(30, 2, &bytes.Buffer{})
+	filename := filepath.Join(t.TempDir(), "out.cast")
+	assert.NoError(t, term.StartRecording(filename, RecordingOptions{RedactSecrets: true}))
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	assert.NoError(t, frame.PrintHyperlink(0, 0, NewHyperlink("https://example.com", "site")))
+	assert.NoError(t, term.EndFrame(frame))
+	assert.NoError(t, term.StopRecording())
+
+	recorded := strings.Join(readCastEvents(t, filename), "")
+	start := strings.Index(recorded, "\033]8;;https://example.com\033\\")
+	end := strings.LastIndex(recorded, "\033]8;;\033\\")
+	assert.True(t, start >= 0 && end > start, "recorded: %q", recorded)
+	assert.Contains(t, recorded[start:end], "site")
+}
+
 func TestRecordingRecordsScreenModes(t *testing.T) {
 	var screen bytes.Buffer
 	term := NewTestTerminal(20, 3, &screen)
@@ -188,6 +205,11 @@ func TestRedactorKeepsEscapeSequences(t *testing.T) {
 			"hyperlink URL is redacted inside the sequence",
 			"\033]8;;https://x.test/?token=abc123\033\\link\033]8;;\033\\",
 			"\033]8;;https://x.test/?token=[REDACTED]\033\\link\033]8;;\033\\",
+		},
+		{
+			"a lone ESC does not swallow the next sequence's ESC",
+			"\033\033]0;password=mysecret\ahello\n",
+			"\033\033]0;password=[REDACTED]\ahello\n",
 		},
 	}
 	for _, tt := range tests {

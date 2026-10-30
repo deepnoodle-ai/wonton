@@ -922,7 +922,22 @@ func (kd *KeyDecoder) decodeSS3() (KeyEvent, error) {
 		return KeyEvent{Key: KeyUnknown}, err
 	}
 
+	if ch < 0x20 || ch == 0x7f {
+		// A control byte, such as the ESC of the next key, cannot end SS3:
+		// the ESC O was Alt+O, and the byte belongs to the next event.
+		_ = kd.reader.UnreadByte()
+		return KeyEvent{Rune: 'O', Alt: true}, nil
+	}
+
 	switch ch {
+	case 'A': // application cursor keys (DECCKM)
+		return KeyEvent{Key: KeyArrowUp}, nil
+	case 'B':
+		return KeyEvent{Key: KeyArrowDown}, nil
+	case 'C':
+		return KeyEvent{Key: KeyArrowRight}, nil
+	case 'D':
+		return KeyEvent{Key: KeyArrowLeft}, nil
 	case 'P':
 		return KeyEvent{Key: KeyF1}, nil
 	case 'Q':

@@ -273,6 +273,11 @@ func escapeLen(s string) (n int, done bool) {
 		if i == len(s) {
 			return len(s), false
 		}
+		if s[i] < 0x30 || s[i] > 0x7e {
+			// Not a final byte, such as a second ESC: the sequence ends
+			// before it, and the byte is read on its own.
+			return i, true
+		}
 		return i + 1, true
 	}
 }

@@ -1951,6 +1951,11 @@ func (t *Terminal) BypassInput(text string) {
 
 			clearArtifacts(t.backBuffer, t.virtualX, t.virtualY)
 			clearArtifacts(t.frontBuffer, t.virtualX, t.virtualY)
+			if clusterWidth == 2 && t.virtualX+1 < t.width {
+				// The cell the continuation covers may start a wide character.
+				clearArtifacts(t.backBuffer, t.virtualX+1, t.virtualY)
+				clearArtifacts(t.frontBuffer, t.virtualX+1, t.virtualY)
+			}
 			t.backBuffer[t.virtualY][t.virtualX] = cell
 			t.frontBuffer[t.virtualY][t.virtualX] = cell
 
@@ -2007,12 +2012,22 @@ func (t *Terminal) renderRowsLocked(rows []int) string {
 	}
 	var b strings.Builder
 	var style Style
+	url := ""
 	for _, y := range rows {
 		fmt.Fprintf(&b, "\033[%d;1H", y+1)
 		for x := 0; x < t.width; x++ {
 			cell := t.backBuffer[y][x]
 			if cell.Continuation {
 				continue
+			}
+			if cell.Style.URL != url {
+				if url != "" {
+					b.WriteString(End())
+				}
+				if cell.Style.URL != "" {
+					b.WriteString(Start(cell.Style.URL))
+				}
+				url = cell.Style.URL
 			}
 			if !cell.Style.Equal(style) {
 				if !style.IsEmpty() {
@@ -2028,6 +2043,9 @@ func (t *Terminal) renderRowsLocked(rows []int) string {
 				fmt.Fprintf(&b, "\033[%d;%dH", y+1, x+cell.Width+1)
 			}
 		}
+	}
+	if url != "" {
+		b.WriteString(End())
 	}
 	if !style.IsEmpty() {
 		b.WriteString("\033[0m")
@@ -2116,7 +2134,8 @@ func (t *Terminal) flushInternal() error {
 			}
 
 			if rewriteRest || !cell.Equal(oldCell) {
-				if cell.Trailing != "" {
+				// An old cluster may have spilled too; its spill is gone now.
+				if cell.Trailing != "" || oldCell.Trailing != "" {
 					rewriteRest = true
 				}
 				rowChanged = true
