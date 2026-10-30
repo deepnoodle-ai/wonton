@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image"
 	"testing"
 
@@ -50,6 +51,39 @@ func TestHitMapKeepsFlex(t *testing.T) {
 	b, ok := hits.Bounds("fill")
 	assert.True(t, ok)
 	assert.Equal(t, b.Dy(), 3)
+}
+
+// hitSourceItems wraps each source-bound text item in a HitMap area.
+type hitSourceItems struct {
+	hits *HitMap
+	text []string
+}
+
+func (h *hitSourceItems) Len() int                    { return len(h.text) }
+func (h *hitSourceItems) Source(i int) (string, bool) { return h.text[i], true }
+func (h *hitSourceItems) Item(i int) View {
+	return h.hits.Area(fmt.Sprintf("row:%d", i), Text("%s", h.text[i]).SourceOffset(0))
+}
+
+func TestHitMapAreaInsideViewportWithSelection(t *testing.T) {
+	var hits HitMap
+	items := &hitSourceItems{hits: &hits, text: []string{"alpha", "beta"}}
+	state := &ViewportState{}
+	view := Stack(Height(5, Text("")), Height(3, Viewport(state, items)))
+	SprintScreen(view, WithWidth(20), WithHeight(8))
+	state.SelectLine(0, 0) // viewport-local coordinates
+	assert.Equal(t, state.SelectedText(), "alpha", "an area around a source-bound view keeps its text")
+
+	// Rendering with a selection paints it off-screen; that must not move
+	// the areas recorded on screen.
+	hits.Reset()
+	state.Invalidate(0) // the item changed, so the paint must render it again
+	SprintScreen(view, WithWidth(20), WithHeight(8))
+	b, ok := hits.Bounds("row:0")
+	assert.True(t, ok)
+	assert.Equal(t, b, image.Rect(0, 5, 20, 6))
+	key, _ := hits.At(0, 0)
+	assert.Equal(t, key, "")
 }
 
 func TestCellsView(t *testing.T) {

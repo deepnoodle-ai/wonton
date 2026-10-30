@@ -232,6 +232,25 @@ func TestSelectingSuspendsFollowAndReleasingRestoresIt(t *testing.T) {
 	assert.True(t, s.Follow, "dismissing the selection resumes following")
 }
 
+func TestScrollingUpDuringASelectionStaysUpAfterIt(t *testing.T) {
+	lines := make([]string, 20)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+	items := &textItems{text: lines}
+	s := &ViewportState{Follow: true}
+	renderViewport(t, s, items, 20, 5, 0)
+
+	s.BeginSelection(0, 0)
+	s.ExtendSelection(3, 0)
+	s.EndSelection()
+	s.ScrollBy(-5) // the user scrolls away while the selection stands
+	assert.False(t, s.Follow)
+
+	s.ClearSelection()
+	assert.False(t, s.Follow, "dismissing must not snap back to the bottom")
+}
+
 func TestHandleMouseIgnoresWhatIsNotASelectionGesture(t *testing.T) {
 	s, _, _ := newTextViewport(t, []string{"hello"}, 20, 5)
 

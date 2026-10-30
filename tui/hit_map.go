@@ -103,7 +103,9 @@ func (v *hitAreaView) flex() int {
 }
 
 func (v *hitAreaView) render(ctx *RenderContext) {
-	if b := ctx.clickArea(ctx.AbsoluteBounds()); !b.Empty() {
+	// A scratch render, such as a Viewport measuring a selection, draws at
+	// the origin of a throwaway frame; recording it would hide the real area.
+	if b := ctx.clickArea(ctx.AbsoluteBounds()); !b.Empty() && !ctx.offscreen {
 		v.hits.areas = append(v.hits.areas, hitArea{key: v.key, bounds: b})
 	}
 	v.child.render(ctx)

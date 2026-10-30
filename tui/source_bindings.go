@@ -19,6 +19,8 @@ func collectSourceBindings(view View, layout *sourceLayout) {
 		children = v.children
 	case *ZStackView:
 		children = v.children
+	case *hitAreaView:
+		children = []View{v.child}
 	case *paddingView:
 		children = []View{v.inner}
 	case *sizeView:

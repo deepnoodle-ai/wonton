@@ -126,15 +126,28 @@ func (s *ViewportState) ScrollBy(lines int) {
 	if !s.ready() || lines == 0 {
 		return
 	}
+	// The anchored item may have shrunk since the last render; walk from a
+	// line it still has.
+	s.clampAnchor()
 	if lines < 0 {
-		s.Follow = false
 		s.anchorItem, s.anchorLine = s.moveUp(s.anchorItem, s.anchorLine, -lines)
 	} else {
 		s.anchorItem, s.anchorLine = s.moveDown(s.anchorItem, s.anchorLine, lines)
 	}
 	s.clampAnchor()
-	s.Follow = s.atBottom()
+	s.setFollow(s.atBottom())
 	s.updatePosition()
+}
+
+// setFollow records whether the user's scrolling has left the viewport
+// following the end. While a selection holds Follow off, the choice is kept
+// for when the selection is dismissed instead.
+func (s *ViewportState) setFollow(follow bool) {
+	if s.followSuspended {
+		s.followBeforeSelect = follow
+		return
+	}
+	s.Follow = follow
 }
 
 // PageUp scrolls up by one viewport, less a line of overlap so the reader keeps
@@ -146,19 +159,19 @@ func (s *ViewportState) PageDown() { s.ScrollBy(s.pageLines()) }
 
 // ScrollToTop jumps to the start of the list.
 func (s *ViewportState) ScrollToTop() {
-	s.Follow = false
+	s.setFollow(false)
 	if !s.ready() {
 		return
 	}
 	s.anchorItem, s.anchorLine = s.firstVisible(), 0
 	s.clampAnchor()
-	s.Follow = s.atBottom()
+	s.setFollow(s.atBottom())
 	s.updatePosition()
 }
 
 // ScrollToBottom jumps to the end of the list and follows it from then on.
 func (s *ViewportState) ScrollToBottom() {
-	s.Follow = true
+	s.setFollow(true)
 	if s.ready() {
 		s.anchorItem, s.anchorLine = s.maxAnchor()
 		s.AtBottom, s.LinesBelow = true, 0
@@ -168,13 +181,15 @@ func (s *ViewportState) ScrollToBottom() {
 // ScrollToItem puts the top of item i on the viewport's first row, or as close
 // as the end of the list allows.
 func (s *ViewportState) ScrollToItem(i int) {
-	s.Follow = false
+	s.setFollow(false)
+	// Before the first render there is nothing to clamp against; the render
+	// clamps the anchor instead.
+	s.anchorItem, s.anchorLine = i, 0
 	if !s.ready() {
 		return
 	}
-	s.anchorItem, s.anchorLine = i, 0
 	s.clampAnchor()
-	s.Follow = s.atBottom()
+	s.setFollow(s.atBottom())
 	s.updatePosition()
 }
 
