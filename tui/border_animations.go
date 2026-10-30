@@ -119,7 +119,7 @@ func (w *WaveBorderAnimation) GetBorderStyle(frame uint64, part BorderPart, posi
 
 	offset := int(frame) / w.Speed
 	// Calculate position in wave
-	period := length + w.WaveWidth
+	period := max(length, 0) + w.WaveWidth
 	wavePos := ((position+offset)%period + period) % period
 
 	// Determine which color to use based on position

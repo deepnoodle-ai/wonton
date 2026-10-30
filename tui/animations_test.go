@@ -37,9 +37,10 @@ func TestRainbowAnimation_EmptyText(t *testing.T) {
 	assert.NotNil(t, anim.GetStyle(0, 0, 0).FgRGB)
 }
 
-func TestBorderAnimationsInTinyFrame(t *testing.T) {
-	// A 1x1 frame has no border perimeter; the animations must not divide
-	// by its zero length.
+func TestBorderAnimationsWithEmptyBorder(t *testing.T) {
+	// AnimatedBordered always passes a length of at least 1, but a custom
+	// view can call GetBorderStyle directly with an empty or negative
+	// length. The animations must not divide by zero.
 	for _, anim := range []BorderAnimation{
 		&RainbowBorderAnimation{},
 		&GradientBorderAnimation{},
@@ -47,6 +48,7 @@ func TestBorderAnimationsInTinyFrame(t *testing.T) {
 	} {
 		SprintScreen(Size(1, 1, AnimatedBordered(Text("x"), anim)), WithWidth(1), WithHeight(1))
 		anim.GetBorderStyle(0, BorderPartTop, 0, 0)
+		anim.GetBorderStyle(0, BorderPartTop, 3, -10) // -WaveWidth by default
 	}
 }
 
