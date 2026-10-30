@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -395,6 +396,49 @@ func TestDiffNonASCIIPath(t *testing.T) {
 	}
 	if len(diff.Files) != 1 || diff.Files[0].Path != "café.txt" || diff.Files[0].Status != "modified" {
 		t.Errorf("files = %+v, want café.txt modified", diff.Files)
+	}
+}
+
+// git C-quotes a "diff --git" header path that has a non-ASCII byte, '"', '\',
+// or a control character. The patch must still match its file.
+func TestDiffPatchQuotedPath(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	names := []string{"café.txt", "plain.txt"}
+	if runtime.GOOS != "windows" {
+		names = append(names, "tab\there.txt", `quo"te.txt`, `back\slash.txt`)
+	}
+	for _, name := range names {
+		addFile(t, repo, name, "one\n")
+	}
+	commit(t, repo, "initial")
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(repo.Path, name), []byte("two\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	diff, err := repo.Diff(ctx, git.DiffOptions{IncludePatch: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Files) != len(names) {
+		t.Fatalf("got %d files, want %d: %+v", len(diff.Files), len(names), diff.Files)
+	}
+	for _, f := range diff.Files {
+		if !strings.Contains(f.Patch, "+two") {
+			t.Errorf("%q: patch = %q, want the +two hunk", f.Path, f.Patch)
+		}
+	}
+
+	f, err := repo.DiffFile(ctx, "café.txt", git.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f == nil || !strings.Contains(f.Patch, "+two") {
+		t.Errorf("DiffFile(café.txt) = %+v, want a patch with +two", f)
 	}
 }
 

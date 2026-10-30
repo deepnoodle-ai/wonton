@@ -239,7 +239,22 @@ func (r *Repository) DiffFile(ctx context.Context, path string, opts DiffOptions
 // patchHeaderPath returns the new path from the "a/<old> b/<new>" part of a
 // "diff --git" header. Paths may contain spaces, so it first tries the common
 // case where both sides name the same path, then falls back to the last " b/".
+//
+// git C-quotes a side whose path has a non-ASCII byte, '"', '\', or a control
+// character, as in "b/caf\303\251.txt". A quoted new path ends the header with
+// '"', and an unescaped ` "b/` can only start it.
 func patchHeaderPath(header string) string {
+	if strings.HasSuffix(header, `"`) {
+		i := strings.LastIndex(header, ` "b/`)
+		if i < 0 {
+			return ""
+		}
+		path, err := strconv.Unquote(header[i+1:])
+		if err != nil {
+			return ""
+		}
+		return strings.TrimPrefix(path, "b/")
+	}
 	if n := len(header) - len("a/ b/"); n > 0 && n%2 == 0 {
 		path := header[2 : 2+n/2]
 		if header == "a/"+path+" b/"+path {
