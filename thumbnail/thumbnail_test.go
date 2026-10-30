@@ -230,6 +230,33 @@ func TestTruncate(t *testing.T) {
 	assert.Equal(t, "ab…", truncate(f, "ab cdef", w))
 }
 
+func TestTruncateLongLineDoesNotOverflow(t *testing.T) {
+	// The summed advance of this line passes the int32 range of
+	// fixed.Int26_6. A wrapped sum would read as fitting.
+	f, err := face(false, 200)
+	assert.NoError(t, err)
+	long := strings.Repeat("W", 1_000_000)
+	got := truncate(f, long, fixed.I(300))
+	assert.True(t, strings.HasSuffix(got, "…"), "got %d bytes", len(got))
+	assert.True(t, font.MeasureString(f, got) <= fixed.I(300))
+}
+
+func TestCardScaleIsCappedByWidth(t *testing.T) {
+	// A tall narrow card sized its text by height alone, so the padding
+	// was wider than the card and a 1px-wide card built a 170,000pt face.
+	for _, req := range []Request{{Width: 80, Height: 600}, {Width: 1, Height: 1_000_000}} {
+		scale := cardScale(req)
+		pad := int(16 * scale)
+		assert.True(t, req.Width-2*pad > 0, "%dx%d: pad %d leaves no text width", req.Width, req.Height, pad)
+		assert.True(t, scale <= float64(req.Width)/200, "%dx%d: scale %v", req.Width, req.Height, scale)
+	}
+	assert.Equal(t, cardScale(Request{Width: 320, Height: 200}), 1.0)
+
+	res, err := Render(Request{MimeType: "application/octet-stream", Name: "file.bin", Width: 1, Height: 1_000_000})
+	assert.NoError(t, err)
+	assert.Equal(t, res.Renderer, RendererFallback)
+}
+
 func TestRenderInvalidUTF8TextFallsBack(t *testing.T) {
 	res, err := Render(Request{MimeType: "text/plain", Name: "data.txt", Source: []byte{0xff, 0xfe, 0xfd}, Width: 320, Height: 200})
 	assert.NoError(t, err)

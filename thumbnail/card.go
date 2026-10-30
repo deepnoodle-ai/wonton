@@ -74,7 +74,7 @@ func renderDocumentCard(req Request) (Result, error) {
 	if err := loadFonts(); err != nil {
 		return renderFallbackCard(req, "fonts unavailable")
 	}
-	scale := float64(req.Height) / 200.0
+	scale := cardScale(req)
 	canvas := newCanvas(req)
 
 	pad := int(16 * scale)
@@ -94,7 +94,7 @@ func renderFallbackCard(req Request, note string) (Result, error) {
 		canvas := newCanvas(req)
 		return encodePNG(canvas, req, RendererFallback, "fonts unavailable: "+note)
 	}
-	scale := float64(req.Height) / 200.0
+	scale := cardScale(req)
 	canvas := newCanvas(req)
 	pad := int(16 * scale)
 
@@ -118,6 +118,14 @@ func renderFallbackCard(req Request, note string) (Result, error) {
 		drawTitle(canvas, name, pad, req.Height-pad, scale, req.Width-2*pad)
 	}
 	return encodePNG(canvas, req, RendererFallback, note)
+}
+
+// cardScale is the factor that sizes card text and padding relative to a
+// 200px-tall card. The width caps it, so a tall narrow card does not get
+// text and padding wider than itself, and the font size stays bounded by
+// the canvas area cap.
+func cardScale(req Request) float64 {
+	return float64(min(req.Width, req.Height)) / 200.0
 }
 
 func newCanvas(req Request) *image.RGBA {
@@ -160,10 +168,9 @@ func drawBodyLines(dst draw.Image, body string, x, top int, scale float64, maxW,
 		lineH = 8
 	}
 	baseline := top + f.Metrics().Ascent.Ceil()
-	for _, raw := range strings.Split(body, "\n") {
-		if baseline > maxY {
-			break
-		}
+	for more := true; more && baseline <= maxY; {
+		var raw string
+		raw, body, more = strings.Cut(body, "\n")
 		line := normalizeLine(raw)
 		if line == "" {
 			baseline += lineH
@@ -187,17 +194,14 @@ func drawTextFixed(dst draw.Image, f font.Face, col color.Color, x, baseline fix
 
 // truncate shortens s with an ellipsis so it fits within maxW.
 func truncate(f font.Face, s string, maxW fixed.Int26_6) string {
-	if font.MeasureString(f, s) <= maxW {
-		return s
-	}
-	const ell = "…"
-	limit := maxW - font.MeasureString(f, ell)
-	// Accumulate advances (as font.MeasureString does) in one pass to find
-	// the longest prefix that fits next to the ellipsis. Re-measuring each
-	// shorter prefix would be quadratic in the line length.
+	limit := maxW - font.MeasureString(f, "…")
+	// Accumulate advances (as font.MeasureString does) in one pass. Stop as
+	// soon as the width passes maxW, so a very long line cannot overflow
+	// the fixed-point sum. end is the longest prefix that fits next to the
+	// ellipsis; re-measuring each shorter prefix would be quadratic.
 	var w fixed.Int26_6
 	prev := rune(-1)
-	end := 0
+	end := -1
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if prev >= 0 {
@@ -206,14 +210,16 @@ func truncate(f font.Face, s string, maxW fixed.Int26_6) string {
 		adv, _ := f.GlyphAdvance(r)
 		w += adv
 		// Include the kern between this rune and the ellipsis that follows.
-		if w+f.Kern(r, '…') > limit {
-			break
+		if end < 0 && w+f.Kern(r, '…') > limit {
+			end = i
+		}
+		if w > maxW {
+			return strings.TrimRight(s[:max(end, 0)], " ") + "…"
 		}
 		i += size
-		end = i
 		prev = r
 	}
-	return strings.TrimRight(s[:end], " ") + ell
+	return s
 }
 
 // normalizeLine expands tabs and strips control characters so a single source
