@@ -85,3 +85,24 @@ func TestGridSelectionJoinsWrappedRows(t *testing.T) {
 	sel = GridSelection{Anchor: image.Pt(0, 0), Cursor: image.Pt(7, 1)}
 	assert.Equal(t, sel.Text(rows, []bool{true}), "one two three")
 }
+
+func TestCellsViewHighlightsWideCharFromContinuation(t *testing.T) {
+	rows := [][]Cell{{
+		{Char: 'a', Width: 1},
+		{Char: '日', Width: 2}, {Continuation: true},
+		{Char: 'b', Width: 1},
+	}}
+	// The selection starts on the second half of 日; Text copies 日, so
+	// the view highlights it too.
+	sel := GridSelection{Anchor: image.Pt(2, 0), Cursor: image.Pt(4, 0)}
+	screen := SprintScreen(Cells(rows).Select(sel), WithWidth(4), WithHeight(1))
+	assert.False(t, screen.Cell(0, 0).Style.Reverse)
+	assert.True(t, screen.Cell(1, 0).Style.Reverse)
+	assert.True(t, screen.Cell(3, 0).Style.Reverse)
+}
+
+func TestGridSelectionTextPastLastRow(t *testing.T) {
+	rows := textRows("ab", "cd")
+	sel := GridSelection{Anchor: image.Pt(0, 0), Cursor: image.Pt(1, 5)}
+	assert.Equal(t, sel.Text(rows, nil), "ab\ncd")
+}

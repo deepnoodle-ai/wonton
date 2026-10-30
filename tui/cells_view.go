@@ -98,6 +98,9 @@ func (v *CellsView) render(ctx *RenderContext) {
 		start, end := v.sel.Ordered()
 		for y := max(start.Y, 0); y <= end.Y && y < height; y++ {
 			x0, x1 := v.sel.span(y, width)
+			for x0 > 0 && x0 < width && ctx.Cell(x0, y).Continuation {
+				x0-- // highlight the wide character Text copies
+			}
 			for x := x0; x < x1; x++ {
 				cell := ctx.Cell(x, y)
 				if cell.Continuation {
@@ -213,7 +216,7 @@ func (s GridSelection) Text(rows [][]Cell, wrapped []bool) string {
 			continue
 		}
 		b.WriteString(strings.TrimRight(line.String(), " "))
-		if y < end.Y {
+		if y < end.Y && y+1 < len(rows) {
 			b.WriteByte('\n')
 		}
 	}

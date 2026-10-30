@@ -34,6 +34,8 @@ type PlaybackController struct {
 	mu           sync.RWMutex
 	stopChan     chan struct{}
 	stopped      bool
+	stopTime     time.Time // when Stop froze the clock
+	seekTo       float64   // position set by a Seek before the first Play
 }
 
 // LoadRecording loads a .cast file and returns a playback controller
@@ -140,9 +142,17 @@ func (p *PlaybackController) Play(terminal *Terminal) error {
 	}
 	stopChan := p.stopChan
 	p.terminal = terminal
-	p.startTime = time.Now()
-	p.currentIndex = 0
-	p.paused = false
+	offset := 0.0
+	if p.startTime.IsZero() {
+		// The first Play keeps a Seek or Pause made before it.
+		offset = p.seekTo
+	} else {
+		p.currentIndex = 0
+		p.paused = false
+	}
+	now := time.Now()
+	p.startTime = now.Add(-time.Duration(offset / p.speed * float64(time.Second)))
+	p.pauseTime = now
 	p.stopped = false
 	p.totalPaused = 0
 	p.mu.Unlock()
@@ -283,7 +293,7 @@ func (p *PlaybackController) Pause() {
 
 	if !p.paused {
 		p.paused = true
-		p.pauseTime = time.Now()
+		p.pauseTime = p.nowLocked()
 	}
 }
 
@@ -294,7 +304,7 @@ func (p *PlaybackController) Resume() {
 
 	if p.paused {
 		p.paused = false
-		pauseDuration := time.Since(p.pauseTime)
+		pauseDuration := p.nowLocked().Sub(p.pauseTime)
 		p.totalPaused += pauseDuration
 	}
 }
@@ -326,6 +336,7 @@ func (p *PlaybackController) Stop() {
 
 	if !p.stopped {
 		p.stopped = true
+		p.stopTime = time.Now()
 		close(p.stopChan)
 	}
 }
@@ -338,6 +349,11 @@ func (p *PlaybackController) SetSpeed(speed float64) {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.startTime.IsZero() {
+		p.speed = speed // not started: there is no clock to adjust
+		return
+	}
 
 	// Adjust timing to keep the recording position when speed changes.
 	// This also applies while paused, so Resume continues from the same spot.
@@ -368,16 +384,23 @@ func (p *PlaybackController) Seek(seconds float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Binary search to find the event closest to the target time
-	targetIndex := 0
+	// The recording starts at 0; an earlier target would delay playback.
+	seconds = max(seconds, 0)
+
+	// Resume at the first event not yet due; past the end, none are left.
+	targetIndex := len(p.events)
 	for i, event := range p.events {
-		if event.Time > seconds {
+		if event.Time >= seconds {
+			targetIndex = i
 			break
 		}
-		targetIndex = i
 	}
 
 	p.currentIndex = targetIndex
+	if p.startTime.IsZero() {
+		p.seekTo = seconds // not started: Play starts here
+		return
+	}
 	// Adjust start time to account for the seek
 	elapsed := p.elapsedLocked()
 	adjustment := elapsed - (seconds / p.speed)
@@ -416,10 +439,12 @@ func (p *PlaybackController) positionLocked() float64 {
 	if p.currentIndex >= len(p.events) {
 		return p.durationLocked()
 	}
-	if p.currentIndex == 0 {
-		return 0
+	if p.startTime.IsZero() {
+		return min(max(p.seekTo, 0), p.durationLocked()) // not started
 	}
-	return p.events[p.currentIndex].Time
+	// Follow the playback clock, in recording time, not the time of the
+	// next unplayed event.
+	return min(max(p.elapsedLocked()*p.speed, 0), p.durationLocked())
 }
 
 // GetProgress returns playback progress as a value between 0.0 and 1.0
@@ -434,11 +459,20 @@ func (p *PlaybackController) GetProgress() float64 {
 	return p.positionLocked() / duration
 }
 
+// nowLocked returns the playback clock's current time. After Stop, the
+// clock stays at the stop time until the next Play. Caller must hold p.mu.
+func (p *PlaybackController) nowLocked() time.Time {
+	if p.stopped {
+		return p.stopTime
+	}
+	return time.Now()
+}
+
 // elapsedLocked returns the playback time elapsed in seconds, excluding
 // pauses. While paused, the clock stops at the pause time, because Resume
 // adds the current pause to totalPaused. Caller must hold p.mu.
 func (p *PlaybackController) elapsedLocked() float64 {
-	now := time.Now()
+	now := p.nowLocked()
 	if p.paused {
 		now = p.pauseTime
 	}

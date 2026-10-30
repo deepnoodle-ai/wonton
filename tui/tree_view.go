@@ -408,7 +408,15 @@ func (t *TreeView) size(maxWidth, maxHeight int) (int, int) {
 		for _, fn := range nodes {
 			// indent + expand char + space + label
 			indent := fn.depth * 2
-			expandWidth := runewidth.StringWidth(t.expandedChar)
+			indicator := t.leafChar
+			if !fn.node.IsLeaf() {
+				if fn.node.Expanded {
+					indicator = t.expandedChar
+				} else {
+					indicator = t.collapsedChr
+				}
+			}
+			expandWidth := runewidth.StringWidth(indicator)
 			labelWidth := runewidth.StringWidth(fn.node.Label)
 			nodeW := indent + expandWidth + 1 + labelWidth
 			if nodeW > w {
@@ -483,10 +491,10 @@ func (t *TreeView) render(ctx *RenderContext) {
 			if level < len(fn.ancestors) {
 				if fn.ancestors[level] {
 					// Draw vertical line
-					ctx.PrintStyled(x, y, t.branchChars.Vertical+" ", branchStyle)
+					ctx.PrintTruncated(x, y, t.branchChars.Vertical+" ", branchStyle)
 				} else {
 					// Draw space
-					ctx.PrintStyled(x, y, "  ", branchStyle)
+					ctx.PrintTruncated(x, y, "  ", branchStyle)
 				}
 			}
 			x += 2
@@ -498,7 +506,7 @@ func (t *TreeView) render(ctx *RenderContext) {
 			if fn.isLast {
 				connector = t.branchChars.Corner
 			}
-			ctx.PrintStyled(x-2, y, connector+t.branchChars.Horizontal, branchStyle)
+			ctx.PrintTruncated(x-2, y, connector+t.branchChars.Horizontal, branchStyle)
 		}
 
 		// Draw expand/collapse indicator
@@ -517,7 +525,7 @@ func (t *TreeView) render(ctx *RenderContext) {
 			style = t.selectedSty
 		}
 
-		ctx.PrintStyled(x, y, indicator+" ", style)
+		ctx.PrintTruncated(x, y, indicator+" ", style)
 		x += runewidth.StringWidth(indicator) + 1
 
 		// Draw label
@@ -526,7 +534,7 @@ func (t *TreeView) render(ctx *RenderContext) {
 		if x+labelWidth > width {
 			label = truncateToWidth(label, width-x)
 		}
-		ctx.PrintStyled(x, y, label, style)
+		ctx.PrintTruncated(x, y, label, style)
 
 		// Register clickable region
 		bounds := ctx.AbsoluteBounds()

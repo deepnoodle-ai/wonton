@@ -123,3 +123,19 @@ func TestTruncateToWidth(t *testing.T) {
 		assert.Equal(t, tt.expected, result, "truncateToWidth(%q, %d)", tt.input, tt.maxWidth)
 	}
 }
+
+func TestCodeLineNumberWidthMatchesRender(t *testing.T) {
+	view := Code("ab\ncd", "text").LineNumbers(true)
+	w, _ := view.size(0, 0)
+	// "1" + " " + "ab"
+	assert.Equal(t, w, 4)
+	screen := SprintScreen(view, WithWidth(w), WithHeight(2))
+	assert.Equal(t, screen.Row(0), "1 ab")
+}
+
+func TestCodeNegativeStartLine(t *testing.T) {
+	view := Code("a\nb", "text").LineNumbers(true).StartLine(-1)
+	screen := SprintScreen(view, WithWidth(6), WithHeight(2))
+	assert.Equal(t, screen.Row(0), "-1 a")
+	assert.Equal(t, screen.Row(1), " 0 b")
+}

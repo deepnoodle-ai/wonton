@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -237,12 +239,8 @@ func (c *CodeView) lineNumberWidth() int {
 	}
 	c.highlight()
 	maxLine := c.startLine + len(c.highlighted) - 1
-	width := 1
-	for maxLine >= 10 {
-		maxLine /= 10
-		width++
-	}
-	return width + 2 // number + space + separator
+	width := max(len(strconv.Itoa(c.startLine)), len(strconv.Itoa(maxLine)))
+	return width + 1 // number + separator space
 }
 
 func (c *CodeView) size(maxWidth, maxHeight int) (int, int) {
@@ -325,7 +323,7 @@ func (c *CodeView) render(ctx *RenderContext) {
 		// Render line number
 		if c.showNumbers {
 			lineNum := c.startLine + lineIdx
-			numStr := padLeft(lineNum, lnWidth-2)
+			numStr := padLeft(lineNum, lnWidth-1)
 			ctx.PrintStyled(x, y, numStr, lnStyle)
 			x += len(numStr)
 			ctx.PrintStyled(x, y, " ", separatorStyle)
@@ -357,18 +355,7 @@ func (c *CodeView) GetLineCount() int {
 
 // padLeft pads a number with spaces on the left.
 func padLeft(n, width int) string {
-	s := ""
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
-	}
-	if s == "" {
-		s = "0"
-	}
-	for len(s) < width {
-		s = " " + s
-	}
-	return s
+	return fmt.Sprintf("%*d", width, n)
 }
 
 // truncateToWidth truncates a string to fit within a given display width.

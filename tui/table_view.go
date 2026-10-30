@@ -600,6 +600,11 @@ func (t *TableView) render(ctx *RenderContext) {
 	// highlighted and scrolling doesn't follow a selection.
 	selectedRow := -1
 	if t.selected != nil {
+		// Keep the selection on a row when the rows shrink under it.
+		// A negative index means no row is selected, so leave it alone.
+		if len(t.rows) > 0 && *t.selected >= len(t.rows) {
+			*t.selected = len(t.rows) - 1
+		}
 		selectedRow = *t.selected
 
 		// Adjust scrollY to ensure selected row is visible
@@ -641,11 +646,13 @@ func (t *TableView) render(ctx *RenderContext) {
 		}
 
 		currentX := 0
-		for colIdx, cell := range row {
-			if colIdx >= len(t.columnWidths) {
-				break
+		// Walk every column, not just the row's cells, so a short row is
+		// padded and its selection highlight spans the full table width.
+		for colIdx, w := range t.columnWidths {
+			cell := ""
+			if colIdx < len(row) {
+				cell = row[colIdx]
 			}
-			w := t.columnWidths[colIdx]
 
 			// Truncate/Pad in one pass.
 			var cellW int

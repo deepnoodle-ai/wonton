@@ -259,3 +259,96 @@ func TestPlayback_PauseStopPlayRunsOneLoop(t *testing.T) {
 	// "a" from the first run, then "abc" from the second run only.
 	assert.Equal(t, "aabc", out.String())
 }
+
+func TestPlayback_SeekPicksNextEvent(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 2, Type: "o", Data: "b"},
+	)
+	p.startTime = time.Now()
+	p.Seek(1.5)
+	assert.Equal(t, p.currentIndex, 1)
+	// Past the end, no event is left to replay.
+	p.Seek(10)
+	assert.Equal(t, p.currentIndex, 2)
+}
+
+func TestPlayback_PositionFollowsClock(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	assert.Equal(t, p.GetPosition(), 0.0)
+
+	// 2s into playback, the next event is still the one at 10s.
+	p.startTime = time.Now().Add(-2 * time.Second)
+	p.currentIndex = 1
+	pos := p.GetPosition()
+	assert.True(t, pos > 1.9 && pos < 2.1, "position = %v, want ~2", pos)
+}
+
+func TestPlayback_SeekAndPauseBeforePlay(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 1, Type: "o", Data: "a"},
+		RecordingEvent{Time: 5, Type: "o", Data: "b"},
+		RecordingEvent{Time: 10, Type: "o", Data: "c"},
+	)
+	p.SetSpeed(2)
+	p.Seek(5)
+	p.Pause()
+	assert.Equal(t, p.GetPosition(), 5.0)
+	assert.Equal(t, p.GetProgress(), 0.5)
+
+	// Play starts paused at the seek position.
+	out := &syncBuffer{}
+	done := playAsync(p, NewTestTerminal(10, 2, out))
+	time.Sleep(100 * time.Millisecond)
+	assert.True(t, p.IsPaused())
+	pos := p.GetPosition()
+	assert.True(t, pos > 4.9 && pos < 5.1, "position = %v, want ~5", pos)
+	assert.Equal(t, out.String(), "")
+
+	// On resume, the event at 5s plays and the one at 10s does not yet.
+	p.Resume()
+	time.Sleep(150 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+	assert.Equal(t, out.String(), "b")
+}
+
+func TestPlayback_PositionHoldsAfterStop(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	done := playAsync(p, NewTestTerminal(10, 2, &syncBuffer{}))
+	time.Sleep(50 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+
+	pos := p.GetPosition()
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, p.GetPosition(), pos)
+
+	// A Pause and Resume after Stop do not move the stopped clock.
+	p.Pause()
+	time.Sleep(20 * time.Millisecond)
+	p.Resume()
+	assert.Equal(t, p.GetPosition(), pos)
+}
+
+func TestPlayback_NegativeSeekStartsAtZero(t *testing.T) {
+	p := newTestPlayback(
+		RecordingEvent{Time: 0, Type: "o", Data: "a"},
+		RecordingEvent{Time: 10, Type: "o", Data: "b"},
+	)
+	p.Seek(-5)
+	assert.Equal(t, p.GetPosition(), 0.0)
+
+	out := &syncBuffer{}
+	done := playAsync(p, NewTestTerminal(10, 2, out))
+	time.Sleep(100 * time.Millisecond)
+	p.Stop()
+	waitDone(t, done)
+	assert.Equal(t, out.String(), "a")
+}
