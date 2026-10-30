@@ -209,6 +209,9 @@ func ConvertWithOptions(htmlContent string, opts *Options) string {
 	if opts == nil {
 		opts = DefaultOptions()
 	}
+	// Work on a copy so the caller's Options are never modified.
+	o := *opts
+	opts = &o
 	if opts.BulletChar == "" {
 		opts.BulletChar = "-"
 	}
@@ -373,7 +376,8 @@ func (c *converter) handleParagraph(n *html.Node, ctx *context) string {
 }
 
 func (c *converter) handleHeading(n *html.Node, ctx *context, tag string) string {
-	content := strings.TrimSpace(c.convertChildren(n, ctx))
+	// A Markdown heading is one line, so line breaks (<br>) become spaces.
+	content := strings.TrimSpace(whitespaceRegex.ReplaceAllString(c.convertChildren(n, ctx), " "))
 	if content == "" {
 		return ""
 	}
@@ -397,33 +401,49 @@ func (c *converter) handleHeading(n *html.Node, ctx *context, tag string) string
 }
 
 func (c *converter) handleBold(n *html.Node, ctx *context) string {
-	content := c.convertChildren(n, ctx)
-	content = strings.TrimSpace(content)
-	content = whitespaceRegex.ReplaceAllString(content, " ")
-	if content == "" {
-		return ""
-	}
-	return "**" + content + "**"
+	return wrapInline(n, c.convertChildren(n, ctx), "**")
 }
 
 func (c *converter) handleItalic(n *html.Node, ctx *context) string {
-	content := c.convertChildren(n, ctx)
-	content = strings.TrimSpace(content)
-	content = whitespaceRegex.ReplaceAllString(content, " ")
-	if content == "" {
-		return ""
-	}
-	return "*" + content + "*"
+	return wrapInline(n, c.convertChildren(n, ctx), "*")
 }
 
 func (c *converter) handleStrikethrough(n *html.Node, ctx *context) string {
-	content := c.convertChildren(n, ctx)
-	content = strings.TrimSpace(content)
-	content = whitespaceRegex.ReplaceAllString(content, " ")
-	if content == "" {
-		return ""
+	return wrapInline(n, c.convertChildren(n, ctx), "~~")
+}
+
+// wrapInline wraps the inline content of n in a Markdown delimiter such as
+// "**". Delimiters must touch the text, so edge whitespace moves outside
+// them: "Hello<b> world</b>" becomes "Hello **world**".
+func wrapInline(n *html.Node, content, delim string) string {
+	lead, text, trail := splitEdgeSpace(n, content)
+	if text == "" {
+		return lead + trail
 	}
-	return "~~" + content + "~~"
+	return lead + delim + text + delim + trail
+}
+
+// splitEdgeSpace collapses whitespace in the inline content of n and splits
+// off a leading and trailing space. An edge space is dropped when the
+// adjacent text node already supplies one, so no double space appears.
+func splitEdgeSpace(n *html.Node, content string) (lead, text, trail string) {
+	content = whitespaceRegex.ReplaceAllString(content, " ")
+	text = strings.TrimSpace(content)
+	if strings.HasPrefix(content, " ") && !textEndsWithSpace(n.PrevSibling) {
+		lead = " "
+	}
+	if strings.HasSuffix(content, " ") && !textStartsWithSpace(n.NextSibling) && (text != "" || lead == "") {
+		trail = " "
+	}
+	return lead, text, trail
+}
+
+func textEndsWithSpace(n *html.Node) bool {
+	return n != nil && n.Type == html.TextNode && strings.TrimRight(n.Data, " \t\r\n\u00a0") != n.Data
+}
+
+func textStartsWithSpace(n *html.Node) bool {
+	return n != nil && n.Type == html.TextNode && strings.TrimLeft(n.Data, " \t\r\n\u00a0") != n.Data
 }
 
 func (c *converter) handleCode(n *html.Node, ctx *context) string {
@@ -464,17 +484,13 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 	title := getAttr(n, "title")
 	content := c.convertChildren(n, ctx)
 
-	// Normalize whitespace in link text (collapse newlines from nested block elements)
-	content = strings.TrimSpace(content)
-	content = whitespaceRegex.ReplaceAllString(content, " ")
-	content = strings.TrimSpace(content)
+	// Normalize whitespace in link text (collapse newlines from nested block
+	// elements). Leading and trailing spaces move outside the brackets.
+	lead, content, trail := splitEdgeSpace(n, content)
 
-	// If no href or empty content, just return content (or nothing)
-	if href == "" {
-		return content
-	}
-	if content == "" {
-		return ""
+	// If no href or empty content, just return the text
+	if href == "" || content == "" {
+		return lead + content + trail
 	}
 
 	if c.opts.LinkStyle == LinkStyleReferenced {
@@ -490,13 +506,13 @@ func (c *converter) handleLink(n *html.Node, ctx *context) string {
 				c.linkRefs = append(c.linkRefs, fmt.Sprintf("[%d]: %s", refNum, href))
 			}
 		}
-		return fmt.Sprintf("[%s][%d]", content, refNum)
+		return lead + fmt.Sprintf("[%s][%d]", content, refNum) + trail
 	}
 
 	if title != "" {
-		return fmt.Sprintf("[%s](%s \"%s\")", content, href, escapeTitle(title))
+		return lead + fmt.Sprintf("[%s](%s \"%s\")", content, href, escapeTitle(title)) + trail
 	}
-	return fmt.Sprintf("[%s](%s)", content, href)
+	return lead + fmt.Sprintf("[%s](%s)", content, href) + trail
 }
 
 // escapeTitle makes a link or image title safe inside double quotes: quotes

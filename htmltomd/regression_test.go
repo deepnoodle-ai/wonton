@@ -48,3 +48,33 @@ line two" title='a "b"'>`)
 	got = ConvertWithOptions(`<a href="/x" title='q "t"'>l</a>`, &Options{LinkStyle: LinkStyleReferenced})
 	assert.Contains(t, got, `[1]: /x "q \"t\""`)
 }
+
+// H24: ConvertWithOptions does not modify the caller's Options, so one
+// Options value can be shared across goroutines.
+func TestConvertWithOptionsDoesNotMutateOptions(t *testing.T) {
+	opts := &Options{}
+	got := ConvertWithOptions("<ul><li>a</li></ul>", opts)
+	assert.Equal(t, got, "- a")
+	assert.Equal(t, opts.BulletChar, "")
+}
+
+// M38: whitespace at the edge of inline elements moves outside the
+// delimiters instead of being dropped, without doubling spaces.
+func TestInlineEdgeWhitespace(t *testing.T) {
+	tests := []struct{ input, want string }{
+		{"<p>Hello<strong> world</strong></p>", "Hello **world**"},
+		{"<p><em>it </em>works</p>", "*it* works"},
+		{"<p>a<del> b </del>c</p>", "a ~~b~~ c"},
+		{"<p>See<a href=\"/x\"> link </a>here</p>", "See [link](/x) here"},
+		{"<p>Hello <b> world</b> and <i>x </i> y</p>", "Hello **world** and *x* y"},
+		{"<p>a<b> </b>b</p>", "a b"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, Convert(tt.input), tt.want, tt.input)
+	}
+}
+
+// M38: a <br> inside a heading does not split the heading line.
+func TestHeadingLineBreak(t *testing.T) {
+	assert.Equal(t, Convert("<h1>Title<br>Subtitle</h1>"), "# Title Subtitle")
+}
