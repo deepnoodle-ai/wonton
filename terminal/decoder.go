@@ -342,8 +342,8 @@ func (kd *KeyDecoder) decodeCSIEvent() (Event, error) {
 // multi-digit and multi-part parameters are consumed without leaving stray
 // bytes in the stream to be misread as typed keys.
 //
-// A final byte of 0 indicates a malformed sequence (embedded control byte
-// or runaway length).
+// A final byte of 0 indicates a malformed sequence (embedded control or
+// non-ASCII byte, or runaway length).
 func (kd *KeyDecoder) readCSISequence(first byte) (string, byte, error) {
 	const maxCSILength = 64 // generous bound; real sequences are much shorter
 	var params []byte
@@ -352,9 +352,9 @@ func (kd *KeyDecoder) readCSISequence(first byte) (string, byte, error) {
 		if b >= 0x40 && b <= 0x7E {
 			return string(params), b, nil
 		}
-		if b < 0x20 {
-			// Control byte inside a CSI sequence: malformed. Put it back so
-			// it can be processed as the start of fresh input.
+		if b < 0x20 || b >= 0x80 {
+			// Control or non-ASCII byte inside a CSI sequence: malformed.
+			// Put it back so it can be processed as the start of fresh input.
 			kd.reader.UnreadByte()
 			return string(params), 0, nil
 		}

@@ -273,6 +273,34 @@ func TestKeyDecoder_TruncatedUTF8DoesNotSwallowFollowingKey(t *testing.T) {
 	}
 }
 
+func TestKeyDecoder_MalformedCSIDoesNotSwallowNonASCII(t *testing.T) {
+	// A non-ASCII byte cannot be part of a CSI sequence. It ends the
+	// malformed sequence and is decoded as the start of the next key.
+	for _, input := range []string{"\x1b[中x", "\x1b[1;中x"} {
+		for _, readEvent := range []bool{true, false} {
+			decoder := NewKeyDecoder(strings.NewReader(input))
+			var got []KeyEvent
+			for {
+				var ev KeyEvent
+				var err error
+				if readEvent {
+					var e Event
+					e, err = decoder.ReadEvent()
+					ev, _ = e.(KeyEvent)
+				} else {
+					ev, err = decoder.ReadKeyEvent()
+				}
+				if err == io.EOF {
+					break
+				}
+				assert.NoError(t, err)
+				got = append(got, ev)
+			}
+			assert.Equal(t, got, []KeyEvent{{Key: KeyUnknown}, {Rune: '中'}, {Rune: 'x'}})
+		}
+	}
+}
+
 func TestKeyDecoder_LegacyMouseInterruptedByControlByte(t *testing.T) {
 	for _, readEvent := range []bool{true, false} {
 		// 1. \x1b[M\r -> interrupted at button byte by CR

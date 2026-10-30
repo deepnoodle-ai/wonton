@@ -334,9 +334,13 @@ func (h *MouseHandler) detectAndDispatchClick(event *MouseEvent, region *MouseRe
 	now := event.Time
 	timeSinceLastClick := now.Sub(h.lastClickTime)
 
+	threshold := h.DoubleClickThreshold
+	if h.clickCount == 2 {
+		threshold = h.TripleClickThreshold
+	}
 	if region == h.lastClickRegion &&
 		h.capturedButton == h.lastClickButton &&
-		timeSinceLastClick <= h.DoubleClickThreshold {
+		timeSinceLastClick <= threshold {
 		h.clickCount++
 	} else {
 		h.clickCount = 1

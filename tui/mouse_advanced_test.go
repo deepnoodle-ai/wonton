@@ -191,6 +191,39 @@ func TestMouseHandler_TripleClick(t *testing.T) {
 	assert.Equal(t, 1, tripleClickCount, "Should have one triple-click")
 }
 
+func TestMouseHandler_TripleClickThreshold(t *testing.T) {
+	// The third click is timed against TripleClickThreshold, measured
+	// from the second click, not against DoubleClickThreshold.
+	tests := []struct {
+		name       string
+		thirdClick time.Duration
+		want       int
+	}{
+		{name: "third click within threshold", thirdClick: 140 * time.Millisecond, want: 1},
+		{name: "third click past threshold", thirdClick: 350 * time.Millisecond, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := NewMouseHandler()
+			h.DoubleClickThreshold = 500 * time.Millisecond
+			h.TripleClickThreshold = 100 * time.Millisecond
+			tripleClicks := 0
+			h.AddRegion(&MouseRegion{
+				X: 0, Y: 0, Width: 10, Height: 10,
+				OnTripleClick: func(e *MouseEvent) { tripleClicks++ },
+			})
+
+			now := time.Now()
+			for _, at := range []time.Duration{0, 50 * time.Millisecond, tt.thirdClick} {
+				h.HandleEvent(&MouseEvent{Type: MousePress, X: 5, Y: 5, Button: MouseButtonLeft, Time: now.Add(at)})
+				h.HandleEvent(&MouseEvent{Type: MouseRelease, X: 5, Y: 5, Time: now.Add(at)})
+			}
+
+			assert.Equal(t, tt.want, tripleClicks)
+		})
+	}
+}
+
 // Test drag state machine
 func TestMouseHandler_DragLifecycle(t *testing.T) {
 	handler := NewMouseHandler()
