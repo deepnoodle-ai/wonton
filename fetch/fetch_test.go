@@ -417,6 +417,19 @@ func TestProcessRequest_WithRawHTML(t *testing.T) {
 	assert.Equal(t, html, resp.RawHTML)
 }
 
+func TestProcessRequest_RawHTMLKeepsWhitespace(t *testing.T) {
+	html := "\n  <html><body><p>Test</p></body></html>\n"
+	resp, err := ProcessRequest(&Request{URL: "https://example.com", Formats: []string{"raw_html"}}, html)
+	assert.NoError(t, err)
+	assert.Equal(t, html, resp.RawHTML)
+}
+
+func TestNewHTTPFetcher_DefaultClientDoesNotCapTimeout(t *testing.T) {
+	f := NewHTTPFetcher(HTTPFetcherOptions{Timeout: 2 * DefaultTimeout})
+	assert.Equal(t, time.Duration(0), f.client.Timeout)
+	assert.Equal(t, DefaultTimeout, DefaultHTTPClient.Timeout, "the shared default must not change")
+}
+
 func TestProcessRequest_WithLinks(t *testing.T) {
 	html := `<html><body><a href="https://example.com">Link</a></body></html>`
 	resp, err := ProcessRequest(&Request{

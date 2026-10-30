@@ -158,7 +158,12 @@ func NewHTTPFetcher(options HTTPFetcherOptions) *HTTPFetcher {
 		options.Headers = DefaultHeaders
 	}
 	if options.Client == nil {
-		options.Client = DefaultHTTPClient
+		// Fetch bounds each request with a context deadline from Timeout or
+		// Request.Timeout, so drop the default client's own timeout, which
+		// would otherwise cut off any longer one.
+		client := *DefaultHTTPClient
+		client.Timeout = 0
+		options.Client = &client
 	}
 	if options.MaxBodySize == 0 {
 		options.MaxBodySize = DefaultMaxBodySize
@@ -319,8 +324,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, req *Request) (*Response, error
 // Returns a Response with the processed content and metadata, or an error if
 // HTML parsing fails.
 func ProcessRequest(request *Request, htmlContent string) (*Response, error) {
-	htmlContent = strings.TrimSpace(htmlContent)
-	if htmlContent == "" {
+	if strings.TrimSpace(htmlContent) == "" {
 		return &Response{
 			URL:        request.URL,
 			StatusCode: 200,

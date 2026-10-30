@@ -264,6 +264,18 @@ func Download(ctx context.Context, url string, opts *DownloadOptions) (*Download
 	if resolved, err := filepath.EvalSymlinks(outputPath); err == nil {
 		target = resolved
 	}
+	// In a directory download the filename came from the server, so a
+	// symlink already in that directory must not redirect the write outside
+	// it.
+	if outputIsDir && target != outputPath {
+		base, err := filepath.EvalSymlinks(opts.OutputPath)
+		if err == nil {
+			base, err = filepath.Abs(base)
+		}
+		if err != nil || !withinDir(base, target) {
+			return nil, errors.New("path traversal detected: output path escapes base directory")
+		}
+	}
 	existingMode, hasExisting := os.FileMode(0), false
 	if info, err := os.Stat(target); err == nil && info.Mode().IsRegular() {
 		existingMode, hasExisting = info.Mode().Perm(), true
