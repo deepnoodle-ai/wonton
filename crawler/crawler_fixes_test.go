@@ -267,3 +267,47 @@ func TestCrawler_StopIsSafe(t *testing.T) {
 	c.Stop() // not running: should be a no-op
 	c.Stop()
 }
+
+// TestCrawler_ReuseAfterStopCrawlsQueuedURLs verifies that URLs queued but
+// never crawled before Stop can be crawled by a later Crawl call, and that
+// they do not use up MaxURLs.
+func TestCrawler_ReuseAfterStopCrawlsQueuedURLs(t *testing.T) {
+	mockFetcher := fetch.NewMockFetcher()
+	links := []fetch.Link{{URL: "/p1"}, {URL: "/p2"}, {URL: "/p3"}}
+	pages := []string{"https://example.com", "https://example.com/p1", "https://example.com/p2", "https://example.com/p3"}
+	for i, u := range pages {
+		resp := &fetch.Response{URL: u, HTML: "<html><body>page</body></html>"}
+		if i == 0 {
+			resp.Links = links
+		}
+		mockFetcher.AddResponse(u, resp)
+	}
+
+	c, err := New(Options{
+		Workers:        1,
+		MaxURLs:        len(pages),
+		DefaultFetcher: mockFetcher,
+		FollowBehavior: FollowSameDomain,
+	})
+	assert.NoError(t, err)
+
+	var mu sync.Mutex
+	crawled := map[string]int{}
+	callback := func(ctx context.Context, result *Result) {
+		mu.Lock()
+		crawled[result.URL.String()]++
+		mu.Unlock()
+		if result.URL.Path == "/p1" {
+			c.Stop()
+		}
+	}
+
+	ctx := context.Background()
+	_ = c.Crawl(ctx, []string{pages[0]}, callback)
+	assert.Equal(t, c.Pending(), 0)
+
+	assert.NoError(t, c.Crawl(ctx, pages, callback))
+	for _, u := range pages {
+		assert.Equal(t, crawled[u], 1, u)
+	}
+}

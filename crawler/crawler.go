@@ -547,6 +547,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 
 	defer func() {
 		cancel()
+		c.releaseUncrawled(frontier)
 		c.mu.Lock()
 		c.running = false
 		c.cancel = nil
@@ -554,6 +555,7 @@ func (c *Crawler) Crawl(ctx context.Context, urls []string, callback Callback) e
 	}()
 
 	scheduler := newHostScheduler(frontier, c.hostPolicy, c.adaptive, c.hostStats, c.queueSize)
+	scheduler.oneUntilCompleted = c.respectRobotsTxt
 	scheduler.start(ctx, cancel)
 	admitter := newFrontierAdmitter(c, frontier, cancel)
 	admitter.start(ctx)
@@ -687,6 +689,25 @@ func (c *Crawler) claimScheduledURL(scheduled *scheduledItem) bool {
 	}
 	scheduled.item.URL = value
 	return true
+}
+
+// releaseUncrawled runs after a Crawl call ends, once its goroutines have
+// stopped. URLs that were queued but never dispatched, because the crawl was
+// stopped or canceled, are forgotten and stop counting against MaxURLs, so a
+// later Crawl call can still crawl them.
+func (c *Crawler) releaseUncrawled(frontier Frontier) {
+	c.processedURLs.Range(func(key, value any) bool {
+		if value == urlQueued && c.processedURLs.CompareAndDelete(key, urlQueued) && c.maxURLs > 0 {
+			atomic.AddInt64(&c.enqueuedURLs, -1)
+		}
+		return true
+	})
+	pending := 0
+	if c.frontierProvided {
+		pending = frontier.Len()
+	}
+	atomic.StoreInt64(&c.pendingURLs, int64(pending))
+	atomic.StoreInt64(&c.inFlightURLs, 0)
 }
 
 // releaseURL undoes the bookkeeping performed before a URL is queued, used

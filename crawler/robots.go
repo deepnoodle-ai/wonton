@@ -124,11 +124,13 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	// A group is one or more consecutive User-agent lines followed by rules.
-	// The matches of every User-agent line in a group are combined.
+	// The matches of every User-agent line in a group are combined. Only
+	// the groups naming the longest matching agent apply, so a "Googlebot"
+	// group does not leak into "Googlebot-Image".
 	var isSpecificMatch bool
 	var isWildcardMatch bool
 	lastWasUserAgent := false
-	hasSpecificRules := false
+	bestMatch := 0
 
 	userAgentLower := strings.ToLower(userAgent)
 
@@ -164,9 +166,14 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 				isWildcardMatch = true
 			// A malformed bare User-agent directive must not match every
 			// agent: strings.Contains(s, "") is otherwise always true.
-			case agent != "" && (agent == userAgentLower || strings.Contains(userAgentLower, agent)):
-				isSpecificMatch = true
-				hasSpecificRules = true
+			case agent != "" && strings.Contains(userAgentLower, agent):
+				if len(agent) > bestMatch {
+					bestMatch = len(agent)
+					specificData = &robotsTxtData{}
+					isSpecificMatch = true
+				} else if len(agent) == bestMatch {
+					isSpecificMatch = true
+				}
 			}
 			continue
 		}
@@ -179,18 +186,15 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 			targets = append(targets, wildcardData)
 		}
 
-		switch directive {
-		case "disallow", "allow", "crawl-delay":
-			lastWasUserAgent = false
-		default:
-			continue
-		}
+		// Any other directive ends the group's User-agent lines.
+		lastWasUserAgent = false
 
 		switch directive {
 		case "disallow":
 			if value == "" {
 				continue
 			}
+			value = unescapeRobots(value)
 			for _, data := range targets {
 				data.disallowRules = append(data.disallowRules, value)
 			}
@@ -199,6 +203,7 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 			if value == "" {
 				continue
 			}
+			value = unescapeRobots(value)
 			for _, data := range targets {
 				data.allowRules = append(data.allowRules, value)
 			}
@@ -214,10 +219,20 @@ func parseRobotsTxt(content string, userAgent string) *robotsTxtData {
 	}
 
 	// Return specific rules if we found any, otherwise return wildcard rules
-	if hasSpecificRules {
+	if bestMatch > 0 {
 		return specificData
 	}
 	return wildcardData
+}
+
+// unescapeRobots decodes percent-escapes so rules and URLs are compared in
+// one form: "/a%20b" and "/a b" match each other. A value with a malformed
+// escape is used as written.
+func unescapeRobots(s string) string {
+	if decoded, err := url.PathUnescape(s); err == nil {
+		return decoded
+	}
+	return s
 }
 
 // isAllowedByRobots checks if a URL is allowed by robots.txt rules
@@ -240,7 +255,7 @@ func (c *Crawler) isAllowedByRobots(ctx context.Context, targetURL *url.URL) boo
 		path = "/"
 	}
 	if targetURL.RawQuery != "" {
-		path += "?" + targetURL.RawQuery
+		path += "?" + unescapeRobots(targetURL.RawQuery)
 	}
 
 	// Per the robots.txt standard, the most specific (longest) matching rule
