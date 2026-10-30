@@ -161,7 +161,9 @@ import (
 //	app.Command("serve").Description("Start server").Run(handler)
 //	app.Group("users").Command("list").Run(listUsersHandler)
 //
-// The App automatically provides built-in help and version commands.
+// The App provides a built-in help command, and a version command when a
+// version is set. A command the app defines with either name replaces the
+// built-in.
 type App struct {
 	name        string
 	description string
