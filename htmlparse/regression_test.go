@@ -30,6 +30,20 @@ func TestFilteredLinksInternalExcludesNonHTTPSchemes(t *testing.T) {
 		urls = append(urls, l.URL)
 	}
 	assert.Equal(t, []string{"https://example.com/a"}, urls)
+
+	// M37: these links have no host, so they are not external either.
+	external := doc.FilteredLinks(LinkFilter{BaseURL: "https://example.com", External: true})
+	urls = nil
+	for _, l := range external {
+		urls = append(urls, l.URL)
+	}
+	assert.Equal(t, urls, []string{"https://other.com/b"})
+}
+
+// H23: HTML on a zero-value Document returns "" like the other methods.
+func TestZeroDocumentHTML(t *testing.T) {
+	var doc Document
+	assert.Equal(t, doc.HTML(), "")
 }
 
 // BUG-033: Transform with Include emits only text inside included elements.
