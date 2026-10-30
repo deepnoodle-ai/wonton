@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -101,10 +102,11 @@ func (r *Repository) ModifiedFiles(ctx context.Context) ([]string, error) {
 // FileExists checks if a file is tracked in the repository (exists in the git index).
 // Returns false for untracked files, even if they exist in the working directory.
 // The path is relative to the repository root and is matched exactly: a
-// directory or a glob pattern is not a tracked file.
+// directory or a glob pattern is not a tracked file. An empty path returns
+// ErrInvalidArgument.
 func (r *Repository) FileExists(ctx context.Context, path string) (bool, error) {
 	if path == "" {
-		return false, nil
+		return false, fmt.Errorf("%w: empty path", ErrInvalidArgument)
 	}
 	path = filepath.ToSlash(filepath.Clean(path))
 	files, err := r.LsFiles(ctx, LsFilesOptions{Cached: true, Path: ":(literal)" + path})

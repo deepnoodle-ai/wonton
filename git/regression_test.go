@@ -662,8 +662,8 @@ func TestLsFilesUnquotedPaths(t *testing.T) {
 	}
 }
 
-// FileExists matches one tracked file exactly, not an empty path, a
-// directory, or a glob.
+// FileExists matches one tracked file exactly, not a directory or a glob, and
+// rejects an empty path.
 func TestFileExistsExactMatch(t *testing.T) {
 	repo, cleanup := setupTestRepo(t)
 	defer cleanup()
@@ -673,11 +673,16 @@ func TestFileExistsExactMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	addFile(t, repo, "dir/a.go", "package a\n")
+	addFile(t, repo, "a[1].go", "package a\n")
+
+	if _, err := repo.FileExists(ctx, ""); !errors.Is(err, git.ErrInvalidArgument) {
+		t.Errorf("FileExists(\"\") err = %v, want ErrInvalidArgument", err)
+	}
 
 	for path, want := range map[string]bool{
 		"dir/a.go":   true,
 		"./dir/a.go": true,
-		"":           false,
+		"a[1].go":    true,
 		"dir":        false,
 		"*.go":       false,
 		"dir/*.go":   false,
