@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -224,6 +225,9 @@ func (r *Repository) Diff(ctx context.Context, opts DiffOptions) (*Diff, error) 
 // This is a convenience method that automatically sets IncludePatch to true
 // and filters to the specified path. Returns nil if the file has no changes.
 func (r *Repository) DiffFile(ctx context.Context, path string, opts DiffOptions) (*DiffFile, error) {
+	if path == "" {
+		return nil, fmt.Errorf("%w: empty path", ErrInvalidArgument)
+	}
 	opts.Path = path
 	opts.IncludePatch = true
 	diff, err := r.Diff(ctx, opts)

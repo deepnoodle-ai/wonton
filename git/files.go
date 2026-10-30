@@ -2,6 +2,9 @@ package git
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -29,7 +32,7 @@ type LsFilesOptions struct {
 // By default (with no options set), returns tracked files in the index.
 // Use options to filter for modified, untracked, or ignored files.
 func (r *Repository) LsFiles(ctx context.Context, opts LsFilesOptions) ([]string, error) {
-	args := []string{"ls-files"}
+	args := []string{"ls-files", "-z"}
 
 	// Default to cached if nothing specified
 	if !opts.Modified && !opts.Others && !opts.Deleted {
@@ -61,7 +64,15 @@ func (r *Repository) LsFiles(ctx context.Context, opts LsFilesOptions) ([]string
 		args = append(args, "--", opts.Path)
 	}
 
-	return r.runLines(ctx, args...)
+	// With -z, entries end in NUL and paths are not C-quoted.
+	out, err := r.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00"), nil
 }
 
 // TrackedFiles returns all tracked files in the repository.
@@ -90,12 +101,19 @@ func (r *Repository) ModifiedFiles(ctx context.Context) ([]string, error) {
 
 // FileExists checks if a file is tracked in the repository (exists in the git index).
 // Returns false for untracked files, even if they exist in the working directory.
+// The path is relative to the repository root and is matched exactly: a
+// directory or a glob pattern is not a tracked file. An empty path returns
+// ErrInvalidArgument.
 func (r *Repository) FileExists(ctx context.Context, path string) (bool, error) {
-	files, err := r.LsFiles(ctx, LsFilesOptions{Cached: true, Path: path})
+	if path == "" {
+		return false, fmt.Errorf("%w: empty path", ErrInvalidArgument)
+	}
+	path = filepath.ToSlash(filepath.Clean(path))
+	files, err := r.LsFiles(ctx, LsFilesOptions{Cached: true, Path: ":(literal)" + path})
 	if err != nil {
 		return false, err
 	}
-	return len(files) > 0, nil
+	return slices.Contains(files, path), nil
 }
 
 // ShowFile returns the contents of a file at a specific revision.
@@ -125,9 +143,10 @@ func (r *Repository) FileAtRef(ctx context.Context, ref, path string) (string, e
 // authors who have modified it. If path is empty, returns contributors to the
 // entire repository.
 func (r *Repository) Contributors(ctx context.Context, path string) ([]Person, error) {
-	args := []string{"log", "--format=%an%x00%ae", "--follow"}
+	args := []string{"log", "--format=%an%x00%ae"}
 	if path != "" {
-		args = append(args, "--", path)
+		// --follow requires exactly one pathspec.
+		args = append(args, "--follow", "--", path)
 	}
 
 	out, err := r.run(ctx, args...)

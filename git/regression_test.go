@@ -623,3 +623,115 @@ func TestBlameEndLineOnly(t *testing.T) {
 		t.Errorf("got %d lines, want 2", len(lines))
 	}
 }
+
+// Contributors with an empty path must cover the whole repository instead of
+// passing --follow without a pathspec.
+func TestContributorsWholeRepo(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "a.txt", "a\n")
+	commit(t, repo, "initial")
+
+	people, err := repo.Contributors(ctx, "")
+	if err != nil {
+		t.Fatalf("Contributors: %v", err)
+	}
+	if len(people) != 1 || people[0].Email != "test@example.com" {
+		t.Errorf("Contributors = %+v", people)
+	}
+}
+
+// LsFiles must return paths unquoted, as they are on disk.
+func TestLsFilesUnquotedPaths(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "café.txt", "x\n")
+	addFile(t, repo, " lead.txt", "x\n")
+
+	files, err := repo.TrackedFiles(ctx)
+	if err != nil {
+		t.Fatalf("TrackedFiles: %v", err)
+	}
+	want := []string{" lead.txt", "café.txt"}
+	if !slices.Equal(files, want) {
+		t.Errorf("TrackedFiles = %q, want %q", files, want)
+	}
+}
+
+// FileExists matches one tracked file exactly, not a directory or a glob, and
+// rejects an empty path.
+func TestFileExistsExactMatch(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := os.Mkdir(filepath.Join(repo.Path, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	addFile(t, repo, "dir/a.go", "package a\n")
+	addFile(t, repo, "a[1].go", "package a\n")
+
+	if _, err := repo.FileExists(ctx, ""); !errors.Is(err, git.ErrInvalidArgument) {
+		t.Errorf("FileExists(\"\") err = %v, want ErrInvalidArgument", err)
+	}
+
+	for path, want := range map[string]bool{
+		"dir/a.go":   true,
+		"./dir/a.go": true,
+		"a[1].go":    true,
+		"dir":        false,
+		"*.go":       false,
+		"dir/*.go":   false,
+	} {
+		got, err := repo.FileExists(ctx, path)
+		if err != nil {
+			t.Fatalf("FileExists(%q): %v", path, err)
+		}
+		if got != want {
+			t.Errorf("FileExists(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+// An empty ref or path must not widen TagsForCommit or DiffFile to the
+// whole repository.
+func TestEmptyRefAndPathRejected(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "a.txt", "a\n")
+	commit(t, repo, "initial")
+	runGit(t, repo.Path, "tag", "v1")
+
+	if _, err := repo.TagsForCommit(ctx, ""); !errors.Is(err, git.ErrInvalidArgument) {
+		t.Errorf("TagsForCommit(\"\") err = %v, want ErrInvalidArgument", err)
+	}
+	if _, err := repo.DiffFile(ctx, "", git.DiffOptions{}); !errors.Is(err, git.ErrInvalidArgument) {
+		t.Errorf("DiffFile(\"\") err = %v, want ErrInvalidArgument", err)
+	}
+}
+
+// DefaultBranch must not pick a tag named "main" or "master".
+func TestDefaultBranchIgnoresTags(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	addFile(t, repo, "a.txt", "a\n")
+	commit(t, repo, "initial")
+	runGit(t, repo.Path, "branch", "-M", "trunk")
+	runGit(t, repo.Path, "tag", "main")
+
+	got, err := repo.DefaultBranch(ctx)
+	if err != nil {
+		t.Fatalf("DefaultBranch: %v", err)
+	}
+	if got != "trunk" {
+		t.Errorf("DefaultBranch = %q, want %q", got, "trunk")
+	}
+}

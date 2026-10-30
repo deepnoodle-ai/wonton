@@ -133,7 +133,7 @@ func (r *Repository) DefaultBranch(ctx context.Context) (string, error) {
 
 	// Check for common defaults
 	for _, name := range []string{"main", "master"} {
-		_, err := r.run(ctx, "rev-parse", "--verify", name)
+		_, err := r.run(ctx, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
 		if err == nil {
 			return name, nil
 		}
