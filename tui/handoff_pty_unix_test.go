@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/deepnoodle-ai/wonton/termtest"
 	"golang.org/x/sys/unix"
 )
 
@@ -265,6 +266,7 @@ func TestHandoffBothRunnersOwnChildInputAndRestore(t *testing.T) {
 						t.Fatal("terminal output did not settle")
 					}
 					assertHandoffKeyboardStacks(t, output.String())
+					assertHandoffEndsOnShellScreen(t, output.Bytes())
 					if tmux {
 						assertModifyOtherKeysAroundHandoff(t, output.String())
 					}
@@ -383,6 +385,31 @@ func assertModifyOtherKeysAroundHandoff(t *testing.T, output string) {
 	}
 	if len(commands) < 4 || len(commands)%2 != 0 || on {
 		t.Fatalf("modifyOtherKeys left on or never used: %q", commands)
+	}
+}
+
+// Every handoff scenario, including stop and panic cleanup, must leave the
+// user on the shell screen, where the child's echoed input stays visible
+// on its own row.
+// The PTY starts at 80x24; the resize during the handoff does not move text
+// that is already on the shell screen.
+func assertHandoffEndsOnShellScreen(t *testing.T, output []byte) {
+	t.Helper()
+	screen := termtest.NewScreen(80, 24)
+	screen.Write(output)
+	if screen.IsAlternateScreen() {
+		t.Fatalf("run ended on the alternate screen:\n%s", screen.Text())
+	}
+	_, height := screen.Size()
+	echoed := false
+	for y := 0; y < height; y++ {
+		if screen.Row(y) == "child" {
+			echoed = true
+			break
+		}
+	}
+	if !echoed {
+		t.Fatalf("the child's echoed input is not on the shell screen:\n%s", screen.Text())
 	}
 }
 

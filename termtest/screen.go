@@ -72,6 +72,7 @@
 //   - Text styling (bold, italic, underline, colors)
 //   - Screen clearing and line editing
 //   - Scrolling and line insertion/deletion
+//   - The alternate screen (?1049, ?1047, ?47); reads show the visible screen
 //   - 256-color and 24-bit RGB colors
 //
 // Unicode and wide characters (CJK, emoji) are handled correctly with proper
@@ -150,6 +151,8 @@ type Screen struct {
 	savedX      int      // Saved cursor X position (ESC 7/8, CSI s/u)
 	savedY      int      // Saved cursor Y position (ESC 7/8, CSI s/u)
 	savedStyle  Style    // Saved style (ESC 7/8)
+	savedWrap   bool     // Saved pending wrap (ESC 7/8, ?1049)
+	alt         altState // Hidden grid and state for the alternate screen
 	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
 	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
@@ -498,11 +501,13 @@ func (s *Screen) clearCells() {
 // the top-left, default style, and no saved cursor state. This is equivalent
 // to a terminal hard reset (ESC c / RIS).
 func (s *Screen) Reset() {
+	s.resetAltScreen()
 	s.Clear()
 	s.style = Style{}
 	s.savedX = 0
 	s.savedY = 0
 	s.savedStyle = Style{}
+	s.savedWrap = false
 	s.pending = nil
 	s.skip = skipNone
 }
