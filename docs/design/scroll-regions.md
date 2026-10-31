@@ -18,9 +18,12 @@ decisions. This spec covers how to build it.
 
 ## Goals
 
-- termtest matches ghostty on new vtdiff probes for BCE, DECSTBM, IND/RI/NEL
-  at margins, SU/SD, IL/DL in a region, origin mode, C0 in CSI, and
-  scrollback text.
+- termtest matches ghostty on new rows of `TestGhosttyProbes`
+  (`termtest/ghostty_probes_test.go`) for BCE, DECSTBM, IND/RI/NEL at
+  margins, SU/SD, IL/DL in a region, origin mode, C0 in CSI, and scrollback
+  text. The expected values come from ghostty through the vtdiff harness,
+  which links libghostty with cgo and stays outside the repo
+  (`vtdiff dump <families>` prints the rows).
 - Bytes per Print in the PRD's measurement scenario: 100 or fewer (from 856).
 - The live region's bottom gap follows the PRD tables exactly; each table
   row has a test.
@@ -47,8 +50,8 @@ scrollback  []string // rows that left the top of a top-anchored region, oldest 
 ```
 
 `NewScreen` and `Reset` set `bottom = height-1`. `Reset` (RIS) clears the
-region, origin mode, and scrollback, as ghostty does (probe "RIS clears
-scrollback").
+region, origin mode, and scrollback, as ghostty does (the RIS rows of
+`TestGhosttyProbes`).
 
 **BCE.** One helper, `s.eraseCell()`, returns a blank cell whose style has
 only `Background: s.style.Background`. Every fill site uses it: ED/EL
@@ -119,6 +122,13 @@ collected controls run first. They run only once the sequence ends, so a
 sequence split across `Write` calls never runs a control twice. The order
 is correct because every collected control came before the final byte.
 
+This differs from xterm and ghostty, which run each control on arrival. The
+screen is the same once the sequence ends. If the stream stops inside a
+sequence, its controls stay unrun until the next write completes or cancels
+it. The deferred rule is deliberate: `Write` buffers an incomplete sequence
+and parses it again from its start, so on-arrival execution needs a
+byte-by-byte parser state, which is out of scope (PRD R-5).
+
 **Files touched.**
 
 | File | Change |
@@ -156,13 +166,20 @@ type gapOp struct{ kind gapOpKind; n int } // printed n rows, grew n, shrank n
 is needed. `apply(op)` updates `gap` when known, and appends to `pending`
 when a query waits. `pending` has a cap of 256; past it, `invalidate()`.
 
-**Query.** After a live-region draw (end of `renderLiveLocked` and
-`restoreLiveLocked`), if a query is needed, the scroll path is allowed
-(R-11), and the width is at least 28: pick `tag = next(1..8)`, then write
-`\r ESC[<19+tag>C ESC[6n \r` inside the same output-gate section. The
-cursor is hidden and the next live write starts with `\r`, so moving the
-column is invisible. Column `20+tag` (1-based) is the tag. It cannot match
-legacy modified F3 (`CSI 1;m R`, m at most 16).
+**Query.** Queries are allowed only while `Run` reads input: from after
+`initializeManagedInput` in `Run` until `Run` stops, and not during a
+`Handoff` callback. Before `Run`, an event that invalidates leaves the state
+unknown and sends nothing; a reply that no reader reads would reach the
+shell as typed text. After a live-region draw (end of `renderLiveLocked`
+and `restoreLiveLocked`), if queries are allowed, a query is needed, the
+scroll path is allowed (R-11), and the width is at least 28: pick the next
+tag, cycling through `1..width-20`, then write `\r ESC[<19+tag>C ESC[6n \r`
+inside the same output-gate section. The range is 8 tags at width 28 and 80
+at width 100, so an old reply matches a reused tag only when it arrives
+after that many newer queries. The cursor is hidden and the next live write
+starts with `\r`, so moving the column is invisible. Column `20+tag`
+(1-based) is the tag. It cannot match legacy modified F3 (`CSI 1;m R`, m at
+most 16).
 
 **Reply.** New exported event in `terminal/decoder.go`:
 
@@ -201,26 +218,48 @@ application receives it.
 by `InlineApp`; standalone use is unchanged. The terminal height comes from
 `term.GetSize` at start and from each `ResizeEvent`.
 
-**Print.** Render the view to a buffer first (`Fprint` to a
-`strings.Builder`), so a panic in a view cannot happen with a region set.
+**Print.** Render the view to a buffer first, so a panic in a view cannot
+happen with a region set. Both paths render once, with the options today's
+path uses: `Fprint(&b, view, WithWidth(r.config.Width), WithRawMode(true),
+WithColor(true))`. Raw mode ends each row with `\r\n`, so the scroll path
+splits the buffer on `\r\n` and gets the same rows today's path prints.
 Then, if `known && gap == 0 && height - liveHeight >= 2` and R-11 allows:
 
 ```
-ESC[?2026h  ESC7  ESC[1;<height-liveHeight>r  ESC[<height-liveHeight>;1H
-  for each rendered row:  ESC[0m \r\n <row>
+ESC[?2026h  ESC7  ESC[1;<height-liveHeight>r  ESC[<height-liveHeight>;1H  ESC[0m
+  for each rendered row:  \r\n <row>
 ESC[r  ESC8  ESC[?2026l
 ```
 
 DECSTBM homes the cursor, so DECSC/DECRC keep the live region's cursor.
-`ESC[0m` before each LF gives scrolled-in rows the default background
-(BCE). Overhead: about 30 bytes plus 6 per row. Otherwise, today's path,
-then `apply(printed n)`.
+One `ESC[0m` before the first LF gives the first scrolled-in row the
+default background (BCE). Each rendered row with a style already ends with
+`ESC[0m`, so the later LFs also scroll in default-background rows. Overhead:
+43 bytes for one row (16 of them the 2026 bracket) plus 2 per extra row,
+with a 5-line live region on a 30-row screen. Otherwise, today's path, then
+`apply(printed n)`.
 
 **Failure.** Set `regionMaybeSet = true` before the write and clear it after
-a complete write. `cleanup()` and the Handoff release path write
-`ESC7 ESC[r ESC8` when it is set, then `invalidate()`. A scroll region never
-survives past one Print otherwise, so normal exit, panic, and Handoff need no
-extra bytes.
+a complete write. If the write fails, `invalidate()`, then:
+
+- If the write failed before `ESC7` went out (fewer bytes than
+  `ESC[?2026h ESC7`), no region is set and the saved cursor is not Print's.
+  Write `ESC[?2026l` only and clear the flag.
+- Otherwise write `ESC[r ESC8 ESC[?2026l` at once. `ESC[r` resets the region
+  and homes the cursor; `ESC8` then returns it to the cursor that this
+  Print saved with `ESC7`, on the live region's last row. Never write `ESC7`
+  in a reset: it would overwrite Print's saved cursor with the mid-print
+  cursor, and `ESC8` would restore that (PRD UC-3 would fail). Clear the
+  flag when this write succeeds.
+
+While the flag is still set, every later write to the output (live draw,
+query, Print on either path, `cleanup()`, the Handoff release path) starts
+with `ESC[r ESC8` and clears the flag when that write succeeds. No other
+output writes `ESC7` while the flag is set, so the saved cursor stays
+Print's, and the live renderer's idea of the cursor (the state before the
+failed Print) is still right. The reset is idempotent, so a repeat after a
+partial write is safe. A scroll region never survives past one Print
+otherwise, so normal exit, panic, and Handoff need no extra bytes.
 
 **Opt-out.** `NewInlineApp` reads `WT_SESSION`, `STY`, and
 `WONTON_NO_SCROLL_REGION` once. When any blocks the path, no query is sent

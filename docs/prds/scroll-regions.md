@@ -19,8 +19,7 @@ whole live region again (`tui/inline_app.go:1019`).
 
 Test authors cannot test a better approach. `termtest` ignores scroll
 regions (`CSI t;b r`), has no background color erase (BCE), keeps no
-scrollback, and mishandles a C0 control inside a CSI sequence
-(findings.md). A test cannot check that printed lines reach scrollback in
+scrollback, and mishandles a C0 control inside a CSI sequence. A test cannot check that printed lines reach scrollback in
 order, which is the main risk of any change here.
 
 If we do nothing, wonton CLIs keep paying a full live-region redraw per
@@ -133,8 +132,9 @@ spinner and input line show at the bottom.
 
 Acceptance:
 - [ ] In the at-bottom state, each Print writes no bytes into the live
-      region rows. It writes the printed content plus at most 40 bytes of
-      control sequences.
+      region rows. It writes the printed content plus at most 45 bytes of
+      control sequences, plus 2 bytes for each printed row after the
+      first. The synchronized-output bracket alone is 16 of the 45.
 - [ ] In the measurement scenario above (5-line live region, width 100),
       bytes per Print drop from 856 to 100 or fewer.
 - [ ] A termtest test runs 500 Prints on each path. The visible screen is
@@ -160,6 +160,7 @@ Acceptance:
       and is not taken as a reply.
 - [ ] With no reply at all, every Print uses today's path, and output is
       the same as today.
+- [ ] A `Print` before `Run` sends no query.
 
 ### UC-3: A write fails in the middle of a scroll-region Print
 
@@ -167,6 +168,8 @@ Acceptance:
 - [ ] A test output fails after the scroll region is set and before it is
       reset. After `Run` returns, the terminal has no scroll region, and the
       cursor is where it was before the failed Print. The state is unknown.
+      The test also fails the first reset attempt, so the reset that cleanup
+      sends is checked too.
 - [ ] One short check: after `Run` returns normally, after a panic, and
       during a `Handoff` callback, the termtest screen has no scroll region.
 
@@ -181,9 +184,12 @@ s.Write([]byte("\x1b[4;1H\nX"))  // LF at region bottom scrolls rows 2-4
 ```
 
 Acceptance:
-- [ ] Each new behavior in R-1 to R-6 has a probe in the vtdiff harness, and
-      termtest matches ghostty on every probe (text, cursor, and style per
-      cell, plus scrollback text where the harness can read it).
+- [ ] Each new behavior in R-1 to R-6 has a row in `TestGhosttyProbes`
+      (`termtest/ghostty_probes_test.go`), and termtest matches every row:
+      text, cursor, background per cell, and scrollback text. The expected
+      values in each row come from ghostty, through the vtdiff harness. The
+      harness links libghostty with cgo, so it stays outside this repo; the
+      test needs neither the harness nor cgo.
 - [ ] Existing termtest, tui, and cli tests and snapshots pass. Any snapshot
       that changes is explained in the PR as what a real terminal shows.
 
@@ -209,9 +215,15 @@ termtest (lands first, as its own stacked PR):
   to the region top, and the cursor cannot leave the region. Setting or
   resetting the mode moves the cursor home. DECSC/DECRC save and restore it.
 - R-5 C0 inside CSI: CR, LF, VT, FF, BS, and HT inside a CSI sequence run
-  before the sequence itself, in the order they came, as in xterm. They run
-  when the sequence ends or is cancelled, so a sequence split across writes
-  runs each control one time. BEL is ignored.
+  before the sequence itself, in the order they came. They run when the
+  sequence ends or is cancelled (CAN, SUB, ESC). BEL is ignored. When the
+  sequence ends, the screen is the same as in xterm and ghostty, which run
+  each control when it arrives. The difference shows only while a sequence
+  is incomplete: if the stream stops inside a sequence, its controls have
+  not run yet. This is deliberate. termtest buffers an incomplete sequence
+  and parses it again when the next write arrives, so running controls on
+  arrival would run them twice; that needs a byte-by-byte parser, which is
+  a larger change than this track.
 - R-6 Scrollback: `Screen.Scrollback() []string` returns rows that scrolled
   off the top of the screen, oldest first, as `Row` text. A scroll (LF,
   IND, NEL, autowrap, or SU) of a region that starts at row 1 adds the
@@ -231,15 +243,19 @@ tui:
 - R-9 In every other case, `Print` uses today's path. `PrintRaw` and
   `ClearScrollback` always use today's path.
 - R-10 Print never waits for a reply. A reply does not reach `HandleEvent`.
+  The runtime sends a query only while `Run` reads input, so no reply can
+  reach the shell as typed text.
 - R-11 Print always uses today's path, and the runtime sends no query, when
   `WT_SESSION` is set (Windows Terminal), `STY` is set (GNU screen), or
   `WONTON_NO_SCROLL_REGION` is set to any value other than empty or `0`.
   The tui package docs name the variable.
 - R-12 The new path keeps the synchronized-output bracket and resets text
-  attributes before each line feed, so scrolled-in rows have the default
-  background.
-- R-13 If a write fails while a scroll region may be set, cleanup resets the
-  region and keeps the cursor in place.
+  attributes before the first line feed. Each rendered row already ends
+  with a reset, so every scrolled-in row has the default background.
+- R-13 If a write fails while a scroll region may be set, the runtime resets
+  the region and returns the cursor to where it was before the failed Print.
+  Until that reset reaches the terminal, every later write (and cleanup)
+  sends it first, so no output is written with a region set.
 - R-14 A runnable example, `examples/tui/inline_stream`, streams lines under
   a spinner and input line.
 
