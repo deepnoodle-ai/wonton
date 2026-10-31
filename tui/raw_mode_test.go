@@ -145,6 +145,21 @@ func TestRawMode_InlineAppPrint(t *testing.T) {
 	rawAssertCursorRow(t, screen, 4)
 }
 
+// Before the first live frame, Print's Clear and restore write nothing, so
+// the "\r" after the printed content is the only column reset.
+func TestRawMode_InlineAppPrintBeforeFirstFrame(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString(rawPrompt)
+	runner := newPrintTestRunner(&buf, &rawLinesApp{lines: []string{"live 1"}})
+	runner.running = true
+	runner.Print(Text("printed a"))
+	runner.Print(Text("printed b"))
+
+	screen := rawScreen(&buf, 40, 5)
+	rawAssertRows(t, screen, "$ prompt", "printed a", "printed b", "")
+	termtest.AssertCursor(t, screen, 0, 3)
+}
+
 func TestRawMode_InlineAppCleanup(t *testing.T) {
 	var buf bytes.Buffer
 	runner := newPrintTestRunner(&buf, &rawLinesApp{lines: []string{"live 1", "live 22"}})
