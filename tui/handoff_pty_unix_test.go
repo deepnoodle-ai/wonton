@@ -389,7 +389,8 @@ func assertModifyOtherKeysAroundHandoff(t *testing.T, output string) {
 }
 
 // Every handoff scenario, including stop and panic cleanup, must leave the
-// user on the shell screen, where the child's echoed input stays visible.
+// user on the shell screen, where the child's echoed input stays visible
+// on its own row.
 // The PTY starts at 80x24; the resize during the handoff does not move text
 // that is already on the shell screen.
 func assertHandoffEndsOnShellScreen(t *testing.T, output []byte) {
@@ -399,7 +400,15 @@ func assertHandoffEndsOnShellScreen(t *testing.T, output []byte) {
 	if screen.IsAlternateScreen() {
 		t.Fatalf("run ended on the alternate screen:\n%s", screen.Text())
 	}
-	if !screen.Contains("child") {
+	_, height := screen.Size()
+	echoed := false
+	for y := 0; y < height; y++ {
+		if screen.Row(y) == "child" {
+			echoed = true
+			break
+		}
+	}
+	if !echoed {
 		t.Fatalf("the child's echoed input is not on the shell screen:\n%s", screen.Text())
 	}
 }
