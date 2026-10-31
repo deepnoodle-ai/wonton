@@ -10,6 +10,8 @@ screen, as `tui.Run` does by default (`tui/run.go:202`). When the app quits,
 a real terminal shows the shell screen again: the prompt and the output from
 before the app started. `Runtime.Suspend` does the same thing for a short
 time, and then returns to the app frame (`tui/runtime_suspend.go:61-100`).
+`Runtime.Handoff` does it too, around a child process such as an editor
+(`terminal/handoff_state.go:74`, `:119`, `:126`).
 
 `termtest.Screen` ignores the switch. It has one screen. A test that writes
 an app's output into a `Screen`, quits the app, and reads `Text()` sees the
@@ -41,6 +43,17 @@ and to the tests of apps built on wonton.
   (`terminal/terminal.go:1071`, `:1293`). It never writes `?47` or `?1047`.
   `Close` leaves the alternate screen (`terminal/terminal.go:2513`).
   `Terminal.IsAlternateScreen()` reports the mode on the writer side.
+- `tui.Run` always builds its terminal with `NewTerminal()`
+  (`tui/run.go:194`), on the process's stdout. A test cannot point `tui.Run`
+  at a `Screen`. A test can do what `tui.Run` does by hand: `NewRuntime` on
+  a `NewTestTerminal` that writes into the `Screen`, a scripted
+  `InputSource`, `Run()`, then `Terminal.Close()`. The existing input tests
+  use this pattern (`tui/input_simulation_test.go`).
+- `Runtime.Handoff` works only on a real stdin and stdout on one terminal
+  (`tui/handoff.go:79`). With a test terminal it returns
+  `ErrHandoffUnsupported`. Its tests run a child under a PTY
+  (`tui/handoff_pty_unix_test.go`) and check the escape sequences in the
+  captured output.
 - Tests that feed `?1049` into a `Screen` today: one,
   `TestANSISetResetMode` (`termtest/ansi_test.go:877`). It writes `Hello`,
   then `?1049h`, then `?1049l`, and expects `Hello` on row 0. With the new
@@ -53,13 +66,13 @@ and to the tests of apps built on wonton.
 
 ### Reference behavior: ghostty probes
 
-I ran 30 probes through libghostty-vt (commit 9bfa8ee, 10x3 screen). The
+I ran 37 probes through libghostty-vt (commit 9bfa8ee, 10x3 screen). The
 probes are in the notes copy of vtdiff (`altprobe.go`). They agree with the
 xterm control-sequence documentation where it is specific. Results:
 
 | Sequence | On set (`h`) | On reset (`l`) |
 |---|---|---|
-| `?1049` | Save cursor (as DECSC, into the primary screen's slot), switch to alternate, clear it. The cursor stays where it was. | Switch to primary, restore cursor (as DECRC: position, style, pending wrap). Alternate content is discarded. |
+| `?1049` | Save cursor (as DECSC, into the current screen's slot, so the primary slot in normal use), switch to alternate, clear it. The cursor stays where it was. | Switch to primary, restore cursor from the primary slot (as DECRC: position, style, pending wrap). Alternate content is discarded. |
 | `?1047` | Switch to alternate. No clear on entry. Cursor carries over. | Clear the alternate screen, then switch to primary. Cursor carries over. |
 | `?47` | Switch to alternate. No clear. Cursor carries over. | Switch to primary. No clear: the alternate content stays for the next `?47h`. Cursor carries over. |
 
@@ -68,6 +81,10 @@ Edge cases from the same probes:
 - `?1049h` while already on the alternate screen saves the cursor again and
   clears the alternate screen again.
 - `?1049l` while on the primary screen still restores the saved cursor.
+- `?1047l` on the primary screen clears nothing.
+- `ESC 7` and `ESC 8` (DECSC and DECRC) save and restore the pending wrap
+  too. termtest does not do this today; this track adds it, because `?1049`
+  uses the same save.
 - Mixed pairs work per the table: `?1049h` then `?47l` switches back without
   a cursor restore. `?47h` then `?1049l` switches back and restores the
   primary slot.
@@ -104,7 +121,8 @@ buffer, because it also draws scrollback and selection.
 Primary user: a Go developer who writes tests for a full-screen `tui` app,
 inside wonton or in an app built on it. The job: prove that the app shows
 the right frame while it runs, and gives the user's screen back when it
-quits or suspends.
+quits or suspends. Until `tui.Run` accepts a test terminal (see Not in
+scope), an app author builds the `Runtime` by hand as UC-1 shows.
 
 Secondary user: wonton maintainers, who use termtest with the vtdiff
 harness to check that termtest matches a real terminal.
@@ -124,14 +142,19 @@ terminal window.
 
 ### UC-1: The shell prompt comes back after the app quits
 
+A test runs a real app the way `tui.Run` does, with a `Screen` in place of
+the user's terminal:
+
 ```go
 screen := termtest.NewScreen(80, 24)
 screen.Write([]byte("$ myapp\r\n"))
 term := tui.NewTestTerminal(80, 24, screen)
 term.EnableAlternateScreen()
-// ... render one or more app frames to term ...
-termtest.AssertContains(t, screen, "Inbox (3)") // the app frame
-term.Close()                                      // writes ESC[?1049l
+term.HideCursor()
+rt := tui.NewRuntime(term, app, 30)
+rt.SetInputSource(keys) // scripted: waits for the frame, then sends 'q'
+err := rt.Run()         // the app renders "Inbox (3)", then quits
+term.Close()            // the cleanup that tui.Run defers; writes ESC[?1049l
 termtest.AssertRow(t, screen, 0, "$ myapp")
 termtest.AssertNotContains(t, screen, "Inbox (3)")
 termtest.AssertCursor(t, screen, 0, 1)
@@ -142,6 +165,8 @@ Acceptance:
       primary content written before `?1049h`.
 - [ ] After `?1049l`, `Cursor()` is the position saved at `?1049h`.
 - [ ] `screen.IsAlternateScreen()` is `false` after `?1049l`.
+- [ ] A `tui` test runs a `Runtime` with scripted input to a quit, closes
+      the terminal, and passes these checks.
 
 ### UC-2: Check the app frame while it runs
 
@@ -161,17 +186,20 @@ Acceptance:
 
 ### UC-3: Suspend shows the shell screen, resume redraws the app
 
-A `tui` test runs a `Runtime` on a `NewTestTerminal` that writes into a
-`Screen`. Inside the `Suspend` callback, the screen shows the primary
-content and anything the callback prints. After `Suspend` returns, the
-screen shows the app frame again.
+A `tui` test runs a `Runtime` as in UC-1. A key makes the app call
+`Suspend`. The callback writes `transcript line` to the same writer, as a
+real callback writes to the user's terminal. Then the app quits and the
+test closes the terminal.
 
 Acceptance:
 - [ ] Inside the callback: `IsAlternateScreen()` is `false`, the prompt
       written before the app started is visible, and no app frame text is
-      visible.
-- [ ] After return: `IsAlternateScreen()` is `true`, and the full app frame
-      is visible (the forced redraw at `tui/runtime_suspend.go:119` works).
+      visible. The callback's line is visible after it writes it.
+- [ ] After `Suspend` returns: `IsAlternateScreen()` is `true`, the full app
+      frame is visible (the forced redraw at `tui/runtime_suspend.go:119`
+      works), and the callback's line is not visible.
+- [ ] After the final exit: the prompt and the callback's line are both
+      visible, and no app frame text is visible.
 
 ## Requirements
 
@@ -194,12 +222,21 @@ Acceptance:
 - R-7: The vtdiff probe set for these sequences matches ghostty: text,
   cursor, and style per cell.
 - R-8: `tui` gets tests for UC-1 (exit restores the primary screen) and
-  UC-3 (suspend and resume), using a `Screen` as the terminal's writer.
+  UC-3 (suspend and resume). Each runs a real `Runtime` with scripted input
+  and a `Screen` as the terminal's writer.
+- R-10: The handoff PTY test replays its captured output into a `Screen`
+  and checks that every scenario ends on the primary screen, with the
+  child's echoed input visible.
+- R-11: A benchmark writes a full-screen frame stream to a `Screen` that
+  never switches.
 - R-9: An `Example` test shows `IsAlternateScreen` and the restored prompt.
   The termtest README and package doc list alternate-screen support.
 
 ## Not in scope
 
+- A way to run `tui.Run` against an in-memory terminal or a `Screen`. It is
+  a tui API decision, and the termtest change has value without it:
+  [#206](https://github.com/deepnoodle-ai/wonton/issues/206).
 - A method to read the hidden screen. See Decisions.
 - `?1048` (save and restore cursor alone). wonton never sends it; no user
   asked.
@@ -236,6 +273,10 @@ Acceptance:
   option keeps the wrong behavior alive for nobody. A test that read the
   last frame after exit was reading something no user sees; it must assert
   before exit instead. Rejected: a `NewScreen` option for the old behavior.
+- **The handoff check reuses the PTY test.** Handoff refuses a test
+  terminal, so a `Screen`-only handoff test is not possible without a PTY.
+  The PTY test already captures every byte; replaying it into a `Screen`
+  costs a few lines. Rejected: a new handoff test harness.
 - **No `ScreenOption` for this track.** The raw-mode track adds the shared
   `termtest.ScreenOption` type in `termtest/options.go`. This track needs no
   option (see the decision above), so it adds none and does not create a
@@ -253,8 +294,9 @@ Acceptance:
 - The vtdiff alternate-screen probes match ghostty.
 - No existing test changes its result. The 1,002-stream vtdiff corpus,
   the renderer comparison, and the fuzz run match as before.
-- Must not get worse: `Write` throughput on screens that never switch, and
-  zero panics in the fuzz run.
+- Must not get worse: `Write` throughput on screens that never switch, as
+  the R-11 benchmark measures before and after (within run-to-run noise),
+  and zero panics in the fuzz run.
 
 ## Risks and open questions
 
