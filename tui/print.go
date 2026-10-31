@@ -613,6 +613,15 @@ func (lp *LivePrinter) frameRows() int {
 	return rows + lp.cursorColumn(liveLineWidth(lp.lastLines[last]))/width + 1
 }
 
+// frameCursorColumn returns the column where the last frame left the
+// cursor on its last row, or 0 when there is no frame.
+func (lp *LivePrinter) frameCursorColumn() int {
+	if len(lp.lastLines) == 0 {
+		return 0
+	}
+	return lp.cursorColumn(liveLineWidth(lp.lastLines[len(lp.lastLines)-1]))
+}
+
 // cursorColumn returns the cursor's offset in the last line of the previous
 // frame, a line w cells wide. After w cells the cursor sits after the text,
 // except when the text filled its last row: then the cursor waits on the

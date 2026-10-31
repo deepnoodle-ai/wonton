@@ -55,7 +55,13 @@ func insertChunk(screenHeight, liveHeight int) int {
 // synchronized-output bracket. Attributes are reset before the line feeds
 // and the insert, so the rows they open take the default background
 // (background color erase). Each rendered row ends its own styles.
-func insertAboveLive(rows []string, liveHeight, chunk int) string {
+//
+// cursorCol is the 0-based column where the live region's last frame left
+// the cursor: after its last row's text, or on its last cell when that row
+// fills the width. The insert ends with the cursor there again, because the
+// live printer counts the frame's rows from that column when the terminal
+// rewraps the frame on a width change.
+func insertAboveLive(rows []string, liveHeight, chunk, cursorCol int) string {
 	var b strings.Builder
 	b.WriteString("\x1b[?2026h\x1b[?7l")
 	for len(rows) > 0 {
@@ -70,6 +76,11 @@ func insertAboveLive(rows []string, liveHeight, chunk int) string {
 		b.WriteString(strings.Join(rows[:n], "\r\n"))
 		fmt.Fprintf(&b, "\x1b[%dB", liveHeight)
 		rows = rows[n:]
+	}
+	if cursorCol > 0 {
+		fmt.Fprintf(&b, "\x1b[%dG", cursorCol+1)
+	} else {
+		b.WriteByte('\r')
 	}
 	b.WriteString(insertEnd)
 	return b.String()
@@ -118,7 +129,7 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	r.lastInsert = time.Now()
 	r.insertSinceFrame = true
 	out := &checkedLiveOutput{destination: r.output}
-	io.WriteString(out, insertAboveLive(strings.Split(rendered, "\r\n"), r.live.lastHeight, chunk))
+	io.WriteString(out, insertAboveLive(strings.Split(rendered, "\r\n"), r.live.lastHeight, chunk, r.live.frameCursorColumn()))
 	if out.err != nil {
 		// Do not leave autowrap off, or the terminal holding its screen,
 		// for a write that will never end.

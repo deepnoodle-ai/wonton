@@ -190,8 +190,9 @@ func testView(i int) View {
 }
 
 // In the PRD's measurement (5-line live region, width 100), one Print of a
-// 46-byte line costs the line plus 44 bytes and does not redraw the live
-// region.
+// 46-byte line costs the line plus 49 bytes and does not redraw the live
+// region. 5 of the 49 return the cursor to column 18, where the frame left
+// it after its last row ("  ? for shortcuts").
 func TestInlinePrintInsertBytes(t *testing.T) {
 	const line = "log line 1: compiled package ./foo/bar in 12ms"
 	measure := func(insert bool) (int, string) {
@@ -206,12 +207,13 @@ func TestInlinePrintInsertBytes(t *testing.T) {
 	before, _ := measure(false)
 	after, written := measure(true)
 	t.Logf("bytes per Print: %d redrawing the live region, %d inserting above it", before, after)
-	assert.Equal(t, after-len(line), 44)
+	assert.Equal(t, after-len(line), 49)
 	assert.False(t, strings.Contains(written, "Thinking"), "the live region is not redrawn")
 }
 
-// A Print of n rows (in one insert) costs 44 control bytes plus 3 for each
-// row after the first: a line feed and the CRLF between rows.
+// A Print of n rows (in one insert) costs 48 control bytes plus 3 for each
+// row after the first: a line feed and the CRLF between rows. 4 of the 48
+// return the cursor to column 7, after the last live row ("live 4").
 func TestInlinePrintInsertControlBytes(t *testing.T) {
 	for _, rows := range []int{1, 2, 5} {
 		views := make([]View, rows)
@@ -225,7 +227,7 @@ func TestInlinePrintInsertControlBytes(t *testing.T) {
 		runner, out := newInsertRig(t, 100, 30, 29, &liveRowsApp{rows: 5}, true)
 		out.log.Reset()
 		runner.Print(Stack(views...))
-		assert.Equal(t, out.log.Len()-content, 44+3*(rows-1), "%d rows", rows)
+		assert.Equal(t, out.log.Len()-content, 48+3*(rows-1), "%d rows", rows)
 	}
 }
 
@@ -355,7 +357,7 @@ func TestInlinePrintInsertWriteFails(t *testing.T) {
 // The insert turns autowrap off while it writes the rows, so a row cannot
 // wrap onto the next one, and turns it on again before it ends.
 func TestInlinePrintInsertAutowrapOff(t *testing.T) {
-	got := insertAboveLive([]string{"a", "b", "c"}, 2, 2)
+	got := insertAboveLive([]string{"a", "b", "c"}, 2, 2, 0)
 	assert.True(t, strings.HasPrefix(got, "\x1b[?2026h\x1b[?7l"))
 	assert.True(t, strings.HasSuffix(got, "\x1b[?7h\x1b[?2026l"))
 	assert.Equal(t, strings.Count(got, "\x1b[?7l"), 1)
@@ -611,4 +613,44 @@ func TestInlinePrintSlowOutputNarrowingLeavesNoCopy(t *testing.T) {
 	}
 	assert.Equal(t, statuses, 1, "one status row")
 	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1"})
+}
+
+// dividerLastLiveApp ends its live region with a full-width row, so the
+// cursor rests on a row that fills the width the frame was drawn at.
+type dividerLastLiveApp struct{}
+
+func (dividerLastLiveApp) LiveView() View {
+	return Stack(Text("status"), Text("> input"), Divider())
+}
+
+// The live region's last row is full width, and the window narrows: a
+// Print between the resize event and the next frame redraws the old frame,
+// whose last row now wraps. The next frame must count that row's rows
+// right, erase only the old frame, and keep the printed line above it.
+func TestInlinePrintNarrowingWithFullWidthLastRow(t *testing.T) {
+	for _, narrow := range []int{30, 20} { // 20 divides the old width 40
+		runner, out := newInsertRig(t, 40, 14, 13, dividerLastLiveApp{}, true)
+		runner.Printf("line 0")
+
+		out.screen.Resize(narrow, 14)
+		runner.screenSize = func() (int, int, bool) { return narrow, 14, true }
+		runner.processEvent(ResizeEvent{Width: narrow, Height: 14})
+		runner.Printf("line 1")
+		runner.render()
+
+		assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1"}, "width %d", narrow)
+		_, h := out.screen.Size()
+		hint := -1
+		for y := 0; y < h; y++ {
+			if out.screen.Row(y) == "> input" {
+				hint = y
+			}
+		}
+		assert.True(t, hint > 0, "width %d: live region on screen", narrow)
+		if hint > 0 {
+			assert.Equal(t, out.screen.Row(hint-1), "status", "width %d", narrow)
+			assert.Equal(t, out.screen.Row(hint-2), "line 1", "width %d: printed line kept above", narrow)
+			assert.Equal(t, out.screen.Row(hint+1), strings.Repeat("─", narrow), "width %d", narrow)
+		}
+	}
 }
