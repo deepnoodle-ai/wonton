@@ -183,8 +183,10 @@ type Options struct {
 	SkipTags []string
 
 	// BaseURL, when set, resolves relative link and image URLs against it.
-	// A <base href> in the document is honored too, resolved against
-	// BaseURL when it is itself relative.
+	// It must be an absolute URL with a scheme, such as
+	// "https://example.com/docs/"; any other value is ignored. A <base href>
+	// in the document is honored too, resolved against BaseURL when it is
+	// itself relative.
 	BaseURL string
 }
 
@@ -294,7 +296,10 @@ type context struct {
 	italic    bool
 	strike    bool
 	tableCell bool
-	cardLink  *cardLink
+	// singleLine is set where the output must stay on one line: headings,
+	// link text, and definition terms.
+	singleLine bool
+	cardLink   *cardLink
 }
 
 // cardLink is the target of an <a> that wraps block content. The first
@@ -479,6 +484,7 @@ func (c *converter) handleParagraph(n *html.Node, ctx context) string {
 
 func (c *converter) handleHeading(n *html.Node, ctx context, tag string) string {
 	cl := ctx.claimCardLink()
+	ctx.singleLine = true
 	// A Markdown heading is one line, so line breaks (<br>) become spaces.
 	content := collapseSpace(c.convertChildren(n, ctx))
 	if content == "" {
@@ -563,7 +569,7 @@ func splitEdgeSpace(n *html.Node, content string, keepNewlines bool) (lead, text
 	if keepNewlines {
 		content = inlineSpaceRegex.ReplaceAllString(content, " ")
 	} else {
-		content = whitespaceRegex.ReplaceAllString(content, " ")
+		content = whitespaceRegex.ReplaceAllString(stripMarks(content), " ")
 	}
 	text = strings.TrimSpace(content)
 	prevSpace, nextSpace := textEndsWithSpace(n.PrevSibling), textStartsWithSpace(n.NextSibling)
@@ -701,7 +707,7 @@ func (c *converter) handleLink(n *html.Node, ctx context) string {
 			return content
 		}
 	default:
-		ctx.linkText = true
+		ctx.linkText, ctx.singleLine = true, true
 		content = c.convertChildren(n, ctx)
 	}
 
@@ -895,9 +901,13 @@ func imageSource(n *html.Node) string {
 		}
 	}
 	for _, attr := range []string{"srcset", "data-srcset"} {
-		first, _, _ := strings.Cut(getAttr(n, attr), ",")
-		if f := strings.Fields(first); len(f) > 0 && !isScriptOrDataURL(f[0]) {
-			return f[0]
+		// Per the srcset syntax, a candidate's URL runs to the next
+		// whitespace, minus trailing commas; a comma inside it is part
+		// of the URL.
+		if f := strings.Fields(getAttr(n, attr)); len(f) > 0 {
+			if src := strings.TrimRight(f[0], ","); src != "" && !isScriptOrDataURL(src) {
+				return src
+			}
 		}
 	}
 	return ""
@@ -1096,6 +1106,7 @@ func (c *converter) handleDefinitionList(n *html.Node, ctx context) string {
 	for _, it := range items {
 		if strings.EqualFold(it.Data, "dt") {
 			inner := ctx
+			inner.singleLine = true
 			if hasDefinition {
 				inner.bold, inner.emphasis = true, true
 			}
@@ -1153,15 +1164,19 @@ func (c *converter) handlePre(n *html.Node, ctx context) string {
 	// since Markdown inside a code block renders literally.
 	content := strings.Trim(c.textContent(n), "\n")
 
-	if ctx.tableCell {
-		// A table cell holds one line: each code line becomes a code span.
+	if ctx.tableCell || ctx.singleLine {
+		// A table cell, heading, or link holds one line: each code line
+		// becomes a code span.
 		var spans []string
 		for _, line := range strings.Split(content, "\n") {
 			if span := codeSpan(line); span != "" {
 				spans = append(spans, span)
 			}
 		}
-		return strings.Join(spans, "<br>")
+		if ctx.tableCell {
+			return strings.Join(spans, "<br>")
+		}
+		return " " + strings.Join(spans, " ") + " "
 	}
 
 	var body string
@@ -1363,9 +1378,13 @@ func cellNodes(tr *html.Node) []*html.Node {
 	return cells
 }
 
+// maxTableColumns bounds the width of a pipe table. Spans multiply cells,
+// so without a bound a small crafted table could build a huge grid.
+const maxTableColumns = 200
+
 // tableRows renders table rows as cell strings. A cell spanning columns or
 // rows is followed by, or leaves below it, empty cells so later cells stay
-// under their headers.
+// under their headers. Cells past maxTableColumns are dropped.
 func (c *converter) tableRows(trs []*html.Node) [][]string {
 	var rows [][]string
 	pending := map[int]int{} // column -> rows still covered by a rowspan above
@@ -1374,7 +1393,7 @@ func (c *converter) tableRows(trs []*html.Node) [][]string {
 		hasCell := false
 		col := 0
 		fill := func() {
-			for pending[col] > 0 {
+			for col < maxTableColumns && pending[col] > 0 {
 				pending[col]--
 				row = append(row, "")
 				col++
@@ -1382,6 +1401,9 @@ func (c *converter) tableRows(trs []*html.Node) [][]string {
 		}
 		for _, cell := range cellNodes(tr) {
 			fill()
+			if col >= maxTableColumns {
+				break
+			}
 			hasCell = true
 			content := ""
 			if !c.skip(cell) {
@@ -1389,7 +1411,7 @@ func (c *converter) tableRows(trs []*html.Node) [][]string {
 			}
 			colspan := spanAttr(cell, "colspan", 1000)
 			rowspan := spanAttr(cell, "rowspan", 65534)
-			for i := 0; i < colspan; i++ {
+			for i := 0; i < colspan && col < maxTableColumns; i++ {
 				if i == 0 {
 					row = append(row, content)
 				} else {
@@ -1423,8 +1445,9 @@ func (c *converter) tableRows(trs []*html.Node) [][]string {
 	return rows
 }
 
-// cellContent renders a table cell on one line: line breaks become <br>,
-// blocks are joined by spaces, and pipes are escaped.
+// cellContent renders a table cell on one line: <br> elements render as
+// <br>, other line breaks (between blocks) become spaces, and pipes are
+// escaped.
 func (c *converter) cellContent(cell *html.Node) string {
 	s := finalize(normalize(c.convertChildren(cell, context{tableCell: true})))
 	var parts []string
@@ -1558,7 +1581,9 @@ func normalize(s string) string {
 }
 
 // finalize turns a normalized fragment into Markdown: code block marker
-// lines are dropped and structural prefixes become spaces and ">".
+// lines are dropped and structural prefixes become spaces and ">". Any
+// other marker left in a line, such as a block collapsed into a heading,
+// is removed so control bytes never reach the output.
 func finalize(s string) string {
 	lines := strings.Split(s, "\n")
 	out := lines[:0]
@@ -1569,7 +1594,7 @@ func finalize(s string) string {
 	}
 	s = strings.Join(out, "\n")
 	s = strings.NewReplacer(string(rune(markIndent)), " ", string(rune(markQuote)), ">").Replace(s)
-	return strings.Trim(s, "\n")
+	return strings.Trim(stripMarks(s), "\n")
 }
 
 // stripMarks removes the control characters the converter uses as markers.
@@ -1586,8 +1611,10 @@ func stripMarks(s string) string {
 	}, s)
 }
 
+// collapseSpace puts s on one line. Markers from block content collapsed
+// into the line mean nothing there, so they are removed.
 func collapseSpace(s string) string {
-	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(s, " "))
+	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(stripMarks(s), " "))
 }
 
 func getAttr(n *html.Node, key string) string {

@@ -1,6 +1,7 @@
 package htmltomd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -22,7 +23,10 @@ func runCases(t *testing.T, cases []convertCase) {
 			name = tc.html
 		}
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ConvertWithOptions(tc.html, tc.opts), tc.want)
+			got := ConvertWithOptions(tc.html, tc.opts)
+			assert.Equal(t, got, tc.want)
+			// The converter's internal marker bytes never reach the output.
+			assert.False(t, strings.ContainsAny(got, "\x01\x02\x03\x05\x06"), "marker byte in %q", got)
 		})
 	}
 }
@@ -129,6 +133,16 @@ func TestConvert_Headings(t *testing.T) {
 			html: "<h2>Subtitle</h2>",
 			opts: &Options{HeadingStyle: HeadingStyleSetext},
 			want: "Subtitle\n--------",
+		},
+		{
+			name: "pre inside heading becomes a code span",
+			html: `<h2>Install<pre>go get x</pre></h2>`,
+			want: "## Install `go get x`",
+		},
+		{
+			name: "list inside heading stays on the heading line",
+			html: `<ul><li><h2>T<ul><li>a</li></ul></h2></li></ul>`,
+			want: "- ## T - a",
 		},
 	})
 }
@@ -492,6 +506,21 @@ line two" title='a "b"'>`,
 
 [1]: /x "q \"t\""`,
 		},
+		{
+			name: "pre inside link becomes a code span",
+			html: `<a href="/x"><pre>go get x</pre></a>`,
+			want: "[`go get x`](/x)",
+		},
+		{
+			name: "srcset url containing commas",
+			html: `<img src="data:image/gif;base64,R0l" data-srcset="https://img.example/w_300,h_200/a.jpg 1x, b.jpg 2x">`,
+			want: "![](https://img.example/w_300,h_200/a.jpg)",
+		},
+		{
+			name: "srcset without descriptors",
+			html: `<img srcset="a.jpg, b.jpg">`,
+			want: "![](a.jpg)",
+		},
 	})
 }
 
@@ -658,6 +687,11 @@ func TestConvert_DefinitionLists(t *testing.T) {
 			name: "definition list multiple terms and definitions",
 			html: `<dl><dt>a</dt><dt>b</dt><dd><p>one</p><p>two</p></dd><dd>three</dd></dl>`,
 			want: "**a**\n**b**\n: one\n\n  two\n: three",
+		},
+		{
+			name: "pre inside term becomes a code span",
+			html: `<dl><dt>Run<pre>make test</pre></dt><dd>Runs the tests.</dd></dl>`,
+			want: "**Run `make test`**\n: Runs the tests.",
 		},
 	})
 }
@@ -1044,6 +1078,37 @@ func TestConvert_EmptyElements(t *testing.T) {
 		{name: "empty pre", html: "<pre></pre>", want: "```\n\n```"},
 		{name: "whitespace-only bold", html: "<strong>   </strong>", want: ""},
 	})
+}
+
+// Spans multiply cells, so a pipe table is capped at maxTableColumns
+// columns: a small crafted table cannot build a huge grid.
+func TestConvert_TableColumnLimit(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("<table>")
+	for range 100 {
+		b.WriteString("<tr>")
+		for range 100 {
+			b.WriteString(`<td colspan="1000">x</td>`)
+		}
+		b.WriteString("</tr>")
+	}
+	b.WriteString("</table>")
+	html := b.String()
+
+	got := Convert(html)
+	lines := strings.Split(got, "\n")
+	assert.Equal(t, len(lines), 101) // header, separator, 99 rows
+	for _, line := range lines {
+		assert.Equal(t, strings.Count(line, " | ")+1, maxTableColumns)
+	}
+
+	// Rowspans fill later rows only up to the cap too.
+	got = Convert(strings.ReplaceAll(html, `colspan="1000"`, `colspan="1000" rowspan="1000"`))
+	assert.True(t, len(got) < 4096, "output is %d bytes", len(got))
+
+	// A table within the limit keeps every column.
+	got = Convert(`<table><tr><th colspan="3">A</th><th>B</th></tr></table>`)
+	assert.Equal(t, got, "| A |  |  | B |\n| --- | --- | --- | --- |")
 }
 
 func TestDefaultOptions(t *testing.T) {
