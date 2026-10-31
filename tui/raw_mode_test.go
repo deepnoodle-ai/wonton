@@ -40,9 +40,19 @@ func rawLinesView(lines []string) View {
 	return Stack(views...)
 }
 
+// rawAssertRows checks every row of screen: the first rows match rows, and
+// each row after them is empty.
 func rawAssertRows(t *testing.T, screen *termtest.Screen, rows ...string) {
 	t.Helper()
-	for y, want := range rows {
+	_, height := screen.Size()
+	if len(rows) > height {
+		t.Fatalf("%d rows given for a screen of height %d", len(rows), height)
+	}
+	for y := range height {
+		want := ""
+		if y < len(rows) {
+			want = rows[y]
+		}
 		termtest.AssertRow(t, screen, y, want)
 	}
 }
