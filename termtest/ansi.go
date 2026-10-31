@@ -635,7 +635,7 @@ func (s *Screen) deleteChars(n int) {
 	end := min(s.width, start+n)
 	shift := end - start
 	defer s.markErased(y, s.width-shift, s.width, true)
-	defer s.shiftPrinted(y, end, -shift)
+	defer s.shiftPrinted(y, start, -shift)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {

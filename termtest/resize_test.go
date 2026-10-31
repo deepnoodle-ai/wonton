@@ -190,6 +190,12 @@ var resizeCases = []struct {
 	{"wide widen", 3, 4, "中文字", 6, 4,
 		[]string{"中文字"}, 0, 1,
 		"X", []string{"中文字", "X"}},
+	{"DCH drops deleted marks", 10, 6, "abc\x1b[G\x1b[2P\x1b[2;1Hz\x1b[1;1H", 1, 6,
+		[]string{"c", "z"}, 0, 0,
+		"X", []string{"X", "z"}},
+	{"DCH mid row marks", 10, 6, "abcdef\x1b[2G\x1b[2P\x1b[2;1Hz\x1b[1;1H", 2, 6,
+		[]string{"ad", "ef", "z"}, 0, 0,
+		"X", []string{"Xd", "ef", "z"}},
 
 	// The saved cursor stays on its character, as ghostty tracks it.
 	{"saved cursor in wrapped line", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b7\x1b[4;1H", 5, 4,
