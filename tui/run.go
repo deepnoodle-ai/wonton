@@ -72,8 +72,11 @@ func WithInput(source InputSource) RunOption {
 // screen, shows the cursor and turns off the modes Run turned on, so the
 // screen shows what a user sees after the app quits. Do not use term after
 // Run returns: a later Run with the same term returns an error that wraps
-// ErrClosed. Make a new terminal for each Run. A terminal from NewTestTerminal has no tty, so Run changes no
-// real terminal state through it.
+// ErrClosed. Make a new terminal for each Run.
+//
+// A terminal from NewTestTerminal has no tty. With one, Run leaves the
+// process's own terminal alone: no raw mode and no keyboard protocol. So the
+// bytes a test sees are the same in a terminal, in tmux and in CI.
 //
 // To resize while the app runs, resize the screen and then call
 // term.SetSize with the same size, as Terminal.SetSize describes.
@@ -283,6 +286,13 @@ func Run(app Application, opts ...RunOption) error {
 // configure it.
 func newRunRuntime(terminal *Terminal, app Application, cfg runConfig) *Runtime {
 	runtime := NewRuntime(terminal, app, cfg.fps)
+	if cfg.terminal != nil {
+		// A terminal from NewTestTerminal has no tty. Then raw mode and the
+		// keyboard protocol would only follow whether the test itself runs
+		// in a terminal or in tmux, and change the bytes the test sees.
+		_, hasTTY := terminalstate.Inspect(cfg.terminal)
+		runtime.noTTY = !hasTTY
+	}
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 	runtime.SetBackslashEnter(cfg.backslashEnter)
 	if cfg.inputSource != nil {

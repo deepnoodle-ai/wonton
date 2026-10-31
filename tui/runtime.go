@@ -83,6 +83,7 @@ type Runtime struct {
 	handoffActive bool
 	handoffErr    error
 	inputErr      error // why a source set with SetInputSource stopped, other than io.EOF
+	noTTY         bool  // Run gave a terminal with no tty: leave the process's stdin alone
 	resizeMu      sync.Mutex
 	resizeEvents  chan ResizeEvent
 }
@@ -196,7 +197,7 @@ func (r *Runtime) Run() error {
 
 	// Enable raw mode for character-by-character input
 	// Only enable if stdin is actually a terminal (not piped or redirected)
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if !r.noTTY && term.IsTerminal(int(os.Stdin.Fd())) {
 		// Detect Kitty keyboard protocol support before enabling raw mode.
 		// SetKittyKeyboard skips the probe: the app has already decided, and
 		// the probe costs up to 200 ms of startup.
