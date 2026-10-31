@@ -162,6 +162,13 @@ columns. One region line is 30 cells wide. One region line is shorter
 than 20 cells. It calls `screen.Resize(20, 24)` and sends the app a
 `ResizeEvent`. The app redraws.
 
+If reflow makes the old region taller than the screen, ghostty moves the
+top rows of the old region into the user's scrollback. The cursor-up
+count stops at row 0, and the redraw cannot erase rows in scrollback. So
+the user keeps those stale region rows in scrollback, above the redrawn
+region. termtest has no scrollback (R-6), so a test checks only the
+visible rows.
+
 Acceptance:
 - [ ] The live region appears once. No line of the old region stays on
       screen, reflowed or not.
@@ -173,6 +180,9 @@ Acceptance:
 - [ ] The same test widens back to 40 columns. The region appears once.
 - [ ] A `LivePrinter` test covers the same narrowing without
       `InlineApp`.
+- [ ] A test narrows a region until its reflowed rows are taller than
+      the screen. The visible rows show the new region once, from row 0,
+      and no old region row.
 - [ ] A `LivePrinter` test narrows a region whose line ends in a
       background-colored run of spaces that crosses the new width. The
       region appears once (R-10).
