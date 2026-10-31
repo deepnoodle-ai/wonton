@@ -46,6 +46,8 @@ type savedCursor struct {
 // and snapshots all show the alternate screen; the primary screen comes back
 // unchanged when the application leaves it.
 func (s *Screen) IsAlternateScreen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.alt.active
 }
 

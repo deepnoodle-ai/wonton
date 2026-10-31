@@ -2,9 +2,7 @@ package tui_test
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"time"
 
 	"github.com/deepnoodle-ai/wonton/termtest"
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -232,29 +230,17 @@ func (a *inboxApp) HandleEvent(event tui.Event) []tui.Cmd {
 	return nil
 }
 
-// typedKeys is a tui.InputSource that types its runes, then ends.
-type typedKeys []rune
-
-func (k *typedKeys) ReadEvent() (tui.Event, error) {
-	if len(*k) == 0 {
-		return nil, io.EOF
-	}
-	r := (*k)[0]
-	*k = (*k)[1:]
-	return tui.KeyEvent{Rune: r, Time: time.Now()}, nil
-}
-
-func (k *typedKeys) SetPasteTabWidth(int) {}
-
 // ExampleWithTerminal runs an app with tui.Run, as a user runs it, but on an
-// in-memory screen. The app reads its keys from a tui.InputSource, and Run closes the
-// terminal on exit, so the screen shows what the user sees afterwards.
+// in-memory screen. The app reads its keys from a tui.TestInput. Run closes
+// the terminal on exit, so the screen shows what the user sees afterwards.
 func ExampleWithTerminal() {
 	screen := termtest.NewScreen(40, 5)
 	screen.Write([]byte("$ inbox\r\n")) // the shell prompt
 
 	term := tui.NewTestTerminal(40, 5, screen)
-	keys := &typedKeys{'j', 'k', 'q'}
+	keys := tui.NewTestInput()
+	keys.Type("jkq")
+	keys.Close()
 	app := &inboxApp{}
 	if err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys)); err != nil {
 		fmt.Println(err)

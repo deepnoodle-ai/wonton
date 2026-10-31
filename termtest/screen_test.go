@@ -768,3 +768,24 @@ func ExampleScreen_Contains() {
 	// true
 	// false
 }
+
+func TestScreenAllowsWritesWhileATestReads(t *testing.T) {
+	screen := NewScreen(20, 4)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			screen.Write([]byte("\x1b[Hframe\x1b[2;1Hline two"))
+			screen.Resize(20+i%3, 4)
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		_ = screen.Text()
+		_ = screen.Row(1)
+		_, _ = screen.Cursor()
+		_ = screen.Contains("frame")
+		_ = EqualStyled(screen, screen)
+	}
+	<-done
+	AssertRow(t, screen, 0, "frame")
+}

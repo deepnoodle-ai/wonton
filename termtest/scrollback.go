@@ -25,6 +25,8 @@ import "strings"
 // reset (ESC c) empty the scrollback. Scrollback reports text only; the
 // rows keep their styles for when Resize brings them back.
 func (s *Screen) Scrollback() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(s.scrollback) == 0 || s.alt.active {
 		return nil
 	}

@@ -887,32 +887,22 @@ and keyboard. See [Testing a Full-Screen App](#testing-a-full-screen-app).
 
 `WithTerminal` runs the real `tui.Run` path on an in-memory terminal, so a
 test checks the same setup, frames, and cleanup that users get. Make the
-terminal with `tui.NewTestTerminal` and a `termtest.Screen`, and send keys
-with `WithInput`. Run closes the terminal when it returns, as it closes the
-terminal it opens itself. The screen then shows what the user sees after the
-app quits.
+terminal with `tui.NewTestTerminal` and a `termtest.Screen`. Send keys with a
+`tui.TestInput` and `WithInput`. When the test closes the input, Run handles
+the keys already sent and returns. Run closes the terminal when it returns, so
+the screen then shows what the user sees after the app quits.
 
 ```go
-// typedKeys is a tui.InputSource that types its runes, then ends.
-type typedKeys []rune
-
-func (k *typedKeys) ReadEvent() (tui.Event, error) {
-	if len(*k) == 0 {
-		return nil, io.EOF
-	}
-	r := (*k)[0]
-	*k = (*k)[1:]
-	return tui.KeyEvent{Rune: r, Time: time.Now()}, nil
-}
-
-func (k *typedKeys) SetPasteTabWidth(int) {}
-
 func TestQuitGivesTheShellBack(t *testing.T) {
 	screen := termtest.NewScreen(80, 24)
 	screen.Write([]byte("$ myapp\r\n"))
 	term := tui.NewTestTerminal(80, 24, screen)
 
-	err := tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(&typedKeys{'q'}))
+	keys := tui.NewTestInput()
+	keys.Type("q")
+	keys.Close() // Run returns when the input ends, even if the app does not quit
+
+	err := tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(keys))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,11 +910,39 @@ func TestQuitGivesTheShellBack(t *testing.T) {
 }
 ```
 
-To check frames while the app runs, run `tui.Run` in a goroutine and send
-keys from a channel-backed `InputSource`. Guard the screen with a mutex,
-because the runtime writes to it from its own goroutines. To resize, call
-`screen.Resize` and then `term.SetSize` with the same size: the window
+To check frames while the app runs, run `tui.Run` in a goroutine. A
+`termtest.Screen` is safe to read while the runtime writes to it. To resize,
+call `screen.Resize` and then `term.SetSize` with the same size: the window
 changes first, then the app learns the new size and redraws.
+
+```go
+func TestRedrawAfterResize(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	term := tui.NewTestTerminal(80, 24, screen)
+	keys := tui.NewTestInput()
+	done := make(chan error, 1)
+	go func() { done <- tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(keys)) }()
+
+	waitFor := func(text string) {
+		t.Helper()
+		for deadline := time.Now().Add(time.Second); !screen.Contains(text); time.Sleep(5 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("no %q on screen:\n%s", text, screen.Text())
+			}
+		}
+	}
+	waitFor("Inbox")
+
+	screen.Resize(40, 24) // the user narrows the window
+	term.SetSize(40, 24)  // the app learns the new size and redraws
+	waitFor("Inbox")
+
+	keys.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+```
 
 ## Snapshot Testing
 

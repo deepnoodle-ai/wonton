@@ -190,6 +190,8 @@ func (r gridRow) printedAt(x int) bool {
 // new size, after the Resize. For a wonton terminal.Terminal, that is
 // SetSize with the same size.
 func (s *Screen) Resize(width, height int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	width, height = max(width, 1), max(height, 1)
 	if width == s.width && height == s.height {
 		return

@@ -139,7 +139,6 @@ func renderSnippet(code string) string {
 		{"time.", "\"time\"", "var _ = time.Now"},
 		{"strings.", "\"strings\"", "var _ = strings.Join"},
 		{"testing.", "\"testing\"", "var _ testing.TB"},
-		{"io.", "\"io\"", "var _ = io.EOF"},
 		{"termtest.", "\"github.com/deepnoodle-ai/wonton/termtest\"", "var _ = termtest.AssertScreen"},
 	}
 	var specs, anchors []string

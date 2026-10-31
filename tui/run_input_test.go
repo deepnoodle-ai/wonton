@@ -13,7 +13,7 @@ import (
 
 // WithInput must reach the Runtime that Run builds.
 func TestRun_WithInputFeedsRuntime(t *testing.T) {
-	source := NewMockInputSource()
+	source := NewTestInput()
 	cfg := defaultRunConfig()
 	WithInput(source)(&cfg)
 
@@ -57,9 +57,8 @@ func runReturns(t *testing.T, run func() error) error {
 func TestRunReturnsWhenInputEnds(t *testing.T) {
 	screen := termtest.NewScreen(20, 3)
 	term := NewTestTerminal(20, 3, screen)
-	keys := NewMockInputSource()
-	keys.Send(KeyEvent{Rune: 'a'})
-	keys.Send(KeyEvent{Rune: 'b'})
+	keys := NewTestInput()
+	keys.Type("ab")
 	keys.Close()
 
 	app := &keyCounter{}
@@ -84,4 +83,23 @@ func TestRunReturnsTheInputError(t *testing.T) {
 		return Run(&keyCounter{}, WithTerminal(term), WithInput(failingInput{broken}))
 	})
 	assert.ErrorIs(t, err, broken)
+}
+
+func TestTestInputReadsEventsThenEOF(t *testing.T) {
+	keys := NewTestInput()
+	keys.Type("a")
+	keys.Send(KeyEvent{Key: KeyEnter})
+	keys.Close()
+	keys.Close() // closing twice does nothing
+
+	first, err := keys.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, first.(KeyEvent).Rune, 'a')
+	second, err := keys.ReadEvent()
+	assert.NoError(t, err)
+	assert.Equal(t, second.(KeyEvent).Key, KeyEnter)
+	_, err = keys.ReadEvent()
+	assert.ErrorIs(t, err, io.EOF)
+
+	assert.Panics(t, func() { keys.Send(KeyEvent{Rune: 'b'}) })
 }

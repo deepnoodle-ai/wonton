@@ -313,8 +313,9 @@ func TestRedrawAfterResize(t *testing.T) {
 
 To test a full-screen `tui` app end to end, give the screen to `tui.Run`
 with `tui.WithTerminal(tui.NewTestTerminal(80, 24, screen))` and send keys
-with `tui.WithInput`. Run then does the same setup and cleanup that users
-get. See "Testing a Full-Screen App" in the [tui README](../tui/README.md).
+with `tui.WithInput(tui.NewTestInput())`. Run then does the same setup and
+cleanup that users get. A `Screen` is safe for concurrent use, so a test can
+read it while the app writes to it. See "Testing a Full-Screen App" in the [tui README](../tui/README.md).
 
 ### Testing Scroll Regions and Scrollback
 

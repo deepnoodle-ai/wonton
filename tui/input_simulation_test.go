@@ -8,35 +8,6 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 )
 
-// MockInputSource implements InputSource for testing
-type MockInputSource struct {
-	events chan Event
-}
-
-func NewMockInputSource() *MockInputSource {
-	return &MockInputSource{
-		events: make(chan Event, 100),
-	}
-}
-
-func (m *MockInputSource) ReadEvent() (Event, error) {
-	event, ok := <-m.events
-	if !ok {
-		return nil, io.EOF
-	}
-	return event, nil
-}
-
-func (m *MockInputSource) SetPasteTabWidth(w int) {}
-
-func (m *MockInputSource) Send(event Event) {
-	m.events <- event
-}
-
-func (m *MockInputSource) Close() {
-	close(m.events)
-}
-
 // TestRuntime_BackslashEnterFallback tests the backslash+enter -> shift+enter
 // conversion when the opt-in WithBackslashEnter behavior is enabled.
 func TestRuntime_BackslashEnterFallback(t *testing.T) {
@@ -52,7 +23,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	runtime := NewRuntime(terminal, app, 30)
 	runtime.SetBackslashEnter(true)
 
-	inputSource := NewMockInputSource()
+	inputSource := NewTestInput()
 	runtime.SetInputSource(inputSource)
 
 	// Start runtime in background
@@ -109,7 +80,7 @@ func TestRuntime_BackslashEnterDisabledByDefault(t *testing.T) {
 	terminal := NewTestTerminal(80, 24, io.Discard)
 	runtime := NewRuntime(terminal, app, 30)
 
-	inputSource := NewMockInputSource()
+	inputSource := NewTestInput()
 	runtime.SetInputSource(inputSource)
 
 	go func() {
@@ -146,7 +117,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 	terminal := NewTestTerminal(80, 24, io.Discard)
 	runtime := NewRuntime(terminal, app, 30)
 
-	inputSource := NewMockInputSource()
+	inputSource := NewTestInput()
 	runtime.SetInputSource(inputSource)
 
 	go func() {

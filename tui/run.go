@@ -50,11 +50,15 @@ func WithInput(source InputSource) RunOption {
 // WithTerminal makes Run draw on term instead of opening a terminal on
 // standard output. A test uses it to run the real Run path into an in-memory
 // screen: the same setup, frames, resize handling and cleanup that users get.
-// Make term with NewTestTerminal and a termtest.Screen, and send keys with
-// WithInput. Without WithInput, Run reads keys from standard input.
+// Make term with NewTestTerminal and a termtest.Screen, and send keys with a
+// TestInput and WithInput. Run returns when the test closes the TestInput.
+// Without WithInput, Run reads keys from standard input.
 //
 //	screen := termtest.NewScreen(80, 24)
 //	term := tui.NewTestTerminal(80, 24, screen)
+//	keys := tui.NewTestInput()
+//	keys.Type("q")
+//	keys.Close()
 //	err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys))
 //
 // Run owns term from the start of the call: it closes term when it returns,

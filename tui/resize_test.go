@@ -108,42 +108,38 @@ func TestRunOnAlternateScreenRedrawsAfterResize(t *testing.T) {
 	// instead of reflowing. The shell screen behind it still reflows.
 	const prompt = "$ myapp --verbose"
 	app := resizeFullScreenApp{}
-	out := &lockedScreen{screen: termtest.NewScreen(80, 8)}
-	_, _ = out.Write([]byte(prompt + "\r\n"))
+	screen := termtest.NewScreen(80, 8)
+	screen.WriteString(prompt + "\r\n")
 	want := fullScreenFrame(t, app, 80, 8)
-	term, keys, done := runFullScreen(t, app, out, func(s *termtest.Screen) bool {
+	term, keys, done := runFullScreen(t, app, screen, func(s *termtest.Screen) bool {
 		return s.IsAlternateScreen() && s.Text() == want
 	})
 
 	// At 38 columns the wide character "中" straddles the new right edge.
 	// The window changes first; the app has not redrawn yet.
-	out.read(func(s *termtest.Screen) {
-		s.Resize(38, 8)
-		termtest.AssertRow(t, s, 0, "Title")
-		termtest.AssertRow(t, s, 1, strings.Repeat("x", 37)) // cut, not reflowed
-		assert.Equal(t, s.Cell(37, 1).Char, ' ', "the cut wide character is blank")
-		assert.False(t, s.Cell(37, 1).Continuation)
-		termtest.AssertRow(t, s, 7, "status bar")
-	})
+	screen.Resize(38, 8)
+	termtest.AssertRow(t, screen, 0, "Title")
+	termtest.AssertRow(t, screen, 1, strings.Repeat("x", 37)) // cut, not reflowed
+	assert.Equal(t, screen.Cell(37, 1).Char, ' ', "the cut wide character is blank")
+	assert.False(t, screen.Cell(37, 1).Continuation)
+	termtest.AssertRow(t, screen, 7, "status bar")
 
 	term.SetSize(38, 8) // the app learns the new size and redraws
 	want = fullScreenFrame(t, app, 38, 8)
-	out.waitFor(t, "the frame at 38 columns", func(s *termtest.Screen) bool { return s.Text() == want })
+	waitFor(t, screen, "the frame at 38 columns", func(s *termtest.Screen) bool { return s.Text() == want })
 
-	out.read(func(s *termtest.Screen) { s.Resize(10, 8) })
+	screen.Resize(10, 8)
 	term.SetSize(10, 8)
 	want = fullScreenFrame(t, app, 10, 8)
-	out.waitFor(t, "the frame at 10 columns", func(s *termtest.Screen) bool { return s.Text() == want })
+	waitFor(t, screen, "the frame at 10 columns", func(s *termtest.Screen) bool { return s.Text() == want })
 
 	// The app quits: the shell screen comes back reflowed at the new
 	// width, with the cursor below the prompt.
 	quitFullScreen(t, keys, done)
-	out.read(func(s *termtest.Screen) {
-		assert.False(t, s.IsAlternateScreen())
-		termtest.AssertRow(t, s, 0, "$ myapp --")
-		termtest.AssertRow(t, s, 1, "verbose")
-		termtest.AssertCursor(t, s, 0, 2)
-	})
+	assert.False(t, screen.IsAlternateScreen())
+	termtest.AssertRow(t, screen, 0, "$ myapp --")
+	termtest.AssertRow(t, screen, 1, "verbose")
+	termtest.AssertCursor(t, screen, 0, 2)
 }
 
 // resizeInlineApp shows a live region with one line wider than the narrow
@@ -380,8 +376,8 @@ func (a resizeRecorderApp) HandleEvent(event Event) []Cmd {
 }
 
 func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
-	out := &lockedScreen{screen: termtest.NewScreen(80, 12)}
-	term := NewTestTerminal(80, 12, out)
+	screen := termtest.NewScreen(80, 12)
+	term := NewTestTerminal(80, 12, screen)
 	app := resizeRecorderApp{resizes: make(chan ResizeEvent, 4)}
 	r := NewRuntime(term, app, 30)
 	done := make(chan error, 1)
@@ -399,7 +395,7 @@ func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
 	waitResize(80, 12) // the initial size
 
 	// Only SetSize: the runtime's OnResize callback queues the ResizeEvent.
-	out.read(func(s *termtest.Screen) { s.Resize(40, 12) })
+	screen.Resize(40, 12)
 	term.SetSize(40, 12)
 	waitResize(40, 12)
 
@@ -408,7 +404,7 @@ func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
 	want := fullScreenFrame(t, resizeFullScreenApp{}, 40, 12)
 	got := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		if out.read(func(s *termtest.Screen) { got = s.Text() }); got == want {
+		if got = screen.Text(); got == want {
 			break
 		}
 	}

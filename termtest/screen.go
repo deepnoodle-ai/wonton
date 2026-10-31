@@ -91,6 +91,7 @@ package termtest
 
 import (
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/deepnoodle-ai/wonton/runewidth"
@@ -151,7 +152,13 @@ type Cell struct {
 //
 // Screen implements io.Writer, so it can be used anywhere an io.Writer is expected.
 // Written bytes are interpreted as ANSI-formatted terminal output.
+//
+// A Screen is safe for concurrent use. A program under test can write to it
+// from its own goroutines while the test reads it. Each method call sees the
+// screen between two writes, never in the middle of one.
 type Screen struct {
+	mu sync.Mutex // Guards every field; each exported method holds it
+
 	width  int // Screen width in columns
 	height int // Screen height in rows
 	// Rows move by swapping whole row slices, and new rows are freshly
@@ -247,16 +254,22 @@ func writeCellGlyph(w *strings.Builder, cell Cell) {
 
 // Size returns the screen dimensions.
 func (s *Screen) Size() (width, height int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.width, s.height
 }
 
 // Cursor returns the current cursor position.
 func (s *Screen) Cursor() (x, y int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.cursorX, s.cursorY
 }
 
 // SetCursor moves the cursor to the specified position.
 func (s *Screen) SetCursor(x, y int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.wrapPending = false
 	s.cursorX = clamp(x, 0, s.width-1)
 	s.cursorY = clamp(y, 0, s.height-1)
@@ -266,6 +279,12 @@ func (s *Screen) SetCursor(x, y int) {
 // Returns a blank cell (space with width 1) if the position is out of bounds.
 // Coordinates are 0-based, with (0, 0) at the top-left corner.
 func (s *Screen) Cell(x, y int) Cell {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cell(x, y)
+}
+
+func (s *Screen) cell(x, y int) Cell {
 	if x < 0 || x >= s.width || y < 0 || y >= s.height {
 		return blankCell()
 	}
@@ -276,13 +295,17 @@ func (s *Screen) Cell(x, y int) Cell {
 // Lead cells return the complete grapheme cluster, continuation cells return
 // an empty string, and blank cells return a single space.
 func (s *Screen) CellGlyph(x, y int) string {
-	return cellGlyph(s.Cell(x, y))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cellGlyph(s.cell(x, y))
 }
 
 // SetCell sets the character and style at position (x, y).
 // For wide characters (width 2), this also marks the next cell as a continuation.
 // Does nothing if the position is out of bounds.
 func (s *Screen) SetCell(x, y int, char rune, style Style) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	charWidth := runewidth.RuneWidth(char)
 	s.setCellGlyph(x, y, char, "", charWidth, style)
 }
@@ -466,11 +489,19 @@ func (s *Screen) lineFeed() {
 //
 // The screen scrolls up automatically when writing past the bottom.
 func (s *Screen) WriteRune(r rune) {
-	s.WriteString(string(r))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writeString(string(r))
 }
 
 // WriteString writes a string at the cursor position.
 func (s *Screen) WriteString(str string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writeString(str)
+}
+
+func (s *Screen) writeString(str string) {
 	if s.width <= 0 || s.height <= 0 {
 		return
 	}
@@ -499,6 +530,8 @@ const maxPendingBytes = 1 << 20
 //
 // Returns the number of bytes consumed (always len(p)) and no error.
 func (s *Screen) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	data := string(p)
 	if len(s.pending) > 0 {
 		data = string(s.pending) + data
@@ -515,6 +548,12 @@ func (s *Screen) Write(p []byte) (n int, err error) {
 // Cleared cells have the default style. (CSI 2 J, which a program sends,
 // fills them with the current background color instead.)
 func (s *Screen) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clear()
+}
+
+func (s *Screen) clear() {
 	s.fillCells(blankCell())
 	s.cursorX = 0
 	s.cursorY = 0
@@ -540,9 +579,15 @@ func (s *Screen) fillCells(cell Cell) {
 // the top-left, default style, no saved cursor state, no scroll region, and
 // empty scrollback. This is equivalent to a terminal hard reset (ESC c / RIS).
 func (s *Screen) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reset()
+}
+
+func (s *Screen) reset() {
 	s.resetAltScreen()
 	s.style = Style{}
-	s.Clear()
+	s.clear()
 	s.savedX = 0
 	s.savedY = 0
 	s.savedStyle = Style{}
@@ -558,19 +603,39 @@ func (s *Screen) Reset() {
 // ClearLine clears the current line. Like the other Clear methods, it
 // leaves cells with the default style; the erase sequences a program sends
 // (CSI K, CSI J) use the current background color instead.
-func (s *Screen) ClearLine() { s.eraseLine(blankCell()) }
+func (s *Screen) ClearLine() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eraseLine(blankCell())
+}
 
 // ClearToEndOfLine clears from cursor to end of line.
-func (s *Screen) ClearToEndOfLine() { s.eraseToEndOfLine(blankCell()) }
+func (s *Screen) ClearToEndOfLine() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eraseToEndOfLine(blankCell())
+}
 
 // ClearToStartOfLine clears from start of line to cursor.
-func (s *Screen) ClearToStartOfLine() { s.eraseToStartOfLine(blankCell()) }
+func (s *Screen) ClearToStartOfLine() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eraseToStartOfLine(blankCell())
+}
 
 // ClearToEndOfScreen clears from cursor to end of screen.
-func (s *Screen) ClearToEndOfScreen() { s.eraseToEndOfScreen(blankCell()) }
+func (s *Screen) ClearToEndOfScreen() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eraseToEndOfScreen(blankCell())
+}
 
 // ClearToStartOfScreen clears from start of screen to cursor.
-func (s *Screen) ClearToStartOfScreen() { s.eraseToStartOfScreen(blankCell()) }
+func (s *Screen) ClearToStartOfScreen() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eraseToStartOfScreen(blankCell())
+}
 
 // eraseLine sets every cell of the cursor row to cell (CSI 2 K).
 func (s *Screen) eraseLine(cell Cell) {
@@ -645,6 +710,12 @@ func (s *Screen) eraseToStartOfScreen(cell Cell) {
 //	    t.Errorf("unexpected output")
 //	}
 func (s *Screen) Text() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.text()
+}
+
+func (s *Screen) text() string {
 	var lines []string
 	for y := 0; y < s.height; y++ {
 		var line strings.Builder
@@ -674,6 +745,8 @@ func (s *Screen) Text() string {
 // Returns an empty string if y is out of bounds.
 // Row indices are 0-based, with 0 being the top of the screen.
 func (s *Screen) Row(y int) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if y < 0 || y >= s.height {
 		return ""
 	}
@@ -683,7 +756,9 @@ func (s *Screen) Row(y int) string {
 // Contains checks if the screen contains the given text anywhere in its content.
 // The search includes the full Text() output, so it can match across line boundaries.
 func (s *Screen) Contains(text string) bool {
-	return strings.Contains(s.Text(), text)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.Contains(s.text(), text)
 }
 
 func clamp(v, min, max int) int {
