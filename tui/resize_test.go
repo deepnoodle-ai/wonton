@@ -307,6 +307,8 @@ func TestLiveLineWidthSkipsEscapes(t *testing.T) {
 	assert.Equal(t, liveLineWidth("\x1b[1;31mred\x1b[0m"), 3)
 	assert.Equal(t, liveLineWidth("\x1b]8;;https://x.test\x1b\\link\x1b]8;;\x1b\\"), 4)
 	assert.Equal(t, liveLineWidth("\x1b]8;;https://x.test\alink\x1b]8;;\a中"), 6)
+	assert.Equal(t, liveLineWidth("\x1b(Babc"), 3)
+	assert.Equal(t, liveLineWidth("\x1b7x\x1b8"), 1)
 }
 
 // resizeRecorderApp draws resizeFullScreenApp and reports each ResizeEvent.

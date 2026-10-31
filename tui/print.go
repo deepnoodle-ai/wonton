@@ -594,7 +594,8 @@ func (lp *LivePrinter) cursorColumn(w int) int {
 }
 
 // liveLineWidth returns the display width of a line the live printer drew,
-// skipping its escape sequences (SGR styles and OSC 8 hyperlinks).
+// skipping its escape sequences: CSI (SGR styles), OSC (OSC 8 hyperlinks),
+// and other ESC sequences such as a charset choice (ESC ( B).
 func liveLineWidth(line string) int {
 	if !strings.Contains(line, "\x1b") {
 		return runewidth.StringWidth(line)
@@ -622,8 +623,11 @@ func liveLineWidth(line string) int {
 			if i < len(line) && line[i] == 0x1b {
 				i++
 			}
-		default:
+		default: // ESC, intermediate bytes 0x20-0x2F, then a final byte
 			i++
+			for i < len(line) && line[i] >= 0x20 && line[i] <= 0x2f {
+				i++
+			}
 		}
 	}
 	return runewidth.StringWidth(text.String())
