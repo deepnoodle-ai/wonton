@@ -880,6 +880,52 @@ tui.Run(app,
 )
 ```
 
+For tests, `tui.WithTerminal` and `tui.WithInput` replace the user's terminal
+and keyboard. See [Testing a Full-Screen App](#testing-a-full-screen-app).
+
+## Testing a Full-Screen App
+
+`WithTerminal` runs the real `tui.Run` path on an in-memory terminal, so a
+test checks the same setup, frames, and cleanup that users get. Make the
+terminal with `tui.NewTestTerminal` and a `termtest.Screen`, and send keys
+with `WithInput`. Run closes the terminal when it returns, as it closes the
+terminal it opens itself. The screen then shows what the user sees after the
+app quits.
+
+```go
+// typedKeys is a tui.InputSource that types its runes, then ends.
+type typedKeys []rune
+
+func (k *typedKeys) ReadEvent() (tui.Event, error) {
+	if len(*k) == 0 {
+		return nil, io.EOF
+	}
+	r := (*k)[0]
+	*k = (*k)[1:]
+	return tui.KeyEvent{Rune: r, Time: time.Now()}, nil
+}
+
+func (k *typedKeys) SetPasteTabWidth(int) {}
+
+func TestQuitGivesTheShellBack(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	screen.Write([]byte("$ myapp\r\n"))
+	term := tui.NewTestTerminal(80, 24, screen)
+
+	err := tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(&typedKeys{'q'}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	termtest.AssertRow(t, screen, 0, "$ myapp")
+}
+```
+
+To check frames while the app runs, run `tui.Run` in a goroutine and send
+keys from a channel-backed `InputSource`. Guard the screen with a mutex,
+because the runtime writes to it from its own goroutines. To resize, call
+`screen.Resize` and then `term.SetSize` with the same size: the window
+changes first, then the app learns the new size and redraws.
+
 ## Snapshot Testing
 
 The tui package includes a comprehensive snapshot (golden) testing system for verifying rendered output. This approach captures the exact visual output of views and compares against saved snapshots.

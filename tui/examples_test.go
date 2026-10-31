@@ -2,8 +2,11 @@ package tui_test
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"time"
 
+	"github.com/deepnoodle-ai/wonton/termtest"
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
@@ -212,6 +215,61 @@ func ExampleRun() {
 		tui.WithAlternateScreen(true), // Use alternate screen buffer
 		tui.WithBracketedPaste(true),  // Handle pasted text properly
 	)
+}
+
+// inboxApp counts the keys it reads and quits on 'q'.
+type inboxApp struct{ keys int }
+
+func (a *inboxApp) View() tui.View { return tui.Text("Inbox (%d)", a.keys) }
+
+func (a *inboxApp) HandleEvent(event tui.Event) []tui.Cmd {
+	if key, ok := event.(tui.KeyEvent); ok {
+		a.keys++
+		if key.Rune == 'q' {
+			return []tui.Cmd{tui.Quit()}
+		}
+	}
+	return nil
+}
+
+// typedKeys is a tui.InputSource that types its runes, then ends.
+type typedKeys []rune
+
+func (k *typedKeys) ReadEvent() (tui.Event, error) {
+	if len(*k) == 0 {
+		return nil, io.EOF
+	}
+	r := (*k)[0]
+	*k = (*k)[1:]
+	return tui.KeyEvent{Rune: r, Time: time.Now()}, nil
+}
+
+func (k *typedKeys) SetPasteTabWidth(int) {}
+
+// ExampleWithTerminal runs an app with tui.Run, as a user runs it, but on an
+// in-memory screen. The app reads its keys from a tui.InputSource, and Run closes the
+// terminal on exit, so the screen shows what the user sees afterwards.
+func ExampleWithTerminal() {
+	screen := termtest.NewScreen(40, 5)
+	screen.Write([]byte("$ inbox\r\n")) // the shell prompt
+
+	term := tui.NewTestTerminal(40, 5, screen)
+	keys := &typedKeys{'j', 'k', 'q'}
+	app := &inboxApp{}
+	if err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys)); err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println("keys read:", app.keys)
+	fmt.Println("alternate screen:", screen.IsAlternateScreen())
+	fmt.Printf("row 0: %q\n", screen.Row(0))
+	x, y := screen.Cursor()
+	fmt.Println("cursor:", x, y)
+	// Output:
+	// keys read: 3
+	// alternate screen: false
+	// row 0: "$ inbox"
+	// cursor: 0 1
 }
 
 // ExampleBatch demonstrates running multiple commands.

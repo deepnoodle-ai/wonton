@@ -9,8 +9,8 @@ import (
 	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
-// These tests run a full-screen Runtime the way Run does, but with a
-// termtest.Screen in place of the user's terminal, so they check what the user
+// These tests run a full-screen app with tui.Run, with a termtest.Screen in
+// place of the user's terminal (WithTerminal), so they check what the user
 // sees when the app starts, suspends, resumes and quits.
 
 // lockedScreen lets the runtime's goroutines write to a termtest.Screen while
@@ -78,30 +78,25 @@ func (a *altScreenApp) HandleEvent(event Event) []Cmd {
 	return nil
 }
 
-// startAltScreenApp writes a shell prompt, then starts the app on the
-// alternate screen as Run does, and waits for its first frame.
-func startAltScreenApp(t *testing.T, app *altScreenApp) (*lockedScreen, *Terminal, *MockInputSource, chan error) {
+// runFullScreen starts app with tui.Run on a test terminal that writes to
+// out, and waits until cond holds for the first frame. It returns the
+// terminal, the keys the app reads, and the channel that receives Run's
+// result. The app must quit on 'q'.
+func runFullScreen(t *testing.T, app Application, out *lockedScreen, cond func(s *termtest.Screen) bool) (*Terminal, *MockInputSource, chan error) {
 	t.Helper()
-	out := &lockedScreen{screen: termtest.NewScreen(40, 8)}
-	_, _ = out.Write([]byte(altScreenPrompt + "\r\n"))
-
-	term := NewTestTerminal(40, 8, out)
-	term.EnableAlternateScreen()
-	term.HideCursor()
-	rt := NewRuntime(term, app, 30)
+	var width, height int
+	out.read(func(s *termtest.Screen) { width, height = s.Size() })
+	term := NewTestTerminal(width, height, out)
 	keys := NewMockInputSource()
-	rt.SetInputSource(keys)
 
 	done := make(chan error, 1)
-	go func() { done <- rt.Run() }()
-	out.waitFor(t, "the app frame", func(s *termtest.Screen) bool {
-		return s.IsAlternateScreen() && s.Contains("Inbox (3)")
-	})
-	return out, term, keys, done
+	go func() { done <- Run(app, WithTerminal(term), WithInput(keys)) }()
+	out.waitFor(t, "the first frame", cond)
+	return term, keys, done
 }
 
-// quitAltScreenApp quits the app and does the cleanup that Run defers.
-func quitAltScreenApp(t *testing.T, term *Terminal, keys *MockInputSource, done chan error) {
+// quitFullScreen presses 'q' and waits for Run to return.
+func quitFullScreen(t *testing.T, keys *MockInputSource, done chan error) {
 	t.Helper()
 	keys.Send(KeyEvent{Rune: 'q', Time: time.Now()})
 	select {
@@ -110,18 +105,29 @@ func quitAltScreenApp(t *testing.T, term *Terminal, keys *MockInputSource, done 
 	case <-time.After(time.Second):
 		t.Fatal("the app did not quit")
 	}
-	assert.NoError(t, term.Close())
+}
+
+// startAltScreenApp writes a shell prompt, then runs the app with tui.Run and
+// waits for its first frame.
+func startAltScreenApp(t *testing.T, app *altScreenApp) (*lockedScreen, *MockInputSource, chan error) {
+	t.Helper()
+	out := &lockedScreen{screen: termtest.NewScreen(40, 8)}
+	_, _ = out.Write([]byte(altScreenPrompt + "\r\n"))
+	_, keys, done := runFullScreen(t, app, out, func(s *termtest.Screen) bool {
+		return s.IsAlternateScreen() && s.Contains("Inbox (3)")
+	})
+	return out, keys, done
 }
 
 func TestFullScreenAppGivesTheShellScreenBackOnExit(t *testing.T) {
-	out, term, keys, done := startAltScreenApp(t, &altScreenApp{})
+	out, keys, done := startAltScreenApp(t, &altScreenApp{})
 
 	out.read(func(s *termtest.Screen) {
 		termtest.AssertRow(t, s, 0, "Inbox (3)")
 		termtest.AssertNotContains(t, s, altScreenPrompt)
 	})
 
-	quitAltScreenApp(t, term, keys, done)
+	quitFullScreen(t, keys, done)
 
 	out.read(func(s *termtest.Screen) {
 		assert.False(t, s.IsAlternateScreen())
@@ -151,7 +157,7 @@ func TestSuspendShowsTheShellScreenAndResumeRedrawsTheApp(t *testing.T) {
 		out.read(func(s *termtest.Screen) { inside.line = s.Contains(line) })
 	}
 
-	out, term, keys, done := startAltScreenApp(t, app)
+	out, keys, done := startAltScreenApp(t, app)
 
 	keys.Send(KeyEvent{Rune: 's', Time: time.Now()})
 	select {
@@ -174,7 +180,7 @@ func TestSuspendShowsTheShellScreenAndResumeRedrawsTheApp(t *testing.T) {
 		termtest.AssertNotContains(t, s, altScreenPrompt)
 	})
 
-	quitAltScreenApp(t, term, keys, done)
+	quitFullScreen(t, keys, done)
 
 	out.read(func(s *termtest.Screen) {
 		assert.False(t, s.IsAlternateScreen())
@@ -183,4 +189,15 @@ func TestSuspendShowsTheShellScreenAndResumeRedrawsTheApp(t *testing.T) {
 		termtest.AssertNotContains(t, s, "Inbox (3)")
 		termtest.AssertCursor(t, s, 0, 2)
 	})
+}
+
+func TestRunClosesTheTerminalItWasGiven(t *testing.T) {
+	out := &lockedScreen{screen: termtest.NewScreen(40, 8)}
+	term, keys, done := runFullScreen(t, &altScreenApp{}, out, func(s *termtest.Screen) bool {
+		return s.Contains("Inbox (3)")
+	})
+	quitFullScreen(t, keys, done)
+
+	_, err := term.BeginFrame()
+	assert.ErrorIs(t, err, ErrClosed)
 }

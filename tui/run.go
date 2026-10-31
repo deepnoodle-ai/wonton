@@ -12,6 +12,7 @@ type runConfig struct {
 	pasteTabWidth   int
 	backslashEnter  bool
 	inputSource     InputSource
+	terminal        *Terminal
 }
 
 // mouseMode selects how much the terminal reports. Each level is a superset of
@@ -41,6 +42,33 @@ func defaultRunConfig() runConfig {
 func WithInput(source InputSource) RunOption {
 	return func(c *runConfig) {
 		c.inputSource = source
+	}
+}
+
+// WithTerminal makes Run draw on term instead of opening a terminal on
+// standard output. A test uses it to run the real Run path into an in-memory
+// screen: the same setup, frames, resize handling and cleanup that users get.
+// Make term with NewTestTerminal and a termtest.Screen, and send keys with
+// WithInput. Without WithInput, Run reads keys from standard input.
+//
+//	screen := termtest.NewScreen(80, 24)
+//	term := tui.NewTestTerminal(80, 24, screen)
+//	err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys))
+//
+// Run owns term from the start of the call: it closes term when it returns,
+// as it closes the terminal it opens itself. Close leaves the alternate
+// screen, shows the cursor and turns off the modes Run turned on, so the
+// screen shows what a user sees after the app quits. Do not use term after
+// Run returns. A terminal from NewTestTerminal has no tty, so Run changes no
+// real terminal state through it.
+//
+// To resize while the app runs, resize the screen and then call
+// term.SetSize with the same size, as Terminal.SetSize describes.
+//
+// A nil term keeps the default.
+func WithTerminal(term *Terminal) RunOption {
+	return func(c *runConfig) {
+		c.terminal = term
 	}
 }
 
@@ -177,6 +205,8 @@ func WithBackslashEnter(enabled bool) RunOption {
 //	    }
 //	}
 //
+// To test an application with the same path, see WithTerminal.
+//
 // Options can be passed to customize behavior:
 //
 //	tui.Run(&MyApp{},
@@ -190,10 +220,14 @@ func Run(app Application, opts ...RunOption) error {
 		opt(&cfg)
 	}
 
-	// Create terminal
-	terminal, err := NewTerminal()
-	if err != nil {
-		return err
+	// Create the terminal, unless WithTerminal gave one. Run owns it either
+	// way and closes it on return.
+	terminal := cfg.terminal
+	if terminal == nil {
+		var err error
+		if terminal, err = NewTerminal(); err != nil {
+			return err
+		}
 	}
 	defer terminal.Close()
 

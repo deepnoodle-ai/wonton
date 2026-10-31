@@ -139,6 +139,7 @@ func renderSnippet(code string) string {
 		{"time.", "\"time\"", "var _ = time.Now"},
 		{"strings.", "\"strings\"", "var _ = strings.Join"},
 		{"testing.", "\"testing\"", "var _ testing.TB"},
+		{"io.", "\"io\"", "var _ = io.EOF"},
 		{"termtest.", "\"github.com/deepnoodle-ai/wonton/termtest\"", "var _ = termtest.AssertScreen"},
 	}
 	var specs, anchors []string
@@ -181,6 +182,9 @@ func renderSnippet(code string) string {
 	}
 	if strings.Contains(code, "tui.Run(app") && !usesAppReceiver && !definesAppType {
 		sb.WriteString("var app tui.Application\n\n")
+	}
+	if strings.Contains(code, "&myApp{}") && !strings.Contains(code, "type myApp") {
+		sb.WriteString("type myApp struct{}\n\nfunc (*myApp) View() tui.View { return tui.Empty() }\n\n")
 	}
 	if strings.Contains(code, "&selected") && !strings.Contains(code, "selected :=") && !strings.Contains(code, "selected int") {
 		sb.WriteString("var selected int\n\nvar input string\n\n")
