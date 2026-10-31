@@ -291,9 +291,12 @@ type InlineApp struct {
 	handoffErr    error
 
 	// lastInsert is when Print last inserted rows above the live region.
-	// lateResize is true under a terminal that reports resizes late.
-	lastInsert time.Time
-	lateResize bool
+	// insertSinceFrame is true when Print inserted after the last live
+	// region frame. lateResize is true under a terminal that reports
+	// resizes late.
+	lastInsert       time.Time
+	insertSinceFrame bool
+	lateResize       bool
 
 	// frameScreenWidth is the terminal width when the live region was last
 	// drawn; 0 when unknown. widthChangedAt is when the runner last saw the
@@ -817,6 +820,7 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 		if err := r.live.update(view, useSync, r.focusMgr); err != nil {
 			return err
 		}
+		r.insertSinceFrame = false
 		r.noteFrameScreenWidthLocked()
 
 		// Prune TextArea state for IDs that weren't rendered

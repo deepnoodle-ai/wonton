@@ -117,6 +117,7 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 		return false
 	}
 	r.lastInsert = time.Now()
+	r.insertSinceFrame = true
 	out := &checkedLiveOutput{destination: r.output}
 	io.WriteString(out, insertAboveLive(strings.Split(rendered, "\r\n"), r.live.lastHeight, chunk))
 	if out.err != nil {
@@ -163,17 +164,19 @@ func (r *InlineApp) refreshScreenSize() {
 // insertLag is how long before the runner hears of a width change an
 // insert may have met a terminal that had already narrowed. tmux passes a
 // new size to the program about every 250 ms during a drag.
-const insertLag = time.Second
+const insertLag = 300 * time.Millisecond
 
 // widthChangedLocked prepares the live printer for a width change that
-// the runner just heard of. If Print inserted rows within insertLag, the
+// the runner just heard of. Under a terminal that reports resizes late, if
+// Print inserted rows after the last frame and within insertLag, the
 // terminal may have narrowed first: the live region's full-width rows were
 // rewrapped onto more rows, the inserts landed among them, and erasing the
 // rewrapped frame would erase those printed rows. Then the old frame is
-// erased as its own height instead. The caller holds r.mu.
+// erased as its own height instead, which can leave a few of its rewrapped
+// rows above the new frame. The caller holds r.mu.
 func (r *InlineApp) widthChangedLocked() {
 	r.widthChangedAt = time.Now()
-	if r.lateResize && !r.lastInsert.IsZero() && time.Since(r.lastInsert) < insertLag {
+	if r.lateResize && r.insertSinceFrame && time.Since(r.lastInsert) < insertLag {
 		r.live.keepRowsAbove()
 	}
 }

@@ -577,3 +577,38 @@ func TestInlinePrintBetweenResizeAndFrame(t *testing.T) {
 	assert.Equal(t, out.screen.Row(13), "hint", "inserts moved the live region back to the bottom")
 	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5", "line 6"})
 }
+
+// Slow output under tmux: a line every half second, so a frame comes after
+// each insert, and then one narrowing. No insert met the narrowed screen,
+// so the new frame erases the whole rewrapped old frame: no second copy
+// of the live rows stays above it.
+func TestInlinePrintSlowOutputNarrowingLeavesNoCopy(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+	runner.lateResize = true
+	runner.Printf("line 0")
+	runner.render() // a frame (a spinner tick) before the next line
+	runner.Printf("line 1")
+	runner.render()
+
+	out.screen.Resize(30, 14)
+	runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+	runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+	runner.render()
+
+	assertLiveWhole(t, out.screen)
+	statuses := 0
+	_, h := out.screen.Size()
+	for _, row := range append(out.screen.Scrollback(), func() []string {
+		var rows []string
+		for y := 0; y < h; y++ {
+			rows = append(rows, out.screen.Row(y))
+		}
+		return rows
+	}()...) {
+		if row == "status" {
+			statuses++
+		}
+	}
+	assert.Equal(t, statuses, 1, "one status row")
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1"})
+}
