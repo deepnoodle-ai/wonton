@@ -135,28 +135,50 @@ Acceptance:
 - [ ] `tui.SprintScreen` builds its screen with
       `termtest.WithRawMode(cfg.RawMode)`, so the screen matches the
       line endings that the print options chose.
+- [ ] A test calls `SprintScreen` with `WithRawMode(true)` on a
+      multi-line view. Each line starts at column 0. The test fails if
+      `renderToANSI` drops the CR from its raw-mode line ending.
 
 ### UC-3: Catch a missing CR in tui raw-mode output
 
-A maintainer removes a `\r` from a raw-mode path in `LivePrinter`. A
-tui test fails.
+A maintainer removes a `\r` from a raw-mode path in tui or terminal. A
+test fails.
 
 Acceptance:
-- [ ] `LivePrinter` with `WithRawMode(true)`: tests cover a frame that
-      grows, a frame that shrinks, and a frame where only some lines
-      change. Each test checks every row and the cursor row on a raw-mode
-      screen.
-- [ ] `LivePrinter.Stop` in raw mode leaves the cursor at column 0 of
-      the row below the region (see Decisions; this is a fix).
-- [ ] `InlineApp`: a raw-mode test covers `Print` with a live region.
-      Scrollback text and the redrawn live region are on the correct rows
-      at column 0.
+- [ ] `LivePrinter` output on a raw-mode screen, with the default
+      `LivePrinter` options, as `InlineApp` uses it: tests cover a frame
+      that grows, a frame that shrinks, a frame where only some lines
+      change, and `Clear`. Each test checks every row and the cursor row.
+- [ ] `LivePrinter.Stop` leaves the cursor at column 0 of the row below
+      the region on a raw-mode screen (see Decisions; this is a fix).
+- [ ] `InlineApp`: a raw-mode test covers `Print` of a multi-line view
+      with a live region, and the cleanup when the app exits. Scrollback
+      text and the redrawn live region are on the correct rows at column
+      0.
 - [ ] Full-screen output: a raw-mode test covers the multi-line
-      unbuffered print path in `terminal`, so a dropped `\r` in its
-      newline fails.
-- [ ] Evidence in the implementation PR: remove the `\r` in the
-      `LivePrinter` shrink path (`"\n\r"` becomes `"\n"`). At least one
-      new test fails. Show the failure output.
+      unbuffered print path in `terminal`.
+- [ ] CR inventory. Each CR below is covered as the table says. For each
+      covered CR, the implementation PR shows that its removal makes the
+      named test fail.
+
+| CR | Where | Covered by |
+| --- | --- | --- |
+| `\r` in each `\r\033[2K` | `LivePrinter.writeFrame` | grow and partial-change tests |
+| `\r` in `\n\r` before `ESC[0J` | `LivePrinter.writeFrame`, shrink | shrink test |
+| `\r` before `ESC[0J` | `LivePrinter.Clear` | Clear test |
+| `\r` in `\r\n` (new) | `LivePrinter.Stop` | Stop test |
+| `\r` in the raw `\r\n` | `renderToANSI` (`Print`, `Sprint`) | `SprintScreen` and `InlineApp.Print` tests |
+| `\r` in the raw `\r\n` | `printlnWith` (`Println`) | `Fprintln` test |
+| `\r` in `\r\n` | `InlineApp` cleanup | cleanup test |
+| `\r` in `\r\n` | `terminal` `printUnbufferedLocked` | unbuffered print test |
+| `\r` after `ESC[nA` | `LivePrinter.beginFrame` | none: redundant |
+| `\r` in `\r\n` after content | `InlineApp.Print` | none: redundant |
+
+  The two redundant CRs cannot make any test fail. After `beginFrame`,
+  each line that `writeFrame` draws starts with its own `\r`, and the
+  shrink path has its own. After `InlineApp.Print`, the live region
+  redraw starts with `\r\033[2K`. Both CRs stay, as defense against a
+  later change.
 - [ ] The vtdiff harness (`./vtdiff live` and the `lf` probe), run with
       termtest in raw mode against ghostty without ONLCR, shows no
       content diff and no cursor diff.
@@ -181,6 +203,8 @@ Acceptance:
   not use them.
 - LNM mode (`CSI 20 h`). wonton does not send it. ghostty and xterm
   support it, but it is a terminal mode, not a tty setting.
+- `renderToANSILive` in `tui/print.go`. No code calls it. Removing it is
+  a separate cleanup.
 - Tests of the full-screen tui runtime's diff renderer bytes. It moves
   the cursor with CUP, not LF. The renderer-bytes-test track owns tests
   that feed live renderer bytes to termtest.
@@ -209,22 +233,32 @@ Acceptance:
   end. Tests assert the cursor row and the content, not this column.
   Rejected: add a `\r` at the end of each frame. It costs bytes on every
   frame and fixes nothing that a user sees.
-- **Fix `LivePrinter.Stop` in raw mode.** It writes a bare `\n`, so in
-  raw mode the cursor lands below the region at the old column. The next
-  raw-mode write then starts in the middle of the line. The fix writes
-  `\r\n` when `WithRawMode(true)` is set, which is one line. Rejected:
-  record it and defer, because the fix is smaller than the issue.
-- **Put the new logic in a new file.** `termtest/rawmode.go` holds the
-  option type and `WithRawMode`. The edit to `termtest/screen.go` is a
-  field and a split of one `case`. Four tracks change termtest at the
-  same time, so this keeps conflicts small.
+- **`LivePrinter.Stop` always writes `\r\n`.** Today it writes a bare
+  `\n`, so in raw mode the cursor lands below the region at the old
+  column. The next write then starts in the middle of the line.
+  `LivePrinter` ignores `RawMode` everywhere else, and `InlineApp` makes
+  its printer without `WithRawMode` but writes to a raw tty. In cooked
+  mode `\r\n` gives the same result. Rejected: write `\r\n` only with
+  `WithRawMode(true)`, because users would need a flag with no other
+  effect. Rejected: defer, because the fix is one line.
+- **Test `LivePrinter` with its default options.** That is how
+  `InlineApp` uses it. Rejected: test with `WithRawMode(true)`, which no
+  wonton caller uses for `LivePrinter`.
+- **This track owns the shared option type.** `termtest/options.go`
+  holds only `ScreenOption`, the code that applies options, and
+  `WithRawMode`. Other termtest tracks add their options to the same
+  type. The edit to `termtest/screen.go` is a field, the constructor
+  signature, and a split of one `case`. Rejected: each track adds its
+  own type and the first to merge wins, because two open PRs could add
+  two types.
 - **No tech spec.** The change is one option and one branch in
   `writeCluster`. The PRD names every touched API.
 
 ## Success
 
 - A test can model a raw-mode terminal with one option.
-- Removing any CR that a raw-mode tui path needs fails a test.
+- Removing any covered CR in the UC-3 inventory fails a named test. The
+  two redundant CRs are the only CRs with no test.
 - No existing termtest, tui, or cli test or snapshot changes.
 
 ## Risks and open questions
@@ -234,5 +268,5 @@ Acceptance:
   that stores them as a function value with the old type. This is rare
   in test code. The PR states it under "Risk and rollout". Not blocking.
 - Other tracks (resize, alt screen, scroll regions) also edit
-  `termtest/screen.go`. If one adds a constructor option first, this
-  track adopts that type instead of adding a second one. Not blocking.
+  `termtest/screen.go`. They use `ScreenOption` from
+  `termtest/options.go`, as the coordinator agreed. Not blocking.
