@@ -295,6 +295,12 @@ type InlineApp struct {
 	lastInsert time.Time
 	lateResize bool
 
+	// frameScreenWidth is the terminal width when the live region was last
+	// drawn; 0 when unknown. widthChangedAt is when the runner last saw the
+	// width change.
+	frameScreenWidth int
+	widthChangedAt   time.Time
+
 	// screenSize reads the size of the terminal that output shows on (one
 	// ioctl). Print checks it before an insert; a test replaces it.
 	screenSize func() (width, height int, ok bool)
@@ -811,6 +817,7 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 		if err := r.live.update(view, useSync, r.focusMgr); err != nil {
 			return err
 		}
+		r.noteFrameScreenWidthLocked()
 
 		// Prune TextArea state for IDs that weren't rendered
 		r.reg.textAreas.Prune()
@@ -828,7 +835,9 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 // render LiveView. The caller holds r.mu and the output gate.
 func (r *InlineApp) restoreLiveLocked(lines []string, useSync bool) {
 	if len(lines) > 0 {
-		_ = r.live.redraw(lines, useSync)
+		if r.live.redraw(lines, useSync) == nil {
+			r.noteFrameScreenWidthLocked()
+		}
 		return
 	}
 	if !r.running {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/termtest"
@@ -487,6 +488,33 @@ func TestInlinePrintInsertLateNarrowingKeepsLines(t *testing.T) {
 	}
 	assert.Equal(t, run(true), []string{"line 0", "line 1", "line 2", "line 3"})
 	assert.True(t, len(run(false)) < 4, "without the rule the late narrowing erases printed lines")
+}
+
+// A terminal that reflows joins rewrapped rows again when it widens, so
+// after any width change the live frame can take a different number of
+// rows. Print redraws until a frame is drawn at the terminal's width and
+// the width has been still for a moment (a drag sends many changes).
+func TestInlinePrintInsertWaitsForStableWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	width := 40
+	runner.screenSize = func() (int, int, bool) { return width, 12, true }
+	runner.render()
+
+	width = 50 // the terminal widened; no event yet
+	out.log.Reset()
+	runner.Printf("wider")
+	assert.False(t, usedInsert(out.log.String()), "frame drawn at another width")
+
+	runner.processEvent(ResizeEvent{Width: 50, Height: 12})
+	runner.render()
+	out.log.Reset()
+	runner.Printf("settling")
+	assert.False(t, usedInsert(out.log.String()), "width changed a moment ago")
+
+	runner.widthChangedAt = time.Now().Add(-widthSettle)
+	out.log.Reset()
+	runner.Printf("settled")
+	assert.True(t, usedInsert(out.log.String()))
 }
 
 func TestResizesLate(t *testing.T) {

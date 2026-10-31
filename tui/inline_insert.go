@@ -95,8 +95,21 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	if r.live.drawnWidth != r.config.Width {
 		return false
 	}
+	// The terminal must also have the width it had when that frame was
+	// drawn. A terminal that reflows rewraps the frame's rows when it
+	// narrows and joins them again when it widens, so after any width
+	// change the frame can take a different number of rows than it did.
 	width, height, ok := r.screenSize()
-	if !ok || width < r.config.Width {
+	if !ok {
+		return false
+	}
+	if width < r.config.Width || width != r.frameScreenWidth {
+		r.widthChangedAt = time.Now()
+		return false
+	}
+	// A drag sends many width changes; until the width has been still for
+	// widthSettle, the next one may already be on its way.
+	if time.Since(r.widthChangedAt) < widthSettle {
 		return false
 	}
 	chunk := insertChunk(height, r.live.lastHeight)
@@ -159,8 +172,22 @@ const insertLag = time.Second
 // rewrapped frame would erase those printed rows. Then the old frame is
 // erased as its own height instead. The caller holds r.mu.
 func (r *InlineApp) widthChangedLocked() {
+	r.widthChangedAt = time.Now()
 	if r.lateResize && !r.lastInsert.IsZero() && time.Since(r.lastInsert) < insertLag {
 		r.live.keepRowsAbove()
+	}
+}
+
+// widthSettle is how long Print redraws instead of inserting after the
+// width last changed.
+const widthSettle = 500 * time.Millisecond
+
+// noteFrameScreenWidthLocked records the terminal width right after a live
+// region frame is drawn. The caller holds r.mu.
+func (r *InlineApp) noteFrameScreenWidthLocked() {
+	r.frameScreenWidth = 0
+	if width, _, ok := r.screenSize(); ok {
+		r.frameScreenWidth = width
 	}
 }
 
