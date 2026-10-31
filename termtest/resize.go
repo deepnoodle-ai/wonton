@@ -148,12 +148,18 @@ func (s *Screen) rowLen(y int) int {
 //     the next one, but it wraps if it no longer fits.
 //   - A wide character that does not fit at the end of a row moves to the
 //     next row whole. No half character is left.
-//   - The cursor stays on the same character. The saved cursor (ESC 7,
-//     CSI s) is clamped to the new size.
+//   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
+//     character. One whose row leaves the top goes to the home position.
 //   - With fewer rows, blank rows below the cursor go first, then rows
 //     leave the top. termtest has no scrollback, so those rows are lost: a
 //     later Resize to more rows adds blank rows at the bottom, where a
 //     real terminal would bring them back.
+//
+// The alternate screen (see IsAlternateScreen) does not reflow, as in
+// ghostty: each row is cut at the new right edge, a wide character whose
+// second half falls off the edge becomes blank, and widening adds blank
+// cells. The primary screen behind it still reflows, so the shell screen
+// that comes back when the application quits is the reflowed one.
 //
 // Width and height under 1 are treated as 1, as in NewScreen. Resizing to
 // the current size changes nothing. The current style, any partly written
@@ -167,29 +173,77 @@ func (s *Screen) Resize(width, height int) {
 	if width == s.width && height == s.height {
 		return
 	}
+	oldWidth, oldHeight := s.width, s.height
+	if s.alt.hidden != nil {
+		// Resize the hidden screen first, as if it were visible, with
+		// the cursor it had when it was hidden and its saved cursor.
+		s.swapGrids()
+		saved := &s.alt.saved
+		marks := s.resizeGrid(width, height, s.alt.active,
+			s.alt.cursor, mark{saved.x, saved.y, saved.wrap})
+		s.alt.cursor = marks[0]
+		saved.x, saved.y, saved.wrap = marks[1].x, marks[1].y, marks[1].pending
+		s.swapGrids()
+		s.width, s.height = oldWidth, oldHeight
+	}
+	marks := s.resizeGrid(width, height, !s.alt.active,
+		mark{s.cursorX, s.cursorY, s.wrapPending}, mark{s.savedX, s.savedY, s.savedWrap})
+	s.cursorX, s.cursorY, s.wrapPending = marks[0].x, marks[0].y, marks[0].pending
+	s.savedX, s.savedY, s.savedWrap = marks[1].x, marks[1].y, marks[1].pending
+}
 
+// mark is a cursor position that Resize moves to the new grid.
+type mark struct {
+	x, y    int
+	pending bool // a wrap is pending at the mark
+}
+
+// swapGrids swaps the visible grid and its row metadata with the hidden
+// grid and its metadata. Calling it twice restores the screen.
+func (s *Screen) swapGrids() {
+	s.cells, s.alt.hidden = s.alt.hidden, s.cells
+	s.rowInfo, s.alt.hiddenInfo = s.alt.hiddenInfo, s.rowInfo
+}
+
+// resizeGrid resizes the visible grid and returns where the marks moved.
+// marks[0] is the cursor and marks[1] the saved cursor. It reflows
+// soft-wrapped lines when reflow is set; otherwise it cuts each row at the
+// new width.
+//
+// Like the cursor, the saved cursor stays on its character, as ghostty
+// tracks it, and goes home if its row leaves the top.
+func (s *Screen) resizeGrid(width, height int, reflow bool, marks ...mark) []mark {
 	var rows []resizedRow
-	cursorRow, cursorX, pending := s.cursorY, s.cursorX, s.wrapPending
-	if width == s.width {
+	moved := make([]mark, len(marks))
+	if width == s.width || !reflow {
 		rows = make([]resizedRow, s.height)
 		for y := range rows {
-			rows[y] = resizedRow{cells: s.cells[y], meta: s.meta(y)}
+			rows[y] = s.truncatedRow(y, width)
+		}
+		for i, m := range marks {
+			if m.pending && width > s.width {
+				// The cell after the mark now exists, so the wrap is no
+				// longer pending: the mark moves onto that cell.
+				m.x, m.pending = m.x+1, false
+			}
+			moved[i] = m
 		}
 	} else {
-		rows, cursorRow, cursorX, pending = s.reflow(width)
+		rows, moved = s.reflow(width, marks)
 	}
 
 	// Fit the rows to the new height: drop blank rows below the cursor,
 	// then rows from the top, then pad with blank rows at the bottom.
-	for len(rows) > height && len(rows)-1 > cursorRow && rows[len(rows)-1].blank() {
+	for len(rows) > height && len(rows)-1 > moved[0].y && rows[len(rows)-1].blank() {
 		rows = rows[:len(rows)-1]
 	}
 	if drop := len(rows) - height; drop > 0 {
 		rows = rows[drop:]
-		cursorRow -= drop
-		if cursorRow < 0 {
-			// The cursor's row left the top: ghostty puts it at home.
-			cursorRow, cursorX, pending = 0, 0, false
+		for i := range moved {
+			if moved[i].y -= drop; moved[i].y < 0 {
+				// The mark's row left the top: ghostty puts it at home.
+				moved[i] = mark{}
+			}
 		}
 	}
 	for len(rows) < height {
@@ -208,11 +262,35 @@ func (s *Screen) Resize(width, height int) {
 			s.rowInfo[&s.cells[y][0]] = row.meta
 		}
 	}
-	s.cursorX = clamp(cursorX, 0, width-1)
-	s.cursorY = clamp(cursorRow, 0, height-1)
-	s.wrapPending = pending && s.cursorX == width-1
-	s.savedX = clamp(s.savedX, 0, width-1)
-	s.savedY = clamp(s.savedY, 0, height-1)
+	for i, m := range moved {
+		m.x = clamp(m.x, 0, width-1)
+		m.y = clamp(m.y, 0, height-1)
+		m.pending = m.pending && m.x == width-1
+		moved[i] = m
+	}
+	return moved
+}
+
+// truncatedRow returns row y cut or padded to width, in a new slice. A wide
+// character whose second half falls off the new edge becomes blank. When
+// the width is unchanged, the row keeps its metadata; otherwise it keeps
+// only its printed marks, since a cut row no longer wraps.
+func (s *Screen) truncatedRow(y, width int) resizedRow {
+	cells := blankRow(width)
+	copy(cells, s.cells[y])
+	if width < s.width && cells[width-1].Width == 2 {
+		cells[width-1] = blankCell()
+	}
+	m := s.meta(y)
+	if m == nil || width == s.width {
+		return resizedRow{cells: cells, meta: m}
+	}
+	cut := &rowMeta{}
+	if m.printed != nil {
+		cut.printed = make([]bool, width)
+		copy(cut.printed, m.printed)
+	}
+	return resizedRow{cells: cells, meta: cut}
 }
 
 // resizedRow is one row of the screen being built by Resize.
@@ -249,9 +327,11 @@ type lineGlyph struct {
 	off     int
 }
 
-// reflow rewraps every logical line at width and returns the new rows with
-// the new cursor position. It does not fit the rows to a height.
-func (s *Screen) reflow(width int) (rows []resizedRow, cursorRow, cursorX int, pending bool) {
+// reflow rewraps every logical line at width and returns the new rows
+// with the new mark positions; marks[0] is the cursor. It does not fit the
+// rows to a height.
+func (s *Screen) reflow(width int, marks []mark) (rows []resizedRow, moved []mark) {
+	moved = make([]mark, len(marks))
 	for y := 0; y < s.height; {
 		// Collect the rows of one logical line.
 		first := y
@@ -265,7 +345,11 @@ func (s *Screen) reflow(width int) (rows []resizedRow, cursorRow, cursorX int, p
 		y++
 
 		var glyphs []lineGlyph
-		lineLen, cursorOff := 0, -1
+		lineLen := 0
+		offs := make([]int, len(marks))
+		for i := range offs {
+			offs[i] = -1
+		}
 		for r := first; r <= last; r++ {
 			n := s.rowLen(r)
 			if r == last {
@@ -284,34 +368,37 @@ func (s *Screen) reflow(width int) (rows []resizedRow, cursorRow, cursorX int, p
 					off:     lineLen + x,
 				})
 			}
-			if r == s.cursorY {
-				cursorOff = lineLen + s.cursorX
+			for i, mk := range marks {
+				if r == mk.y {
+					offs[i] = lineLen + mk.x
+				}
 			}
 			lineLen += n
 		}
 
-		l := layoutLine(glyphs, width, cursorOff, s.wrapPending)
-		if cursorOff >= 0 {
-			cursorRow = len(rows) + l.cursorRow
-			cursorX = l.cursorX
-			pending = l.pending
+		l := layoutLine(glyphs, width, marks, offs)
+		for i, off := range offs {
+			if off >= 0 {
+				moved[i] = l.marks[i]
+				moved[i].y += len(rows)
+			}
 		}
 		rows = append(rows, l.rows...)
 	}
-	return rows, cursorRow, cursorX, pending
+	return rows, moved
 }
 
 type laidOutLine struct {
-	rows               []resizedRow
-	cursorRow, cursorX int
-	pending            bool
+	rows  []resizedRow
+	marks []mark // row within the line and column of each mark on it
 }
 
 // layoutLine places the glyphs of one logical line on rows of the given
-// width. cursorOff is the cursor's offset in the line, or -1 if the cursor
-// is not on it, and pending reports a pending wrap at the cursor.
-func layoutLine(glyphs []lineGlyph, width, cursorOff int, pending bool) laidOutLine {
-	var out laidOutLine
+// width. offs[i] is the offset of marks[i] in the line, or -1 if the mark
+// is not on it. The line gets blank rows down to the cursor (marks[0]) if
+// the cursor is past the end of the text.
+func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOutLine {
+	out := laidOutLine{marks: make([]mark, len(marks))}
 	row := resizedRow{cells: blankRow(width)}
 	col := 0
 
@@ -361,38 +448,54 @@ func layoutLine(glyphs []lineGlyph, width, cursorOff int, pending bool) laidOutL
 		lineLen = g.off + g.width
 	}
 
-	if p, ok := at[cursorOff]; ok && cursorOff >= 0 {
-		out.cursorRow, out.cursorX = p.row, p.col
-		if pending {
-			// The cursor waits after the glyph it sits on. It keeps
-			// waiting if that glyph still ends a row; otherwise it moves
-			// to the cell after the glyph.
-			if p.end == width-1 {
-				out.cursorX, out.pending = p.end, true
-			} else {
-				out.cursorX = p.end + 1
+	for i, off := range offs {
+		if off < 0 {
+			continue
+		}
+		var m mark
+		if p, ok := at[off]; ok {
+			m.y, m.x = p.row, p.col
+			if marks[i].pending {
+				// The mark waits after the glyph it sits on. It keeps
+				// waiting if that glyph still ends a row; otherwise it
+				// moves to the cell after the glyph.
+				if p.end == width-1 {
+					m.x, m.pending = p.end, true
+				} else {
+					m.x = p.end + 1
+				}
 			}
-		}
-	} else if cursorOff >= 0 {
-		// The cursor is past the end of the text. Keep its distance from
-		// the text, wrapping it as if blank cells filled the gap.
-		if pending {
-			cursorOff++
-		}
-		r, c := len(out.rows)-1, col
-		if c >= width {
-			r, c = r+1, 0
-		}
-		for off := lineLen; off < cursorOff; off++ {
-			if c++; c >= width {
+		} else {
+			// The mark is past the end of the text. Keep its distance
+			// from the text, wrapping it as if blank cells filled the gap.
+			if marks[i].pending {
+				off++
+			}
+			r, c := len(out.rows)-1, col
+			if c >= width {
 				r, c = r+1, 0
 			}
+			for o := lineLen; o < off; o++ {
+				if c++; c >= width {
+					r, c = r+1, 0
+				}
+			}
+			m.y, m.x = r, c
 		}
-		out.cursorRow, out.cursorX = r, c
+		out.marks[i] = m
 	}
 
-	for len(out.rows) <= out.cursorRow {
-		out.rows = append(out.rows, resizedRow{cells: blankRow(width)})
+	if offs[0] >= 0 {
+		for len(out.rows) <= out.marks[0].y {
+			out.rows = append(out.rows, resizedRow{cells: blankRow(width)})
+		}
+	}
+	for i := 1; i < len(offs); i++ {
+		if offs[i] >= 0 && out.marks[i].y >= len(out.rows) {
+			// A saved cursor past the end of the rows stays on the
+			// line's last row.
+			out.marks[i].y, out.marks[i].x = len(out.rows)-1, width-1
+		}
 	}
 	return out
 }

@@ -290,7 +290,10 @@ func TestAppRestoresShellScreen(t *testing.T) {
 `Screen.Resize` changes the size between two writes, as a user resizes the
 terminal window. Text that wrapped at the right edge reflows the way ghostty,
 iTerm2, kitty, and WezTerm reflow it. Lines that ended with a line feed never
-join. termtest has no scrollback: rows pushed off the top are lost.
+join. termtest has no scrollback: rows pushed off the top are lost. The
+alternate screen does not reflow: its rows are cut at the new edge. The
+shell screen behind it still reflows, so it comes back reflowed when the
+app quits.
 
 ```go
 func TestRedrawAfterResize(t *testing.T) {

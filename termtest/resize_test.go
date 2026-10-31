@@ -190,6 +190,125 @@ var resizeCases = []struct {
 	{"wide widen", 3, 4, "中文字", 6, 4,
 		[]string{"中文字"}, 0, 1,
 		"X", []string{"中文字", "X"}},
+
+	// The saved cursor stays on its character, as ghostty tracks it.
+	{"saved cursor in wrapped line", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b7\x1b[4;1H", 5, 4,
+		[]string{"fghij", "klmn"}, 0, 3,
+		"\x1b8X", []string{"fghij", "klXn"}},
+	{"saved cursor follows reflow", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b7", 5, 4,
+		[]string{"abcde", "fghij", "klmn"}, 2, 2,
+		"\x1b[4;1H\x1b8X", []string{"abcde", "fghij", "klXn"}},
+	{"saved cursor moves up with rows", 10, 5, "1\r\n2\r\n3\x1b7\r\n4\r\n5", 10, 3,
+		[]string{"3", "4", "5"}, 1, 2,
+		"\x1b8X", []string{"3X", "4", "5"}},
+	{"saved cursor row off top goes home", 10, 5, "1\x1b[1;4H\x1b7\x1b[5;1H5", 10, 3,
+		[]string{"", "", "5"}, 1, 2,
+		"\x1b8X", []string{"X", "", "5"}},
+	{"saved pending wrap widen", 5, 4, "abcde\x1b7\r\nx", 10, 4,
+		[]string{"abcde", "x"}, 1, 1,
+		"\x1b8X", []string{"abcdeX", "x"}},
+
+	// The alternate screen truncates; the primary screen behind it
+	// reflows around its own cursor and saved cursor (R-12).
+	{"alt narrow truncates", 10, 4, "\x1b[?1049h\x1b[Habcdefghijklmn", 5, 4,
+		[]string{"abcde", "klmn"}, 4, 1,
+		"X", []string{"abcde", "klmnX"}},
+	{"alt widen pads", 5, 4, "\x1b[?1049h\x1b[Habcdefgh", 10, 4,
+		[]string{"abcde", "fgh"}, 3, 1,
+		"X", []string{"abcde", "fghX"}},
+	{"alt wide cut", 6, 3, "\x1b[?1049h\x1b[Habcd中\r\nx", 5, 3,
+		[]string{"abcd", "x"}, 1, 1,
+		"X", []string{"abcd", "xX"}},
+	{"alt wide cut odd", 7, 3, "\x1b[?1049h\x1b[Hab中文d", 4, 3,
+		[]string{"ab中"}, 3, 0,
+		"X", []string{"ab中", "X"}},
+	{"alt cursor clamps", 10, 4, "\x1b[?1049h\x1b[2;9Hab", 5, 4,
+		[]string{}, 4, 1,
+		"X", []string{"", "", "X"}},
+	{"alt pending wrap narrow", 10, 4, "\x1b[?1049h\x1b[Habcdefghij", 5, 4,
+		[]string{"abcde"}, 4, 0,
+		"X", []string{"abcde", "X"}},
+	{"alt pending wrap widen", 5, 4, "\x1b[?1049h\x1b[Habcde", 10, 4,
+		[]string{"abcde"}, 5, 0,
+		"X", []string{"abcdeX"}},
+	{"alt pending wrap same width", 5, 4, "\x1b[?1049h\x1b[Habcde", 5, 3,
+		[]string{"abcde"}, 4, 0,
+		"X", []string{"abcde", "X"}},
+	{"alt shrink height blank below", 10, 5, "\x1b[?1049h\x1b[Hone\r\ntwo", 10, 3,
+		[]string{"one", "two"}, 3, 1,
+		"X", []string{"one", "twoX"}},
+	{"alt shrink height cursor bottom", 10, 5, "\x1b[?1049h\x1b[H1\r\n2\r\n3\r\n4\r\n5", 10, 3,
+		[]string{"3", "4", "5"}, 1, 2,
+		"X", []string{"3", "4", "5X"}},
+	{"alt shrink height cursor mid", 10, 5, "\x1b[?1049h\x1b[H1\r\n2\r\n3\r\n4\r\n5\x1b[2;1H", 10, 3,
+		[]string{"3", "4", "5"}, 0, 0,
+		"X", []string{"X", "4", "5"}},
+	{"alt grow height", 10, 3, "\x1b[?1049h\x1b[H1\r\n2", 10, 5,
+		[]string{"1", "2"}, 1, 1,
+		"X", []string{"1", "2X"}},
+	{"alt shrink both", 10, 5, "\x1b[?1049h\x1b[Habcdefghij\r\n1\r\n2\r\n3", 5, 3,
+		[]string{"1", "2", "3"}, 1, 2,
+		"X", []string{"1", "2", "3X"}},
+	{"alt saved cursor clamps", 10, 4, "\x1b[?1049h\x1b[2;9H\x1b7\x1b[H", 5, 4,
+		[]string{}, 0, 0,
+		"\x1b8X", []string{"", "    X"}},
+	{"alt then primary narrow", 10, 4, "abcdefghijklmn\x1b[?1049h\x1b[Hxyz", 5, 4,
+		[]string{"xyz"}, 3, 0,
+		"Q\x1b[?1049lX", []string{"abcde", "fghij", "klmnX"}},
+	{"alt then primary widen", 5, 4, "abcdefghijk\x1b[?1049h\x1b[Hxyz", 10, 4,
+		[]string{"xyz"}, 3, 0,
+		"Q\x1b[?1049lX", []string{"abcdefghij", "kX"}},
+	{"alt then primary saved mid line", 10, 4, "abcdefghijklmn\x1b[1;3H\x1b[?1049h\x1b[Hxyz", 5, 4,
+		[]string{"xyz"}, 3, 0,
+		"\x1b[?1049lX", []string{"abXde", "fghij", "klmn"}},
+	{"alt then primary pending wrap", 10, 4, "abcdefghij\x1b[?1049h", 5, 4,
+		[]string{}, 4, 0,
+		"\x1b[?1049lX", []string{"abcde", "fghij", "X"}},
+	{"alt then primary shrink height", 10, 5, "1\r\n2\r\n3\r\n4\x1b[?1049h\x1b[Hxyz", 10, 3,
+		[]string{"xyz"}, 3, 0,
+		"\x1b[?1049lX", []string{"2", "3", "4X"}},
+	{"alt then primary rows off top", 10, 3, "abcdefgh\r\n12345678\r\nzz\x1b[?1049h", 4, 3,
+		[]string{}, 2, 2,
+		"\x1b[?1049lX", []string{"1234", "5678", "zzX"}},
+	{"alt clear keeps primary wraps", 5, 4, "abcdefgh\x1b[?1049h\x1b[2J\x1b[Hxyz", 10, 4,
+		[]string{"xyz"}, 3, 0,
+		"\x1b[?1049lX", []string{"abcdefghX"}},
+	{"alt 47 then primary", 10, 4, "abcdefghijklmn\x1b[?47hxyz", 5, 4,
+		[]string{"", "    x"}, 4, 1,
+		"\x1b[?47lX", []string{"abcde", "fghiX", "klmn"}},
+	{"alt 1047 then primary", 10, 4, "abcdefghijklmn\x1b[?1047hxyz", 5, 4,
+		[]string{"", "    x"}, 4, 1,
+		"\x1b[?1047lX", []string{"abcde", "fghiX", "klmn"}},
+	{"primary after alt truncates hidden alt", 10, 4, "\x1b[?47h\x1b[Habcdefghij\x1b[?47l\x1b[Hp", 5, 4,
+		[]string{"p"}, 1, 0,
+		"\x1b[?47hX", []string{"aXcde"}},
+	{"alt 1049 restores reflowed cursor", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b[?1049h", 5, 4,
+		[]string{}, 2, 1,
+		"\x1b[?1049lX", []string{"abcde", "fghij", "klXn"}},
+	{"alt 47 saved cursor in wrapped line", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b7\x1b[4;1H\x1b[?47h", 5, 4,
+		[]string{}, 0, 3,
+		"\x1b[?47l\x1b8X", []string{"fghij", "klXn"}},
+	{"alt 47 primary cursor fits height", 9, 2, "ea\r\n\x1b[?47h\x1b[H", 7, 1,
+		[]string{}, 0, 0,
+		"\x1b[?47lX", []string{"X"}},
+	{"alt 47 primary cursor fits height saved", 9, 2, "ea\r\n\x1b[?47h\x1b[H", 7, 1,
+		[]string{}, 0, 0,
+		"\x1b[?47l\x1b8X", []string{"X"}},
+	{"alt 47 saved cursor follows reflow", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b7\x1b[?47h\x1b[4;1H", 5, 4,
+		[]string{}, 0, 3,
+		"\x1b[?47l\x1b8X", []string{"abcde", "fghij", "klXn"}},
+	{"alt 1049 cursor moved in alt", 10, 4, "abcdefghijklmn\x1b[2;3H\x1b[?1049h\x1b[4;1H", 5, 4,
+		[]string{}, 0, 3,
+		"\x1b[?1049lX", []string{"abcde", "fghij", "klXn"}},
+	{"alt saved pending wrap widen", 5, 4, "\x1b[?1049h\x1b[Habcde\x1b7\r\nx", 10, 4,
+		[]string{"abcde", "x"}, 1, 1,
+		"\x1b8X", []string{"abcdeX", "x"}},
+	{"alt saved pending wrap narrow", 5, 4, "\x1b[?1049h\x1b[Habcde\x1b7\r\nx", 3, 4,
+		[]string{"abc", "x"}, 1, 1,
+		"\x1b8X", []string{"abc", "X"}},
+	{"primary after alt saved cursor", 10, 4, "\x1b[?47h\x1b[2;9H\x1b7\x1b[?47l", 5, 4,
+		[]string{}, 3, 2,
+		"\x1b[?47h\x1b8X", []string{"", "    X"}},
 }
 
 // visibleRows returns the screen rows with trailing blank rows removed.
@@ -303,6 +422,28 @@ func TestResizeAfterScrollingKeepsWraps(t *testing.T) {
 	assert.Equal(t, visibleRows(s), []string{"abcdef"})
 	// Rows that scrolled off do not keep their metadata alive.
 	assert.True(t, len(s.rowInfo) <= 2*2+1, "rowInfo has %d entries", len(s.rowInfo))
+}
+
+func TestResizeAfterLongAltScreenSessionKeepsPrimaryWraps(t *testing.T) {
+	s := NewScreen(5, 3)
+	s.Write([]byte("abcdefgh\r\n$ "))
+	s.Write([]byte("\x1b[?1049h"))
+	for i := 0; i < 50; i++ {
+		s.Write([]byte("0123456789\r\n")) // wraps and scrolls the alternate screen
+	}
+	s.Resize(10, 3)
+	assert.True(t, s.IsAlternateScreen())
+	s.Write([]byte("\x1b[?1049l"))
+	assert.Equal(t, visibleRows(s), []string{"abcdefgh", "$"})
+	AssertCursor(t, s, 2, 1)
+}
+
+func TestResizeAltScreenBlanksCutWideCharacter(t *testing.T) {
+	s := NewScreen(6, 2)
+	s.Write([]byte("\x1b[?1049h\x1b[Habcd\x1b[1;31m中"))
+	s.Resize(5, 2)
+	assert.Equal(t, s.Cell(4, 0), blankCell())
+	assert.Equal(t, visibleRows(s), []string{"abcd"})
 }
 
 // ExampleScreen_Resize shows a soft-wrapped line reflowing when the window

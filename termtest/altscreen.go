@@ -20,6 +20,14 @@ type altState struct {
 	active bool     // the alternate screen is visible
 	hidden [][]Cell // the grid that is not visible; nil until the first switch
 	saved  savedCursor
+	// hiddenInfo is the row metadata of the hidden grid (see Screen.rowInfo).
+	// Each screen keeps its own, so clearing one screen keeps the other's
+	// soft wraps for Resize.
+	hiddenInfo map[*Cell]*rowMeta
+	// cursor is where the cursor was when the hidden screen was last
+	// visible. Resize reflows the hidden screen around it, as ghostty
+	// keeps a cursor for each screen.
+	cursor mark
 }
 
 // savedCursor is the DECSC state of the hidden screen. Each screen has its own.
@@ -80,6 +88,8 @@ func (s *Screen) switchScreen(alternate bool) {
 		}
 	}
 	s.cells, s.alt.hidden = s.alt.hidden, s.cells
+	s.rowInfo, s.alt.hiddenInfo = s.alt.hiddenInfo, s.rowInfo
+	s.alt.cursor = mark{s.cursorX, s.cursorY, s.wrapPending}
 	visible := savedCursor{x: s.savedX, y: s.savedY, style: s.savedStyle, wrap: s.savedWrap}
 	s.savedX, s.savedY, s.savedStyle, s.savedWrap = s.alt.saved.x, s.alt.saved.y, s.alt.saved.style, s.alt.saved.wrap
 	s.alt.saved = visible
