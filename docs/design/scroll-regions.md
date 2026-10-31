@@ -25,7 +25,7 @@ the rejected scroll-region design. This spec covers how to build it.
   text. The expected values come from ghostty through the vtdiff harness,
   which links libghostty with cgo and stays outside the repo
   (`vtdiff dump <families>` prints the rows).
-- Bytes per Print in the PRD's measurement scenario: 90 (from 855).
+- Bytes per Print in the PRD's measurement scenario: 95 (from 855).
 - Every printed line reaches scrollback once, in order, with a stable window
   and while it resizes during output.
 

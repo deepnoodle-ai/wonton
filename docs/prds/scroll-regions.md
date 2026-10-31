@@ -83,7 +83,9 @@ one synchronized-output bracket:
 3. `CSI n L` (insert line), which pushes the live region back down into the
    rows that step 1 opened.
 4. The n rows, with autowrap off (`CSI ? 7 l` ... `CSI ? 7 h`), then
-   `CSI L B` back to the live region's last row.
+   `CSI L B` back to the live region's last row, and `CSI c G` to the
+   column where the live frame left the cursor. The live printer counts
+   the frame's rows from that column when the terminal rewraps it.
 
 Every move is relative to the cursor. No step depends on the screen height
 or on the live region's absolute row, so a height change that lands while
@@ -108,10 +110,12 @@ Acceptance:
 - [ ] Each Print writes no bytes into the live region rows. With a live
       region of fewer than 10 rows, a one-row Print writes the row plus 44
       bytes of control sequences, plus 3 bytes for each row after the first
-      (a line feed and the CRLF between rows). The synchronized-output
-      bracket is 16 of the 44, and the autowrap off/on pair 10.
+      (a line feed and the CRLF between rows), plus 4 or 5 bytes that put
+      the cursor back at the column where the live frame left it. The
+      synchronized-output bracket is 16 of the 44, and the autowrap off/on
+      pair 10.
 - [ ] In the measurement scenario above (5-line live region, width 100),
-      bytes per Print drop from 855 to 100 or fewer (90).
+      bytes per Print drop from 855 to 100 or fewer (95).
 - [ ] A termtest test runs 500 Prints with the insert and 500 with today's
       redraw. The visible screen is equal on both, cell by cell, with
       styles. `Screen.Scrollback()` is equal on both. Every printed line is
@@ -315,7 +319,7 @@ tui:
 
 ## Success
 
-- Bytes per Print in the measurement scenario drop from 855 to 90, and stop
+- Bytes per Print in the measurement scenario drop from 855 to 95, and stop
   growing with live-region height.
 - 500 printed lines are in scrollback in order, with a stable window and
   while it resizes, in tmux and the emulator harness. Manual check in
