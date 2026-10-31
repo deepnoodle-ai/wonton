@@ -12,16 +12,23 @@
 //   - Ctrl+C: quit
 //
 // Run with: go run ./examples/tui/inline_stream
+//
+// Flags: -lines sets how many lines Enter streams (500), and -delay the
+// pause between them (2ms). For slow output: -lines 20 -delay 500ms.
 package main
 
 import (
+	"flag"
 	"log"
 	"time"
 
 	"github.com/deepnoodle-ai/wonton/tui"
 )
 
-const batch = 500
+var (
+	batch = 500
+	delay = 2 * time.Millisecond
+)
 
 type streamApp struct {
 	runner  *tui.InlineApp
@@ -38,7 +45,7 @@ func (e lineEvent) Timestamp() time.Time { return e.time }
 // nextLine asks for the next line after a short pause.
 func nextLine() tui.Cmd {
 	return func() tui.Event {
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(delay)
 		return lineEvent{time: time.Now()}
 	}
 }
@@ -99,6 +106,9 @@ func (app *streamApp) HandleEvent(event tui.Event) []tui.Cmd {
 }
 
 func main() {
+	flag.IntVar(&batch, "lines", batch, "lines to stream when Enter is pressed")
+	flag.DurationVar(&delay, "delay", delay, "pause between streamed lines")
+	flag.Parse()
 	app := &streamApp{}
 	app.runner = tui.NewInlineApp(tui.WithInlineFPS(20))
 	if err := app.runner.Run(app); err != nil {
