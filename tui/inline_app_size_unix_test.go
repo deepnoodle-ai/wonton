@@ -45,3 +45,33 @@ func TestInlineAppSizeComesFromItsOutput(t *testing.T) {
 	assert.Equal(t, plain.config.Width, 80)
 	assert.Equal(t, plain.live.maxHeight, 0)
 }
+
+// fdWriter wraps a terminal file, as a logging or locking writer might,
+// and exposes its descriptor.
+type fdWriter struct {
+	f interface {
+		Fd() uintptr
+		Write([]byte) (int, error)
+	}
+}
+
+func (w fdWriter) Write(p []byte) (int, error) { return w.f.Write(p) }
+func (w fdWriter) Fd() uintptr                 { return w.f.Fd() }
+
+// A writer that wraps the terminal file and has an Fd method gives the
+// size too, so Print can insert.
+func TestInlineAppSizeThroughWrappedOutput(t *testing.T) {
+	master, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer master.Close()
+	defer tty.Close()
+	assert.NoError(t, pty.Setsize(tty, &pty.Winsize{Cols: 66, Rows: 19}))
+
+	runner := NewInlineApp(WithInlineOutput(fdWriter{tty}))
+	assert.Equal(t, runner.config.Width, 66)
+	assert.Equal(t, runner.live.maxHeight, 19)
+	w, h, ok := runner.screenSize()
+	assert.Equal(t, [3]any{w, h, ok}, [3]any{66, 19, true})
+}

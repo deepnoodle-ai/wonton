@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -130,10 +129,12 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 
 // terminalSize reads the size of the terminal that w writes to. ok is false
 // when w is not a terminal. Width and height always come from the same
-// terminal: the one that shows the output.
+// terminal: the one that shows the output. Besides an *os.File, w may be
+// any writer with an Fd() uintptr method, such as a type that wraps the
+// terminal file, as long as Fd returns that terminal's descriptor.
 func terminalSize(w io.Writer) (width, height int, ok bool) {
-	f, isFile := w.(*os.File)
-	if !isFile || !term.IsTerminal(int(f.Fd())) {
+	f, hasFd := w.(interface{ Fd() uintptr })
+	if !hasFd || !term.IsTerminal(int(f.Fd())) {
 		return 0, 0, false
 	}
 	width, height, err := term.GetSize(int(f.Fd()))
