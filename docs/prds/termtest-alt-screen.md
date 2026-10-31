@@ -1,7 +1,7 @@
 # Test full-screen apps that leave the alternate screen
 
 Status: Draft\
-PRD PR: [#207](https://github.com/deepnoodle-ai/wonton/pull/207) · Implementation PR: TBD · Updated: 2026-10-31
+PRD PR: [#207](https://github.com/deepnoodle-ai/wonton/pull/207) · Implementation PR: [#212](https://github.com/deepnoodle-ai/wonton/pull/212) · Updated: 2026-10-31
 
 ## Problem
 
