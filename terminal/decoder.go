@@ -124,6 +124,93 @@ func (kd *KeyDecoder) standaloneEscape() bool {
 	return !kd.wait(kd.escapeTimeout)
 }
 
+// decodeAltSequence decodes the legacy Alt form of a cursor or editing key,
+// which some terminals send as ESC followed by the key's own sequence: ESC ESC
+// [ D for Alt+Left, or ESC ESC O D in application cursor mode. The first ESC
+// has already been read. It reports false, and consumes nothing, unless the
+// bytes after it are ESC and a complete CSI or SS3 key sequence: an arrow,
+// Home, End, or a numbered key ending in ~ such as Page Up. Anything else,
+// such as two Escape presses or Escape before a mouse report or a paste,
+// keeps its usual decoding.
+func (kd *KeyDecoder) decodeAltSequence() (KeyEvent, bool) {
+	// Check for the second ESC before reading ahead, so an ordinary sequence
+	// such as ESC [ A never waits for bytes that are not coming.
+	if b, err := kd.reader.Peek(1); err != nil || b[0] != 0x1B {
+		return KeyEvent{}, false
+	}
+	if !kd.buffer(3) {
+		return KeyEvent{}, false
+	}
+	b, _ := kd.reader.Peek(3)
+	switch b[1] {
+	case 'O':
+		if !strings.ContainsRune("ABCDHFPQRS", rune(b[2])) {
+			return KeyEvent{}, false
+		}
+		_, _ = kd.reader.Discard(2)
+		ev, _ := kd.decodeSS3()
+		ev.Alt = true
+		return ev, true
+	case '[':
+		if !kd.altCSIKey() {
+			return KeyEvent{}, false
+		}
+		_, _ = kd.reader.Discard(2)
+		ev, _ := kd.decodeCSI()
+		ev.Alt = true
+		return ev, true
+	}
+	return KeyEvent{}, false
+}
+
+// altCSIKey reports whether the buffered bytes ESC [ ... begin with a
+// complete CSI key sequence that decodeAltSequence accepts: parameters of
+// digits and semicolons only, ending in A-D, H, F, or ~ with a number that
+// decodeCSINumber maps to a key (so not the bracketed paste start, 200~).
+func (kd *KeyDecoder) altCSIKey() bool {
+	const maxLength = 16 // ESC [ parameters final; key sequences are short
+	for n := 3; n <= maxLength; n++ {
+		if !kd.buffer(n) {
+			return false
+		}
+		b, _ := kd.reader.Peek(n)
+		c := b[n-1]
+		switch {
+		case c >= '0' && c <= '9', c == ';':
+			continue
+		case strings.IndexByte("ABCDHF", c) >= 0:
+			return true
+		case c == '~':
+			num, _, _ := strings.Cut(string(b[2:n-1]), ";")
+			ev, _ := kd.decodeCSINumber(num)
+			return ev.Key != KeyUnknown
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// buffer reports whether at least n bytes are buffered, reading more input
+// while the source has some ready. It waits no longer than standaloneEscape
+// would for each read, so it never blocks on a terminal that has stopped
+// sending.
+func (kd *KeyDecoder) buffer(n int) bool {
+	for kd.reader.Buffered() < n {
+		if kd.wait == nil || kd.escapeTimeout <= 0 {
+			if !kd.src.full {
+				return false
+			}
+		} else if !kd.wait(kd.escapeTimeout) {
+			return false
+		}
+		if _, err := kd.reader.Peek(kd.reader.Buffered() + 1); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // NewKeyDecoder creates a new KeyDecoder that reads from the given input stream.
 //
 // For production use, pass os.Stdin:
@@ -259,6 +346,9 @@ func (kd *KeyDecoder) handleEscapeEvent() (Event, error) {
 	// is a standalone Escape key press.
 	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
+	}
+	if ev, ok := kd.decodeAltSequence(); ok {
+		return ev, nil
 	}
 
 	// Peek at the next byte to see if this is an escape sequence
@@ -587,6 +677,9 @@ func (kd *KeyDecoder) handleEscape() (KeyEvent, error) {
 	// is a standalone Escape key press.
 	if kd.standaloneEscape() {
 		return KeyEvent{Key: KeyEscape}, nil
+	}
+	if ev, ok := kd.decodeAltSequence(); ok {
+		return ev, nil
 	}
 
 	// Peek at the next byte to see if this is an escape sequence
