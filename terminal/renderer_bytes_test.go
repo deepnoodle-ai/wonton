@@ -19,6 +19,12 @@ import (
 // with a model of the cells that the test set. A renderer change that makes a
 // terminal show the wrong frame (a skipped cell, a wrong cursor move, a lost
 // style) fails here with the seed and frame number.
+//
+// termtest sizes grapheme clusters with runewidth, as the renderer does, so
+// these tests cannot see the guards for terminals that size clusters
+// differently: the ECH before a wide multi-rune cluster and the row rewrite
+// after one (rewriteRest). TestTerminal_FlushDoesNotTrustClusterWidth and
+// TestTerminal_FlushRewritesRowAfterOverwrittenCluster cover those.
 
 const (
 	rendererBytesSeeds  = 48
