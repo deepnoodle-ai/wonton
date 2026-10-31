@@ -536,20 +536,20 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 // view. InlineApp uses it to restore the live region after scrollback output
 // without calling the application's LiveView off the event loop.
 //
-// drawnAt is the width the lines were rendered for. If it is not the
-// current width (the width changed and no frame has been drawn since), the
-// lines may wrap on screen. They are still drawn at the current width, so
-// the printer counts their rows at that width, and it marks the frame
-// stale, so the next frame erases it and writes every row at the new
-// width.
-func (lp *LivePrinter) redraw(lines []string, useSync bool, drawnAt int) error {
+// stale reports that the lines were rendered for another width (the width
+// changed and no frame has been drawn since), so they may wrap on screen.
+// They are still drawn at the current width, so the printer counts their
+// rows at that width, and it keeps the frame marked stale, so the next
+// frame erases it and writes every row at the new width. A caller takes
+// stale from staleFrame before it clears the old frame.
+func (lp *LivePrinter) redraw(lines []string, useSync bool, stale bool) error {
 	if len(lines) == 0 {
 		return nil
 	}
 	checked := &checkedLiveOutput{destination: lp.config.Output}
 	lp.beginFrame(checked)
 	err := lp.writeFrame(checked, lines, useSync)
-	if drawnAt != 0 && drawnAt != lp.config.Width {
+	if stale {
 		lp.staleWidth = true
 		lp.rewriteAll = true
 	}
@@ -613,6 +613,13 @@ func (lp *LivePrinter) frameRows() int {
 		}
 	}
 	return rows + lp.cursorColumn(liveLineWidth(lp.lastLines[last]))/width + 1
+}
+
+// staleFrame reports whether the frame on screen was rendered for another
+// width than the current one: drawn before a width change, or redrawn
+// since from lines rendered before it.
+func (lp *LivePrinter) staleFrame() bool {
+	return lp.staleWidth || (lp.drawnWidth != 0 && lp.drawnWidth != lp.config.Width)
 }
 
 // frameCursorColumn returns the column where the last frame left the

@@ -831,16 +831,16 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 
 // restoreLiveLocked draws the live region again after scrollback output.
 // lines is the frame the live region showed before it was cleared, and
-// drawnAt the width it was drawn at.
+// stale whether it was rendered for another width (see LivePrinter.redraw).
 //
 // Print and PrintRaw may run on a Cmd goroutine, so they must not call
 // LiveView while the event loop is inside HandleEvent. They redraw the last
 // frame instead; the event loop draws a fresh frame after the next event.
 // Only before Run, when there is no event loop and no frame yet, does this
 // render LiveView. The caller holds r.mu and the output gate.
-func (r *InlineApp) restoreLiveLocked(lines []string, drawnAt int, useSync bool) {
+func (r *InlineApp) restoreLiveLocked(lines []string, stale bool, useSync bool) {
 	if len(lines) > 0 {
-		if r.live.redraw(lines, useSync, drawnAt) == nil {
+		if r.live.redraw(lines, useSync, stale) == nil {
 			r.noteFrameScreenWidthLocked()
 		}
 		return
@@ -1086,7 +1086,7 @@ func (r *InlineApp) Print(view View) {
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
 	// Clear live region (moves cursor back)
-	liveLines, drawnAt := r.live.lastLines, r.live.drawnWidth
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 
 	// Print to scrollback
@@ -1094,7 +1094,7 @@ func (r *InlineApp) Print(view View) {
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Restore live region (skip its internal sync since we're already in one)
-	r.restoreLiveLocked(liveLines, drawnAt, false)
+	r.restoreLiveLocked(liveLines, stale, false)
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
@@ -1125,11 +1125,11 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
-	liveLines, drawnAt := r.live.lastLines, r.live.drawnWidth
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 	r.output.Write(data)
 
-	r.restoreLiveLocked(liveLines, drawnAt, false)
+	r.restoreLiveLocked(liveLines, stale, false)
 }
 
 // Stop requests shutdown without waiting for event dispatch or cleanup.
@@ -1172,7 +1172,7 @@ func (r *InlineApp) ClearScrollback() {
 		return
 	}
 	// Clear live region first
-	liveLines, drawnAt := r.live.lastLines, r.live.drawnWidth
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 
 	// Clear screen and scrollback
@@ -1180,7 +1180,7 @@ func (r *InlineApp) ClearScrollback() {
 	fmt.Fprint(r.output, "\033[3J\033[2J\033[H")
 
 	// Restore live region
-	r.restoreLiveLocked(liveLines, drawnAt, true)
+	r.restoreLiveLocked(liveLines, stale, true)
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.

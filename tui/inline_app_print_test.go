@@ -681,3 +681,49 @@ func TestInlinePrintRedrawCountsRowsAtDrawnWidth(t *testing.T) {
 	assert.Equal(t, out.screen.Row(12), "status")
 	assert.Equal(t, out.screen.Row(13), strings.Repeat("x", 20))
 }
+
+// wideStatusApp has a 40-cell status line that does not change and an
+// input line below it that does.
+type wideStatusApp struct{ input int }
+
+func (a *wideStatusApp) LiveView() View {
+	return Stack(Text("%s", strings.Repeat("s", 40)), Text("> input %d", a.input))
+}
+
+// Several Prints between a width change and the next frame each redraw the
+// old frame. The frame stays marked as rendered for the old width through
+// all of them, so the next frame still erases it and writes every row.
+func TestInlinePrintTwiceBeforeFrameAfterNarrowing(t *testing.T) {
+	app := &wideStatusApp{}
+	runner, out := newInsertRig(t, 40, 14, 13, app, true)
+	runner.Printf("line 0")
+
+	out.screen.Resize(20, 14)
+	runner.screenSize = func() (int, int, bool) { return 20, 14, true }
+	runner.processEvent(ResizeEvent{Width: 20, Height: 14})
+	runner.Printf("line 1")
+	runner.Printf("line 2")
+	app.input = 1
+	runner.render()
+
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2"})
+	_, h := out.screen.Size()
+	var rows []string
+	for y := 0; y < h; y++ {
+		rows = append(rows, out.screen.Row(y))
+	}
+	last := -1
+	for y, row := range rows {
+		if row == "line 2" {
+			last = y
+		}
+	}
+	assert.True(t, last >= 0)
+	if last >= 0 {
+		// The new frame is rendered at 20 columns: one status row.
+		assert.Equal(t, rows[last+1:last+3], []string{strings.Repeat("s", 20), "> input 1"})
+		for y := last + 3; y < h; y++ {
+			assert.Equal(t, rows[y], "", "row %d below the live region", y)
+		}
+	}
+}
