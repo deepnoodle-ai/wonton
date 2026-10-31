@@ -512,8 +512,10 @@ func (s *Screen) Write(p []byte) (n int, err error) {
 }
 
 // Clear clears the entire screen and moves the cursor to the top-left.
+// Cleared cells have the default style. (CSI 2 J, which a program sends,
+// fills them with the current background color instead.)
 func (s *Screen) Clear() {
-	s.clearCells()
+	s.fillCells(blankCell())
 	s.cursorX = 0
 	s.cursorY = 0
 	s.wrapPending = false
@@ -521,9 +523,16 @@ func (s *Screen) Clear() {
 
 // clearCells erases every cell without moving the cursor (CSI 2J).
 func (s *Screen) clearCells() {
+	s.fillCells(s.eraseCell())
+}
+
+// fillCells sets every cell to cell and drops the row metadata.
+func (s *Screen) fillCells(cell Cell) {
 	s.rowInfo = nil
 	for y := 0; y < s.height; y++ {
-		s.eraseRange(s.cells[y], 0, s.width)
+		for x := 0; x < s.width; x++ {
+			s.cells[y][x] = cell
+		}
 	}
 }
 
@@ -546,62 +555,83 @@ func (s *Screen) Reset() {
 	s.scrollback = nil
 }
 
-// ClearLine clears the current line.
-func (s *Screen) ClearLine() {
+// ClearLine clears the current line. Like the other Clear methods, it
+// leaves cells with the default style; the erase sequences a program sends
+// (CSI K, CSI J) use the current background color instead.
+func (s *Screen) ClearLine() { s.eraseLine(blankCell()) }
+
+// ClearToEndOfLine clears from cursor to end of line.
+func (s *Screen) ClearToEndOfLine() { s.eraseToEndOfLine(blankCell()) }
+
+// ClearToStartOfLine clears from start of line to cursor.
+func (s *Screen) ClearToStartOfLine() { s.eraseToStartOfLine(blankCell()) }
+
+// ClearToEndOfScreen clears from cursor to end of screen.
+func (s *Screen) ClearToEndOfScreen() { s.eraseToEndOfScreen(blankCell()) }
+
+// ClearToStartOfScreen clears from start of screen to cursor.
+func (s *Screen) ClearToStartOfScreen() { s.eraseToStartOfScreen(blankCell()) }
+
+// eraseLine sets every cell of the cursor row to cell (CSI 2 K).
+func (s *Screen) eraseLine(cell Cell) {
 	s.markErased(s.cursorY, 0, s.width, true)
 	for x := 0; x < s.width; x++ {
-		s.cells[s.cursorY][x] = s.eraseCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToEndOfLine clears from cursor to end of line.
-func (s *Screen) ClearToEndOfLine() {
+// eraseToEndOfLine sets the cells from the cursor to the end of the row to
+// cell (CSI K).
+func (s *Screen) eraseToEndOfLine(cell Cell) {
 	// If the cursor sits on the continuation half of a wide glyph, clear the
 	// lead cell too so no dangling half remains (xterm behavior).
 	if s.cursorX > 0 && s.cursorX < s.width && s.cells[s.cursorY][s.cursorX].Continuation {
-		s.cells[s.cursorY][s.cursorX-1] = s.eraseCell()
+		s.cells[s.cursorY][s.cursorX-1] = cell
 		s.markErased(s.cursorY, s.cursorX-1, s.cursorX, false)
 	}
 	s.markErased(s.cursorY, s.cursorX, s.width, true)
 	for x := s.cursorX; x < s.width; x++ {
-		s.cells[s.cursorY][x] = s.eraseCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToStartOfLine clears from start of line to cursor.
-func (s *Screen) ClearToStartOfLine() {
+// eraseToStartOfLine sets the cells from the start of the row through the
+// cursor to cell (CSI 1 K).
+func (s *Screen) eraseToStartOfLine(cell Cell) {
 	// If the cursor sits on the lead half of a wide glyph, clear its
 	// continuation cell too so no dangling half remains (xterm behavior).
 	if s.cursorX >= 0 && s.cursorX < s.width-1 && s.cells[s.cursorY][s.cursorX].Width == 2 {
-		s.cells[s.cursorY][s.cursorX+1] = s.eraseCell()
+		s.cells[s.cursorY][s.cursorX+1] = cell
 		s.markErased(s.cursorY, s.cursorX+1, s.cursorX+2, false)
 	}
 	s.markErased(s.cursorY, 0, s.cursorX+1, false)
 	for x := 0; x <= s.cursorX && x < s.width; x++ {
-		s.cells[s.cursorY][x] = s.eraseCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToEndOfScreen clears from cursor to end of screen.
-func (s *Screen) ClearToEndOfScreen() {
-	s.ClearToEndOfLine()
+// eraseToEndOfScreen sets the cells from the cursor to the end of the
+// screen to cell (CSI J).
+func (s *Screen) eraseToEndOfScreen(cell Cell) {
+	s.eraseToEndOfLine(cell)
 	for y := s.cursorY + 1; y < s.height; y++ {
 		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = s.eraseCell()
+			s.cells[y][x] = cell
 		}
 	}
 }
 
-// ClearToStartOfScreen clears from start of screen to cursor.
-func (s *Screen) ClearToStartOfScreen() {
+// eraseToStartOfScreen sets the cells from the start of the screen through
+// the cursor to cell (CSI 1 J).
+func (s *Screen) eraseToStartOfScreen(cell Cell) {
 	for y := 0; y < s.cursorY; y++ {
 		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = s.eraseCell()
+			s.cells[y][x] = cell
 		}
 	}
-	s.ClearToStartOfLine()
+	s.eraseToStartOfLine(cell)
 }
 
 // Text returns the screen content as plain text with ANSI sequences removed.

@@ -54,3 +54,21 @@ func TestResetErasesWithDefaultBackground(t *testing.T) {
 	s.Write([]byte("\x1b[44mab\x1bc"))
 	assert.Equal(t, s.Cell(0, 0), Cell{Char: ' ', Width: 1})
 }
+
+func TestClearMethodsUseDefaultStyle(t *testing.T) {
+	// The exported Clear methods are test helpers, not erase sequences, so
+	// they leave the default style even with a background color active.
+	for name, clear := range map[string]func(*Screen){
+		"Clear":                (*Screen).Clear,
+		"ClearLine":            (*Screen).ClearLine,
+		"ClearToEndOfLine":     (*Screen).ClearToEndOfLine,
+		"ClearToStartOfLine":   (*Screen).ClearToStartOfLine,
+		"ClearToEndOfScreen":   (*Screen).ClearToEndOfScreen,
+		"ClearToStartOfScreen": (*Screen).ClearToStartOfScreen,
+	} {
+		s := NewScreen(4, 2)
+		s.Write([]byte("ab\r\ncd\x1b[1;2H\x1b[44m"))
+		clear(s)
+		assert.Equal(t, bgSpans(s), []bgSpan(nil), name)
+	}
+}

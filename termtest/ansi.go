@@ -280,9 +280,9 @@ func (s *Screen) parseCSI(data string) int {
 		n := getParam(args, 0, 0)
 		switch n {
 		case 0:
-			s.ClearToEndOfScreen()
+			s.eraseToEndOfScreen(s.eraseCell())
 		case 1:
-			s.ClearToStartOfScreen()
+			s.eraseToStartOfScreen(s.eraseCell())
 		case 2:
 			// ED never moves the cursor (apps send ESC[2J ESC[H as a pair)
 			s.clearCells()
@@ -297,11 +297,11 @@ func (s *Screen) parseCSI(data string) int {
 		n := getParam(args, 0, 0)
 		switch n {
 		case 0:
-			s.ClearToEndOfLine()
+			s.eraseToEndOfLine(s.eraseCell())
 		case 1:
-			s.ClearToStartOfLine()
+			s.eraseToStartOfLine(s.eraseCell())
 		case 2:
-			s.ClearLine()
+			s.eraseLine(s.eraseCell())
 		}
 	case 'L': // Insert Lines
 		n := getParam(args, 0, 1)
