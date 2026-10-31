@@ -85,7 +85,7 @@ var resizeCases = []struct {
 	{"trailing fg spaces", 10, 4, "ab\x1b[31m   \x1b[0m\r\ncd", 3, 4,
 		[]string{"ab", "", "cd"}, 2, 2,
 		"X", []string{"ab", "", "cdX"}},
-	{"saved cursor clamps", 10, 6, "abcdefghijklmn\x1b7\x1b[6;1H", 5, 6,
+	{"saved cursor at end of wrapped line", 10, 6, "abcdefghijklmn\x1b7\x1b[6;1H", 5, 6,
 		[]string{"fghij", "klmn"}, 0, 5,
 		"\x1b8X", []string{"fghij", "klmnX"}},
 	{"saved cursor beyond width", 10, 4, "ab\x1b[1;9H\x1b7\x1b[4;1H", 5, 4,
