@@ -60,6 +60,7 @@ func runFullScreen(t *testing.T, app Application, screen *termtest.Screen, cond 
 	width, height := screen.Size()
 	term := NewTestTerminal(width, height, screen)
 	keys := NewTestInput()
+	t.Cleanup(keys.Close)
 
 	done := make(chan error, 1)
 	go func() { done <- Run(app, WithTerminal(term), WithInput(keys)) }()

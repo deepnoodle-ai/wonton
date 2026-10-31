@@ -19,6 +19,11 @@ import (
 //	keys.Send(tui.KeyEvent{Key: tui.KeyEnter})
 //	keys.Close()
 //	err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys))
+//
+// Always call Close, also when the app quits by itself. Run does not close
+// the input, because the test may still send to it. Until Close, the
+// runtime's input goroutine waits in ReadEvent after Run returns, and each
+// such test leaks that goroutine. A deferred Close is enough.
 type TestInput struct {
 	mu     sync.Mutex
 	ready  sync.Cond

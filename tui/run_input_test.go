@@ -14,6 +14,7 @@ import (
 // WithInput must reach the Runtime that Run builds.
 func TestRun_WithInputFeedsRuntime(t *testing.T) {
 	source := NewTestInput()
+	defer source.Close()
 	cfg := defaultRunConfig()
 	WithInput(source)(&cfg)
 

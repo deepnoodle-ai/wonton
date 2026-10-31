@@ -24,6 +24,7 @@ func TestRuntime_BackslashEnterFallback(t *testing.T) {
 	runtime.SetBackslashEnter(true)
 
 	inputSource := NewTestInput()
+	defer inputSource.Close()
 	runtime.SetInputSource(inputSource)
 
 	// Start runtime in background
@@ -81,6 +82,7 @@ func TestRuntime_BackslashEnterDisabledByDefault(t *testing.T) {
 	runtime := NewRuntime(terminal, app, 30)
 
 	inputSource := NewTestInput()
+	defer inputSource.Close()
 	runtime.SetInputSource(inputSource)
 
 	go func() {
@@ -118,6 +120,7 @@ func TestRuntime_RegularBackslash(t *testing.T) {
 	runtime := NewRuntime(terminal, app, 30)
 
 	inputSource := NewTestInput()
+	defer inputSource.Close()
 	runtime.SetInputSource(inputSource)
 
 	go func() {
