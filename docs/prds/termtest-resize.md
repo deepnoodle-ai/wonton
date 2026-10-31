@@ -230,7 +230,9 @@ Acceptance:
   same size. `terminal` does not import `termtest`.
 - R-8: The new resize probes in our copy of the vtdiff harness all
   match ghostty. The existing 100 probes, the 1,002 recorded streams,
-  and the fuzz run still match as before.
+  and the fuzz run still match as before. vtdiff is a local cgo tool
+  that links a libghostty-vt build. It is not in this repo or in any
+  branch. The implementation PR reports its results as evidence.
 - R-9: Existing snapshots do not change.
 - R-10: `LivePrinter` finds the top of its previous frame by counting
   rows, on every frame, and moves up the count less one. `Clear` and the
