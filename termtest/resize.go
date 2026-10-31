@@ -162,7 +162,9 @@ func (r gridRow) printedAt(x int) bool {
 //     joins the rows again. A line that ended with a line feed never joins
 //     the next one, but it wraps if it no longer fits.
 //   - A wide character that does not fit at the end of a row moves to the
-//     next row whole. No half character is left.
+//     next row whole. No half character is left. A cursor or saved cursor
+//     on it stays on the blank cell it leaves at the end of the row, as in
+//     ghostty.
 //   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
 //     character. One whose row leaves the top goes to the home position.
 //     A saved cursor in the blank cells after a line's text stays on the
@@ -574,17 +576,26 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 			// A wide character never fits a one-column row.
 			c, w = blankCell(), 1
 		}
+		spacer := -1 // the pad cell left when a wide character wraps
 		if col+w > width {
 			if row.meta == nil {
 				row.meta = &rowMeta{}
 			}
 			row.meta.wrapped, row.meta.spacerHead = true, col < width
+			if col < width {
+				spacer = col
+			}
 			out.rows = append(out.rows, row)
 			row = gridRow{cells: blankRow(width), meta: &rowMeta{continued: true}}
 			col = 0
 		}
 		for i := 0; i < g.width; i++ {
 			at[g.off+i] = pos{len(out.rows), min(col+i, col+w-1), col + w - 1}
+		}
+		if spacer >= 0 {
+			// A mark on a wide character that wraps stays on the pad cell
+			// it leaves behind, as ghostty moves its pins.
+			at[g.off] = pos{len(out.rows) - 1, spacer, spacer}
 		}
 		row.cells[col] = c
 		if w == 2 {

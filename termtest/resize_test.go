@@ -252,6 +252,20 @@ var resizeCases = []struct {
 	{"saved pending wrap at the new edge", 10, 4, "abcdefghij\x1b7\r\nx", 5, 4,
 		[]string{"abcde", "fghij", "x"}, 1, 2,
 		"\x1b8Y", []string{"abcde", "fghij", "Y"}},
+	// A cursor or saved cursor on a wide character that wraps stays on
+	// the pad cell that the wide character leaves at the end of the row.
+	{"saved cursor cut onto a wide character that wraps", 7, 4, "abcdefg中\x1b7", 4, 4,
+		[]string{"abcd", "efg", "中"}, 2, 2,
+		"\x1b8Y", []string{"abcd", "efgY", "中"}},
+	{"saved cursor past text cut onto a wrapped wide character", 10, 6, "p1\r\nabc世\x1b[2;6H\x1b7", 4, 6,
+		[]string{"p1", "abc", "世"}, 2, 2,
+		"\x1b8Y", []string{"p1", "abcY", "世"}},
+	{"saved cursor on a wide character that wraps", 10, 6, "p1\r\nabc世\x1b[2;4H\x1b7\x1b[6;1H", 4, 6,
+		[]string{"abc", "世"}, 0, 5,
+		"\x1b8Y", []string{"abcY", "世"}},
+	{"cursor on a wide character that wraps", 10, 4, "abc世\x1b[1;4H", 4, 4,
+		[]string{"abc", "世"}, 3, 0,
+		"Y", []string{"abcY", "世"}},
 
 	// The alternate screen truncates; the primary screen behind it
 	// reflows around its own cursor and saved cursor (R-12).
