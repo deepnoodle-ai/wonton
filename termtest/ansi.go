@@ -245,6 +245,8 @@ func (s *Screen) parseCSI(data string) int {
 	switch cmd {
 	case 'm', 'n', 'c', 't', 'h', 'l', 's', 'S', 'T':
 		// No cursor effect; keep deferred-wrap state (CSI s saves it).
+	case 'L', 'M':
+		// IL and DL clear it only inside the scroll region (region.go).
 	default:
 		s.wrapPending = false
 	}

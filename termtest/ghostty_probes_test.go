@@ -32,8 +32,8 @@ type ghosttyProbe struct {
 	bg         []bgSpan // every cell with a non-default background
 }
 
-// ghosttyProbes covers scroll regions, background color erase, and C0
-// controls inside CSI sequences.
+// ghosttyProbes covers scroll regions, background color erase, C0 controls
+// inside CSI sequences, and the cursor after IL and DL.
 var ghosttyProbes = []ghosttyProbe{
 	// region
 	{
@@ -423,6 +423,70 @@ var ghosttyProbes = []ghosttyProbe{
 		in:     "abc\x1b[\r\n2CX",
 		rows:   []string{"abc", "  X", ""},
 		cursor: [2]int{3, 1},
+	},
+	// ildl
+	{
+		name:   "ildl: IL moves cursor to column 0",
+		size:   [2]int{10, 3},
+		in:     "1\r\n2\r\n3\x1b[2;5H\x1b[LX",
+		rows:   []string{"1", "X", "2"},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "ildl: DL moves cursor to column 0",
+		size:   [2]int{10, 3},
+		in:     "1\r\n2\r\n3\x1b[1;5H\x1b[MX",
+		rows:   []string{"X", "3", ""},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "ildl: IL with count moves cursor to column 0",
+		size:   [2]int{10, 4},
+		in:     "1\r\n2\r\n3\r\n4\x1b[2;5H\x1b[2LX",
+		rows:   []string{"1", "X", "", "2"},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "ildl: IL clears pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\x1b[LX",
+		rows:   []string{"X", "abcdefghij", ""},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "ildl: DL clears pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\r\n2\x1b[1;10HZ\x1b[MX",
+		rows:   []string{"X", "", ""},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "ildl: IL outside region keeps column",
+		size:   [2]int{10, 4},
+		in:     "1\r\n2\r\n3\r\n4\x1b[2;3r\x1b[4;5H\x1b[LX",
+		rows:   []string{"1", "2", "3", "4   X"},
+		cursor: [2]int{5, 3},
+	},
+	{
+		name:   "ildl: DL outside region keeps column",
+		size:   [2]int{10, 4},
+		in:     "1\r\n2\r\n3\r\n4\x1b[2;3r\x1b[4;5H\x1b[MX",
+		rows:   []string{"1", "2", "3", "4   X"},
+		cursor: [2]int{5, 3},
+	},
+	{
+		name:   "ildl: IL outside region keeps pending wrap",
+		size:   [2]int{10, 4},
+		in:     "\x1b[1;2r\x1b[4;1Habcdefghij\x1b[LX",
+		rows:   []string{"", "", "", "Xbcdefghij"},
+		cursor: [2]int{1, 3},
+	},
+	{
+		name:   "ildl: DL outside region keeps pending wrap",
+		size:   [2]int{10, 4},
+		in:     "\x1b[1;2r\x1b[4;1Habcdefghij\x1b[MX",
+		rows:   []string{"", "", "", "Xbcdefghij"},
+		cursor: [2]int{1, 3},
 	},
 }
 

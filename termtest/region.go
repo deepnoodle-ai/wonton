@@ -115,26 +115,29 @@ func (s *Screen) scrollRegionDown(n int) {
 
 // insertLines inserts n erase rows at the cursor row (IL). Rows from the
 // cursor to the bottom of the scroll region move down; rows pushed past
-// the bottom margin are dropped. Outside the region it does nothing. The
-// cursor moves to column 0.
+// the bottom margin are dropped. The cursor moves to column 0 and a
+// deferred wrap is cancelled. Outside the region it does nothing, not even
+// move the cursor, as in xterm and ghostty.
 func (s *Screen) insertLines(n int) {
 	if s.cursorY < s.top || s.cursorY > s.bottom {
 		return
 	}
 	s.shiftRowsDown(s.cursorY, s.bottom, n)
 	s.cursorX = 0
+	s.wrapPending = false
 }
 
 // deleteLines deletes n rows at the cursor row (DL). Rows below move up
 // within the scroll region, and erase rows fill in at the bottom margin.
-// Deleted rows never go to scrollback. Outside the region it does nothing.
-// The cursor moves to column 0.
+// Deleted rows never go to scrollback. The cursor moves to column 0 and a
+// deferred wrap is cancelled. Outside the region it does nothing.
 func (s *Screen) deleteLines(n int) {
 	if s.cursorY < s.top || s.cursorY > s.bottom {
 		return
 	}
 	s.shiftRowsUp(s.cursorY, s.bottom, n)
 	s.cursorX = 0
+	s.wrapPending = false
 }
 
 // shiftRowsUp moves rows top..bottom up by n and fills the freed rows at
