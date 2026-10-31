@@ -1170,13 +1170,14 @@ the live region, so a stream of output costs only the bytes of its rows.
 The moves do not depend on the screen height, so output that arrives while
 the window gets taller or shorter keeps every line. Rows are written with
 autowrap off, and while the window's width changes `Print` clears and
-redraws the live region instead, so a row never wraps over another row and
-no printed line is lost.
-It also redraws when the live region leaves less than two free rows on the
+redraws the live region instead, so a row never wraps over another row. It
+also redraws when the live region leaves less than two free rows on the
 screen. After a width change, the next frame erases the old live region and
 writes every row at the new width; under tmux and zellij, which report a
 resize late, a couple of rows of the old live region can stay above the
-output. See `examples/tui/inline_stream`.
+output. A narrowing during output keeps every line in tmux; a terminal that
+rewraps the live region on narrowing (Ghostty) can lose a few lines, with
+this path and with the redraw alike. See `examples/tui/inline_stream`.
 
 ### InlineApp Architecture
 

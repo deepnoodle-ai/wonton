@@ -429,10 +429,10 @@ func (lp *LivePrinter) keepRowsAbove() {
 }
 
 // rewriteNextFrame makes the next frame write every row, also rows whose
-// text did not change. InlineApp calls it on every resize: a terminal may change rows
-// around the cursor when it resizes (tmux does, for example, while its
-// size catches up with a drag), and Print no longer redraws the live
-// region, so only the next frame can repair it.
+// text did not change. InlineApp calls it on every resize: a terminal may
+// change rows around the cursor when it resizes (tmux does, for example,
+// while its size catches up with a drag), and Print no longer redraws the
+// live region, so only the next frame can repair it.
 func (lp *LivePrinter) rewriteNextFrame() {
 	lp.rewriteAll = true
 }
