@@ -173,6 +173,9 @@ Acceptance:
 - [ ] The same test widens back to 40 columns. The region appears once.
 - [ ] A `LivePrinter` test covers the same narrowing without
       `InlineApp`.
+- [ ] A `LivePrinter` test narrows a region whose line ends in a
+      background-colored run of spaces that crosses the new width. The
+      region appears once (R-10).
 
 ### UC-3: Learn the resize rules from the docs
 
@@ -216,12 +219,28 @@ Acceptance:
   (`termtest.Screen.Resize`) changes first, then `SetSize`, with the
   same size. `terminal` does not import `termtest`.
 - R-10: `LivePrinter` finds the top of its previous frame by counting
-  rows, on every frame: each old line occupies
-  `max(1, ceil(lineWidth/currentWidth))` rows, where `lineWidth` is the
-  line's display width as ghostty measures row content (printed cells
-  and styled trailing cells count, default trailing blanks do not). It
-  moves up the sum less one. `Clear` and the scrollback print path use
-  the same count.
+  rows, on every frame, and moves up the count less one. `Clear` and the
+  scrollback print path use the same count. `LivePrinter` keeps each old
+  line as the string it wrote, so the count works on strings. `width` is
+  the current width; `drawn` is the width the old frame was drawn at:
+
+  ```
+  lineWidth(s)  = runewidth.StringWidth(s with every escape sequence removed)
+  rows(s)       = max(1, ceil(lineWidth(s) / width))   // each line but the last
+  cursorCol(s)  = lineWidth(s) - 1  if lineWidth(s) > 0 and lineWidth(s) % drawn == 0
+                                    (the cursor waits on the last cell, pending wrap)
+                = lineWidth(s)      otherwise
+  rowsLast(s)   = cursorCol(s) / width + 1               // the last line, to the cursor
+  count         = sum of rows(s) + rowsLast(last line)
+  ```
+
+  This matches how ghostty measures row content. A stored line holds
+  only text, SGR, and OSC 8. A styled trailing cell, such as a
+  background-colored pad, is written as a printed space, so it is in the
+  string and counts, as ghostty counts printed spaces. `LivePrinter`
+  erases with `CSI 2K` after an SGR reset, so its erased cells have the
+  default background, which ghostty does not count. No background
+  parsing is needed.
 - R-11: On the first frame after a width change, `LivePrinter` writes
   erase-below (`CSI J`) once the cursor is at the top of the old frame,
   and rewrites every line (no line diffing for that frame).
