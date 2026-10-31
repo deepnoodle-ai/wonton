@@ -1,6 +1,6 @@
 # Test output that goes to a terminal in raw mode
 Status: Draft
-PRD PR: #TBD  Implementation PR: #TBD  Updated: 2026-10-31
+PRD PR: #204  Implementation PR: #TBD  Updated: 2026-10-31
 
 ## Problem
 
