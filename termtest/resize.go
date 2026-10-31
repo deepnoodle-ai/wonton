@@ -165,6 +165,8 @@ func (r gridRow) printedAt(x int) bool {
 //     next row whole. No half character is left.
 //   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
 //     character. One whose row leaves the top goes to the home position.
+//     A saved cursor in the blank cells after a line's text stays on the
+//     row where the text of its old row now starts, as in ghostty.
 //   - With fewer rows, blank rows below the cursor go first, then rows
 //     leave the top for the scrollback (see Scrollback). With more rows,
 //     rows come back from the scrollback if the cursor is on the last
@@ -489,6 +491,7 @@ func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved [
 
 		var glyphs []lineGlyph
 		lineLen := 0
+		lastStart := -1 // where the last row starts in the line, if it ends the line
 		offs := make([]int, len(marks))
 		for i := range offs {
 			offs[i] = -1
@@ -498,6 +501,9 @@ func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved [
 			n := row.lineLen()
 			if r == last {
 				n = row.contentEnd()
+				if !row.wrapped() {
+					lastStart = lineLen
+				}
 			}
 			for x := 0; x < n; x++ {
 				c := row.cells[x]
@@ -519,7 +525,7 @@ func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved [
 			lineLen += n
 		}
 
-		l := layoutLine(glyphs, width, marks, offs)
+		l := layoutLine(glyphs, width, marks, offs, lastStart)
 		for i, off := range offs {
 			if off >= 0 {
 				moved[i] = l.marks[i]
@@ -540,16 +546,28 @@ type laidOutLine struct {
 // width. offs[i] is the offset of marks[i] in the line, or -1 if the mark
 // is not on it. The line gets blank rows down to the cursor (marks[0]) if
 // the cursor is past the end of the text.
-func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOutLine {
+//
+// lastStart is the offset where the line's last row starts, or -1 if that
+// row soft-wraps. A saved cursor in the blank cells after the text of that
+// row stays on the new row where that old row starts, as ghostty moves a
+// tracked pin: its column in the old row is cut to the cells left on the
+// new row. It never moves to the rows that the cursor adds below the text.
+func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastStart int) laidOutLine {
 	out := laidOutLine{marks: make([]mark, len(marks))}
 	row := gridRow{cells: blankRow(width)}
 	col := 0
+	// startCol is the column where the last row's text starts, or -1
+	// until a glyph of that row is placed.
+	startCol := -1
 
 	// Where each offset of the line landed: its row, its column, and the
 	// last column of the glyph that covers it.
 	type pos struct{ row, col, end int }
 	at := map[int]pos{}
 	for _, g := range glyphs {
+		if startCol < 0 && lastStart >= 0 && g.off >= lastStart {
+			startCol = col
+		}
 		c, w := g.cell, g.width
 		if w > width {
 			// A wide character never fits a one-column row.
@@ -590,10 +608,22 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOut
 		g := glyphs[len(glyphs)-1]
 		lineLen = g.off + g.width
 	}
+	if startCol < 0 {
+		startCol = col
+	}
+	if startCol >= width {
+		// The text before the last row filled the new row, so the last
+		// row starts on the next one.
+		startCol = 0
+	}
 
 	for i, off := range offs {
 		if off < 0 {
 			continue
+		}
+		saved := i > 0 && lastStart >= 0 && off >= lineLen
+		if saved {
+			off = lastStart + min(off-lastStart, width-1-startCol)
 		}
 		var m mark
 		if p, ok := at[off]; ok {
@@ -611,7 +641,10 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOut
 		} else {
 			// The mark is past the end of the text. Keep its distance
 			// from the text, wrapping it as if blank cells filled the gap.
-			if marks[i].pending {
+			// A saved cursor keeps its pending wrap for resizeGrid.
+			if saved {
+				m.pending = marks[i].pending
+			} else if marks[i].pending {
 				off++
 			}
 			r, c := len(out.rows)-1, col
@@ -642,8 +675,8 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOut
 	}
 	for i := 1; i < len(offs); i++ {
 		if offs[i] >= 0 && out.marks[i].y >= len(out.rows) {
-			// A saved cursor past the end of the rows stays on the
-			// line's last row.
+			// Only when the line's last row soft-wraps (lastStart is -1)
+			// can a saved cursor fall past the rows. Keep it on the last.
 			out.marks[i].y, out.marks[i].x = len(out.rows)-1, width-1
 		}
 	}
