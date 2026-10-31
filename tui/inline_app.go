@@ -290,6 +290,10 @@ type InlineApp struct {
 	handoffActive bool
 	handoffErr    error
 
+	// screenSize reads the size of the terminal that output shows on (one
+	// ioctl). Print checks it before an insert; a test replaces it.
+	screenSize func() (width, height int, ok bool)
+
 	// Terminal state (for cleanup)
 	oldState                                 *term.State
 	stdinFd                                  int
@@ -334,7 +338,7 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 	reg := newRegistries()
 	live.reg = reg
 
-	return &InlineApp{
+	r := &InlineApp{
 		config:        cfg,
 		events:        make(chan Event, 100),
 		cmds:          make(chan Cmd, 100),
@@ -345,6 +349,8 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 		focusMgr:      NewFocusManager(),
 		reg:           reg,
 	}
+	r.screenSize = func() (int, int, bool) { return terminalSize(r.output) }
+	return r
 }
 
 // Run starts the inline application and blocks until it exits.

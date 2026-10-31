@@ -26,8 +26,16 @@ import (
 //  4. The n rows, then "cursor down L" back to the live region's last row.
 //
 // Every move is relative to the cursor, so the result does not depend on
-// the screen height or on where the live region is. A resize that lands
-// while the bytes are on their way cannot make it scroll the wrong rows.
+// the screen height or on where the live region is. A height change that
+// lands while the bytes are on their way cannot make it scroll the wrong
+// rows.
+//
+// A width change can: a row wider than the screen would wrap onto the next
+// row. So Print reads the real width first and redraws instead when the
+// screen is narrower than the rows. Autowrap is also off while the rows are
+// written (CSI ? 7 l ... CSI ? 7 h), so a narrowing that lands while the
+// bytes travel cuts the end of a row and never writes over another row or
+// the live region.
 
 // insertChunk returns how many rows one insert may add above a live region
 // of liveHeight rows on a screen of screenHeight rows, or 0 when Print must
@@ -49,7 +57,7 @@ func insertChunk(screenHeight, liveHeight int) int {
 // (background color erase). Each rendered row ends its own styles.
 func insertAboveLive(rows []string, liveHeight, chunk int) string {
 	var b strings.Builder
-	b.WriteString("\x1b[?2026h")
+	b.WriteString("\x1b[?2026h\x1b[?7l")
 	for len(rows) > 0 {
 		n := min(chunk, len(rows))
 		b.WriteString("\x1b[0m")
@@ -63,28 +71,37 @@ func insertAboveLive(rows []string, liveHeight, chunk int) string {
 		fmt.Fprintf(&b, "\x1b[%dB", liveHeight)
 		rows = rows[n:]
 	}
-	b.WriteString("\x1b[?2026l")
+	b.WriteString(insertEnd)
 	return b.String()
 }
 
+// insertEnd turns autowrap back on and ends synchronized output.
+const insertEnd = "\x1b[?7h\x1b[?2026l"
+
 // printAboveLiveLocked adds rendered rows above the live region without
 // redrawing it, and reports whether it did. It does not when there is no
-// live region on screen or the live region leaves too little room. The
-// caller holds r.mu and the output gate.
+// live region on screen, the live region leaves too little room, the size
+// of the terminal is unknown, or the terminal is narrower than the rows
+// (it narrowed and the event loop has not heard yet). The caller holds r.mu
+// and the output gate.
 func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	if !r.live.started {
 		return false
 	}
-	chunk := insertChunk(r.live.maxHeight, r.live.lastHeight)
+	width, height, ok := r.screenSize()
+	if !ok || width < r.config.Width {
+		return false
+	}
+	chunk := insertChunk(height, r.live.lastHeight)
 	if chunk == 0 {
 		return false
 	}
 	out := &checkedLiveOutput{destination: r.output}
 	io.WriteString(out, insertAboveLive(strings.Split(rendered, "\r\n"), r.live.lastHeight, chunk))
 	if out.err != nil {
-		// Do not leave the terminal holding its screen for a write that
-		// will never end.
-		io.WriteString(r.output, "\x1b[?2026l")
+		// Do not leave autowrap off, or the terminal holding its screen,
+		// for a write that will never end.
+		io.WriteString(r.output, insertEnd)
 	}
 	return true
 }

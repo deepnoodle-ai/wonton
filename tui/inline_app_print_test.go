@@ -138,7 +138,7 @@ func (w *screenWriter) Write(p []byte) (int, error) {
 
 // newInsertRig draws an InlineApp's live region on a width x height
 // screen whose cursor starts at row startRow, as a shell prompt leaves it.
-// With insert false the runner does not know the screen height, so Print
+// With insert false the runner cannot read the terminal size, so Print
 // always clears and redraws the live region: the path Print used before
 // the insert.
 func newInsertRig(t *testing.T, width, height, startRow int, app InlineApplication, insert bool) (*InlineApp, *screenWriter) {
@@ -151,10 +151,8 @@ func newInsertRig(t *testing.T, width, height, startRow int, app InlineApplicati
 	runner := NewInlineApp(WithInlineOutput(out), WithInlineWidth(width))
 	runner.app = app
 	runner.live.config.Output = out
-	runner.live.SetMaxHeight(0)
-	if insert {
-		runner.live.SetMaxHeight(height)
-	}
+	runner.live.SetMaxHeight(height)
+	runner.screenSize = func() (int, int, bool) { return width, height, insert }
 	runner.running = true
 	runner.render()
 	return runner, out
@@ -191,7 +189,7 @@ func testView(i int) View {
 }
 
 // In the PRD's measurement (5-line live region, width 100), one Print of a
-// 46-byte line costs the line plus 34 bytes and does not redraw the live
+// 46-byte line costs the line plus 44 bytes and does not redraw the live
 // region.
 func TestInlinePrintInsertBytes(t *testing.T) {
 	const line = "log line 1: compiled package ./foo/bar in 12ms"
@@ -207,11 +205,11 @@ func TestInlinePrintInsertBytes(t *testing.T) {
 	before, _ := measure(false)
 	after, written := measure(true)
 	t.Logf("bytes per Print: %d redrawing the live region, %d inserting above it", before, after)
-	assert.Equal(t, after-len(line), 34)
+	assert.Equal(t, after-len(line), 44)
 	assert.False(t, strings.Contains(written, "Thinking"), "the live region is not redrawn")
 }
 
-// A Print of n rows (in one insert) costs 34 control bytes plus 3 for each
+// A Print of n rows (in one insert) costs 44 control bytes plus 3 for each
 // row after the first: a line feed and the CRLF between rows.
 func TestInlinePrintInsertControlBytes(t *testing.T) {
 	for _, rows := range []int{1, 2, 5} {
@@ -226,7 +224,7 @@ func TestInlinePrintInsertControlBytes(t *testing.T) {
 		runner, out := newInsertRig(t, 100, 30, 29, &liveRowsApp{rows: 5}, true)
 		out.log.Reset()
 		runner.Print(Stack(views...))
-		assert.Equal(t, out.log.Len()-content, 34+3*(rows-1), "%d rows", rows)
+		assert.Equal(t, out.log.Len()-content, 44+3*(rows-1), "%d rows", rows)
 	}
 }
 
@@ -350,7 +348,45 @@ func TestInlinePrintInsertWriteFails(t *testing.T) {
 	out.fail = true
 	out.log.Reset()
 	runner.Printf("lost")
-	assert.True(t, strings.HasSuffix(out.log.String(), "\x1b[?2026l"))
+	assert.True(t, strings.HasSuffix(out.log.String(), "\x1b[?7h\x1b[?2026l"), "autowrap on, synchronized output ended")
+}
+
+// The insert turns autowrap off while it writes the rows, so a row cannot
+// wrap onto the next one, and turns it on again before it ends.
+func TestInlinePrintInsertAutowrapOff(t *testing.T) {
+	got := insertAboveLive([]string{"a", "b", "c"}, 2, 2)
+	assert.True(t, strings.HasPrefix(got, "\x1b[?2026h\x1b[?7l"))
+	assert.True(t, strings.HasSuffix(got, "\x1b[?7h\x1b[?2026l"))
+	assert.Equal(t, strings.Count(got, "\x1b[?7l"), 1)
+}
+
+// The window narrowed and the event loop has not heard yet: the runner
+// renders 60 columns, the screen has 40. Print redraws instead of
+// inserting, so no row and no live line is written over.
+func TestInlinePrintNarrowedScreen(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	runner.config.Width = 60
+	runner.live.SetWidth(60)
+	runner.screenSize = func() (int, int, bool) { return 40, 12, true }
+	rows := []string{strings.Repeat("a", 55), strings.Repeat("b", 55), strings.Repeat("c", 55)}
+	out.log.Reset()
+	for _, row := range rows {
+		runner.Printf("%s", row)
+	}
+	assert.False(t, usedInsert(out.log.String()), "redraw, not insert")
+
+	// Each 55-column row wrapped onto two screen rows, whole, in order,
+	// and the live region is intact below them.
+	var text []string
+	for y := 0; y < 12; y++ {
+		text = append(text, out.screen.Row(y))
+	}
+	joined := strings.Join(append(out.screen.Scrollback(), text...), "\n")
+	for _, row := range rows {
+		assert.True(t, strings.Contains(joined, row[:40]+"\n"+row[40:]), "row %c is whole", row[0])
+	}
+	assert.Equal(t, out.screen.Row(10), "live 0")
+	assert.Equal(t, out.screen.Row(11), "live 1")
 }
 
 func TestInsertChunk(t *testing.T) {
