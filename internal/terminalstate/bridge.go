@@ -18,3 +18,8 @@ type Transition struct {
 
 // Inspect is installed only by the terminal package during package init.
 var Inspect func(any) (Access, bool)
+
+// Closed reports whether a *terminal.Terminal has been closed, for any
+// terminal, including one made with NewTestTerminal. The terminal package
+// installs it during package init.
+var Closed func(any) bool

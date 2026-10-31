@@ -163,3 +163,16 @@ func TestRunClosesTheTerminalItWasGiven(t *testing.T) {
 	_, err := term.BeginFrame()
 	assert.ErrorIs(t, err, ErrClosed)
 }
+
+func TestRunRefusesAClosedTerminal(t *testing.T) {
+	screen := termtest.NewScreen(40, 8)
+	term := NewTestTerminal(40, 8, screen)
+	assert.NoError(t, term.Close())
+	before := screen.Text()
+
+	keys := NewTestInput()
+	keys.Close()
+	err := Run(&altScreenApp{}, WithTerminal(term), WithInput(keys))
+	assert.ErrorIs(t, err, ErrClosed)
+	assert.Equal(t, screen.Text(), before, "Run drew nothing")
+}

@@ -1,5 +1,11 @@
 package tui
 
+import (
+	"fmt"
+
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
+)
+
 // RunOption is a functional option for configuring Run.
 type RunOption func(*runConfig)
 
@@ -65,7 +71,8 @@ func WithInput(source InputSource) RunOption {
 // as it closes the terminal it opens itself. Close leaves the alternate
 // screen, shows the cursor and turns off the modes Run turned on, so the
 // screen shows what a user sees after the app quits. Do not use term after
-// Run returns. A terminal from NewTestTerminal has no tty, so Run changes no
+// Run returns: a later Run with the same term returns an error that wraps
+// ErrClosed. Make a new terminal for each Run. A terminal from NewTestTerminal has no tty, so Run changes no
 // real terminal state through it.
 //
 // To resize while the app runs, resize the screen and then call
@@ -234,6 +241,8 @@ func Run(app Application, opts ...RunOption) error {
 		if terminal, err = NewTerminal(); err != nil {
 			return err
 		}
+	} else if terminalstate.Closed(terminal) {
+		return fmt.Errorf("tui: Run: the WithTerminal terminal is closed: %w", ErrClosed)
 	}
 	defer terminal.Close()
 
