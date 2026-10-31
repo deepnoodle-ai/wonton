@@ -622,7 +622,7 @@ func TestConvert_EmptyElements(t *testing.T) {
 		{"empty blockquote", "<blockquote></blockquote>", ""},
 		{"empty table", "<table></table>", ""},
 		{"empty table row", "<table><tr></tr></table>", ""},
-		{"empty code", "<code></code>", "``"},
+		{"empty code", "<code></code>", ""},
 		{"empty pre", "<pre></pre>", "```\n\n```"},
 		{"whitespace-only bold", "<strong>   </strong>", ""},
 		{"whitespace-only paragraph", "<p>   </p>", ""},
@@ -679,7 +679,7 @@ func TestConvert_DeeplyNested(t *testing.T) {
 		{
 			"nested formatting",
 			"<strong><em><strong><em>text</em></strong></em></strong>",
-			"******text******",
+			"***text***",
 		},
 		{
 			"nested blockquotes 3 deep",
@@ -817,12 +817,12 @@ func TestConvert_ListEdgeCases(t *testing.T) {
 		{
 			"mixed list types nested",
 			"<ol><li>First<ul><li>Nested bullet</li></ul></li><li>Second</li></ol>",
-			"1. First\n  - Nested bullet\n2. Second",
+			"1. First\n   - Nested bullet\n2. Second",
 		},
 		{
 			"deeply nested mixed",
 			"<ul><li>A<ol><li>1<ul><li>x</li></ul></li></ol></li></ul>",
-			"- A\n  1. 1\n    - x",
+			"- A\n  1. 1\n     - x",
 		},
 		{
 			"list with inline formatting",
@@ -891,7 +891,7 @@ func TestConvert_LinkEdgeCases(t *testing.T) {
 		{"link with spaces in url", `<a href="https://example.com/path%20with%20spaces">link</a>`, "[link](https://example.com/path%20with%20spaces)"},
 		{"mailto link", `<a href="mailto:test@example.com">email</a>`, "[email](mailto:test@example.com)"},
 		{"tel link", `<a href="tel:+1234567890">call</a>`, "[call](tel:+1234567890)"},
-		{"javascript link ignored", `<a href="javascript:void(0)">click</a>`, "[click](javascript:void(0))"},
+		{"javascript link ignored", `<a href="javascript:void(0)">click</a>`, "click"},
 		{"empty href", `<a href="">link</a>`, "link"},
 		{"hash only href", `<a href="#">link</a>`, "[link](#)"},
 		{"relative url", `<a href="/path/to/page">link</a>`, "[link](/path/to/page)"},
@@ -1040,7 +1040,7 @@ func TestConvert_TableCellEscaping(t *testing.T) {
 		{
 			"newline in cell",
 			"<table><tr><th>h</th></tr><tr><td>line1<br>line2</td></tr></table>",
-			"| h |\n| --- |\n| line1 line2 |",
+			"| h |\n| --- |\n| line1<br>line2 |",
 		},
 	}
 

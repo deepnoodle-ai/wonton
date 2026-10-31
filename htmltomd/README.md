@@ -131,6 +131,7 @@ type Options struct {
     CodeBlockStyle CodeBlockStyle // How code blocks are rendered (fenced/indented)
     BulletChar     string         // Character for unordered lists ("-", "*", "+")
     SkipTags       []string       // HTML tags to skip entirely
+    BaseURL        string         // Resolves relative link and image URLs
 }
 ```
 
@@ -151,15 +152,23 @@ type Options struct {
 ## Supported HTML Elements
 
 - **Headings:** h1-h6
-- **Text formatting:** strong, b, em, i, del, s, strike, code
-- **Links:** a (with href and title)
-- **Images:** img (with src and alt)
-- **Lists:** ul, ol, li (with nesting)
-- **Blockquotes:** blockquote (with nesting)
-- **Code blocks:** pre, code (with language detection)
-- **Tables:** table, thead, tbody, tr, th, td
+- **Text formatting:** strong, b, em, i, del, s, strike, q, sup, sub
+- **Inline code:** code, tt, kbd, samp
+- **Links:** a (with href and title). A link that wraps a heading or
+  paragraph (a card link) links that block. `javascript:`, `vbscript:`,
+  and `data:` links render as text.
+- **Images:** img (with src, alt, and title). Lazy-loaded images fall back
+  to `data-src` and `srcset`.
+- **Lists:** ul, ol, li (with nesting, multi-paragraph items, `li value`,
+  and GFM task list checkboxes)
+- **Definition lists:** dl, dt, dd
+- **Blockquotes:** blockquote (with nesting and any block content)
+- **Code blocks:** pre (with language detection from `class` and
+  `data-lang`). Markup inside a code block reduces to its text.
+- **Tables:** table, caption, thead, tbody, tfoot, tr, th, td (with
+  colspan and rowspan). Tables used for page layout are unwrapped.
 - **Horizontal rules:** hr
-- **Line breaks:** br
+- **Line breaks:** br (`<br>` inside a table cell)
 - **Containers:** div, article, section, main, aside, header, footer, nav
 
 ## Related Packages
@@ -170,6 +179,6 @@ type Options struct {
 
 ## Design Notes
 
-The converter prioritizes graceful degradation over strict correctness. Malformed HTML is parsed as best as possible rather than failing. Script, style, head, and noscript tags are always skipped regardless of configuration.
+The converter prioritizes graceful degradation over strict correctness. Malformed HTML is parsed as best as possible rather than failing. Script, style, head, noscript, template, svg, canvas, and select tags are always skipped regardless of configuration, as are elements with the `hidden` attribute or `aria-hidden="true"`.
 
 Wide characters (like CJK characters) are handled correctly, but the Markdown output does not preserve width hints since Markdown has no equivalent concept.
