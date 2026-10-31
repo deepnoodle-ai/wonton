@@ -237,13 +237,13 @@ Acceptance:
 - R-8: `tui` gets tests for UC-1 (exit restores the primary screen) and
   UC-3 (suspend and resume). Each runs a real `Runtime` with scripted input
   and a `Screen` as the terminal's writer.
+- R-9: An `Example` test shows `IsAlternateScreen` and the restored prompt.
+  The termtest README and package doc list alternate-screen support.
 - R-10: The handoff PTY test replays its captured output into a `Screen`
   and checks that every scenario ends on the primary screen, with the
   child's echoed input visible.
 - R-11: A benchmark writes a full-screen frame stream to a `Screen` that
   never switches.
-- R-9: An `Example` test shows `IsAlternateScreen` and the restored prompt.
-  The termtest README and package doc list alternate-screen support.
 
 ## Not in scope
 
