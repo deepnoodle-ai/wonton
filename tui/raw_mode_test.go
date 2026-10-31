@@ -27,12 +27,12 @@ func rawLiveFrames(frames ...[]string) (*LivePrinter, *bytes.Buffer) {
 	buf.WriteString(rawPrompt)
 	lp := NewLivePrinter(WithWidth(20), WithOutput(&buf))
 	for _, frame := range frames {
-		lp.Update(linesView(frame))
+		lp.Update(rawLinesView(frame))
 	}
 	return lp, &buf
 }
 
-func linesView(lines []string) View {
+func rawLinesView(lines []string) View {
 	views := make([]View, len(lines))
 	for i, line := range lines {
 		views[i] = Text("%s", line)
@@ -40,14 +40,14 @@ func linesView(lines []string) View {
 	return Stack(views...)
 }
 
-func assertRows(t *testing.T, screen *termtest.Screen, rows ...string) {
+func rawAssertRows(t *testing.T, screen *termtest.Screen, rows ...string) {
 	t.Helper()
 	for y, want := range rows {
 		termtest.AssertRow(t, screen, y, want)
 	}
 }
 
-func assertCursorRow(t *testing.T, screen *termtest.Screen, want int) {
+func rawAssertCursorRow(t *testing.T, screen *termtest.Screen, want int) {
 	t.Helper()
 	if _, y := screen.Cursor(); y != want {
 		t.Fatalf("cursor row = %d, want %d\n%s", y, want, screen.Text())
@@ -60,8 +60,8 @@ func TestRawMode_LivePrinterGrows(t *testing.T) {
 		[]string{"one", "two longer", "three"},
 	)
 	screen := rawScreen(buf, 20, 6)
-	assertRows(t, screen, "$ prompt", "one", "two longer", "three", "")
-	assertCursorRow(t, screen, 3)
+	rawAssertRows(t, screen, "$ prompt", "one", "two longer", "three", "")
+	rawAssertCursorRow(t, screen, 3)
 }
 
 func TestRawMode_LivePrinterChangesSomeLines(t *testing.T) {
@@ -70,8 +70,8 @@ func TestRawMode_LivePrinterChangesSomeLines(t *testing.T) {
 		[]string{"x 2", "y 2", "z", "w 1"},
 	)
 	screen := rawScreen(buf, 20, 6)
-	assertRows(t, screen, "$ prompt", "x 2", "y 2", "z", "w 1", "")
-	assertCursorRow(t, screen, 4)
+	rawAssertRows(t, screen, "$ prompt", "x 2", "y 2", "z", "w 1", "")
+	rawAssertCursorRow(t, screen, 4)
 }
 
 func TestRawMode_LivePrinterShrinks(t *testing.T) {
@@ -80,15 +80,15 @@ func TestRawMode_LivePrinterShrinks(t *testing.T) {
 		[]string{"first", "2nd"},
 	)
 	screen := rawScreen(buf, 20, 6)
-	assertRows(t, screen, "$ prompt", "first", "2nd", "", "")
-	assertCursorRow(t, screen, 2)
+	rawAssertRows(t, screen, "$ prompt", "first", "2nd", "", "")
+	rawAssertCursorRow(t, screen, 2)
 }
 
 func TestRawMode_LivePrinterClear(t *testing.T) {
 	lp, buf := rawLiveFrames([]string{"one", "two"})
 	lp.Clear()
 	screen := rawScreen(buf, 20, 4)
-	assertRows(t, screen, "$ prompt", "", "")
+	rawAssertRows(t, screen, "$ prompt", "", "")
 	termtest.AssertCursor(t, screen, 0, 1)
 }
 
@@ -96,13 +96,13 @@ func TestRawMode_LivePrinterStop(t *testing.T) {
 	lp, buf := rawLiveFrames([]string{"one", "two"})
 	lp.Stop()
 	screen := rawScreen(buf, 20, 5)
-	assertRows(t, screen, "$ prompt", "one", "two", "")
+	rawAssertRows(t, screen, "$ prompt", "one", "two", "")
 	termtest.AssertCursor(t, screen, 0, 3)
 }
 
 func TestRawMode_SprintScreen(t *testing.T) {
-	screen := SprintScreen(linesView([]string{"alpha", "beta", "gamma"}), WithWidth(20), WithRawMode(true))
-	assertRows(t, screen, "alpha", "beta", "gamma")
+	screen := SprintScreen(rawLinesView([]string{"alpha", "beta", "gamma"}), WithWidth(20), WithRawMode(true))
+	rawAssertRows(t, screen, "alpha", "beta", "gamma")
 }
 
 func TestRawMode_Fprintln(t *testing.T) {
@@ -113,26 +113,26 @@ func TestRawMode_Fprintln(t *testing.T) {
 		}
 	}
 	screen := rawScreen(&buf, 20, 4)
-	assertRows(t, screen, "Hi", "Hi", "")
+	rawAssertRows(t, screen, "Hi", "Hi", "")
 	termtest.AssertCursor(t, screen, 0, 2)
 }
 
 // rawLinesApp is an InlineApplication whose live region shows lines.
 type rawLinesApp struct{ lines []string }
 
-func (a *rawLinesApp) LiveView() View                { return linesView(a.lines) }
+func (a *rawLinesApp) LiveView() View                { return rawLinesView(a.lines) }
 func (a *rawLinesApp) HandleEvent(event Event) []Cmd { return nil }
 
 func TestRawMode_InlineAppPrint(t *testing.T) {
 	var buf bytes.Buffer
 	runner := newPrintTestRunner(&buf, &rawLinesApp{lines: []string{"live 1", "live 2"}})
 	runner.render()
-	runner.Print(linesView([]string{"printed a", "printed b"}))
+	runner.Print(rawLinesView([]string{"printed a", "printed b"}))
 	runner.Print(Text("printed c"))
 
 	screen := rawScreen(&buf, 40, 8)
-	assertRows(t, screen, "printed a", "printed b", "printed c", "live 1", "live 2", "")
-	assertCursorRow(t, screen, 4)
+	rawAssertRows(t, screen, "printed a", "printed b", "printed c", "live 1", "live 2", "")
+	rawAssertCursorRow(t, screen, 4)
 }
 
 func TestRawMode_InlineAppCleanup(t *testing.T) {
@@ -145,5 +145,5 @@ func TestRawMode_InlineAppCleanup(t *testing.T) {
 	buf.WriteString("next")
 
 	screen := rawScreen(&buf, 40, 5)
-	assertRows(t, screen, "live 1", "live 22", "next")
+	rawAssertRows(t, screen, "live 1", "live 22", "next")
 }
