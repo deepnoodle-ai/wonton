@@ -6,8 +6,9 @@ package termtest
 // whole screen. Behavior follows xterm and ghostty.
 
 // setScrollRegion handles "CSI top ; bottom r". Parameters are 1-based; a
-// missing or zero parameter means the screen edge. A region with fewer
-// than two rows is ignored. A valid region moves the cursor home.
+// missing or zero parameter means the screen edge, and a bottom past the
+// screen means the last row. A region with fewer than two rows is
+// ignored. A valid region moves the cursor home.
 func (s *Screen) setScrollRegion(args []int) {
 	top := getParam(args, 0, 1) - 1
 	bottom := min(getParam(args, 1, s.height), s.height) - 1
