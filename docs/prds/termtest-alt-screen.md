@@ -285,8 +285,8 @@ Acceptance:
   vtdiff, which adds cgo to a module that has none.
 - **Saved cursor per screen, and `?1049h` uses the visible screen's slot.**
   This is what ghostty does (probes "DECSC per screen", "1049 save shares
-  DECSC slot", and "1049h from alt via 47"). An app that uses `ESC 7` on the alternate screen must not move the
-  shell's cursor on exit.
+  DECSC slot", and "1049h from alt via 47"). An app that uses `ESC 7` on
+  the alternate screen must not move the shell's cursor on exit.
 - **No option to turn the support off.** The old behavior was wrong, and an
   option keeps the wrong behavior alive for nobody. A test that read the
   last frame after exit was reading something no user sees; it must assert
