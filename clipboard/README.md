@@ -260,6 +260,7 @@ func main() {
 ### Windows
 - Calls the Win32 clipboard API directly, with no external commands
 - Retries while another process holds the clipboard, until the timeout
+- `Write` returns an error for text that contains a NUL byte
 - Always available (the clipboard API is built in)
 
 ## Related Packages

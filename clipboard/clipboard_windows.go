@@ -111,18 +111,8 @@ func write(ctx context.Context, text string) error {
 		return fmt.Errorf("clipboard: %w", err)
 	}
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	if err := openClipboard(ctx); err != nil {
-		return err
-	}
-	defer procCloseClipboard.Call()
-
-	if r, _, err := procEmptyClipboard.Call(); r == 0 {
-		return fmt.Errorf("clipboard: EmptyClipboard: %w", err)
-	}
-
+	// Fill the memory before opening the clipboard. A failed allocation
+	// then leaves the current clipboard contents in place.
 	size := uintptr(len(data)) * 2
 	h, _, err := procGlobalAlloc.Call(gmemMoveable, size)
 	if h == 0 {
@@ -135,6 +125,20 @@ func write(ctx context.Context, text string) error {
 	}
 	copy(unsafe.Slice((*uint16)(globalPtr(p)), len(data)), data)
 	procGlobalUnlock.Call(h)
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := openClipboard(ctx); err != nil {
+		procGlobalFree.Call(h)
+		return err
+	}
+	defer procCloseClipboard.Call()
+
+	if r, _, err := procEmptyClipboard.Call(); r == 0 {
+		procGlobalFree.Call(h)
+		return fmt.Errorf("clipboard: EmptyClipboard: %w", err)
+	}
 
 	// On success the system owns the memory. On failure we still own it.
 	if r, _, err := procSetClipboardData.Call(cfUnicodeText, h); r == 0 {

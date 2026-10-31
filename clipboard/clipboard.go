@@ -124,6 +124,10 @@ func ReadWithTimeout(timeout time.Duration) (string, error) {
 //	if err != nil {
 //		return err
 //	}
+//
+// On Windows, the call waits while another process holds the clipboard
+// open. Give ctx a deadline so that the wait ends; without one, a process
+// that never releases the clipboard blocks the call.
 func ReadContext(ctx context.Context) (string, error) {
 	return read(ctx)
 }
@@ -165,6 +169,10 @@ func WriteWithTimeout(text string, timeout time.Duration) error {
 //	if err != nil {
 //		return err
 //	}
+//
+// On Windows, the call waits while another process holds the clipboard
+// open. Give ctx a deadline so that the wait ends; without one, a process
+// that never releases the clipboard blocks the call.
 func WriteContext(ctx context.Context, text string) error {
 	return write(ctx, text)
 }

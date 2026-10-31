@@ -3,16 +3,25 @@
 package clipboard
 
 import (
-	"context"
+	"fmt"
 	"runtime"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"golang.org/x/sys/windows"
 )
 
-// holdClipboard opens the clipboard on its own OS thread, the way another
-// process would, and returns a func that releases it.
+var (
+	procCreateWindowEx = user32.NewProc("CreateWindowExW")
+	procDestroyWindow  = user32.NewProc("DestroyWindow")
+)
+
+// holdClipboard opens the clipboard and returns a func that releases it.
+// It opens the clipboard with its own message-only window, the way another
+// application would. An open with no window would not block this process,
+// because the clipboard treats all such opens in a process as one owner.
 func holdClipboard(t *testing.T) (release func()) {
 	t.Helper()
 	opened := make(chan error)
@@ -21,16 +30,25 @@ func holdClipboard(t *testing.T) (release func()) {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		err := openClipboard(ctx)
-		opened <- err
-		if err != nil {
+		defer close(released)
+
+		class, _ := windows.UTF16PtrFromString("STATIC")
+		const hwndMessage = ^uintptr(2) // HWND_MESSAGE is (HWND)-3
+		hwnd, _, err := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(class)),
+			0, 0, 0, 0, 0, 0, hwndMessage, 0, 0, 0)
+		if hwnd == 0 {
+			opened <- fmt.Errorf("CreateWindowExW: %w", err)
 			return
 		}
+		defer procDestroyWindow.Call(hwnd)
+
+		if r, _, err := procOpenClipboard.Call(hwnd); r == 0 {
+			opened <- fmt.Errorf("OpenClipboard: %w", err)
+			return
+		}
+		opened <- nil
 		<-done
 		procCloseClipboard.Call()
-		close(released)
 	}()
 	assert.NoError(t, <-opened)
 	return func() {
