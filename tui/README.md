@@ -1169,9 +1169,9 @@ above the live region with cursor moves relative to it and does not redraw
 the live region, so a stream of output costs only the bytes of its rows.
 The moves do not depend on the screen height, so output that arrives while
 the window gets taller or shorter keeps every line. Rows are written with
-autowrap off, and when the terminal is narrower than the rendered rows (the
-window narrowed and the resize event has not arrived yet), `Print` clears
-and redraws the live region instead, so a row never wraps over another row.
+autowrap off, and while the window's width changes `Print` clears and
+redraws the live region instead, so a row never wraps over another row and
+no printed line is lost.
 It also redraws when the live region leaves less than two free rows on the
 screen. The result on screen and in scrollback is the same either
 way. See `examples/tui/inline_stream`.

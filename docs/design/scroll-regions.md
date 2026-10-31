@@ -163,8 +163,14 @@ func insertAboveLive(rows []string, liveHeight, chunk int) string
 
 `printAboveLiveLocked` reads the terminal's size (`screenSize`, one ioctl
 on the output). It inserts when the live region is on screen
-(`live.started`), the terminal is at least as wide as the runner's width,
-and `insertChunk(height, live.lastHeight) > 0`. The rows go out with
+(`live.started`) and drawn at the runner's width, the terminal is at least
+as wide as the runner's width and as wide as when the live frame was drawn,
+the width has not changed for 500 ms, and
+`insertChunk(height, live.lastHeight) > 0`. Under tmux or zellij (which
+report a resize late), if Print inserted within the last second when a
+width change arrives, `LivePrinter.keepRowsAbove` makes the next erase of
+the old frame cover only its own height, so inserts that landed among its
+rewrapped rows stay. The rows go out with
 autowrap off (`CSI ? 7 l` after `CSI ? 2026 h`, `CSI ? 7 h` before
 `CSI ? 2026 l`), so a narrowing that lands while the bytes travel cuts a
 row's end instead of wrapping it over the next row.

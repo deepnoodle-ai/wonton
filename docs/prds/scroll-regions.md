@@ -133,13 +133,12 @@ Acceptance:
       termtest case with the runner at 60 columns and the screen at 40
       prints three 55-column rows. Print redraws, and every row and live
       line is whole.
-- A narrowing drag (100 to 50 to 100 columns) still loses a few lines:
-  the terminal rewraps the live region's full-width rows, so a cursor move
-  relative to the live region lands too low until a frame at the new width
-  is drawn. Measured: harness 495-496 of 500 with the insert and 494-499
-  with the redraw; tmux 498 of 500 with the insert and 500 with the redraw
-  (which leaves a live row in scrollback). Deferred to
-  [#219](https://github.com/deepnoodle-ai/wonton/issues/219).
+- [ ] A narrowing drag (100 to 50 to 100 columns) loses no line that the
+      redraw keeps. In tmux, 500 of 500. In the harness both paths lose the
+      same few lines (496-500 of 500 over 8 runs each): the terminal
+      rewraps the live region's full-width rows, and the redraw's own
+      cursor moves then land too low. That redraw problem is not this
+      PRD's.
 - [ ] After any resize, the next live region frame writes every row, so no
       row that the old size left (a cut divider, a row the terminal
       blanked) stays on screen. In tmux, alternating between 20 and 32 rows
@@ -230,7 +229,13 @@ tui:
   writes to, at `NewInlineApp` and again when `Run` starts. A width that
   came from the terminal follows it.
 - R-12 After any resize, the live region's next frame writes every row.
-- R-13 A runnable example, `examples/tui/inline_stream`, streams lines under
+- R-13 Print redraws instead of inserting until the terminal has the width
+  it had when the live frame was drawn, and for 500 ms after a width
+  change. Under tmux or zellij, which report a resize late, the frame
+  drawn after a width change erases only the old frame's own height when
+  Print inserted in the last second, so rows inserted into the rewrapped
+  old frame stay.
+- R-14 A runnable example, `examples/tui/inline_stream`, streams lines under
   a spinner and input line.
 
 ## Not in scope
@@ -274,6 +279,14 @@ tui:
   or the live region. Reading the width costs one ioctl per Print.
   Rejected: count wrapped rows in the insert, which needs the width the
   terminal has when the bytes arrive, not when Print runs.
+- Lose no printed line where the old Print keeps it, even at the cost of a
+  stray live row in scrollback. tmux narrows a pane at once and tells the
+  program about every 250 ms during a drag, so a few inserts land among the
+  rewrapped rows of the old frame. Erasing the old frame as its own height
+  keeps them, and can leave two rewrapped live rows in scrollback, as the
+  old Print does. Rejected: erase the rewrapped frame, which lost 2 of 500
+  lines in tmux. Rejected: no insert while the live region has a full-width
+  row, which would turn the insert off for most agent CLIs.
 - Insert at most half the free rows at a time. An insert of n rows is
   correct while n plus the live region height fits the screen; the margin
   covers a screen that shrank before the runtime heard of it. Rejected: one

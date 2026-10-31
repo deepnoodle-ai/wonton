@@ -1037,10 +1037,11 @@ func (r *InlineApp) commandExecutor() {
 // the live region with cursor moves relative to it, so the live region is
 // not redrawn: a stream of output costs only the bytes of its rows.
 //
-// Print redraws instead in three cases: the live region leaves less than
-// two free rows on the screen, the terminal's size cannot be read, or the
-// terminal is narrower than the rendered rows (the window narrowed and the
-// resize event has not arrived yet). It then clears the live region, prints
+// Print redraws instead when the live region leaves less than two free
+// rows on the screen, when the terminal's size cannot be read, and while
+// the window's width is changing: the terminal is narrower than the
+// rendered rows, its width differs from when the live region was last
+// drawn, or the width changed less than half a second ago. It then clears the live region, prints
 // the view, and draws the live region again below it, exactly as the event
 // loop last drew it. The result on screen and in scrollback is the same
 // either way.
