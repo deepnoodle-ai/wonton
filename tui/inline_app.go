@@ -290,6 +290,11 @@ type InlineApp struct {
 	handoffActive bool
 	handoffErr    error
 
+	// lastInsert is when Print last inserted rows above the live region.
+	// lateResize is true under a terminal that reports resizes late.
+	lastInsert time.Time
+	lateResize bool
+
 	// screenSize reads the size of the terminal that output shows on (one
 	// ioctl). Print checks it before an insert; a test replaces it.
 	screenSize func() (width, height int, ok bool)
@@ -350,6 +355,7 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 		reg:           reg,
 	}
 	r.screenSize = func() (int, int, bool) { return terminalSize(r.output) }
+	r.lateResize = resizesLate(os.Getenv)
 	return r
 }
 
@@ -699,6 +705,9 @@ func (r *InlineApp) processEvent(event Event) {
 	// Handle resize events
 	if resize, ok := event.(ResizeEvent); ok {
 		r.mu.Lock()
+		if resize.Width != r.config.Width {
+			r.widthChangedLocked()
+		}
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
 		r.live.rewriteNextFrame()

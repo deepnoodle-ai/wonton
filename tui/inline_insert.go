@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -102,6 +103,7 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	if chunk == 0 {
 		return false
 	}
+	r.lastInsert = time.Now()
 	out := &checkedLiveOutput{destination: r.output}
 	io.WriteString(out, insertAboveLive(strings.Split(rendered, "\r\n"), r.live.lastHeight, chunk))
 	if out.err != nil {
@@ -143,4 +145,29 @@ func (r *InlineApp) refreshScreenSize() {
 		r.config.Width = width
 		r.live.SetWidth(width)
 	}
+}
+
+// insertLag is how long before the runner hears of a width change an
+// insert may have met a terminal that had already narrowed. tmux passes a
+// new size to the program about every 250 ms during a drag.
+const insertLag = time.Second
+
+// widthChangedLocked prepares the live printer for a width change that
+// the runner just heard of. If Print inserted rows within insertLag, the
+// terminal may have narrowed first: the live region's full-width rows were
+// rewrapped onto more rows, the inserts landed among them, and erasing the
+// rewrapped frame would erase those printed rows. Then the old frame is
+// erased as its own height instead. The caller holds r.mu.
+func (r *InlineApp) widthChangedLocked() {
+	if r.lateResize && !r.lastInsert.IsZero() && time.Since(r.lastInsert) < insertLag {
+		r.live.keepRowsAbove()
+	}
+}
+
+// resizesLate reports whether the environment shows a terminal multiplexer
+// that resizes its screen at once but tells the program much later: tmux
+// (TMUX, or TERM_PROGRAM=tmux) and zellij (ZELLIJ). Under them, an insert
+// can meet a screen that already narrowed.
+func resizesLate(getenv func(string) string) bool {
+	return getenv("TMUX") != "" || getenv("TERM_PROGRAM") == "tmux" || getenv("ZELLIJ") != ""
 }

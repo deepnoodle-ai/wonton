@@ -397,6 +397,7 @@ type LivePrinter struct {
 	lastLines    []string    // Previous frame's lines for diffing
 	drawnWidth   int         // Width the previous frame was drawn at; 0 before the first frame
 	rewriteAll   bool        // Next frame writes every row (set on a resize)
+	unwrapped    bool        // Count the old frame as lastHeight rows, not as rewrapped (see keepRowsAbove)
 	reg          *registries // Set by InlineApp so views register with its stores; nil = process default
 }
 
@@ -412,6 +413,19 @@ func NewLivePrinter(opts ...PrintOption) *LivePrinter {
 // The next Update() will use the new width.
 func (lp *LivePrinter) SetWidth(w int) {
 	lp.config.Width = w
+}
+
+// keepRowsAbove makes the next erase of the old frame (the next frame
+// after a width change, or a Clear) treat it as lastHeight rows from the
+// cursor up, instead of the rows the terminal would rewrap it into.
+// InlineApp calls it when it inserted rows above the live region shortly
+// before it heard of a width change: the terminal may have narrowed first,
+// so those rows sit among the rewrapped rows of the old frame, and only the
+// lastHeight rows below them are the old frame. Erasing fewer rows can
+// leave a few rewrapped rows of the old frame above the new one; erasing
+// more would erase printed rows.
+func (lp *LivePrinter) keepRowsAbove() {
+	lp.unwrapped = true
 }
 
 // rewriteNextFrame makes the next frame write every row, also rows whose
@@ -569,7 +583,7 @@ func (lp *LivePrinter) moveToFrameTop(w io.Writer) {
 // one. The last line ends at the cursor, which reflow keeps after the last
 // character, so it is counted from the cursor column instead.
 func (lp *LivePrinter) frameRows() int {
-	if len(lp.lastLines) == 0 {
+	if len(lp.lastLines) == 0 || lp.unwrapped {
 		return lp.lastHeight
 	}
 	width := lp.config.Width
@@ -697,6 +711,7 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 	lp.lastLines = newLines
 	lp.lastHeight = height
 	lp.drawnWidth = lp.config.Width
+	lp.unwrapped = false
 
 	// Optionally wrap in synchronized output mode to prevent flicker.
 	// This tells the terminal to buffer all changes and render atomically.

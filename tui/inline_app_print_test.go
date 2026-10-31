@@ -432,3 +432,69 @@ func TestInlinePrintInsertWaitsForFrameAtNewWidth(t *testing.T) {
 	runner.Printf("after")
 	assert.True(t, usedInsert(out.log.String()))
 }
+
+// dividerLiveApp draws a live region with full-width rows, as agent CLIs
+// often do: a terminal that narrows rewraps each divider onto two rows.
+type dividerLiveApp struct{}
+
+func (dividerLiveApp) LiveView() View {
+	return Stack(Text("status"), Divider(), Text("> input"), Divider(), Text("hint"))
+}
+
+// printedLines returns the "line N" rows of a screen's scrollback and
+// screen, in order.
+func printedLines(s *termtest.Screen) []string {
+	var lines []string
+	_, h := s.Size()
+	rows := s.Scrollback()
+	for y := 0; y < h; y++ {
+		rows = append(rows, s.Row(y))
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row, "line ") {
+			lines = append(lines, row)
+		}
+	}
+	return lines
+}
+
+// Under tmux the screen narrows at once but the program hears of it much
+// later, so Prints in between still see the old width and insert. The
+// live region's dividers were rewrapped onto two rows each, so those rows
+// land among the old frame's rows. When the runner hears of the change,
+// it erases only the old frame's own rows, so every printed line stays.
+func TestInlinePrintInsertLateNarrowingKeepsLines(t *testing.T) {
+	run := func(lateResize bool) []string {
+		runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+		runner.lateResize = lateResize
+		runner.Printf("line 0")
+		runner.Printf("line 1")
+
+		out.screen.Resize(30, 14) // the terminal narrowed; no ioctl, no event yet
+		runner.Printf("line 2")
+		runner.Printf("line 3")
+
+		runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+		runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+		runner.render()
+		if lateResize {
+			// The new frame is at the bottom. Two rewrapped rows of the old
+			// frame stay above the printed lines, as with the old Print.
+			assert.Equal(t, out.screen.Row(13), "hint")
+			assert.Equal(t, out.screen.Row(5), "status")
+		}
+		return printedLines(out.screen)
+	}
+	assert.Equal(t, run(true), []string{"line 0", "line 1", "line 2", "line 3"})
+	assert.True(t, len(run(false)) < 4, "without the rule the late narrowing erases printed lines")
+}
+
+func TestResizesLate(t *testing.T) {
+	env := func(vars map[string]string) func(string) string {
+		return func(k string) string { return vars[k] }
+	}
+	assert.True(t, resizesLate(env(map[string]string{"TMUX": "/tmp/tmux-501/default,1,0"})))
+	assert.True(t, resizesLate(env(map[string]string{"TERM_PROGRAM": "tmux"})))
+	assert.True(t, resizesLate(env(map[string]string{"ZELLIJ": "0"})))
+	assert.False(t, resizesLate(env(map[string]string{"TERM_PROGRAM": "ghostty"})))
+}
