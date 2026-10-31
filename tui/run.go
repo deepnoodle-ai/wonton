@@ -58,7 +58,9 @@ func WithInput(source InputSource) RunOption {
 // screen: the same setup, frames, resize handling and cleanup that users get.
 // Make term with NewTestTerminal and a termtest.Screen, and send keys with a
 // TestInput and WithInput. Run returns when the test closes the TestInput.
-// Without WithInput, Run reads keys from standard input.
+// With a terminal from NewTestTerminal and no WithInput, Run reads no keys:
+// it draws the first frame and returns. With a real terminal and no
+// WithInput, Run reads keys from standard input, as it does by default.
 //
 //	screen := termtest.NewScreen(80, 24)
 //	term := tui.NewTestTerminal(80, 24, screen)
@@ -297,8 +299,17 @@ func newRunRuntime(terminal *Terminal, app Application, cfg runConfig) *Runtime 
 	}
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 	runtime.SetBackslashEnter(cfg.backslashEnter)
-	if cfg.inputSource != nil {
-		runtime.SetInputSource(cfg.inputSource)
+	input := cfg.inputSource
+	if input == nil && runtime.noTTY {
+		// A test terminal with no WithInput: the test sends no keys, and the
+		// process's stdin is not the test's to read. Use an input that has
+		// already ended, so Run draws once and returns.
+		ended := NewTestInput()
+		ended.Close()
+		input = ended
+	}
+	if input != nil {
+		runtime.SetInputSource(input)
 	}
 	return runtime
 }

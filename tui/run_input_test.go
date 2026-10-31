@@ -85,6 +85,17 @@ func TestRunReturnsTheInputError(t *testing.T) {
 	assert.ErrorIs(t, err, broken)
 }
 
+func TestRunOnATestTerminalWithoutInputDrawsOnceAndReturns(t *testing.T) {
+	screen := termtest.NewScreen(20, 3)
+	term := NewTestTerminal(20, 3, screen)
+	app := &keyCounter{}
+	err := runReturns(t, func() error {
+		return Run(app, WithTerminal(term), WithAlternateScreen(false))
+	})
+	assert.NoError(t, err)
+	termtest.AssertRow(t, screen, 0, "keys: 0") // the first frame
+}
+
 func TestTestInputReadsEventsThenEOF(t *testing.T) {
 	keys := NewTestInput()
 	keys.Type("a")
