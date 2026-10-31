@@ -242,6 +242,28 @@ func TestScreenClear(t *testing.T) {
 }
 ```
 
+### Testing Full-Screen Apps (Alternate Screen)
+
+`Screen` models the alternate screen that full-screen apps draw on
+(`ESC[?1049h`, `?1047h`, `?47h`). Every read, assertion and snapshot shows
+the visible screen. When the app leaves the alternate screen, the shell
+screen comes back unchanged, with the cursor where it was.
+
+```go
+func TestAppRestoresShellScreen(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	screen.Write([]byte("$ myapp\r\n"))
+
+	screen.Write([]byte("\x1b[?1049h\x1b[HInbox (3)")) // the app starts
+	assert.True(t, screen.IsAlternateScreen())
+	termtest.AssertRow(t, screen, 0, "Inbox (3)")
+
+	screen.Write([]byte("\x1b[?1049l")) // the app quits
+	termtest.AssertRow(t, screen, 0, "$ myapp")
+	termtest.AssertCursor(t, screen, 0, 1)
+}
+```
+
 ## API Reference
 
 ### Screen Types
@@ -274,6 +296,7 @@ func TestScreenClear(t *testing.T) {
 | `Screen.Cell` | Returns cell at position | `x, y int` | `Cell` |
 | `Screen.SetCell` | Sets cell content and style | `x, y int, char rune, style Style` | none |
 | `Screen.Clear` | Clears entire screen | none | none |
+| `Screen.IsAlternateScreen` | Reports whether the alternate screen is visible | none | `bool` |
 | `Screen.ClearLine` | Clears current line | none | none |
 | `Screen.ClearToEndOfLine` | Clears cursor to line end | none | none |
 | `Screen.ClearToStartOfLine` | Clears line start to cursor | none | none |

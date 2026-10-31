@@ -62,17 +62,12 @@ func (s *Screen) processANSI(data string) int {
 				continue
 			case '7':
 				// Save cursor and attributes (DECSC)
-				s.savedX = s.cursorX
-				s.savedY = s.cursorY
-				s.savedStyle = s.style
+				s.saveCursor()
 				i += 2
 				continue
 			case '8':
 				// Restore cursor and attributes (DECRC)
-				s.wrapPending = false
-				s.cursorX = s.savedX
-				s.cursorY = s.savedY
-				s.style = s.savedStyle
+				s.restoreCursor()
 				i += 2
 				continue
 			case 'c':
@@ -232,6 +227,9 @@ func (s *Screen) parseCSI(data string) int {
 	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
 		if params[0] == '?' && (cmd == 'J' || cmd == 'K') {
 			params = params[1:]
+		} else if params[0] == '?' && (cmd == 'h' || cmd == 'l') {
+			s.setPrivateModes(parseParams(params[1:]), cmd == 'h')
+			return end + 1
 		} else {
 			return end + 1
 		}
@@ -242,8 +240,8 @@ func (s *Screen) parseCSI(data string) int {
 
 	// Commands that move the cursor or edit the line cancel a deferred wrap.
 	switch cmd {
-	case 'm', 'n', 'c', 't', 'h', 'l', 'r':
-		// No cursor effect; keep deferred-wrap state.
+	case 'm', 'n', 'c', 't', 'h', 'l', 'r', 's':
+		// No cursor effect; keep deferred-wrap state (CSI s saves it).
 	default:
 		s.wrapPending = false
 	}
@@ -318,12 +316,10 @@ func (s *Screen) parseCSI(data string) int {
 		s.cursorY = clamp(n-1, 0, s.height-1)
 	case 'm': // SGR - Select Graphic Rendition
 		s.processSGR(parseSGRParams(params))
-	case 's': // Save Cursor Position
-		s.savedX = s.cursorX
-		s.savedY = s.cursorY
-	case 'u': // Restore Cursor Position
-		s.cursorX = s.savedX
-		s.cursorY = s.savedY
+	case 's': // Save Cursor Position (SCOSC; saves what DECSC saves)
+		s.saveCursor()
+	case 'u': // Restore Cursor Position (SCORC; restores what DECRC restores)
+		s.restoreCursor()
 	case 'r': // Set Scrolling Region (ignored for now)
 		// Could implement scroll regions if needed
 	case 'h', 'l': // Set/Reset Mode
