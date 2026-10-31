@@ -145,8 +145,10 @@ type Cell struct {
 // Screen implements io.Writer, so it can be used anywhere an io.Writer is expected.
 // Written bytes are interpreted as ANSI-formatted terminal output.
 type Screen struct {
-	width       int      // Screen width in columns
-	height      int      // Screen height in rows
+	width  int // Screen width in columns
+	height int // Screen height in rows
+	// Rows move by swapping whole row slices, and new rows are freshly
+	// allocated. Never copy cells between rows in place; see rowInfo.
 	cells       [][]Cell // 2D grid of character cells [y][x]
 	cursorX     int      // Current cursor column (0-based)
 	cursorY     int      // Current cursor row (0-based)
