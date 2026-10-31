@@ -534,13 +534,24 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 // redraw writes lines, a frame this printer drew before, without rendering a
 // view. InlineApp uses it to restore the live region after scrollback output
 // without calling the application's LiveView off the event loop.
-func (lp *LivePrinter) redraw(lines []string, useSync bool) error {
+//
+// drawnAt is the width the lines were drawn at. If it is not the current
+// width (the width changed and no frame has been drawn since), the lines
+// were rendered for the old width and may wrap on screen. The printer then
+// keeps drawnAt as the frame's width and asks for every row again, so the
+// next frame erases this one and writes every row at the new width.
+func (lp *LivePrinter) redraw(lines []string, useSync bool, drawnAt int) error {
 	if len(lines) == 0 {
 		return nil
 	}
 	checked := &checkedLiveOutput{destination: lp.config.Output}
 	lp.beginFrame(checked)
-	return lp.writeFrame(checked, lines, useSync)
+	err := lp.writeFrame(checked, lines, useSync)
+	if drawnAt != 0 && drawnAt != lp.config.Width {
+		lp.drawnWidth = drawnAt
+		lp.rewriteAll = true
+	}
+	return err
 }
 
 // beginFrame moves the cursor to the top of the live region, and hides the

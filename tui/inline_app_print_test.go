@@ -526,3 +526,54 @@ func TestResizesLate(t *testing.T) {
 	assert.True(t, resizesLate(env(map[string]string{"ZELLIJ": "0"})))
 	assert.False(t, resizesLate(env(map[string]string{"TERM_PROGRAM": "ghostty"})))
 }
+
+// assertLiveWhole checks that the screen shows dividerLiveApp whole at
+// the screen's width, below the last printed line, with only blank rows
+// under it.
+func assertLiveWhole(t *testing.T, s *termtest.Screen) {
+	t.Helper()
+	w, h := s.Size()
+	divider := strings.Repeat("─", w)
+	want := []string{"status", divider, "> input", divider, "hint"}
+	hint := -1
+	for y := 0; y < h; y++ {
+		if s.Row(y) == "hint" {
+			hint = y
+		}
+	}
+	assert.True(t, hint >= 4, "hint row on screen")
+	if hint < 4 {
+		return
+	}
+	for i, row := range want {
+		assert.Equal(t, s.Row(hint-4+i), row, "live row %d", i)
+	}
+	for y := hint + 1; y < h; y++ {
+		assert.Equal(t, s.Row(y), "", "row %d below the live region", y)
+	}
+}
+
+// A Print between the resize event and the next frame redraws the frame
+// that is on screen, which was rendered for the old width. The next frame
+// still erases it and writes every row at the new width, and later inserts
+// keep the live region whole.
+func TestInlinePrintBetweenResizeAndFrame(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+	runner.Printf("line 0")
+
+	out.screen.Resize(30, 14)
+	runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+	runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+	runner.Printf("line 1") // redraws: the frame on screen has the old width
+	runner.render()
+	assertLiveWhole(t, out.screen)
+
+	runner.widthChangedAt = time.Now().Add(-widthSettle)
+	for i := 2; i < 7; i++ {
+		runner.Printf("line %d", i)
+	}
+	runner.render()
+	assertLiveWhole(t, out.screen)
+	assert.Equal(t, out.screen.Row(13), "hint", "inserts moved the live region back to the bottom")
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5", "line 6"})
+}
