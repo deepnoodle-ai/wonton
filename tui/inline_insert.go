@@ -89,17 +89,35 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	return true
 }
 
-// refreshScreenHeight reads the terminal height again when Run starts, so
-// the live region is capped and Print sizes its inserts by the current
-// height. NewInlineApp read it once, and the window may have changed since.
-func (r *InlineApp) refreshScreenHeight() {
-	f, ok := r.output.(*os.File)
-	if !ok || !term.IsTerminal(int(f.Fd())) {
+// terminalSize reads the size of the terminal that w writes to. ok is false
+// when w is not a terminal. Width and height always come from the same
+// terminal: the one that shows the output.
+func terminalSize(w io.Writer) (width, height int, ok bool) {
+	f, isFile := w.(*os.File)
+	if !isFile || !term.IsTerminal(int(f.Fd())) {
+		return 0, 0, false
+	}
+	width, height, err := term.GetSize(int(f.Fd()))
+	if err != nil || width <= 0 || height <= 0 {
+		return 0, 0, false
+	}
+	return width, height, true
+}
+
+// refreshScreenSize reads the terminal size again when Run starts, so the
+// live region is capped and Print sizes its inserts by the current height.
+// NewInlineApp read it once, and the window may have changed since. A
+// width that came from the terminal follows it too.
+func (r *InlineApp) refreshScreenSize() {
+	width, height, ok := terminalSize(r.output)
+	if !ok {
 		return
 	}
-	if _, h, err := term.GetSize(int(f.Fd())); err == nil && h > 0 {
-		r.mu.Lock()
-		r.live.SetMaxHeight(h)
-		r.mu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.live.SetMaxHeight(height)
+	if r.config.widthFromTerminal && width != r.config.Width {
+		r.config.Width = width
+		r.live.SetWidth(width)
 	}
 }

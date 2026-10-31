@@ -131,6 +131,8 @@ type inlineConfig struct {
 	PasteTabWidth  int       // 0 = preserve tabs. Convert tabs to N spaces in pastes.
 	KittyKeyboard  bool      // Enable Kitty keyboard protocol.
 	BackslashEnter bool      // Synthesize Shift+Enter from backslash+Enter (delays typed backslashes; see WithInlineBackslashEnter).
+
+	widthFromTerminal bool // Width was 0 and came from the output terminal.
 }
 
 // InlineOption is a functional option for configuring NewInlineApp and
@@ -220,16 +222,15 @@ func WithInlineBackslashEnter(enabled bool) InlineOption {
 }
 
 func (c inlineConfig) withDefaults() inlineConfig {
-	if c.Width == 0 {
-		c.Width = 80
-		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-				c.Width = w
-			}
-		}
-	}
 	if c.Output == nil {
 		c.Output = os.Stdout
+	}
+	if c.Width == 0 {
+		c.Width = 80
+		if w, _, ok := terminalSize(c.Output); ok {
+			c.Width = w
+			c.widthFromTerminal = true
+		}
 	}
 	if c.Input == nil {
 		c.Input = os.Stdin
@@ -326,10 +327,8 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 	live := NewLivePrinter(WithWidth(cfg.Width), WithOutput(cfg.Output))
 
 	// Set max height to terminal height so the live region never exceeds it.
-	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-		if _, h, err := term.GetSize(fd); err == nil && h > 0 {
-			live.SetMaxHeight(h)
-		}
+	if _, h, ok := terminalSize(cfg.Output); ok {
+		live.SetMaxHeight(h)
 	}
 
 	reg := newRegistries()
@@ -446,7 +445,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 
 	// Initialize resize watcher (platform-specific)
 	r.setupResizeWatcher()
-	r.refreshScreenHeight()
+	r.refreshScreenSize()
 
 	// Render initial view. A panic here is captured like one in the event
 	// loop, so the terminal is restored below before Run re-panics.
