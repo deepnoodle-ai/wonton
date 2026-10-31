@@ -165,6 +165,21 @@ func rbCompare(screen *termtest.Screen, w, h int, expected func(x, y int) Cell) 
 	return ""
 }
 
+// rbModelDiff returns a description of the first cell where the back buffer
+// differs from the model, or "" when they match.
+func rbModelDiff(m *rbModel, term *Terminal) string {
+	for y := 0; y < m.h; y++ {
+		for x := 0; x < m.w; x++ {
+			want, got := m.cells[y][x], term.getCellInternal(x, y)
+			if !got.Equal(want) {
+				return fmt.Sprintf("cell (%d,%d):\n  model       %s url=%q\n  back buffer %s url=%q", x, y,
+					rbFormatCell(rbScreenCell(want)), want.Style.URL, rbFormatCell(rbScreenCell(got)), got.Style.URL)
+			}
+		}
+	}
+	return ""
+}
+
 func rbFormatCell(c termtest.Cell) string {
 	return fmt.Sprintf("glyph=%q width=%d cont=%v style=[%s]",
 		string(c.Char)+c.Trailing, c.Width, c.Continuation, rbFormatStyle(c.Style))
@@ -442,16 +457,16 @@ func runRendererBytesSeed(seed uint64) error {
 		}
 		out.Reset()
 
+		// The back buffer must agree with the model, or the model is wrong
+		// and the screen check below proves nothing.
+		if diff := rbModelDiff(model, term); diff != "" {
+			return fmt.Errorf("frame %d (%s): back buffer and model disagree (test bug): %s",
+				frameNo, kind, diff)
+		}
 		at := func(x, y int) Cell { return model.cells[y][x] }
 		if diff := rbCompare(screen, w, h, at); diff != "" {
 			return fmt.Errorf("frame %d (%s) on a %dx%d screen: the terminal shows a different %s",
 				frameNo, kind, w, h, diff)
-		}
-		// The back buffer must agree with the model too, or the model is
-		// wrong and the check above proves nothing.
-		if diff := rbCompare(screen, w, h, term.getCellInternal); diff != "" {
-			return fmt.Errorf("frame %d (%s): back buffer and model disagree (test bug): %s",
-				frameNo, kind, diff)
 		}
 	}
 	return nil
