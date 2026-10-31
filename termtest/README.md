@@ -154,6 +154,27 @@ func TestWithRecorder(t *testing.T) {
 }
 ```
 
+### Raw-Mode Output
+
+A program that puts the tty in raw mode, such as `tui.InlineApp`, sends its
+bytes to the terminal unchanged. There a bare `\n` moves the cursor down and
+keeps its column. Only `\r` returns to column 0. By default, termtest models
+cooked mode, where the tty adds a `\r` before each `\n`. Use
+`WithRawMode(true)` so that output with a missing `\r` fails the test.
+
+```go
+func TestRawModeOutput(t *testing.T) {
+	screen := termtest.NewScreen(80, 24, termtest.WithRawMode(true))
+	screen.Write([]byte("ab\ncd"))
+
+	termtest.AssertRow(t, screen, 1, "  cd") // The bare LF kept column 2
+	termtest.AssertCursor(t, screen, 4, 1)
+}
+```
+
+`Capture.Screen`, `Buffer.Screen`, `NewRecorder`, and `Recorder.Replay`
+accept the same options.
+
 ### Custom Snapshot Names
 
 ```go
@@ -261,7 +282,8 @@ func TestScreenClear(t *testing.T) {
 
 | Function | Description | Inputs | Outputs |
 |----------|-------------|--------|---------|
-| `NewScreen` | Creates virtual terminal screen | `width, height int` | `*Screen` |
+| `NewScreen` | Creates virtual terminal screen | `width, height int, opts ...ScreenOption` | `*Screen` |
+| `WithRawMode` | Models a tty in raw mode: a bare LF keeps the column | `enabled bool` | `ScreenOption` |
 | `Screen.Write` | Writes ANSI output to screen | `p []byte` | `n int, err error` |
 | `Screen.WriteString` | Writes string at cursor | `str string` | none |
 | `Screen.WriteRune` | Writes single rune | `r rune` | none |
@@ -312,18 +334,18 @@ func TestScreenClear(t *testing.T) {
 | `Capture.Bytes` | Returns captured bytes | none | `[]byte` |
 | `Capture.String` | Returns captured string | none | `string` |
 | `Capture.Reset` | Clears captured output | none | none |
-| `Capture.Screen` | Converts to screen | `width, height int` | `*Screen` |
+| `Capture.Screen` | Converts to screen | `width, height int, opts ...ScreenOption` | `*Screen` |
 
 ### Recorder Functions
 
 | Function | Description | Inputs | Outputs |
 |----------|-------------|--------|---------|
-| `NewRecorder` | Creates recorder | `width, height int` | `*Recorder` |
+| `NewRecorder` | Creates recorder | `width, height int, opts ...ScreenOption` | `*Recorder` |
 | `Recorder.Write` | Records write event | `p []byte` | `n int, err error` |
 | `Recorder.Screen` | Gets current screen | none | `*Screen` |
 | `Recorder.Events` | Gets all recorded events | none | `[]RecordedEvent` |
 | `Recorder.Reset` | Clears recorder | none | none |
-| `Recorder.Replay` | Replays to new screen | `width, height int` | `*Screen` |
+| `Recorder.Replay` | Replays to new screen with the recorder's options, then opts | `width, height int, opts ...ScreenOption` | `*Screen` |
 
 ### Comparison Functions
 

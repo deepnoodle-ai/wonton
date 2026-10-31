@@ -61,9 +61,10 @@ func (c *Capture) Reset() {
 // the resulting screen state.
 //
 // You can call this multiple times with different dimensions to see how
-// the output would look on different terminal sizes.
-func (c *Capture) Screen(width, height int) *Screen {
-	screen := NewScreen(width, height)
+// the output would look on different terminal sizes. Options such as
+// WithRawMode are passed to NewScreen.
+func (c *Capture) Screen(width, height int, opts ...ScreenOption) *Screen {
+	screen := NewScreen(width, height, opts...)
 	screen.Write(c.Bytes())
 	return screen
 }
@@ -75,6 +76,7 @@ func (c *Capture) Screen(width, height int) *Screen {
 type Recorder struct {
 	events []RecordedEvent
 	screen *Screen
+	opts   []ScreenOption // NewRecorder options, reused by Replay
 }
 
 // RecordedEvent represents a single write operation to the terminal.
@@ -85,6 +87,7 @@ type RecordedEvent struct {
 
 // NewRecorder creates a new Recorder with an internal screen of the given size.
 // All writes are recorded as events and also processed through the screen.
+// Options such as WithRawMode are passed to NewScreen.
 //
 // Example:
 //
@@ -93,9 +96,10 @@ type RecordedEvent struct {
 //	for i, event := range recorder.Events() {
 //	    fmt.Printf("Event %d: %q\n", i, event.Data)
 //	}
-func NewRecorder(width, height int) *Recorder {
+func NewRecorder(width, height int, opts ...ScreenOption) *Recorder {
 	return &Recorder{
-		screen: NewScreen(width, height),
+		screen: NewScreen(width, height, opts...),
+		opts:   opts,
 	}
 }
 
@@ -127,9 +131,11 @@ func (r *Recorder) Reset() {
 
 // Replay creates a new screen with the given dimensions and replays all
 // recorded events to it. This lets you see how the same output would look
-// on a different terminal size.
-func (r *Recorder) Replay(width, height int) *Screen {
-	screen := NewScreen(width, height)
+// on a different terminal size. The new screen gets the options passed to
+// NewRecorder, then opts, so opts can override them, for example to replay
+// the same bytes with WithRawMode(false).
+func (r *Recorder) Replay(width, height int, opts ...ScreenOption) *Screen {
+	screen := NewScreen(width, height, append(append([]ScreenOption(nil), r.opts...), opts...)...)
 	for _, event := range r.events {
 		screen.Write(event.Data)
 	}
@@ -148,8 +154,9 @@ func NewBuffer() *Buffer {
 }
 
 // Screen creates a new Screen and processes all buffered content through it.
-func (b *Buffer) Screen(width, height int) *Screen {
-	screen := NewScreen(width, height)
+// Options such as WithRawMode are passed to NewScreen.
+func (b *Buffer) Screen(width, height int, opts ...ScreenOption) *Screen {
+	screen := NewScreen(width, height, opts...)
 	screen.Write(b.Bytes())
 	return screen
 }
