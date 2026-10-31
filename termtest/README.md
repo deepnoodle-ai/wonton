@@ -285,6 +285,27 @@ func TestAppRestoresShellScreen(t *testing.T) {
 }
 ```
 
+### Testing a Resize
+
+`Screen.Resize` changes the size between two writes, as a user resizes the
+terminal window. Text that wrapped at the right edge reflows the way ghostty,
+iTerm2, kitty, and WezTerm reflow it. Lines that ended with a line feed never
+join. termtest has no scrollback: rows pushed off the top are lost.
+
+```go
+func TestRedrawAfterResize(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	term := terminal.NewTestTerminal(80, 24, screen)
+	// ... the app draws its first frame ...
+
+	screen.Resize(40, 24) // 1. the user narrows the window
+	term.SetSize(40, 24)  // 2. the app learns the new size
+	// ... the app redraws ...
+
+	termtest.AssertRow(t, screen, 0, "Title")
+}
+```
+
 ## API Reference
 
 ### Screen Types
@@ -313,6 +334,7 @@ func TestAppRestoresShellScreen(t *testing.T) {
 | `Screen.Row` | Gets single row text | `y int` | `string` |
 | `Screen.Contains` | Checks if text is present | `text string` | `bool` |
 | `Screen.Size` | Returns dimensions | none | `width, height int` |
+| `Screen.Resize` | Resizes the screen, reflowing wrapped text | `width, height int` | none |
 | `Screen.Cursor` | Returns cursor position | none | `x, y int` |
 | `Screen.SetCursor` | Sets cursor position | `x, y int` | none |
 | `Screen.Cell` | Returns cell at position | `x, y int` | `Cell` |

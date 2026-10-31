@@ -634,6 +634,8 @@ func (s *Screen) deleteChars(n int) {
 	start := clamp(s.cursorX, 0, s.width)
 	end := min(s.width, start+n)
 	shift := end - start
+	defer s.markErased(y, s.width-shift, s.width, true)
+	defer s.shiftPrinted(y, end, -shift)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
@@ -659,6 +661,7 @@ func (s *Screen) insertChars(n int) {
 	}
 	y := s.cursorY
 	start := clamp(s.cursorX, 0, s.width)
+	defer s.shiftPrinted(y, start, n)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
@@ -684,6 +687,7 @@ func (s *Screen) eraseChars(n int) {
 	y := s.cursorY
 	start := clamp(s.cursorX, 0, s.width)
 	end := min(s.width, start+n)
+	defer s.markErased(y, start, end, true)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
