@@ -311,8 +311,12 @@ Acceptance:
   `termtest`.
 - **Fix the `LivePrinter` reflow bug in this track (R-10, R-11).** Count
   rows per old line by that line's own width, on every frame. A count
-  by the old frame width moves up too far for short lines and erases a
-  scrollback line above the region. A count only after a width decrease
+  by the old frame width fails both ways. When the window widens, a
+  line that wrapped at the old width now fits on fewer rows. The count
+  is too high, the cursor moves up too far, and the redraw erases a
+  scrollback line above the region. When the window narrows, a line
+  that fit at the old width now wraps. The count is too low, the cursor
+  moves up too little, and stale region rows stay on screen. A count only after a width decrease
   misses coalesced resizes: the runtime throttles them, and a user can
   narrow and widen before one redraw.
 - **Optimize for reflowing terminals (ghostty, iTerm2, kitty, WezTerm,
