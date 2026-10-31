@@ -109,18 +109,28 @@ with termtest.
 
 ### UC-1: Redraw a full-screen frame after the window narrows
 
+The terminal window changes first, then the program learns the new size.
+The test calls the two methods in that order, with the same size:
+
 ```go
 screen := termtest.NewScreen(80, 24)
 term := terminal.NewTestTerminal(80, 24, screen)
 rt := tui.NewRuntime(term, app, 60)
 // ... the runtime renders the first frame into screen ...
 
-screen.Resize(40, 24)  // the user narrows the window
-term.SetSize(40, 24)   // the program learns the new size
+screen.Resize(40, 24)  // 1. the user narrows the window
+term.SetSize(40, 24)   // 2. the program learns the new size
 // ... the runtime handles the ResizeEvent and redraws ...
 
 termtest.AssertRow(t, screen, 0, "Title")
 ```
+
+The test runs on whichever screen the runtime writes to. Today
+`tui.NewRuntime` does not switch to the alternate screen, so the test
+uses the primary screen, which reflows. When the alternate screen lands
+(see Decisions), the same test passes on it, which truncates. The
+runtime forces a full redraw after a resize, so the criteria check only
+the final frame, which is the same under both models.
 
 Acceptance:
 - [ ] `Screen.Resize(width, height int)` exists. It returns nothing.
@@ -131,19 +141,23 @@ Acceptance:
       the frame the app draws at the new size. No row from the old frame
       stays visible.
 - [ ] A full-screen test cuts a wide character at the new right edge.
-      The redraw shows no half character.
+      After the redraw, the final frame shows no half character.
 
 ### UC-2: Narrow and widen while an `InlineApp` live region shows
 
-A test prints three scrollback lines and shows a two-line live region at
-40 columns. It calls `screen.Resize(20, 24)` and sends the app a
+A test prints three scrollback lines and shows a live region at 40
+columns. One region line is 30 cells wide. One region line is shorter
+than 20 cells. It calls `screen.Resize(20, 24)` and sends the app a
 `ResizeEvent`. The app redraws.
 
 Acceptance:
 - [ ] The live region appears once. No line of the old region stays on
       screen, reflowed or not.
 - [ ] The scrollback lines above the region show, reflowed to 20
-      columns, in their original order.
+      columns, in their original order. The scrollback line directly
+      above the region is intact.
+- [ ] A narrow and a widen before one redraw (coalesced resizes) give
+      the same result as a single resize to the final size.
 - [ ] The same test widens back to 40 columns. The region appears once.
 - [ ] A `LivePrinter` test covers the same narrowing without
       `InlineApp`.
@@ -181,9 +195,23 @@ Acceptance:
   later resize to more rows adds blank rows at the bottom. Ghostty would
   bring the lost rows back.
 - R-7: `terminal.(*Terminal).SetSize(width, height int)` sets the size
-  of a terminal. It resizes the buffers, forces a full redraw, and calls
-  the `OnResize` callbacks, as `RefreshSize` does after SIGWINCH. It
-  shares that code with `RefreshSize`.
+  the program uses. It resizes the buffers, forces a full redraw, and
+  calls the `OnResize` callbacks, as `RefreshSize` does after SIGWINCH.
+  It shares that code with `RefreshSize`. Its doc says what it does not
+  do: it does not resize the terminal window, and on a tty the next
+  SIGWINCH replaces the size. Its doc shows the test order: the window
+  (`termtest.Screen.Resize`) changes first, then `SetSize`, with the
+  same size. `terminal` does not import `termtest`.
+- R-10: `LivePrinter` finds the top of its previous frame by counting
+  rows, on every frame: each old line occupies
+  `max(1, ceil(lineWidth/currentWidth))` rows, where `lineWidth` is the
+  line's display width as ghostty measures row content (printed cells
+  and styled trailing cells count, default trailing blanks do not). It
+  moves up the sum less one. `Clear` and the scrollback print path use
+  the same count.
+- R-11: On the first frame after a width change, `LivePrinter` writes
+  erase-below (`CSI J`) once the cursor is at the top of the old frame,
+  and rewrites every line (no line diffing for that frame).
 - R-8: The new resize probes in our copy of the vtdiff harness all
   match ghostty. The existing 100 probes, the 1,002 recorded streams,
   and the fuzz run still match as before.
@@ -195,9 +223,8 @@ Acceptance:
 - A truncate mode that models xterm. One model keeps tests simple. We
   add a mode if a test needs to prove xterm behavior.
 - Wraparound mode (`CSI ?7 l`). termtest does not track it today.
-- Alternate-screen resize. The termtest-alt-screen track adds the
-  alternate screen. The track that merges second makes the alternate
-  screen truncate on resize, as ghostty does.
+- Testing xterm behavior. termtest models only reflow, so no test
+  checks what xterm shows after a resize.
 - Resize in `Capture` and `Recorder`. They build a screen from a fixed
   size at the end.
 
@@ -221,23 +248,32 @@ Acceptance:
 - **Lose rows that leave the top.** termtest has no scrollback, and
   adding one is a new concept. Tests that grow the height after rows
   left the top differ from ghostty. The doc comment says so.
+- **This track owns truncation on resize while the alternate screen is
+  active.** Merge order: termtest-alt-screen merges first. This track
+  rebases on it and makes `Resize` truncate the alternate screen at the
+  right edge, without reflow, as ghostty does. A wide character whose
+  second half falls off the edge becomes blank. Probes verify it.
 - **Add `terminal.(*Terminal).SetSize`.** The full-screen runtime gets
   its size only from the terminal. A test terminal has no tty, so
-  without this method no test can drive the runtime's resize path. The
-  method also serves programs that learn the size from elsewhere, such
-  as an SSH window-change request. Rejected: an internal test hook. Go
-  cannot reach unexported terminal code from `tui` tests without an
-  export.
-- **Fix the `LivePrinter` reflow bug in this track if the fix is small.**
-  Planned fix: when the width decreased since the last frame,
-  `LivePrinter` counts the rows each old line now occupies,
-  `max(1, ceil(width/newWidth))`, and moves up that many rows less one.
-  `Clear` and the scrollback print path use the same count. If the fix
-  needs more than this, the track records the bug and asks the user.
-  Tradeoff: in xterm, which does not reflow, the cursor moves up too
-  far and erases that many rows of scrollback above the region. We
-  accept this because the region is correct in xterm, and every other
-  common terminal reflows.
+  without this method no test can drive the runtime's resize path.
+  Rejected: an internal test hook. Go cannot reach unexported terminal
+  code from `tui` tests without an export. Rejected: a helper that
+  resizes a screen and a terminal together. It couples `terminal` to
+  `termtest`.
+- **Fix the `LivePrinter` reflow bug in this track (R-10, R-11).** Count
+  rows per old line by that line's own width, on every frame. A count
+  by the old frame width moves up too far for short lines and erases a
+  scrollback line above the region. A count only after a width decrease
+  misses coalesced resizes: the runtime throttles them, and a user can
+  narrow and widen before one redraw.
+- **Optimize for reflowing terminals (ghostty, iTerm2, kitty, WezTerm,
+  Terminal.app).** In xterm, which does not reflow, the cursor moves up
+  k rows too far, where k is the number of extra rows the count adds.
+  R-11 then erases from there down, so the region is drawn once, and no
+  stale region rows stay. The cost: k scrollback rows directly above the
+  region are overwritten. termtest models only reflow, so no test checks
+  this xterm result. The implementation PR states it under "Risk and
+  rollout".
 - **No tech spec.** The behavior rules above are the design. The one
   internal choice, where each row's soft-wrap flag lives, is local to
   termtest and is covered by R-2 and the probes.
@@ -245,7 +281,7 @@ Acceptance:
 ## Success
 
 - A `tui` test fails on today's `LivePrinter` resize redraw and passes
-  after the fix.
+  after the fix, including the short-line and scrollback-line checks.
 - The new resize probes match ghostty.
 - No existing termtest, `tui`, or `cli` test or snapshot changes.
 
