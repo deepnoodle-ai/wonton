@@ -3,7 +3,10 @@ package tui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // This file lets InlineApp.Print add rows above the live region without
@@ -84,4 +87,19 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 		io.WriteString(r.output, "\x1b[?2026l")
 	}
 	return true
+}
+
+// refreshScreenHeight reads the terminal height again when Run starts, so
+// the live region is capped and Print sizes its inserts by the current
+// height. NewInlineApp read it once, and the window may have changed since.
+func (r *InlineApp) refreshScreenHeight() {
+	f, ok := r.output.(*os.File)
+	if !ok || !term.IsTerminal(int(f.Fd())) {
+		return
+	}
+	if _, h, err := term.GetSize(int(f.Fd())); err == nil && h > 0 {
+		r.mu.Lock()
+		r.live.SetMaxHeight(h)
+		r.mu.Unlock()
+	}
 }

@@ -446,6 +446,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 
 	// Initialize resize watcher (platform-specific)
 	r.setupResizeWatcher()
+	r.refreshScreenHeight()
 
 	// Render initial view. A panic here is captured like one in the event
 	// loop, so the terminal is restored below before Run re-panics.
