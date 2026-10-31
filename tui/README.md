@@ -1161,6 +1161,18 @@ runner := tui.NewInlineApp(
 )
 ```
 
+### Printing Above the Live Region
+
+`Print` and `Printf` add rows above the live region; the rows move up into
+the terminal's scrollback as more output follows. `InlineApp` inserts them
+above the live region with cursor moves relative to it and does not redraw
+the live region, so a stream of output costs only the bytes of its rows.
+The moves do not depend on the screen height, so output that arrives while
+the user resizes the window keeps every line. When the live region leaves
+less than two free rows on the screen, `Print` clears and redraws the live
+region instead. The result on screen and in scrollback is the same either
+way. See `examples/tui/inline_stream`.
+
 ### InlineApp Architecture
 
 InlineApp uses the same three-goroutine architecture as `Run()`:

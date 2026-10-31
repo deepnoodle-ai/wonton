@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -1006,8 +1007,13 @@ func (r *InlineApp) commandExecutor() {
 // Print renders a View to the scrollback history.
 // The view can be any tui.View: Text, Stack, Group, Bordered, etc.
 //
-// This method temporarily clears the live region, prints the view to scrollback,
-// and restores the live region below.
+// The view's rows appear above the live region and move up into the
+// terminal's scrollback as more output follows. Print inserts them above
+// the live region with cursor moves relative to it, so the live region is
+// not redrawn: a stream of output costs only the bytes of its rows. When
+// the live region leaves less than two free rows on the screen, Print
+// clears the live region, prints the view, and draws the live region again
+// below it. The result on screen and in scrollback is the same either way.
 //
 // Print does not call LiveView. Below the new scrollback content it redraws
 // the live region exactly as the event loop last drew it, so focus styling
@@ -1025,6 +1031,16 @@ func (r *InlineApp) Print(view View) {
 		return
 	}
 
+	// Render first with raw mode line endings. Always styled: the
+	// scrollback belongs to the same interactive screen as the live region,
+	// which LivePrinter always draws in color.
+	var rendered strings.Builder
+	Fprint(&rendered, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
+
+	if r.printAboveLiveLocked(rendered.String()) {
+		return
+	}
+
 	// Wrap entire operation in synchronized output mode to prevent flicker.
 	// This ensures clear + print + re-render appears as one atomic update.
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
@@ -1033,10 +1049,8 @@ func (r *InlineApp) Print(view View) {
 	liveLines := r.live.lastLines
 	r.live.Clear()
 
-	// Print to scrollback with raw mode line endings
-	// Always styled: the scrollback belongs to the same interactive screen as
-	// the live region, which LivePrinter always draws in color.
-	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
+	// Print to scrollback
+	io.WriteString(r.output, rendered.String())
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Restore live region (skip its internal sync since we're already in one)
