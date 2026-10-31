@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/deepnoodle-ai/wonton/runewidth"
 	"github.com/deepnoodle-ai/wonton/termtest"
 	"golang.org/x/term"
 )
@@ -394,6 +395,7 @@ type LivePrinter struct {
 	frameCount   uint64
 	hiddenCursor bool
 	lastLines    []string    // Previous frame's lines for diffing
+	drawnWidth   int         // Width the previous frame was drawn at; 0 before the first frame
 	reg          *registries // Set by InlineApp so views register with its stores; nil = process default
 }
 
@@ -522,14 +524,13 @@ func (lp *LivePrinter) redraw(lines []string, useSync bool) error {
 func (lp *LivePrinter) beginFrame(checked io.Writer) {
 	// If we've already rendered, move cursor back up
 	if lp.started && lp.lastHeight > 0 {
-		// Move cursor up to the start of the previous render.
-		// After rendering N lines (with newlines between but not at end),
-		// the cursor is on line N. To get back to line 1, move up (N-1) lines.
-		if lp.lastHeight > 1 {
-			fmt.Fprintf(checked, "\033[%dA", lp.lastHeight-1)
+		lp.moveToFrameTop(checked)
+		if lp.drawnWidth != 0 && lp.drawnWidth != lp.config.Width {
+			// After a resize the old frame may sit on different rows than
+			// this frame overwrites, so erase all of it first.
+			fmt.Fprint(checked, "\033[J")
+			lp.lastLines = nil
 		}
-		// Move to beginning of line
-		fmt.Fprint(checked, "\r")
 	}
 
 	// Hide cursor on first update for cleaner display
@@ -538,6 +539,74 @@ func (lp *LivePrinter) beginFrame(checked io.Writer) {
 		lp.hiddenCursor = true
 		lp.started = true
 	}
+}
+
+// moveToFrameTop moves the cursor to column 0 of the first row of the
+// previous frame.
+func (lp *LivePrinter) moveToFrameTop(w io.Writer) {
+	// After drawing N rows (newlines between, none after), the cursor is
+	// on row N, so the top is N-1 rows up.
+	if rows := lp.frameRows(); rows > 1 {
+		fmt.Fprintf(w, "\033[%dA", rows-1)
+	}
+	fmt.Fprint(w, "\r")
+}
+
+// frameRows returns how many terminal rows the previous frame occupies at
+// the current width. A terminal that reflows on resize (ghostty, iTerm2,
+// kitty, WezTerm, Terminal.app) rewraps each line that no longer fits onto
+// more rows, so each line takes ceil(lineWidth/width) rows, and at least
+// one.
+func (lp *LivePrinter) frameRows() int {
+	if len(lp.lastLines) == 0 {
+		return lp.lastHeight
+	}
+	width := lp.config.Width
+	rows := 0
+	for _, line := range lp.lastLines {
+		n := 1
+		if w := liveLineWidth(line); width > 0 && w > width {
+			n = (w + width - 1) / width
+		}
+		rows += n
+	}
+	return rows
+}
+
+// liveLineWidth returns the display width of a line the live printer drew,
+// skipping its escape sequences (SGR styles and OSC 8 hyperlinks).
+func liveLineWidth(line string) int {
+	if !strings.Contains(line, "\x1b") {
+		return runewidth.StringWidth(line)
+	}
+	var text strings.Builder
+	for i := 0; i < len(line); i++ {
+		if line[i] != 0x1b {
+			text.WriteByte(line[i])
+			continue
+		}
+		if i+1 >= len(line) {
+			break
+		}
+		switch line[i+1] {
+		case '[': // CSI: parameters, then a final byte 0x40-0x7E
+			i += 2
+			for i < len(line) && (line[i] < 0x40 || line[i] > 0x7e) {
+				i++
+			}
+		case ']': // OSC: ends at BEL or ST (ESC \)
+			i += 2
+			for i < len(line) && line[i] != 0x07 && !(line[i] == 0x1b && i+1 < len(line) && line[i+1] == '\\') {
+				i++
+			}
+			if i < len(line) && line[i] == 0x1b {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return runewidth.StringWidth(text.String())
 }
 
 // writeFrame writes newLines over the previous frame, redrawing only the
@@ -592,6 +661,7 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 	// Store lines for next frame's diffing
 	lp.lastLines = newLines
 	lp.lastHeight = height
+	lp.drawnWidth = lp.config.Width
 
 	// Optionally wrap in synchronized output mode to prevent flicker.
 	// This tells the terminal to buffer all changes and render atomically.
@@ -633,10 +703,8 @@ func (lp *LivePrinter) clearChecked() error {
 	var output strings.Builder
 	if lp.started && lp.lastHeight > 0 {
 		// Move up and clear
-		if lp.lastHeight > 1 {
-			fmt.Fprintf(&output, "\033[%dA", lp.lastHeight-1)
-		}
-		fmt.Fprint(&output, "\r\033[0J")
+		lp.moveToFrameTop(&output)
+		fmt.Fprint(&output, "\033[0J")
 	}
 	if output.Len() > 0 {
 		checked := &checkedLiveOutput{destination: lp.config.Output}
@@ -646,6 +714,7 @@ func (lp *LivePrinter) clearChecked() error {
 	}
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state
+	lp.drawnWidth = 0
 	lp.started = false
 	return nil
 }
