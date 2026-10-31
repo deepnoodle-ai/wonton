@@ -17,8 +17,10 @@ package termtest
 //	?1047h  switch to alternate              ?1047l  clear alternate, switch to primary
 //	?1049h  save cursor, switch, clear       ?1049l  switch to primary, restore cursor
 //
-// The ?1049h clear leaves default blank cells. The ?1047l clear fills the
-// alternate screen with the current background color (BCE), like CSI 2 J.
+// The ?1047l clear fills the alternate screen with the current background
+// color (BCE), like CSI 2 J. The ?1049h clear also uses BCE, but ghostty
+// takes the background the alternate screen had when it was last visible
+// (default before its first use), not the current one.
 
 // altState holds the hidden grid and the alternate-screen flag.
 type altState struct {
@@ -33,6 +35,9 @@ type altState struct {
 	// last visible. Only Resize uses it: it reflows the hidden screen
 	// around it, as ghostty does. Switching back does not restore it.
 	cursor mark
+	// bg is the background color that was set when the alternate screen
+	// was last hidden. ?1049h clears the alternate screen with it.
+	bg Color
 }
 
 // savedCursor is the DECSC state of the hidden screen. Each screen has its own.
@@ -75,10 +80,12 @@ func (s *Screen) setPrivateModes(modes []int, set bool) {
 		case 1049:
 			if set {
 				s.saveCursor()
-				s.switchScreen(true)
-				// Default blank cells, not the current background:
-				// ghostty does not erase with BCE here.
-				s.fillCells(blankCell())
+				if s.alt.active {
+					s.clearCells()
+				} else {
+					s.switchScreen(true)
+					s.fillCells(Cell{Char: ' ', Width: 1, Style: Style{Background: s.alt.bg}})
+				}
 			} else {
 				s.switchScreen(false)
 				s.restoreCursor()
@@ -109,6 +116,9 @@ func (s *Screen) switchScreen(alternate bool) {
 	s.savedX, s.savedY, s.savedStyle, s.savedWrap = s.alt.saved.x, s.alt.saved.y, s.alt.saved.style, s.alt.saved.wrap
 	s.savedOrigin = s.alt.saved.origin
 	s.alt.saved = visible
+	if !alternate {
+		s.alt.bg = s.style.Background
+	}
 	s.alt.active = alternate
 }
 
