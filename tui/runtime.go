@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"sync"
@@ -81,6 +82,7 @@ type Runtime struct {
 	outputMu      sync.Mutex
 	handoffActive bool
 	handoffErr    error
+	inputErr      error // why a source set with SetInputSource stopped, other than io.EOF
 	resizeMu      sync.Mutex
 	resizeEvents  chan ResizeEvent
 }
@@ -309,9 +311,12 @@ func (r *Runtime) Run() error {
 	}
 
 	r.mu.Lock()
-	handoffErr := r.handoffErr
+	handoffErr, inputErr := r.handoffErr, r.inputErr
 	r.mu.Unlock()
-	return handoffErr
+	if inputErr != nil {
+		inputErr = fmt.Errorf("read input: %w", inputErr)
+	}
+	return errors.Join(handoffErr, inputErr)
 }
 
 // closeDone signals shutdown to all runtime goroutines. Safe to call multiple
@@ -459,6 +464,18 @@ func (r *Runtime) processEventWithQuitCheck(event Event) bool {
 	}
 	// Check for quit event
 	if _, isQuit := event.(QuitEvent); isQuit {
+		return true
+	}
+	// The input source ended. Every event it sent came before this one, so
+	// draw the frame they produced, then stop.
+	if ended, ok := event.(inputEndedEvent); ok {
+		if ended.err != nil {
+			r.mu.Lock()
+			r.inputErr = ended.err
+			r.mu.Unlock()
+		} else {
+			r.render()
+		}
 		return true
 	}
 
@@ -612,7 +629,15 @@ func (r *Runtime) renderChecked() (err error) {
 	return nil
 }
 
-// SetInputSource sets the input source for the runtime.
+// SetInputSource sets the input source for the runtime, in place of the
+// keyboard on standard input. Must be called before Run.
+//
+// When the source ends, Run ends too: on io.EOF, Run handles the events the
+// source sent, draws the last frame, and returns nil. On any other error,
+// Run returns that error. So a test whose input runs out returns instead of
+// waiting for a Quit that never comes. Standard input is different: a
+// full-screen app keeps running when its standard input is redirected and
+// ends, because the app can still draw and quit on its own.
 func (r *Runtime) SetInputSource(source InputSource) {
 	r.inputSource = source
 }
@@ -735,6 +760,21 @@ func (r *Runtime) inputReader() {
 				return
 			}
 		case err := <-errChan:
+			// The reader sent its last event before the error. If that
+			// event is still waiting, put the error back and take the
+			// event first.
+			if len(inputChan) > 0 {
+				errChan <- err
+				continue
+			}
+			if r.inputSource != nil {
+				// A source the caller set ends the run; see SetInputSource.
+				select {
+				case r.events <- inputEndedEvent{err: endedErr(err)}:
+				case <-r.done:
+				}
+				return
+			}
 			// EOF or error - send error event
 			select {
 			case r.events <- ErrorEvent{
@@ -748,6 +788,20 @@ func (r *Runtime) inputReader() {
 			return
 		}
 	}
+}
+
+// inputEndedEvent tells the event loop that the input source set with
+// SetInputSource ended. err is nil for io.EOF.
+type inputEndedEvent struct{ err error }
+
+func (inputEndedEvent) Timestamp() time.Time { return time.Time{} }
+
+// endedErr returns nil for io.EOF, the normal end of input, and err otherwise.
+func endedErr(err error) error {
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
 }
 
 // forwardEvent sends an event to the main event loop.

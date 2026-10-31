@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"io"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ func NewMockInputSource() *MockInputSource {
 func (m *MockInputSource) ReadEvent() (Event, error) {
 	event, ok := <-m.events
 	if !ok {
-		return nil, errors.New("EOF")
+		return nil, io.EOF
 	}
 	return event, nil
 }

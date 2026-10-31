@@ -37,8 +37,10 @@ func defaultRunConfig() runConfig {
 	}
 }
 
-// WithInput sets a custom input source for the runtime.
-// This is primarily used for testing.
+// WithInput sets a custom input source for the runtime, in place of the
+// keyboard. This is primarily used for testing. When the source ends, Run
+// ends: on io.EOF it draws the last frame and returns nil, and on any other
+// error it returns the error (see Runtime.SetInputSource).
 func WithInput(source InputSource) RunOption {
 	return func(c *runConfig) {
 		c.inputSource = source
