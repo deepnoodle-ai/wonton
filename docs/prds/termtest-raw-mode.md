@@ -10,21 +10,24 @@ the CR (the ONLCR output setting). In raw mode the tty sends the bytes
 unchanged. A bare LF then moves the cursor down one row and keeps the
 column.
 
-wonton writes most interactive output in raw mode: `InlineApp`, the
-full-screen runtime, and `LivePrinter` or `Print` with `WithRawMode(true)`.
-The code adds a CR by hand at each place that needs one. termtest cannot
-see a missing CR, so a test of raw-mode output passes when the CR is
-missing. A real terminal then shows text that steps to the right, or an
-old line that is only partly erased.
+wonton writes most interactive output to a tty in raw mode: `InlineApp`
+(which draws its live region with a `LivePrinter` that has the default
+options) and the full-screen runtime. `Print` with `WithRawMode(true)`
+writes `\r\n` line endings for that case. The code adds a CR by hand at
+each place that needs one. termtest cannot see a missing CR, so a test of
+raw-mode output passes when the CR is missing. A real terminal then shows
+text that steps to the right, or an old line that is only partly erased.
 
 Evidence, from a comparison of termtest with libghostty-vt (ghostty with
 ONLCR off is the raw-mode reference):
 
 - `ab\ncd` in raw mode: ghostty puts `cd` at column 2 of row 1. termtest
   puts it at column 0.
-- A `LivePrinter` with `WithRawMode(true)` drew six frames. The content
-  matched in every frame. In two frames the final cursor column differed
-  from termtest. termtest cannot express the raw-mode result at all.
+- A `LivePrinter` drew six frames, and the bytes were fed to both
+  terminals. This was a byte comparison only: `LivePrinter` ignores
+  `WithRawMode` (see Decisions). The content matched in every frame. In
+  two frames the final cursor column differed from termtest. termtest
+  cannot express the raw-mode result at all.
 - No wonton test checks raw-mode output under raw-mode rules today.
 
 If we do nothing, a refactor that drops one `\r` from a raw-mode path
@@ -88,8 +91,11 @@ change.
 
 - **Raw mode**: the tty sends the program's bytes to the terminal
   unchanged. A bare LF moves the cursor down one row and keeps the
-  column. Only CR moves the cursor to column 0. It is the same term as
-  `tui.WithRawMode` and the raw mode that `InlineApp` turns on.
+  column. Only CR moves the cursor to column 0. `termtest.WithRawMode`
+  models only this output behavior. `tui.WithRawMode` also concerns only
+  output: it selects `\r\n` line endings. `InlineApp` turns on full tty
+  raw mode with `term.MakeRaw`, which also changes input and other
+  termios settings. termtest models none of those other settings.
 - **Cooked mode**: the default. The tty adds a CR before each LF, so a
   bare LF also moves to column 0. termtest models this today and keeps
   it as the default.
@@ -155,9 +161,9 @@ Acceptance:
 - [ ] `LivePrinter.Stop` leaves the cursor at column 0 of the row below
       the region on a raw-mode screen (see Decisions; this is a fix).
 - [ ] `InlineApp`: a raw-mode test covers `Print` of a multi-line view
-      with a live region, and the cleanup when the app exits. Scrollback
-      text and the redrawn live region are on the correct rows at column
-      0.
+      with a live region, `Print` while the app runs but before the first
+      live frame, and the cleanup when the app exits. Scrollback text and
+      the redrawn live region are on the correct rows at column 0.
 - [ ] Full-screen output: a raw-mode test covers the multi-line
       unbuffered print path in `terminal`.
 - [ ] CR inventory. Each CR below is covered as the table says. For each
@@ -174,17 +180,27 @@ Acceptance:
 | `\r` in the raw `\r\n` | `printlnWith` (`Println`) | `Fprintln` test |
 | `\r` in `\r\n` | `InlineApp` cleanup | cleanup test |
 | `\r` in `\r\n` | `terminal` `printUnbufferedLocked` | unbuffered print test |
+| `\r` in `\r\n` after content | `InlineApp.Print` | `Print` before the first live frame test |
 | `\r` after `ESC[nA` | `LivePrinter.beginFrame` | none: redundant |
-| `\r` in `\r\n` after content | `InlineApp.Print` | none: redundant |
 
-  The two redundant CRs cannot make any test fail. After `beginFrame`,
-  each line that `writeFrame` draws starts with its own `\r`, and the
-  shrink path has its own. After `InlineApp.Print`, the live region
-  redraw starts with `\r\033[2K`. Both CRs stay, as defense against a
-  later change.
+  The `\r` after `InlineApp.Print` content is redundant only after a live
+  frame has drawn, because the redraw then starts with `\r\033[2K`.
+  Before the first live frame (the app runs and `lastLines` is empty),
+  `Clear` and `restoreLiveLocked` write nothing. Then this `\r` is the
+  only thing that puts the next scrollback line at column 0. The test
+  prints twice before the first frame.
+
+  The `beginFrame` CR cannot make a test fail. Each line that
+  `writeFrame` changes starts with its own `\r`, and the shrink path has
+  its own. When no line changes, `writeFrame` writes only bare LFs, so
+  the final cursor column depends on the `beginFrame` CR. No test asserts the
+  cursor column after a frame (see Decisions), so its removal fails no
+  test. The CR stays, as defense against a later change.
 - [ ] The vtdiff harness (`./vtdiff live` and the `lf` probe), run with
       termtest in raw mode against ghostty without ONLCR, shows no
-      content diff and no cursor diff.
+      content diff and no cursor diff. vtdiff is a local comparison tool
+      built on libghostty-vt. It is not in this repo. The implementation
+      PR reports its results.
 
 ## Requirements
 
@@ -265,15 +281,22 @@ Acceptance:
 
 - A test can model a raw-mode terminal with one option.
 - Removing any covered CR in the UC-3 inventory fails a named test. The
-  two redundant CRs are the only CRs with no test.
+  `beginFrame` CR is the only CR with no test.
 - No existing termtest, tui, or cli test or snapshot changes.
 
 ## Risks and open questions
 
 - Adding a variadic parameter to `NewScreen`, `NewRecorder`,
   `Capture.Screen`, `Buffer.Screen`, and `Recorder.Replay` breaks code
-  that stores them as a function value with the old type. This is rare
-  in test code. The PR states it under "Risk and rollout". Not blocking.
+  that stores them as a function value with the old type. It also breaks
+  an interface that declares the old method, such as
+  `Screen(width, height int) *termtest.Screen` or the matching `Replay`
+  method: `*Capture`, `*Buffer`, and `*Recorder` no longer satisfy it. No code in wonton does either.
+  Migration: add `...termtest.ScreenOption` to the interface method, or
+  wrap the call in a function literal of the old type. We accept the
+  break. Option-aware twins of each method would double the API for a
+  rare case. Both PR bodies state it under "Risk and rollout". Not
+  blocking.
 - Other tracks (resize, alt screen, scroll regions) also edit
   `termtest/screen.go`. They use `ScreenOption` from
   `termtest/options.go`, as the coordinator agreed. Not blocking.
