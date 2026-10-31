@@ -1016,15 +1016,19 @@ func (r *InlineApp) commandExecutor() {
 // The view's rows appear above the live region and move up into the
 // terminal's scrollback as more output follows. Print inserts them above
 // the live region with cursor moves relative to it, so the live region is
-// not redrawn: a stream of output costs only the bytes of its rows. When
-// the live region leaves less than two free rows on the screen, Print
-// clears the live region, prints the view, and draws the live region again
-// below it. The result on screen and in scrollback is the same either way.
+// not redrawn: a stream of output costs only the bytes of its rows.
 //
-// Print does not call LiveView. Below the new scrollback content it redraws
-// the live region exactly as the event loop last drew it, so focus styling
-// stays and LiveView never runs at the same time as HandleEvent. The event
-// loop draws a fresh live region after the current event, as usual.
+// Print redraws instead in three cases: the live region leaves less than
+// two free rows on the screen, the terminal's size cannot be read, or the
+// terminal is narrower than the rendered rows (the window narrowed and the
+// resize event has not arrived yet). It then clears the live region, prints
+// the view, and draws the live region again below it, exactly as the event
+// loop last drew it. The result on screen and in scrollback is the same
+// either way.
+//
+// Print never calls LiveView, so focus styling stays and LiveView never
+// runs at the same time as HandleEvent. The event loop draws a fresh live
+// region after the current event, as usual.
 //
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
