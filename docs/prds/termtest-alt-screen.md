@@ -66,9 +66,13 @@ and to the tests of apps built on wonton.
 
 ### Reference behavior: ghostty probes
 
-I ran 43 probes through libghostty-vt (commit 9bfa8ee, 10x3 screen). The
-probes are in the notes copy of vtdiff (`altprobe.go`). They agree with the
-xterm control-sequence documentation where it is specific. Results:
+I ran 47 probes through libghostty-vt (commit 9bfa8ee, 10x3 screen) with
+vtdiff, a local harness that links libghostty-vt through cgo. vtdiff and its
+1,002-stream corpus stay in the maintainers' local notes, not in this repo,
+so that wonton needs no cgo. The implementation commits every probe, with
+ghostty's result written in, as table-driven termtest tests. `go test` then
+reruns the comparison. The probes agree with the xterm control-sequence
+documentation where it is specific. Results:
 
 | Sequence | On set (`h`) | On reset (`l`) |
 |---|---|---|
@@ -225,8 +229,11 @@ Acceptance:
   `CSI s`/`CSI u`. `?1049h` saves into the slot of the visible screen,
   which is the primary screen in normal use. `?1049l` restores from the
   primary screen's slot.
-- R-7: The vtdiff probe set for these sequences matches ghostty: text,
-  cursor, and style per cell.
+- R-7: termtest matches ghostty on every probe: text, cursor, and style
+  per cell. Each probe is a case in a table-driven termtest test, with
+  ghostty's result written in. The set includes the nested save:
+  `?1049h`, a cursor move, `?1049h` again on the alternate screen, then
+  `?1049l`, which restores the cursor from the first save.
 - R-8: `tui` gets tests for UC-1 (exit restores the primary screen) and
   UC-3 (suspend and resume). Each runs a real `Runtime` with scripted input
   and a `Screen` as the terminal's writer.
@@ -271,6 +278,11 @@ Acceptance:
 - **Ghostty is the reference where xterm's documentation is not specific.**
   The brief names ghostty, the harness already runs it, and the probes agree
   with xterm's documented behavior. Rejected: guessing from documentation.
+- **The probes ship as Go tests; the harness does not.** Each ghostty probe
+  is a termtest table case with the expected screen written in, so anyone
+  can rerun the check with `go test`. The vtdiff harness needs cgo and a
+  libghostty-vt build, so it stays out of the repo. Rejected: committing
+  vtdiff, which adds cgo to a module that has none.
 - **Saved cursor per screen, and `?1049h` uses the visible screen's slot.**
   This is what ghostty does (probes "DECSC per screen", "1049 save shares
   DECSC slot", and "1049h from alt via 47"). An app that uses `ESC 7` on the alternate screen must not move the
@@ -297,7 +309,7 @@ Acceptance:
 ## Success
 
 - The UC-1 and UC-3 tests exist in `tui` and pass.
-- The vtdiff alternate-screen probes match ghostty.
+- The termtest ghostty probe tests pass.
 - No existing test changes its result. The 1,002-stream vtdiff corpus,
   the renderer comparison, and the fuzz run match as before.
 - Must not get worse: `Write` throughput on screens that never switch, as
