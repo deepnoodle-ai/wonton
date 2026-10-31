@@ -37,7 +37,8 @@ type ghosttyProbe struct {
 // ghosttyProbes covers scroll regions, background color erase, C0 controls
 // inside CSI sequences, the cursor after IL and DL, TAB with a deferred
 // wrap, and how scroll regions, scrollback, and origin mode work with
-// Resize and the alternate screen.
+// Resize and the alternate screen, and how each alternate screen mode
+// clears while a background color is set.
 var ghosttyProbes = []ghosttyProbe{
 	// region
 	{
@@ -876,6 +877,104 @@ var ghosttyProbes = []ghosttyProbe{
 		post:   "\x1b[2;1HX\x1b[?1049l\x1b[1;1HY",
 		rows:   []string{"Y", "", "", ""},
 		cursor: [2]int{1, 0},
+	},
+	// alternate screen clears with a background color set
+	{
+		name:   "altscreen: 1049 enter leaves default cells",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[44m\x1b[?1049h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{2, 0},
+	},
+	{
+		name:   "altscreen: 1049 enter keeps the background for new text",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[44m\x1b[?1049hX",
+		rows:   []string{"  X", "", ""},
+		cursor: [2]int{3, 0},
+		bg:     []bgSpan{{0, 2, 2, "p4"}},
+	},
+	{
+		name:   "altscreen: 1049 reenter clears with the background it left with",
+		size:   [2]int{10, 3},
+		in:     "\x1b[?1049h\x1b[41m\x1b[?1049l\x1b[44m\x1b[?1049h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{0, 0},
+		bg:     []bgSpan{{0, 0, 9, "p1"}, {1, 0, 9, "p1"}, {2, 0, 9, "p1"}},
+	},
+	{
+		name:   "altscreen: 1049 after 47 clears with the background 47 left with",
+		size:   [2]int{10, 3},
+		in:     "\x1b[?47h\x1b[44m\x1b[?47l\x1b[0m\x1b[?1049h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{0, 0},
+		bg:     []bgSpan{{0, 0, 9, "p4"}, {1, 0, 9, "p4"}, {2, 0, 9, "p4"}},
+	},
+	{
+		name:   "altscreen: 1049 while on the alternate screen clears with the background",
+		size:   [2]int{10, 3},
+		in:     "\x1b[?1049hab\x1b[44m\x1b[?1049h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{2, 0},
+		bg:     []bgSpan{{0, 0, 9, "p4"}, {1, 0, 9, "p4"}, {2, 0, 9, "p4"}},
+	},
+	{
+		name:   "altscreen: 1049 reenter after leaving with default style",
+		size:   [2]int{10, 3},
+		in:     "\x1b[?1049h\x1b[44m\x1b[2J\x1b[0m\x1b[?1049l\x1b[44m\x1b[?1049h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{0, 0},
+	},
+	{
+		name:   "altscreen: 1049 leave keeps the primary screen",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[44m\x1b[?1049h\x1b[?1049lX",
+		rows:   []string{"abX", "", ""},
+		cursor: [2]int{3, 0},
+		bg:     []bgSpan{{0, 2, 2, "p4"}},
+	},
+	{
+		name:   "altscreen: 1047 enter does not clear",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[?1047hxy\x1b[?1047l\x1b[44m\x1b[?1047h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{4, 0},
+	},
+	{
+		name:   "altscreen: 1047 leave clears with the background",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[?1047hxy\x1b[44m\x1b[?1047l\x1b[0m\x1b[?1047h",
+		rows:   []string{"", "", ""},
+		cursor: [2]int{4, 0},
+		bg:     []bgSpan{{0, 0, 9, "p4"}, {1, 0, 9, "p4"}, {2, 0, 9, "p4"}},
+	},
+	{
+		name:   "altscreen: 47 enter and leave do not clear",
+		size:   [2]int{10, 3},
+		in:     "ab\x1b[?47hxy\x1b[44m\x1b[?47l\x1b[0m\x1b[?47h",
+		rows:   []string{"  xy", "", ""},
+		cursor: [2]int{4, 0},
+	},
+	// a cursor with a pending wrap whose row leaves the top
+	{
+		name:       "resize: pending wrap cursor row leaves top",
+		size:       [2]int{5, 4},
+		in:         "abcde\x1b[3;1Hxx\x1b[4;1Hyy\x1b[1;5HQ",
+		resize:     [2]int{5, 2},
+		post:       "Z",
+		rows:       []string{"xZ", "yy"},
+		cursor:     [2]int{2, 0},
+		scrollback: []string{"abcdQ", ""},
+	},
+	{
+		name:       "resize: pending wrap cursor row leaves top on widen",
+		size:       [2]int{5, 4},
+		in:         "abcde\x1b[3;1Hxx\x1b[4;1Hyy\x1b[1;5HQ",
+		resize:     [2]int{8, 2},
+		post:       "Z",
+		rows:       []string{"xZ", "yy"},
+		cursor:     [2]int{2, 0},
+		scrollback: []string{"abcdQ", ""},
 	},
 }
 
