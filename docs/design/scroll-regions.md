@@ -47,15 +47,16 @@ scrollback  []string // rows that left the top of a top-anchored region, oldest 
 ```
 
 `NewScreen` and `Reset` set `bottom = height-1`. `Reset` (RIS) clears the
-region and origin mode. It keeps `scrollback`, as ghostty does for RIS;
-the probe confirms this.
+region, origin mode, and scrollback, as ghostty does (probe "RIS clears
+scrollback").
 
 **BCE.** One helper, `s.eraseCell()`, returns a blank cell whose style has
 only `Background: s.style.Background`. Every fill site uses it: ED/EL
 (the `Clear*` methods), ECH, DCH and ICH (`rewriteRow` fills with it), IL,
-DL, and each new row from a scroll. `rowGlyphs` skips both `blankCell()`
-and erase cells (a space with no attribute but background), so DCH and ICH
-do not carry erased cells as glyphs. Direct calls to the public `Clear*`
+DL, and each new row from a scroll. `rowGlyphs` keeps treating only
+`blankCell()` as empty, so an erased cell with a background shifts with DCH
+and ICH like any other cell; the cells that DCH and ICH open take the
+current background. Direct calls to the public `Clear*`
 methods also use the current background; on a fresh screen that is the
 default, so existing callers see no change.
 
@@ -127,6 +128,7 @@ is correct because every collected control came before the final byte.
 | `termtest/bce.go` | new: `eraseCell`, `isEraseCell` |
 | `termtest/scrollback.go` | new: `Scrollback` |
 | `termtest/modes.go` | new: `setPrivateMode` |
+| `termtest/csicontrols.go` | new: run C0 controls found inside a CSI |
 | `termtest/region_test.go` and others | new tests, one per probe family |
 
 The raw-mode track changes how a bare LF moves the column; that change sits
@@ -266,8 +268,6 @@ tracks Windows Terminal over SSH.
 
 ## Open questions
 
-- Does ghostty keep scrollback on RIS? The vtdiff probe decides; termtest
-  follows ghostty. Does not change the design.
 - tmux: does it forward the CPR reply in order with key input when the
   outer terminal is slow? Leaning yes (tmux answers CPR itself from its own
   grid). Checked in the manual tmux run before part 2 merges.
