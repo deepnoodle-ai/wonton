@@ -96,6 +96,43 @@ func TestRuntimeRedrawCutsNoWideCharacter(t *testing.T) {
 	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 38, 8))
 }
 
+func TestRuntimeOnAlternateScreenRedrawsAfterResize(t *testing.T) {
+	// tui.Run draws on the alternate screen, which a resize truncates
+	// instead of reflowing. The shell screen behind it still reflows.
+	const prompt = "$ myapp --verbose"
+	app := resizeFullScreenApp{}
+	screen := termtest.NewScreen(80, 8)
+	screen.Write([]byte(prompt + "\r\n"))
+	term := NewTestTerminal(80, 8, screen)
+	term.EnableAlternateScreen()
+	r := NewRuntime(term, app, 30)
+	r.render()
+	assert.True(t, screen.IsAlternateScreen())
+	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 80, 8))
+
+	// At 38 columns the wide character "中" straddles the new right edge.
+	screen.Resize(38, 8)
+	termtest.AssertRow(t, screen, 0, "Title")
+	termtest.AssertRow(t, screen, 1, strings.Repeat("x", 37)) // cut, not reflowed
+	assert.Equal(t, screen.Cell(37, 1).Char, ' ', "the cut wide character is blank")
+	assert.False(t, screen.Cell(37, 1).Continuation)
+	termtest.AssertRow(t, screen, 7, "status bar")
+
+	term.SetSize(38, 8)
+	r.processEvent(ResizeEvent{Time: time.Now(), Width: 38, Height: 8})
+	r.render()
+	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 38, 8))
+
+	// The app quits: the shell screen comes back reflowed at the new
+	// width, with the cursor below the prompt.
+	screen.Resize(10, 8)
+	assert.NoError(t, term.Close())
+	assert.False(t, screen.IsAlternateScreen())
+	termtest.AssertRow(t, screen, 0, "$ myapp --")
+	termtest.AssertRow(t, screen, 1, "verbose")
+	termtest.AssertCursor(t, screen, 0, 2)
+}
+
 // resizeInlineApp shows a live region with one line wider than the narrow
 // size and one line shorter than it.
 type resizeInlineApp struct{}
