@@ -243,8 +243,9 @@ func (s *Screen) parseCSI(data string) int {
 
 	// Commands that move the cursor or edit the line cancel a deferred wrap.
 	switch cmd {
-	case 'm', 'n', 'c', 't', 'h', 'l', 's', 'S', 'T':
-		// No cursor effect; keep deferred-wrap state (CSI s saves it).
+	case 'm', 'n', 'c', 't', 'h', 'l', 's', 'S', 'T', 'r':
+		// No cursor effect; keep deferred-wrap state (CSI s saves it). A
+		// valid CSI r moves the cursor home, which clears it (region.go).
 	case 'L', 'M':
 		// IL and DL clear it only inside the scroll region (region.go).
 	default:

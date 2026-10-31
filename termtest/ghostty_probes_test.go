@@ -522,6 +522,21 @@ var ghosttyProbes = []ghosttyProbe{
 		rows:   []string{"abcdefghij", "X", ""},
 		cursor: [2]int{1, 1},
 	},
+	// DECSTBM and a pending wrap
+	{
+		name:   "region: invalid DECSTBM keeps pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\x1b[3;2rX",
+		rows:   []string{"abcdefghij", "X", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "region: valid DECSTBM clears pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\x1b[1;2rX",
+		rows:   []string{"Xbcdefghij", "", ""},
+		cursor: [2]int{1, 0},
+	},
 	// Scroll regions, scrollback, and origin mode with Resize and the
 	// alternate screen. Each writes in, resizes, and writes post.
 	{
