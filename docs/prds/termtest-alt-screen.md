@@ -220,7 +220,9 @@ Acceptance:
 - R-5: `Reset()` and `ESC c` return to the primary screen, clear both
   screens, and clear both saved cursors.
 - R-6: Each screen has its own saved cursor for `ESC 7`/`ESC 8` and
-  `CSI s`/`CSI u`. `?1049h` saves into the primary screen's slot.
+  `CSI s`/`CSI u`. `?1049h` saves into the slot of the visible screen,
+  which is the primary screen in normal use. `?1049l` restores from the
+  primary screen's slot.
 - R-7: The vtdiff probe set for these sequences matches ghostty: text,
   cursor, and style per cell.
 - R-8: `tui` gets tests for UC-1 (exit restores the primary screen) and
@@ -267,9 +269,9 @@ Acceptance:
 - **Ghostty is the reference where xterm's documentation is not specific.**
   The brief names ghostty, the harness already runs it, and the probes agree
   with xterm's documented behavior. Rejected: guessing from documentation.
-- **Saved cursor per screen, and `?1049h` uses the primary slot.** This is
-  what ghostty does (probes "DECSC per screen" and "1049 save shares DECSC
-  slot"). An app that uses `ESC 7` on the alternate screen must not move the
+- **Saved cursor per screen, and `?1049h` uses the visible screen's slot.**
+  This is what ghostty does (probes "DECSC per screen", "1049 save shares
+  DECSC slot", and "1049h from alt via 47"). An app that uses `ESC 7` on the alternate screen must not move the
   shell's cursor on exit.
 - **No option to turn the support off.** The old behavior was wrong, and an
   option keeps the wrong behavior alive for nobody. A test that read the
