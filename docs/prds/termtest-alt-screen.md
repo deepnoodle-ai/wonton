@@ -84,9 +84,11 @@ Edge cases from the same probes:
 - `?1047l` on the primary screen clears nothing.
 - `ESC 7` and `ESC 8` (DECSC and DECRC) save and restore the pending wrap
   too. `CSI s` and `CSI u` save and restore the same state as DECSC and
-  DECRC, style and pending wrap included. termtest does neither today; this
-  track adds both, because `?1049` uses the same save and the two save
-  commands share one slot.
+  DECRC, style and pending wrap included. Today termtest saves position
+  and style on `ESC 7` (`termtest/ansi.go:63-75`) and position only on
+  `CSI s` (`termtest/ansi.go:321-326`). Neither saves pending wrap. This
+  track adds style to `CSI s` and pending wrap to both, because `?1049`
+  uses the same save and the two save commands share one slot.
 - Mixed pairs work per the table: `?1049h` then `?47l` switches back without
   a cursor restore. `?47h` then `?1049l` switches back and restores the
   primary slot.
