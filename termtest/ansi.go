@@ -288,7 +288,10 @@ func (s *Screen) parseCSI(data string) int {
 			s.clearCells()
 		case 3:
 			// ED 3 erases the scrollback and leaves the screen alone.
-			s.scrollback = nil
+			// The alternate screen has none, so there it does nothing.
+			if !s.alt.active {
+				s.scrollback = nil
+			}
 		}
 	case 'K': // Erase in Line
 		n := getParam(args, 0, 0)
@@ -326,7 +329,7 @@ func (s *Screen) parseCSI(data string) int {
 	case 'r': // Set Scrolling Region (DECSTBM)
 		s.setScrollRegion(args)
 	case 'S': // Scroll Up (SU)
-		s.scrollRegionUp(getParam(args, 0, 1))
+		s.scrollRegionUp(getParam(args, 0, 1), false)
 	case 'T': // Scroll Down (SD)
 		s.scrollRegionDown(getParam(args, 0, 1))
 	case 'h', 'l': // Set/Reset Mode

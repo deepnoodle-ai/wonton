@@ -290,10 +290,12 @@ func TestAppRestoresShellScreen(t *testing.T) {
 `Screen.Resize` changes the size between two writes, as a user resizes the
 terminal window. Text that wrapped at the right edge reflows the way ghostty,
 iTerm2, kitty, and WezTerm reflow it. Lines that ended with a line feed never
-join. termtest has no scrollback: rows pushed off the top are lost. The
-alternate screen does not reflow: its rows are cut at the new edge. The
-shell screen behind it still reflows, so it comes back reflowed when the
-app quits.
+join. Rows pushed off the top go to the scrollback (`Screen.Scrollback`),
+and a taller screen takes them back when the cursor is on the last row.
+Lines in the scrollback reflow too. The alternate screen does not reflow:
+its rows are cut at the new edge, and it has no scrollback. The shell
+screen behind it still reflows, so it comes back reflowed when the app
+quits. A resize resets the scroll region to the whole screen.
 
 ```go
 func TestRedrawAfterResize(t *testing.T) {
@@ -326,6 +328,10 @@ func TestScrollRegion(t *testing.T) {
 	assert.Equal(t, screen.Scrollback(), []string{"1"})
 }
 ```
+
+Only the primary screen has scrollback. While the alternate screen is
+visible, `Scrollback` returns nil, and a scroll there adds nothing to the
+primary screen's scrollback.
 
 Erase, insert, delete, and scroll operations fill new cells with the
 current background color (background color erase), as xterm and ghostty do.
@@ -370,7 +376,7 @@ current background color (background color erase), as xterm and ghostty do.
 | `Screen.ClearToStartOfLine` | Clears line start to cursor | none | none |
 | `Screen.ClearToEndOfScreen` | Clears cursor to screen end | none | none |
 | `Screen.ClearToStartOfScreen` | Clears screen start to cursor | none | none |
-| `Screen.Scrollback` | Rows that scrolled off the top, oldest first | none | `[]string` |
+| `Screen.Scrollback` | Primary screen rows that scrolled off the top, oldest first | none | `[]string` |
 
 ### Assertion Functions
 

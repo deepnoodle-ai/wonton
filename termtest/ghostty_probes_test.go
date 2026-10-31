@@ -26,6 +26,8 @@ type ghosttyProbe struct {
 	name       string
 	size       [2]int // width, height
 	in         string
+	resize     [2]int   // if set, Resize to this width and height after in
+	post       string   // written after the resize
 	rows       []string // Row text, trailing spaces trimmed
 	cursor     [2]int
 	scrollback []string
@@ -33,8 +35,9 @@ type ghosttyProbe struct {
 }
 
 // ghosttyProbes covers scroll regions, background color erase, C0 controls
-// inside CSI sequences, the cursor after IL and DL, and TAB with a
-// deferred wrap.
+// inside CSI sequences, the cursor after IL and DL, TAB with a deferred
+// wrap, and how scroll regions, scrollback, and origin mode work with
+// Resize and the alternate screen.
 var ghosttyProbes = []ghosttyProbe{
 	// region
 	{
@@ -519,6 +522,346 @@ var ghosttyProbes = []ghosttyProbe{
 		rows:   []string{"abcdefghij", "X", ""},
 		cursor: [2]int{1, 1},
 	},
+	// Scroll regions, scrollback, and origin mode with Resize and the
+	// alternate screen. Each writes in, resizes, and writes post.
+	{
+		name:   "resize: wrapped row scrolled in region then narrow",
+		size:   [2]int{10, 5},
+		in:     "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[2;4r\x1b[1S",
+		resize: [2]int{5, 5},
+		post:   "X",
+		rows:   []string{"X", "klmno", "4", "", "5"},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "resize: wrapped row scrolled in region then widen",
+		size:   [2]int{10, 5},
+		in:     "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[2;4r\x1b[4;1H\n",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"1", "klmno", "4", "X", "5"},
+		cursor: [2]int{1, 3},
+	},
+	{
+		name:   "resize: wrapped row scrolled down in region then widen",
+		size:   [2]int{10, 5},
+		in:     "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[2;4r\x1b[2;1H\x1bM",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"1", "X", "abcdefghij", "klmno", "5"},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "resize: wrapped row moved by IL in region then widen",
+		size:   [2]int{10, 5},
+		in:     "abcdefghijklmno\r\n3\r\n4\r\n5\x1b[1;4r\x1b[1;1H\x1b[L",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"X", "abcdefghij", "klmno", "3", "5"},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "resize: wrapped row moved by DL in region then widen",
+		size:   [2]int{10, 5},
+		in:     "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[1;4r\x1b[1;1H\x1b[M",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"Xbcdefghij", "klmno", "4", "", "5"},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:       "resize: wrapped row split into scrollback by region then widen",
+		size:       [2]int{10, 5},
+		in:         "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[1;4r\x1b[2S",
+		resize:     [2]int{15, 5},
+		post:       "X",
+		rows:       []string{"abcdefghijXlmno", "4", "", "", "5"},
+		cursor:     [2]int{11, 0},
+		scrollback: []string{"1"},
+	},
+	{
+		name:       "resize: wrapped row split into scrollback by region then narrow",
+		size:       [2]int{10, 5},
+		in:         "1\r\nabcdefghijklmno\r\n4\r\n5\x1b[1;4r\x1b[2S",
+		resize:     [2]int{5, 5},
+		post:       "X",
+		rows:       []string{"Xlmno", "4", "", "", "5"},
+		cursor:     [2]int{1, 0},
+		scrollback: []string{"1", "abcde", "fghij"},
+	},
+	{
+		name:       "resize: wrapped row in scrollback by LF then widen",
+		size:       [2]int{10, 3},
+		in:         "abcdefghijklmno\r\n3\r\n4\r\n5",
+		resize:     [2]int{15, 3},
+		post:       "X",
+		rows:       []string{"3", "4", "5X"},
+		cursor:     [2]int{2, 2},
+		scrollback: []string{"abcdefghijklmno"},
+	},
+	{
+		name:   "resize: wrapped rows in region with wide char then narrow",
+		size:   [2]int{10, 5},
+		in:     "1\r\nabcdefgh中ijk\r\n4\r\n5\x1b[2;4r\x1b[1S",
+		resize: [2]int{5, 5},
+		post:   "X",
+		rows:   []string{"X", "ijk", "4", "", "5"},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:       "resize: region scroll then shrink height",
+		size:       [2]int{10, 5},
+		in:         "1\r\n2\r\n3\r\n4\r\n5\x1b[1;3r\x1b[3;1H\n\x1b[5;1H",
+		resize:     [2]int{10, 3},
+		post:       "X",
+		rows:       []string{"", "4", "X"},
+		cursor:     [2]int{1, 2},
+		scrollback: []string{"1", "2", "3"},
+	},
+	{
+		name:   "resize: region scroll then grow height at bottom",
+		size:   [2]int{10, 4},
+		in:     "1\r\n2\r\n3\r\n4\x1b[1;3r\x1b[3;1H\n\n\x1b[4;1H",
+		resize: [2]int{10, 6},
+		post:   "X",
+		rows:   []string{"1", "2", "3", "", "", "X"},
+		cursor: [2]int{1, 5},
+	},
+	{
+		name:       "resize: region scroll then grow height not at bottom",
+		size:       [2]int{10, 4},
+		in:         "1\r\n2\r\n3\r\n4\x1b[1;3r\x1b[3;1H\n\n",
+		resize:     [2]int{10, 6},
+		post:       "X",
+		rows:       []string{"3", "", "X", "4", "", ""},
+		cursor:     [2]int{1, 2},
+		scrollback: []string{"1", "2"},
+	},
+	{
+		name:   "resize: resize resets region",
+		size:   [2]int{10, 5},
+		in:     "1\r\n2\r\n3\r\n4\r\n5\x1b[2;3r\x1b[3;1H",
+		resize: [2]int{10, 5},
+		post:   "\x1b[5;1H\nX",
+		rows:   []string{"1", "2", "3", "4", "X"},
+		cursor: [2]int{1, 4},
+	},
+	{
+		name:       "resize: resize resets region same size check",
+		size:       [2]int{10, 5},
+		in:         "1\r\n2\r\n3\r\n4\r\n5\x1b[2;3r",
+		resize:     [2]int{10, 4},
+		post:       "\x1b[4;1H\nX",
+		rows:       []string{"3", "4", "5", "X"},
+		cursor:     [2]int{1, 3},
+		scrollback: []string{"1", "2"},
+	},
+	{
+		name:   "origin: origin mode survives resize",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?6h",
+		resize: [2]int{10, 4},
+		post:   "\x1b[3;1HX",
+		rows:   []string{"", "", "X", ""},
+		cursor: [2]int{1, 2},
+	},
+	{
+		name:   "resize: bg row below cursor trims on shrink",
+		size:   [2]int{10, 5},
+		in:     "1\x1b[3;1H\x1b[44m\x1b[2K\x1b[0m\x1b[1;2H",
+		resize: [2]int{10, 3},
+		post:   "X",
+		rows:   []string{"1X", "", ""},
+		cursor: [2]int{2, 0},
+		bg:     []bgSpan{{2, 0, 9, "p4"}},
+	},
+	{
+		name:   "resize: bg row below cursor narrow",
+		size:   [2]int{10, 5},
+		in:     "1\x1b[3;1H\x1b[44m\x1b[2K\x1b[0m\x1b[1;2H",
+		resize: [2]int{5, 5},
+		post:   "X",
+		rows:   []string{"1X", "", "", "", ""},
+		cursor: [2]int{2, 0},
+		bg:     []bgSpan{{2, 0, 4, "p4"}, {3, 0, 4, "p4"}},
+	},
+	{
+		name:   "alt: region scroll on alt then leave",
+		size:   [2]int{10, 4},
+		in:     "p1\r\np2\x1b[?1049h\x1b[Ha\r\nb\r\nc\r\nd\x1b[1;3r\x1b[3;1H\n\nX",
+		resize: [2]int{10, 4},
+		post:   "\x1b[?1049lY",
+		rows:   []string{"p1", "p2Y", "", ""},
+		cursor: [2]int{3, 1},
+	},
+	{
+		name:   "alt: full screen scroll on alt then leave",
+		size:   [2]int{10, 3},
+		in:     "p1\r\np2\x1b[?1049h\x1b[Ha\r\nb\r\nc\r\nd\r\ne",
+		resize: [2]int{10, 3},
+		post:   "\x1b[?1049lY",
+		rows:   []string{"p1", "p2Y", ""},
+		cursor: [2]int{3, 1},
+	},
+	{
+		name:   "alt: region on alt kept after leave",
+		size:   [2]int{10, 4},
+		in:     "1\r\n2\r\n3\r\n4\x1b[?1049h\x1b[2;3r\x1b[?1049l\x1b[3;1H\nX",
+		resize: [2]int{10, 4},
+		rows:   []string{"1", "3", "X", "4"},
+		cursor: [2]int{1, 2},
+	},
+	{
+		name:   "alt: region set before alt applies on alt",
+		size:   [2]int{10, 4},
+		in:     "\x1b[2;3r\x1b[?1049h\x1b[Ha\r\nb\r\nc\r\nd\x1b[3;1H\nX",
+		resize: [2]int{10, 4},
+		rows:   []string{"a", "d", "X", ""},
+		cursor: [2]int{1, 2},
+	},
+	{
+		name:       "alt: region scroll on alt then resize then leave",
+		size:       [2]int{10, 4},
+		in:         "p1\r\nabcdefghijklmno\r\n$ \x1b[?1049h\x1b[Ha\r\nb\r\nc\r\nd\x1b[1;3r\x1b[3;1H\n\n",
+		resize:     [2]int{5, 4},
+		post:       "\x1b[?1049lY",
+		rows:       []string{"abcde", "fghij", "klmno", "$ Y"},
+		cursor:     [2]int{3, 3},
+		scrollback: []string{"p1"},
+	},
+	{
+		name:       "alt: ED 3 on alt keeps primary scrollback",
+		size:       [2]int{10, 2},
+		in:         "1\r\n2\r\n3\x1b[?1049h\x1b[3J",
+		resize:     [2]int{10, 2},
+		post:       "\x1b[?1049lY",
+		rows:       []string{"2", "3Y"},
+		cursor:     [2]int{2, 1},
+		scrollback: []string{"1"},
+	},
+	{
+		name:   "alt: primary scrollback hidden on alt",
+		size:   [2]int{10, 2},
+		in:     "1\r\n2\r\n3\x1b[?1049hX",
+		resize: [2]int{10, 2},
+		rows:   []string{"", " X"},
+		cursor: [2]int{2, 1},
+	},
+	{
+		name:       "resize: widen pulls rows back from scrollback",
+		size:       [2]int{4, 2},
+		in:         "abcdef\r\nabcdef\r\nabcdef",
+		resize:     [2]int{8, 2},
+		post:       "X",
+		rows:       []string{"abcdef", "abcdefX"},
+		cursor:     [2]int{7, 1},
+		scrollback: []string{"abcdef"},
+	},
+	{
+		name:       "resize: printed spaces row kept on shrink",
+		size:       [2]int{10, 5},
+		in:         "1\x1b[5;1H   \x1b[1;2H",
+		resize:     [2]int{10, 3},
+		post:       "X",
+		rows:       []string{"X", "", ""},
+		cursor:     [2]int{1, 0},
+		scrollback: []string{"1", ""},
+	},
+	{
+		name:   "resize: bg last row trims on shrink",
+		size:   [2]int{10, 5},
+		in:     "1\x1b[5;1H\x1b[44m\x1b[2K\x1b[0m\x1b[1;2H",
+		resize: [2]int{10, 3},
+		post:   "X",
+		rows:   []string{"1X", "", ""},
+		cursor: [2]int{2, 0},
+	},
+	{
+		name:   "resize: LF at region bottom keeps wrapped pair",
+		size:   [2]int{10, 5},
+		in:     "1\r\nx\r\nabcdefghijklmno\r\n5\x1b[2;4r\x1b[4;1H\n",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"1", "abcdefghijklmno", "X", "5", ""},
+		cursor: [2]int{1, 2},
+	},
+	{
+		name:   "resize: SU in region ends wraps",
+		size:   [2]int{10, 5},
+		in:     "1\r\nx\r\nabcdefghijklmno\r\n5\x1b[2;4r\x1b[S",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"X", "abcdefghij", "klmno", "", "5"},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:       "resize: SU full screen keeps wraps in scrollback",
+		size:       [2]int{10, 3},
+		in:         "abcdefghijklmno\r\n3\x1b[2S",
+		resize:     [2]int{15, 3},
+		post:       "X",
+		rows:       []string{"3", "", " X"},
+		cursor:     [2]int{2, 2},
+		scrollback: []string{"abcdefghijklmno"},
+	},
+	{
+		name:   "resize: IL keeps wrap of row above",
+		size:   [2]int{10, 5},
+		in:     "abcdefghijklmno\r\n3\x1b[2;1H\x1b[L",
+		resize: [2]int{15, 5},
+		post:   "X",
+		rows:   []string{"abcdefghijX", "klmno", "3", "", ""},
+		cursor: [2]int{11, 0},
+	},
+	{
+		name:   "origin: origin mode carries into alt",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?6h\x1b[?1049h\x1b[1;1HX",
+		resize: [2]int{10, 5},
+		rows:   []string{"", "X", "", "", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "origin: origin mode set on alt restored on leave",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?1049h\x1b[?6h\x1b[1;1HA\x1b[?1049l\x1b[1;1HX",
+		resize: [2]int{10, 5},
+		rows:   []string{"X", "", "", "", ""},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "origin: origin mode cleared on alt restored on leave",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?6h\x1b[?1049h\x1b[?6l\x1b[?1049l\x1b[1;1HX",
+		resize: [2]int{10, 5},
+		rows:   []string{"", "X", "", "", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "origin: origin mode with 47 not saved",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?47h\x1b[?6h\x1b[?47l\x1b[1;1HX",
+		resize: [2]int{10, 5},
+		rows:   []string{"", "X", "", "", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "origin: origin mode DECSC per screen",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?6h\x1b7\x1b[?6l\x1b[?47h\x1b8\x1b[1;1HX",
+		resize: [2]int{10, 5},
+		rows:   []string{"X", "", "", "", ""},
+		cursor: [2]int{1, 0},
+	},
+	{
+		name:   "origin: origin mode alt resize",
+		size:   [2]int{10, 5},
+		in:     "\x1b[2;4r\x1b[?6h\x1b[?1049h",
+		resize: [2]int{10, 4},
+		post:   "\x1b[2;1HX\x1b[?1049l\x1b[1;1HY",
+		rows:   []string{"Y", "", "", ""},
+		cursor: [2]int{1, 0},
+	},
 }
 
 func TestGhosttyProbes(t *testing.T) {
@@ -526,6 +869,10 @@ func TestGhosttyProbes(t *testing.T) {
 		t.Run(p.name, func(t *testing.T) {
 			s := NewScreen(p.size[0], p.size[1])
 			s.Write([]byte(p.in))
+			if p.resize != [2]int{} {
+				s.Resize(p.resize[0], p.resize[1])
+				s.Write([]byte(p.post))
+			}
 			assert.Equal(t, rows(s), p.rows, "rows")
 			x, y := s.Cursor()
 			assert.Equal(t, [2]int{x, y}, p.cursor, "cursor")

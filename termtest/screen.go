@@ -81,8 +81,9 @@
 //   - 256-color and 24-bit RGB colors
 //
 // Screen.Resize changes the size between two writes, as a user resizes the
-// terminal window. It reflows soft-wrapped text the way ghostty does. The
-// alternate screen is truncated at the new edge instead, as in ghostty.
+// terminal window. It reflows soft-wrapped text the way ghostty does, the
+// scrollback included. The alternate screen is truncated at the new edge
+// instead, as in ghostty.
 //
 // Unicode and wide characters (CJK, emoji) are handled correctly with proper
 // width calculation.
@@ -178,10 +179,10 @@ type Screen struct {
 	rowInfo map[*Cell]*rowMeta
 
 	// Scroll region (DECSTBM) and origin mode (DECOM); see region.go.
-	top, bottom int      // Scroll region rows, 0-based and inclusive; the whole screen when unset
-	originMode  bool     // Cursor rows count from the region top (CSI ? 6 h)
-	savedOrigin bool     // Origin mode saved by ESC 7
-	scrollback  []string // Rows that scrolled off the top, oldest first; see Scrollback
+	top, bottom int       // Scroll region rows, 0-based and inclusive; the whole screen when unset
+	originMode  bool      // Cursor rows count from the region top (CSI ? 6 h)
+	savedOrigin bool      // Origin mode saved by ESC 7
+	scrollback  []gridRow // Primary screen rows that scrolled off the top, oldest first; see Scrollback
 }
 
 type skipMode uint8
@@ -380,6 +381,7 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		s.wrapPending = false
 		s.cursorX = 0
 		s.lineFeed()
+		s.markContinued(s.cursorY)
 	}
 
 	first, firstSize := utf8.DecodeRuneInString(cluster)
@@ -645,15 +647,7 @@ func (s *Screen) Row(y int) string {
 	if y < 0 || y >= s.height {
 		return ""
 	}
-	var line strings.Builder
-	for x := 0; x < s.width; x++ {
-		cell := s.cells[y][x]
-		if cell.Continuation {
-			continue
-		}
-		writeCellGlyph(&line, cell)
-	}
-	return strings.TrimRight(line.String(), " ")
+	return rowText(s.cells[y])
 }
 
 // Contains checks if the screen contains the given text anywhere in its content.

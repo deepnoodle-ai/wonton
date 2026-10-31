@@ -13,6 +13,12 @@ type rowMeta struct {
 	// character did not fit, leaving a blank pad cell in the last column
 	// that is not part of the text.
 	spacerHead bool
+	// continued is set on the row that wrapped text continues on. It
+	// usually matches the row above being wrapped, but insert and delete
+	// line end it on the rows they move while the row above keeps its
+	// wrap, as in ghostty. Resize counts these rows to keep the rows below
+	// the cursor.
+	continued bool
 	// printed marks cells a program printed. A printed space looks the
 	// same as an erased cell, but reflow keeps it as content.
 	printed []bool
@@ -74,6 +80,11 @@ func (s *Screen) markWrapped(y int, spacer bool) {
 	m.spacerHead = spacer
 }
 
+// markContinued records that row y continues a soft-wrapped row.
+func (s *Screen) markContinued(y int) {
+	s.metaFor(y).continued = true
+}
+
 // markErased records that cells [from, to) of row y were erased. unwrap
 // ends the row's soft wrap, as erasing to the end of a row does in ghostty.
 func (s *Screen) markErased(y, from, to int, unwrap bool) {
@@ -109,30 +120,34 @@ func (s *Screen) shiftPrinted(y, from, n int) {
 	m.printed = shifted
 }
 
-// contentEnd returns the column after the last cell of row y that holds
+// contentEnd returns the column after the last cell of the row that holds
 // content: a printed cell, or a cell that differs from an erased one.
-func (s *Screen) contentEnd(y int) int {
-	m := s.meta(y)
-	for x := s.width - 1; x >= 0; x-- {
-		if s.cells[y][x] != blankCell() || (m != nil && m.printed != nil && m.printed[x]) {
+func (r gridRow) contentEnd() int {
+	for x := len(r.cells) - 1; x >= 0; x-- {
+		if r.cells[x] != blankCell() || r.printedAt(x) {
 			return x + 1
 		}
 	}
 	return 0
 }
 
-// rowLen returns how many cells of row y belong to its logical line. A
+// lineLen returns how many cells of the row belong to its logical line. A
 // soft-wrapped row is full, less a pad cell left by a wide character.
-func (s *Screen) rowLen(y int) int {
-	m := s.meta(y)
-	if m == nil || !m.wrapped {
-		return s.contentEnd(y)
+func (r gridRow) lineLen() int {
+	if !r.wrapped() {
+		return r.contentEnd()
 	}
-	if m.spacerHead && s.cells[y][s.width-1] == blankCell() &&
-		(m.printed == nil || !m.printed[s.width-1]) {
-		return s.width - 1
+	last := len(r.cells) - 1
+	if r.meta.spacerHead && r.cells[last] == blankCell() && !r.printedAt(last) {
+		return last
 	}
-	return s.width
+	return len(r.cells)
+}
+
+func (r gridRow) wrapped() bool { return r.meta != nil && r.meta.wrapped }
+
+func (r gridRow) printedAt(x int) bool {
+	return r.meta != nil && r.meta.printed != nil && x < len(r.meta.printed) && r.meta.printed[x]
 }
 
 // Resize changes the screen size, as a user resizes a terminal window.
@@ -151,15 +166,21 @@ func (s *Screen) rowLen(y int) int {
 //   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
 //     character. One whose row leaves the top goes to the home position.
 //   - With fewer rows, blank rows below the cursor go first, then rows
-//     leave the top. termtest has no scrollback, so those rows are lost: a
-//     later Resize to more rows adds blank rows at the bottom, where a
-//     real terminal would bring them back.
+//     leave the top for the scrollback (see Scrollback). With more rows,
+//     rows come back from the scrollback if the cursor is on the last
+//     row; otherwise blank rows are added at the bottom.
+//   - Soft-wrapped lines in the scrollback reflow too, also a line that
+//     starts in the scrollback and ends on the screen. When wider rows
+//     leave room on the screen, rows come back from the scrollback, and
+//     the cursor keeps as many rows below it as before.
+//   - The scroll region resets to the whole screen. Origin mode stays.
 //
 // The alternate screen (see IsAlternateScreen) does not reflow, as in
 // ghostty: each row is cut at the new right edge, a wide character whose
 // second half falls off the edge becomes blank, and widening adds blank
-// cells. The primary screen behind it still reflows, so the shell screen
-// that comes back when the application quits is the reflowed one.
+// cells. It has no scrollback, so rows that leave its top are lost. The
+// primary screen behind it still reflows, so the shell screen that comes
+// back when the application quits is the reflowed one.
 //
 // Width and height under 1 are treated as 1, as in NewScreen. Resizing to
 // the current size changes nothing. The current style, any partly written
@@ -209,54 +230,49 @@ func (s *Screen) swapGrids() {
 }
 
 // resizeGrid resizes the visible grid and returns where the marks moved.
-// marks[0] is the cursor and marks[1] the saved cursor. It reflows
-// soft-wrapped lines when reflow is set; otherwise it cuts each row at the
-// new width.
+// marks[0] is the cursor and marks[1] the saved cursor. The primary screen
+// reflows soft-wrapped lines, together with its scrollback; the alternate
+// screen cuts each row at the new width and has no scrollback.
 //
 // Like the cursor, the saved cursor stays on its character, as ghostty
 // tracks it, and goes home if its row leaves the top.
-func (s *Screen) resizeGrid(width, height int, reflow bool, marks ...mark) []mark {
-	var rows []resizedRow
-	moved := make([]mark, len(marks))
-	if width == s.width || !reflow {
-		rows = make([]resizedRow, s.height)
-		for y := range rows {
-			rows[y] = s.truncatedRow(y, width)
-		}
-		for i, m := range marks {
-			if m.pending && width > s.width {
-				// The cell after the mark now exists, so the wrap is no
-				// longer pending: the mark moves onto that cell.
-				m.x, m.pending = m.x+1, false
-			}
-			moved[i] = m
-		}
-	} else {
-		rows, moved = s.reflow(width, marks)
+func (s *Screen) resizeGrid(width, height int, primary bool, marks ...mark) []mark {
+	g := &resizer{width: s.width, height: s.height}
+	if primary {
+		g.rows = append(g.rows, s.scrollback...)
+	}
+	g.top = len(g.rows)
+	for y := 0; y < s.height; y++ {
+		g.rows = append(g.rows, gridRow{cells: s.cells[y], meta: s.meta(y)})
+	}
+	for _, m := range marks {
+		m.y += g.top
+		g.marks = append(g.marks, m)
 	}
 
-	// Fit the rows to the new height: drop blank rows below the cursor,
-	// then rows from the top, then pad with blank rows at the bottom.
-	for len(rows) > height && len(rows)-1 > moved[0].y && rows[len(rows)-1].blank() {
-		rows = rows[:len(rows)-1]
-	}
-	if drop := len(rows) - height; drop > 0 {
-		rows = rows[drop:]
-		for i := range moved {
-			if moved[i].y -= drop; moved[i].y < 0 {
-				// The mark's row left the top: ghostty puts it at home.
-				moved[i] = mark{}
-			}
-		}
-	}
-	for len(rows) < height {
-		rows = append(rows, resizedRow{cells: blankRow(width)})
+	// Like ghostty, change the row count before the reflow when the
+	// screen narrows and after it when the screen widens. Both steps use
+	// the cursor row from before the resize, as ghostty does.
+	cursorY := marks[0].y
+	switch {
+	case width == s.width || !primary:
+		g.truncate(width)
+		g.fitHeight(height, cursorY)
+	case width < s.width:
+		g.fitHeight(height, cursorY)
+		g.reflow(width, cursorY)
+	default:
+		g.reflow(width, cursorY)
+		g.fitHeight(height, cursorY)
 	}
 
+	if primary {
+		s.scrollback = append([]gridRow(nil), g.rows[:g.top]...)
+	}
 	s.width, s.height = width, height
 	s.cells = make([][]Cell, height)
 	s.rowInfo = nil
-	for y, row := range rows {
+	for y, row := range g.rows[g.top : g.top+height] {
 		s.cells[y] = row.cells
 		if row.meta != nil {
 			if s.rowInfo == nil {
@@ -265,7 +281,18 @@ func (s *Screen) resizeGrid(width, height int, reflow bool, marks ...mark) []mar
 			s.rowInfo[&s.cells[y][0]] = row.meta
 		}
 	}
-	for i, m := range moved {
+	moved := make([]mark, len(g.marks))
+	for i, m := range g.marks {
+		if m.y -= g.top; m.y < 0 {
+			// The mark's row left the top: ghostty puts it at home. The
+			// cursor keeps the pending wrap it had before the resize,
+			// which the next lines turn into a move to the next cell, as
+			// ghostty does.
+			m = mark{pending: i == 0 && marks[0].pending}
+		}
+		if m.pending && m.x < width-1 {
+			m.x, m.pending = m.x+1, false
+		}
 		m.x = clamp(m.x, 0, width-1)
 		m.y = clamp(m.y, 0, height-1)
 		m.pending = m.pending && m.x == width-1
@@ -274,40 +301,156 @@ func (s *Screen) resizeGrid(width, height int, reflow bool, marks ...mark) []mar
 	return moved
 }
 
-// truncatedRow returns row y cut or padded to width, in a new slice. A wide
+// resizer holds the rows of one screen while Resize works on them: the
+// scrollback rows (primary screen only), then the screen rows from index
+// top. Mark rows are indexes into rows; marks[0] is the cursor.
+type resizer struct {
+	rows          []gridRow
+	top           int
+	width, height int
+	marks         []mark
+}
+
+// truncate cuts or pads every row to width, without reflow.
+func (g *resizer) truncate(width int) {
+	for i, r := range g.rows {
+		g.rows[i] = r.truncated(width)
+	}
+	if width > g.width {
+		for i, m := range g.marks {
+			if m.pending {
+				// The cell after the mark now exists, so the wrap is no
+				// longer pending: the mark moves onto that cell.
+				g.marks[i].x, g.marks[i].pending = m.x+1, false
+			}
+		}
+	}
+	g.width = width
+}
+
+// fitHeight changes the number of screen rows without reflow, as ghostty
+// does. Fewer rows: blank rows at the bottom go first, then rows leave the
+// top for the scrollback. More rows: if the cursor was on the last row,
+// rows come back from the scrollback; otherwise, and when the scrollback
+// runs out, blank rows are added at the bottom. cursorY is the cursor's
+// screen row before the resize.
+func (g *resizer) fitHeight(height, cursorY int) {
+	switch {
+	case height < g.height:
+		for n := g.height - height; n > 0 && g.droppable(len(g.rows)-1) && g.rows[len(g.rows)-1].blank(); n-- {
+			g.rows = g.rows[:len(g.rows)-1]
+		}
+		g.top = max(g.top, len(g.rows)-height)
+	case height > g.height && cursorY >= g.height-1:
+		g.top = max(0, len(g.rows)-height)
+	}
+	g.padRows(height)
+	g.height = height
+}
+
+// reflow rewraps every logical line, scrollback included, at width. Like
+// ghostty, it drops blank rows at the end, shows the last rows, and then
+// adds blank rows at the bottom so the cursor keeps as many rows below it
+// as it had, less the rows that new soft wraps above it take. cursorY is
+// the cursor's screen row before the resize, which ghostty counts from
+// even when the row count already changed.
+func (g *resizer) reflow(width, cursorY int) {
+	below := max(g.height-1-cursorY, 0)
+	cursor := g.marks[0].y
+	onScreen := cursor >= g.top
+	wrapsBefore := 0
+	if onScreen {
+		wrapsBefore = continuations(g.rows, g.top, cursor)
+	}
+
+	g.rows, g.marks = reflowRows(g.rows, width, g.marks)
+	g.width = width
+	for len(g.rows) > 1 && g.droppable(len(g.rows)-1) && g.rows[len(g.rows)-1].contentEnd() == 0 &&
+		!g.rows[len(g.rows)-1].wrapped() {
+		g.rows = g.rows[:len(g.rows)-1]
+	}
+	g.top = 0
+	g.padRows(g.height)
+	g.top = len(g.rows) - g.height
+
+	cursor = g.marks[0].y
+	if onScreen && cursor >= g.top {
+		wrapsNow := continuations(g.rows, g.top, cursor)
+		have := g.height - 1 - (cursor - g.top)
+		for n := below - max(wrapsNow-wrapsBefore, 0) - have; n > 0; n-- {
+			g.rows = append(g.rows, gridRow{cells: blankRow(width)})
+		}
+		g.top = len(g.rows) - g.height
+	}
+}
+
+// droppable reports whether row y may be dropped from the bottom: no mark
+// (cursor or saved cursor) is on it or below it.
+func (g *resizer) droppable(y int) bool {
+	for _, m := range g.marks {
+		if m.y >= y {
+			return false
+		}
+	}
+	return true
+}
+
+// continuations counts the rows from..to that continue a soft-wrapped row.
+func continuations(rows []gridRow, from, to int) int {
+	n := 0
+	for y := from; y <= to && y < len(rows); y++ {
+		if rows[y].meta != nil && rows[y].meta.continued {
+			n++
+		}
+	}
+	return n
+}
+
+// padRows adds blank rows at the bottom until the screen has height rows.
+func (g *resizer) padRows(height int) {
+	for len(g.rows)-g.top < height {
+		g.rows = append(g.rows, gridRow{cells: blankRow(g.width)})
+	}
+}
+
+// truncated returns the row cut or padded to width, in a new slice. A wide
 // character whose second half falls off the new edge becomes blank. When
 // the width is unchanged, the row keeps its metadata; otherwise it keeps
 // only its printed marks, since a cut row no longer wraps.
-func (s *Screen) truncatedRow(y, width int) resizedRow {
+func (r gridRow) truncated(width int) gridRow {
+	old := len(r.cells)
 	cells := blankRow(width)
-	copy(cells, s.cells[y])
-	if width < s.width && cells[width-1].Width == 2 {
+	copy(cells, r.cells)
+	if width < old && cells[width-1].Width == 2 {
 		cells[width-1] = blankCell()
 	}
-	m := s.meta(y)
-	if m == nil || width == s.width {
-		return resizedRow{cells: cells, meta: m}
+	if r.meta == nil || width == old {
+		return gridRow{cells: cells, meta: r.meta}
 	}
 	cut := &rowMeta{}
-	if m.printed != nil {
+	if r.meta.printed != nil {
 		cut.printed = make([]bool, width)
-		copy(cut.printed, m.printed)
+		copy(cut.printed, r.meta.printed)
 	}
-	return resizedRow{cells: cells, meta: cut}
+	return gridRow{cells: cells, meta: cut}
 }
 
-// resizedRow is one row of the screen being built by Resize.
-type resizedRow struct {
+// gridRow is one row with its metadata: a scrollback row, or a row of the
+// screen being built by Resize.
+type gridRow struct {
 	cells []Cell
 	meta  *rowMeta
 }
 
-func (r resizedRow) blank() bool {
-	if r.meta != nil && r.meta.wrapped {
+// blank reports whether the row has no text, so a shorter screen can drop
+// it. Like ghostty, it counts printed cells (spaces too) as text, but not
+// cells that only have a background color from an erase.
+func (r gridRow) blank() bool {
+	if r.wrapped() {
 		return false
 	}
 	for x, c := range r.cells {
-		if c != blankCell() || (r.meta != nil && r.meta.printed != nil && r.meta.printed[x]) {
+		if (c.Char != ' ' && c.Char != 0) || c.Trailing != "" || r.printedAt(x) {
 			return false
 		}
 	}
@@ -330,18 +473,15 @@ type lineGlyph struct {
 	off     int
 }
 
-// reflow rewraps every logical line at width and returns the new rows
-// with the new mark positions; marks[0] is the cursor. It does not fit the
-// rows to a height.
-func (s *Screen) reflow(width int, marks []mark) (rows []resizedRow, moved []mark) {
+// reflowRows rewraps every logical line of rows at width and returns the
+// new rows with the new mark positions; marks[0] is the cursor. It does not
+// fit the rows to a height.
+func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved []mark) {
 	moved = make([]mark, len(marks))
-	for y := 0; y < s.height; {
+	for y := 0; y < len(src); {
 		// Collect the rows of one logical line.
 		first := y
-		for y < s.height-1 {
-			if m := s.meta(y); m == nil || !m.wrapped {
-				break
-			}
+		for y < len(src)-1 && src[y].wrapped() {
 			y++
 		}
 		last := y
@@ -354,20 +494,20 @@ func (s *Screen) reflow(width int, marks []mark) (rows []resizedRow, moved []mar
 			offs[i] = -1
 		}
 		for r := first; r <= last; r++ {
-			n := s.rowLen(r)
+			row := src[r]
+			n := row.lineLen()
 			if r == last {
-				n = s.contentEnd(r)
+				n = row.contentEnd()
 			}
-			m := s.meta(r)
 			for x := 0; x < n; x++ {
-				c := s.cells[r][x]
+				c := row.cells[x]
 				if c.Continuation {
 					continue
 				}
 				glyphs = append(glyphs, lineGlyph{
 					cell:    c,
 					width:   max(c.Width, 1),
-					printed: m != nil && m.printed != nil && m.printed[x],
+					printed: row.printedAt(x),
 					off:     lineLen + x,
 				})
 			}
@@ -392,7 +532,7 @@ func (s *Screen) reflow(width int, marks []mark) (rows []resizedRow, moved []mar
 }
 
 type laidOutLine struct {
-	rows  []resizedRow
+	rows  []gridRow
 	marks []mark // row within the line and column of each mark on it
 }
 
@@ -402,7 +542,7 @@ type laidOutLine struct {
 // the cursor is past the end of the text.
 func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOutLine {
 	out := laidOutLine{marks: make([]mark, len(marks))}
-	row := resizedRow{cells: blankRow(width)}
+	row := gridRow{cells: blankRow(width)}
 	col := 0
 
 	// Where each offset of the line landed: its row, its column, and the
@@ -421,7 +561,7 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOut
 			}
 			row.meta.wrapped, row.meta.spacerHead = true, col < width
 			out.rows = append(out.rows, row)
-			row = resizedRow{cells: blankRow(width)}
+			row = gridRow{cells: blankRow(width), meta: &rowMeta{continued: true}}
 			col = 0
 		}
 		for i := 0; i < g.width; i++ {
@@ -489,8 +629,15 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int) laidOut
 	}
 
 	if offs[0] >= 0 {
+		// The cells up to a cursor past the end of the text belong to the
+		// line, as in ghostty, so the rows they fill soft-wrap.
 		for len(out.rows) <= out.marks[0].y {
-			out.rows = append(out.rows, resizedRow{cells: blankRow(width)})
+			last := &out.rows[len(out.rows)-1]
+			if last.meta == nil {
+				last.meta = &rowMeta{}
+			}
+			last.meta.wrapped, last.meta.spacerHead = true, false
+			out.rows = append(out.rows, gridRow{cells: blankRow(width), meta: &rowMeta{continued: true}})
 		}
 	}
 	for i := 1; i < len(offs); i++ {

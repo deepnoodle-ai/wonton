@@ -73,7 +73,7 @@ func (s *Screen) cursorDown(n int) {
 func (s *Screen) index() {
 	switch {
 	case s.cursorY == s.bottom:
-		s.scrollRegionUp(1)
+		s.scrollRegionUp(1, true)
 	case s.cursorY < s.height-1:
 		s.cursorY++
 	}
@@ -92,25 +92,37 @@ func (s *Screen) reverseIndex() {
 
 // scrollRegionUp scrolls the rows of the scroll region up by n. New rows
 // at the bottom are erase cells. When the region starts at the top of the
-// primary screen, the rows that leave it go to scrollback. The alternate
-// screen has no scrollback.
-func (s *Screen) scrollRegionUp(n int) {
+// primary screen, the rows that leave it go to scrollback, with their soft
+// wraps, so Resize can reflow them. The alternate screen has no
+// scrollback.
+//
+// byIndex is set for a line feed, index, next line, or autowrap. Like
+// ghostty, those keep the soft wraps of the rows they move. Scroll up
+// (CSI S) in a region below the top row moves rows the way delete line
+// does, which ends their soft wraps.
+func (s *Screen) scrollRegionUp(n int, byIndex bool) {
 	n = min(n, s.bottom-s.top+1)
 	if n <= 0 {
 		return
 	}
 	if s.top == 0 && !s.alt.active {
 		for y := 0; y < n; y++ {
-			s.scrollback = append(s.scrollback, s.Row(y))
+			s.pushScrollback(y)
 		}
 	}
 	s.shiftRowsUp(s.top, s.bottom, n)
+	if !byIndex && s.top > 0 {
+		s.unwrapRows(s.top, s.bottom)
+	}
 }
 
-// scrollRegionDown scrolls the rows of the scroll region down by n. New
-// rows at the top are erase cells. Rows that leave the bottom are dropped.
+// scrollRegionDown scrolls the rows of the scroll region down by n (SD,
+// and RI at the top margin). New rows at the top are erase cells. Rows
+// that leave the bottom are dropped. Like insert line, it ends the soft
+// wraps of the rows in the region.
 func (s *Screen) scrollRegionDown(n int) {
 	s.shiftRowsDown(s.top, s.bottom, n)
+	s.unwrapRows(s.top, s.bottom)
 }
 
 // insertLines inserts n erase rows at the cursor row (IL). Rows from the
@@ -123,6 +135,7 @@ func (s *Screen) insertLines(n int) {
 		return
 	}
 	s.shiftRowsDown(s.cursorY, s.bottom, n)
+	s.unwrapRows(s.cursorY, s.bottom)
 	s.cursorX = 0
 	s.wrapPending = false
 }
@@ -136,9 +149,14 @@ func (s *Screen) deleteLines(n int) {
 		return
 	}
 	s.shiftRowsUp(s.cursorY, s.bottom, n)
+	s.unwrapRows(s.cursorY, s.bottom)
 	s.cursorX = 0
 	s.wrapPending = false
 }
+
+// Rows move as whole row slices, so each row keeps its metadata (soft wrap
+// and printed cells, see Screen.rowInfo), and every new row is freshly
+// allocated. Never copy cells from one row into another.
 
 // shiftRowsUp moves rows top..bottom up by n and fills the freed rows at
 // the bottom with erase cells.
@@ -163,5 +181,18 @@ func (s *Screen) shiftRowsDown(top, bottom, n int) {
 	copy(s.cells[top+n:bottom+1], s.cells[top:bottom+1-n])
 	for y := top; y < top+n; y++ {
 		s.cells[y] = s.eraseRow()
+	}
+}
+
+// unwrapRows ends the soft wraps of rows top..bottom, both ways, as ghostty
+// does for the rows that insert line and delete line move. The row above
+// top keeps its wrap, so it still joins the row that is now below it.
+func (s *Screen) unwrapRows(top, bottom int) {
+	for y := top; y <= bottom; y++ {
+		if m := s.meta(y); m != nil {
+			m.wrapped = false
+			m.spacerHead = false
+			m.continued = false
+		}
 	}
 }
