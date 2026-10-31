@@ -102,8 +102,9 @@ with termtest.
 - **Soft-wrapped row**: a row that ended because text reached the right
   edge and continued on the next row. A row that ended at a line feed is
   hard-broken.
-- **Reflow**: on resize, the screen rewraps soft-wrapped text at the new
-  width, as ghostty does. Hard breaks stay.
+- **Reflow**: on resize, the primary screen rewraps soft-wrapped text at
+  the new width, as ghostty does. Hard breaks stay. The alternate screen
+  truncates instead.
 
 ## Use cases
 
@@ -142,6 +143,11 @@ Acceptance:
       stays visible.
 - [ ] A full-screen test cuts a wide character at the new right edge.
       After the redraw, the final frame shows no half character.
+- [ ] A full-screen test on the alternate screen narrows the screen.
+      Before the redraw, each old row is truncated at the new right edge,
+      not reflowed, and a wide character cut at the edge is blank (R-12).
+      After the redraw, every row equals the frame the app draws at the
+      new size.
 
 ### UC-2: Narrow and widen while an `InlineApp` live region shows
 
@@ -177,8 +183,9 @@ Acceptance:
 
 ## Requirements
 
-- R-1: `Resize` reflows the screen. Its results equal ghostty's on the
-  rules in "How terminals resize", except R-6.
+- R-1: While the primary screen is active, `Resize` reflows the screen.
+  Its results equal ghostty's on the rules in "How terminals resize",
+  except R-6. R-12 covers the alternate screen.
 - R-2: termtest records, for each row, whether it is soft-wrapped. A
   row becomes soft-wrapped when a printed character wraps to the next
   row, including a wide character that does not fit. The flag moves
@@ -212,6 +219,13 @@ Acceptance:
 - R-11: On the first frame after a width change, `LivePrinter` writes
   erase-below (`CSI J`) once the cursor is at the top of the old frame,
   and rewrites every line (no line diffing for that frame).
+- R-12: While the alternate screen is active, `Resize` truncates each
+  row at the new right edge and does not reflow, as ghostty does. A wide
+  character whose second half falls off the edge becomes blank. Widening
+  adds blank cells on the right. Height changes follow ghostty, verified
+  on probes. This requirement depends on the alternate screen from the
+  termtest-alt-screen track (#212) and lands after it merges (see
+  Decisions).
 - R-8: The new resize probes in our copy of the vtdiff harness all
   match ghostty. The existing 100 probes, the 1,002 recorded streams,
   and the fuzz run still match as before.
@@ -251,8 +265,8 @@ Acceptance:
 - **This track owns truncation on resize while the alternate screen is
   active.** Merge order: termtest-alt-screen merges first. This track
   rebases on it and makes `Resize` truncate the alternate screen at the
-  right edge, without reflow, as ghostty does. A wide character whose
-  second half falls off the edge becomes blank. Probes verify it.
+  right edge, without reflow, as ghostty does (R-12). A wide character
+  whose second half falls off the edge becomes blank. Probes verify it.
 - **Add `terminal.(*Terminal).SetSize`.** The full-screen runtime gets
   its size only from the terminal. A test terminal has no tty, so
   without this method no test can drive the runtime's resize path.
