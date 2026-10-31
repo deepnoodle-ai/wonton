@@ -19,7 +19,7 @@ package termtest
 //
 // The ?1047l clear fills the alternate screen with the current background
 // color (BCE), like CSI 2 J. The ?1049h clear also uses BCE, but ghostty
-// takes the background the alternate screen had when it was last visible
+// takes the background set when the alternate screen was last hidden
 // (default before its first use), not the current one.
 
 // altState holds the hidden grid and the alternate-screen flag.
