@@ -557,3 +557,115 @@ func TestResizeReflowsLineSplitIntoScrollback(t *testing.T) {
 	assert.Equal(t, s.Scrollback(), []string{"1"})
 	assert.Equal(t, s.Row(0), "abcdefghijklmno")
 }
+
+// rowDump describes rows with everything Resize keeps: cells, styles,
+// and the wrap and printed metadata that a later reflow reads.
+func rowDump(rows []gridRow) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		meta := "-"
+		if r.meta != nil {
+			meta = fmt.Sprintf("%+v", *r.meta)
+		}
+		out[i] = fmt.Sprintf("%+v %s", r.cells, meta)
+	}
+	return out
+}
+
+// screenDump describes the whole primary screen state: scrollback rows,
+// screen rows, cursor, and saved cursor.
+func screenDump(s *Screen) []string {
+	out := rowDump(s.scrollback)
+	out = append(out, "--- screen")
+	for y := 0; y < s.height; y++ {
+		out = append(out, rowDump([]gridRow{{cells: s.cells[y], meta: s.meta(y)}})...)
+	}
+	return append(out, fmt.Sprintf("cursor %d,%d,%v saved %d,%d,%v",
+		s.cursorX, s.cursorY, s.wrapPending, s.savedX, s.savedY, s.savedWrap))
+}
+
+// longOutput is output with styles, soft-wrapped lines, wide characters,
+// and printed spaces, long enough to fill a scrollback.
+func longOutput(lines int) string {
+	var b strings.Builder
+	for i := 0; i < lines; i++ {
+		switch i % 4 {
+		case 0:
+			fmt.Fprintf(&b, "\x1b[3%dm%d short\x1b[0m\r\n", i%8, i)
+		case 1:
+			fmt.Fprintf(&b, "%d %s\r\n", i, strings.Repeat("wrapping text ", 3))
+		case 2:
+			fmt.Fprintf(&b, "%d 中文字符中文字符中文\r\n", i)
+		default:
+			fmt.Fprintf(&b, "%d trailing spaces   \r\n", i)
+		}
+	}
+	return b.String()
+}
+
+func TestResizeHeightKeepsScrollbackExactly(t *testing.T) {
+	s := NewScreen(16, 6)
+	s.Write([]byte(longOutput(200) + "$ \x1b7"))
+	want := screenDump(s)
+	oldest := &s.scrollback[0].cells[0]
+
+	// Shorter pushes rows into the scrollback; taller takes them back,
+	// since the cursor is on the last row.
+	s.Resize(16, 3)
+	s.Resize(16, 10)
+	s.Resize(16, 6)
+	assert.Equal(t, screenDump(s), want)
+	// Rows that never reached the screen stay where they were.
+	assert.True(t, &s.scrollback[0].cells[0] == oldest, "oldest scrollback row was rebuilt")
+
+	// The metadata survived, so a width change reflows the same as on a
+	// screen whose height never changed.
+	twin := NewScreen(16, 6)
+	twin.Write([]byte(longOutput(200) + "$ \x1b7"))
+	s.Resize(11, 6)
+	twin.Resize(11, 6)
+	assert.Equal(t, screenDump(s), screenDump(twin))
+}
+
+func TestResizeHeightMovesRowsAtScrollbackEnd(t *testing.T) {
+	s := NewScreen(10, 4)
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(s, "%d\r\n", i)
+	}
+	s.Write([]byte("$"))
+	s.Resize(10, 2)
+	assert.Equal(t, rows(s), []string{"20", "$"})
+	assert.Equal(t, len(s.Scrollback()), 19)
+	assert.Equal(t, s.Scrollback()[18], "19")
+
+	// Taller than the scrollback and screen together: every row comes
+	// back, then blank rows fill the bottom.
+	s.Resize(10, 30)
+	assert.Equal(t, s.Scrollback(), []string(nil))
+	assert.Equal(t, s.Row(0), "1")
+	assert.Equal(t, s.Row(20), "$")
+	AssertCursor(t, s, 1, 20)
+}
+
+func TestResizeWidthReflowsWholeScrollback(t *testing.T) {
+	s := NewScreen(8, 3)
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(s, "%02d abcdefghij\r\n", i) // 13 cells: wraps at 8
+	}
+	s.Write([]byte("$"))
+	assert.Equal(t, len(s.Scrollback()), 198)
+
+	s.Resize(13, 3)
+	sb := s.Scrollback()
+	assert.Equal(t, len(sb), 98)
+	for i, row := range sb {
+		assert.Equal(t, row, fmt.Sprintf("%02d abcdefghij", i))
+	}
+	assert.Equal(t, rows(s), []string{"98 abcdefghij", "99 abcdefghij", "$"})
+
+	s.Resize(5, 3)
+	sb = s.Scrollback()
+	assert.Equal(t, len(sb), 3*100-2)
+	assert.Equal(t, sb[:3], []string{"00 ab", "cdefg", "hij"})
+	assert.Equal(t, rows(s), []string{"cdefg", "hij", "$"})
+}
