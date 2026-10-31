@@ -250,6 +250,28 @@ func TestLivePrinterCountsStyledTrailingRun(t *testing.T) {
 	assert.Equal(t, nonBlankRows(screen), want)
 }
 
+func TestLivePrinterRegionTallerThanScreen(t *testing.T) {
+	// At 5 columns the old region reflows to 20 rows on a 6-row screen.
+	// Its top rows leave the screen; the redraw starts at row 0.
+	line := strings.Repeat("0123456789", 2) + "abcde"
+	view := Stack(
+		Text("1 %s", line).Truncate(),
+		Text("2 %s", line).Truncate(),
+		Text("3 %s", line).Truncate(),
+		Text("4 %s", line).Truncate(),
+	)
+	screen := termtest.NewScreen(40, 6)
+	screen.Write([]byte("above\r\n"))
+	lp := NewLivePrinter(WithWidth(40), WithOutput(screen))
+	assert.NoError(t, lp.Update(view))
+
+	screen.Resize(5, 6)
+	lp.SetWidth(5)
+	assert.NoError(t, lp.Update(view))
+
+	assert.Equal(t, nonBlankRows(screen), liveRowsOf(t, view, 5))
+}
+
 func TestInlineAppLastLineAtNewEdge(t *testing.T) {
 	screen := termtest.NewScreen(40, 12)
 	runner := NewInlineApp(WithInlineOutput(screen), WithInlineWidth(40))
