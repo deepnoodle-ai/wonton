@@ -114,7 +114,8 @@ C0 bytes (0x00-0x1F except ESC, CAN, SUB) instead of passing them over.
 After the final byte is found, the collected controls run in order through
 the same path as plain text (`writeCluster` for CR, LF, VT, FF, BS, HT; BEL
 and others are ignored), and then the CSI runs with the C0 bytes removed
-from its parameters. They run only once the sequence is complete, so a
+from its parameters. When CAN, SUB, or ESC cancels the sequence, the
+collected controls run first. They run only once the sequence ends, so a
 sequence split across `Write` calls never runs a control twice. The order
 is correct because every collected control came before the final byte.
 

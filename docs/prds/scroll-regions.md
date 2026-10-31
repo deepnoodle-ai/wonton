@@ -195,19 +195,23 @@ termtest (lands first, as its own stacked PR):
   IND, NEL, RI, autowrap) fill new cells with the current background color
   and no other attribute, as xterm and ghostty do.
 - R-2 Regions: `CSI t;b r` sets the region and moves the cursor home.
-  Missing or zero parameters mean the screen edges. An invalid region
-  (top >= bottom, or out of range) is ignored. RIS resets the region.
+  Missing or zero parameters mean the screen edges. A bottom past the
+  screen means the last row. A region with top >= bottom is ignored. RIS
+  resets the region.
 - R-3 Region-aware motion: LF, IND, NEL, and autowrap at the region bottom
   scroll the region up. RI at the region top scrolls it down. `CSI n S` and
   `CSI n T` scroll the region. IL and DL do nothing when the cursor is
-  outside the region and stop at its bottom. CUU and CUD stop at a margin
+  outside the region and stop at its bottom. Inside the region they move
+  the cursor to column 0. CUU and CUD stop at a margin
   when the cursor starts inside the region. A cursor below the region moves
   down to the last screen row and does not scroll.
 - R-4 Origin mode `CSI ?6 h/l`: CUP, VPA, and the home position are relative
   to the region top, and the cursor cannot leave the region. Setting or
   resetting the mode moves the cursor home. DECSC/DECRC save and restore it.
 - R-5 C0 inside CSI: CR, LF, VT, FF, BS, and HT inside a CSI sequence run
-  when they arrive, and the sequence continues, as in xterm. BEL is ignored.
+  before the sequence itself, in the order they came, as in xterm. They run
+  when the sequence ends or is cancelled, so a sequence split across writes
+  runs each control one time. BEL is ignored.
 - R-6 Scrollback: `Screen.Scrollback() []string` returns rows that scrolled
   off the top of the screen, oldest first, as `Row` text. A scroll (LF,
   IND, NEL, autowrap, or SU) of a region that starts at row 1 adds the
