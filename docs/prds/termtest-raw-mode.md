@@ -132,6 +132,9 @@ Acceptance:
 - [ ] `Capture.Screen`, `Buffer.Screen`, `NewRecorder`, and
       `Recorder.Replay` accept `...ScreenOption` and pass the options to
       the new screen.
+- [ ] `Recorder.Replay` applies the options given to `NewRecorder`
+      first, then its own options. A replay of a raw-mode recorder stays
+      in raw mode unless the call passes `WithRawMode(false)`.
 - [ ] `tui.SprintScreen` builds its screen with
       `termtest.WithRawMode(cfg.RawMode)`, so the screen matches the
       line endings that the print options chose.
@@ -221,6 +224,10 @@ Acceptance:
   shape. Rejected: `NewRawScreen`, which needs a raw twin of each capture
   helper. Rejected: a `SetRawMode` method, which lets a test change the
   mode after bytes arrived and gives a result that no terminal shows.
+- **`Recorder.Replay` reuses the recorder's options.** A replay shows the
+  same bytes at a new size, so it must keep the mode by default. Options
+  passed to `Replay` come last and can override. Rejected: a replay with
+  only the options passed to `Replay`, which silently drops raw mode.
 - **Keep cooked mode as the default.** Most termtest input is `Sprint`
   output and CLI output with `\n` endings. A raw default would break
   those tests and every snapshot.
