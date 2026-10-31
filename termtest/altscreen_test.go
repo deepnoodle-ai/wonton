@@ -10,7 +10,8 @@ import (
 
 // TestAlternateScreenMatchesGhostty pins the alternate screen modes (?47,
 // ?1047, ?1049) and the saved-cursor rules they share with DECSC. The expected
-// rows and cursor came from libghostty-vt on a 10x3 screen.
+// rows and cursor came from libghostty-vt (commit 9bfa8ee) on a 10x3 screen,
+// so the ghostty comparison runs with go test and needs no harness.
 func TestAlternateScreenMatchesGhostty(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -61,6 +62,8 @@ func TestAlternateScreenMatchesGhostty(t *testing.T) {
 		{"1049 styled frame then exit", "$ ok\r\n\x1b[?1049h\x1b[H\x1b[44;1mAPP\x1b[0m\x1b[?1049lnext", []string{"$ ok", "next", ""}, 4, 1},
 		{"1049 restore keeps saved SGR", "\x1b[31ma\x1b[?1049h\x1b[32mb\x1b[?1049lX", []string{"aX", "", ""}, 2, 0},
 		{"ANSI mode 47 (no ?) ignored", "p\x1b[47hA", []string{"pA", "", ""}, 2, 0},
+		{"nested 1049h restores first save", "a\r\nb\x1b[?1049h\x1b[3;6H\x1b[?1049h\x1b[?1049lX", []string{"a", "bX", ""}, 2, 1},
+		{"nested 1049h saves into alt slot", "a\r\nb\x1b[?1049h\x1b[3;6H\x1b[?1049h\x1b[H\x1b8X", []string{"", "", "     X"}, 6, 2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
