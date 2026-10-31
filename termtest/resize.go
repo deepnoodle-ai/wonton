@@ -552,25 +552,25 @@ type laidOutLine struct {
 //
 // lastStart is the offset where the line's last row starts, or -1 if that
 // row soft-wraps. A saved cursor in the blank cells after the text of that
-// row stays on the new row where that old row starts, as ghostty moves a
-// tracked pin: its column in the old row is cut to the cells left on the
-// new row. It never moves to the rows that the cursor adds below the text.
+// row is cut as ghostty's reflowRow cuts a tracked pin: its column in the
+// old row is cut to the cells left after the text that comes before that
+// row on the new rows. So it never moves to the rows that the cursor adds
+// below the text.
 func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastStart int) laidOutLine {
 	out := laidOutLine{marks: make([]mark, len(marks))}
 	row := gridRow{cells: blankRow(width)}
 	col := 0
-	// startCol is the column where the last row's text starts, or -1
-	// until a glyph of that row is placed.
-	startCol := -1
+	// freeCol is the first free column after the glyphs that come before
+	// the line's last row: ghostty's dst_x when its reflow reaches that row.
+	// A wide character that starts the row and then wraps does not change
+	// it, because ghostty cuts the pin before it writes that character.
+	freeCol := 0
 
 	// Where each offset of the line landed: its row, its column, and the
 	// last column of the glyph that covers it.
 	type pos struct{ row, col, end int }
 	at := map[int]pos{}
 	for _, g := range glyphs {
-		if startCol < 0 && lastStart >= 0 && g.off >= lastStart {
-			startCol = col
-		}
 		c, w := g.cell, g.width
 		if w > width {
 			// A wide character never fits a one-column row.
@@ -613,6 +613,9 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 			}
 		}
 		col += w
+		if lastStart >= 0 && g.off < lastStart {
+			freeCol = col
+		}
 	}
 	out.rows = append(out.rows, row)
 	lineLen := 0
@@ -620,13 +623,10 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 		g := glyphs[len(glyphs)-1]
 		lineLen = g.off + g.width
 	}
-	if startCol < 0 {
-		startCol = col
-	}
-	if startCol >= width {
-		// The text before the last row filled the new row, so the last
-		// row starts on the next one.
-		startCol = 0
+	if freeCol >= width {
+		// The text before the last row filled its new row, so ghostty's
+		// reflow has a pending wrap and the last row starts on the next.
+		freeCol = 0
 	}
 
 	for i, off := range offs {
@@ -635,7 +635,7 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 		}
 		saved := i > 0 && lastStart >= 0 && off >= lineLen
 		if saved {
-			off = lastStart + min(off-lastStart, width-1-startCol)
+			off = lastStart + min(off-lastStart, width-1-freeCol)
 		}
 		var m mark
 		if p, ok := at[off]; ok {
