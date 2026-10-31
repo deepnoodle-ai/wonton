@@ -293,6 +293,7 @@ func TestKeyDecoder_EscPrefixedAltKeys(t *testing.T) {
 		{"Escape then Alt+letter", []string{"\x1b\x1ba"}, []KeyEvent{{Key: KeyEscape}, {Rune: 'a', Alt: true}}},
 		{"plain Left", []string{"\x1b[D"}, []KeyEvent{{Key: KeyArrowLeft}}},
 		{"Escape then Kitty key", []string{"\x1b\x1b[97;5u"}, []KeyEvent{{Key: KeyEscape}, {Key: KeyCtrlA, Ctrl: true}}},
+		{"Escape then unmapped number key", []string{"\x1b\x1b[99~"}, []KeyEvent{{Key: KeyEscape}, {Key: KeyUnknown}}},
 		{"Escape then paste", []string{"\x1b\x1b[200~hi\x1b[201~"}, []KeyEvent{{Key: KeyEscape}, {Paste: "hi"}}},
 		{"Escape then Alt+O", []string{"\x1b\x1bO\x1b[A"}, []KeyEvent{{Key: KeyEscape}, {Rune: 'O', Alt: true}, {Key: KeyArrowUp}}},
 		{"Escape then mouse", []string{"\x1b\x1b[<0;5;7M"}, []KeyEvent{{Key: KeyEscape}, {}}}, // the mouse report is no KeyEvent

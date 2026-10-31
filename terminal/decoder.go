@@ -165,8 +165,8 @@ func (kd *KeyDecoder) decodeAltSequence() (KeyEvent, bool) {
 
 // altCSIKey reports whether the buffered bytes ESC [ ... begin with a
 // complete CSI key sequence that decodeAltSequence accepts: parameters of
-// digits and semicolons only, ending in A-D, H, F, or ~ (but not the
-// bracketed paste start, 200~).
+// digits and semicolons only, ending in A-D, H, F, or ~ with a number that
+// decodeCSINumber maps to a key (so not the bracketed paste start, 200~).
 func (kd *KeyDecoder) altCSIKey() bool {
 	const maxLength = 16 // ESC [ parameters final; key sequences are short
 	for n := 3; n <= maxLength; n++ {
@@ -181,8 +181,9 @@ func (kd *KeyDecoder) altCSIKey() bool {
 		case strings.IndexByte("ABCDHF", c) >= 0:
 			return true
 		case c == '~':
-			params := string(b[2 : n-1])
-			return params != "" && params != "200" && !strings.HasPrefix(params, "200;")
+			num, _, _ := strings.Cut(string(b[2:n-1]), ";")
+			ev, _ := kd.decodeCSINumber(num)
+			return ev.Key != KeyUnknown
 		default:
 			return false
 		}
