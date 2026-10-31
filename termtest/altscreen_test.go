@@ -157,3 +157,23 @@ func ExampleScreen_IsAlternateScreen() {
 	// true Inbox (3)
 	// false $ myapp 0 1
 }
+
+// A cursor restore also restores the style saved with it: ?1049l, ESC 8
+// and CSI u all bring back the red that was active at the save, so the X
+// written after the restore is red, not green. Checked against ghostty.
+func TestCursorRestoreRestoresStyle(t *testing.T) {
+	red := Color{Type: ColorBasic, Value: 1}
+	tests := []struct{ name, data string }{
+		{"?1049l", "\x1b[31ma\x1b[?1049h\x1b[32mb\x1b[?1049lX"},
+		{"ESC 8", "\x1b[31ma\x1b7\x1b[32mb\x1b8X"},
+		{"CSI u", "\x1b[31ma\x1b[s\x1b[32mb\x1b[uX"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewScreen(10, 3)
+			s.Write([]byte(tc.data))
+			assert.Equal(t, "X", s.CellGlyph(1, 0))
+			assert.Equal(t, red, s.Cell(1, 0).Style.Foreground)
+		})
+	}
+}
