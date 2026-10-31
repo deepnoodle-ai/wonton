@@ -228,6 +228,10 @@ Acceptance:
   SIGWINCH replaces the size. Its doc shows the test order: the window
   (`termtest.Screen.Resize`) changes first, then `SetSize`, with the
   same size. `terminal` does not import `termtest`.
+- R-8: The new resize probes in our copy of the vtdiff harness all
+  match ghostty. The existing 100 probes, the 1,002 recorded streams,
+  and the fuzz run still match as before.
+- R-9: Existing snapshots do not change.
 - R-10: `LivePrinter` finds the top of its previous frame by counting
   rows, on every frame, and moves up the count less one. `Clear` and the
   scrollback print path use the same count. `LivePrinter` keeps each old
@@ -261,10 +265,6 @@ Acceptance:
   on probes. This requirement depends on the alternate screen from the
   termtest-alt-screen track (#212) and lands after it merges (see
   Decisions).
-- R-8: The new resize probes in our copy of the vtdiff harness all
-  match ghostty. The existing 100 probes, the 1,002 recorded streams,
-  and the fuzz run still match as before.
-- R-9: Existing snapshots do not change.
 
 ## Not in scope
 
