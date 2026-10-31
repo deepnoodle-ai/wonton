@@ -190,6 +190,9 @@ func (s *Screen) Resize(width, height int) {
 		mark{s.cursorX, s.cursorY, s.wrapPending}, mark{s.savedX, s.savedY, s.savedWrap})
 	s.cursorX, s.cursorY, s.wrapPending = marks[0].x, marks[0].y, marks[0].pending
 	s.savedX, s.savedY, s.savedWrap = marks[1].x, marks[1].y, marks[1].pending
+	// A resize resets the scroll region to the whole screen, as in ghostty
+	// and xterm. Origin mode stays set.
+	s.resetScrollRegion()
 }
 
 // mark is a cursor position that Resize moves to the new grid.

@@ -76,23 +76,15 @@ func (s *Screen) processANSI(data string) int {
 				i += 2
 				continue
 			case 'M':
-				// Reverse index (scroll down)
+				// Reverse index: up one row, scrolling down at the region top
 				s.wrapPending = false
-				if s.cursorY == 0 {
-					s.scrollDown()
-				} else {
-					s.cursorY--
-				}
+				s.reverseIndex()
 				i += 2
 				continue
 			case 'D':
-				// Index (scroll up)
+				// Index: down one row, scrolling up at the region bottom
 				s.wrapPending = false
-				if s.cursorY == s.height-1 {
-					s.scrollUp()
-				} else {
-					s.cursorY++
-				}
+				s.index()
 				i += 2
 				continue
 			case 'E':
@@ -187,16 +179,26 @@ func (s *Screen) parseCSI(data string) int {
 	}
 
 	// Find the end of the sequence (final byte is 0x40-0x7E). CAN and SUB
-	// cancel the sequence, and ESC starts a new one; either way the bytes
-	// read so far are dropped and nothing is executed.
+	// cancel the sequence, and ESC starts a new one; either way the
+	// parameter bytes read so far are dropped. C0 controls inside the
+	// sequence (CR, LF, BS, ...) are executed, as xterm does: they run once
+	// the sequence ends, in order, before its command. Waiting for the end
+	// means a sequence split across writes never runs a control twice.
 	end := -1
+	controls := 0
 	for i := 0; i < len(data); i++ {
 		c := data[i]
 		if c == 0x18 || c == 0x1A {
+			s.runCSIControls(data[:i], controls)
 			return i + 1
 		}
 		if c == 0x1B {
+			s.runCSIControls(data[:i], controls)
 			return i
+		}
+		if c < 0x20 || c == 0x7F {
+			controls++
+			continue
 		}
 		if c >= 0x40 && c <= 0x7E {
 			end = i
@@ -207,7 +209,7 @@ func (s *Screen) parseCSI(data string) int {
 		return -1 // Incomplete sequence
 	}
 
-	params := data[:end]
+	params := s.runCSIControls(data[:end], controls)
 	cmd := data[end]
 
 	// Sequences with intermediate bytes (0x20-0x2F, such as DECSCUSR
@@ -225,12 +227,13 @@ func (s *Screen) parseCSI(data string) int {
 	// them, except DECSED (CSI ? J) and DECSEL (CSI ? K) which erase like
 	// standard ED/EL.
 	if len(params) > 0 && params[0] >= '<' && params[0] <= '?' {
-		if params[0] == '?' && (cmd == 'J' || cmd == 'K') {
+		switch {
+		case params[0] == '?' && (cmd == 'J' || cmd == 'K'):
 			params = params[1:]
-		} else if params[0] == '?' && (cmd == 'h' || cmd == 'l') {
+		case params[0] == '?' && (cmd == 'h' || cmd == 'l'):
 			s.setPrivateModes(parseParams(params[1:]), cmd == 'h')
 			return end + 1
-		} else {
+		default:
 			return end + 1
 		}
 	}
@@ -240,7 +243,7 @@ func (s *Screen) parseCSI(data string) int {
 
 	// Commands that move the cursor or edit the line cancel a deferred wrap.
 	switch cmd {
-	case 'm', 'n', 'c', 't', 'h', 'l', 'r', 's':
+	case 'm', 'n', 'c', 't', 'h', 'l', 's', 'S', 'T':
 		// No cursor effect; keep deferred-wrap state (CSI s saves it).
 	default:
 		s.wrapPending = false
@@ -248,11 +251,9 @@ func (s *Screen) parseCSI(data string) int {
 
 	switch cmd {
 	case 'A': // Cursor Up
-		n := getParam(args, 0, 1)
-		s.cursorY = max(0, s.cursorY-n)
+		s.cursorUp(getParam(args, 0, 1))
 	case 'B': // Cursor Down
-		n := getParam(args, 0, 1)
-		s.cursorY = min(s.height-1, s.cursorY+n)
+		s.cursorDown(getParam(args, 0, 1))
 	case 'C': // Cursor Forward
 		n := getParam(args, 0, 1)
 		s.cursorX = min(s.width-1, s.cursorX+n)
@@ -260,20 +261,18 @@ func (s *Screen) parseCSI(data string) int {
 		n := getParam(args, 0, 1)
 		s.cursorX = max(0, s.cursorX-n)
 	case 'E': // Cursor Next Line
-		n := getParam(args, 0, 1)
 		s.cursorX = 0
-		s.cursorY = min(s.height-1, s.cursorY+n)
+		s.cursorDown(getParam(args, 0, 1))
 	case 'F': // Cursor Previous Line
-		n := getParam(args, 0, 1)
 		s.cursorX = 0
-		s.cursorY = max(0, s.cursorY-n)
+		s.cursorUp(getParam(args, 0, 1))
 	case 'G': // Cursor Horizontal Absolute
 		n := getParam(args, 0, 1)
 		s.cursorX = clamp(n-1, 0, s.width-1)
 	case 'H', 'f': // Cursor Position
 		row := getParam(args, 0, 1)
 		col := getParam(args, 1, 1)
-		s.cursorY = clamp(row-1, 0, s.height-1)
+		s.setCursorRow(row)
 		s.cursorX = clamp(col-1, 0, s.width-1)
 	case 'J': // Erase in Display
 		n := getParam(args, 0, 0)
@@ -282,9 +281,12 @@ func (s *Screen) parseCSI(data string) int {
 			s.ClearToEndOfScreen()
 		case 1:
 			s.ClearToStartOfScreen()
-		case 2, 3:
+		case 2:
 			// ED never moves the cursor (apps send ESC[2J ESC[H as a pair)
 			s.clearCells()
+		case 3:
+			// ED 3 erases the scrollback and leaves the screen alone.
+			s.scrollback = nil
 		}
 	case 'K': // Erase in Line
 		n := getParam(args, 0, 0)
@@ -312,16 +314,19 @@ func (s *Screen) parseCSI(data string) int {
 		n := getParam(args, 0, 1)
 		s.eraseChars(n)
 	case 'd': // Line Position Absolute
-		n := getParam(args, 0, 1)
-		s.cursorY = clamp(n-1, 0, s.height-1)
+		s.setCursorRow(getParam(args, 0, 1))
 	case 'm': // SGR - Select Graphic Rendition
 		s.processSGR(parseSGRParams(params))
 	case 's': // Save Cursor Position (SCOSC; saves what DECSC saves)
 		s.saveCursor()
 	case 'u': // Restore Cursor Position (SCORC; restores what DECRC restores)
 		s.restoreCursor()
-	case 'r': // Set Scrolling Region (ignored for now)
-		// Could implement scroll regions if needed
+	case 'r': // Set Scrolling Region (DECSTBM)
+		s.setScrollRegion(args)
+	case 'S': // Scroll Up (SU)
+		s.scrollRegionUp(getParam(args, 0, 1))
+	case 'T': // Scroll Down (SD)
+		s.scrollRegionDown(getParam(args, 0, 1))
 	case 'h', 'l': // Set/Reset Mode
 		// Private modes like ?25h (show cursor) are display-only
 		// We don't track cursor visibility in tests
@@ -584,45 +589,6 @@ func (s *Screen) rewriteRow(y int, glyphs []rowGlyph) {
 	}
 }
 
-// scrollDown scrolls the screen content down by one line.
-func (s *Screen) scrollDown() {
-	for y := s.height - 1; y > 0; y-- {
-		s.cells[y] = s.cells[y-1]
-	}
-	s.cells[0] = make([]Cell, s.width)
-	for x := 0; x < s.width; x++ {
-		s.cells[0][x] = blankCell()
-	}
-}
-
-// insertLines inserts n blank lines at the cursor position.
-func (s *Screen) insertLines(n int) {
-	n = min(n, s.height-s.cursorY)
-	for i := 0; i < n; i++ {
-		for y := s.height - 1; y > s.cursorY; y-- {
-			s.cells[y] = s.cells[y-1]
-		}
-		s.cells[s.cursorY] = make([]Cell, s.width)
-		for x := 0; x < s.width; x++ {
-			s.cells[s.cursorY][x] = blankCell()
-		}
-	}
-}
-
-// deleteLines deletes n lines at the cursor position.
-func (s *Screen) deleteLines(n int) {
-	n = min(n, s.height-s.cursorY)
-	for i := 0; i < n; i++ {
-		for y := s.cursorY; y < s.height-1; y++ {
-			s.cells[y] = s.cells[y+1]
-		}
-		s.cells[s.height-1] = make([]Cell, s.width)
-		for x := 0; x < s.width; x++ {
-			s.cells[s.height-1][x] = blankCell()
-		}
-	}
-}
-
 // deleteChars deletes n characters at the cursor position (DCH).
 // Characters left of the cursor are unaffected; characters right of the
 // deleted range shift left and the line is blank-filled at the end.
@@ -653,6 +619,7 @@ func (s *Screen) deleteChars(n int) {
 		}
 	}
 	s.rewriteRow(y, rewritten)
+	s.eraseRange(s.cells[y], s.width-shift, s.width)
 }
 
 // insertChars inserts n blank characters at the cursor position.
@@ -680,6 +647,7 @@ func (s *Screen) insertChars(n int) {
 		}
 	}
 	s.rewriteRow(y, rewritten)
+	s.eraseRange(s.cells[y], start, start+n)
 }
 
 func (s *Screen) eraseChars(n int) {
@@ -702,4 +670,5 @@ func (s *Screen) eraseChars(n int) {
 		}
 	}
 	s.rewriteRow(y, rewritten)
+	s.eraseRange(s.cells[y], start, end)
 }

@@ -531,14 +531,16 @@ func TestANSICursorPositionF(t *testing.T) {
 }
 
 func TestANSIEraseJ3(t *testing.T) {
-	// ESC[3J - Clear entire screen and scrollback
-	s := NewScreen(10, 3)
-	s.WriteString("ABC")
+	// ESC[3J erases the scrollback and leaves the screen alone, as in
+	// xterm and ghostty. Apps clear both with ESC[3J ESC[2J.
+	s := NewScreen(10, 2)
+	s.Write([]byte("old\r\nABC\r\nnew"))
+	assert.Equal(t, s.Scrollback(), []string{"old"})
 	s.Write([]byte("\x1b[3J"))
 
-	assert.Equal(t, "", s.Row(0))
-	assert.Equal(t, "", s.Row(1))
-	assert.Equal(t, "", s.Row(2))
+	assert.Equal(t, s.Row(0), "ABC")
+	assert.Equal(t, s.Row(1), "new")
+	assert.Equal(t, len(s.Scrollback()), 0)
 }
 
 func TestANSIOSCWithST(t *testing.T) {

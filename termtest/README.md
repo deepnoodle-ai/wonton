@@ -309,6 +309,27 @@ func TestRedrawAfterResize(t *testing.T) {
 }
 ```
 
+### Testing Scroll Regions and Scrollback
+
+```go
+func TestScrollRegion(t *testing.T) {
+	screen := termtest.NewScreen(10, 5)
+	screen.Write([]byte("1\r\n2\r\n3\r\n4\r\n5"))
+
+	// Region rows 2-4; a line feed at row 4 scrolls only rows 2-4.
+	screen.Write([]byte("\x1b[2;4r\x1b[4;1H\nX"))
+	// Rows are now "1", "3", "4", "X", "5".
+
+	// A region that starts at row 1 sends departing rows to scrollback,
+	// as a real terminal does.
+	screen.Write([]byte("\x1b[1;2r\x1b[2;1H\n"))
+	assert.Equal(t, screen.Scrollback(), []string{"1"})
+}
+```
+
+Erase, insert, delete, and scroll operations fill new cells with the
+current background color (background color erase), as xterm and ghostty do.
+
 ## API Reference
 
 ### Screen Types
@@ -349,6 +370,7 @@ func TestRedrawAfterResize(t *testing.T) {
 | `Screen.ClearToStartOfLine` | Clears line start to cursor | none | none |
 | `Screen.ClearToEndOfScreen` | Clears cursor to screen end | none | none |
 | `Screen.ClearToStartOfScreen` | Clears screen start to cursor | none | none |
+| `Screen.Scrollback` | Rows that scrolled off the top, oldest first | none | `[]string` |
 
 ### Assertion Functions
 

@@ -34,9 +34,10 @@ type altState struct {
 
 // savedCursor is the DECSC state of the hidden screen. Each screen has its own.
 type savedCursor struct {
-	x, y  int
-	style Style
-	wrap  bool
+	x, y   int
+	style  Style
+	wrap   bool
+	origin bool
 }
 
 // IsAlternateScreen reports whether the alternate screen is visible. It is
@@ -48,11 +49,16 @@ func (s *Screen) IsAlternateScreen() bool {
 	return s.alt.active
 }
 
-// setPrivateModes applies CSI ? Pm h (set) or CSI ? Pm l (reset). Only the
-// alternate screen modes change the screen; other private modes are ignored.
+// setPrivateModes applies CSI ? Pm h (set) or CSI ? Pm l (reset). Only
+// origin mode and the alternate screen modes change the screen; other
+// private modes (cursor visibility, mouse reporting, bracketed paste,
+// synchronized output, ...) are ignored.
 func (s *Screen) setPrivateModes(modes []int, set bool) {
 	for _, mode := range modes {
 		switch mode {
+		case 6: // DECOM: origin mode; see region.go
+			s.originMode = set
+			s.cursorHome()
 		case 47:
 			s.switchScreen(set)
 		case 1047:
@@ -92,8 +98,9 @@ func (s *Screen) switchScreen(alternate bool) {
 	s.cells, s.alt.hidden = s.alt.hidden, s.cells
 	s.rowInfo, s.alt.hiddenInfo = s.alt.hiddenInfo, s.rowInfo
 	s.alt.cursor = mark{s.cursorX, s.cursorY, s.wrapPending}
-	visible := savedCursor{x: s.savedX, y: s.savedY, style: s.savedStyle, wrap: s.savedWrap}
+	visible := savedCursor{x: s.savedX, y: s.savedY, style: s.savedStyle, wrap: s.savedWrap, origin: s.savedOrigin}
 	s.savedX, s.savedY, s.savedStyle, s.savedWrap = s.alt.saved.x, s.alt.saved.y, s.alt.saved.style, s.alt.saved.wrap
+	s.savedOrigin = s.alt.saved.origin
 	s.alt.saved = visible
 	s.alt.active = alternate
 }
@@ -105,12 +112,14 @@ func (s *Screen) resetAltScreen() {
 	s.alt = altState{}
 }
 
-// saveCursor saves the cursor position, style and pending wrap (DECSC).
+// saveCursor saves the cursor position, style, pending wrap and origin
+// mode (DECSC).
 func (s *Screen) saveCursor() {
 	s.savedX = s.cursorX
 	s.savedY = s.cursorY
 	s.savedStyle = s.style
 	s.savedWrap = s.wrapPending
+	s.savedOrigin = s.originMode
 }
 
 // restoreCursor restores the state saved by saveCursor (DECRC). Without a
@@ -120,4 +129,5 @@ func (s *Screen) restoreCursor() {
 	s.cursorY = s.savedY
 	s.style = s.savedStyle
 	s.wrapPending = s.savedWrap
+	s.originMode = s.savedOrigin
 }
