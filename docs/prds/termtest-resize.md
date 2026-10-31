@@ -14,20 +14,23 @@ can check what the user sees after that redraw, because a
 The gap hides a real bug. We sent an `InlineApp`-style stream to
 libghostty-vt: one scrollback line and a two-line live region at 20
 columns. We resized ghostty to 10 columns and sent the redraw that
-`LivePrinter` writes today. Ghostty shows the first live line twice:
+`LivePrinter` writes today: cursor up one row, then the two new live
+lines "0123456789" and "status". Ghostty shows the first live line twice.
+Rows from the probe:
 
 ```
-before (20 cols)       after resize + redraw (10 cols)
-scroll                 scroll
-0123456789abcdef       0123456789     <- old live line, reflowed
-status line here       abcdef         <- old live line, reflowed
-                       0123456789     <- new live region
-                       status
+before (20 cols)    after resize (10 cols)   after redraw (10 cols)
+scroll              scroll                   scroll
+0123456789abcdef    0123456789               0123456789  <- stale
+status line here    abcdef                   abcdef      <- stale
+                    status lin               0123456789  <- new region
+                    e here                   status      <- new region
 ```
 
-Ghostty reflowed each old live line onto two rows. `LivePrinter` moved
-the cursor up `lastHeight-1` rows, so it redrew over the middle of the
-old region and left the top half on screen. Every narrowing of the
+Ghostty reflowed each old live line onto two rows, so the old region is
+four rows tall. `LivePrinter` moved the cursor up `lastHeight-1` (one)
+row from "e here", so it redrew over the two rows of the second old line
+and left both rows of the first old line on screen. Every narrowing of the
 window leaves more stale lines in the user's scrollback. If we do
 nothing, resize bugs like this one ship, and tests cannot prevent their
 return.
