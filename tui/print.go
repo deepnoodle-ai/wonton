@@ -556,21 +556,41 @@ func (lp *LivePrinter) moveToFrameTop(w io.Writer) {
 // the current width. A terminal that reflows on resize (ghostty, iTerm2,
 // kitty, WezTerm, Terminal.app) rewraps each line that no longer fits onto
 // more rows, so each line takes ceil(lineWidth/width) rows, and at least
-// one.
+// one. The last line ends at the cursor, which reflow keeps after the last
+// character, so it is counted from the cursor column instead.
 func (lp *LivePrinter) frameRows() int {
 	if len(lp.lastLines) == 0 {
 		return lp.lastHeight
 	}
 	width := lp.config.Width
-	rows := 0
-	for _, line := range lp.lastLines {
-		n := 1
-		if w := liveLineWidth(line); width > 0 && w > width {
-			n = (w + width - 1) / width
-		}
-		rows += n
+	if width <= 0 {
+		return len(lp.lastLines)
 	}
-	return rows
+	rows := 0
+	last := len(lp.lastLines) - 1
+	for _, line := range lp.lastLines[:last] {
+		if w := liveLineWidth(line); w > width {
+			rows += (w + width - 1) / width
+		} else {
+			rows++
+		}
+	}
+	return rows + lp.cursorColumn(liveLineWidth(lp.lastLines[last]))/width + 1
+}
+
+// cursorColumn returns the cursor's offset in the last line of the previous
+// frame, a line w cells wide. After w cells the cursor sits after the text,
+// except when the text filled its last row: then the cursor waits on the
+// last cell with a pending wrap.
+func (lp *LivePrinter) cursorColumn(w int) int {
+	drawn := lp.drawnWidth
+	if drawn <= 0 {
+		drawn = lp.config.Width
+	}
+	if w > 0 && drawn > 0 && w%drawn == 0 {
+		return w - 1
+	}
+	return w
 }
 
 // liveLineWidth returns the display width of a line the live printer drew,

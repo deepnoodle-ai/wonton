@@ -187,19 +187,71 @@ func TestInlineAppCoalescedResizes(t *testing.T) {
 }
 
 func TestLivePrinterRedrawsOnceAfterNarrowing(t *testing.T) {
+	cases := []struct {
+		name          string
+		from, to      int
+		first, second string
+	}{
+		{"long first line", 40, 20, "progress: 0123456789abcdefghij", "ok"},
+		// The last line ends exactly at the new edge. The cursor after it
+		// wraps to the next row on reflow.
+		{"last line at the new edge", 40, 20, "first", strings.Repeat("0123456789", 2)},
+		// The last line filled the old width, so the cursor waited on its
+		// last cell with a pending wrap.
+		{"last line filled the old width", 80, 20, "first", strings.Repeat("0123456789", 4)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			screen := termtest.NewScreen(tc.from, 10)
+			screen.Write([]byte("above\r\n"))
+			lp := NewLivePrinter(WithWidth(tc.from), WithOutput(screen))
+			view := Stack(Text("%s", tc.first), Text("%s", tc.second))
+			assert.NoError(t, lp.Update(view))
+
+			screen.Resize(tc.to, 10)
+			lp.SetWidth(tc.to)
+			assert.NoError(t, lp.Update(view))
+
+			want := append([]string{"above"}, liveRowsOf(t, view, tc.to)...)
+			assert.Equal(t, nonBlankRows(screen), want)
+		})
+	}
+}
+
+func TestLivePrinterClearsWholeRegionAfterNarrowing(t *testing.T) {
 	screen := termtest.NewScreen(40, 10)
 	screen.Write([]byte("above\r\n"))
 	lp := NewLivePrinter(WithWidth(40), WithOutput(screen))
-	view := Stack(Text("progress: 0123456789abcdefghij"), Text("ok"))
-	assert.NoError(t, lp.Update(view))
+	assert.NoError(t, lp.Update(Stack(Text("first"), Text("%s", strings.Repeat("0123456789", 2)))))
 
 	screen.Resize(20, 10)
 	lp.SetWidth(20)
-	assert.NoError(t, lp.Update(view))
+	lp.Clear()
 
-	want := append([]string{"above"}, liveRowsOf(t, view, 20)...)
+	assert.Equal(t, nonBlankRows(screen), []string{"above"})
+}
+
+func TestInlineAppLastLineAtNewEdge(t *testing.T) {
+	screen := termtest.NewScreen(40, 12)
+	runner := NewInlineApp(WithInlineOutput(screen), WithInlineWidth(40))
+	runner.app = edgeInlineApp{}
+	runner.render()
+	runner.Print(Text("history"))
+
+	resizeInline(runner, screen, 20, 12)
+
+	want := append([]string{"history"}, liveRowsOf(t, edgeInlineApp{}.LiveView(), 20)...)
 	assert.Equal(t, nonBlankRows(screen), want)
 }
+
+// edgeInlineApp's last live line is 20 cells wide.
+type edgeInlineApp struct{}
+
+func (edgeInlineApp) LiveView() View {
+	return Stack(Text("first"), Text("%s", strings.Repeat("0123456789", 2)))
+}
+
+func (edgeInlineApp) HandleEvent(Event) []Cmd { return nil }
 
 func liveRowsOf(t *testing.T, view View, width int) []string {
 	t.Helper()
