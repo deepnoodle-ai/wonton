@@ -258,6 +258,95 @@ func TestKeyDecoder_AltModifier(t *testing.T) {
 	}
 }
 
+// TestKeyDecoder_EscPrefixedAltKeys tests the legacy Alt form some terminals
+// send for cursor and editing keys: ESC followed by the key's own sequence.
+// Inputs that only look similar keep their usual decoding.
+func TestKeyDecoder_EscPrefixedAltKeys(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks []string // one chunk per Read
+		want   []KeyEvent
+	}{
+		{"Alt+Left", []string{"\x1b\x1b[D"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}}},
+		{"Alt+Right", []string{"\x1b\x1b[C"}, []KeyEvent{{Key: KeyArrowRight, Alt: true}}},
+		{"Alt+Up", []string{"\x1b\x1b[A"}, []KeyEvent{{Key: KeyArrowUp, Alt: true}}},
+		{"Alt+Down", []string{"\x1b\x1b[B"}, []KeyEvent{{Key: KeyArrowDown, Alt: true}}},
+		{"Alt+Left SS3", []string{"\x1b\x1bOD"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}}},
+		{"Alt+Up SS3", []string{"\x1b\x1bOA"}, []KeyEvent{{Key: KeyArrowUp, Alt: true}}},
+		{"Alt+Home", []string{"\x1b\x1b[H"}, []KeyEvent{{Key: KeyHome, Alt: true}}},
+		{"Alt+End SS3", []string{"\x1b\x1bOF"}, []KeyEvent{{Key: KeyEnd, Alt: true}}},
+		{"Alt+F1 SS3", []string{"\x1b\x1bOP"}, []KeyEvent{{Key: KeyF1, Alt: true}}},
+		{"Alt+PageUp", []string{"\x1b\x1b[5~"}, []KeyEvent{{Key: KeyPageUp, Alt: true}}},
+		{"Alt+PageDown", []string{"\x1b\x1b[6~"}, []KeyEvent{{Key: KeyPageDown, Alt: true}}},
+		{"Alt+Delete", []string{"\x1b\x1b[3~"}, []KeyEvent{{Key: KeyDelete, Alt: true}}},
+		{"Alt+Shift+Left", []string{"\x1b\x1b[1;2D"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true, Shift: true}}},
+		{"Alt+Left then key", []string{"\x1b\x1b[Dx"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}, {Rune: 'x'}}},
+		{"split after first ESC", []string{"\x1b", "\x1b[D"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}}},
+		{"split after second ESC", []string{"\x1b\x1b", "[D"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}}},
+		{"split inside CSI", []string{"\x1b\x1b[", "5~"}, []KeyEvent{{Key: KeyPageUp, Alt: true}}},
+		{"split inside SS3", []string{"\x1b\x1bO", "D"}, []KeyEvent{{Key: KeyArrowLeft, Alt: true}}},
+
+		{"lone Escape", []string{"\x1b"}, []KeyEvent{{Key: KeyEscape}}},
+		{"double Escape", []string{"\x1b\x1b"}, []KeyEvent{{Key: KeyEscape}, {Key: KeyEscape}}},
+		{"double Escape in two reads", []string{"\x1b", "\x1b"}, []KeyEvent{{Key: KeyEscape}, {Key: KeyEscape}}},
+		{"Alt+letter", []string{"\x1ba"}, []KeyEvent{{Rune: 'a', Alt: true}}},
+		{"Escape then Alt+letter", []string{"\x1b\x1ba"}, []KeyEvent{{Key: KeyEscape}, {Rune: 'a', Alt: true}}},
+		{"plain Left", []string{"\x1b[D"}, []KeyEvent{{Key: KeyArrowLeft}}},
+		{"Escape then Kitty key", []string{"\x1b\x1b[97;5u"}, []KeyEvent{{Key: KeyEscape}, {Key: KeyCtrlA, Ctrl: true}}},
+		{"Escape then paste", []string{"\x1b\x1b[200~hi\x1b[201~"}, []KeyEvent{{Key: KeyEscape}, {Paste: "hi"}}},
+		{"Escape then Alt+O", []string{"\x1b\x1bO\x1b[A"}, []KeyEvent{{Key: KeyEscape}, {Rune: 'O', Alt: true}, {Key: KeyArrowUp}}},
+		{"Escape then mouse", []string{"\x1b\x1b[<0;5;7M"}, []KeyEvent{{Key: KeyEscape}, {}}}, // the mouse report is no KeyEvent
+	}
+
+	for _, tt := range tests {
+		for _, readEvent := range []bool{true, false} {
+			api := "ReadKeyEvent"
+			if readEvent {
+				api = "ReadEvent"
+			}
+			t.Run(tt.name+"/"+api, func(t *testing.T) {
+				decoder := NewKeyDecoder(&chunkSource{chunks: tt.chunks})
+				var got []KeyEvent
+				for {
+					var ev KeyEvent
+					var err error
+					if readEvent {
+						var e Event
+						e, err = decoder.ReadEvent()
+						ev, _ = e.(KeyEvent)
+					} else {
+						ev, err = decoder.ReadKeyEvent()
+					}
+					if err == io.EOF {
+						break
+					}
+					assert.NoError(t, err)
+					got = append(got, ev)
+				}
+				assert.Equal(t, got, tt.want)
+			})
+		}
+	}
+}
+
+// TestKeyDecoder_EscPrefixedAltKeysWithoutWait covers a source that cannot
+// be polled, where the decoder reads only what one Read returned.
+func TestKeyDecoder_EscPrefixedAltKeysWithoutWait(t *testing.T) {
+	decoder := NewKeyDecoder(bytes.NewReader([]byte("\x1b\x1b[D\x1b\x1bOC\x1b\x1b")))
+	for _, want := range []KeyEvent{
+		{Key: KeyArrowLeft, Alt: true},
+		{Key: KeyArrowRight, Alt: true},
+		{Key: KeyEscape},
+		{Key: KeyEscape},
+	} {
+		event, err := decoder.ReadEvent()
+		assert.NoError(t, err)
+		assert.Equal(t, event.(KeyEvent), want)
+	}
+	_, err := decoder.ReadEvent()
+	assert.Equal(t, err, io.EOF)
+}
+
 // TestKeyDecoder_ModifiedArrowKeys tests arrow keys with modifiers
 func TestKeyDecoder_ModifiedArrowKeys(t *testing.T) {
 	tests := []struct {
