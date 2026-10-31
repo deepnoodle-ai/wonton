@@ -17,6 +17,15 @@ func init() {
 		}
 		return terminalstate.Access{FD: t.fd, Output: t.out, Snapshot: t.handoffSnapshot, CleanupRuntime: t.cleanupRuntime}, true
 	}
+	terminalstate.Closed = func(value any) bool {
+		t, ok := value.(*Terminal)
+		if !ok || t == nil {
+			return false
+		}
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		return t.closed
+	}
 }
 
 // handoffSnapshot preserves actual attributes and every enabled protocol.

@@ -255,15 +255,30 @@ func Equal(a, b *Screen) bool {
 // This compares dimensions, text content, and all style attributes
 // (colors, bold, italic, etc.) for every cell.
 func EqualStyled(a, b *Screen) bool {
-	if a.width != b.width || a.height != b.height {
+	ac, bc := a.copyCells(), b.copyCells()
+	if len(ac) != len(bc) {
 		return false
 	}
-	for y := 0; y < a.height; y++ {
-		for x := 0; x < a.width; x++ {
-			if a.cells[y][x] != b.cells[y][x] {
+	for y := range ac {
+		if len(ac[y]) != len(bc[y]) {
+			return false
+		}
+		for x := range ac[y] {
+			if ac[y][x] != bc[y][x] {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// copyCells returns a copy of the visible grid, taken under the lock.
+func (s *Screen) copyCells() [][]Cell {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([][]Cell, len(s.cells))
+	for y, row := range s.cells {
+		out[y] = append([]Cell(nil), row...)
+	}
+	return out
 }

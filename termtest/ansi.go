@@ -72,7 +72,7 @@ func (s *Screen) processANSI(data string) int {
 				continue
 			case 'c':
 				// Reset terminal (RIS)
-				s.Reset()
+				s.reset()
 				i += 2
 				continue
 			case 'M':
@@ -122,10 +122,10 @@ func (s *Screen) processANSI(data string) int {
 			if nextEscape < 0 {
 				run := data[i:]
 				tail := incompleteRuneTail(run)
-				s.WriteString(run[:len(run)-tail])
+				s.writeString(run[:len(run)-tail])
 				return len(data) - tail
 			}
-			s.WriteString(data[i : i+nextEscape])
+			s.writeString(data[i : i+nextEscape])
 			i += nextEscape
 		}
 	}

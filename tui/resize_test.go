@@ -14,8 +14,15 @@ import (
 // app redraws. termtest reflows text on resize the way ghostty does.
 
 // resizeFullScreenApp draws a title, a line with a wide character near the
-// right edge, and a status bar on the last row.
+// right edge, and a status bar on the last row. 'q' quits.
 type resizeFullScreenApp struct{}
+
+func (resizeFullScreenApp) HandleEvent(event Event) []Cmd {
+	if key, ok := event.(KeyEvent); ok && key.Rune == 'q' {
+		return []Cmd{Quit()}
+	}
+	return nil
+}
 
 func (resizeFullScreenApp) View() View {
 	return Stack(
@@ -96,21 +103,20 @@ func TestRuntimeRedrawCutsNoWideCharacter(t *testing.T) {
 	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 38, 8))
 }
 
-func TestRuntimeOnAlternateScreenRedrawsAfterResize(t *testing.T) {
+func TestRunOnAlternateScreenRedrawsAfterResize(t *testing.T) {
 	// tui.Run draws on the alternate screen, which a resize truncates
 	// instead of reflowing. The shell screen behind it still reflows.
 	const prompt = "$ myapp --verbose"
 	app := resizeFullScreenApp{}
 	screen := termtest.NewScreen(80, 8)
-	screen.Write([]byte(prompt + "\r\n"))
-	term := NewTestTerminal(80, 8, screen)
-	term.EnableAlternateScreen()
-	r := NewRuntime(term, app, 30)
-	r.render()
-	assert.True(t, screen.IsAlternateScreen())
-	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 80, 8))
+	screen.WriteString(prompt + "\r\n")
+	want := fullScreenFrame(t, app, 80, 8)
+	term, keys, done := runFullScreen(t, app, screen, func(s *termtest.Screen) bool {
+		return s.IsAlternateScreen() && s.Text() == want
+	})
 
 	// At 38 columns the wide character "中" straddles the new right edge.
+	// The window changes first; the app has not redrawn yet.
 	screen.Resize(38, 8)
 	termtest.AssertRow(t, screen, 0, "Title")
 	termtest.AssertRow(t, screen, 1, strings.Repeat("x", 37)) // cut, not reflowed
@@ -118,15 +124,18 @@ func TestRuntimeOnAlternateScreenRedrawsAfterResize(t *testing.T) {
 	assert.False(t, screen.Cell(37, 1).Continuation)
 	termtest.AssertRow(t, screen, 7, "status bar")
 
-	term.SetSize(38, 8)
-	r.processEvent(ResizeEvent{Time: time.Now(), Width: 38, Height: 8})
-	r.render()
-	assert.Equal(t, screen.Text(), fullScreenFrame(t, app, 38, 8))
+	term.SetSize(38, 8) // the app learns the new size and redraws
+	want = fullScreenFrame(t, app, 38, 8)
+	waitFor(t, screen, "the frame at 38 columns", func(s *termtest.Screen) bool { return s.Text() == want })
+
+	screen.Resize(10, 8)
+	term.SetSize(10, 8)
+	want = fullScreenFrame(t, app, 10, 8)
+	waitFor(t, screen, "the frame at 10 columns", func(s *termtest.Screen) bool { return s.Text() == want })
 
 	// The app quits: the shell screen comes back reflowed at the new
 	// width, with the cursor below the prompt.
-	screen.Resize(10, 8)
-	assert.NoError(t, term.Close())
+	quitFullScreen(t, keys, done)
 	assert.False(t, screen.IsAlternateScreen())
 	termtest.AssertRow(t, screen, 0, "$ myapp --")
 	termtest.AssertRow(t, screen, 1, "verbose")
@@ -367,8 +376,8 @@ func (a resizeRecorderApp) HandleEvent(event Event) []Cmd {
 }
 
 func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
-	out := &lockedScreen{screen: termtest.NewScreen(80, 12)}
-	term := NewTestTerminal(80, 12, out)
+	screen := termtest.NewScreen(80, 12)
+	term := NewTestTerminal(80, 12, screen)
 	app := resizeRecorderApp{resizes: make(chan ResizeEvent, 4)}
 	r := NewRuntime(term, app, 30)
 	done := make(chan error, 1)
@@ -386,7 +395,7 @@ func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
 	waitResize(80, 12) // the initial size
 
 	// Only SetSize: the runtime's OnResize callback queues the ResizeEvent.
-	out.read(func(s *termtest.Screen) { s.Resize(40, 12) })
+	screen.Resize(40, 12)
 	term.SetSize(40, 12)
 	waitResize(40, 12)
 
@@ -395,7 +404,7 @@ func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
 	want := fullScreenFrame(t, resizeFullScreenApp{}, 40, 12)
 	got := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		if out.read(func(s *termtest.Screen) { got = s.Text() }); got == want {
+		if got = screen.Text(); got == want {
 			break
 		}
 	}

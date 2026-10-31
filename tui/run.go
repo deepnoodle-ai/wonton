@@ -1,5 +1,11 @@
 package tui
 
+import (
+	"fmt"
+
+	"github.com/deepnoodle-ai/wonton/internal/terminalstate"
+)
+
 // RunOption is a functional option for configuring Run.
 type RunOption func(*runConfig)
 
@@ -12,6 +18,7 @@ type runConfig struct {
 	pasteTabWidth   int
 	backslashEnter  bool
 	inputSource     InputSource
+	terminal        *Terminal
 }
 
 // mouseMode selects how much the terminal reports. Each level is a superset of
@@ -36,11 +43,52 @@ func defaultRunConfig() runConfig {
 	}
 }
 
-// WithInput sets a custom input source for the runtime.
-// This is primarily used for testing.
+// WithInput sets a custom input source for the runtime, in place of the
+// keyboard. This is primarily used for testing. When the source ends, Run
+// ends: on io.EOF it draws the last frame and returns nil, and on any other
+// error it returns the error (see Runtime.SetInputSource).
 func WithInput(source InputSource) RunOption {
 	return func(c *runConfig) {
 		c.inputSource = source
+	}
+}
+
+// WithTerminal makes Run draw on term instead of opening a terminal on
+// standard output. A test uses it to run the real Run path into an in-memory
+// screen: the same setup, frames, resize handling and cleanup that users get.
+// Make term with NewTestTerminal and a termtest.Screen, and send keys with a
+// TestInput and WithInput. Run returns when the test closes the TestInput.
+// With a terminal from NewTestTerminal and no WithInput, Run reads no keys:
+// it draws the first frame and returns. With a real terminal and no
+// WithInput, Run reads keys from standard input, as it does by default.
+//
+//	screen := termtest.NewScreen(80, 24)
+//	term := tui.NewTestTerminal(80, 24, screen)
+//	keys := tui.NewTestInput()
+//	keys.Type("q")
+//	keys.Close()
+//	err := tui.Run(app, tui.WithTerminal(term), tui.WithInput(keys))
+//
+// Run owns term from the start of the call: it closes term when it returns,
+// as it closes the terminal it opens itself. Close leaves the alternate
+// screen, shows the cursor and turns off the modes Run turned on, so the
+// screen shows what a user sees after the app quits. Do not use term after
+// Run returns: a later Run with the same term returns an error that wraps
+// ErrClosed. Make a new terminal for each Run.
+//
+// A terminal from NewTestTerminal has no tty. With one, Run leaves the
+// process's own terminal alone: no raw mode and no keyboard protocol. So the
+// bytes a test sees are the same in a terminal, in tmux and in CI.
+//
+// Give the screen and term the same size, at the start and at each resize:
+// nothing checks that they match. To resize while the app runs, resize the
+// screen and then call term.SetSize with the same size, as Terminal.SetSize
+// describes.
+//
+// A nil term keeps the default.
+func WithTerminal(term *Terminal) RunOption {
+	return func(c *runConfig) {
+		c.terminal = term
 	}
 }
 
@@ -177,6 +225,8 @@ func WithBackslashEnter(enabled bool) RunOption {
 //	    }
 //	}
 //
+// To test an application with the same path, see WithTerminal.
+//
 // Options can be passed to customize behavior:
 //
 //	tui.Run(&MyApp{},
@@ -190,10 +240,16 @@ func Run(app Application, opts ...RunOption) error {
 		opt(&cfg)
 	}
 
-	// Create terminal
-	terminal, err := NewTerminal()
-	if err != nil {
-		return err
+	// Create the terminal, unless WithTerminal gave one. Run owns it either
+	// way and closes it on return.
+	terminal := cfg.terminal
+	if terminal == nil {
+		var err error
+		if terminal, err = NewTerminal(); err != nil {
+			return err
+		}
+	} else if terminalstate.Closed(terminal) {
+		return fmt.Errorf("tui: Run: the WithTerminal terminal is closed: %w", ErrClosed)
 	}
 	defer terminal.Close()
 
@@ -234,10 +290,26 @@ func Run(app Application, opts ...RunOption) error {
 // configure it.
 func newRunRuntime(terminal *Terminal, app Application, cfg runConfig) *Runtime {
 	runtime := NewRuntime(terminal, app, cfg.fps)
+	if cfg.terminal != nil {
+		// A terminal from NewTestTerminal has no tty. Then raw mode and the
+		// keyboard protocol would only follow whether the test itself runs
+		// in a terminal or in tmux, and change the bytes the test sees.
+		_, hasTTY := terminalstate.Inspect(cfg.terminal)
+		runtime.noTTY = !hasTTY
+	}
 	runtime.SetPasteTabWidth(cfg.pasteTabWidth)
 	runtime.SetBackslashEnter(cfg.backslashEnter)
-	if cfg.inputSource != nil {
-		runtime.SetInputSource(cfg.inputSource)
+	input := cfg.inputSource
+	if input == nil && runtime.noTTY {
+		// A test terminal with no WithInput: the test sends no keys, and the
+		// process's stdin is not the test's to read. Use an input that has
+		// already ended, so Run draws once and returns.
+		ended := NewTestInput()
+		ended.Close()
+		input = ended
+	}
+	if input != nil {
+		runtime.SetInputSource(input)
 	}
 	return runtime
 }

@@ -880,6 +880,71 @@ tui.Run(app,
 )
 ```
 
+For tests, `tui.WithTerminal` and `tui.WithInput` replace the user's terminal
+and keyboard. See [Testing a Full-Screen App](#testing-a-full-screen-app).
+
+## Testing a Full-Screen App
+
+`WithTerminal` runs the real `tui.Run` path on an in-memory terminal, so a
+test checks the same setup, frames, and cleanup that users get. Make the
+terminal with `tui.NewTestTerminal` and a `termtest.Screen`. Send keys with a
+`tui.TestInput` and `WithInput`. Give the screen and the terminal the same
+size: nothing checks that they match. When the test closes the input, Run handles
+the keys already sent and returns. Run closes the terminal when it returns, so
+the screen then shows what the user sees after the app quits.
+
+```go
+func TestQuitGivesTheShellBack(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	screen.Write([]byte("$ myapp\r\n"))
+	term := tui.NewTestTerminal(80, 24, screen)
+
+	keys := tui.NewTestInput()
+	keys.Type("q")
+	keys.Close() // Run returns when the input ends, even if the app does not quit
+
+	err := tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(keys))
+	if err != nil {
+		t.Fatal(err)
+	}
+	termtest.AssertRow(t, screen, 0, "$ myapp")
+}
+```
+
+To check frames while the app runs, run `tui.Run` in a goroutine. A
+`termtest.Screen` is safe to read while the runtime writes to it. To resize,
+call `screen.Resize` and then `term.SetSize` with the same size: the window
+changes first, then the app learns the new size and redraws.
+
+```go
+func TestRedrawAfterResize(t *testing.T) {
+	screen := termtest.NewScreen(80, 24)
+	term := tui.NewTestTerminal(80, 24, screen)
+	keys := tui.NewTestInput()
+	done := make(chan error, 1)
+	go func() { done <- tui.Run(&myApp{}, tui.WithTerminal(term), tui.WithInput(keys)) }()
+
+	waitFor := func(text string) {
+		t.Helper()
+		for deadline := time.Now().Add(time.Second); !screen.Contains(text); time.Sleep(5 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("no %q on screen:\n%s", text, screen.Text())
+			}
+		}
+	}
+	waitFor("Inbox")
+
+	screen.Resize(40, 24) // the user narrows the window
+	term.SetSize(40, 24)  // the app learns the new size and redraws
+	waitFor("Inbox")
+
+	keys.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+```
+
 ## Snapshot Testing
 
 The tui package includes a comprehensive snapshot (golden) testing system for verifying rendered output. This approach captures the exact visual output of views and compares against saved snapshots.

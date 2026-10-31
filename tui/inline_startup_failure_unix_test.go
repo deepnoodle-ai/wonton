@@ -79,7 +79,7 @@ func TestInlineStartupFailurePTYHelper(t *testing.T) {
 		terminal := NewTestTerminal(80, 24, out)
 		runtime := NewRuntime(terminal, &handoffPTYApplication{}, 30)
 		runtime.SetKittyKeyboard(true)
-		source := NewMockInputSource()
+		source := NewTestInput()
 		source.Close()
 		runtime.SetInputSource(source)
 		runtime.Stop()

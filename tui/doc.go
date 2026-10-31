@@ -261,12 +261,20 @@
 //
 // # Testing
 //
-// The terminal package provides TestTerminal for unit testing TUI applications:
+// WithTerminal runs the real Run path on an in-memory terminal. Make the
+// terminal with NewTestTerminal and a termtest.Screen, and send keys with a
+// TestInput and WithInput. Run returns when the test closes the input, and
+// it closes the terminal, so the screen then shows what the user sees after
+// the app quits:
 //
 //	func TestApp(t *testing.T) {
-//	    term := tui.NewTestTerminal(80, 24, io.Discard)
-//	    runtime := tui.NewRuntime(term, &App{}, 30)
-//	    // Send events and verify output
+//	    screen := termtest.NewScreen(80, 24)
+//	    term := tui.NewTestTerminal(80, 24, screen)
+//	    keys := tui.NewTestInput()
+//	    keys.Type("q")
+//	    keys.Close()
+//	    err := tui.Run(&App{}, tui.WithTerminal(term), tui.WithInput(keys))
+//	    // Check err and the screen
 //	}
 //
 // # Thread Safety
