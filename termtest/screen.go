@@ -55,6 +55,16 @@
 //	screen := capture.Screen(80, 24)
 //	termtest.AssertContains(t, screen, "Success")
 //
+// # Raw Mode
+//
+// By default a Screen models a tty in cooked mode, where a bare "\n" also
+// returns to column 0. To test output that goes to a tty in raw mode, such as
+// output from tui.InlineApp, use WithRawMode. Then a bare "\n" keeps the
+// cursor column, so output that forgets a "\r" fails the test:
+//
+//	screen := termtest.NewScreen(80, 24, termtest.WithRawMode(true))
+//	screen.Write([]byte("ab\ncd"))  // "cd" starts at column 2 of row 1
+//
 // # ANSI Support
 //
 // The package supports common ANSI escape sequences:
@@ -143,6 +153,7 @@ type Screen struct {
 	wrapPending bool     // Deferred wrap: last column written, wrap on next glyph
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
 	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
+	rawMode     bool     // A bare LF keeps the column, as with the tty in raw mode; see WithRawMode
 }
 
 type skipMode uint8
@@ -155,12 +166,13 @@ const (
 
 // NewScreen creates a new virtual terminal screen with the specified dimensions.
 // The screen is initialized with empty cells (spaces) and the cursor at position (0, 0).
+// Options such as WithRawMode change how the screen interprets output.
 //
 // Example:
 //
 //	screen := termtest.NewScreen(80, 24)  // Standard terminal size
 //	screen.Write([]byte("Hello, World!"))
-func NewScreen(width, height int) *Screen {
+func NewScreen(width, height int, opts ...ScreenOption) *Screen {
 	// A screen needs at least one cell for the cursor to stand on.
 	width, height = max(width, 1), max(height, 1)
 	s := &Screen{
@@ -174,6 +186,7 @@ func NewScreen(width, height int) *Screen {
 			s.cells[y][x] = blankCell()
 		}
 	}
+	s.applyOptions(opts)
 	return s
 }
 
@@ -282,7 +295,9 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		return
 	case "\r\n", "\n":
 		s.wrapPending = false
-		s.cursorX = 0
+		if cluster == "\r\n" || !s.rawMode {
+			s.cursorX = 0
+		}
 		s.lineFeed()
 		return
 	case "\r":
@@ -411,7 +426,7 @@ func (s *Screen) lineFeed() {
 // WriteRune writes a single rune at the cursor position with the current style.
 // The cursor advances by the character's display width (1 for normal, 2 for wide).
 // Special characters are handled:
-//   - '\n' moves to the next line
+//   - '\n' moves to the next line (and keeps the column in raw mode; see WithRawMode)
 //   - '\r' returns to column 0
 //   - '\t' advances to the next tab stop (every 8 columns)
 //

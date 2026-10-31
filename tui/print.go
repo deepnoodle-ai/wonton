@@ -307,6 +307,8 @@ func Sprint(view View, opts ...PrintOption) string {
 // SprintScreen renders a view and returns a termtest.Screen for assertions.
 // This is a convenience function for testing that combines Sprint with
 // termtest.Screen parsing, making it easy to write precise visual tests.
+// With WithRawMode(true), the screen models a raw-mode terminal (see
+// termtest.WithRawMode), so a line that does not start at column 0 shows.
 //
 // Example:
 //
@@ -342,7 +344,7 @@ func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
 	output := buf.String()
 
 	// Create screen and write output
-	screen := termtest.NewScreen(cfg.Width, height)
+	screen := termtest.NewScreen(cfg.Width, height, termtest.WithRawMode(cfg.RawMode))
 	screen.Write([]byte(output))
 	return screen
 }
@@ -606,17 +608,19 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 	return errors.Join(err, checked.err)
 }
 
-// Stop finalizes the live region, moving the cursor below the content
-// and restoring cursor visibility.
+// Stop finalizes the live region, moving the cursor to column 0 of the line
+// below the content and restoring cursor visibility.
 func (lp *LivePrinter) Stop() {
 	if lp.hiddenCursor {
 		// Show cursor again
 		fmt.Fprint(lp.config.Output, "\033[?25h")
 		lp.hiddenCursor = false
 	}
-	// Ensure we're on a new line after the content
+	// Ensure we're on a new line after the content. In raw mode a bare
+	// "\n" keeps the column, so "\r" is needed to start the line at column
+	// 0. In cooked mode the tty adds the same "\r".
 	if lp.started && lp.lastHeight > 0 {
-		fmt.Fprintln(lp.config.Output)
+		fmt.Fprint(lp.config.Output, "\r\n")
 	}
 }
 
