@@ -4,7 +4,7 @@ Cross-platform system clipboard access for Go. Read from and write to the system
 
 ## Summary
 
-The clipboard package provides a simple, context-aware API for interacting with the system clipboard across all major platforms. It uses native clipboard utilities (pbcopy/pbpaste on macOS, xclip/xsel/wl-copy/wl-paste on Linux, PowerShell on Windows) and includes timeout protection, context cancellation support, and availability checking. All operations are safe for concurrent use and support custom timeouts.
+The clipboard package provides a simple, context-aware API for interacting with the system clipboard across all major platforms. It uses native clipboard utilities (pbcopy/pbpaste on macOS, xclip/xsel/wl-copy/wl-paste on Linux, the Win32 clipboard API on Windows) and includes timeout protection, context cancellation support, and availability checking. All operations are safe for concurrent use and support custom timeouts.
 
 ## Usage Examples
 
@@ -258,9 +258,9 @@ func main() {
 - Auto-detects available clipboard tool
 
 ### Windows
-- Uses PowerShell's `clip.exe` for writing
-- Uses PowerShell's `Get-Clipboard` for reading
-- Always available (PowerShell is built-in)
+- Calls the Win32 clipboard API directly, with no external commands
+- Retries while another process holds the clipboard, until the timeout
+- Always available (the clipboard API is built in)
 
 ## Related Packages
 

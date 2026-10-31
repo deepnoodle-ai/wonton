@@ -39,7 +39,7 @@
 //   - macOS: Uses pbcopy and pbpaste commands
 //   - Linux X11: Uses xclip or xsel (tries both in order of preference)
 //   - Linux Wayland: Uses wl-copy and wl-paste commands
-//   - Windows: Uses PowerShell Get-Clipboard and clip.exe commands
+//   - Windows: Calls the Win32 clipboard API directly
 //   - Other platforms: Returns ErrUnavailable
 //
 // Read returns the clipboard contents verbatim, including any trailing
@@ -175,7 +175,7 @@ func WriteContext(ctx context.Context, text string) error {
 // On Linux, it checks for xclip or xsel (X11), or for wl-copy when
 // WAYLAND_DISPLAY is set (Wayland), matching the tools Read and Write use.
 // On macOS, it checks for pbcopy/pbpaste.
-// On Windows, it always returns true (PowerShell is assumed to be available).
+// On Windows, it always returns true (the Win32 clipboard API is built in).
 // On other platforms, it returns false.
 //
 // Use this function before attempting clipboard operations to provide better error
@@ -196,7 +196,7 @@ func Available() bool {
 			return err == nil
 		}, os.Getenv("WAYLAND_DISPLAY") != "")
 	case "windows":
-		return true // PowerShell is always available on Windows
+		return true // The Win32 clipboard API is always available
 	default:
 		return false
 	}
@@ -209,16 +209,6 @@ func linuxAvailable(has func(name string) bool, wayland bool) bool {
 		return true
 	}
 	return wayland && has("wl-copy")
-}
-
-// trimPowerShellNewline removes the single line ending that PowerShell
-// appends to command output. It keeps any line ending that is part of the
-// clipboard content itself.
-func trimPowerShellNewline(s string) string {
-	if strings.HasSuffix(s, "\r\n") {
-		return strings.TrimSuffix(s, "\r\n")
-	}
-	return strings.TrimSuffix(s, "\n")
 }
 
 // Clear clears the clipboard by writing an empty string to it.
