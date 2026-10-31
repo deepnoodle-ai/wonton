@@ -231,6 +231,25 @@ func TestLivePrinterClearsWholeRegionAfterNarrowing(t *testing.T) {
 	assert.Equal(t, nonBlankRows(screen), []string{"above"})
 }
 
+func TestLivePrinterCountsStyledTrailingRun(t *testing.T) {
+	// The first line is "ok" and a 28-cell background-colored run of
+	// spaces. The run is printed cells, so it reflows with the text and
+	// counts toward the line's rows.
+	view := Stack(Text("ok%s", strings.Repeat(" ", 28)).Bg(ColorBlue), Text("tail"))
+	screen := termtest.NewScreen(40, 10)
+	screen.Write([]byte("above\r\n"))
+	lp := NewLivePrinter(WithWidth(40), WithOutput(screen))
+	assert.NoError(t, lp.Update(view))
+	assert.NotEqual(t, screen.Cell(29, 1).Style.Background, termtest.Color{})
+
+	screen.Resize(20, 10)
+	lp.SetWidth(20)
+	assert.NoError(t, lp.Update(view))
+
+	want := append([]string{"above"}, liveRowsOf(t, view, 20)...)
+	assert.Equal(t, nonBlankRows(screen), want)
+}
+
 func TestInlineAppLastLineAtNewEdge(t *testing.T) {
 	screen := termtest.NewScreen(40, 12)
 	runner := NewInlineApp(WithInlineOutput(screen), WithInlineWidth(40))
