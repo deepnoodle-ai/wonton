@@ -76,7 +76,8 @@
 //   - 256-color and 24-bit RGB colors
 //
 // Screen.Resize changes the size between two writes, as a user resizes the
-// terminal window. It reflows soft-wrapped text the way ghostty does.
+// terminal window. It reflows soft-wrapped text the way ghostty does. The
+// alternate screen is truncated at the new edge instead, as in ghostty.
 //
 // Unicode and wide characters (CJK, emoji) are handled correctly with proper
 // width calculation.
