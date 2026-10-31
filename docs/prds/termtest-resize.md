@@ -77,8 +77,11 @@ and pyte truncate at the right edge and do not reflow. Ghostty results:
 - **Cursor**: it stays on the same character. A cursor to the right of
   the row's content wraps with the content (column 8 on a 3-character
   line at width 5 moves to row +1, column 3). Pending wrap stays set.
-- **Saved cursor** (ESC 7, CSI s): ghostty clamps it to the new size.
-  It does not reflow.
+- **Saved cursor** (ESC 7, CSI s): ghostty keeps it on its character,
+  as it does the cursor. If its row leaves the top, it goes to row 0,
+  column 0. (An earlier draft said ghostty clamps it. The probes in the
+  first draft gave the same result for both rules; R-12 probes that tell
+  them apart show that ghostty moves it with its character.)
 - **Fewer rows**: ghostty first removes blank rows below the cursor.
   Then it moves rows from the top into scrollback. A cursor whose row
   moves into scrollback goes to row 0.
@@ -212,7 +215,8 @@ Acceptance:
   implementation verifies on probes when ghostty clears the flag (for
   example on erase or cursor movement into the row), and follows it.
 - R-3: The current style, pending escape bytes, and the deferred-wrap
-  state stay across `Resize`. The saved cursor clamps to the new size.
+  state stay across `Resize`. The saved cursor stays on its character,
+  as the cursor does.
 - R-4: Width and height under 1 clamp to 1, as in `NewScreen`. A resize
   to the current size changes nothing.
 - R-5: A resize that changes both width and height reflows first, then
@@ -264,9 +268,14 @@ Acceptance:
   row at the new right edge and does not reflow, as ghostty does. A wide
   character whose second half falls off the edge becomes blank. Widening
   adds blank cells on the right. Height changes follow ghostty, verified
-  on probes. This requirement depends on the alternate screen from the
-  termtest-alt-screen track (#212) and lands after it merges (see
-  Decisions).
+  on probes: as on the primary screen, blank rows below the cursor go
+  first, then rows leave the top. The hidden primary screen still
+  reflows (R-1 to R-5), around the cursor it had when the app switched
+  away and around its saved cursor, so the shell screen and cursor that
+  come back on ESC[?1049l are the reflowed ones. The same holds the
+  other way: a hidden alternate screen truncates when the primary screen
+  is resized. This requirement depends on the alternate screen from the
+  termtest-alt-screen track (#212).
 
 ## Not in scope
 
@@ -295,7 +304,10 @@ Acceptance:
   it uses the shared `termtest.ScreenOption` type that the
   termtest-raw-mode track adds in `termtest/options.go`. This track does
   not add a second option type.
-- **Clamp the saved cursor; do not reflow it.** Ghostty clamps it.
+- **Move the saved cursor with its character.** Ghostty does this. It
+  matters most when a full-screen app quits after a resize: ESC[?1049l
+  restores the saved cursor, and the shell prompt must land after the
+  reflowed text.
 - **Lose rows that leave the top.** termtest has no scrollback, and
   adding one is a new concept. Tests that grow the height after rows
   left the top differ from ghostty. The doc comment says so.

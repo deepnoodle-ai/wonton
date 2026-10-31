@@ -6,8 +6,10 @@ package termtest
 // or the alternate screen that full-screen applications draw on. The visible
 // grid is always s.cells, so every read and write method acts on what a user
 // would see. Switching swaps s.cells with the hidden grid kept here, together
-// with each screen's saved cursor. The cursor position, the current style and
-// the pending wrap belong to the terminal, not to a screen, so they carry over.
+// with each screen's saved cursor. Reads and writes use one shared cursor:
+// its position, the current style and the pending wrap carry over when the
+// screen switches. Only Resize uses where the cursor was when a screen was
+// hidden (altState.cursor), to reflow that hidden screen the way ghostty does.
 //
 // The semantics follow xterm and were checked against ghostty:
 //
@@ -20,6 +22,14 @@ type altState struct {
 	active bool     // the alternate screen is visible
 	hidden [][]Cell // the grid that is not visible; nil until the first switch
 	saved  savedCursor
+	// hiddenInfo is the row metadata of the hidden grid (see Screen.rowInfo).
+	// Each screen keeps its own, so clearing one screen keeps the other's
+	// soft wraps for Resize.
+	hiddenInfo map[*Cell]*rowMeta
+	// cursor is where the shared cursor was when the hidden screen was
+	// last visible. Only Resize uses it: it reflows the hidden screen
+	// around it, as ghostty does. Switching back does not restore it.
+	cursor mark
 }
 
 // savedCursor is the DECSC state of the hidden screen. Each screen has its own.
@@ -80,6 +90,8 @@ func (s *Screen) switchScreen(alternate bool) {
 		}
 	}
 	s.cells, s.alt.hidden = s.alt.hidden, s.cells
+	s.rowInfo, s.alt.hiddenInfo = s.alt.hiddenInfo, s.rowInfo
+	s.alt.cursor = mark{s.cursorX, s.cursorY, s.wrapPending}
 	visible := savedCursor{x: s.savedX, y: s.savedY, style: s.savedStyle, wrap: s.savedWrap}
 	s.savedX, s.savedY, s.savedStyle, s.savedWrap = s.alt.saved.x, s.alt.saved.y, s.alt.saved.style, s.alt.saved.wrap
 	s.alt.saved = visible

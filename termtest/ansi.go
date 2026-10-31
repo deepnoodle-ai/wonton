@@ -634,6 +634,8 @@ func (s *Screen) deleteChars(n int) {
 	start := clamp(s.cursorX, 0, s.width)
 	end := min(s.width, start+n)
 	shift := end - start
+	defer s.markErased(y, s.width-shift, s.width, true)
+	defer s.shiftPrinted(y, start, -shift)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
@@ -647,6 +649,7 @@ func (s *Screen) deleteChars(n int) {
 		default:
 			// Drop glyphs that overlap the deleted column range so we never
 			// leave behind a dangling continuation or split grapheme.
+			s.markErased(y, g.start, glyphEnd, false)
 		}
 	}
 	s.rewriteRow(y, rewritten)
@@ -659,6 +662,7 @@ func (s *Screen) insertChars(n int) {
 	}
 	y := s.cursorY
 	start := clamp(s.cursorX, 0, s.width)
+	defer s.shiftPrinted(y, start, n)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
@@ -672,6 +676,7 @@ func (s *Screen) insertChars(n int) {
 		default:
 			// Inserting into the middle of a wide glyph invalidates that glyph
 			// at the target columns; drop it rather than preserve a broken half.
+			s.markErased(y, g.start, glyphEnd, false)
 		}
 	}
 	s.rewriteRow(y, rewritten)
@@ -684,12 +689,16 @@ func (s *Screen) eraseChars(n int) {
 	y := s.cursorY
 	start := clamp(s.cursorX, 0, s.width)
 	end := min(s.width, start+n)
+	defer s.markErased(y, start, end, true)
 
 	var rewritten []rowGlyph
 	for _, g := range s.rowGlyphs(y) {
 		glyphEnd := g.start + g.width
 		if glyphEnd <= start || g.start >= end {
 			rewritten = append(rewritten, g)
+		} else {
+			// The blanked half of a wide glyph is erased, not printed.
+			s.markErased(y, g.start, glyphEnd, false)
 		}
 	}
 	s.rewriteRow(y, rewritten)

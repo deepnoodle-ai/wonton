@@ -75,6 +75,10 @@
 //   - The alternate screen (?1049, ?1047, ?47); reads show the visible screen
 //   - 256-color and 24-bit RGB colors
 //
+// Screen.Resize changes the size between two writes, as a user resizes the
+// terminal window. It reflows soft-wrapped text the way ghostty does. The
+// alternate screen is truncated at the new edge instead, as in ghostty.
+//
 // Unicode and wide characters (CJK, emoji) are handled correctly with proper
 // width calculation.
 package termtest
@@ -142,8 +146,10 @@ type Cell struct {
 // Screen implements io.Writer, so it can be used anywhere an io.Writer is expected.
 // Written bytes are interpreted as ANSI-formatted terminal output.
 type Screen struct {
-	width       int      // Screen width in columns
-	height      int      // Screen height in rows
+	width  int // Screen width in columns
+	height int // Screen height in rows
+	// Rows move by swapping whole row slices, and new rows are freshly
+	// allocated. Never copy cells between rows in place; see rowInfo.
 	cells       [][]Cell // 2D grid of character cells [y][x]
 	cursorX     int      // Current cursor column (0-based)
 	cursorY     int      // Current cursor row (0-based)
@@ -157,6 +163,14 @@ type Screen struct {
 	pending     []byte   // Incomplete escape sequence or UTF-8 rune from a previous Write
 	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
 	rawMode     bool     // A bare LF keeps the column, as with the tty in raw mode; see WithRawMode
+
+	// Soft wraps and printed cells by row, for Resize (resize.go). It is
+	// keyed by each row's first cell, so it follows a row only if every row
+	// move swaps whole row slices in cells and every new row is freshly
+	// allocated. Never copy cells between rows in place (for example
+	// copy(cells[y], cells[y+1])): the row's wrap flag and printed cells
+	// would stay behind on the wrong row.
+	rowInfo map[*Cell]*rowMeta
 }
 
 type skipMode uint8
@@ -347,6 +361,7 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 	// Wrap if needed (deferred from filling the last column, or because the
 	// cluster doesn't fit on the current line)
 	if s.wrapPending || s.cursorX+clusterWidth > s.width {
+		s.markWrapped(s.cursorY, !s.wrapPending && s.cursorX < s.width)
 		s.wrapPending = false
 		s.cursorX = 0
 		s.lineFeed()
@@ -354,6 +369,7 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 
 	first, firstSize := utf8.DecodeRuneInString(cluster)
 	s.setCellGlyph(s.cursorX, s.cursorY, first, cluster[firstSize:], clusterWidth, s.style)
+	s.markPrinted(s.cursorY, s.cursorX, clusterWidth)
 	s.cursorX += clusterWidth
 
 	// Deferred wrap: after filling the last column the cursor stays on it
@@ -405,6 +421,7 @@ func (s *Screen) extendPrevious(str string) string {
 		}
 		first, firstSize := utf8.DecodeRuneInString(cluster)
 		s.setCellGlyph(x, y, first, cluster[firstSize:], width, prev.Style)
+		s.markPrinted(y, x, width)
 		s.cursorX = x + width
 		if s.cursorX >= s.width {
 			s.cursorX = s.width - 1
@@ -490,6 +507,7 @@ func (s *Screen) Clear() {
 
 // clearCells blanks every cell without moving the cursor (CSI 2J/3J).
 func (s *Screen) clearCells() {
+	s.rowInfo = nil
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
 			s.cells[y][x] = blankCell()
@@ -514,6 +532,7 @@ func (s *Screen) Reset() {
 
 // ClearLine clears the current line.
 func (s *Screen) ClearLine() {
+	s.markErased(s.cursorY, 0, s.width, true)
 	for x := 0; x < s.width; x++ {
 		s.cells[s.cursorY][x] = blankCell()
 	}
@@ -525,7 +544,9 @@ func (s *Screen) ClearToEndOfLine() {
 	// lead cell too so no dangling half remains (xterm behavior).
 	if s.cursorX > 0 && s.cursorX < s.width && s.cells[s.cursorY][s.cursorX].Continuation {
 		s.cells[s.cursorY][s.cursorX-1] = blankCell()
+		s.markErased(s.cursorY, s.cursorX-1, s.cursorX, false)
 	}
+	s.markErased(s.cursorY, s.cursorX, s.width, true)
 	for x := s.cursorX; x < s.width; x++ {
 		s.cells[s.cursorY][x] = blankCell()
 	}
@@ -537,7 +558,9 @@ func (s *Screen) ClearToStartOfLine() {
 	// continuation cell too so no dangling half remains (xterm behavior).
 	if s.cursorX >= 0 && s.cursorX < s.width-1 && s.cells[s.cursorY][s.cursorX].Width == 2 {
 		s.cells[s.cursorY][s.cursorX+1] = blankCell()
+		s.markErased(s.cursorY, s.cursorX+1, s.cursorX+2, false)
 	}
+	s.markErased(s.cursorY, 0, s.cursorX+1, false)
 	for x := 0; x <= s.cursorX && x < s.width; x++ {
 		s.cells[s.cursorY][x] = blankCell()
 	}
@@ -547,6 +570,7 @@ func (s *Screen) ClearToStartOfLine() {
 func (s *Screen) ClearToEndOfScreen() {
 	s.ClearToEndOfLine()
 	for y := s.cursorY + 1; y < s.height; y++ {
+		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
 			s.cells[y][x] = blankCell()
 		}
@@ -556,6 +580,7 @@ func (s *Screen) ClearToEndOfScreen() {
 // ClearToStartOfScreen clears from start of screen to cursor.
 func (s *Screen) ClearToStartOfScreen() {
 	for y := 0; y < s.cursorY; y++ {
+		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
 			s.cells[y][x] = blankCell()
 		}
