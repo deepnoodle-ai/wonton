@@ -129,17 +129,20 @@ termtest.AssertRow(t, screen, 0, "Title")
 The test runs on whichever screen the runtime writes to. Today
 `tui.NewRuntime` does not switch to the alternate screen, so the test
 uses the primary screen, which reflows. When the alternate screen lands
-(see Decisions), the same test passes on it, which truncates. The
-runtime forces a full redraw after a resize, so the criteria check only
-the final frame, which is the same under both models.
+(see Decisions), the same test passes on it, which truncates. One rule
+applies to every criterion below: after each resize, the test checks the
+screen once the app's redraw is complete, not part of the way through
+it. The runtime forces a full redraw after a resize, so that frame is the
+same under both models. Only the alternate-screen criterion also checks
+the screen before the redraw, to prove truncation.
 
 Acceptance:
 - [ ] `Screen.Resize(width, height int)` exists. It returns nothing.
 - [ ] After `Resize`, `Size` returns the new size, and `Text`, `Row`,
       `Cell`, and snapshots use it.
 - [ ] A full-screen runtime test narrows and widens the screen, and
-      shrinks and grows its height. After each redraw, every row equals
-      the frame the app draws at the new size. No row from the old frame
+      shrinks and grows its height. After each resize, once the redraw is
+      complete, every row equals the frame the app draws at the new size. No row from the old frame
       stays visible.
 - [ ] A full-screen test cuts a wide character at the new right edge.
       After the redraw, the final frame shows no half character.
