@@ -16,6 +16,9 @@ package termtest
 //	?47h    switch to alternate              ?47l    switch to primary
 //	?1047h  switch to alternate              ?1047l  clear alternate, switch to primary
 //	?1049h  save cursor, switch, clear       ?1049l  switch to primary, restore cursor
+//
+// The ?1049h clear leaves default blank cells. The ?1047l clear fills the
+// alternate screen with the current background color (BCE), like CSI 2 J.
 
 // altState holds the hidden grid and the alternate-screen flag.
 type altState struct {
@@ -73,7 +76,9 @@ func (s *Screen) setPrivateModes(modes []int, set bool) {
 			if set {
 				s.saveCursor()
 				s.switchScreen(true)
-				s.clearCells()
+				// Default blank cells, not the current background:
+				// ghostty does not erase with BCE here.
+				s.fillCells(blankCell())
 			} else {
 				s.switchScreen(false)
 				s.restoreCursor()

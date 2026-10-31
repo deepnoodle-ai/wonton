@@ -167,6 +167,8 @@ func (r gridRow) printedAt(x int) bool {
 //     ghostty.
 //   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
 //     character. One whose row leaves the top goes to the home position.
+//     If the cursor waited to wrap (it wrote the last column), it goes to
+//     the second column of the top row instead.
 //     A saved cursor in the blank cells after a line's text stays on the
 //     row where the text of its old row now starts, as in ghostty. Its
 //     column is cut to fit that row, so it can land on text.
