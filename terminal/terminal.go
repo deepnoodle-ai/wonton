@@ -782,51 +782,91 @@ func (t *Terminal) RefreshSize() error {
 		t.mu.Unlock()
 		return nil
 	}
-
-	sizeChanged := width != t.width || height != t.height
-
-	if sizeChanged {
-		t.width = width
-		t.height = height
-		t.resizeBuffers(width, height)
-
-		// Clamp virtual cursor to new bounds
-		if t.virtualX >= t.width {
-			t.virtualX = t.width - 1
-			if t.virtualX < 0 {
-				t.virtualX = 0
-			}
-		}
-		if t.virtualY >= t.height {
-			t.virtualY = t.height - 1
-			if t.virtualY < 0 {
-				t.virtualY = 0
-			}
-		}
-
-		// Force full redraw after resize
-		if t.width > 0 && t.height > 0 {
-			t.dirtyRegion.MarkRect(0, 0, t.width, t.height)
-		}
-	}
-
+	sizeChanged := t.applySizeLocked(width, height)
 	t.mu.Unlock()
 
-	// Call resize callbacks outside the lock to prevent deadlocks
 	if sizeChanged {
-		t.callbackMu.RLock()
-		callbacks := make([]func(width, height int), 0, len(t.resizeCallbacks))
-		for _, cb := range t.resizeCallbacks {
-			callbacks = append(callbacks, cb.fn)
-		}
-		t.callbackMu.RUnlock()
+		t.runResizeCallbacks(width, height)
+	}
+	return nil
+}
 
-		for _, callback := range callbacks {
-			callback(width, height)
+// SetSize sets the size the program uses, as RefreshSize does after
+// SIGWINCH: it resizes the buffers, forces a full redraw on the next
+// frame, and calls the resize callbacks if the size changed.
+//
+// SetSize does not resize the terminal window. On a tty, the next
+// RefreshSize replaces the size with the one the tty reports. A width or
+// height under 1 is ignored.
+//
+// SetSize lets a test drive the resize path of a terminal made with
+// NewTestTerminal, which has no tty. The window changes first, then the
+// program learns the new size, so a test resizes its screen first and
+// then calls SetSize with the same size:
+//
+//	screen := termtest.NewScreen(80, 24)
+//	term := terminal.NewTestTerminal(80, 24, screen)
+//	// ... draw a frame ...
+//	screen.Resize(40, 24) // the user narrows the window
+//	term.SetSize(40, 24)  // the program learns the new size
+//	// ... draw the next frame ...
+func (t *Terminal) SetSize(width, height int) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	t.mu.Lock()
+	sizeChanged := t.applySizeLocked(width, height)
+	t.mu.Unlock()
+
+	if sizeChanged {
+		t.runResizeCallbacks(width, height)
+	}
+}
+
+// applySizeLocked stores a new size, resizes the buffers, and marks the
+// whole screen dirty. It reports whether the size changed. t.mu is held.
+func (t *Terminal) applySizeLocked(width, height int) bool {
+	if width == t.width && height == t.height {
+		return false
+	}
+	t.width = width
+	t.height = height
+	t.resizeBuffers(width, height)
+
+	// Clamp virtual cursor to new bounds
+	if t.virtualX >= t.width {
+		t.virtualX = t.width - 1
+		if t.virtualX < 0 {
+			t.virtualX = 0
+		}
+	}
+	if t.virtualY >= t.height {
+		t.virtualY = t.height - 1
+		if t.virtualY < 0 {
+			t.virtualY = 0
 		}
 	}
 
-	return nil
+	// Force full redraw after resize
+	if t.width > 0 && t.height > 0 {
+		t.dirtyRegion.MarkRect(0, 0, t.width, t.height)
+	}
+	return true
+}
+
+// runResizeCallbacks calls the registered resize callbacks. It is called
+// without t.mu held, so a callback can use the terminal.
+func (t *Terminal) runResizeCallbacks(width, height int) {
+	t.callbackMu.RLock()
+	callbacks := make([]func(width, height int), 0, len(t.resizeCallbacks))
+	for _, cb := range t.resizeCallbacks {
+		callbacks = append(callbacks, cb.fn)
+	}
+	t.callbackMu.RUnlock()
+
+	for _, callback := range callbacks {
+		callback(width, height)
+	}
 }
 
 func (t *Terminal) resizeBuffers(width, height int) {
