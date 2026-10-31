@@ -241,7 +241,7 @@ Acceptance:
   The termtest README and package doc list alternate-screen support.
 - R-10: The handoff PTY test replays its captured output into a `Screen`
   and checks that every scenario ends on the primary screen, with the
-  child's echoed input visible.
+  child's echoed input on its own row.
 - R-11: A benchmark writes a full-screen frame stream to a `Screen` that
   never switches.
 
