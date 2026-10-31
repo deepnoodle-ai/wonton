@@ -414,3 +414,21 @@ func TestInlineResizeRewritesEveryLiveRow(t *testing.T) {
 		assert.True(t, strings.Contains(out.log.String(), row), row)
 	}
 }
+
+// After a width change and before the next frame, the live region may
+// take more rows than it did (the terminal rewrapped it), so Print redraws
+// until a frame at the new width is on screen.
+func TestInlinePrintInsertWaitsForFrameAtNewWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	runner.processEvent(ResizeEvent{Width: 40, Height: 12})
+	runner.config.Width = 30
+	runner.live.SetWidth(30)
+	out.log.Reset()
+	runner.Printf("between")
+	assert.False(t, usedInsert(out.log.String()), "frame still at the old width")
+
+	runner.render()
+	out.log.Reset()
+	runner.Printf("after")
+	assert.True(t, usedInsert(out.log.String()))
+}
