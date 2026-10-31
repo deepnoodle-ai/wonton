@@ -1173,8 +1173,10 @@ autowrap off, and while the window's width changes `Print` clears and
 redraws the live region instead, so a row never wraps over another row and
 no printed line is lost.
 It also redraws when the live region leaves less than two free rows on the
-screen. The result on screen and in scrollback is the same either
-way. See `examples/tui/inline_stream`.
+screen. After a width change, the next frame erases the old live region and
+writes every row at the new width; under tmux and zellij, which report a
+resize late, a couple of rows of the old live region can stay above the
+output. See `examples/tui/inline_stream`.
 
 ### InlineApp Architecture
 

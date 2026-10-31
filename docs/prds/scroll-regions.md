@@ -231,10 +231,12 @@ tui:
 - R-12 After any resize, the live region's next frame writes every row.
 - R-13 Print redraws instead of inserting until the terminal has the width
   it had when the live frame was drawn, and for 500 ms after a width
-  change. Under tmux or zellij, which report a resize late, the frame
-  drawn after a width change erases only the old frame's own height when
-  Print inserted in the last second, so rows inserted into the rewrapped
-  old frame stay.
+  change. A redraw before the next frame keeps the old frame's width, so
+  the next frame still erases it and writes every row. Under tmux or
+  zellij, which report a resize late, the frame drawn after a width change
+  erases only the old frame's own height when Print inserted after the
+  last frame and within 300 ms, so rows inserted into the rewrapped old
+  frame stay.
 - R-14 A runnable example, `examples/tui/inline_stream`, streams lines under
   a spinner and input line.
 
@@ -256,10 +258,13 @@ tui:
   for tests, and it has value alone. Rejected: one PR for both, which is
   harder to review.
 - Insert rows above the live region with relative moves (line feeds,
-  cursor up, insert line). It keeps every line when the window resizes
-  during output, writes fewer bytes, and needs no cursor-position query, no
-  tracking of the live region's row, no size check, and no list of
-  terminals to avoid. Rejected: a scroll region from row 1 to the row above
+  cursor up, insert line). It keeps every line when the window's height
+  changes during output, writes fewer bytes, and needs no cursor-position
+  query and no tracking of the live region's row. A width change is
+  different, because the terminal rewraps rows: Print reads the size (one
+  ioctl per Print and per frame) and redraws while the width changes, and
+  under tmux and zellij, which report a resize late, it erases the old
+  frame as its own height after a recent insert (see below). Rejected: a scroll region from row 1 to the row above
   the live region, as Codex does. A scroll region takes absolute rows, so
   the runtime must know the live region's row (a cursor position query and
   rules to keep it current) and the exact screen height. During a resize,
@@ -281,12 +286,18 @@ tui:
   terminal has when the bytes arrive, not when Print runs.
 - Lose no printed line where the old Print keeps it, even at the cost of a
   stray live row in scrollback. tmux narrows a pane at once and tells the
-  program about every 250 ms during a drag, so a few inserts land among the
-  rewrapped rows of the old frame. Erasing the old frame as its own height
-  keeps them, and can leave two rewrapped live rows in scrollback, as the
-  old Print does. Rejected: erase the rewrapped frame, which lost 2 of 500
-  lines in tmux. Rejected: no insert while the live region has a full-width
-  row, which would turn the insert off for most agent CLIs.
+  program about every 250 ms during a drag, so inserts in that gap land
+  among the rewrapped rows of the old frame. Erasing the old frame as its
+  own height keeps them. The cost: the rewrapped rows of the old frame
+  above the inserts (two for this example) stay and later move into
+  scrollback. The old Print leaves such rows too when a Print lands in the
+  same gap. The rule applies only when Print inserted after the last frame
+  and within 300 ms, about the tmux report interval, so slow output (a
+  line every half second) gets a clean frame. Rejected: erase the
+  rewrapped frame, which lost 2 of 500 lines in tmux. Rejected: no insert
+  while the live region has a full-width row, which would turn the insert
+  off for most agent CLIs. Rejected: a one-second window, which left a
+  copy of the live rows after each narrowing with slow output.
 - Insert at most half the free rows at a time. An insert of n rows is
   correct while n plus the live region height fits the screen; the margin
   covers a screen that shrank before the runtime heard of it. Rejected: one

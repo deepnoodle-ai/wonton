@@ -1046,10 +1046,15 @@ func (r *InlineApp) commandExecutor() {
 // rows on the screen, when the terminal's size cannot be read, and while
 // the window's width is changing: the terminal is narrower than the
 // rendered rows, its width differs from when the live region was last
-// drawn, or the width changed less than half a second ago. It then clears the live region, prints
-// the view, and draws the live region again below it, exactly as the event
-// loop last drew it. The result on screen and in scrollback is the same
-// either way.
+// drawn, or the width changed less than half a second ago. It then clears
+// the live region, prints the view, and draws the live region again below
+// it, exactly as the event loop last drew it.
+//
+// With a window of steady width both ways give the same screen and
+// scrollback. After a width change, the next frame erases the old live
+// region and writes every row at the new width. Under tmux and zellij,
+// which report a resize late, a couple of rows of the old live region can
+// stay above the output and move into scrollback; printed rows are kept.
 //
 // Print never calls LiveView, so focus styling stays and LiveView never
 // runs at the same time as HandleEvent. The event loop draws a fresh live
