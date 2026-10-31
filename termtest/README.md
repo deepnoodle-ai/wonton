@@ -290,10 +290,12 @@ func TestAppRestoresShellScreen(t *testing.T) {
 `Screen.Resize` changes the size between two writes, as a user resizes the
 terminal window. Text that wrapped at the right edge reflows the way ghostty,
 iTerm2, kitty, and WezTerm reflow it. Lines that ended with a line feed never
-join. termtest has no scrollback: rows pushed off the top are lost. The
-alternate screen does not reflow: its rows are cut at the new edge. The
-shell screen behind it still reflows, so it comes back reflowed when the
-app quits.
+join. Rows pushed off the top go to the scrollback (`Screen.Scrollback`),
+and a taller screen takes them back when the cursor is on the last row.
+Lines in the scrollback reflow too. The alternate screen does not reflow:
+its rows are cut at the new edge, and it has no scrollback. The shell
+screen behind it still reflows, so it comes back reflowed when the app
+quits. A resize resets the scroll region to the whole screen.
 
 ```go
 func TestRedrawAfterResize(t *testing.T) {
@@ -308,6 +310,31 @@ func TestRedrawAfterResize(t *testing.T) {
 	termtest.AssertRow(t, screen, 0, "Title")
 }
 ```
+
+### Testing Scroll Regions and Scrollback
+
+```go
+func TestScrollRegion(t *testing.T) {
+	screen := termtest.NewScreen(10, 5)
+	screen.Write([]byte("1\r\n2\r\n3\r\n4\r\n5"))
+
+	// Region rows 2-4; a line feed at row 4 scrolls only rows 2-4.
+	screen.Write([]byte("\x1b[2;4r\x1b[4;1H\nX"))
+	// Rows are now "1", "3", "4", "X", "5".
+
+	// A region that starts at row 1 sends departing rows to scrollback,
+	// as a real terminal does.
+	screen.Write([]byte("\x1b[1;2r\x1b[2;1H\n"))
+	assert.Equal(t, screen.Scrollback(), []string{"1"})
+}
+```
+
+Only the primary screen has scrollback. While the alternate screen is
+visible, `Scrollback` returns nil, and a scroll there adds nothing to the
+primary screen's scrollback.
+
+Erase, insert, delete, and scroll operations fill new cells with the
+current background color (background color erase), as xterm and ghostty do.
 
 ## API Reference
 
@@ -349,6 +376,7 @@ func TestRedrawAfterResize(t *testing.T) {
 | `Screen.ClearToStartOfLine` | Clears line start to cursor | none | none |
 | `Screen.ClearToEndOfScreen` | Clears cursor to screen end | none | none |
 | `Screen.ClearToStartOfScreen` | Clears screen start to cursor | none | none |
+| `Screen.Scrollback` | Primary screen rows that scrolled off the top, oldest first | none | `[]string` |
 
 ### Assertion Functions
 

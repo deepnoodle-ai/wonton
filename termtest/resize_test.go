@@ -446,7 +446,13 @@ func TestResizeAfterScrollingKeepsWraps(t *testing.T) {
 	}
 	s.Write([]byte("abcdef"))
 	s.Resize(8, 2)
-	assert.Equal(t, visibleRows(s), []string{"abcdef"})
+	// Each line joins again, the scrollback ones too, and the joined rows
+	// leave room that the line above takes back from the scrollback.
+	assert.Equal(t, visibleRows(s), []string{"abcdef", "abcdef"})
+	assert.Equal(t, len(s.Scrollback()), 49)
+	for _, row := range s.Scrollback() {
+		assert.Equal(t, row, "abcdef")
+	}
 	// Rows that scrolled off do not keep their metadata alive.
 	assert.True(t, len(s.rowInfo) <= 2*2+1, "rowInfo has %d entries", len(s.rowInfo))
 }
@@ -491,4 +497,28 @@ func ExampleScreen_Resize() {
 	// jumps
 	// $
 	// cursor at (2, 3)
+}
+
+func TestResizeMovesRowsThroughScrollback(t *testing.T) {
+	s := NewScreen(10, 5)
+	s.Write([]byte("1\r\n2\r\n3\r\n4\r\n5"))
+	s.Resize(10, 3)
+	assert.Equal(t, s.Scrollback(), []string{"1", "2"})
+	assert.Equal(t, rows(s), []string{"3", "4", "5"})
+
+	// The cursor is on the last row, so a taller screen takes the rows back.
+	s.Resize(10, 5)
+	assert.Equal(t, s.Scrollback(), []string(nil))
+	assert.Equal(t, rows(s), []string{"1", "2", "3", "4", "5"})
+}
+
+func TestResizeReflowsLineSplitIntoScrollback(t *testing.T) {
+	// A region at the top scrolls the first row of a wrapped line into the
+	// scrollback; the line still joins when the screen widens.
+	s := NewScreen(10, 5)
+	s.Write([]byte("1\r\nabcdefghijklmno\r\n4\r\n5\x1b[1;4r\x1b[2S"))
+	assert.Equal(t, s.Scrollback(), []string{"1", "abcdefghij"})
+	s.Resize(15, 5)
+	assert.Equal(t, s.Scrollback(), []string{"1"})
+	assert.Equal(t, s.Row(0), "abcdefghijklmno")
 }

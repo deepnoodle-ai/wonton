@@ -70,14 +70,20 @@
 // The package supports common ANSI escape sequences:
 //   - Cursor movement (up, down, left, right, position)
 //   - Text styling (bold, italic, underline, colors)
-//   - Screen clearing and line editing
-//   - Scrolling and line insertion/deletion
+//   - Screen clearing and line editing, with background color erase: erased
+//     and inserted cells take the current background color, as in xterm
+//   - Scrolling and line insertion/deletion, inside a scroll region
+//     (CSI top ; bottom r) and with origin mode (CSI ? 6 h)
+//   - Scrollback: rows that scroll off the top (see Screen.Scrollback)
 //   - The alternate screen (?1049, ?1047, ?47); reads show the visible screen
+//   - C0 controls (CR, LF, BS, ...) inside a CSI sequence, which run as
+//     they do in xterm
 //   - 256-color and 24-bit RGB colors
 //
 // Screen.Resize changes the size between two writes, as a user resizes the
-// terminal window. It reflows soft-wrapped text the way ghostty does. The
-// alternate screen is truncated at the new edge instead, as in ghostty.
+// terminal window. It reflows soft-wrapped text the way ghostty does, the
+// scrollback included. The alternate screen is truncated at the new edge
+// instead, as in ghostty.
 //
 // Unicode and wide characters (CJK, emoji) are handled correctly with proper
 // width calculation.
@@ -171,6 +177,12 @@ type Screen struct {
 	// copy(cells[y], cells[y+1])): the row's wrap flag and printed cells
 	// would stay behind on the wrong row.
 	rowInfo map[*Cell]*rowMeta
+
+	// Scroll region (DECSTBM) and origin mode (DECOM); see region.go.
+	top, bottom int       // Scroll region rows, 0-based and inclusive; the whole screen when unset
+	originMode  bool      // Cursor rows count from the region top (CSI ? 6 h)
+	savedOrigin bool      // Origin mode saved by ESC 7
+	scrollback  []gridRow // Primary screen rows that scrolled off the top, oldest first; see Scrollback
 }
 
 type skipMode uint8
@@ -196,6 +208,7 @@ func NewScreen(width, height int, opts ...ScreenOption) *Screen {
 		width:  width,
 		height: height,
 		cells:  make([][]Cell, height),
+		bottom: height - 1,
 	}
 	for y := 0; y < height; y++ {
 		s.cells[y] = make([]Cell, width)
@@ -322,9 +335,12 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		s.cursorX = 0
 		return
 	case "\t":
-		s.wrapPending = false
-		nextTab := ((s.cursorX / 8) + 1) * 8
-		s.cursorX = min(nextTab, s.width-1)
+		// A deferred wrap means the cursor is at the last column, so the
+		// tab does nothing and the wrap stays pending, as in ghostty.
+		if !s.wrapPending {
+			nextTab := ((s.cursorX / 8) + 1) * 8
+			s.cursorX = min(nextTab, s.width-1)
+		}
 		return
 	}
 
@@ -365,6 +381,7 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		s.wrapPending = false
 		s.cursorX = 0
 		s.lineFeed()
+		s.markContinued(s.cursorY)
 	}
 
 	first, firstSize := utf8.DecodeRuneInString(cluster)
@@ -434,13 +451,10 @@ func (s *Screen) extendPrevious(str string) string {
 	return str
 }
 
-// lineFeed moves the cursor down one row, scrolling at the bottom.
+// lineFeed moves the cursor down one row, scrolling the scroll region at
+// its bottom margin.
 func (s *Screen) lineFeed() {
-	s.cursorY++
-	if s.cursorY >= s.height {
-		s.scrollUp()
-		s.cursorY = s.height - 1
-	}
+	s.index()
 }
 
 // WriteRune writes a single rune at the cursor position with the current style.
@@ -498,94 +512,126 @@ func (s *Screen) Write(p []byte) (n int, err error) {
 }
 
 // Clear clears the entire screen and moves the cursor to the top-left.
+// Cleared cells have the default style. (CSI 2 J, which a program sends,
+// fills them with the current background color instead.)
 func (s *Screen) Clear() {
-	s.clearCells()
+	s.fillCells(blankCell())
 	s.cursorX = 0
 	s.cursorY = 0
 	s.wrapPending = false
 }
 
-// clearCells blanks every cell without moving the cursor (CSI 2J/3J).
+// clearCells erases every cell without moving the cursor (CSI 2J).
 func (s *Screen) clearCells() {
+	s.fillCells(s.eraseCell())
+}
+
+// fillCells sets every cell to cell and drops the row metadata.
+func (s *Screen) fillCells(cell Cell) {
 	s.rowInfo = nil
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = blankCell()
+			s.cells[y][x] = cell
 		}
 	}
 }
 
 // Reset restores the screen to its initial state: all cells blank, cursor at
-// the top-left, default style, and no saved cursor state. This is equivalent
-// to a terminal hard reset (ESC c / RIS).
+// the top-left, default style, no saved cursor state, no scroll region, and
+// empty scrollback. This is equivalent to a terminal hard reset (ESC c / RIS).
 func (s *Screen) Reset() {
 	s.resetAltScreen()
-	s.Clear()
 	s.style = Style{}
+	s.Clear()
 	s.savedX = 0
 	s.savedY = 0
 	s.savedStyle = Style{}
 	s.savedWrap = false
 	s.pending = nil
 	s.skip = skipNone
+	s.resetScrollRegion()
+	s.originMode = false
+	s.savedOrigin = false
+	s.scrollback = nil
 }
 
-// ClearLine clears the current line.
-func (s *Screen) ClearLine() {
+// ClearLine clears the current line. Like the other Clear methods, it
+// leaves cells with the default style; the erase sequences a program sends
+// (CSI K, CSI J) use the current background color instead.
+func (s *Screen) ClearLine() { s.eraseLine(blankCell()) }
+
+// ClearToEndOfLine clears from cursor to end of line.
+func (s *Screen) ClearToEndOfLine() { s.eraseToEndOfLine(blankCell()) }
+
+// ClearToStartOfLine clears from start of line to cursor.
+func (s *Screen) ClearToStartOfLine() { s.eraseToStartOfLine(blankCell()) }
+
+// ClearToEndOfScreen clears from cursor to end of screen.
+func (s *Screen) ClearToEndOfScreen() { s.eraseToEndOfScreen(blankCell()) }
+
+// ClearToStartOfScreen clears from start of screen to cursor.
+func (s *Screen) ClearToStartOfScreen() { s.eraseToStartOfScreen(blankCell()) }
+
+// eraseLine sets every cell of the cursor row to cell (CSI 2 K).
+func (s *Screen) eraseLine(cell Cell) {
 	s.markErased(s.cursorY, 0, s.width, true)
 	for x := 0; x < s.width; x++ {
-		s.cells[s.cursorY][x] = blankCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToEndOfLine clears from cursor to end of line.
-func (s *Screen) ClearToEndOfLine() {
+// eraseToEndOfLine sets the cells from the cursor to the end of the row to
+// cell (CSI K).
+func (s *Screen) eraseToEndOfLine(cell Cell) {
 	// If the cursor sits on the continuation half of a wide glyph, clear the
 	// lead cell too so no dangling half remains (xterm behavior).
 	if s.cursorX > 0 && s.cursorX < s.width && s.cells[s.cursorY][s.cursorX].Continuation {
-		s.cells[s.cursorY][s.cursorX-1] = blankCell()
+		s.cells[s.cursorY][s.cursorX-1] = cell
 		s.markErased(s.cursorY, s.cursorX-1, s.cursorX, false)
 	}
 	s.markErased(s.cursorY, s.cursorX, s.width, true)
 	for x := s.cursorX; x < s.width; x++ {
-		s.cells[s.cursorY][x] = blankCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToStartOfLine clears from start of line to cursor.
-func (s *Screen) ClearToStartOfLine() {
+// eraseToStartOfLine sets the cells from the start of the row through the
+// cursor to cell (CSI 1 K).
+func (s *Screen) eraseToStartOfLine(cell Cell) {
 	// If the cursor sits on the lead half of a wide glyph, clear its
 	// continuation cell too so no dangling half remains (xterm behavior).
 	if s.cursorX >= 0 && s.cursorX < s.width-1 && s.cells[s.cursorY][s.cursorX].Width == 2 {
-		s.cells[s.cursorY][s.cursorX+1] = blankCell()
+		s.cells[s.cursorY][s.cursorX+1] = cell
 		s.markErased(s.cursorY, s.cursorX+1, s.cursorX+2, false)
 	}
 	s.markErased(s.cursorY, 0, s.cursorX+1, false)
 	for x := 0; x <= s.cursorX && x < s.width; x++ {
-		s.cells[s.cursorY][x] = blankCell()
+		s.cells[s.cursorY][x] = cell
 	}
 }
 
-// ClearToEndOfScreen clears from cursor to end of screen.
-func (s *Screen) ClearToEndOfScreen() {
-	s.ClearToEndOfLine()
+// eraseToEndOfScreen sets the cells from the cursor to the end of the
+// screen to cell (CSI J).
+func (s *Screen) eraseToEndOfScreen(cell Cell) {
+	s.eraseToEndOfLine(cell)
 	for y := s.cursorY + 1; y < s.height; y++ {
 		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = blankCell()
+			s.cells[y][x] = cell
 		}
 	}
 }
 
-// ClearToStartOfScreen clears from start of screen to cursor.
-func (s *Screen) ClearToStartOfScreen() {
+// eraseToStartOfScreen sets the cells from the start of the screen through
+// the cursor to cell (CSI 1 J).
+func (s *Screen) eraseToStartOfScreen(cell Cell) {
 	for y := 0; y < s.cursorY; y++ {
 		s.markErased(y, 0, s.width, true)
 		for x := 0; x < s.width; x++ {
-			s.cells[y][x] = blankCell()
+			s.cells[y][x] = cell
 		}
 	}
-	s.ClearToStartOfLine()
+	s.eraseToStartOfLine(cell)
 }
 
 // Text returns the screen content as plain text with ANSI sequences removed.
@@ -631,34 +677,13 @@ func (s *Screen) Row(y int) string {
 	if y < 0 || y >= s.height {
 		return ""
 	}
-	var line strings.Builder
-	for x := 0; x < s.width; x++ {
-		cell := s.cells[y][x]
-		if cell.Continuation {
-			continue
-		}
-		writeCellGlyph(&line, cell)
-	}
-	return strings.TrimRight(line.String(), " ")
+	return rowText(s.cells[y])
 }
 
 // Contains checks if the screen contains the given text anywhere in its content.
 // The search includes the full Text() output, so it can match across line boundaries.
 func (s *Screen) Contains(text string) bool {
 	return strings.Contains(s.Text(), text)
-}
-
-// scrollUp scrolls the screen content up by one line.
-func (s *Screen) scrollUp() {
-	// Move all lines up
-	for y := 0; y < s.height-1; y++ {
-		s.cells[y] = s.cells[y+1]
-	}
-	// Clear the last line
-	s.cells[s.height-1] = make([]Cell, s.width)
-	for x := 0; x < s.width; x++ {
-		s.cells[s.height-1][x] = blankCell()
-	}
 }
 
 func clamp(v, min, max int) int {

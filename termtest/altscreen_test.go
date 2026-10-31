@@ -180,3 +180,14 @@ func TestCursorRestoreRestoresStyle(t *testing.T) {
 		})
 	}
 }
+
+func TestAlternateScreenHasNoScrollback(t *testing.T) {
+	s := NewScreen(10, 2)
+	s.Write([]byte("1\r\n2\r\n3\x1b[?1049h"))
+	assert.Equal(t, s.Scrollback(), []string(nil), "the alternate screen shows none")
+
+	// A scroll and ED 3 on the alternate screen leave the primary
+	// screen's scrollback alone.
+	s.Write([]byte("a\r\nb\r\nc\x1b[3J\x1b[?1049l"))
+	assert.Equal(t, s.Scrollback(), []string{"1"})
+}
