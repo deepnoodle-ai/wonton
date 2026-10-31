@@ -248,8 +248,19 @@ func (s *Screen) swapGrids() {
 // tracks it, and goes home if its row leaves the top.
 func (s *Screen) resizeGrid(width, height int, primary bool, marks ...mark) []mark {
 	g := &resizer{width: s.width, height: s.height}
+	// A reflow can change every scrollback row, so it takes them all.
+	// Without one, rows only move between the screen and the end of the
+	// scrollback, and a screen of the new height takes back at most height
+	// rows, so the older rows stay where they are, untouched.
+	reflow := primary && width != s.width
+	var kept []gridRow
 	if primary {
-		g.rows = append(g.rows, s.scrollback...)
+		from := 0
+		if !reflow {
+			from = max(len(s.scrollback)-height, 0)
+		}
+		kept = s.scrollback[:from]
+		g.rows = append(g.rows, s.scrollback[from:]...)
 	}
 	g.top = len(g.rows)
 	for y := 0; y < s.height; y++ {
@@ -265,7 +276,9 @@ func (s *Screen) resizeGrid(width, height int, primary bool, marks ...mark) []ma
 	// the cursor row from before the resize, as ghostty does.
 	cursorY := marks[0].y
 	switch {
-	case width == s.width || !primary:
+	case width == s.width:
+		g.fitHeight(height, cursorY)
+	case !primary:
 		g.truncate(width)
 		g.fitHeight(height, cursorY)
 	case width < s.width:
@@ -277,7 +290,10 @@ func (s *Screen) resizeGrid(width, height int, primary bool, marks ...mark) []ma
 	}
 
 	if primary {
-		s.scrollback = append([]gridRow(nil), g.rows[:g.top]...)
+		// kept is a prefix of the old scrollback and g.rows holds copies
+		// of the rows after it, so appending in place overwrites nothing
+		// still needed.
+		s.scrollback = append(kept, g.rows[:g.top]...)
 	}
 	s.width, s.height = width, height
 	s.cells = make([][]Cell, height)
@@ -488,6 +504,11 @@ type lineGlyph struct {
 // fit the rows to a height.
 func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved []mark) {
 	moved = make([]mark, len(marks))
+	rows = make([]gridRow, 0, len(src))
+	// The glyph and offset buffers are reused for every line, since
+	// layoutLine does not keep them.
+	var glyphs []lineGlyph
+	offs := make([]int, len(marks))
 	for y := 0; y < len(src); {
 		// Collect the rows of one logical line.
 		first := y
@@ -497,10 +518,9 @@ func reflowRows(src []gridRow, width int, marks []mark) (rows []gridRow, moved [
 		last := y
 		y++
 
-		var glyphs []lineGlyph
+		glyphs = glyphs[:0]
 		lineLen := 0
 		lastStart := -1 // where the last row starts in the line, if it ends the line
-		offs := make([]int, len(marks))
 		for i := range offs {
 			offs[i] = -1
 		}
@@ -572,9 +592,16 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 	freeCol := 0
 
 	// Where each offset of the line landed: its row, its column, and the
-	// last column of the glyph that covers it.
+	// last column of the glyph that covers it. Only the marks need it, so
+	// a line without one, nearly every line, skips it.
 	type pos struct{ row, col, end int }
-	at := map[int]pos{}
+	var at map[int]pos
+	for _, off := range offs {
+		if off >= 0 {
+			at = map[int]pos{}
+			break
+		}
+	}
 	for _, g := range glyphs {
 		c, w := g.cell, g.width
 		if w > width {
@@ -594,10 +621,10 @@ func layoutLine(glyphs []lineGlyph, width int, marks []mark, offs []int, lastSta
 			row = gridRow{cells: blankRow(width), meta: &rowMeta{continued: true}}
 			col = 0
 		}
-		for i := 0; i < g.width; i++ {
+		for i := 0; at != nil && i < g.width; i++ {
 			at[g.off+i] = pos{len(out.rows), min(col+i, col+w-1), col + w - 1}
 		}
-		if spacer >= 0 {
+		if at != nil && spacer >= 0 {
 			// A mark on a wide character that wraps stays on the pad cell
 			// it leaves behind, as ghostty moves its pins.
 			at[g.off] = pos{len(out.rows) - 1, spacer, spacer}
