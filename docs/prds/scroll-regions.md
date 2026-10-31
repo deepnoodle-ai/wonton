@@ -1,7 +1,7 @@
 # Print above a live region without redrawing it
 
 Status: Draft\
-PRD PR: [#210](https://github.com/deepnoodle-ai/wonton/pull/210) · Implementation PR: [#215](https://github.com/deepnoodle-ai/wonton/pull/215) · Updated: 2026-10-31
+PRD PR: [#210](https://github.com/deepnoodle-ai/wonton/pull/210) · Implementation PRs: [#215](https://github.com/deepnoodle-ai/wonton/pull/215), [#220](https://github.com/deepnoodle-ai/wonton/pull/220) · Updated: 2026-11-01
 
 ## Problem
 
@@ -11,7 +11,7 @@ bottom. Each `InlineApp.Print` clears the live region, prints, and draws the
 whole live region again (`tui/inline_app.go:1019`).
 
 - Cost: with a 5-line live region at width 100, one `Printf` of a 46-byte
-  log line writes 856 bytes. 500 lines write 428 KB instead of about 40 KB.
+  log line writes 855 bytes. 500 lines write 428 KB instead of about 40 KB.
   The cost grows with the height of the live region. Over SSH this is slow.
 - Flicker: Print is wrapped in synchronized output (mode 2026). Terminals
   that ignore mode 2026, such as macOS Terminal.app and xterm, can show the
@@ -25,31 +25,27 @@ order, which is the main risk of any change here.
 If we do nothing, wonton CLIs keep paying a full live-region redraw per
 line, and termtest stays unable to verify output that real terminals and
 other libraries already depend on.
-
 ## Context
 
 Comparable libraries (details in the track's discovery notes):
 
-- **OpenAI Codex CLI** (inline viewport) does exactly this. It sets a
-  scroll region from row 1 to the row above the viewport, writes `\r\n` and
-  each line at the region bottom, then resets the region. The viewport is
-  never redrawn. It uses line feeds, not `CSI S`, because `CSI S` loses rows
-  in xterm.js and QTermWidget. It falls back to a full redraw in Windows
-  Terminal, which discards rows that leave a partial region.
-- **Ratatui** offers the same technique behind an opt-in `scrolling-regions`
-  feature, with `CSI S`.
-- **Bubble Tea v2**, **Ink**, and **prompt_toolkit** erase and redraw, as
-  wonton does today. Bubble Tea uses scroll regions only in the full-screen
-  alternate-screen renderer, and not on Windows.
-- **Ghostty and xterm** move a row that leaves a region into scrollback only
-  when the region starts at row 1. tmux does the same.
-- **Windows Terminal** discards rows that leave a partial region (Codex
-  #39619). SSH does not forward `WT_SESSION`, so a remote program cannot
-  detect it.
+- **Bubble Tea v2** (`InsertAbove` in its renderer) adds lines above an
+  inline view with line feeds, cursor moves, and insert line, without a
+  scroll region.
+- **OpenAI Codex CLI** (inline viewport) sets a scroll region from row 1 to
+  the row above its viewport and writes each line at the region bottom. It
+  needs the viewport's absolute row, so it asks the terminal for the cursor
+  position, and it falls back to a full redraw in Windows Terminal, which
+  discards rows that leave a partial region.
+- **Ratatui** offers the scroll-region technique behind an opt-in
+  `scrolling-regions` feature.
+- **Ink** and **prompt_toolkit** erase and redraw, as wonton does today.
+- **Ghostty, xterm, tmux, and Windows Terminal** all move a row into
+  scrollback when a line feed scrolls the whole screen.
 
-A scroll region uses absolute rows. Wonton's live region uses only relative
-cursor moves and does not know its absolute row. Wonton never asks the
-terminal for the cursor position today.
+Wonton's live region uses only cursor moves relative to itself and does not
+know its absolute row. We first built the scroll-region design (see
+Decisions); it lost lines when the window was resized during output.
 
 ## Users and job
 
@@ -64,9 +60,7 @@ needs it to behave like a real terminal.
 ## Concepts
 
 The tui user meets no new concept. `Print` keeps its signature and its
-result on screen and in scrollback. An end user who sees lost scrollback can
-set `WONTON_NO_SCROLL_REGION=1` (see R-11). It is a support escape hatch,
-not an API.
+result on screen and in scrollback.
 
 The termtest user meets terms they already know from terminals:
 
@@ -75,53 +69,35 @@ The termtest user meets terms they already know from terminals:
 - **Scrollback**: rows that scrolled off the top of the screen, oldest
   first. New in termtest as `Screen.Scrollback()`.
 
-## Where the live region is
+## How Print adds rows
 
-Print can use a scroll region only when it knows where the live region is.
-The runtime keeps one value, the **bottom gap**: the number of screen rows
-below the live region's last row. It has three states:
+From the live region's last row, where the cursor rests, Print writes, in
+one synchronized-output bracket:
 
-| State | Meaning | Print uses |
-|-------|---------|------------|
-| At bottom | gap is 0 | the scroll-region path (if R-8 allows it) |
-| Not at bottom | gap is a known number above 0 | today's path, then counts |
-| Unknown | the runtime cannot know the gap | today's path |
+1. `ESC[0m` and n line feeds. Where the live region sits at the screen
+   bottom, they scroll the whole screen, so the top rows go into
+   scrollback in order. Where blank rows lie below it, the first line feeds
+   only move the cursor down.
+2. A carriage return and `CSI n+L-1 A` (L is the live region's height).
+   Either way, this reaches the live region's top row.
+3. `CSI n L` (insert line), which pushes the live region back down into the
+   rows that step 1 opened.
+4. The n rows, with autowrap off (`CSI ? 7 l` ... `CSI ? 7 h`), then
+   `CSI L B` back to the live region's last row, and `CSI c G` to the
+   column where the live frame left the cursor. The live printer counts
+   the frame's rows from that column when the terminal rewraps it.
 
-The runtime asks the terminal for the cursor position (a cursor position
-report, CPR) right after it draws the live region. The cursor is then on
-the live region's last row, so the gap is the screen height minus the
-reported row.
+Every move is relative to the cursor. No step depends on the screen height
+or on the live region's absolute row, so a height change that lands while
+the bytes travel cannot make Print scroll the wrong rows.
 
-Events that set the state to **unknown** and send a new query:
-
-| Event | Why counting cannot cover it |
-|-------|------------------------------|
-| Start of `Run` | The shell left the cursor at an unknown row. |
-| Resize | Terminals differ: they reflow, pull rows from scrollback, or add rows. |
-| `Handoff` return | The child can print any number of lines or clear the screen. |
-| `ClearScrollback` | Terminals differ in how `ED 2` and `ED 3` treat the screen. |
-| `PrintRaw` | Raw bytes can move the cursor anywhere. |
-| A write error on the output | The terminal may have received part of a sequence. |
-
-Events that keep the state **known by counting**:
-
-| Event | New gap |
-|-------|---------|
-| Print on today's path, n rows | gap minus n, not below 0 |
-| Print on the scroll-region path | 0 (unchanged) |
-| Live region grows by k rows | gap minus k, not below 0 |
-| Live region shrinks by k rows | gap plus k |
-| Live region redraw with the same height | unchanged |
-
-A reply counts only if it answers the newest query. The runtime moves the
-cursor to a column that tags each query before it asks, and accepts a reply
-only with the newest tag. Events that occur after the query and before the
-reply are counted onto the reply's value. A terminal that never replies
-leaves the state unknown, so Print stays on today's path.
-
-Output that the application writes to the terminal outside the runtime
-(for example `fmt.Println` while `Run` is active) is outside this contract,
-as it is today.
+A width change is different: a row wider than the screen wraps onto the
+next row. So before an insert, Print reads the terminal's real size (one
+ioctl). When the terminal is narrower than the width the rows were
+rendered for (it narrowed and the event loop has not heard yet), Print
+redraws instead. Autowrap is off while the rows are written, so a
+narrowing that lands while the bytes travel cuts the end of a row and
+never writes over another row or the live region.
 
 ## Use cases
 
@@ -131,47 +107,53 @@ The developer calls `runner.Printf("log line %d", i)` 500 times while a
 spinner and input line show at the bottom.
 
 Acceptance:
-- [ ] In the at-bottom state, each Print writes no bytes into the live
-      region rows. It writes the printed content plus at most 45 bytes of
-      control sequences, plus 2 bytes for each printed row after the
-      first. The synchronized-output bracket alone is 16 of the 45.
+- [ ] Each Print writes no bytes into the live region rows. With a live
+      region of fewer than 10 rows, a one-row Print writes the row plus 44
+      bytes of control sequences, plus 3 bytes for each row after the first
+      (a line feed and the CRLF between rows), plus 4 or 5 bytes that put
+      the cursor back at the column where the live frame left it. The
+      synchronized-output bracket is 16 of the 44, and the autowrap off/on
+      pair 10.
 - [ ] In the measurement scenario above (5-line live region, width 100),
-      bytes per Print drop from 856 to 100 or fewer.
-- [ ] A termtest test runs 500 Prints on each path. The visible screen is
-      equal on both paths, cell by cell, with styles: the live region and
-      the newest printed rows. `Screen.Scrollback()` is equal on both paths
-      as text: same lines, same order. Each printed row is visible right
-      after its Print, so the test checks its styles on screen at that
-      moment.
-- [ ] In the not-at-bottom state (the first screenful), Print uses today's
-      path and counts. When the gap reaches 0, the next Print uses the
-      scroll-region path. A test checks the switch.
+      bytes per Print drop from 855 to 100 or fewer (95).
+- [ ] A termtest test runs 500 Prints with the insert and 500 with today's
+      redraw. The visible screen is equal on both, cell by cell, with
+      styles. `Screen.Scrollback()` is equal on both. Every printed line is
+      in scrollback or on screen, once, in order.
+- [ ] In the first screenful (blank rows below the live region), after a
+      live region height change, and for a view taller than the free rows,
+      the insert gives the same screen and scrollback as the redraw.
 
-### UC-2: The live region moves for a reason Print did not cause
+### UC-2: The user resizes the window during output
 
 Acceptance:
-- [ ] One test for each event in the "unknown" table: after the event,
-      Print uses today's path until a reply to the new query arrives. Then
-      Print uses the scroll-region path again, and the screen is correct.
-- [ ] One test for each event in the "counting" table: the gap after the
-      event matches the table, checked against the cursor row in termtest.
-- [ ] A reply to an older query (for example, one sent before a resize)
-      changes nothing. A legacy Shift+F3 key (`CSI 1;2 R`) never matches a tag
-      and is not taken as a reply.
-- [ ] With no reply at all, every Print uses today's path, and output is
-      the same as today.
-- [ ] A `Print` before `Run` sends no query.
+- [ ] The example streams 500 lines while the window shrinks from 30 to 20
+      rows (one row each 30 ms), and while it alternates between 20 and 32
+      rows 20 times. All 500 lines are in scrollback, in order, and no live
+      region row is in scrollback. Checked in tmux and in an emulator
+      harness that resizes libghostty-vt and the pty together. termtest
+      cannot resize yet, so this check stays outside the test suite.
+- [ ] The window narrows while the runner still renders the old width: a
+      termtest case with the runner at 60 columns and the screen at 40
+      prints three 55-column rows. Print redraws, and every row and live
+      line is whole.
+- [ ] A narrowing drag (100 to 50 to 100 columns) loses no line that the
+      redraw keeps. In tmux, 500 of 500. In the harness both paths lose the
+      same few lines (496-500 of 500 over 8 runs each): the terminal
+      rewraps the live region's full-width rows, and the redraw's own
+      cursor moves then land too low. That redraw problem is not this
+      PRD's.
+- [ ] After any resize, the next live region frame writes every row, so no
+      row that the old size left (a cut divider, a row the terminal
+      blanked) stays on screen. In tmux, alternating between 20 and 32 rows
+      left lower live rows blank in 2 of 3 runs before this rule.
 
-### UC-3: A write fails in the middle of a scroll-region Print
+### UC-3: A write fails in the middle of a Print
 
 Acceptance:
-- [ ] A test output fails after the scroll region is set and before it is
-      reset. After `Run` returns, the terminal has no scroll region, and the
-      cursor is where it was before the failed Print. The state is unknown.
-      The test also fails the first reset attempt, so the reset that cleanup
-      sends is checked too.
-- [ ] One short check: after `Run` returns normally, after a panic, and
-      during a `Handoff` callback, the termtest screen has no scroll region.
+- [ ] Print still turns autowrap on and ends synchronized output
+      (`CSI ? 7 h CSI ? 2026 l`), so the terminal does not keep holding its
+      screen. Print leaves no mode set.
 
 ### UC-4: A test asserts scroll-region output
 
@@ -233,29 +215,32 @@ termtest (lands first, as its own stacked PR):
 
 tui:
 
-- R-7 The runtime keeps the bottom gap as "Where the live region is"
-  defines, with the events and rules in its tables.
-- R-8 In the at-bottom state, when at least 2 rows sit above the live
-  region, `Print` and `Printf` write through a scroll region from row 1 to
-  the row above the live region, with a line feed per printed row. The
-  region is set and reset inside the same write, and the cursor returns to
-  where it was.
-- R-9 In every other case, `Print` uses today's path. `PrintRaw` and
-  `ClearScrollback` always use today's path.
-- R-10 Print never waits for a reply. A reply does not reach `HandleEvent`.
-  The runtime sends a query only while `Run` reads input, so no reply can
-  reach the shell as typed text.
-- R-11 Print always uses today's path, and the runtime sends no query, when
-  `WT_SESSION` is set (Windows Terminal), `STY` is set (GNU screen), or
-  `WONTON_NO_SCROLL_REGION` is set to any value other than empty or `0`.
-  The tui package docs name the variable.
-- R-12 The new path keeps the synchronized-output bracket and resets text
-  attributes before the first line feed. Each rendered row already ends
-  with a reset, so every scrolled-in row has the default background.
-- R-13 If a write fails while a scroll region may be set, the runtime resets
-  the region and returns the cursor to where it was before the failed Print.
-  Until that reset reaches the terminal, every later write (and cleanup)
-  sends it first, so no output is written with a region set.
+- R-7 `Print` and `Printf` add rows as "How Print adds rows" describes,
+  when the live region is on screen, the terminal's size can be read and
+  is at least as wide as the rendered rows, and the live region leaves at
+  least 2 free rows (screen height minus live region height). They add at
+  most half the free rows per insert and repeat the steps for the rest, so
+  a screen that shrank and has not yet said so still has room.
+- R-8 Otherwise, `Print` clears and redraws the live region, as today.
+  `PrintRaw` and `ClearScrollback` always do.
+- R-9 The insert keeps the synchronized-output bracket, turns autowrap off
+  while it writes the rows, and resets text attributes before the line
+  feeds, so the rows it opens have the default background. Each rendered
+  row already ends with a reset.
+- R-10 If a write fails during an insert, Print sends `CSI ? 7 h` and
+  `CSI ? 2026 l`.
+- R-11 `InlineApp` reads the width and the height from the terminal it
+  writes to, at `NewInlineApp` and again when `Run` starts. A width that
+  came from the terminal follows it.
+- R-12 After any resize, the live region's next frame writes every row.
+- R-13 Print redraws instead of inserting until the terminal has the width
+  it had when the live frame was drawn, and for 500 ms after a width
+  change. A redraw before the next frame keeps the old frame's width, so
+  the next frame still erases it and writes every row. Under tmux or
+  zellij, which report a resize late, the frame drawn after a width change
+  erases only the old frame's own height when Print inserted after the
+  last frame and within 300 ms, so rows inserted into the rewrapped old
+  frame stay.
 - R-14 A runnable example, `examples/tui/inline_stream`, streams lines under
   a spinner and input line.
 
@@ -264,14 +249,11 @@ tui:
 - Scroll regions in the full-screen renderer (ScrollView or viewport with
   SU/SD). It needs scroll detection in the diff renderer, and Bubble Tea
   limits it to the alternate screen. Deferred to a GitHub issue.
-- `PrintRaw` through a scroll region. Raw bytes can hold any sequence, so
-  the row count is unknown.
-- Standalone `LivePrinter`. It has no input reader to receive the cursor
-  position. Deferred.
+- `PrintRaw` through the insert. Raw bytes can hold any sequence, so the
+  row count is unknown.
+- Standalone `LivePrinter`. Deferred.
 - Left and right margins (DECSLRM, `?69`) in termtest. Wonton does not use
   them.
-- A persistent scroll region (a status bar that stays while the app writes
-  freely). It needs a restore on every exit path and breaks child processes.
 - Alternate screen, raw mode, and resize in termtest. Other tracks own them.
 
 ## Decisions
@@ -279,38 +261,55 @@ tui:
 - Land termtest first as its own stacked PR. The tui change depends on it
   for tests, and it has value alone. Rejected: one PR for both, which is
   harder to review.
-- Set and reset the region inside one write. Then no exit, panic, resize,
-  or hand-off path has a region to restore. Rejected: keep a region set
-  between writes, as some status-bar UIs do.
-- Learn the absolute row from a cursor position report, and use today's
-  path until it arrives. Ratatui and Codex do the same. Rejected: move the
-  live region to the screen bottom at start, which leaves a visible blank
-  gap. Rejected: block Print on a query, which stalls output.
-- Re-query after every event that counting cannot cover, and count the rest
-  (tables above). A wrong gap would scroll the wrong rows on every Print
-  until the next query, so the rule is: when in doubt, unknown. Rejected:
-  query only at start and on resize.
-- Tag each query with a cursor column and accept only the newest tag. CPR
-  has no ID, and a late reply or a Shift+F3 key can look like a reply.
-  Rejected: count replies in order, which a lost reply breaks for the rest
-  of the session. Rejected: DECXCPR (`CSI ?6n`), which some terminals do not
-  answer.
-- Use the scroll path only when the live region sits at the screen bottom.
-  Today's path already moves it there during the first screenful. Rejected:
-  push the live region down with RI as Codex does, which adds a second code
-  path for the first screenful only.
-- Scroll with line feeds, never `CSI S`. Line feeds keep scrollback in every
-  terminal Codex tested; `CSI S` loses rows in xterm.js and QTermWidget.
-- Fall back by a short denylist (Windows Terminal, GNU screen) plus an
-  environment variable. Losing scrollback is worse than a redraw. The
-  variable covers Windows Terminal over SSH, which no program can detect.
-  Rejected: an allowlist, which would exclude Terminal.app and xterm, the
-  terminals without mode 2026 that gain the most. Rejected: a Go option,
-  which would expose "scroll region" to every developer, while the person
-  who sees the problem is the end user.
-- Name the variable `WONTON_NO_SCROLL_REGION`. Wonton's only own variable,
-  `TERMTEST_UPDATE`, is for developers; this one is for end users, who know
-  the library name better than a package name. `NO_` follows `NO_COLOR`.
+- Insert rows above the live region with relative moves (line feeds,
+  cursor up, insert line). It keeps every line when the window's height
+  changes during output, writes fewer bytes, and needs no cursor-position
+  query and no tracking of the live region's row. A width change is
+  different, because the terminal rewraps rows: Print reads the size (one
+  ioctl per Print and per frame) and redraws while the width changes, and
+  under tmux and zellij, which report a resize late, it erases the old
+  frame as its own height after a recent insert (see below). Rejected: a scroll region from row 1 to the row above
+  the live region, as Codex does. A scroll region takes absolute rows, so
+  the runtime must know the live region's row (a cursor position query and
+  rules to keep it current) and the exact screen height. During a resize,
+  output already on its way uses the old height: in an emulator harness
+  (libghostty-vt and a pty resized together) it kept 499 and 498 of 500
+  lines; in tmux, which passes a new size to the program only about every
+  250 ms during a drag, it kept 320 and 418 of 500. The relative insert kept
+  500 of 500 in all of these. It also needed a fallback for Windows
+  Terminal and GNU screen, which drop rows that leave a partial region.
+- Cost of the insert: within one write the live region moves up n rows and
+  back down. On a terminal that ignores synchronized output, a repaint in
+  the middle of the write can show it shifted by a row for one frame.
+  Today's redraw shows it blank in the same case; the scroll region did not
+  move it. Accepted: correctness on resize matters more.
+- Redraw when the terminal is narrower than the rendered rows, and write
+  the rows with autowrap off. A wrapped row would write over the next row
+  or the live region. Reading the width costs one ioctl per Print.
+  Rejected: count wrapped rows in the insert, which needs the width the
+  terminal has when the bytes arrive, not when Print runs.
+- Lose no printed line where the old Print keeps it, even at the cost of a
+  stray live row in scrollback. tmux narrows a pane at once and tells the
+  program about every 250 ms during a drag, so inserts in that gap land
+  among the rewrapped rows of the old frame. Erasing the old frame as its
+  own height keeps them. The cost: the rewrapped rows of the old frame
+  above the inserts (two for this example) stay and later move into
+  scrollback. The old Print leaves such rows too when a Print lands in the
+  same gap. The rule applies only when Print inserted after the last frame
+  and within 300 ms, about the tmux report interval, so slow output (a
+  line every half second) gets a clean frame. Rejected: erase the
+  rewrapped frame, which lost 2 of 500 lines in tmux. Rejected: no insert
+  while the live region has a full-width row, which would turn the insert
+  off for most agent CLIs. Rejected: a one-second window, which left a
+  copy of the live rows after each narrowing with slow output.
+- Insert at most half the free rows at a time. An insert of n rows is
+  correct while n plus the live region height fits the screen; the margin
+  covers a screen that shrank before the runtime heard of it. Rejected: one
+  insert for any view, which a shrink in flight could break.
+- No opt-out variable. The insert uses only line feeds, cursor up and down,
+  and insert line, which every VT102-compatible terminal supports, and a
+  whole-screen line feed keeps scrollback everywhere we know of. Rejected:
+  `WONTON_NO_SCROLL_REGION`, which only the scroll region needed.
 - termtest records scrollback always, with no Screen option. Tests are
   small, and an option would add a knob for no user. If one is needed
   later, it uses the shared `termtest.ScreenOption` type from the raw-mode
@@ -320,11 +319,11 @@ tui:
 
 ## Success
 
-- Bytes per Print in the measurement scenario drop from 856 to 100 or
-  fewer, and stop growing with live-region height.
-- Manual check on ghostty, macOS Terminal.app, and tmux: 500 printed lines
-  are in scrollback in order, and the live region does not flicker. The PR
-  holds the transcript.
+- Bytes per Print in the measurement scenario drop from 855 to 95, and stop
+  growing with live-region height.
+- 500 printed lines are in scrollback in order, with a stable window and
+  while it resizes, in tmux and the emulator harness. Manual check in
+  Ghostty.app and macOS Terminal.app; the PR holds the transcript.
 - Must not get worse: scrollback content and order, the live region after
   resize and hand-off, terminal state after exit. Existing tests and
   snapshots stay correct. The vtdiff probe, render, and fuzz runs stay
@@ -332,16 +331,11 @@ tui:
 
 ## Risks and open questions
 
-- Windows Terminal over SSH gets the new path and can lose scrollback with
-  no error. We cannot test Windows Terminal here. Mitigation: the
-  `WONTON_NO_SCROLL_REGION` variable, documented in the tui package docs.
-  Verification is tracked in [#208](https://github.com/deepnoodle-ai/wonton/issues/208). Not blocking.
-- Another terminal could discard rows from a top-anchored region. Codex
-  ships this path to a large user base with the same fallbacks, and we
-  verify three terminals manually. Not blocking.
-- The gap is wrong if output reaches the terminal outside the runtime. The
-  tables above list every runtime event; anything else is outside the
-  contract today as well. Not blocking.
+- A terminal that ignores synchronized output can show the live region one
+  row higher for a frame during a Print (see Decisions). Not blocking.
+- Output that the application writes to the terminal outside the runtime
+  (for example `fmt.Println` while `Run` is active) moves the cursor away
+  from the live region, as it does today. Not blocking.
 - Four tracks edit termtest. The private-mode dispatch in `parseCSI` is
   shared with the alt-screen and raw-mode tracks. The tech spec gives the
   file layout. Not blocking.

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,6 +131,8 @@ type inlineConfig struct {
 	PasteTabWidth  int       // 0 = preserve tabs. Convert tabs to N spaces in pastes.
 	KittyKeyboard  bool      // Enable Kitty keyboard protocol.
 	BackslashEnter bool      // Synthesize Shift+Enter from backslash+Enter (delays typed backslashes; see WithInlineBackslashEnter).
+
+	widthFromTerminal bool // Width was 0 and came from the output terminal.
 }
 
 // InlineOption is a functional option for configuring NewInlineApp and
@@ -219,16 +222,15 @@ func WithInlineBackslashEnter(enabled bool) InlineOption {
 }
 
 func (c inlineConfig) withDefaults() inlineConfig {
-	if c.Width == 0 {
-		c.Width = 80
-		if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-			if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-				c.Width = w
-			}
-		}
-	}
 	if c.Output == nil {
 		c.Output = os.Stdout
+	}
+	if c.Width == 0 {
+		c.Width = 80
+		if w, _, ok := terminalSize(c.Output); ok {
+			c.Width = w
+			c.widthFromTerminal = true
+		}
 	}
 	if c.Input == nil {
 		c.Input = os.Stdin
@@ -288,6 +290,24 @@ type InlineApp struct {
 	handoffActive bool
 	handoffErr    error
 
+	// lastInsert is when Print last inserted rows above the live region.
+	// insertSinceFrame is true when Print inserted after the last live
+	// region frame. lateResize is true under a terminal that reports
+	// resizes late.
+	lastInsert       time.Time
+	insertSinceFrame bool
+	lateResize       bool
+
+	// frameScreenWidth is the terminal width when the live region was last
+	// drawn; 0 when unknown. widthChangedAt is when the runner last saw the
+	// width change.
+	frameScreenWidth int
+	widthChangedAt   time.Time
+
+	// screenSize reads the size of the terminal that output shows on (one
+	// ioctl). Print checks it before an insert; a test replaces it.
+	screenSize func() (width, height int, ok bool)
+
 	// Terminal state (for cleanup)
 	oldState                                 *term.State
 	stdinFd                                  int
@@ -325,16 +345,14 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 	live := NewLivePrinter(WithWidth(cfg.Width), WithOutput(cfg.Output))
 
 	// Set max height to terminal height so the live region never exceeds it.
-	if fd := int(os.Stdout.Fd()); term.IsTerminal(fd) {
-		if _, h, err := term.GetSize(fd); err == nil && h > 0 {
-			live.SetMaxHeight(h)
-		}
+	if _, h, ok := terminalSize(cfg.Output); ok {
+		live.SetMaxHeight(h)
 	}
 
 	reg := newRegistries()
 	live.reg = reg
 
-	return &InlineApp{
+	r := &InlineApp{
 		config:        cfg,
 		events:        make(chan Event, 100),
 		cmds:          make(chan Cmd, 100),
@@ -345,6 +363,9 @@ func NewInlineApp(opts ...InlineOption) *InlineApp {
 		focusMgr:      NewFocusManager(),
 		reg:           reg,
 	}
+	r.screenSize = func() (int, int, bool) { return terminalSize(r.output) }
+	r.lateResize = resizesLate(os.Getenv)
+	return r
 }
 
 // Run starts the inline application and blocks until it exits.
@@ -445,6 +466,7 @@ func (r *InlineApp) Run(app InlineApplication) error {
 
 	// Initialize resize watcher (platform-specific)
 	r.setupResizeWatcher()
+	r.refreshScreenSize()
 
 	// Render initial view. A panic here is captured like one in the event
 	// loop, so the terminal is restored below before Run re-panics.
@@ -692,8 +714,12 @@ func (r *InlineApp) processEvent(event Event) {
 	// Handle resize events
 	if resize, ok := event.(ResizeEvent); ok {
 		r.mu.Lock()
+		if resize.Width != r.config.Width {
+			r.widthChangedLocked()
+		}
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
+		r.live.rewriteNextFrame()
 		if resize.Height > 0 {
 			r.live.SetMaxHeight(resize.Height)
 		}
@@ -794,6 +820,8 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 		if err := r.live.update(view, useSync, r.focusMgr); err != nil {
 			return err
 		}
+		r.insertSinceFrame = false
+		r.noteFrameScreenWidthLocked()
 
 		// Prune TextArea state for IDs that weren't rendered
 		r.reg.textAreas.Prune()
@@ -802,16 +830,19 @@ func (r *InlineApp) renderLiveLocked(useSync bool) error {
 }
 
 // restoreLiveLocked draws the live region again after scrollback output.
-// lines is the frame the live region showed before it was cleared.
+// lines is the frame the live region showed before it was cleared, and
+// stale whether it was rendered for another width (see LivePrinter.redraw).
 //
 // Print and PrintRaw may run on a Cmd goroutine, so they must not call
 // LiveView while the event loop is inside HandleEvent. They redraw the last
 // frame instead; the event loop draws a fresh frame after the next event.
 // Only before Run, when there is no event loop and no frame yet, does this
 // render LiveView. The caller holds r.mu and the output gate.
-func (r *InlineApp) restoreLiveLocked(lines []string, useSync bool) {
+func (r *InlineApp) restoreLiveLocked(lines []string, stale bool, useSync bool) {
 	if len(lines) > 0 {
-		_ = r.live.redraw(lines, useSync)
+		if r.live.redraw(lines, useSync, stale) == nil {
+			r.noteFrameScreenWidthLocked()
+		}
 		return
 	}
 	if !r.running {
@@ -1006,13 +1037,28 @@ func (r *InlineApp) commandExecutor() {
 // Print renders a View to the scrollback history.
 // The view can be any tui.View: Text, Stack, Group, Bordered, etc.
 //
-// This method temporarily clears the live region, prints the view to scrollback,
-// and restores the live region below.
+// The view's rows appear above the live region and move up into the
+// terminal's scrollback as more output follows. Print inserts them above
+// the live region with cursor moves relative to it, so the live region is
+// not redrawn: a stream of output costs only the bytes of its rows.
 //
-// Print does not call LiveView. Below the new scrollback content it redraws
-// the live region exactly as the event loop last drew it, so focus styling
-// stays and LiveView never runs at the same time as HandleEvent. The event
-// loop draws a fresh live region after the current event, as usual.
+// Print redraws instead when the live region leaves less than two free
+// rows on the screen, when the terminal's size cannot be read, and while
+// the window's width is changing: the terminal is narrower than the
+// rendered rows, its width differs from when the live region was last
+// drawn, or the width changed less than half a second ago. It then clears
+// the live region, prints the view, and draws the live region again below
+// it, exactly as the event loop last drew it.
+//
+// With a window of steady width both ways give the same screen and
+// scrollback. After a width change, the next frame erases the old live
+// region and writes every row at the new width. Under tmux and zellij,
+// which report a resize late, a couple of rows of the old live region can
+// stay above the output and move into scrollback; printed rows are kept.
+//
+// Print never calls LiveView, so focus styling stays and LiveView never
+// runs at the same time as HandleEvent. The event loop draws a fresh live
+// region after the current event, as usual.
 //
 // Thread-safe: Can be called from HandleEvent (recommended) or from
 // a Cmd goroutine via the app reference.
@@ -1025,22 +1071,30 @@ func (r *InlineApp) Print(view View) {
 		return
 	}
 
+	// Render first with raw mode line endings. Always styled: the
+	// scrollback belongs to the same interactive screen as the live region,
+	// which LivePrinter always draws in color.
+	var rendered strings.Builder
+	Fprint(&rendered, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
+
+	if r.printAboveLiveLocked(rendered.String()) {
+		return
+	}
+
 	// Wrap entire operation in synchronized output mode to prevent flicker.
 	// This ensures clear + print + re-render appears as one atomic update.
 	fmt.Fprint(r.output, "\033[?2026h") // Begin sync
 
 	// Clear live region (moves cursor back)
-	liveLines := r.live.lastLines
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 
-	// Print to scrollback with raw mode line endings
-	// Always styled: the scrollback belongs to the same interactive screen as
-	// the live region, which LivePrinter always draws in color.
-	Fprint(r.output, view, WithWidth(r.config.Width), WithRawMode(true), WithColor(true))
+	// Print to scrollback
+	io.WriteString(r.output, rendered.String())
 	fmt.Fprint(r.output, "\r\n") // Add newline after printed content
 
 	// Restore live region (skip its internal sync since we're already in one)
-	r.restoreLiveLocked(liveLines, false)
+	r.restoreLiveLocked(liveLines, stale, false)
 
 	fmt.Fprint(r.output, "\033[?2026l") // End sync
 }
@@ -1071,11 +1125,11 @@ func (r *InlineApp) PrintRaw(data []byte) {
 	fmt.Fprint(r.output, "\033[?2026h")       // Begin sync
 	defer fmt.Fprint(r.output, "\033[?2026l") // End sync (even on panic)
 
-	liveLines := r.live.lastLines
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 	r.output.Write(data)
 
-	r.restoreLiveLocked(liveLines, false)
+	r.restoreLiveLocked(liveLines, stale, false)
 }
 
 // Stop requests shutdown without waiting for event dispatch or cleanup.
@@ -1118,7 +1172,7 @@ func (r *InlineApp) ClearScrollback() {
 		return
 	}
 	// Clear live region first
-	liveLines := r.live.lastLines
+	liveLines, stale := r.live.lastLines, r.live.staleFrame()
 	r.live.Clear()
 
 	// Clear screen and scrollback
@@ -1126,7 +1180,7 @@ func (r *InlineApp) ClearScrollback() {
 	fmt.Fprint(r.output, "\033[3J\033[2J\033[H")
 
 	// Restore live region
-	r.restoreLiveLocked(liveLines, true)
+	r.restoreLiveLocked(liveLines, stale, true)
 }
 
 // RunInline is a convenience function that creates and runs an InlineApp.

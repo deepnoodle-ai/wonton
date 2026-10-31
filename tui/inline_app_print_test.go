@@ -2,11 +2,16 @@ package tui
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
 // unlockedInlineApp keeps state without locks, as InlineApplication promises
@@ -87,4 +92,638 @@ func TestInlineApp_PrintKeepsLiveFrame(t *testing.T) {
 		assert.Contains(t, buf.String(), line)
 	}
 	assert.True(t, strings.Contains(buf.String(), "hello"))
+}
+
+// liveRowsApp draws a live region of a set number of rows.
+type liveRowsApp struct{ rows int }
+
+func (a *liveRowsApp) LiveView() View {
+	views := make([]View, a.rows)
+	for i := range views {
+		views[i] = Text("live %d", i).Fg(ColorCyan)
+	}
+	return Stack(views...)
+}
+
+// agentLiveApp is the live region of the PRD's measurement: a spinner
+// line, an input field between two dividers, and a hint.
+type agentLiveApp struct{ input string }
+
+func (a *agentLiveApp) LiveView() View {
+	return Stack(
+		Text("⠋ Thinking… (12s · 3.4k tokens · esc to interrupt)").Fg(ColorCyan),
+		Divider(),
+		InputField(&a.input).ID("in").Label("> "),
+		Divider(),
+		Text("  ? for shortcuts").Fg(ColorBrightBlack),
+	)
+}
+
+// screenWriter sends output to a termtest screen and keeps the last bytes.
+type screenWriter struct {
+	screen *termtest.Screen
+	log    bytes.Buffer
+	fail   bool // fail the next write that opens synchronized output
+}
+
+func (w *screenWriter) Write(p []byte) (int, error) {
+	if w.fail && bytes.HasPrefix(p, []byte("\x1b[?2026h")) {
+		w.fail = false
+		n, _ := w.screen.Write(p[:len(p)/2])
+		w.log.Write(p[:n])
+		return n, errors.New("write failed")
+	}
+	w.log.Write(p)
+	return w.screen.Write(p)
+}
+
+// newInsertRig draws an InlineApp's live region on a width x height
+// screen whose cursor starts at row startRow, as a shell prompt leaves it.
+// With insert false the runner cannot read the terminal size, so Print
+// always clears and redraws the live region: the path Print used before
+// the insert.
+func newInsertRig(t *testing.T, width, height, startRow int, app InlineApplication, insert bool) (*InlineApp, *screenWriter) {
+	t.Helper()
+	screen := termtest.NewScreen(width, height)
+	for y := 0; y < startRow; y++ {
+		fmt.Fprintf(screen, "$ shell %d\r\n", y)
+	}
+	out := &screenWriter{screen: screen}
+	runner := NewInlineApp(WithInlineOutput(out), WithInlineWidth(width))
+	runner.app = app
+	runner.live.config.Output = out
+	runner.live.SetMaxHeight(height)
+	runner.screenSize = func() (int, int, bool) { return width, height, insert }
+	runner.running = true
+	runner.render()
+	return runner, out
+}
+
+func screenCells(s *termtest.Screen) [][]termtest.Cell {
+	w, h := s.Size()
+	cells := make([][]termtest.Cell, h)
+	for y := range cells {
+		cells[y] = make([]termtest.Cell, w)
+		for x := range cells[y] {
+			cells[y][x] = s.Cell(x, y)
+		}
+	}
+	return cells
+}
+
+// usedInsert reports whether output holds an insert above the live region.
+func usedInsert(output string) bool {
+	return regexp.MustCompile(`\x1b\[\d+L`).MatchString(output)
+}
+
+// testView returns the i-th view of a stream: styled one-row lines, some
+// two-row views with a background, and some empty views.
+func testView(i int) View {
+	colors := []Color{ColorRed, ColorGreen, ColorBlue, ColorYellow}
+	switch i % 7 {
+	case 3:
+		return Stack(Text("line %d a", i).Bg(colors[i%4]), Text("line %d b", i))
+	case 5:
+		return Text("")
+	}
+	return Text("line %d", i).Fg(colors[i%4])
+}
+
+// In the PRD's measurement (5-line live region, width 100), one Print of a
+// 46-byte line costs the line plus 49 bytes and does not redraw the live
+// region. 5 of the 49 return the cursor to column 18, where the frame left
+// it after its last row ("  ? for shortcuts").
+func TestInlinePrintInsertBytes(t *testing.T) {
+	const line = "log line 1: compiled package ./foo/bar in 12ms"
+	measure := func(insert bool) (int, string) {
+		runner, out := newInsertRig(t, 100, 30, 29, &agentLiveApp{}, insert)
+		runner.render()
+		runner.Printf("warm up")
+		out.log.Reset()
+		runner.Printf(line)
+		assert.Equal(t, usedInsert(out.log.String()), insert)
+		return out.log.Len(), out.log.String()
+	}
+	before, _ := measure(false)
+	after, written := measure(true)
+	t.Logf("bytes per Print: %d redrawing the live region, %d inserting above it", before, after)
+	assert.Equal(t, after-len(line), 49)
+	assert.False(t, strings.Contains(written, "Thinking"), "the live region is not redrawn")
+}
+
+// A Print of n rows (in one insert) costs 48 control bytes plus 3 for each
+// row after the first: a line feed and the CRLF between rows. 4 of the 48
+// return the cursor to column 7, after the last live row ("live 4").
+func TestInlinePrintInsertControlBytes(t *testing.T) {
+	for _, rows := range []int{1, 2, 5} {
+		views := make([]View, rows)
+		for i := range views {
+			views[i] = Text("row %d", i).Fg(ColorGreen)
+		}
+		var rendered bytes.Buffer
+		Fprint(&rendered, Stack(views...), WithWidth(100), WithRawMode(true), WithColor(true))
+		content := rendered.Len() - 2*(rows-1)
+
+		runner, out := newInsertRig(t, 100, 30, 29, &liveRowsApp{rows: 5}, true)
+		out.log.Reset()
+		runner.Print(Stack(views...))
+		assert.Equal(t, out.log.Len()-content, 48+3*(rows-1), "%d rows", rows)
+	}
+}
+
+// 500 Prints, at the screen bottom, leave the same screen (cell by cell,
+// with styles) and the same scrollback on both paths. Every line is in
+// scrollback or on screen, once, in order.
+func TestInlinePrintInsertKeepsEveryLine(t *testing.T) {
+	inserted, insertOut := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 3}, true)
+	redrawn, redrawOut := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 3}, false)
+
+	inserts := 0
+	for i := 0; i < 500; i++ {
+		insertOut.log.Reset()
+		inserted.Print(testView(i))
+		if usedInsert(insertOut.log.String()) {
+			inserts++
+		}
+		redrawn.Print(testView(i))
+		if i%50 == 0 {
+			assert.Equal(t, screenCells(insertOut.screen), screenCells(redrawOut.screen), "screen after Print %d", i)
+		}
+	}
+	assert.Equal(t, inserts, 500)
+	assert.Equal(t, screenCells(insertOut.screen), screenCells(redrawOut.screen))
+	assert.Equal(t, insertOut.screen.Scrollback(), redrawOut.screen.Scrollback())
+
+	all := append(insertOut.screen.Scrollback(), strings.Split(insertOut.screen.Text(), "\n")...)
+	var got []int
+	for _, row := range all {
+		var n int
+		if _, err := fmt.Sscanf(row, "line %d", &n); err == nil && !strings.HasSuffix(row, " b") {
+			got = append(got, n)
+		}
+	}
+	var want []int
+	for i := 0; i < 500; i++ {
+		if i%7 != 5 {
+			want = append(want, i)
+		}
+	}
+	assert.Equal(t, got, want, "every line once, in order")
+	assert.Equal(t, insertOut.screen.Row(9), "live 0")
+	assert.Equal(t, insertOut.screen.Row(11), "live 2")
+}
+
+// In the first screenful the live region has blank rows below it. The
+// insert moves it down into them, as the redraw does, and the shell
+// output above stays in place and then scrolls into scrollback in order.
+func TestInlinePrintInsertFirstScreenful(t *testing.T) {
+	inserted, insertOut := newInsertRig(t, 40, 12, 2, &liveRowsApp{rows: 3}, true)
+	redrawn, redrawOut := newInsertRig(t, 40, 12, 2, &liveRowsApp{rows: 3}, false)
+	for i := 0; i < 20; i++ {
+		inserted.Print(testView(i))
+		redrawn.Print(testView(i))
+		assert.Equal(t, screenCells(insertOut.screen), screenCells(redrawOut.screen), "screen after Print %d", i)
+		assert.Equal(t, insertOut.screen.Scrollback(), redrawOut.screen.Scrollback(), "scrollback after Print %d", i)
+	}
+	assert.Equal(t, insertOut.screen.Scrollback()[0], "$ shell 0")
+}
+
+// A view taller than the free rows goes in several inserts, with the same
+// result as the redraw.
+func TestInlinePrintInsertTallView(t *testing.T) {
+	inserted, insertOut := newInsertRig(t, 40, 10, 9, &liveRowsApp{rows: 3}, true)
+	redrawn, redrawOut := newInsertRig(t, 40, 10, 9, &liveRowsApp{rows: 3}, false)
+	views := make([]View, 25)
+	for i := range views {
+		views[i] = Text("tall %d", i)
+	}
+	insertOut.log.Reset()
+	inserted.Print(Stack(views...))
+	redrawn.Print(Stack(views...))
+	inserts := regexp.MustCompile(`\x1b\[\d+L`).FindAllString(insertOut.log.String(), -1)
+	assert.Equal(t, len(inserts), 9, "25 rows in inserts of 3 rows (half of 7 free rows)")
+	assert.Equal(t, screenCells(insertOut.screen), screenCells(redrawOut.screen))
+	assert.Equal(t, insertOut.screen.Scrollback(), redrawOut.screen.Scrollback())
+}
+
+// When the live region grows and shrinks between Prints, the insert still
+// matches the redraw.
+func TestInlinePrintInsertLiveRegionChangesHeight(t *testing.T) {
+	insertApp, redrawApp := &liveRowsApp{rows: 2}, &liveRowsApp{rows: 2}
+	inserted, insertOut := newInsertRig(t, 40, 12, 6, insertApp, true)
+	redrawn, redrawOut := newInsertRig(t, 40, 12, 6, redrawApp, false)
+	for i, rows := range []int{4, 1, 6, 3, 3, 2, 5} {
+		insertApp.rows, redrawApp.rows = rows, rows
+		inserted.render()
+		redrawn.render()
+		inserted.Print(testView(i))
+		redrawn.Print(testView(i))
+		assert.Equal(t, screenCells(insertOut.screen), screenCells(redrawOut.screen), "after Print %d", i)
+		assert.Equal(t, insertOut.screen.Scrollback(), redrawOut.screen.Scrollback(), "after Print %d", i)
+	}
+}
+
+// A live region that leaves less than two free rows is redrawn instead.
+func TestInlinePrintInsertNeedsRoom(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 6, 5, &liveRowsApp{rows: 5}, true)
+	out.log.Reset()
+	runner.Printf("no room")
+	assert.False(t, usedInsert(out.log.String()))
+	assert.True(t, out.screen.Contains("no room"))
+}
+
+// A Print before the live region is drawn uses the redraw path.
+func TestInlinePrintInsertNeedsLiveRegion(t *testing.T) {
+	var buf bytes.Buffer
+	runner := NewInlineApp(WithInlineOutput(&buf), WithInlineWidth(40))
+	runner.app = &liveRowsApp{rows: 2}
+	runner.live.config.Output = &buf
+	runner.live.SetMaxHeight(24)
+	runner.Printf("before run")
+	assert.False(t, usedInsert(buf.String()))
+	assert.True(t, strings.Contains(buf.String(), "before run"))
+}
+
+// A write that fails part way still ends synchronized output, so the
+// terminal does not keep holding its screen.
+func TestInlinePrintInsertWriteFails(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 10, 9, &liveRowsApp{rows: 2}, true)
+	out.fail = true
+	out.log.Reset()
+	runner.Printf("lost")
+	assert.True(t, strings.HasSuffix(out.log.String(), "\x1b[?7h\x1b[?2026l"), "autowrap on, synchronized output ended")
+}
+
+// The insert turns autowrap off while it writes the rows, so a row cannot
+// wrap onto the next one, and turns it on again before it ends.
+func TestInlinePrintInsertAutowrapOff(t *testing.T) {
+	got := insertAboveLive([]string{"a", "b", "c"}, 2, 2, 0)
+	assert.True(t, strings.HasPrefix(got, "\x1b[?2026h\x1b[?7l"))
+	assert.True(t, strings.HasSuffix(got, "\x1b[?7h\x1b[?2026l"))
+	assert.Equal(t, strings.Count(got, "\x1b[?7l"), 1)
+}
+
+// The window narrowed and the event loop has not heard yet: the runner
+// renders 60 columns, the screen has 40. Print redraws instead of
+// inserting, so no row and no live line is written over.
+func TestInlinePrintNarrowedScreen(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	runner.config.Width = 60
+	runner.live.SetWidth(60)
+	runner.screenSize = func() (int, int, bool) { return 40, 12, true }
+	rows := []string{strings.Repeat("a", 55), strings.Repeat("b", 55), strings.Repeat("c", 55)}
+	out.log.Reset()
+	for _, row := range rows {
+		runner.Printf("%s", row)
+	}
+	assert.False(t, usedInsert(out.log.String()), "redraw, not insert")
+
+	// Each 55-column row wrapped onto two screen rows, whole, in order,
+	// and the live region is intact below them.
+	var text []string
+	for y := 0; y < 12; y++ {
+		text = append(text, out.screen.Row(y))
+	}
+	joined := strings.Join(append(out.screen.Scrollback(), text...), "\n")
+	for _, row := range rows {
+		assert.True(t, strings.Contains(joined, row[:40]+"\n"+row[40:]), "row %c is whole", row[0])
+	}
+	assert.Equal(t, out.screen.Row(10), "live 0")
+	assert.Equal(t, out.screen.Row(11), "live 1")
+}
+
+func TestInsertChunk(t *testing.T) {
+	assert.Equal(t, insertChunk(30, 5), 12)
+	assert.Equal(t, insertChunk(10, 8), 1)
+	assert.Equal(t, insertChunk(10, 9), 0, "one free row")
+	assert.Equal(t, insertChunk(0, 3), 0, "unknown height")
+	assert.Equal(t, insertChunk(10, 0), 0, "no live region")
+}
+
+// After any resize, also one that keeps the width, the next frame writes
+// every live row: the terminal may have changed rows around the cursor,
+// and the insert does not redraw the live region.
+func TestInlineResizeRewritesEveryLiveRow(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 3}, true)
+	runner.render()
+	out.log.Reset()
+	runner.render()
+	assert.False(t, strings.Contains(out.log.String(), "live 1"), "no change: rows are not written")
+
+	runner.processEvent(ResizeEvent{Width: 40, Height: 14})
+	out.log.Reset()
+	runner.render()
+	for _, row := range []string{"live 0", "live 1", "live 2"} {
+		assert.True(t, strings.Contains(out.log.String(), row), row)
+	}
+}
+
+// After a width change and before the next frame, the live region may
+// take more rows than it did (the terminal rewrapped it), so Print redraws
+// until a frame at the new width is on screen.
+func TestInlinePrintInsertWaitsForFrameAtNewWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	runner.processEvent(ResizeEvent{Width: 40, Height: 12})
+	runner.config.Width = 30
+	runner.live.SetWidth(30)
+	out.log.Reset()
+	runner.Printf("between")
+	assert.False(t, usedInsert(out.log.String()), "frame still at the old width")
+
+	runner.render()
+	out.log.Reset()
+	runner.Printf("after")
+	assert.True(t, usedInsert(out.log.String()))
+}
+
+// dividerLiveApp draws a live region with full-width rows, as agent CLIs
+// often do: a terminal that narrows rewraps each divider onto two rows.
+type dividerLiveApp struct{}
+
+func (dividerLiveApp) LiveView() View {
+	return Stack(Text("status"), Divider(), Text("> input"), Divider(), Text("hint"))
+}
+
+// printedLines returns the "line N" rows of a screen's scrollback and
+// screen, in order.
+func printedLines(s *termtest.Screen) []string {
+	var lines []string
+	_, h := s.Size()
+	rows := s.Scrollback()
+	for y := 0; y < h; y++ {
+		rows = append(rows, s.Row(y))
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row, "line ") {
+			lines = append(lines, row)
+		}
+	}
+	return lines
+}
+
+// Under tmux the screen narrows at once but the program hears of it much
+// later, so Prints in between still see the old width and insert. The
+// live region's dividers were rewrapped onto two rows each, so those rows
+// land among the old frame's rows. When the runner hears of the change,
+// it erases only the old frame's own rows, so every printed line stays.
+func TestInlinePrintInsertLateNarrowingKeepsLines(t *testing.T) {
+	run := func(lateResize bool) []string {
+		runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+		runner.lateResize = lateResize
+		runner.Printf("line 0")
+		runner.Printf("line 1")
+
+		out.screen.Resize(30, 14) // the terminal narrowed; no ioctl, no event yet
+		runner.Printf("line 2")
+		runner.Printf("line 3")
+
+		runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+		runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+		runner.render()
+		if lateResize {
+			// The new frame is at the bottom. Two rewrapped rows of the old
+			// frame stay above the printed lines, as with the old Print.
+			assert.Equal(t, out.screen.Row(13), "hint")
+			assert.Equal(t, out.screen.Row(5), "status")
+		}
+		return printedLines(out.screen)
+	}
+	assert.Equal(t, run(true), []string{"line 0", "line 1", "line 2", "line 3"})
+	assert.True(t, len(run(false)) < 4, "without the rule the late narrowing erases printed lines")
+}
+
+// A terminal that reflows joins rewrapped rows again when it widens, so
+// after any width change the live frame can take a different number of
+// rows. Print redraws until a frame is drawn at the terminal's width and
+// the width has been still for a moment (a drag sends many changes).
+func TestInlinePrintInsertWaitsForStableWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 2}, true)
+	width := 40
+	runner.screenSize = func() (int, int, bool) { return width, 12, true }
+	runner.render()
+
+	width = 50 // the terminal widened; no event yet
+	out.log.Reset()
+	runner.Printf("wider")
+	assert.False(t, usedInsert(out.log.String()), "frame drawn at another width")
+
+	runner.processEvent(ResizeEvent{Width: 50, Height: 12})
+	runner.render()
+	out.log.Reset()
+	runner.Printf("settling")
+	assert.False(t, usedInsert(out.log.String()), "width changed a moment ago")
+
+	runner.widthChangedAt = time.Now().Add(-widthSettle)
+	out.log.Reset()
+	runner.Printf("settled")
+	assert.True(t, usedInsert(out.log.String()))
+}
+
+func TestResizesLate(t *testing.T) {
+	env := func(vars map[string]string) func(string) string {
+		return func(k string) string { return vars[k] }
+	}
+	assert.True(t, resizesLate(env(map[string]string{"TMUX": "/tmp/tmux-501/default,1,0"})))
+	assert.True(t, resizesLate(env(map[string]string{"TERM_PROGRAM": "tmux"})))
+	assert.True(t, resizesLate(env(map[string]string{"ZELLIJ": "0"})))
+	assert.False(t, resizesLate(env(map[string]string{"TERM_PROGRAM": "ghostty"})))
+}
+
+// assertLiveWhole checks that the screen shows dividerLiveApp whole at
+// the screen's width, below the last printed line, with only blank rows
+// under it.
+func assertLiveWhole(t *testing.T, s *termtest.Screen) {
+	t.Helper()
+	w, h := s.Size()
+	divider := strings.Repeat("─", w)
+	want := []string{"status", divider, "> input", divider, "hint"}
+	hint := -1
+	for y := 0; y < h; y++ {
+		if s.Row(y) == "hint" {
+			hint = y
+		}
+	}
+	assert.True(t, hint >= 4, "hint row on screen")
+	if hint < 4 {
+		return
+	}
+	for i, row := range want {
+		assert.Equal(t, s.Row(hint-4+i), row, "live row %d", i)
+	}
+	for y := hint + 1; y < h; y++ {
+		assert.Equal(t, s.Row(y), "", "row %d below the live region", y)
+	}
+}
+
+// A Print between the resize event and the next frame redraws the frame
+// that is on screen, which was rendered for the old width. The next frame
+// still erases it and writes every row at the new width, and later inserts
+// keep the live region whole.
+func TestInlinePrintBetweenResizeAndFrame(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+	runner.Printf("line 0")
+
+	out.screen.Resize(30, 14)
+	runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+	runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+	runner.Printf("line 1") // redraws: the frame on screen has the old width
+	runner.render()
+	assertLiveWhole(t, out.screen)
+
+	runner.widthChangedAt = time.Now().Add(-widthSettle)
+	for i := 2; i < 7; i++ {
+		runner.Printf("line %d", i)
+	}
+	runner.render()
+	assertLiveWhole(t, out.screen)
+	assert.Equal(t, out.screen.Row(13), "hint", "inserts moved the live region back to the bottom")
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2", "line 3", "line 4", "line 5", "line 6"})
+}
+
+// Slow output under tmux: a line every half second, so a frame comes after
+// each insert, and then one narrowing. No insert met the narrowed screen,
+// so the new frame erases the whole rewrapped old frame: no second copy
+// of the live rows stays above it.
+func TestInlinePrintSlowOutputNarrowingLeavesNoCopy(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, dividerLiveApp{}, true)
+	runner.lateResize = true
+	runner.Printf("line 0")
+	runner.render() // a frame (a spinner tick) before the next line
+	runner.Printf("line 1")
+	runner.render()
+
+	out.screen.Resize(30, 14)
+	runner.screenSize = func() (int, int, bool) { return 30, 14, true }
+	runner.processEvent(ResizeEvent{Width: 30, Height: 14})
+	runner.render()
+
+	assertLiveWhole(t, out.screen)
+	statuses := 0
+	_, h := out.screen.Size()
+	for _, row := range append(out.screen.Scrollback(), func() []string {
+		var rows []string
+		for y := 0; y < h; y++ {
+			rows = append(rows, out.screen.Row(y))
+		}
+		return rows
+	}()...) {
+		if row == "status" {
+			statuses++
+		}
+	}
+	assert.Equal(t, statuses, 1, "one status row")
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1"})
+}
+
+// dividerLastLiveApp ends its live region with a full-width row, so the
+// cursor rests on a row that fills the width the frame was drawn at.
+type dividerLastLiveApp struct{}
+
+func (dividerLastLiveApp) LiveView() View {
+	return Stack(Text("status"), Text("> input"), Divider())
+}
+
+// The live region's last row is full width, and the window narrows: a
+// Print between the resize event and the next frame redraws the old frame,
+// whose last row now wraps. The next frame must count that row's rows
+// right, erase only the old frame, and keep the printed line above it.
+func TestInlinePrintNarrowingWithFullWidthLastRow(t *testing.T) {
+	for _, narrow := range []int{30, 20} { // 20 divides the old width 40
+		runner, out := newInsertRig(t, 40, 14, 13, dividerLastLiveApp{}, true)
+		runner.Printf("line 0")
+
+		out.screen.Resize(narrow, 14)
+		runner.screenSize = func() (int, int, bool) { return narrow, 14, true }
+		runner.processEvent(ResizeEvent{Width: narrow, Height: 14})
+		runner.Printf("line 1")
+		runner.render()
+
+		assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1"}, "width %d", narrow)
+		_, h := out.screen.Size()
+		hint := -1
+		for y := 0; y < h; y++ {
+			if out.screen.Row(y) == "> input" {
+				hint = y
+			}
+		}
+		assert.True(t, hint > 0, "width %d: live region on screen", narrow)
+		if hint > 0 {
+			assert.Equal(t, out.screen.Row(hint-1), "status", "width %d", narrow)
+			assert.Equal(t, out.screen.Row(hint-2), "line 1", "width %d: printed line kept above", narrow)
+			assert.Equal(t, out.screen.Row(hint+1), strings.Repeat("─", narrow), "width %d", narrow)
+		}
+	}
+}
+
+// halfRowLiveApp ends its live region with a row half the old width wide,
+// so on a screen of exactly that width it fills a row.
+type halfRowLiveApp struct{}
+
+func (halfRowLiveApp) LiveView() View {
+	return Stack(Text("status"), Text("%s", strings.Repeat("x", 20)))
+}
+
+// A Print between the resize event and the next frame redraws the old
+// frame at the new width. Its rows are counted at the width they were
+// drawn at, so a last row that exactly fills the new width (20 of 40) is
+// one row, and the next frame keeps the printed line above it.
+func TestInlinePrintRedrawCountsRowsAtDrawnWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, halfRowLiveApp{}, true)
+	runner.Printf("line 0")
+	out.screen.Resize(20, 14)
+	runner.screenSize = func() (int, int, bool) { return 20, 14, true }
+	runner.processEvent(ResizeEvent{Width: 20, Height: 14})
+	runner.Printf("line 1")
+	runner.render()
+	runner.Printf("line 2")
+	runner.render()
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2"})
+	assert.Equal(t, out.screen.Row(12), "status")
+	assert.Equal(t, out.screen.Row(13), strings.Repeat("x", 20))
+}
+
+// wideStatusApp has a 40-cell status line that does not change and an
+// input line below it that does.
+type wideStatusApp struct{ input int }
+
+func (a *wideStatusApp) LiveView() View {
+	return Stack(Text("%s", strings.Repeat("s", 40)), Text("> input %d", a.input))
+}
+
+// Several Prints between a width change and the next frame each redraw the
+// old frame. The frame stays marked as rendered for the old width through
+// all of them, so the next frame still erases it and writes every row.
+func TestInlinePrintTwiceBeforeFrameAfterNarrowing(t *testing.T) {
+	app := &wideStatusApp{}
+	runner, out := newInsertRig(t, 40, 14, 13, app, true)
+	runner.Printf("line 0")
+
+	out.screen.Resize(20, 14)
+	runner.screenSize = func() (int, int, bool) { return 20, 14, true }
+	runner.processEvent(ResizeEvent{Width: 20, Height: 14})
+	runner.Printf("line 1")
+	runner.Printf("line 2")
+	app.input = 1
+	runner.render()
+
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2"})
+	_, h := out.screen.Size()
+	var rows []string
+	for y := 0; y < h; y++ {
+		rows = append(rows, out.screen.Row(y))
+	}
+	last := -1
+	for y, row := range rows {
+		if row == "line 2" {
+			last = y
+		}
+	}
+	assert.True(t, last >= 0)
+	if last >= 0 {
+		// The new frame is rendered at 20 columns: one status row.
+		assert.Equal(t, rows[last+1:last+3], []string{strings.Repeat("s", 20), "> input 1"})
+		for y := last + 3; y < h; y++ {
+			assert.Equal(t, rows[y], "", "row %d below the live region", y)
+		}
+	}
 }

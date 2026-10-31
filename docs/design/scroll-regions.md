@@ -1,20 +1,21 @@
-# Scroll regions in termtest and InlineApp.Print
+# Scroll regions in termtest, and InlineApp.Print without a redraw
 
 **Status:** Draft\
 **Author:** Curtis Myzie (with Claude)\
-**Date:** 2026-10-31\
+**Date:** 2026-10-31 (part 2 revised 2026-11-01)\
 **Workflow:** Spec, then build in parallel. The termtest part has no open design question and is built first; the tui part waits for review of this spec.\
 **PRD:** [docs/prds/scroll-regions.md](../prds/scroll-regions.md)
 
 ## Context
 
-`InlineApp.Print` clears the live region, prints, and redraws it: 856 bytes
-for a 46-byte line under a 5-line live region. A scroll region from row 1
-to the row above the live region lets Print add lines without touching the
-live region, as Codex does. termtest cannot model scroll regions, BCE, or
-scrollback today, so neither change can be tested. The PRD has the user
-problem, the event tables for the live region's position, and the
-decisions. This spec covers how to build it.
+`InlineApp.Print` clears the live region, prints, and redraws it: 855 bytes
+for a 46-byte line under a 5-line live region. Print can instead insert the
+rows above the live region with cursor moves relative to it (line feeds,
+cursor up, insert line), so the live region is not redrawn. termtest cannot
+model scroll regions, BCE, or scrollback today, so neither the insert nor
+other inline output can be tested against what a real terminal shows. The
+PRD has the user problem, the insert's steps, and the decisions, including
+the rejected scroll-region design. This spec covers how to build it.
 
 ## Goals
 
@@ -24,11 +25,9 @@ decisions. This spec covers how to build it.
   text. The expected values come from ghostty through the vtdiff harness,
   which links libghostty with cgo and stays outside the repo
   (`vtdiff dump <families>` prints the rows).
-- Bytes per Print in the PRD's measurement scenario: 100 or fewer (from 856).
-- The live region's bottom gap follows the PRD tables exactly; each table
-  row has a test.
-- No exit path leaves a scroll region set, including a write that fails in
-  the middle of a scroll-region Print.
+- Bytes per Print in the PRD's measurement scenario: 95 (from 855).
+- Every printed line reaches scrollback once, in order, with a stable window
+  and while it resizes during output.
 
 ## Non-goals
 
@@ -149,165 +148,100 @@ whichever track rebases second.
 
 ### Part 2: tui
 
-**Bottom gap state.** In `InlineApp`, guarded by `r.mu`:
+**Print.** Render the view to a buffer first (`Fprint` with the runner's
+width, raw mode, and color). Then, in `tui/inline_insert.go`:
 
 ```go
-type liveGap struct {
-	known   bool
-	gap     int     // rows below the live region's last row, when known
-	height  int     // terminal rows the gap is measured against
-	tag     int     // tag of the newest query; 0 = none waiting
-	pending []gapOp // ops since the newest query, replayed onto its reply
-}
-type gapOp struct{ kind gapOpKind; n int } // printed n rows, grew n, shrank n
+// insertChunk returns how many rows one insert may add, or 0 to redraw.
+func insertChunk(screenHeight, liveHeight int) int // (H-L)/2 when H-L >= 2
+
+// insertAboveLive builds one synchronized-output bracket with, per chunk
+// of n rows: ESC[0m, n x LF, CR, CSI n+L-1 A, CSI n L, rows joined by
+// CRLF, CSI L B.
+func insertAboveLive(rows []string, liveHeight, chunk int) string
 ```
 
-`invalidate()` sets `known = false`, clears `pending`, and marks that a query
-is needed. `apply(op)` updates `gap` when known, and appends to `pending`
-when a query waits. `pending` has a cap of 256; past it, `invalidate()`.
+`printAboveLiveLocked` reads the terminal's size (`screenSize`, one ioctl
+on the output). It inserts when the live region is on screen
+(`live.started`) and drawn at the runner's width, the terminal is at least
+as wide as the runner's width and as wide as when the live frame was drawn,
+the width has not changed for 500 ms, and
+`insertChunk(height, live.lastHeight) > 0`. Under tmux or zellij (which
+report a resize late), if Print inserted after the last frame and within
+300 ms when a width change arrives, `LivePrinter.keepRowsAbove` makes the next erase of
+the old frame cover only its own height, so inserts that landed among its
+rewrapped rows stay. The rows go out with
+autowrap off (`CSI ? 7 l` after `CSI ? 2026 h`, `CSI ? 7 h` before
+`CSI ? 2026 l`), so a narrowing that lands while the bytes travel cuts a
+row's end instead of wrapping it over the next row.
+Otherwise Print runs today's clear-print-redraw path with the same rendered
+bytes. The live printer's state does not change: its frame is still on
+screen, one or more rows lower or at the same rows.
 
-**Query.** Queries are allowed only while `Run` reads input: from after
-`initializeManagedInput` in `Run` until `Run` stops, and not during a
-`Handoff` callback. Before `Run`, an event that invalidates leaves the state
-unknown and sends nothing; a reply that no reader reads would reach the
-shell as typed text. After a live-region draw (end of `renderLiveLocked`
-and `restoreLiveLocked`), if queries are allowed, a query is needed, the
-scroll path is allowed (R-11), and the width is at least 28: pick the next
-tag, cycling through `1..width-20`, then write `\r ESC[<19+tag>C ESC[6n \r`
-inside the same output-gate section. The range is 8 tags at width 28 and 80
-at width 100, so an old reply matches a reused tag only when it arrives
-after that many newer queries. The cursor is hidden and the next live write
-starts with `\r`, so moving the column is invisible. Column `20+tag`
-(1-based) is the tag. It cannot match legacy modified F3 (`CSI 1;m R`, m at
-most 16).
+Why each step is correct for any gap g (the blank rows below the live
+region's last row), with the live region at rows T..B on a screen of H rows:
 
-**Reply.** New exported event in `terminal/decoder.go`:
+- n line feeds from B: the first min(n, g) move the cursor down; the rest
+  scroll the whole screen up by s = max(0, n-g), sending its top rows into
+  scrollback. The cursor ends at B+n-s; the live region at T-s..B-s.
+- The distance from the cursor to the live region's top is
+  (B+n-s) - (T-s) = n+L-1, whatever g is. So CR and `CSI n+L-1 A` reach it.
+- `CSI n L` pushes the live region down n rows. Its new last row is
+  B-s+n = min(B+n, H): it fits, so no live row is lost. Only blank rows
+  fall off the bottom.
+- The rows fill the n inserted lines; `CSI L B` returns to the live region's
+  last row.
+- The one condition: s must not exceed T-1 (the live region must not scroll
+  off the top), which holds while n <= H-L. Chunks of (H-L)/2 keep a margin
+  for a screen that shrank and has not told the runtime yet.
 
-```go
-// CursorPositionEvent is a cursor position report: the terminal's answer
-// to "ESC [ 6 n". X and Y are 0-based cells, like MouseEvent.
-type CursorPositionEvent struct {
-	X, Y int
-	Time time.Time
-}
-```
+**Size.** `terminalSize(output)` reads the width and height from the
+terminal the runner writes to. `NewInlineApp` uses it for the default width
+and the live region's cap, and `Run` reads both again when it starts
+(`refreshScreenSize`). `ResizeEvent` and Handoff's repaint update them as
+before. After every `ResizeEvent` (and `LivePrinter.SetWidth` with a new
+width) the next frame writes every row, because Print no longer redraws the
+live region and a terminal may change rows around the cursor on a resize.
 
-`decodeCSIKey` returns it for `CSI row ; col R` with two numeric
-parameters. Today that sequence decodes to `KeyUnknown`, so no key is lost.
-`InlineApp.processEvent` handles it before focus routing and never passes it
-to `HandleEvent`: if `X+1 == 20+tag` for the newest tag, set
-`gap = height - (Y+1)`, replay `pending`, `known = true`, `tag = 0`.
-Otherwise drop it. `tui` adds no alias for the type, because no tui
-application receives it.
+**Failure.** If the write fails, Print writes `ESC[?7h ESC[?2026l`, so
+autowrap is on again and the terminal does not keep holding its screen.
 
-**Events.** Each row of the PRD tables maps to one call site:
-
-| Event | Call site | Action |
-|-------|-----------|--------|
-| Run start | after first `render()` in `Run` | `invalidate()` |
-| Resize | `processEvent` ResizeEvent branch; also set `height` | `invalidate()` |
-| Handoff return | after repaint in `InlineApp.Handoff` | `invalidate()` |
-| ClearScrollback | `ClearScrollback` | `invalidate()` |
-| PrintRaw | `PrintRaw` | `invalidate()` |
-| Write error | `checkedLiveOutput` error in Print/render | `invalidate()` |
-| Print, today's path | `Print`, n = rendered view height | `apply(printed n)` |
-| Print, scroll path | `Print` | none |
-| Live height change | `LivePrinter.writeFrame` reports old and new height | `apply(grew/shrank)` |
-
-`LivePrinter` gets an unexported callback field for the height change, set
-by `InlineApp`; standalone use is unchanged. The terminal height comes from
-`term.GetSize` at start and from each `ResizeEvent`.
-
-**Print.** Render the view to a buffer first, so a panic in a view cannot
-happen with a region set. Both paths render once, with the options today's
-path uses: `Fprint(&b, view, WithWidth(r.config.Width), WithRawMode(true),
-WithColor(true))`. Raw mode ends each row with `\r\n`, so the scroll path
-splits the buffer on `\r\n` and gets the same rows today's path prints.
-Then, if `known && gap == 0 && height - liveHeight >= 2` and R-11 allows:
-
-```
-ESC[?2026h  ESC7  ESC[1;<height-liveHeight>r  ESC[<height-liveHeight>;1H  ESC[0m
-  for each rendered row:  \r\n <row>
-ESC[r  ESC8  ESC[?2026l
-```
-
-DECSTBM homes the cursor, so DECSC/DECRC keep the live region's cursor.
-One `ESC[0m` before the first LF gives the first scrolled-in row the
-default background (BCE). Each rendered row with a style already ends with
-`ESC[0m`, so the later LFs also scroll in default-background rows. Overhead:
-43 bytes for one row (16 of them the 2026 bracket) plus 2 per extra row,
-with a 5-line live region on a 30-row screen. Otherwise, today's path, then
-`apply(printed n)`.
-
-**Failure.** Set `regionMaybeSet = true` before the write and clear it after
-a complete write. If the write fails, `invalidate()`, then:
-
-- If the write failed before `ESC7` went out (fewer bytes than
-  `ESC[?2026h ESC7`), no region is set and the saved cursor is not Print's.
-  Write `ESC[?2026l` only and clear the flag.
-- Otherwise write `ESC[r ESC8 ESC[?2026l` at once. `ESC[r` resets the region
-  and homes the cursor; `ESC8` then returns it to the cursor that this
-  Print saved with `ESC7`, on the live region's last row. Never write `ESC7`
-  in a reset: it would overwrite Print's saved cursor with the mid-print
-  cursor, and `ESC8` would restore that (PRD UC-3 would fail). Clear the
-  flag when this write succeeds.
-
-While the flag is still set, every later write to the output (live draw,
-query, Print on either path, `cleanup()`, the Handoff release path) starts
-with `ESC[r ESC8` and clears the flag when that write succeeds. No other
-output writes `ESC7` while the flag is set, so the saved cursor stays
-Print's, and the live renderer's idea of the cursor (the state before the
-failed Print) is still right. The reset is idempotent, so a repeat after a
-partial write is safe. A scroll region never survives past one Print
-otherwise, so normal exit, panic, and Handoff need no extra bytes.
-
-**Opt-out.** `NewInlineApp` reads `WT_SESSION`, `STY`, and
-`WONTON_NO_SCROLL_REGION` once. When any blocks the path, no query is sent
-and Print always uses today's path. Documented in the `InlineApp` doc
-comment and `tui/doc.go`.
+**Files.** `tui/inline_insert.go` (new), `tui/inline_app.go` (Print and one
+call in Run), tests in `tui/inline_app_print_test.go`, the example
+`examples/tui/inline_stream`, and `tui/README.md`.
 
 ## Alternatives considered
 
-- **Count replies in order instead of tagging.** CPR replies come in query
-  order, so the last reply answers the newest query. But one lost reply
-  (dropped by a multiplexer, or read by a Handoff child) shifts the count
-  for the rest of the session, and a pre-resize reply looks valid. The tag
-  costs 8 bytes per query and needs no ordering assumption.
-- **Synchronous query before the input reader starts** (as ratatui and
-  `DetectTerminalBackground` do). It works at start, but resize and
-  Handoff need a query while the reader runs, so the async path is needed
-  anyway. One path is simpler than two.
+- **A scroll region from row 1 to the row above the live region** (as
+  Codex). Built first and rejected. It needs the live region's absolute row
+  (a cursor position query, tagged replies, and rules for every event that
+  moves the live region) and the exact screen height. Output already on its
+  way when the window resizes uses the old height and scrolls the wrong
+  rows: 499 and 498 of 500 lines kept in an emulator harness that resizes
+  libghostty-vt and the pty together, 320 and 418 of 500 in tmux, which
+  passes a new size to the program only about every 250 ms during a drag.
+  It also needed a fallback for Windows Terminal and GNU screen. The
+  relative insert kept 500 of 500 in every case.
+- **One insert for any view.** Simpler, but a view taller than the free rows
+  (or a shrink in flight) would scroll live region rows into scrollback.
 - **termtest region code inside `ansi.go` and `screen.go`.** Smaller diff in
   total, but four tracks edit those files at once. New files keep each
   track's conflicts to a few call sites.
-- **Codex-style RI push when the live region is not at the bottom.** It
-  makes the first screenful use the scroll path too, but adds a second
-  region sequence for a short phase. Rejected in the PRD.
 
 ## Tradeoffs and consequences
 
 - termtest output changes for any stream that erases with a background
   color set, or sends `CSI 3 J` alone. Both now match real terminals. The
   PR lists any snapshot that changes.
-- A new exported type, `terminal.CursorPositionEvent`. A full-screen
-  `Runtime` app that sends its own `ESC[6n` now receives it in `HandleEvent`
-  instead of a `KeyUnknown` key.
-- The gap tracking is a small state machine with nine inputs. It is the
-  main source of risk; the event table and one test per row contain it.
-- Each query moves the cursor column of a hidden cursor and costs about 12
-  bytes, once per start, resize, Handoff, ClearScrollback, or PrintRaw.
+- The insert moves the live region up and back within one write. A
+  terminal that ignores synchronized output can show it one row higher for
+  a frame; today's redraw shows it blank in the same case.
+- Print relies on the cursor resting on the live region's last row, as
+  today's path already does. Output written to the terminal outside the
+  runtime breaks both paths alike.
 
 ## Rollout
 
-No flag; the path turns on by itself where it is safe. Part 1 (termtest)
-merges first as its own PR stacked on the PRD branch. Part 2 follows with
-the example `examples/tui/inline_stream` and a manual transcript from
-ghostty, Terminal.app, and tmux. `WONTON_NO_SCROLL_REGION=1` is the
-fallback if a terminal loses scrollback; [#208](https://github.com/deepnoodle-ai/wonton/issues/208)
-tracks Windows Terminal over SSH.
-
-## Open questions
-
-- tmux: does it forward the CPR reply in order with key input when the
-  outer terminal is slow? Leaning yes (tmux answers CPR itself from its own
-  grid). Checked in the manual tmux run before part 2 merges.
+No flag. Part 1 (termtest) merges first. Part 2 follows with the example
+`examples/tui/inline_stream`, the tmux and harness results, and a manual
+check in Ghostty.app and Terminal.app.
