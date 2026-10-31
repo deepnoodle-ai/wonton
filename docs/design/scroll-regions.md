@@ -25,7 +25,7 @@ the rejected scroll-region design. This spec covers how to build it.
   text. The expected values come from ghostty through the vtdiff harness,
   which links libghostty with cgo and stays outside the repo
   (`vtdiff dump <families>` prints the rows).
-- Bytes per Print in the PRD's measurement scenario: 80 (from 855).
+- Bytes per Print in the PRD's measurement scenario: 90 (from 855).
 - Every printed line reaches scrollback once, in order, with a stable window
   and while it resizes during output.
 
@@ -161,8 +161,13 @@ func insertChunk(screenHeight, liveHeight int) int // (H-L)/2 when H-L >= 2
 func insertAboveLive(rows []string, liveHeight, chunk int) string
 ```
 
-`printAboveLiveLocked` uses it when the live region is on screen
-(`live.started`) and `insertChunk(live.maxHeight, live.lastHeight) > 0`.
+`printAboveLiveLocked` reads the terminal's size (`screenSize`, one ioctl
+on the output). It inserts when the live region is on screen
+(`live.started`), the terminal is at least as wide as the runner's width,
+and `insertChunk(height, live.lastHeight) > 0`. The rows go out with
+autowrap off (`CSI ? 7 l` after `CSI ? 2026 h`, `CSI ? 7 h` before
+`CSI ? 2026 l`), so a narrowing that lands while the bytes travel cuts a
+row's end instead of wrapping it over the next row.
 Otherwise Print runs today's clear-print-redraw path with the same rendered
 bytes. The live printer's state does not change: its frame is still on
 screen, one or more rows lower or at the same rows.
@@ -184,13 +189,16 @@ region's last row), with the live region at rows T..B on a screen of H rows:
   off the top), which holds while n <= H-L. Chunks of (H-L)/2 keep a margin
   for a screen that shrank and has not told the runtime yet.
 
-**Height.** `live.maxHeight` already comes from the terminal at
-`NewInlineApp`, each `ResizeEvent`, and Handoff's repaint. `Run` reads it
-again when it starts (`refreshScreenHeight`), so a window changed before
-the resize watcher started is seen.
+**Size.** `terminalSize(output)` reads the width and height from the
+terminal the runner writes to. `NewInlineApp` uses it for the default width
+and the live region's cap, and `Run` reads both again when it starts
+(`refreshScreenSize`). `ResizeEvent` and Handoff's repaint update them as
+before. After every `ResizeEvent` (and `LivePrinter.SetWidth` with a new
+width) the next frame writes every row, because Print no longer redraws the
+live region and a terminal may change rows around the cursor on a resize.
 
-**Failure.** If the write fails, Print writes `ESC[?2026l` so the terminal
-does not keep holding its screen. No mode or region is ever left set.
+**Failure.** If the write fails, Print writes `ESC[?7h ESC[?2026l`, so
+autowrap is on again and the terminal does not keep holding its screen.
 
 **Files.** `tui/inline_insert.go` (new), `tui/inline_app.go` (Print and one
 call in Run), tests in `tui/inline_app_print_test.go`, the example

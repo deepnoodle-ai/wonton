@@ -82,11 +82,20 @@ one synchronized-output bracket:
    Either way, this reaches the live region's top row.
 3. `CSI n L` (insert line), which pushes the live region back down into the
    rows that step 1 opened.
-4. The n rows, then `CSI L B` back to the live region's last row.
+4. The n rows, with autowrap off (`CSI ? 7 l` ... `CSI ? 7 h`), then
+   `CSI L B` back to the live region's last row.
 
 Every move is relative to the cursor. No step depends on the screen height
-or on the live region's absolute row, so a resize that lands while the
-bytes travel cannot make Print scroll the wrong rows.
+or on the live region's absolute row, so a height change that lands while
+the bytes travel cannot make Print scroll the wrong rows.
+
+A width change is different: a row wider than the screen wraps onto the
+next row. So before an insert, Print reads the terminal's real size (one
+ioctl). When the terminal is narrower than the width the rows were
+rendered for (it narrowed and the event loop has not heard yet), Print
+redraws instead. Autowrap is off while the rows are written, so a
+narrowing that lands while the bytes travel cuts the end of a row and
+never writes over another row or the live region.
 
 ## Use cases
 
@@ -97,12 +106,12 @@ spinner and input line show at the bottom.
 
 Acceptance:
 - [ ] Each Print writes no bytes into the live region rows. With a live
-      region of fewer than 10 rows, a one-row Print writes the row plus 34
+      region of fewer than 10 rows, a one-row Print writes the row plus 44
       bytes of control sequences, plus 3 bytes for each row after the first
       (a line feed and the CRLF between rows). The synchronized-output
-      bracket is 16 of the 34.
+      bracket is 16 of the 44, and the autowrap off/on pair 10.
 - [ ] In the measurement scenario above (5-line live region, width 100),
-      bytes per Print drop from 855 to 100 or fewer.
+      bytes per Print drop from 855 to 100 or fewer (90).
 - [ ] A termtest test runs 500 Prints with the insert and 500 with today's
       redraw. The visible screen is equal on both, cell by cell, with
       styles. `Screen.Scrollback()` is equal on both. Every printed line is
@@ -120,12 +129,26 @@ Acceptance:
       region row is in scrollback. Checked in tmux and in an emulator
       harness that resizes libghostty-vt and the pty together. termtest
       cannot resize yet, so this check stays outside the test suite.
+- [ ] The window narrows while the runner still renders the old width: a
+      termtest case with the runner at 60 columns and the screen at 40
+      prints three 55-column rows. Print redraws, and every row and live
+      line is whole.
+- [ ] A narrowing drag (100 to 50 to 100 columns) keeps as many lines with
+      the insert as with the redraw: in tmux, 500 of 500 for both. A
+      terminal that reflows the live region's full-width rows (Ghostty) can
+      lose a few lines with either path; the redraw has the same problem,
+      and resize handling of the live region belongs to the resize track.
+- [ ] After any resize, the next live region frame writes every row, so no
+      row that the old size left (a cut divider, a row the terminal
+      blanked) stays on screen. In tmux, alternating between 20 and 32 rows
+      left lower live rows blank in 2 of 3 runs before this rule.
 
 ### UC-3: A write fails in the middle of a Print
 
 Acceptance:
-- [ ] Print still ends synchronized output (`CSI ? 2026 l`), so the
-      terminal does not keep holding its screen. Print leaves no mode set.
+- [ ] Print still turns autowrap on and ends synchronized output
+      (`CSI ? 7 h CSI ? 2026 l`), so the terminal does not keep holding its
+      screen. Print leaves no mode set.
 
 ### UC-4: A test asserts scroll-region output
 
@@ -188,18 +211,24 @@ termtest (lands first, as its own stacked PR):
 tui:
 
 - R-7 `Print` and `Printf` add rows as "How Print adds rows" describes,
-  when the live region is on screen and leaves at least 2 free rows
-  (screen height minus live region height). They add at most half the free
-  rows per insert and repeat the steps for the rest, so a screen that
-  shrank and has not yet said so still has room.
+  when the live region is on screen, the terminal's size can be read and
+  is at least as wide as the rendered rows, and the live region leaves at
+  least 2 free rows (screen height minus live region height). They add at
+  most half the free rows per insert and repeat the steps for the rest, so
+  a screen that shrank and has not yet said so still has room.
 - R-8 Otherwise, `Print` clears and redraws the live region, as today.
   `PrintRaw` and `ClearScrollback` always do.
-- R-9 The insert keeps the synchronized-output bracket and resets text
-  attributes before the line feeds, so the rows it opens have the default
-  background. Each rendered row already ends with a reset.
-- R-10 If a write fails during an insert, Print sends `CSI ? 2026 l`.
-- R-11 `Run` reads the screen height again when it starts.
-- R-12 A runnable example, `examples/tui/inline_stream`, streams lines under
+- R-9 The insert keeps the synchronized-output bracket, turns autowrap off
+  while it writes the rows, and resets text attributes before the line
+  feeds, so the rows it opens have the default background. Each rendered
+  row already ends with a reset.
+- R-10 If a write fails during an insert, Print sends `CSI ? 7 h` and
+  `CSI ? 2026 l`.
+- R-11 `InlineApp` reads the width and the height from the terminal it
+  writes to, at `NewInlineApp` and again when `Run` starts. A width that
+  came from the terminal follows it.
+- R-12 After any resize, the live region's next frame writes every row.
+- R-13 A runnable example, `examples/tui/inline_stream`, streams lines under
   a spinner and input line.
 
 ## Not in scope
@@ -238,6 +267,11 @@ tui:
   the middle of the write can show it shifted by a row for one frame.
   Today's redraw shows it blank in the same case; the scroll region did not
   move it. Accepted: correctness on resize matters more.
+- Redraw when the terminal is narrower than the rendered rows, and write
+  the rows with autowrap off. A wrapped row would write over the next row
+  or the live region. Reading the width costs one ioctl per Print.
+  Rejected: count wrapped rows in the insert, which needs the width the
+  terminal has when the bytes arrive, not when Print runs.
 - Insert at most half the free rows at a time. An insert of n rows is
   correct while n plus the live region height fits the screen; the margin
   covers a screen that shrank before the runtime heard of it. Rejected: one
@@ -255,7 +289,7 @@ tui:
 
 ## Success
 
-- Bytes per Print in the measurement scenario drop from 855 to 80, and stop
+- Bytes per Print in the measurement scenario drop from 855 to 90, and stop
   growing with live-region height.
 - 500 printed lines are in scrollback in order, with a stable window and
   while it resizes, in tmux and the emulator harness. Manual check in

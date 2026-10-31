@@ -1168,9 +1168,12 @@ the terminal's scrollback as more output follows. `InlineApp` inserts them
 above the live region with cursor moves relative to it and does not redraw
 the live region, so a stream of output costs only the bytes of its rows.
 The moves do not depend on the screen height, so output that arrives while
-the user resizes the window keeps every line. When the live region leaves
-less than two free rows on the screen, `Print` clears and redraws the live
-region instead. The result on screen and in scrollback is the same either
+the window gets taller or shorter keeps every line. Rows are written with
+autowrap off, and when the terminal is narrower than the rendered rows (the
+window narrowed and the resize event has not arrived yet), `Print` clears
+and redraws the live region instead, so a row never wraps over another row.
+It also redraws when the live region leaves less than two free rows on the
+screen. The result on screen and in scrollback is the same either
 way. See `examples/tui/inline_stream`.
 
 ### InlineApp Architecture
