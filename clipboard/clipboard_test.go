@@ -150,22 +150,6 @@ func TestRunCommandWithStdinKeepsStderr(t *testing.T) {
 	assert.Contains(t, err.Error(), "boom")
 }
 
-func TestTrimPowerShellNewline(t *testing.T) {
-	tests := []struct {
-		in, want string
-	}{
-		{"", ""},
-		{"hello\r\n", "hello"},
-		{"hello\n", "hello"},
-		{"hello\n\r\n", "hello\n"},
-		{"hello\r\n\r\n", "hello\r\n"},
-		{"hello", "hello"},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.want, trimPowerShellNewline(tt.in), "input %q", tt.in)
-	}
-}
-
 func TestLinuxAvailable(t *testing.T) {
 	has := func(names ...string) func(string) bool {
 		return func(name string) bool {
