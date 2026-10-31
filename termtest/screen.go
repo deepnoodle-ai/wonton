@@ -334,9 +334,12 @@ func (s *Screen) writeCluster(cluster string, clusterWidth int) {
 		s.cursorX = 0
 		return
 	case "\t":
-		s.wrapPending = false
-		nextTab := ((s.cursorX / 8) + 1) * 8
-		s.cursorX = min(nextTab, s.width-1)
+		// A deferred wrap means the cursor is at the last column, so the
+		// tab does nothing and the wrap stays pending, as in ghostty.
+		if !s.wrapPending {
+			nextTab := ((s.cursorX / 8) + 1) * 8
+			s.cursorX = min(nextTab, s.width-1)
+		}
 		return
 	}
 

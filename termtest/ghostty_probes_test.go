@@ -33,7 +33,8 @@ type ghosttyProbe struct {
 }
 
 // ghosttyProbes covers scroll regions, background color erase, C0 controls
-// inside CSI sequences, and the cursor after IL and DL.
+// inside CSI sequences, the cursor after IL and DL, and TAB with a
+// deferred wrap.
 var ghosttyProbes = []ghosttyProbe{
 	// region
 	{
@@ -487,6 +488,36 @@ var ghosttyProbes = []ghosttyProbe{
 		in:     "\x1b[1;2r\x1b[4;1Habcdefghij\x1b[MX",
 		rows:   []string{"", "", "", "Xbcdefghij"},
 		cursor: [2]int{1, 3},
+	},
+	// tabwrap
+	{
+		name:   "tabwrap: TAB keeps pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\tX",
+		rows:   []string{"abcdefghij", "X", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:   "tabwrap: TAB at last column then char",
+		size:   [2]int{10, 3},
+		in:     "abcdefghi\tXY",
+		rows:   []string{"abcdefghiX", "Y", ""},
+		cursor: [2]int{1, 1},
+	},
+	{
+		name:       "tabwrap: TAB keeps pending wrap at bottom row",
+		size:       [2]int{10, 2},
+		in:         "1\r\nabcdefghij\tX",
+		rows:       []string{"abcdefghij", "X"},
+		cursor:     [2]int{1, 1},
+		scrollback: []string{"1"},
+	},
+	{
+		name:   "tabwrap: two TABs keep pending wrap",
+		size:   [2]int{10, 3},
+		in:     "abcdefghij\t\tX",
+		rows:   []string{"abcdefghij", "X", ""},
+		cursor: [2]int{1, 1},
 	},
 }
 
