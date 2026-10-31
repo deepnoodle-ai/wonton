@@ -6,8 +6,10 @@ package termtest
 // or the alternate screen that full-screen applications draw on. The visible
 // grid is always s.cells, so every read and write method acts on what a user
 // would see. Switching swaps s.cells with the hidden grid kept here, together
-// with each screen's saved cursor. The cursor position, the current style and
-// the pending wrap belong to the terminal, not to a screen, so they carry over.
+// with each screen's saved cursor. Reads and writes use one shared cursor:
+// its position, the current style and the pending wrap carry over when the
+// screen switches. Only Resize uses where the cursor was when a screen was
+// hidden (altState.cursor), to reflow that hidden screen the way ghostty does.
 //
 // The semantics follow xterm and were checked against ghostty:
 //
@@ -24,9 +26,9 @@ type altState struct {
 	// Each screen keeps its own, so clearing one screen keeps the other's
 	// soft wraps for Resize.
 	hiddenInfo map[*Cell]*rowMeta
-	// cursor is where the cursor was when the hidden screen was last
-	// visible. Resize reflows the hidden screen around it, as ghostty
-	// keeps a cursor for each screen.
+	// cursor is where the shared cursor was when the hidden screen was
+	// last visible. Only Resize uses it: it reflows the hidden screen
+	// around it, as ghostty does. Switching back does not restore it.
 	cursor mark
 }
 
