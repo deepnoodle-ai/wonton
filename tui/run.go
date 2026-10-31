@@ -78,8 +78,10 @@ func WithInput(source InputSource) RunOption {
 // process's own terminal alone: no raw mode and no keyboard protocol. So the
 // bytes a test sees are the same in a terminal, in tmux and in CI.
 //
-// To resize while the app runs, resize the screen and then call
-// term.SetSize with the same size, as Terminal.SetSize describes.
+// Give the screen and term the same size, at the start and at each resize:
+// nothing checks that they match. To resize while the app runs, resize the
+// screen and then call term.SetSize with the same size, as Terminal.SetSize
+// describes.
 //
 // A nil term keeps the default.
 func WithTerminal(term *Terminal) RunOption {

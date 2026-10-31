@@ -888,7 +888,8 @@ and keyboard. See [Testing a Full-Screen App](#testing-a-full-screen-app).
 `WithTerminal` runs the real `tui.Run` path on an in-memory terminal, so a
 test checks the same setup, frames, and cleanup that users get. Make the
 terminal with `tui.NewTestTerminal` and a `termtest.Screen`. Send keys with a
-`tui.TestInput` and `WithInput`. When the test closes the input, Run handles
+`tui.TestInput` and `WithInput`. Give the screen and the terminal the same
+size: nothing checks that they match. When the test closes the input, Run handles
 the keys already sent and returns. Run closes the terminal when it returns, so
 the screen then shows what the user sees after the app quits.
 
