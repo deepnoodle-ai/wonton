@@ -133,11 +133,13 @@ Acceptance:
       termtest case with the runner at 60 columns and the screen at 40
       prints three 55-column rows. Print redraws, and every row and live
       line is whole.
-- [ ] A narrowing drag (100 to 50 to 100 columns) keeps as many lines with
-      the insert as with the redraw: in tmux, 500 of 500 for both. A
-      terminal that reflows the live region's full-width rows (Ghostty) can
-      lose a few lines with either path; the redraw has the same problem,
-      and resize handling of the live region belongs to the resize track.
+- A narrowing drag (100 to 50 to 100 columns) still loses a few lines:
+  the terminal rewraps the live region's full-width rows, so a cursor move
+  relative to the live region lands too low until a frame at the new width
+  is drawn. Measured: harness 495-496 of 500 with the insert and 494-499
+  with the redraw; tmux 498 of 500 with the insert and 500 with the redraw
+  (which leaves a live row in scrollback). Deferred to
+  [#219](https://github.com/deepnoodle-ai/wonton/issues/219).
 - [ ] After any resize, the next live region frame writes every row, so no
       row that the old size left (a cut divider, a row the terminal
       blanked) stays on screen. In tmux, alternating between 20 and 32 rows
