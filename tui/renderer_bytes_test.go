@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/termtest"
@@ -105,10 +106,37 @@ func rbViewCompare(screen *termtest.Screen, term *Terminal, w, h int) string {
 }
 
 func rbViewFormat(c termtest.Cell) string {
-	st := c.Style
-	return fmt.Sprintf("glyph=%q width=%d cont=%v fg=%+v bg=%+v bold=%v dim=%v italic=%v underline=%v blink=%v reverse=%v hidden=%v strike=%v",
-		string(c.Char)+c.Trailing, c.Width, c.Continuation, st.Foreground, st.Background,
-		st.Bold, st.Dim, st.Italic, st.Underline, st.Blink, st.Reverse, st.Hidden, st.Strike)
+	return fmt.Sprintf("glyph=%q width=%d cont=%v style=[%s]",
+		string(c.Char)+c.Trailing, c.Width, c.Continuation, rbViewFormatStyle(c.Style))
+}
+
+func rbViewFormatStyle(s termtest.Style) string {
+	parts := []string{"fg=" + rbViewFormatColor(s.Foreground), "bg=" + rbViewFormatColor(s.Background)}
+	for _, a := range []struct {
+		on   bool
+		name string
+	}{
+		{s.Bold, "bold"}, {s.Dim, "dim"}, {s.Italic, "italic"}, {s.Underline, "underline"},
+		{s.Blink, "blink"}, {s.Reverse, "reverse"}, {s.Hidden, "hidden"}, {s.Strike, "strike"},
+	} {
+		if a.on {
+			parts = append(parts, a.name)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func rbViewFormatColor(c termtest.Color) string {
+	switch c.Type {
+	case termtest.ColorBasic:
+		return fmt.Sprintf("%d", c.Value)
+	case termtest.Color256:
+		return fmt.Sprintf("256:%d", c.Value)
+	case termtest.ColorRGB:
+		return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+	default:
+		return "default"
+	}
 }
 
 // rbViewStyle converts a terminal style to the style termtest reports for
