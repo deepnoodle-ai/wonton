@@ -701,6 +701,7 @@ func (r *InlineApp) processEvent(event Event) {
 		r.mu.Lock()
 		r.config.Width = resize.Width
 		r.live.SetWidth(resize.Width)
+		r.live.rewriteNextFrame()
 		if resize.Height > 0 {
 			r.live.SetMaxHeight(resize.Height)
 		}

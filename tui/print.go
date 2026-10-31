@@ -396,6 +396,7 @@ type LivePrinter struct {
 	hiddenCursor bool
 	lastLines    []string    // Previous frame's lines for diffing
 	drawnWidth   int         // Width the previous frame was drawn at; 0 before the first frame
+	rewriteAll   bool        // Next frame writes every row (set on a resize)
 	reg          *registries // Set by InlineApp so views register with its stores; nil = process default
 }
 
@@ -411,6 +412,15 @@ func NewLivePrinter(opts ...PrintOption) *LivePrinter {
 // The next Update() will use the new width.
 func (lp *LivePrinter) SetWidth(w int) {
 	lp.config.Width = w
+}
+
+// rewriteNextFrame makes the next frame write every row, also rows whose
+// text did not change. InlineApp calls it on every resize: a terminal may change rows
+// around the cursor when it resizes (tmux does, for example, while its
+// size catches up with a drag), and Print no longer redraws the live
+// region, so only the next frame can repair it.
+func (lp *LivePrinter) rewriteNextFrame() {
+	lp.rewriteAll = true
 }
 
 // SetMaxHeight sets the maximum height (in lines) for the live region.
@@ -645,7 +655,8 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 	// This ensures we rewrite all lines, maintaining correct cursor positioning.
 	// Without this, skipped lines during height transitions can cause cursor
 	// misalignment, leading to scrollback contamination.
-	heightChanging := height != lp.lastHeight
+	heightChanging := height != lp.lastHeight || lp.rewriteAll
+	lp.rewriteAll = false
 
 	for y := 0; y < height; y++ {
 		newLine := ""

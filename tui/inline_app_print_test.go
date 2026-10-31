@@ -396,3 +396,21 @@ func TestInsertChunk(t *testing.T) {
 	assert.Equal(t, insertChunk(0, 3), 0, "unknown height")
 	assert.Equal(t, insertChunk(10, 0), 0, "no live region")
 }
+
+// After any resize, also one that keeps the width, the next frame writes
+// every live row: the terminal may have changed rows around the cursor,
+// and the insert does not redraw the live region.
+func TestInlineResizeRewritesEveryLiveRow(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 12, 11, &liveRowsApp{rows: 3}, true)
+	runner.render()
+	out.log.Reset()
+	runner.render()
+	assert.False(t, strings.Contains(out.log.String(), "live 1"), "no change: rows are not written")
+
+	runner.processEvent(ResizeEvent{Width: 40, Height: 14})
+	out.log.Reset()
+	runner.render()
+	for _, row := range []string{"live 0", "live 1", "live 2"} {
+		assert.True(t, strings.Contains(out.log.String(), row), row)
+	}
+}
