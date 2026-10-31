@@ -249,7 +249,7 @@ var resizeCases = []struct {
 	{"alt shrink both", 10, 5, "\x1b[?1049h\x1b[Habcdefghij\r\n1\r\n2\r\n3", 5, 3,
 		[]string{"1", "2", "3"}, 1, 2,
 		"X", []string{"1", "2", "3X"}},
-	{"alt saved cursor clamps", 10, 4, "\x1b[?1049h\x1b[2;9H\x1b7\x1b[H", 5, 4,
+	{"alt saved cursor past the cut edge", 10, 4, "\x1b[?1049h\x1b[2;9H\x1b7\x1b[H", 5, 4,
 		[]string{}, 0, 0,
 		"\x1b8X", []string{"", "    X"}},
 	{"alt then primary narrow", 10, 4, "abcdefghijklmn\x1b[?1049h\x1b[Hxyz", 5, 4,
