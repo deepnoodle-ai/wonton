@@ -166,7 +166,8 @@ func (r gridRow) printedAt(x int) bool {
 //   - The cursor and the saved cursor (ESC 7, CSI s) stay on the same
 //     character. One whose row leaves the top goes to the home position.
 //     A saved cursor in the blank cells after a line's text stays on the
-//     row where the text of its old row now starts, as in ghostty.
+//     row where the text of its old row now starts, as in ghostty. Its
+//     column is cut to fit that row, so it can land on text.
 //   - With fewer rows, blank rows below the cursor go first, then rows
 //     leave the top for the scrollback (see Scrollback). With more rows,
 //     rows come back from the scrollback if the cursor is on the last
