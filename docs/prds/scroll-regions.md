@@ -1,7 +1,7 @@
 # Print above a live region without redrawing it
 
 Status: Draft\
-PRD PR: #TBD · Implementation PR: #TBD · Updated: 2026-10-31
+PRD PR: [#210](https://github.com/deepnoodle-ai/wonton/pull/210) · Implementation PR: #TBD · Updated: 2026-10-31
 
 ## Problem
 
