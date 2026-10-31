@@ -161,7 +161,12 @@ type Screen struct {
 	skip        skipMode // Non-zero while inside an OSC/DCS/SOS/PM/APC payload, which is discarded
 	rawMode     bool     // A bare LF keeps the column, as with the tty in raw mode; see WithRawMode
 
-	// Soft wraps and printed cells by row, for Resize (resize.go).
+	// Soft wraps and printed cells by row, for Resize (resize.go). It is
+	// keyed by each row's first cell, so it follows a row only if every row
+	// move swaps whole row slices in cells and every new row is freshly
+	// allocated. Never copy cells between rows in place (for example
+	// copy(cells[y], cells[y+1])): the row's wrap flag and printed cells
+	// would stay behind on the wrong row.
 	rowInfo map[*Cell]*rowMeta
 }
 

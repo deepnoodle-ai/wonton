@@ -267,3 +267,65 @@ func TestLiveLineWidthSkipsEscapes(t *testing.T) {
 	assert.Equal(t, liveLineWidth("\x1b]8;;https://x.test\x1b\\link\x1b]8;;\x1b\\"), 4)
 	assert.Equal(t, liveLineWidth("\x1b]8;;https://x.test\alink\x1b]8;;\a中"), 6)
 }
+
+// resizeRecorderApp draws resizeFullScreenApp and reports each ResizeEvent.
+type resizeRecorderApp struct {
+	resizeFullScreenApp
+	resizes chan ResizeEvent
+}
+
+func (a resizeRecorderApp) HandleEvent(event Event) []Cmd {
+	switch e := event.(type) {
+	case ResizeEvent:
+		a.resizes <- e
+	case KeyEvent:
+		if e.Rune == 'q' {
+			return []Cmd{Quit()}
+		}
+	}
+	return nil
+}
+
+func TestRunningRuntimeRedrawsAfterSetSize(t *testing.T) {
+	out := &lockedScreen{screen: termtest.NewScreen(80, 12)}
+	term := NewTestTerminal(80, 12, out)
+	app := resizeRecorderApp{resizes: make(chan ResizeEvent, 4)}
+	r := NewRuntime(term, app, 30)
+	done := make(chan error, 1)
+	go func() { done <- r.Run() }()
+
+	waitResize := func(width, height int) {
+		t.Helper()
+		select {
+		case e := <-app.resizes:
+			assert.Equal(t, [2]int{e.Width, e.Height}, [2]int{width, height})
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no ResizeEvent %dx%d", width, height)
+		}
+	}
+	waitResize(80, 12) // the initial size
+
+	// Only SetSize: the runtime's OnResize callback queues the ResizeEvent.
+	out.read(func(s *termtest.Screen) { s.Resize(40, 12) })
+	term.SetSize(40, 12)
+	waitResize(40, 12)
+
+	// The runtime redraws after the event. Exit writes its own cleanup, so
+	// check the frame while the runtime still runs.
+	want := fullScreenFrame(t, resizeFullScreenApp{}, 40, 12)
+	got := ""
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		if out.read(func(s *termtest.Screen) { got = s.Text() }); got == want {
+			break
+		}
+	}
+	assert.Equal(t, got, want)
+
+	r.SendEvent(KeyEvent{Rune: 'q'})
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runtime did not stop")
+	}
+}
