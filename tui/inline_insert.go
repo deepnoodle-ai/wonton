@@ -102,7 +102,7 @@ func (r *InlineApp) printAboveLiveLocked(rendered string) bool {
 	// The live region must be drawn at the current width: after a width
 	// change the terminal may have rewrapped its rows, so it can take more
 	// rows than lastHeight until the next frame redraws it.
-	if r.live.drawnWidth != r.config.Width {
+	if r.live.drawnWidth != r.config.Width || r.live.staleWidth {
 		return false
 	}
 	// The terminal must also have the width it had when that frame was

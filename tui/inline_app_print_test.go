@@ -654,3 +654,30 @@ func TestInlinePrintNarrowingWithFullWidthLastRow(t *testing.T) {
 		}
 	}
 }
+
+// halfRowLiveApp ends its live region with a row half the old width wide,
+// so on a screen of exactly that width it fills a row.
+type halfRowLiveApp struct{}
+
+func (halfRowLiveApp) LiveView() View {
+	return Stack(Text("status"), Text("%s", strings.Repeat("x", 20)))
+}
+
+// A Print between the resize event and the next frame redraws the old
+// frame at the new width. Its rows are counted at the width they were
+// drawn at, so a last row that exactly fills the new width (20 of 40) is
+// one row, and the next frame keeps the printed line above it.
+func TestInlinePrintRedrawCountsRowsAtDrawnWidth(t *testing.T) {
+	runner, out := newInsertRig(t, 40, 14, 13, halfRowLiveApp{}, true)
+	runner.Printf("line 0")
+	out.screen.Resize(20, 14)
+	runner.screenSize = func() (int, int, bool) { return 20, 14, true }
+	runner.processEvent(ResizeEvent{Width: 20, Height: 14})
+	runner.Printf("line 1")
+	runner.render()
+	runner.Printf("line 2")
+	runner.render()
+	assert.Equal(t, printedLines(out.screen), []string{"line 0", "line 1", "line 2"})
+	assert.Equal(t, out.screen.Row(12), "status")
+	assert.Equal(t, out.screen.Row(13), strings.Repeat("x", 20))
+}

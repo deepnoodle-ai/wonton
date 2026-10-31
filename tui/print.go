@@ -397,6 +397,7 @@ type LivePrinter struct {
 	lastLines    []string    // Previous frame's lines for diffing
 	drawnWidth   int         // Width the previous frame was drawn at; 0 before the first frame
 	rewriteAll   bool        // Next frame writes every row (set on a resize)
+	staleWidth   bool        // The frame on screen was rendered for another width; next frame erases it
 	unwrapped    bool        // Count the old frame as lastHeight rows, not as rewrapped (see keepRowsAbove)
 	reg          *registries // Set by InlineApp so views register with its stores; nil = process default
 }
@@ -535,11 +536,12 @@ func (lp *LivePrinter) update(view View, useSync bool, fm *FocusManager) error {
 // view. InlineApp uses it to restore the live region after scrollback output
 // without calling the application's LiveView off the event loop.
 //
-// drawnAt is the width the lines were drawn at. If it is not the current
-// width (the width changed and no frame has been drawn since), the lines
-// were rendered for the old width and may wrap on screen. The printer then
-// keeps drawnAt as the frame's width and asks for every row again, so the
-// next frame erases this one and writes every row at the new width.
+// drawnAt is the width the lines were rendered for. If it is not the
+// current width (the width changed and no frame has been drawn since), the
+// lines may wrap on screen. They are still drawn at the current width, so
+// the printer counts their rows at that width, and it marks the frame
+// stale, so the next frame erases it and writes every row at the new
+// width.
 func (lp *LivePrinter) redraw(lines []string, useSync bool, drawnAt int) error {
 	if len(lines) == 0 {
 		return nil
@@ -548,7 +550,7 @@ func (lp *LivePrinter) redraw(lines []string, useSync bool, drawnAt int) error {
 	lp.beginFrame(checked)
 	err := lp.writeFrame(checked, lines, useSync)
 	if drawnAt != 0 && drawnAt != lp.config.Width {
-		lp.drawnWidth = drawnAt
+		lp.staleWidth = true
 		lp.rewriteAll = true
 	}
 	return err
@@ -560,7 +562,7 @@ func (lp *LivePrinter) beginFrame(checked io.Writer) {
 	// If we've already rendered, move cursor back up
 	if lp.started && lp.lastHeight > 0 {
 		lp.moveToFrameTop(checked)
-		if lp.drawnWidth != 0 && lp.drawnWidth != lp.config.Width {
+		if lp.drawnWidth != 0 && (lp.drawnWidth != lp.config.Width || lp.staleWidth) {
 			// After a resize the old frame may sit on different rows than
 			// this frame overwrites, so erase all of it first.
 			fmt.Fprint(checked, "\033[J")
@@ -732,6 +734,7 @@ func (lp *LivePrinter) writeFrame(checked *checkedLiveOutput, newLines []string,
 	lp.lastHeight = height
 	lp.drawnWidth = lp.config.Width
 	lp.unwrapped = false
+	lp.staleWidth = false
 
 	// Optionally wrap in synchronized output mode to prevent flicker.
 	// This tells the terminal to buffer all changes and render atomically.
@@ -785,6 +788,7 @@ func (lp *LivePrinter) clearChecked() error {
 	lp.lastHeight = 0
 	lp.lastLines = nil // Reset diff state
 	lp.drawnWidth = 0
+	lp.staleWidth = false
 	lp.started = false
 	return nil
 }
