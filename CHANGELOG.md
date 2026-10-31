@@ -15,6 +15,54 @@ PR describes its user-visible and incompatible changes in its body.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
+### Added
+
+- `termtest.Screen` models the alternate screen, scroll regions, background
+  color erase, and scrollback (`Screen.IsAlternateScreen`,
+  `Screen.Scrollback`), matching ghostty. (#212, #215, #221)
+- `termtest.Screen.Resize` resizes a screen mid-stream and reflows text as
+  ghostty does. (#213, #218, #226)
+- `termtest.WithRawMode` models a raw-mode tty, where a bare `\n` keeps the
+  column. (#211)
+- `tui.WithTerminal` and `tui.NewTestInput` run a full-screen app with the
+  real `tui.Run` against a test terminal. (#223)
+- `terminal.Terminal.SetSize` resizes a terminal without a tty. (#213)
+- `htmltomd.Options.BaseURL` resolves relative links and images. (#214)
+
+### Changed
+
+- **Breaking**: `termtest`: `NewScreen`, `NewRecorder`, `Capture.Screen`,
+  `Buffer.Screen`, and `Recorder.Replay` take `...ScreenOption`. Calls still
+  compile; function values and interfaces of the old type do not. (#211)
+- **Breaking**: `termtest`: `CSI 3 J` erases only the scrollback. Send
+  `ESC[2J` to clear the screen. (#215)
+- **Breaking**: `termtest`: after an app leaves the alternate screen, a
+  `Screen` shows the shell screen, not the app's last frame. (#212)
+- `termtest` follows ghostty more closely: scroll regions, `CSI S`/`CSI T`,
+  background color erase, cursor save/restore, IL/DL, and TAB. Some styled
+  snapshots can change. (#212, #215)
+- **Breaking**: `tui`: `Run` ends when a custom `InputSource` returns an
+  error. (#223)
+- `tui.InlineApp.Print` adds rows above the live region without redrawing
+  it. Size now comes from the output terminal, or 80 columns if the output is
+  not a terminal. (#220)
+- `tui.LivePrinter` redraws correctly after the window narrows, and `Stop`
+  writes `\r\n`. (#211, #213)
+- **Breaking**: `htmltomd.Convert` keeps the structure of real web pages, so
+  output changes for most pages. Unsafe links render as text, and tables hold
+  at most 200 columns. (#214)
+- **Breaking**: `clipboard` on Windows: `Write` rejects text with a NUL byte,
+  and `ReadContext`/`WriteContext` wait while another process holds the
+  clipboard. (#225)
+
+### Fixed
+
+- `clipboard` on Windows uses the Win32 API instead of PowerShell, so reads
+  no longer time out and non-ASCII text round-trips. (#225)
+- `terminal.KeyDecoder` decodes `ESC ESC [ D` as Alt+Left. (#227)
+
 ## [0.12.0] - 2026-10-30
 
 ### Changed
