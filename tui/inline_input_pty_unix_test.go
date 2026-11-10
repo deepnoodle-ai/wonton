@@ -93,10 +93,57 @@ func TestPromptMaskedSubmitOnPTY(t *testing.T) {
 	}
 }
 
-// In raw mode "\n" does not return the cursor to column 0, so the line
-// printed after submit must end with "\r\n". Otherwise the next output
-// starts in the column where the input ended.
+// In raw mode "\n" does not return the cursor to column 0, so on a
+// terminal the line printed after submit must end with "\r\n". Otherwise
+// the next output starts in the column where the input ended.
 func TestPromptFinalLineReturnsToColumnZeroOnPTY(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = slave
+	defer func() { os.Stdin = oldStdin }()
+
+	// Read what the prompt writes to the terminal until it turns off
+	// bracketed paste, its last write.
+	output := make(chan string, 1)
+	go func() {
+		var seen []byte
+		buf := make([]byte, 4096)
+		for !bytes.Contains(seen, []byte("\x1b[?2004l")) {
+			n, err := master.Read(buf)
+			seen = append(seen, buf[:n]...)
+			if err != nil {
+				break
+			}
+		}
+		output <- string(seen)
+	}()
+
+	if _, err := master.WriteString("3 + 7\r"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Prompt("> ", WithPromptFrame(false), WithPromptOutput(slave))
+	assert.NoError(t, err)
+	assert.Equal(t, "3 + 7", got)
+
+	// Match the printed final line, not the pty's echo of the typed keys,
+	// which arrives before the prompt enters raw mode.
+	select {
+	case out := <-output:
+		assert.True(t, strings.Contains(out, "\x1b[0m3 + 7\r\n"), "output: %q", out)
+	case <-time.After(2 * time.Second):
+		t.Fatal("no output from the prompt")
+	}
+}
+
+// With a terminal on stdin and the output redirected, the final line ends
+// with a plain "\n": a file or pipe gets no stray "\r".
+func TestPromptFinalLineToRedirectedOutputOnPTY(t *testing.T) {
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Skipf("pty unavailable: %v", err)
@@ -116,5 +163,6 @@ func TestPromptFinalLineReturnsToColumnZeroOnPTY(t *testing.T) {
 	got, err := Prompt("> ", WithPromptFrame(false), WithPromptOutput(&out))
 	assert.NoError(t, err)
 	assert.Equal(t, "3 + 7", got)
-	assert.True(t, strings.Contains(out.String(), "3 + 7\r\n"), "output: %q", out.String())
+	assert.True(t, strings.Contains(out.String(), "3 + 7\n"), "output: %q", out.String())
+	assert.False(t, strings.Contains(out.String(), "3 + 7\r\n"), "output: %q", out.String())
 }

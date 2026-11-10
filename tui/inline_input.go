@@ -190,9 +190,10 @@ type promptState struct {
 	acMatches  []string
 	acSelected int
 	acFrom     int
-	// raw is set while the input terminal is in raw mode, where "\n"
-	// does not return the cursor to column 0.
-	raw bool
+	// crlf is set when the input terminal is in raw mode and the output
+	// is a terminal. Raw mode turns off output post-processing, so "\n"
+	// alone does not return the cursor to column 0.
+	crlf bool
 }
 
 // Prompt reads a line of input from the user with rich editing support.
@@ -264,7 +265,7 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 		input:      []rune{},
 		cursorPos:  0,
 		historyIdx: -1,
-		raw:        raw,
+		crlf:       raw && isTerminal(cfg.output),
 	}
 
 	// Create live printer for the input region
@@ -363,6 +364,12 @@ func promptWidth(out io.Writer, in io.Reader) (width int, fromTerminal bool) {
 
 // terminalFd returns the file descriptor of v when v has one and it is a
 // terminal.
+// isTerminal reports whether v is a file attached to a terminal.
+func isTerminal(v any) bool {
+	_, ok := terminalFd(v)
+	return ok
+}
+
 func terminalFd(v any) (int, bool) {
 	f, ok := v.(interface{ Fd() uintptr })
 	if !ok {
@@ -426,14 +433,15 @@ func (s *scriptedKeys) Read(p []byte) (int, error) {
 func (s *scriptedKeys) WaitReady(time.Duration) bool { return true }
 
 // printFinal prints the prompt and the entered input on their own line after
-// the live region is cleared. Masked input stays masked. In raw mode the
-// line ends with "\r\n", so the next output starts in column 0.
+// the live region is cleared. Masked input stays masked. On a raw-mode
+// terminal the line ends with "\r\n", so the next output starts in
+// column 0. Other output gets "\n".
 func (s *promptState) printFinal(w io.Writer, prompt string) {
 	fmt.Fprint(w, s.config.promptStyle.String())
 	fmt.Fprint(w, prompt)
 	fmt.Fprint(w, "\033[0m")
 	fmt.Fprint(w, s.getDisplayInput())
-	if s.raw {
+	if s.crlf {
 		fmt.Fprint(w, "\r\n")
 	} else {
 		fmt.Fprint(w, "\n")
