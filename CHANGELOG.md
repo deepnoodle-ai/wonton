@@ -15,6 +15,34 @@ PR describes its user-visible and incompatible changes in its body.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-10
+
+### Added
+
+- `cli`: flag `.Once()` and `.Placeholder()`, `Command.NoArgs()`,
+  `App.ColorFlags(false)`, and `App.VersionFunc`. (#238)
+- `tui.WithPromptInput` and `tui.WithPromptFrame` options for `Prompt`. (#237)
+
+### Changed
+
+- **Breaking**: `tui`: syntax-highlighted views move to `tui/highlight` and
+  `SprintScreen` to `tuitest.Screen`, halving `cli` binary size. Import
+  `tui/highlight` to keep code colors in `Markdown`. (#239)
+- **Breaking**: `cli`: usage errors are `*cli.UsageError` and exit 2, and a
+  flag takes its next word as the value even when it starts with `-`. (#236)
+- **Breaking**: `cli`: `Group.Validate` now runs for subcommands, and
+  `App.Validate` with `Main()`. (#242)
+- **Breaking**: `cli`: typed flag structs have new fields, so unkeyed struct
+  literals stop compiling. (#238)
+- **Breaking**: `termtest` no longer adds an `-update` flag. Run
+  `TERMTEST_UPDATE=1 go test ./...` to update snapshots. (#235)
+- `tui.Prompt` is as wide as the terminal and follows resizes. (#237)
+
+### Fixed
+
+- `tui`: clicks and typed text reach focusable views and inputs inside a
+  `Viewport` while text is selected. (#243, #245)
+
 ## [0.13.0] - 2026-10-31
 
 ### Added
