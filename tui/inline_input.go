@@ -190,6 +190,9 @@ type promptState struct {
 	acMatches  []string
 	acSelected int
 	acFrom     int
+	// raw is set while the input terminal is in raw mode, where "\n"
+	// does not return the cursor to column 0.
+	raw bool
 }
 
 // Prompt reads a line of input from the user with rich editing support.
@@ -230,12 +233,14 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 		in = os.Stdin
 	}
 	keys := in
+	raw := false
 	if fd, ok := terminalFd(in); ok {
 		oldState, err := term.MakeRaw(fd)
 		if err != nil {
 			return readLineFallback(in)
 		}
 		defer term.Restore(fd, oldState)
+		raw = true
 
 		// Enable bracketed paste mode
 		fmt.Fprint(cfg.output, "\033[?2004h")
@@ -259,6 +264,7 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 		input:      []rune{},
 		cursorPos:  0,
 		historyIdx: -1,
+		raw:        raw,
 	}
 
 	// Create live printer for the input region
@@ -420,12 +426,18 @@ func (s *scriptedKeys) Read(p []byte) (int, error) {
 func (s *scriptedKeys) WaitReady(time.Duration) bool { return true }
 
 // printFinal prints the prompt and the entered input on their own line after
-// the live region is cleared. Masked input stays masked.
+// the live region is cleared. Masked input stays masked. In raw mode the
+// line ends with "\r\n", so the next output starts in column 0.
 func (s *promptState) printFinal(w io.Writer, prompt string) {
 	fmt.Fprint(w, s.config.promptStyle.String())
 	fmt.Fprint(w, prompt)
 	fmt.Fprint(w, "\033[0m")
-	fmt.Fprintln(w, s.getDisplayInput())
+	fmt.Fprint(w, s.getDisplayInput())
+	if s.raw {
+		fmt.Fprint(w, "\r\n")
+	} else {
+		fmt.Fprint(w, "\n")
+	}
 }
 
 // handleKey processes a key event and returns (result, done, error)

@@ -92,3 +92,29 @@ func TestPromptMaskedSubmitOnPTY(t *testing.T) {
 		t.Fatalf("cursor left hidden: %q", s)
 	}
 }
+
+// In raw mode "\n" does not return the cursor to column 0, so the line
+// printed after submit must end with "\r\n". Otherwise the next output
+// starts in the column where the input ended.
+func TestPromptFinalLineReturnsToColumnZeroOnPTY(t *testing.T) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skipf("pty unavailable: %v", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = slave
+	defer func() { os.Stdin = oldStdin }()
+
+	if _, err := master.WriteString("3 + 7\r"); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	got, err := Prompt("> ", WithPromptFrame(false), WithPromptOutput(&out))
+	assert.NoError(t, err)
+	assert.Equal(t, "3 + 7", got)
+	assert.True(t, strings.Contains(out.String(), "3 + 7\r\n"), "output: %q", out.String())
+}
