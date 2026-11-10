@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"strings"
@@ -389,6 +390,83 @@ func TestCustomVersionAndHelpCommands(t *testing.T) {
 	assert.Equal(t, "version", ran)
 	assert.NoError(t, app.ExecuteArgs([]string{"help"}))
 	assert.Equal(t, "help", ran)
+}
+
+// An app's own group or alias named "version" or "help" runs instead of the
+// built-in, and help lists the built-in version command only when the app
+// does not claim the name.
+func TestAppNamesReplaceBuiltinCommands(t *testing.T) {
+	newApp := func(ran *string) *App {
+		app := TestApp("app").Version("1.2.3")
+		app.SetColorEnabled(false)
+		app.Command("run").Run(func(*Context) error { *ran = "run"; return nil })
+		return app
+	}
+
+	t.Run("group named version", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		app.Group("version").Command("show").Run(func(*Context) error { ran = "show"; return nil })
+
+		err := app.ExecuteArgs([]string{"version"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "group 'version' requires a subcommand")
+		assert.Equal(t, "", app.stdout.(*bytes.Buffer).String())
+		assert.NoError(t, app.ExecuteArgs([]string{"version", "show"}))
+		assert.Equal(t, "show", ran)
+	})
+
+	t.Run("group alias named version", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		app.Group("release").Alias("version").Command("show").Run(func(*Context) error { ran = "show"; return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"version", "show"}))
+		assert.Equal(t, "show", ran)
+		app.stdout.(*bytes.Buffer).Reset()
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"help"})))
+		assert.NotContains(t, app.stdout.(*bytes.Buffer).String(), "Print the version")
+	})
+
+	t.Run("command alias named version", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		app.Command("build-info").Alias("version").Run(func(*Context) error { ran = "build-info"; return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+		assert.Equal(t, "build-info", ran)
+	})
+
+	t.Run("group subcommand named version", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		app.Group("db").Command("version").Run(func(*Context) error { ran = "db version"; return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"db", "version"}))
+		assert.Equal(t, "db version", ran)
+		assert.NotContains(t, app.stdout.(*bytes.Buffer).String(), "1.2.3")
+	})
+
+	t.Run("group named help", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		app.Group("help").Command("topics").Run(func(*Context) error { ran = "topics"; return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"help", "topics"}))
+		assert.Equal(t, "topics", ran)
+	})
+
+	t.Run("built-in version still runs and is listed", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		out := app.stdout.(*bytes.Buffer)
+
+		assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+		assert.Equal(t, "1.2.3\n", out.String())
+		out.Reset()
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"help"})))
+		assert.Contains(t, out.String(), "Print the version")
+	})
 }
 
 // M31: --version takes no value, so it may come before a command.
