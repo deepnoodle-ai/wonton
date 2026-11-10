@@ -1,7 +1,10 @@
 package cli_test
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/deepnoodle-ai/wonton/cli"
 )
@@ -352,4 +355,53 @@ func ExampleParseFlags() {
 
 	fmt.Println("Struct-based flags configured")
 	// Output: Struct-based flags configured
+}
+
+// ExampleApp_ColorFlags demonstrates a strict command line: flags given at
+// most once, value names in help, no positional arguments, no built-in
+// color flags, and custom version text.
+func ExampleApp_ColorFlags() {
+	var out bytes.Buffer
+	app := cli.New("demo").
+		ColorFlags(false).
+		VersionFunc(func(w io.Writer) { fmt.Fprintln(w, "demo 1.2.3") })
+	app.SetStdout(&out)
+	app.SetColorEnabled(false)
+
+	app.Command("run").
+		NoArgs().
+		Flags(
+			cli.String("vars", "v").Placeholder("FILE").Once().Help("Variables file"),
+			cli.Int("max").Placeholder("N").Help("Maximum count"),
+			cli.Bool("write", "w").Once().Help("Write results"),
+		).
+		Run(func(ctx *cli.Context) error { return nil })
+
+	_ = app.ExecuteArgs([]string{"--version"})
+	_ = app.ExecuteArgs([]string{"run", "--help"})
+	fmt.Print(out.String())
+
+	for _, args := range [][]string{
+		{"run", "--vars", "a.env", "--vars", "b.env"},
+		{"run", "extra"},
+		{"run", "--no-color"},
+	} {
+		err := app.ExecuteArgs(args)
+		fmt.Println(strings.SplitN(err.Error(), "\n", 2)[0])
+	}
+	// Output:
+	// demo 1.2.3
+	// run
+	//
+	// Usage:
+	//   demo run [flags]
+	//
+	// Flags:
+	//   -v, --vars FILE Variables file
+	//       --max N     Maximum count
+	//   -w, --write     Write results
+	//
+	// flag --vars given more than once
+	// unexpected argument: extra
+	// unknown flag: --no-color
 }

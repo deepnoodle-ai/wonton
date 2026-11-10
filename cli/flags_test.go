@@ -229,3 +229,105 @@ func TestBindFlagsFromContext(t *testing.T) {
 		assert.True(t, cfg.Flag2)
 	})
 }
+
+func TestFlagOnce(t *testing.T) {
+	run := func(t *testing.T, f Flag, args ...string) (*Context, error) {
+		t.Helper()
+		var got *Context
+		app := New("test")
+		app.Command("run").Flags(f).Run(func(ctx *Context) error {
+			got = ctx
+			return nil
+		})
+		err := app.ExecuteArgs(append([]string{"run"}, args...))
+		return got, err
+	}
+
+	t.Run("second use is a usage error", func(t *testing.T) {
+		cases := []struct {
+			name string
+			flag Flag
+			args []string
+		}{
+			{"string", String("name", "n").Once(), []string{"--name", "a", "--name", "b"}},
+			{"string short and long", String("name", "n").Once(), []string{"-n", "a", "--name=b"}},
+			{"enum", String("format").Enum("json", "text").Once(), []string{"--format", "json", "--format", "text"}},
+			{"int", Int("max").Once(), []string{"--max", "1", "--max", "2"}},
+			{"int64", Int64("size").Once(), []string{"--size", "1", "--size", "2"}},
+			{"float", Float64("ratio").Once(), []string{"--ratio", "1", "--ratio", "2"}},
+			{"duration", Duration("timeout").Once(), []string{"--timeout", "1s", "--timeout", "2s"}},
+			{"bool", Bool("write", "w").Once(), []string{"--write", "-w"}},
+			{"struct flag", &StringFlag{Name: "name", Once: true}, []string{"--name=a", "--name=b"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := run(t, tc.flag, tc.args...)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "flag --"+tc.flag.GetName()+" given more than once")
+				assert.Contains(t, err.Error(), "Run 'test run --help' to see available flags.")
+			})
+		}
+	})
+
+	t.Run("single use is accepted", func(t *testing.T) {
+		ctx, err := run(t, String("name").Once(), "--name", "a")
+		assert.NoError(t, err)
+		assert.Equal(t, "a", ctx.String("name"))
+	})
+
+	t.Run("environment value does not count", func(t *testing.T) {
+		t.Setenv("TEST_ONCE_NAME", "env")
+		ctx, err := run(t, String("name").Env("TEST_ONCE_NAME").Once(), "--name", "cli")
+		assert.NoError(t, err)
+		assert.Equal(t, "cli", ctx.String("name"))
+	})
+
+	t.Run("without Once the last value wins", func(t *testing.T) {
+		ctx, err := run(t, String("name"), "--name", "a", "--name", "b")
+		assert.NoError(t, err)
+		assert.Equal(t, "b", ctx.String("name"))
+	})
+
+	t.Run("list flag ignores Once", func(t *testing.T) {
+		ctx, err := run(t, onceSlice{&StringSliceFlag{Name: "tag"}}, "--tag", "a", "--tag", "b")
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"a", "b"}, ctx.Strings("tag"))
+	})
+
+	t.Run("global flag", func(t *testing.T) {
+		app := New("test").GlobalFlags(String("profile").Once())
+		app.Command("run").Run(func(*Context) error { return nil })
+		err := app.ExecuteArgs([]string{"--profile", "a", "run", "--profile", "b"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "flag --profile given more than once")
+	})
+}
+
+// onceSlice is a slice flag that claims to be once-only.
+type onceSlice struct{ *StringSliceFlag }
+
+func (onceSlice) IsOnce() bool { return true }
+
+func TestParseFlagsOnceAndPlaceholderTags(t *testing.T) {
+	type Flags struct {
+		Config string   `flag:"config,c" placeholder:"FILE" once:""`
+		Max    int      `flag:"max" placeholder:"N"`
+		Tags   []string `flag:"tag" placeholder:"TAG"`
+		Write  bool     `flag:"write" once:""`
+	}
+	app := New("test")
+	cmd := app.Command("run").Run(func(*Context) error { return nil })
+	ParseFlags[Flags](cmd)
+
+	assert.Equal(t, "config FILE", flagLabel(cmd.findFlag("config")))
+	assert.Equal(t, "max N", flagLabel(cmd.findFlag("max")))
+	assert.Equal(t, "tag TAG", flagLabel(cmd.findFlag("tag")))
+	assert.Equal(t, "write", flagLabel(cmd.findFlag("write")))
+	assert.True(t, isOnceFlag(cmd.findFlag("config")))
+	assert.False(t, isOnceFlag(cmd.findFlag("max")))
+	assert.True(t, isOnceFlag(cmd.findFlag("write")))
+
+	err := app.ExecuteArgs([]string{"run", "-c", "a", "--config", "b"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "flag --config given more than once")
+}

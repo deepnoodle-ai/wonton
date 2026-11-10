@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -1198,6 +1199,46 @@ func TestColorCommandLineOverrides(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, app.colorEnabled) // still true, flag was not interpreted
 		assert.Equal(t, []string{"--no-color"}, gotArgs)
+	})
+}
+
+func TestColorFlagsDisabled(t *testing.T) {
+	saved := color.Enabled
+	t.Cleanup(func() { color.Enabled = saved })
+
+	for _, flag := range []string{"--no-color", "--no-colour", "--color", "--colour", "--force-color"} {
+		t.Run(flag, func(t *testing.T) {
+			color.Enabled = true
+			app := New("test").ColorFlags(false)
+			app.SetColorEnabled(true)
+			app.Command("run").Run(func(*Context) error { return nil })
+
+			err := app.ExecuteArgs([]string{"run", flag})
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown flag: "+flag)
+			assert.True(t, app.colorEnabled)
+			assert.True(t, color.Enabled)
+		})
+	}
+
+	t.Run("an app-defined flag of the same name still works", func(t *testing.T) {
+		app := New("test").ColorFlags(false)
+		var got bool
+		app.Command("run").Flags(Bool("no-color")).Run(func(ctx *Context) error {
+			got = ctx.Bool("no-color")
+			return nil
+		})
+		assert.NoError(t, app.ExecuteArgs([]string{"run", "--no-color"}))
+		assert.True(t, got)
+	})
+
+	t.Run("ColorFlags(true) keeps the built-in flags", func(t *testing.T) {
+		color.Enabled = true
+		app := New("test").ColorFlags(true)
+		app.SetColorEnabled(true)
+		app.Command("run").Run(func(*Context) error { return nil })
+		assert.NoError(t, app.ExecuteArgs([]string{"run", "--no-color"}))
+		assert.False(t, app.colorEnabled)
 	})
 }
 
@@ -3496,6 +3537,55 @@ func TestVersionWithNoVersion(t *testing.T) {
 	err = app.ExecuteArgs([]string{"--version", "serve"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown flag: --version")
+}
+
+func TestVersionFunc(t *testing.T) {
+	newApp := func(buf *bytes.Buffer) *App {
+		app := New("demo").Version("1.2.3").VersionFunc(func(w io.Writer) {
+			fmt.Fprintln(w, "demo 1.2.3")
+			fmt.Fprintln(w, "built with wonton")
+		})
+		app.SetStdout(buf)
+		app.Command("serve").Run(func(*Context) error { return nil })
+		return app
+	}
+	want := "demo 1.2.3\nbuilt with wonton\n"
+
+	for _, args := range [][]string{{"--version"}, {"version"}} {
+		t.Run(args[0], func(t *testing.T) {
+			var buf bytes.Buffer
+			assert.NoError(t, newApp(&buf).ExecuteArgs(args))
+			assert.Equal(t, want, buf.String())
+		})
+	}
+
+	t.Run("enables version without a version string", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("demo").VersionFunc(func(w io.Writer) { fmt.Fprintln(w, "demo dev") })
+		app.SetStdout(&buf)
+		app.Command("serve").Run(func(*Context) error { return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"--version"}))
+		assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+		assert.Equal(t, "demo dev\ndemo dev\n", buf.String())
+	})
+
+	t.Run("help header still shows the version string", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := newApp(&buf)
+		app.SetColorEnabled(false)
+		err := app.ExecuteArgs([]string{"--help"})
+		assert.True(t, IsHelpRequested(err))
+		assert.Contains(t, buf.String(), "demo (v1.2.3)")
+	})
+
+	t.Run("without VersionFunc the bare version is printed", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("demo").Version("1.2.3")
+		app.SetStdout(&buf)
+		assert.NoError(t, app.ExecuteArgs([]string{"--version"}))
+		assert.Equal(t, "1.2.3\n", buf.String())
+	})
 }
 
 // Test for command without handler

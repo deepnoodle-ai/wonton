@@ -131,6 +131,19 @@ func (c *Command) Args(names ...string) *Command {
 	return c
 }
 
+// NoArgs declares that the command takes no positional arguments, and
+// removes any slots declared earlier with Args or AddArg. Any positional
+// argument is then a usage error ("unexpected argument: x").
+//
+// A command that declares no args already rejects positionals. NoArgs
+// states the contract explicitly:
+//
+//	app.Command("status").NoArgs().Run(showStatus)
+func (c *Command) NoArgs() *Command {
+	c.args = c.args[:0]
+	return c
+}
+
 // Flags adds typed flags to the command.
 //
 // Use the flag builder functions to create type-safe flags:
@@ -278,6 +291,49 @@ type Flag interface {
 	Validate(value string) error
 }
 
+// OnceFlag is an optional interface for a Flag. When IsOnce reports true,
+// the flag may be given at most once on the command line, and a second
+// occurrence is a usage error. Values from the environment and defaults
+// do not count as occurrences. Slice flags ignore it, since they collect
+// one value per occurrence.
+//
+// The flag builders implement it through their Once method.
+type OnceFlag interface {
+	IsOnce() bool
+}
+
+// PlaceholderFlag is an optional interface for a Flag. A non-empty
+// placeholder names the flag's value in help output, for example
+// "--vars FILE". The flag builders implement it through their Placeholder
+// method.
+type PlaceholderFlag interface {
+	GetPlaceholder() string
+}
+
+// isOnceFlag reports whether f may appear at most once on the command line.
+func isOnceFlag(f Flag) bool {
+	o, ok := f.(OnceFlag)
+	if !ok || !o.IsOnce() {
+		return false
+	}
+	switch f.GetDefault().(type) {
+	case []string, []int:
+		return false
+	}
+	return true
+}
+
+// flagLabel returns the flag's long name for help output, followed by its
+// placeholder when it has one: "vars" or "vars FILE".
+func flagLabel(f Flag) string {
+	if p, ok := f.(PlaceholderFlag); ok {
+		if ph := p.GetPlaceholder(); ph != "" {
+			return f.GetName() + " " + ph
+		}
+	}
+	return f.GetName()
+}
+
 // Arg represents a positional argument configuration.
 //
 // Arguments are typically defined using the Args method:
@@ -417,6 +473,7 @@ type BoolFlag struct {
 	EnvVar   string
 	Hidden   bool
 	Required bool
+	Once     bool // at most once on the command line
 }
 
 func (f *BoolFlag) GetName() string       { return f.Name }
@@ -431,15 +488,17 @@ func (f *BoolFlag) Validate(string) error { return nil }
 
 // StringFlag represents a string flag.
 type StringFlag struct {
-	Name      string
-	Short     string
-	Help      string
-	Value     string // default value
-	EnvVar    string
-	Required  bool
-	Hidden    bool
-	Enum      []string
-	Validator func(string) error
+	Name        string
+	Short       string
+	Help        string
+	Value       string // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Enum        []string
+	Validator   func(string) error
+	Once        bool   // at most once on the command line
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *StringFlag) GetName() string   { return f.Name }
@@ -459,14 +518,16 @@ func (f *StringFlag) Validate(value string) error {
 
 // IntFlag represents an integer flag.
 type IntFlag struct {
-	Name      string
-	Short     string
-	Help      string
-	Value     int // default value
-	EnvVar    string
-	Required  bool
-	Hidden    bool
-	Validator func(int) error
+	Name        string
+	Short       string
+	Help        string
+	Value       int // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Validator   func(int) error
+	Once        bool   // at most once on the command line
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *IntFlag) GetName() string   { return f.Name }
@@ -490,14 +551,16 @@ func (f *IntFlag) Validate(value string) error {
 
 // Int64Flag represents an int64 flag.
 type Int64Flag struct {
-	Name      string
-	Short     string
-	Help      string
-	Value     int64 // default value
-	EnvVar    string
-	Required  bool
-	Hidden    bool
-	Validator func(int64) error
+	Name        string
+	Short       string
+	Help        string
+	Value       int64 // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Validator   func(int64) error
+	Once        bool   // at most once on the command line
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *Int64Flag) GetName() string   { return f.Name }
@@ -521,14 +584,16 @@ func (f *Int64Flag) Validate(value string) error {
 
 // Float64Flag represents a float64 flag.
 type Float64Flag struct {
-	Name      string
-	Short     string
-	Help      string
-	Value     float64 // default value
-	EnvVar    string
-	Required  bool
-	Hidden    bool
-	Validator func(float64) error
+	Name        string
+	Short       string
+	Help        string
+	Value       float64 // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Validator   func(float64) error
+	Once        bool   // at most once on the command line
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *Float64Flag) GetName() string   { return f.Name }
@@ -552,13 +617,15 @@ func (f *Float64Flag) Validate(value string) error {
 
 // DurationFlag represents a time.Duration flag.
 type DurationFlag struct {
-	Name     string
-	Short    string
-	Help     string
-	Value    time.Duration // default value
-	EnvVar   string
-	Required bool
-	Hidden   bool
+	Name        string
+	Short       string
+	Help        string
+	Value       time.Duration // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Once        bool   // at most once on the command line
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *DurationFlag) GetName() string       { return f.Name }
@@ -573,13 +640,14 @@ func (f *DurationFlag) Validate(string) error { return nil }
 
 // StringSliceFlag represents a string slice flag.
 type StringSliceFlag struct {
-	Name     string
-	Short    string
-	Help     string
-	Value    []string // default value
-	EnvVar   string
-	Required bool
-	Hidden   bool
+	Name        string
+	Short       string
+	Help        string
+	Value       []string // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *StringSliceFlag) GetName() string       { return f.Name }
@@ -594,13 +662,14 @@ func (f *StringSliceFlag) Validate(string) error { return nil }
 
 // IntSliceFlag represents an int slice flag.
 type IntSliceFlag struct {
-	Name     string
-	Short    string
-	Help     string
-	Value    []int // default value
-	EnvVar   string
-	Required bool
-	Hidden   bool
+	Name        string
+	Short       string
+	Help        string
+	Value       []int // default value
+	EnvVar      string
+	Required    bool
+	Hidden      bool
+	Placeholder string // value name in help, e.g. "FILE"
 }
 
 func (f *IntSliceFlag) GetName() string       { return f.Name }
@@ -612,6 +681,21 @@ func (f *IntSliceFlag) IsRequired() bool      { return f.Required }
 func (f *IntSliceFlag) IsHidden() bool        { return f.Hidden }
 func (f *IntSliceFlag) GetEnum() []string     { return nil }
 func (f *IntSliceFlag) Validate(string) error { return nil }
+
+// Optional flag interfaces implemented by the typed flags.
+func (f *StringFlag) IsOnce() bool                { return f.Once }
+func (f *IntFlag) IsOnce() bool                   { return f.Once }
+func (f *Int64Flag) IsOnce() bool                 { return f.Once }
+func (f *Float64Flag) IsOnce() bool               { return f.Once }
+func (f *DurationFlag) IsOnce() bool              { return f.Once }
+func (f *BoolFlag) IsOnce() bool                  { return f.Once }
+func (f *StringFlag) GetPlaceholder() string      { return f.Placeholder }
+func (f *IntFlag) GetPlaceholder() string         { return f.Placeholder }
+func (f *Int64Flag) GetPlaceholder() string       { return f.Placeholder }
+func (f *Float64Flag) GetPlaceholder() string     { return f.Placeholder }
+func (f *DurationFlag) GetPlaceholder() string    { return f.Placeholder }
+func (f *StringSliceFlag) GetPlaceholder() string { return f.Placeholder }
+func (f *IntSliceFlag) GetPlaceholder() string    { return f.Placeholder }
 
 // allFlags returns all flags including global flags from the app,
 // minus any global flags omitted for this command via OmitGlobalFlag.
@@ -741,6 +825,9 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					return c.errorWithHelpHint(fmt.Sprintf("unknown flag: --%s", name))
 				}
 				if _, ok := flag.GetDefault().(bool); ok {
+					if err := c.checkOnce(ctx, flag); err != nil {
+						return err
+					}
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
 					ctx.cliFlags[name] = true
@@ -778,6 +865,9 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					}
 					ctx.setFlags[flag.GetName()] = true
 				} else if _, ok := flag.GetDefault().(bool); ok {
+					if err := c.checkOnce(ctx, flag); err != nil {
+						return err
+					}
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
 					ctx.cliFlags[flag.GetName()] = true
@@ -919,6 +1009,10 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		return c.errorWithHelpHint(fmt.Sprintf("invalid value for --%s: %s", name, err))
 	}
 
+	if err := c.checkOnce(ctx, flag); err != nil {
+		return err
+	}
+
 	// Handle slice flags by accumulating values. The first command-line
 	// value replaces defaults and environment values.
 	accumulate := ctx.cliFlags[name]
@@ -957,6 +1051,15 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 			return fmt.Errorf("invalid value for --%s: %s", name, err)
 		}
 		ctx.flags[name] = typed
+	}
+	return nil
+}
+
+// checkOnce returns a usage error when f is a once-only flag that the
+// command line has already set.
+func (c *Command) checkOnce(ctx *Context, f Flag) error {
+	if ctx.cliFlags[f.GetName()] && isOnceFlag(f) {
+		return c.errorWithHelpHint(fmt.Sprintf("flag --%s given more than once", f.GetName()))
 	}
 	return nil
 }
@@ -1074,8 +1177,10 @@ func (c *Command) showHelp() error {
 	} else {
 		sb.WriteString(c.name)
 	}
-	sb.WriteString(" - ")
-	sb.WriteString(c.description)
+	if c.description != "" {
+		sb.WriteString(" - ")
+		sb.WriteString(c.description)
+	}
 	sb.WriteString("\n\n")
 
 	if c.longDesc != "" {
@@ -1134,8 +1239,8 @@ func writeFlagsHelp(sb *strings.Builder, flags []Flag) {
 		if f.IsHidden() {
 			continue
 		}
-		if len(f.GetName()) > maxNameLen {
-			maxNameLen = len(f.GetName())
+		if n := len(flagLabel(f)); n > maxNameLen {
+			maxNameLen = n
 		}
 	}
 
@@ -1203,7 +1308,7 @@ func writeFlagHelp(sb *strings.Builder, f Flag, nameWidth int) {
 	} else {
 		flagStr += "    "
 	}
-	flagStr += fmt.Sprintf("--%-*s", nameWidth, f.GetName())
+	flagStr += fmt.Sprintf("--%-*s", nameWidth, flagLabel(f))
 	sb.WriteString(flagStr)
 	sb.WriteString(" ")
 	sb.WriteString(f.GetHelp())

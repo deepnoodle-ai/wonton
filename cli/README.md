@@ -253,25 +253,25 @@ import (
 func main() {
     app := cli.New("myapp")
 
-    // Exact argument count
+    // Exactly two arguments
     app.Command("pair").
         Description("Pair two items").
-        ExactArgs(2).
+        Args("left", "right").
         Run(func(ctx *cli.Context) error {
             ctx.Printf("Pairing: %s <-> %s\n", ctx.Arg(0), ctx.Arg(1))
             return nil
         })
 
-    // Argument range
+    // One to three arguments
     app.Command("add").
         Description("Add items (1-3 items)").
-        ArgsRange(1, 3).
+        Args("item", "second?", "third?").
         Run(func(ctx *cli.Context) error {
             ctx.Printf("Adding %d items\n", ctx.NArg())
             return nil
         })
 
-    // No arguments
+    // No arguments: any positional argument is a usage error
     app.Command("status").
         Description("Show status").
         NoArgs().
@@ -558,6 +558,73 @@ myapp run --port 8080 --port 443 nginx
 # ports = [8080, 443]
 ```
 
+### Value Names in Help
+
+`Placeholder` names a flag's value in help output. Bool flags take no value,
+so they have no `Placeholder`. Without one, help shows only the flag name.
+
+```go
+app.Command("run").Flags(
+    cli.String("vars", "v").Placeholder("FILE").Help("Variables file"),
+    cli.Int("max").Placeholder("N").Help("Maximum count"),
+    cli.Bool("write", "w").Help("Write results"),
+)
+```
+
+```
+Flags:
+  -v, --vars FILE Variables file
+      --max N     Maximum count
+  -w, --write     Write results
+```
+
+Struct flags use the `placeholder` tag: `` `flag:"vars,v" placeholder:"FILE"` ``.
+
+### Version Text
+
+`Version("1.2.3")` makes `--version` and the `version` command print
+`1.2.3`. Use `VersionFunc` to print other text. The help header still shows
+the string set with `Version`. `VersionFunc` alone also enables `--version`
+and `version`.
+
+```go
+app := cli.New("demo").
+    Version("1.2.3").
+    VersionFunc(func(w io.Writer) {
+        fmt.Fprintln(w, "demo 1.2.3")
+        fmt.Fprintln(w, "Copyright 2026 Example Inc.")
+    })
+```
+
+### Strict Command Lines
+
+The defaults are lenient. A program that must follow a strict command-line
+contract can turn each lenient behavior off:
+
+```go
+app := cli.New("strict").
+    ColorFlags(false) // --no-color, --color, --force-color etc. are unknown flags
+
+app.Command("run").
+    NoArgs(). // any positional argument is a usage error
+    Flags(
+        // A second --name is a usage error: "flag --name given more than once"
+        cli.String("name", "n").Once(),
+        cli.Bool("write", "w").Once(),
+    ).
+    Run(handler)
+```
+
+- `Once()` is on every flag builder except `Strings` and `Ints`, which
+  collect one value per use. Environment and default values do not count
+  as uses. Without `Once()`, the last value wins. Struct flags use the
+  `once` tag: `` `flag:"name" once:""` ``.
+- `ColorFlags(false)` stops the built-in color flags. Without it,
+  `--no-color`, `--no-colour`, `--color`, `--colour` and `--force-color`
+  are accepted on every command and change the global `color.Enabled`.
+- A bool flag accepts a value, as in `--write=true`, as Go's `flag`
+  package does.
+
 ## API Reference
 
 ### Application
@@ -567,6 +634,8 @@ myapp run --port 8080 --port 443 nginx
 | `New(name)`                | Create new CLI app               | `string`                      | `*App`     |
 | `Description(desc)`        | Set app description              | `string`                      | `*App`     |
 | `Version(version)`         | Set app version                  | `string`                      | `*App`     |
+| `VersionFunc(fn)`          | Write custom `--version` output  | `func(io.Writer)`             | `*App`     |
+| `ColorFlags(enabled)`      | Turn built-in color flags on/off | `bool`                        | `*App`     |
 | `Command(name)`            | Register/get command             | `string`                      | `*Command` |
 | `Group(name)`              | Create command group             | `string`                      | `*Group`   |
 | `Use(mw...)`               | Add middleware                   | `...Middleware`               | `*App`     |
@@ -597,9 +666,7 @@ myapp run --port 8080 --port 443 nginx
 | `NonInteractive(handler)` | Set non-interactive handler                | `Handler`              | `*Command` |
 | `Use(mw...)`              | Add middleware                             | `...Middleware`        | `*Command` |
 | `Validate(fn)`            | Add validation                             | `func(*Context) error` | `*Command` |
-| `ArgsRange(min, max)`     | Validate arg count range                   | `int`, `int`           | `*Command` |
-| `ExactArgs(n)`            | Require exact arg count                    | `int`                  | `*Command` |
-| `NoArgs()`                | Require no args                            | None                   | `*Command` |
+| `NoArgs()`                | Reject any positional argument             | None                   | `*Command` |
 | `Alias(names...)`         | Add aliases                                | `...string`            | `*Command` |
 | `Hidden()`                | Hide from help                             | None                   | `*Command` |
 | `Deprecated(msg)`         | Mark as deprecated                         | `string`               | `*Command` |
@@ -662,6 +729,14 @@ All flag builders support:
 - `.Env(varName)` - Set environment variable name
 - `.Required()` - Mark as required
 - `.Hidden()` - Hide from help
+
+All flag builders except `Strings` and `Ints` support:
+
+- `.Once()` - Make a second use on the command line a usage error
+
+All flag builders except `Bool` support:
+
+- `.Placeholder(name)` - Name the value in help, e.g. `--vars FILE`
 
 String flags additionally support:
 

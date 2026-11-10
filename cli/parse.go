@@ -273,7 +273,7 @@ func (p *parser) resolveCommand(arg string) (command, group string) {
 	}
 
 	// Built-in commands, unless a command above already claimed the name
-	if arg == "help" || (arg == "version" && p.app.version != "") {
+	if arg == "help" || (arg == "version" && p.app.hasVersion()) {
 		return arg, ""
 	}
 

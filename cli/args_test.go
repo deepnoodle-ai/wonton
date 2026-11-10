@@ -114,6 +114,46 @@ func TestArgs_NoSlotsRejectsPositionals(t *testing.T) {
 	assert.Contains(t, err.Error(), "unexpected argument: oops")
 }
 
+func TestNoArgs(t *testing.T) {
+	t.Run("command rejects any positional", func(t *testing.T) {
+		app := New("test")
+		ran := false
+		app.Command("status").NoArgs().Run(func(ctx *Context) error {
+			ran = true
+			return nil
+		})
+
+		assert.NoError(t, app.ExecuteArgs([]string{"status"}))
+		assert.True(t, ran)
+
+		err := app.ExecuteArgs([]string{"status", "x"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected argument: x")
+		assert.Contains(t, err.Error(), "Run 'test status --help' to see available arguments.")
+	})
+
+	t.Run("removes earlier slots", func(t *testing.T) {
+		app := New("test")
+		cmd := app.Command("status").Args("name?").NoArgs().Run(func(*Context) error { return nil })
+		assert.Equal(t, 0, len(cmd.args))
+		assert.NotContains(t, buildUsageString(cmd), "name")
+
+		err := app.ExecuteArgs([]string{"status", "x"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected argument: x")
+	})
+
+	t.Run("group handler rejects any positional", func(t *testing.T) {
+		app := New("test")
+		app.Group("db").Args("name?").NoArgs().Run(func(*Context) error { return nil })
+		app.Group("db").Command("migrate").Run(func(*Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"db", "--", "x"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected argument: x")
+	})
+}
+
 func TestArgs_MissingRequired(t *testing.T) {
 	app := New("test")
 	app.Command("pair").
