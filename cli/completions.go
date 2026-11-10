@@ -248,6 +248,8 @@ func (a *App) AddCompletionCommand() *App {
 
 // Helper functions
 
+// getCommandNames returns the visible top-level command and group names
+// that the bash completion script offers.
 func (a *App) getCommandNames() []string {
 	var names []string
 	commands, order := a.listedCommands()
@@ -288,6 +290,8 @@ func (a *App) generateBashGroupCases() string {
 	return sb.String()
 }
 
+// generateZshCommandDesc returns the zsh "name:description" lines for the
+// visible top-level commands and groups.
 func (a *App) generateZshCommandDesc() string {
 	var lines []string
 	commands, order := a.listedCommands()
