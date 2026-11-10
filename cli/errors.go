@@ -131,9 +131,14 @@ func IsHelpRequested(err error) bool {
 // unexpected argument, or a missing required flag.
 //
 // The package returns a UsageError for every error it finds while it parses
-// and validates the command line. Errors returned by handlers are not usage
-// errors. GetExitCode returns 2 for a UsageError, which is the Unix
-// convention for "called incorrectly". Check for one with IsUsageError.
+// and validates the command line. That includes the errors of flag
+// validators (ValidateWith, a Validator field, Enum) and of Validate hooks
+// on the app, a group or a command. A Validate hook error that is an
+// ExitError keeps its own code, so a hook that finds a runtime failure
+// returns Exit(1). Errors returned by handlers are not usage errors.
+//
+// GetExitCode returns 2 for a UsageError, which is the Unix convention for
+// "called incorrectly". Check for one with IsUsageError.
 type UsageError struct {
 	// Message is the complete error text, including any hint that follows
 	// a blank line. When it is empty, Error returns Err's text.

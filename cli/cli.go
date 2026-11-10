@@ -378,6 +378,8 @@ func (a *App) Args(names ...string) *App {
 }
 
 // Validate adds a validation function for the root command.
+// An error from it is a usage error (exit status 2) unless it is an
+// ExitError; see Command.Validate.
 func (a *App) Validate(v func(*Context) error) *App {
 	a.validators = append(a.validators, v)
 	return a
@@ -1145,6 +1147,8 @@ func (g *Group) Use(mw ...Middleware) *Group {
 }
 
 // Validate adds a validation function for the group.
+// An error from it is a usage error (exit status 2) unless it is an
+// ExitError; see Command.Validate.
 func (g *Group) Validate(v func(*Context) error) *Group {
 	g.validators = append(g.validators, v)
 	return g

@@ -666,7 +666,7 @@ All flag builders support:
 String flags additionally support:
 
 - `.Enum(values...)` - Restrict to enum values
-- `.ValidateWith(fn)` - Custom validation
+- `.ValidateWith(fn)` - Custom validation; a failure is a usage error (exit 2)
 
 ### Middleware Functions
 
@@ -778,8 +778,13 @@ the word starts with. This matches getopt and Go's `flag` package:
 myapp calc --run -x       # run = "-x"
 myapp calc --name --write # name = "--write"; --write is not set
 myapp calc -wr -x         # -w is a bool flag; -r takes "-x"
+myapp calc --run --help   # run = "--help"; help is not shown
 myapp calc --run          # ERROR: flag --run requires a value
 ```
+
+`--help` and `-h` are no exception: right after a flag that takes a value,
+they are that value. `myapp calc --help` and `myapp calc --run x --help` still
+show help.
 
 In a short-flag bundle, only the last flag can take the next word. Bool flags
 never take the next word; use `--write=false` to set one to false.
@@ -820,9 +825,19 @@ argument instead.
 Every error the parser finds about how the program was invoked is a
 `*cli.UsageError`: an unknown flag, command or subcommand, a missing or
 invalid value, a missing or unexpected argument, or a missing required flag.
-`cli.IsUsageError(err)` reports one. An error returned by a `Validate`
-function (on the app, a group or a command) is a usage error too, unless it is
-a `cli.Exit(n)`; the original error stays reachable through `errors.As`.
+`cli.IsUsageError(err)` reports one.
+
+Validation errors are usage errors too:
+
+- A flag validator fails: `ValidateWith`, a `Validator` field, or a value
+  that is not in the `Enum`.
+- A `Validate(func(*cli.Context) error)` hook on the app, a group or a command
+  returns an error, unless that error is a `cli.Exit(n)`. The original error
+  stays reachable through `errors.As`.
+
+A `Validate` hook that finds a runtime failure, such as a missing file or a
+server that is down, returns `cli.Exit(1)` to keep exit status 1.
+
 Errors returned by your handlers are not usage errors. To mark one yourself,
 return `&cli.UsageError{Err: err}`.
 

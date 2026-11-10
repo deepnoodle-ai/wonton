@@ -2819,6 +2819,10 @@ func TestFlagTakesNextWordAsValue(t *testing.T) {
 			assert.Equal(t, "--write", d.name)
 			assert.False(t, d.write)
 		}},
+		{"help flag as value", []string{"calc", "--run", "--help"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "calc", d.ran)
+			assert.Equal(t, "--help", d.run)
+		}},
 		{"double dash as value", []string{"calc", "--run", "--"}, func(t *testing.T, d *parseDemo) {
 			assert.Equal(t, "--", d.run)
 		}},

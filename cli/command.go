@@ -248,7 +248,9 @@ func (c *Command) NonInteractive(h Handler) *Command {
 //
 // Validators can check arguments and flags, returning an error if invalid.
 // An error from a validator is a usage error (exit status 2, see
-// GetExitCode) unless it is an ExitError, which keeps its own code:
+// GetExitCode) unless it is an ExitError, which keeps its own code. A
+// validator that finds a runtime failure, such as a missing file, returns
+// Exit(1):
 //
 //	cmd.Validate(func(ctx *cli.Context) error {
 //	    if ctx.Int("port") < 1024 {
