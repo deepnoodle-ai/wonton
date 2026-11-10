@@ -820,8 +820,11 @@ argument instead.
 Every error the parser finds about how the program was invoked is a
 `*cli.UsageError`: an unknown flag, command or subcommand, a missing or
 invalid value, a missing or unexpected argument, or a missing required flag.
-`cli.IsUsageError(err)` reports one. Errors returned by your handlers are not
-usage errors.
+`cli.IsUsageError(err)` reports one. An error returned by a `Validate`
+function (on the app, a group or a command) is a usage error too, unless it is
+a `cli.Exit(n)`; the original error stays reachable through `errors.As`.
+Errors returned by your handlers are not usage errors. To mark one yourself,
+return `&cli.UsageError{Err: err}`.
 
 `cli.GetExitCode` follows the Unix convention:
 

@@ -246,7 +246,9 @@ func (c *Command) NonInteractive(h Handler) *Command {
 
 // Validate adds a validation function that runs before the handler.
 //
-// Validators can check arguments and flags, returning an error if invalid:
+// Validators can check arguments and flags, returning an error if invalid.
+// An error from a validator is a usage error (exit status 2, see
+// GetExitCode) unless it is an ExitError, which keeps its own code:
 //
 //	cmd.Validate(func(ctx *cli.Context) error {
 //	    if ctx.Int("port") < 1024 {
@@ -845,7 +847,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	// Run validators
 	for _, v := range c.validators {
 		if err := v(ctx); err != nil {
-			return err
+			return asUsageError(err)
 		}
 	}
 
@@ -952,7 +954,7 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 	default:
 		typed, err := convertFlagValue(flag, value)
 		if err != nil {
-			return usageErrorf("invalid value for --%s: %s", name, err)
+			return &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, err), Err: err}
 		}
 		ctx.flags[name] = typed
 	}

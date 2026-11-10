@@ -81,7 +81,7 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 
 		value := ctx.flags[name]
 		if err := setFieldFromAny(rv.Field(i), value); err != nil {
-			return nil, usageErrorf("invalid value for --%s: %s", name, err)
+			return nil, &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, err), Err: err}
 		}
 	}
 

@@ -2695,6 +2695,64 @@ func TestGetExitCodeForUsageError(t *testing.T) {
 	assert.Equal(t, 3, GetExitCode(Exit(3)))
 }
 
+func TestUsageErrorUnwrap(t *testing.T) {
+	inner := errors.New("inner")
+	err := &UsageError{Err: inner}
+	assert.Equal(t, "inner", err.Error())
+	assert.True(t, errors.Is(err, inner))
+
+	err = &UsageError{Message: "outer", Err: inner}
+	assert.Equal(t, "outer", err.Error())
+	assert.True(t, errors.Is(err, inner))
+}
+
+func TestValidatorErrorsAreUsageErrors(t *testing.T) {
+	cmdErr := Error("port must be >= 1024").Hint("use 8080")
+	run := func(validate func(*Context) error) error {
+		app := New("demo")
+		app.Command("serve").
+			Validate(validate).
+			Run(func(ctx *Context) error { return nil })
+		return app.ExecuteArgs([]string{"serve"})
+	}
+
+	t.Run("plain error exits 2 and keeps its text", func(t *testing.T) {
+		err := run(func(*Context) error { return errors.New("bad port") })
+		assert.True(t, IsUsageError(err))
+		assert.Equal(t, 2, GetExitCode(err))
+		assert.Equal(t, "bad port", err.Error())
+	})
+
+	t.Run("CommandError is still reachable with errors.As", func(t *testing.T) {
+		err := run(func(*Context) error { return cmdErr })
+		assert.Equal(t, 2, GetExitCode(err))
+		var got *CommandError
+		assert.True(t, errors.As(err, &got))
+		assert.Equal(t, cmdErr, got)
+	})
+
+	t.Run("ExitError keeps its code", func(t *testing.T) {
+		err := run(func(*Context) error { return Exit(4) })
+		assert.False(t, IsUsageError(err))
+		assert.Equal(t, 4, GetExitCode(err))
+	})
+
+	t.Run("app and group validators too", func(t *testing.T) {
+		app := New("demo")
+		app.Validate(func(*Context) error { return errors.New("root bad") })
+		app.Run(func(ctx *Context) error { return nil })
+		err := app.ExecuteArgs(nil)
+		assert.Equal(t, 2, GetExitCode(err))
+
+		app = New("demo")
+		app.Group("db").
+			Validate(func(*Context) error { return errors.New("group bad") }).
+			Run(func(ctx *Context) error { return nil })
+		err = app.ExecuteArgs([]string{"db"})
+		assert.Equal(t, 2, GetExitCode(err))
+	})
+}
+
 // --- Flag values, unknown commands and usage errors ----------------------
 
 // parseDemo holds the values a parseDemoApp handler saw.

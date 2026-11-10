@@ -136,12 +136,38 @@ func IsHelpRequested(err error) bool {
 // convention for "called incorrectly". Check for one with IsUsageError.
 type UsageError struct {
 	// Message is the complete error text, including any hint that follows
-	// a blank line.
+	// a blank line. When it is empty, Error returns Err's text.
 	Message string
+
+	// Err is the underlying error, if any. errors.Is and errors.As see it
+	// through Unwrap.
+	Err error
 }
 
 func (e *UsageError) Error() string {
+	if e.Message == "" && e.Err != nil {
+		return e.Err.Error()
+	}
 	return e.Message
+}
+
+// Unwrap returns the underlying error, if any.
+func (e *UsageError) Unwrap() error {
+	return e.Err
+}
+
+// asUsageError marks an error returned by a validator as a usage error.
+// Errors that already carry an exit status (ExitError, UsageError) or ask
+// for help are returned unchanged.
+func asUsageError(err error) error {
+	if err == nil || IsUsageError(err) || IsHelpRequested(err) {
+		return err
+	}
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	return &UsageError{Err: err}
 }
 
 // usageErrorf returns a UsageError with a formatted message.

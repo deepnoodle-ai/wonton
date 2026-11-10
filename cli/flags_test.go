@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -57,6 +58,11 @@ func TestBindFlagsFromContext(t *testing.T) {
 		_, err = BindFlags[Config](newTestContext(map[string]any{"ratio": "x"}))
 		assert.Error(t, err)
 		assert.Equal(t, `invalid value for --ratio: "x" is not a number`, err.Error())
+
+		var usageErr *UsageError
+		assert.True(t, errors.As(err, &usageErr))
+		assert.Error(t, usageErr.Err)
+		assert.Equal(t, `"x" is not a number`, usageErr.Err.Error())
 	})
 
 	t.Run("binds int field from context", func(t *testing.T) {
