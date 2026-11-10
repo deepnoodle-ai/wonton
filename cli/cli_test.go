@@ -2978,6 +2978,32 @@ func TestUsageErrors(t *testing.T) {
 		err := app.ExecuteArgs([]string{"--config"})
 		assert.True(t, IsUsageError(err))
 	})
+
+	t.Run("invalid environment value", func(t *testing.T) {
+		t.Setenv("DEMO_PORT", "abc")
+		app := New("demo")
+		app.Command("serve").
+			Flags(Int("port").Env("DEMO_PORT")).
+			Run(func(ctx *Context) error { return nil })
+		err := app.ExecuteArgs([]string{"serve"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "from environment variable DEMO_PORT")
+		assert.True(t, IsUsageError(err), "error: %v", err)
+		assert.Equal(t, 2, GetExitCode(err))
+	})
+
+	t.Run("RequireFlags on a declared flag", func(t *testing.T) {
+		app := New("demo")
+		app.Command("run").
+			Flags(String("config")).
+			Use(RequireFlags("config")).
+			Run(func(ctx *Context) error { return nil })
+		err := app.ExecuteArgs([]string{"run"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "required flag not set: --config")
+		assert.True(t, IsUsageError(err), "error: %v", err)
+		assert.Equal(t, 2, GetExitCode(err))
+	})
 }
 
 func TestAppVersionCommand(t *testing.T) {
