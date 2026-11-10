@@ -937,12 +937,31 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	}
 
 	// Run validators
+	return c.validate(ctx)
+}
+
+// validate runs the validators that apply to c: app validators on the root
+// command, group validators on a grouped subcommand, then c's own.
+func (c *Command) validate(ctx *Context) error {
+	if c.app != nil && c.app.commands[""] == c {
+		for _, v := range c.app.validators {
+			if err := v(ctx); err != nil {
+				return asUsageError(err)
+			}
+		}
+	}
+	if c.group != nil {
+		for _, v := range c.group.validators {
+			if err := v(ctx); err != nil {
+				return asUsageError(err)
+			}
+		}
+	}
 	for _, v := range c.validators {
 		if err := v(ctx); err != nil {
 			return asUsageError(err)
 		}
 	}
-
 	return nil
 }
 

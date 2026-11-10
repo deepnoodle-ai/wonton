@@ -2795,6 +2795,194 @@ func TestValidatorErrorsAreUsageErrors(t *testing.T) {
 	})
 }
 
+func TestGroupValidatorsRunForSubcommands(t *testing.T) {
+	t.Run("stops subcommand handler and exits 2", func(t *testing.T) {
+		ran := false
+		app := TestApp("demo")
+		app.Group("db").
+			Validate(func(*Context) error { return errors.New("group bad") }).
+			Command("migrate").
+			Run(func(*Context) error {
+				ran = true
+				return nil
+			})
+
+		err := app.ExecuteArgs([]string{"db", "migrate"})
+		assert.False(t, ran)
+		assert.True(t, IsUsageError(err))
+		assert.Equal(t, 2, GetExitCode(err))
+		assert.Equal(t, "group bad", err.Error())
+	})
+
+	t.Run("runs before subcommand validators and middleware, regardless of registration order", func(t *testing.T) {
+		var order []string
+		rec := func(label string) func(*Context) error {
+			return func(*Context) error {
+				order = append(order, label)
+				return nil
+			}
+		}
+
+		app := TestApp("demo")
+		app.Use(Before(rec("app-mw")))
+		db := app.Group("db").Alias("database").Use(Before(rec("group-mw")))
+		db.Command("migrate").
+			Alias("mig").
+			Validate(rec("cmd-v1")).
+			Validate(rec("cmd-v2")).
+			Use(Before(rec("cmd-mw"))).
+			Run(rec("handler"))
+		// Registered after Command("migrate").
+		db.Validate(rec("group-v1")).Validate(rec("group-v2"))
+
+		want := []string{"group-v1", "group-v2", "cmd-v1", "cmd-v2", "app-mw", "group-mw", "cmd-mw", "handler"}
+		for _, argv := range [][]string{
+			{"db", "migrate"},
+			{"db:migrate"},
+			{"database", "mig"},
+		} {
+			order = nil
+			assert.NoError(t, app.ExecuteArgs(argv))
+			assert.Equal(t, want, order)
+		}
+
+		// Group validator error prevents subcommand validator and middleware from running.
+		failApp := TestApp("demo")
+		order = nil
+		failApp.Use(Before(rec("app-mw")))
+		failDB := failApp.Group("db").Validate(func(*Context) error {
+			order = append(order, "group-fail")
+			return Exit(5)
+		})
+		failDB.Command("migrate").
+			Validate(rec("cmd-v")).
+			Run(rec("handler"))
+
+		err := failApp.ExecuteArgs([]string{"db", "migrate"})
+		assert.Equal(t, 5, GetExitCode(err))
+		assert.Equal(t, []string{"group-fail"}, order)
+	})
+
+	t.Run("runs once for group handler and for flat-routed subcommands", func(t *testing.T) {
+		groupCalls := 0
+		app := TestApp("demo")
+		db := app.Group("db").
+			Validate(func(*Context) error {
+				groupCalls++
+				return nil
+			}).
+			Run(func(*Context) error { return nil })
+		db.Command("migrate").Run(func(*Context) error { return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"db"}))
+		assert.Equal(t, 1, groupCalls)
+
+		flatCalls := 0
+		flatApp := TestApp("demo")
+		flatApp.Group("transform").
+			FlatRouting(true).
+			Validate(func(*Context) error {
+				flatCalls++
+				return nil
+			}).
+			Command("resize").
+			Run(func(*Context) error { return nil })
+
+		assert.NoError(t, flatApp.ExecuteArgs([]string{"resize"}))
+		assert.Equal(t, 1, flatCalls)
+	})
+
+	t.Run("help bypasses group validator", func(t *testing.T) {
+		app := TestApp("demo")
+		app.Group("db").
+			Validate(func(*Context) error { return errors.New("group bad") }).
+			Command("migrate").
+			Run(func(*Context) error { return nil })
+
+		err := app.ExecuteArgs([]string{"db", "migrate", "--help"})
+		assert.True(t, IsHelpRequested(err))
+	})
+}
+
+func TestAppValidateWithMain(t *testing.T) {
+	t.Run("stops Main handler and exits 2", func(t *testing.T) {
+		ran := false
+		app := TestApp("demo")
+		app.Validate(func(*Context) error { return errors.New("root bad") })
+		app.Main().Run(func(*Context) error {
+			ran = true
+			return nil
+		})
+
+		err := app.ExecuteArgs(nil)
+		assert.False(t, ran)
+		assert.True(t, IsUsageError(err))
+		assert.Equal(t, 2, GetExitCode(err))
+		assert.Equal(t, "root bad", err.Error())
+	})
+
+	t.Run("runs before Main and Command(\"\") validators, including with positional fallback", func(t *testing.T) {
+		var order []string
+		rec := func(label string) func(*Context) error {
+			return func(*Context) error {
+				order = append(order, label)
+				return nil
+			}
+		}
+
+		app := TestApp("demo")
+		app.Command("").
+			Args("target?").
+			Validate(rec("main-v1")).
+			Validate(rec("main-v2")).
+			Run(rec("root"))
+		// Registered after Command("").
+		app.Validate(rec("app-v1")).Validate(rec("app-v2"))
+		app.Command("serve").Run(rec("serve"))
+		app.Group("db").Command("migrate").Run(rec("migrate"))
+
+		want := []string{"app-v1", "app-v2", "main-v1", "main-v2", "root"}
+
+		// Empty args -> root command
+		assert.NoError(t, app.ExecuteArgs(nil))
+		assert.Equal(t, want, order)
+
+		// Positional arg with subcommands registered -> falls back to root command
+		order = nil
+		assert.NoError(t, app.ExecuteArgs([]string{"file.txt"}))
+		assert.Equal(t, want, order)
+
+		// Named subcommands and group subcommands do not run app.Validate
+		order = nil
+		assert.NoError(t, app.ExecuteArgs([]string{"serve"}))
+		assert.Equal(t, []string{"serve"}, order)
+
+		order = nil
+		assert.NoError(t, app.ExecuteArgs([]string{"db", "migrate"}))
+		assert.Equal(t, []string{"migrate"}, order)
+
+		// Help on root command bypasses validators
+		failApp := TestApp("demo")
+		failApp.Validate(func(*Context) error { return errors.New("root bad") })
+		failApp.Main().Run(func(*Context) error { return nil })
+		assert.True(t, IsHelpRequested(failApp.ExecuteArgs([]string{"--help"})))
+	})
+
+	t.Run("runs once with app.Run", func(t *testing.T) {
+		calls := 0
+		app := TestApp("demo")
+		app.Validate(func(*Context) error {
+			calls++
+			return nil
+		})
+		app.Run(func(*Context) error { return nil })
+
+		assert.NoError(t, app.ExecuteArgs(nil))
+		assert.NoError(t, app.ExecuteArgs(nil))
+		assert.Equal(t, 2, calls)
+	})
+}
+
 // --- Flag values, unknown commands and usage errors ----------------------
 
 // parseDemo holds the values a parseDemoApp handler saw.

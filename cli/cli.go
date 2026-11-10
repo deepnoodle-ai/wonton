@@ -424,7 +424,8 @@ func (a *App) Args(names ...string) *App {
 	return a
 }
 
-// Validate adds a validation function for the root command.
+// Validate adds a validation function for the root command, whether
+// configured on the App or via Main.
 // An error from it is a usage error (exit status 2) unless it is an
 // ExitError; see Command.Validate.
 func (a *App) Validate(v func(*Context) error) *App {
@@ -575,15 +576,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 				return a.groupRequiresSubcommandError(result.Group)
 			}
 			// Group with handler
-			cmd = &Command{
-				name:       result.Group,
-				app:        a,
-				handler:    group.handler,
-				flags:      group.flags,
-				args:       group.args,
-				middleware: group.middleware,
-				validators: group.validators,
-			}
+			cmd = group.asCommand()
 		} else {
 			// Group with subcommand
 			cmd = group.commands[result.Command]
@@ -1111,7 +1104,7 @@ func (a *App) showHelp() error {
 //	users.Command("create").Args("username").Run(createHandler)
 //
 // Groups can have their own handler that runs when invoked without a subcommand,
-// their own flags, and middleware that applies to all subcommands.
+// their own flags, and validators and middleware that apply to all subcommands.
 type Group struct {
 	name         string
 	description  string
@@ -1202,7 +1195,8 @@ func (g *Group) Use(mw ...Middleware) *Group {
 	return g
 }
 
-// Validate adds a validation function for the group.
+// Validate adds a validation function for the group. It runs for the group's
+// own handler and before each subcommand's validators.
 // An error from it is a usage error (exit status 2) unless it is an
 // ExitError; see Command.Validate.
 func (g *Group) Validate(v func(*Context) error) *Group {
