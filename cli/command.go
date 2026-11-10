@@ -943,12 +943,12 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		// Otherwise start with empty slice (replacing defaults)
 		intVal, err := parseInt(value)
 		if err != nil {
-			msg := fmt.Sprintf("invalid integer for --%s: %q", name, value)
+			msg := fmt.Sprintf("invalid value for --%s: %s", name, err)
 			if strings.Contains(value, ",") {
 				// Command-line values are not split on commas.
 				msg += fmt.Sprintf(" (pass one value per --%s)", name)
 			}
-			return &UsageError{Message: msg}
+			return &UsageError{Message: msg, Err: err}
 		}
 		ctx.flags[name] = append(existing, intVal)
 	default:
@@ -1030,9 +1030,9 @@ func convertFlagValue(f Flag, val string) (any, error) {
 		parts := strings.Split(val, ",")
 		ints := make([]int, len(parts))
 		for i, p := range parts {
-			n, err := parseInt(p)
+			n, err := parseInt(strings.TrimSpace(p))
 			if err != nil {
-				return nil, fmt.Errorf("invalid integer %q", strings.TrimSpace(p))
+				return nil, err
 			}
 			ints[i] = n
 		}

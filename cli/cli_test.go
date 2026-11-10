@@ -2788,6 +2788,7 @@ func parseDemoApp(d *parseDemo) *App {
 			Bool("write", "w"),
 			Float64("ratio"),
 			Duration("timeout"),
+			Ints("ids"),
 		).
 		Run(func(ctx *Context) error {
 			d.ran = "calc"
@@ -2909,6 +2910,8 @@ func TestInvalidFlagValueMessages(t *testing.T) {
 		{[]string{"calc", "--ratio", "x"}, `invalid value for --ratio: "x" is not a number`},
 		{[]string{"calc", "--write=maybe"}, `invalid value for --write: "maybe" is not true or false`},
 		{[]string{"calc", "--timeout", "soon"}, `invalid value for --timeout: "soon" is not a duration (e.g. 30s, 5m)`},
+		{[]string{"calc", "--ids", "abc"}, `invalid value for --ids: "abc" is not a whole number`},
+		{[]string{"calc", "--ids", "1,2"}, `invalid value for --ids: "1,2" is not a whole number (pass one value per --ids)`},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -2920,6 +2923,18 @@ func TestInvalidFlagValueMessages(t *testing.T) {
 			assert.True(t, IsUsageError(err))
 		})
 	}
+
+	t.Run("ints from environment", func(t *testing.T) {
+		t.Setenv("DEMO_IDS", "1, abc")
+		app := New("demo")
+		app.Command("calc").
+			Flags(Ints("ids").Env("DEMO_IDS")).
+			Run(func(ctx *Context) error { return nil })
+		err := app.ExecuteArgs([]string{"calc"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), `invalid value "1, abc" for --ids from environment variable DEMO_IDS: "abc" is not a whole number`)
+		assert.True(t, IsUsageError(err))
+	})
 }
 
 func TestUsageErrors(t *testing.T) {
