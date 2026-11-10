@@ -6,18 +6,47 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-var update = flag.Bool("update", false, "update snapshot files")
+// updateEnv is the environment variable that turns on snapshot updates.
+const updateEnv = "TERMTEST_UPDATE"
+
+// shouldUpdate reports whether snapshots should be written instead of
+// compared. Updates are on when TERMTEST_UPDATE is set to a non-empty value,
+// or when the test binary defined its own -update flag and set it to true.
+//
+// termtest does not register an -update flag itself: a flag registered from
+// library code would appear in every program that imports termtest, and would
+// make a test package that defines its own -update flag panic.
+func shouldUpdate() bool {
+	return os.Getenv(updateEnv) != "" || updateFlagSet(flag.CommandLine)
+}
+
+// updateFlagSet reports whether fs has a flag named "update" whose value is
+// true.
+func updateFlagSet(fs *flag.FlagSet) bool {
+	f := fs.Lookup("update")
+	if f == nil {
+		return false
+	}
+	if g, ok := f.Value.(flag.Getter); ok {
+		if b, ok := g.Get().(bool); ok {
+			return b
+		}
+	}
+	b, err := strconv.ParseBool(f.Value.String())
+	return err == nil && b
+}
 
 // AssertScreen compares the screen content against a golden file snapshot.
 // The snapshot file is automatically named based on the test name and stored
 // in testdata/snapshots/.
 //
-// On first run or when -update flag is used, the snapshot is created/updated.
-// Subsequent runs compare against the snapshot and fail if different.
+// When TERMTEST_UPDATE is set, the snapshot is written instead of compared.
+// Otherwise the test fails if the snapshot is missing or differs.
 //
 // Example:
 //
@@ -27,7 +56,13 @@ var update = flag.Bool("update", false, "update snapshot files")
 //	    termtest.AssertScreen(t, screen)  // Creates/compares testdata/snapshots/TestMyUI.snap
 //	}
 //
-// Update snapshots: go test -update
+// Create or update snapshots:
+//
+//	TERMTEST_UPDATE=1 go test ./...
+//
+// termtest does not register an -update flag. If your test package defines
+// its own boolean flag named "update" (for example for other golden files),
+// running with -update also updates termtest snapshots.
 func AssertScreen(t *testing.T, screen *Screen) {
 	t.Helper()
 	AssertScreenNamed(t, t.Name(), screen)
@@ -69,9 +104,7 @@ func assertSnapshot(t *testing.T, name, actual string) {
 	snapshotDir := filepath.Join("testdata", "snapshots")
 	snapshotPath := filepath.Join(snapshotDir, sanitizeName(name)+".snap")
 
-	shouldUpdate := *update || os.Getenv("TERMTEST_UPDATE") != ""
-
-	if shouldUpdate {
+	if shouldUpdate() {
 		if err := os.MkdirAll(snapshotDir, 0755); err != nil {
 			t.Fatalf("failed to create snapshot directory: %v", err)
 		}
@@ -85,7 +118,7 @@ func assertSnapshot(t *testing.T, name, actual string) {
 	raw, err := os.ReadFile(snapshotPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			t.Fatalf("snapshot not found: %s\nRun with -update to create it.\n\nActual output:\n%s", snapshotPath, actual)
+			t.Fatalf("snapshot not found: %s\nRun with TERMTEST_UPDATE=1 to create it.\n\nActual output:\n%s", snapshotPath, actual)
 		}
 		t.Fatalf("failed to read snapshot: %v", err)
 	}
@@ -96,7 +129,7 @@ func assertSnapshot(t *testing.T, name, actual string) {
 
 	if actual != expected {
 		diff := Diff(expected, actual)
-		t.Errorf("snapshot mismatch: %s\n%s\nRun with -update to update the snapshot.", snapshotPath, diff)
+		t.Errorf("snapshot mismatch: %s\n%s\nRun with TERMTEST_UPDATE=1 to update the snapshot.", snapshotPath, diff)
 	}
 }
 
