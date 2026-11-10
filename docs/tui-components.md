@@ -13,7 +13,7 @@ This guide documents all available views (components) in the `tui` package. It i
 | Buttons     | `Button`, `Clickable`, `StyledButton`, `Toggle`                                                           |
 | Lists       | `SelectList`, `FilterableList`, `CheckboxList`, `RadioList`, `PromptChoice`                               |
 | Data        | `Table`, `Tree`, `KeyValue`                                                                               |
-| Content     | `Code`, `Markdown`, `DiffView`                                                                            |
+| Content     | `Markdown`; `highlight.Code` and `highlight.DiffView` from `tui/highlight`                                |
 | Progress    | `Progress`, `Loading`, `Meter`                                                                            |
 | Drawing     | `Canvas`, `CanvasContext`, `Fill`                                                                         |
 | Grids       | `CellGrid`, `ColorGrid`, `CharGrid`, `Cells`                                                              |
@@ -1027,19 +1027,21 @@ tui.KeyValue("Status", "Active").
 
 ### Code
 
-Syntax-highlighted code display.
+Syntax-highlighted code display. `Code` is in the `tui/highlight` package
+(`github.com/deepnoodle-ai/wonton/tui/highlight`), because its chroma
+highlighter adds several megabytes to a binary.
 
 ```go
 code := `func main() {
     fmt.Println("Hello, World!")
 }`
-tui.Code(code, "go").
+highlight.Code(code, "go").
     Theme("monokai").
     LineNumbers(true).
     Height(10)
 ```
 
-**Constructor**: `Code(code string, language string) *codeView`
+**Constructor**: `highlight.Code(code string, language string) *highlight.CodeView`
 
 **Methods**:
 | Method                    | Description                      |
@@ -1057,8 +1059,8 @@ tui.Code(code, "go").
 **Available Themes**: `monokai`, `dracula`, `github`, `vs`, `solarized-dark`, `solarized-light`, etc.
 
 **Helper Functions**:
-- `AvailableThemes() []string` - List available themes
-- `AvailableLanguages() []string` - List supported languages
+- `highlight.AvailableThemes() []string` - List available themes
+- `highlight.AvailableLanguages() []string` - List supported languages
 
 ---
 
@@ -1088,11 +1090,18 @@ tui.Markdown(content, &scrollY).
 | `.Height(h int)`              | Fixed height         |
 | `.GetLineCount()`             | Total rendered lines |
 
+Fenced code blocks use `MarkdownTheme.CodeBlockStyle`. To color them by
+language, import `tui/highlight`; a blank import is enough:
+`import _ "github.com/deepnoodle-ai/wonton/tui/highlight"`. To use another
+highlighter, pass a `tui.CodeHighlighter` to `tui.SetCodeHighlighter`.
+
 ---
 
 ### DiffView
 
-Unified diff display with syntax highlighting.
+Unified diff display with syntax highlighting. `DiffView` is in the
+`tui/highlight` package. The diff types (`tui.Diff`, `tui.ParseUnifiedDiff`)
+stay in `tui`.
 
 ```go
 var scrollY int
@@ -1104,18 +1113,18 @@ diffText := `--- a/file.go
  func main() {
  }
 `
-view, _ := tui.DiffViewFromText(diffText, "go", &scrollY)
+view, _ := highlight.DiffViewFromText(diffText, "go", &scrollY)
 view.ShowLineNumbers(true).Height(20)
 ```
 
 **Constructors**:
-- `DiffView(diff *Diff, language string, scrollY *int) *diffView`
-- `DiffViewFromText(diffText, language string, scrollY *int) (*diffView, error)`
+- `highlight.DiffView(diff *tui.Diff, language string, scrollY *int) *highlight.UnifiedDiffView`
+- `highlight.DiffViewFromText(diffText, language string, scrollY *int) (*highlight.UnifiedDiffView, error)`
 
 **Methods**:
 | Method                          | Description                      |
 | ------------------------------- | -------------------------------- |
-| `.Theme(theme DiffTheme)`       | Diff color theme                 |
+| `.Theme(theme highlight.DiffTheme)` | Diff color theme             |
 | `.Language(lang string)`        | Language for syntax highlighting |
 | `.ShowLineNumbers(show bool)`   | Show line numbers                |
 | `.SyntaxHighlight(enable bool)` | Enable syntax highlighting       |

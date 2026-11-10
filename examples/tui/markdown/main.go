@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/deepnoodle-ai/wonton/tui"
+	_ "github.com/deepnoodle-ai/wonton/tui/highlight" // colors Markdown code blocks
 )
 
 const sampleMarkdown = `# Wonton Markdown Renderer

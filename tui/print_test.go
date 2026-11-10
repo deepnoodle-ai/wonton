@@ -8,7 +8,24 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
+
+// sprintScreen renders a view to a termtest.Screen, as tuitest.Screen does.
+// Tests in package tui cannot import tuitest, which imports tui.
+func sprintScreen(view View, opts ...PrintOption) *termtest.Screen {
+	opts = append([]PrintOption{WithColor(true)}, opts...)
+	settings := SprintSettings(opts...)
+	height := settings.Height
+	if height == 0 {
+		_, viewHeight := Measure(view, settings.Width, 0)
+		height = max(viewHeight, 1) + 1
+	}
+	output := Sprint(view, opts...)
+	screen := termtest.NewScreen(settings.Width, height, termtest.WithRawMode(settings.RawMode))
+	screen.Write([]byte(output))
+	return screen
+}
 
 func TestPrint_SimpleText(t *testing.T) {
 	var buf strings.Builder
@@ -396,4 +413,12 @@ func TestFprint_WidthFromNonTerminalFile(t *testing.T) {
 	cfg := newPrintConfig(nil)
 	cfg.Output = f
 	assert.Equal(t, 80, cfg.withDefaults().Width)
+}
+
+func TestSprintSettings(t *testing.T) {
+	s := SprintSettings(WithColor(false))
+	assert.Equal(t, s, PrintSettings{Width: 80})
+
+	s = SprintSettings(WithWidth(30), WithHeight(4), WithRawMode(true), WithColor(true))
+	assert.Equal(t, s, PrintSettings{Width: 30, Height: 4, RawMode: true, Color: true})
 }

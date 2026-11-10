@@ -255,9 +255,12 @@
 //
 //	Markdown(mdContent).Width(80)
 //
-// Code Highlighting: Code with syntax highlighting:
+// Code Highlighting: the tui/highlight package has Code and DiffView, with
+// syntax highlighting by chroma. It is a separate package because chroma
+// adds several megabytes to a binary. Importing it also colors fenced code
+// blocks in Markdown:
 //
-//	Code(code, "go").Width(80)
+//	highlight.Code(code, "go").Width(80)
 //
 // # Testing
 //
@@ -276,6 +279,11 @@
 //	    err := tui.Run(&App{}, tui.WithTerminal(term), tui.WithInput(keys))
 //	    // Check err and the screen
 //	}
+//
+// To check how a view prints, tuitest.Screen renders it to a termtest.Screen:
+//
+//	screen := tuitest.Screen(tui.Text("Saved").Bold(), tui.WithWidth(20))
+//	termtest.AssertRowContains(t, screen, 0, "Saved")
 //
 // # Thread Safety
 //
@@ -299,6 +307,8 @@
 //
 // Related packages:
 //   - terminal: Low-level terminal control and rendering
+//   - tui/highlight: Syntax-highlighted code and diff views
+//   - tui/tuitest: Render views to a termtest.Screen in tests
 //   - termtest: Testing utilities for TUI applications
 //
 // For detailed examples, see the examples directory in the repository.

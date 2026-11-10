@@ -1,18 +1,20 @@
-package tui
+package highlight
 
 import (
 	"github.com/deepnoodle-ai/wonton/runewidth"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // UnifiedDiffView displays a file diff with syntax highlighting.
 type UnifiedDiffView struct {
-	diff      *Diff
+	view
+	diff      *tui.Diff
 	scrollY   *int
 	language  string
 	theme     DiffTheme
 	renderer  *DiffRenderer
 	rendered  []RenderedDiffLine
-	lastDiff  *Diff // for cache invalidation
+	lastDiff  *tui.Diff // for cache invalidation
 	height    int
 	showLines bool
 }
@@ -24,8 +26,8 @@ type UnifiedDiffView struct {
 //
 //	diff, _ := tui.ParseUnifiedDiff(diffText)
 //	DiffView(diff, "go", &app.scrollY)
-func DiffView(diff *Diff, language string, scrollY *int) *UnifiedDiffView {
-	return &UnifiedDiffView{
+func DiffView(diff *tui.Diff, language string, scrollY *int) *UnifiedDiffView {
+	d := &UnifiedDiffView{
 		diff:      diff,
 		scrollY:   scrollY,
 		language:  language,
@@ -33,12 +35,14 @@ func DiffView(diff *Diff, language string, scrollY *int) *UnifiedDiffView {
 		renderer:  NewDiffRenderer(),
 		showLines: true,
 	}
+	d.view = tui.Custom(d.size, d.render)
+	return d
 }
 
 // DiffViewFromText creates a diff view from diff text.
 // Returns an error if the diff cannot be parsed.
 func DiffViewFromText(diffText, language string, scrollY *int) (*UnifiedDiffView, error) {
-	diff, err := ParseUnifiedDiff(diffText)
+	diff, err := tui.ParseUnifiedDiff(diffText)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +116,7 @@ func (d *UnifiedDiffView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (d *UnifiedDiffView) render(ctx *RenderContext) {
+func (d *UnifiedDiffView) render(ctx *tui.RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -161,7 +165,7 @@ func (d *UnifiedDiffView) render(ctx *RenderContext) {
 
 		// Draw background if specified
 		if line.BgColor != nil {
-			bgStyle := NewStyle().WithBgRGB(*line.BgColor)
+			bgStyle := tui.NewStyle().WithBgRGB(*line.BgColor)
 			// Fill the entire line width with background
 			for col := 0; col < width; col++ {
 				ctx.SetCell(col, y, ' ', bgStyle)

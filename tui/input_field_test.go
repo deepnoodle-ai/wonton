@@ -335,19 +335,19 @@ func TestInputCursorStyle_Values(t *testing.T) {
 	assert.Equal(t, InputCursorStyle(2), InputCursorBar)
 }
 
-// Render tests using termtest with SprintScreen helper
+// Render tests using termtest with the sprintScreen helper
 
 func TestInputField_Render_WithValue(t *testing.T) {
 	value := "hello"
 	field := InputField(&value).Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 	termtest.AssertRowContains(t, screen, 0, "hello")
 }
 
 func TestInputField_Render_WithLabel(t *testing.T) {
 	value := "test"
 	field := InputField(&value).Label("Name: ").Width(20)
-	screen := SprintScreen(field, WithWidth(40))
+	screen := sprintScreen(field, WithWidth(40))
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "test")
@@ -356,7 +356,7 @@ func TestInputField_Render_WithLabel(t *testing.T) {
 func TestInputField_Render_WithBorder(t *testing.T) {
 	value := "content"
 	field := InputField(&value).Width(20).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 
 	// Check for border characters (rounded border uses ╭, ╮, ╰, ╯)
 	termtest.AssertRowContains(t, screen, 0, "╭")
@@ -367,7 +367,7 @@ func TestInputField_Render_WithBorder(t *testing.T) {
 func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 	value := "john"
 	field := InputField(&value).Label("Username:").Width(25).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 
 	// Label should be embedded in the top border
 	termtest.AssertRowContains(t, screen, 0, "Username")
@@ -377,7 +377,7 @@ func TestInputField_Render_WithLabelAndBorder(t *testing.T) {
 func TestInputField_Render_WithPrompt(t *testing.T) {
 	value := "command"
 	field := InputField(&value).Prompt(">").Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 
 	termtest.AssertRowContains(t, screen, 0, ">")
 	termtest.AssertRowContains(t, screen, 0, "command")
@@ -386,7 +386,7 @@ func TestInputField_Render_WithPrompt(t *testing.T) {
 func TestInputField_Render_Placeholder(t *testing.T) {
 	value := ""
 	field := InputField(&value).Placeholder("Enter name...").Width(20)
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 	termtest.AssertRowContains(t, screen, 0, "Enter name...")
 }
 
@@ -398,7 +398,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 		InputField(&name).Label("Name: ").Width(20),
 		InputField(&email).Label("Email: ").Width(25),
 	)
-	screen := SprintScreen(form, WithWidth(40))
+	screen := sprintScreen(form, WithWidth(40))
 
 	termtest.AssertRowContains(t, screen, 0, "Name:")
 	termtest.AssertRowContains(t, screen, 0, "Alice")
@@ -409,7 +409,7 @@ func TestInputField_Render_InStack(t *testing.T) {
 func TestInputField_Render_HorizontalBorder(t *testing.T) {
 	value := "text"
 	field := InputField(&value).Width(20).HorizontalBorderOnly()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 
 	// Check for horizontal border character
 	termtest.AssertRowContains(t, screen, 0, "─")
@@ -420,7 +420,7 @@ func TestInputField_Render_HorizontalBorder(t *testing.T) {
 func TestInputField_Render_MultilineCRLF(t *testing.T) {
 	value := "ab\r\ncd"
 	field := InputField(&value).Multiline(true).Width(20).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 
 	// A CRLF breaks the line, and the field is tall enough for both rows.
 	termtest.AssertRowContains(t, screen, 1, "│ab ")
@@ -432,7 +432,7 @@ func TestInputField_Render_MultilineCRLF(t *testing.T) {
 func TestInputField_Render_BorderedWithPrompt(t *testing.T) {
 	value := "john"
 	field := InputField(&value).Prompt(">").Width(20).Bordered()
-	screen := SprintScreen(field, WithWidth(30))
+	screen := sprintScreen(field, WithWidth(30))
 	termtest.AssertRowContains(t, screen, 1, "│> john")
 }
 
@@ -452,8 +452,8 @@ func TestInputField_Size_LabelNarrowsWrapWidth(t *testing.T) {
 
 func TestInputField_MaskChangesAfterFirstFrame(t *testing.T) {
 	value := "secret"
-	SprintScreen(InputField(&value).ID("mask-change").Width(20), WithWidth(30))
-	screen := SprintScreen(InputField(&value).ID("mask-change").Mask('*').Width(20), WithWidth(30))
+	sprintScreen(InputField(&value).ID("mask-change").Width(20), WithWidth(30))
+	screen := sprintScreen(InputField(&value).ID("mask-change").Mask('*').Width(20), WithWidth(30))
 	termtest.AssertRowContains(t, screen, 0, "******")
 	termtest.AssertNotContains(t, screen, "secret")
 }

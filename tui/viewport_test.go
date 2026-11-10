@@ -54,7 +54,7 @@ func newViewport(t *testing.T, heights []int, width, height, gap int) (*Viewport
 func renderViewport(t *testing.T, s *ViewportState, items ViewportItems, width, height, gap int) *termtest.Screen {
 	t.Helper()
 	view := Height(height, Viewport(s, items).Gap(gap))
-	return SprintScreen(view, WithWidth(width))
+	return sprintScreen(view, WithWidth(width))
 }
 
 // visible returns the non-blank lines on screen, trimmed.
@@ -349,7 +349,7 @@ func TestViewportFillsTheSpaceAStackLeaves(t *testing.T) {
 		Viewport(state, items).Gap(0),
 		Text("footer-a\nfooter-b"),
 	).Gap(0))
-	screen := SprintScreen(view, WithWidth(20))
+	screen := sprintScreen(view, WithWidth(20))
 
 	assert.Equal(t, []string{"2.0", "2.1", "3.0", "3.1", "footer-a", "footer-b"}, visible(screen))
 	assert.Equal(t, 4, state.Height, "viewport height is the stack's leftovers")

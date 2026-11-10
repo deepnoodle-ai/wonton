@@ -1746,6 +1746,6 @@ func TestMeterSizeFitsValueOverMax(t *testing.T) {
 	w, _ := view.size(0, 0)
 	// 4 bar columns + " 10000%"
 	assert.Equal(t, w, 11)
-	screen := SprintScreen(view, WithWidth(w), WithHeight(1))
+	screen := sprintScreen(view, WithWidth(w), WithHeight(1))
 	assert.True(t, strings.HasSuffix(screen.Row(0), " 10000%"), "row = %q", screen.Row(0))
 }

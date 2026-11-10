@@ -2,10 +2,11 @@ package tui
 
 import (
 	"fmt"
-	"github.com/deepnoodle-ai/wonton/runewidth"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/deepnoodle-ai/wonton/runewidth"
 )
 
 type sourceItems struct {
@@ -336,15 +337,15 @@ func TestSourceDragAutoScrollAndHighlightAfterResize(t *testing.T) {
 func TestSourceAnnotationKeepsLayout(t *testing.T) {
 	for _, text := range []string{"alpha beta gamma", strings.Repeat("x", 40), "repeated  words", "世界 👩\u200d💻 words"} {
 		for _, align := range []Alignment{AlignLeft, AlignCenter, AlignRight} {
-			legacy := SprintScreen(Text("%s", text).Wrap().Align(align), WithWidth(8)).Text()
-			marked := SprintScreen(Text("%s", text).Wrap().Align(align).SourceOffset(0), WithWidth(8)).Text()
+			legacy := sprintScreen(Text("%s", text).Wrap().Align(align), WithWidth(8)).Text()
+			marked := sprintScreen(Text("%s", text).Wrap().Align(align).SourceOffset(0), WithWidth(8)).Text()
 			if legacy != marked {
 				t.Fatalf("annotation changed text layout: %q vs %q", legacy, marked)
 			}
 		}
 	}
 	source := "```text\n" + strings.Repeat("code", 20) + "\n```"
-	if a, b := SprintScreen(Markdown(source, nil), WithWidth(20)).Text(), SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(20)).Text(); a != b {
+	if a, b := sprintScreen(Markdown(source, nil), WithWidth(20)).Text(), sprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(20)).Text(); a != b {
 		t.Fatalf("annotation changed code layout: %q vs %q", a, b)
 	}
 }
@@ -411,8 +412,8 @@ func TestSourceWordPolicyUsesDisplayedSeparators(t *testing.T) {
 
 func TestSourceAnnotationKeepsDecodedMarkdownLayout(t *testing.T) {
 	for _, source := range []string{"foo&apos;bar", "foo\\[bar", "[**nested**](url) next", "inline `a b` code"} {
-		a := SprintScreen(Markdown(source, nil), WithWidth(10)).Text()
-		b := SprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(10)).Text()
+		a := sprintScreen(Markdown(source, nil), WithWidth(10)).Text()
+		b := sprintScreen(Markdown(source, nil).SourceOffset(0), WithWidth(10)).Text()
 		if a != b {
 			t.Fatalf("annotation changed decoded markdown: %q vs %q", a, b)
 		}
@@ -741,6 +742,7 @@ func TestSourceDragCanStartInPaddingOrPastLineEnd(t *testing.T) {
 }
 
 func TestSourceCodeHighlightingMatchesLegacyWithCRLF(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
 	for _, source := range []string{"```go\r\nvar answer = 42\r\n```", "```go\nvar answer = 42\n```", "```python\r\nprint('answer')\r\n```"} {
 		plain, err := NewMarkdownRenderer().WithMaxWidth(40).Render(source)
 		if err != nil {

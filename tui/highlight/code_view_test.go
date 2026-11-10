@@ -1,9 +1,11 @@
-package tui
+package highlight
 
 import (
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/deepnoodle-ai/wonton/tui/tuitest"
 )
 
 func TestCodeHighlight(t *testing.T) {
@@ -106,36 +108,30 @@ func TestPadLeft(t *testing.T) {
 	}
 }
 
-func TestTruncateToWidth(t *testing.T) {
-	tests := []struct {
-		input    string
-		maxWidth int
-		expected string
-	}{
-		{"hello", 10, "hello"},
-		{"hello", 3, "hel"},
-		{"hello", 0, ""},
-		{"", 5, ""},
-	}
-
-	for _, tt := range tests {
-		result := truncateToWidth(tt.input, tt.maxWidth)
-		assert.Equal(t, tt.expected, result, "truncateToWidth(%q, %d)", tt.input, tt.maxWidth)
-	}
-}
-
 func TestCodeLineNumberWidthMatchesRender(t *testing.T) {
 	view := Code("ab\ncd", "text").LineNumbers(true)
 	w, _ := view.size(0, 0)
 	// "1" + " " + "ab"
 	assert.Equal(t, w, 4)
-	screen := SprintScreen(view, WithWidth(w), WithHeight(2))
+	screen := tuitest.Screen(view, tui.WithWidth(w), tui.WithHeight(2))
 	assert.Equal(t, screen.Row(0), "1 ab")
 }
 
 func TestCodeNegativeStartLine(t *testing.T) {
 	view := Code("a\nb", "text").LineNumbers(true).StartLine(-1)
-	screen := SprintScreen(view, WithWidth(6), WithHeight(2))
+	screen := tuitest.Screen(view, tui.WithWidth(6), tui.WithHeight(2))
 	assert.Equal(t, screen.Row(0), "-1 a")
 	assert.Equal(t, screen.Row(1), " 0 b")
+}
+
+func TestCodeView_TruncatesClusterAtEdge(t *testing.T) {
+	view := Code("a👨‍👩‍👧b", "text").LineNumbers(false)
+	screen := tuitest.Screen(view, tui.WithWidth(3), tui.WithHeight(1))
+	assert.Equal(t, "a👨‍👩‍👧", screen.Row(0))
+}
+
+func TestCodeView_ExpandTabsAfterCluster(t *testing.T) {
+	c := Code("", "text").TabWidth(4)
+	// "❤️" is 2 columns wide, so the tab advances 2 more columns.
+	assert.Equal(t, "❤️  x", c.expandTabs("❤️\tx", 0))
 }

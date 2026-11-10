@@ -1,37 +1,37 @@
-package tui
+package highlight
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // DiffTheme defines colors and styles for diff rendering
 type DiffTheme struct {
-	AddedBg      RGB    // Background for added lines
-	AddedFg      RGB    // Foreground for added lines
-	RemovedBg    RGB    // Background for removed lines
-	RemovedFg    RGB    // Foreground for removed lines
-	ContextStyle Style  // Style for context lines
-	HeaderStyle  Style  // Style for file headers
-	HunkStyle    Style  // Style for hunk headers
-	LineNumStyle Style  // Style for line numbers
-	SyntaxTheme  string // Chroma theme for syntax highlighting
+	AddedBg      tui.RGB   // Background for added lines
+	AddedFg      tui.RGB   // Foreground for added lines
+	RemovedBg    tui.RGB   // Background for removed lines
+	RemovedFg    tui.RGB   // Foreground for removed lines
+	ContextStyle tui.Style // Style for context lines
+	HeaderStyle  tui.Style // Style for file headers
+	HunkStyle    tui.Style // Style for hunk headers
+	LineNumStyle tui.Style // Style for line numbers
+	SyntaxTheme  string    // Chroma theme for syntax highlighting
 }
 
 // DefaultDiffTheme returns a default diff theme
 func DefaultDiffTheme() DiffTheme {
 	return DiffTheme{
-		AddedBg:      RGB{R: 0, G: 64, B: 0},      // Dark green background
-		AddedFg:      RGB{R: 100, G: 255, B: 100}, // Light green foreground
-		RemovedBg:    RGB{R: 64, G: 0, B: 0},      // Dark red background
-		RemovedFg:    RGB{R: 255, G: 100, B: 100}, // Light red foreground
-		ContextStyle: NewStyle().WithForeground(ColorWhite),
-		HeaderStyle:  NewStyle().WithForeground(ColorCyan).WithBold(),
-		HunkStyle:    NewStyle().WithForeground(ColorBlue).WithBold(),
-		LineNumStyle: NewStyle().WithForeground(ColorBrightBlack),
+		AddedBg:      tui.RGB{R: 0, G: 64, B: 0},      // Dark green background
+		AddedFg:      tui.RGB{R: 100, G: 255, B: 100}, // Light green foreground
+		RemovedBg:    tui.RGB{R: 64, G: 0, B: 0},      // Dark red background
+		RemovedFg:    tui.RGB{R: 255, G: 100, B: 100}, // Light red foreground
+		ContextStyle: tui.NewStyle().WithForeground(tui.ColorWhite),
+		HeaderStyle:  tui.NewStyle().WithForeground(tui.ColorCyan).WithBold(),
+		HunkStyle:    tui.NewStyle().WithForeground(tui.ColorBlue).WithBold(),
+		LineNumStyle: tui.NewStyle().WithForeground(tui.ColorBrightBlack),
 		SyntaxTheme:  "monokai",
 	}
 }
@@ -64,14 +64,14 @@ func (dr *DiffRenderer) WithTheme(theme DiffTheme) *DiffRenderer {
 
 // RenderedDiffLine represents a single rendered diff line with styling
 type RenderedDiffLine struct {
-	LineNumOld string          // Old line number (formatted)
-	LineNumNew string          // New line number (formatted)
-	Segments   []StyledSegment // Styled content segments
-	BgColor    *RGB            // Background color for the entire line
+	LineNumOld string              // Old line number (formatted)
+	LineNumNew string              // New line number (formatted)
+	Segments   []tui.StyledSegment // Styled content segments
+	BgColor    *tui.RGB            // Background color for the entire line
 }
 
 // RenderDiff renders a diff to styled output
-func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLine {
+func (dr *DiffRenderer) RenderDiff(diff *tui.Diff, language string) []RenderedDiffLine {
 	if diff == nil {
 		return nil
 	}
@@ -82,7 +82,7 @@ func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLi
 		// Render file header
 		headerText := fmt.Sprintf("--- %s", file.OldPath)
 		result = append(result, RenderedDiffLine{
-			Segments: []StyledSegment{{
+			Segments: []tui.StyledSegment{{
 				Text:  headerText,
 				Style: dr.Theme.HeaderStyle,
 			}},
@@ -90,7 +90,7 @@ func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLi
 
 		headerText = fmt.Sprintf("+++ %s", file.NewPath)
 		result = append(result, RenderedDiffLine{
-			Segments: []StyledSegment{{
+			Segments: []tui.StyledSegment{{
 				Text:  headerText,
 				Style: dr.Theme.HeaderStyle,
 			}},
@@ -103,7 +103,7 @@ func (dr *DiffRenderer) RenderDiff(diff *Diff, language string) []RenderedDiffLi
 		for _, hunk := range file.Hunks {
 			// Render hunk header
 			result = append(result, RenderedDiffLine{
-				Segments: []StyledSegment{{
+				Segments: []tui.StyledSegment{{
 					Text:  hunk.Header,
 					Style: dr.Theme.HunkStyle,
 				}},
@@ -133,7 +133,7 @@ func (dr *DiffRenderer) expandTabs(s string) string {
 	return expandTabStops(s, 0, tabWidth)
 }
 
-func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedDiffLine {
+func (dr *DiffRenderer) renderDiffLine(line tui.DiffLine, language string) RenderedDiffLine {
 	rendered := RenderedDiffLine{}
 
 	// Format line numbers
@@ -152,23 +152,23 @@ func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedD
 	}
 
 	// Determine style and background based on line type
-	var style Style
-	var bgColor *RGB
+	var style tui.Style
+	var bgColor *tui.RGB
 
 	switch line.Type {
-	case DiffLineAdded:
-		style = NewStyle().WithFgRGB(dr.Theme.AddedFg)
+	case tui.DiffLineAdded:
+		style = tui.NewStyle().WithFgRGB(dr.Theme.AddedFg)
 		bgColor = &dr.Theme.AddedBg
 
-	case DiffLineRemoved:
-		style = NewStyle().WithFgRGB(dr.Theme.RemovedFg)
+	case tui.DiffLineRemoved:
+		style = tui.NewStyle().WithFgRGB(dr.Theme.RemovedFg)
 		bgColor = &dr.Theme.RemovedBg
 
-	case DiffLineContext:
+	case tui.DiffLineContext:
 		style = dr.Theme.ContextStyle
 
 	default:
-		style = NewStyle()
+		style = tui.NewStyle()
 	}
 
 	rendered.BgColor = bgColor
@@ -178,14 +178,14 @@ func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedD
 
 	// Apply syntax highlighting if enabled and we have a language
 	if dr.SyntaxHighlight && language != "" && content != "" &&
-		(line.Type == DiffLineAdded || line.Type == DiffLineRemoved || line.Type == DiffLineContext) {
+		(line.Type == tui.DiffLineAdded || line.Type == tui.DiffLineRemoved || line.Type == tui.DiffLineContext) {
 
 		segments := dr.highlightLine(content, language)
 		if segments != nil {
 			// Merge diff coloring with syntax highlighting
 			for i := range segments {
 				// Keep syntax foreground colors but apply diff background
-				if line.Type == DiffLineAdded || line.Type == DiffLineRemoved {
+				if line.Type == tui.DiffLineAdded || line.Type == tui.DiffLineRemoved {
 					// For diff lines, blend the colors
 					segments[i].Style.BgRGB = bgColor
 				}
@@ -193,14 +193,14 @@ func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedD
 			rendered.Segments = segments
 		} else {
 			// Fallback to plain style
-			rendered.Segments = []StyledSegment{{
+			rendered.Segments = []tui.StyledSegment{{
 				Text:  content,
 				Style: style,
 			}}
 		}
 	} else {
 		// No syntax highlighting
-		rendered.Segments = []StyledSegment{{
+		rendered.Segments = []tui.StyledSegment{{
 			Text:  content,
 			Style: style,
 		}}
@@ -209,48 +209,23 @@ func (dr *DiffRenderer) renderDiffLine(line DiffLine, language string) RenderedD
 	return rendered
 }
 
-func (dr *DiffRenderer) highlightLine(content, language string) []StyledSegment {
+func (dr *DiffRenderer) highlightLine(content, language string) []tui.StyledSegment {
 	lexer := lexers.Get(language)
 	if lexer == nil {
 		return nil
 	}
-
-	chromaStyle := styles.Get(dr.Theme.SyntaxTheme)
-	if chromaStyle == nil {
-		chromaStyle = styles.Fallback
-	}
-
 	iterator, err := lexer.Tokenise(nil, content)
 	if err != nil {
 		return nil
 	}
+	chromaStyle := chromaTheme(dr.Theme.SyntaxTheme)
 
-	var segments []StyledSegment
-
+	var segments []tui.StyledSegment
 	for _, token := range iterator.Tokens() {
-		styleEntry := chromaStyle.Get(token.Type)
-		style := NewStyle()
-
-		if styleEntry.Colour.IsSet() {
-			r, g, b := styleEntry.Colour.Red(), styleEntry.Colour.Green(), styleEntry.Colour.Blue()
-			style = style.WithFgRGB(RGB{R: r, G: g, B: b})
-		}
-
-		if styleEntry.Bold == 1 {
-			style = style.WithBold()
-		}
-		if styleEntry.Italic == 1 {
-			style = style.WithItalic()
-		}
-		if styleEntry.Underline == 1 {
-			style = style.WithUnderline()
-		}
-
-		segments = append(segments, StyledSegment{
+		segments = append(segments, tui.StyledSegment{
 			Text:  token.Value,
-			Style: style,
+			Style: tokenStyle(chromaStyle.Get(token.Type)),
 		})
 	}
-
 	return segments
 }

@@ -321,6 +321,30 @@ func main() {
 }
 ```
 
+Code blocks use `MarkdownTheme.CodeBlockStyle` by default. To color them by
+language, import the [highlight](highlight) package, which sets the Markdown
+code highlighter when it loads. A blank import is enough:
+`import _ "github.com/deepnoodle-ai/wonton/tui/highlight"`.
+
+### Code and Diffs
+
+`Code` and `DiffView` live in the [highlight](highlight) package, because the
+chroma syntax highlighter adds several megabytes to a binary. A program that
+imports only `tui` stays small.
+
+```go
+func codePanel(src, diffText string, scrollY *int) tui.View {
+	diff, err := highlight.DiffViewFromText(diffText, "go", scrollY)
+	if err != nil {
+		return tui.Text("bad diff: %v", err)
+	}
+	return tui.Stack(
+		highlight.Code(src, "go").Theme("dracula").LineNumbers(true),
+		diff.Height(20),
+	)
+}
+```
+
 ### Layout with Stack and Group
 
 ```go
@@ -678,8 +702,9 @@ Stack(
 | ---------- | ----------------- | --------------------------------------------- | ---------------- |
 | `Text`     | Formatted text    | `format string, args ...interface{}`          | `*TextView`        |
 | `Markdown` | Markdown renderer | `content string, scrollY *int`                | `*MarkdownView`    |
-| `Code`     | Syntax highlight  | `code string, language string`                | `*CodeView`        |
-| `DiffView` | Diff display      | `diff *Diff, language string, scrollY *int`   | `*UnifiedDiffView` |
+
+For syntax-highlighted code and diffs, see `highlight.Code` and
+`highlight.DiffView` in [Code and Diffs](#code-and-diffs).
 
 ### Input Views
 
@@ -947,7 +972,7 @@ func TestRedrawAfterResize(t *testing.T) {
 
 ## Snapshot Testing
 
-The tui package includes a comprehensive snapshot (golden) testing system for verifying rendered output. This approach captures the exact visual output of views and compares against saved snapshots.
+The tui package includes a comprehensive snapshot (golden) testing system for verifying rendered output. This approach captures the exact visual output of views and compares against saved snapshots. `tuitest.Screen`, from the [tuitest](tuitest) package, renders a view to a `termtest.Screen`. It is a separate package so that programs that import `tui` do not also import `termtest`.
 
 ### Writing Snapshot Tests
 
@@ -961,7 +986,7 @@ func TestGolden_MyComponent(t *testing.T) {
     )
 
     // Render to a virtual screen with specific dimensions
-    screen := SprintScreen(view, WithWidth(30), WithHeight(10))
+    screen := tuitest.Screen(view, WithWidth(30), WithHeight(10))
 
     // Assert against saved snapshot
     termtest.AssertScreen(t, screen)
@@ -1046,7 +1071,7 @@ func TestGolden_UI_Dashboard(t *testing.T) {
         ).Gap(1),
         StatusBar("Ready"),
     )
-    screen := SprintScreen(view, WithWidth(50), WithHeight(10))
+    screen := tuitest.Screen(view, WithWidth(50), WithHeight(10))
     termtest.AssertScreen(t, screen)
 }
 ```
@@ -1251,6 +1276,8 @@ Run `go run ./examples/tui/terminal_handoff` or add `-inline` for a real editor.
 
 - [terminal](../terminal) - Low-level terminal control and ANSI sequences
 - [termsession](../termsession) - Terminal session recording and playback
+- [highlight](highlight) - Syntax-highlighted `Code` and `DiffView`, and Markdown code block colors
+- [tuitest](tuitest) - `tuitest.Screen` renders a view to a `termtest.Screen` for tests
 - [termtest](../termtest) - Terminal output testing with screen simulation
 - [tmux](../tmux) - Live tmux-backed terminals to show with `Cells`
 

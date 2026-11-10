@@ -18,7 +18,7 @@ func TestHitMapFindsAreas(t *testing.T) {
 			hits.Area("row:2", Text("two")),
 		)),
 	)
-	SprintScreen(view, WithWidth(20), WithHeight(5))
+	sprintScreen(view, WithWidth(20), WithHeight(5))
 
 	key, ok := hits.At(2, 0)
 	assert.True(t, ok)
@@ -46,7 +46,7 @@ func TestHitMapKeepsFlex(t *testing.T) {
 		hits.Area("fill", Stack(Text("middle")).Flex(1)),
 		Text("bottom"),
 	)
-	screen := SprintScreen(view, WithWidth(10), WithHeight(5))
+	screen := sprintScreen(view, WithWidth(10), WithHeight(5))
 	assert.Equal(t, screen.Row(4), "bottom")
 	b, ok := hits.Bounds("fill")
 	assert.True(t, ok)
@@ -70,7 +70,7 @@ func TestHitMapAreaInsideViewportWithSelection(t *testing.T) {
 	items := &hitSourceItems{hits: &hits, text: []string{"alpha", "beta"}}
 	state := &ViewportState{}
 	view := Stack(Height(5, Text("")), Height(3, Viewport(state, items)))
-	SprintScreen(view, WithWidth(20), WithHeight(8))
+	sprintScreen(view, WithWidth(20), WithHeight(8))
 	state.SelectLine(0, 0) // viewport-local coordinates
 	assert.Equal(t, state.SelectedText(), "alpha", "an area around a source-bound view keeps its text")
 
@@ -78,7 +78,7 @@ func TestHitMapAreaInsideViewportWithSelection(t *testing.T) {
 	// the areas recorded on screen.
 	hits.Reset()
 	state.Invalidate(0) // the item changed, so the paint must render it again
-	SprintScreen(view, WithWidth(20), WithHeight(8))
+	sprintScreen(view, WithWidth(20), WithHeight(8))
 	b, ok := hits.Bounds("row:0")
 	assert.True(t, ok)
 	assert.Equal(t, b, image.Rect(0, 5, 20, 6))
@@ -94,7 +94,7 @@ func TestCellsView(t *testing.T) {
 		{{Char: '日', Width: 2, Style: plain}, {Continuation: true}, {Char: 'x', Width: 1}},
 		{{Char: 'e', Trailing: "́", Width: 1}, {}, {Char: '本', Width: 2}},
 	}
-	screen := SprintScreen(Cells(rows).Cursor(1, 0), WithWidth(3), WithHeight(3))
+	screen := sprintScreen(Cells(rows).Cursor(1, 0), WithWidth(3), WithHeight(3))
 	assert.Equal(t, screen.Row(0), "hi")
 	assert.Equal(t, screen.Row(1), "日x")
 	// A cell with no character is a space, and half a wide character that
@@ -117,7 +117,7 @@ func TestHitMapAreaAroundSpacerKeepsGroupFixed(t *testing.T) {
 	// change that, or the bar would take half the Stack.
 	bar := Group(Text("left"), hits.Area("gap", Spacer()), Text("right"))
 	view := Stack(bar, Stack(Text("body")).Flex(1), Text("footer"))
-	screen := SprintScreen(view, WithWidth(20), WithHeight(6))
+	screen := sprintScreen(view, WithWidth(20), WithHeight(6))
 	assert.Equal(t, screen.Row(0), "left           right")
 	assert.Equal(t, screen.Row(1), "body")
 	assert.Equal(t, screen.Row(5), "footer")
@@ -128,8 +128,8 @@ func TestHitMapAreaAroundWrappedTextKeepsReflow(t *testing.T) {
 	// Wrapped text in a flex row reflows to the width left over. Wrapping it
 	// in an area must not make it clip at its natural width instead.
 	text := func() *TextView { return Text("alpha beta gamma delta").Wrap() }
-	plain := SprintScreen(Group(Text("label: "), text().Flex(1)), WithWidth(20), WithHeight(4))
-	wrapped := SprintScreen(Group(Text("label: "), hits.Area("text", text().Flex(1))), WithWidth(20), WithHeight(4))
+	plain := sprintScreen(Group(Text("label: "), text().Flex(1)), WithWidth(20), WithHeight(4))
+	wrapped := sprintScreen(Group(Text("label: "), hits.Area("text", text().Flex(1))), WithWidth(20), WithHeight(4))
 	assert.Equal(t, wrapped.Text(), plain.Text())
 	assert.Equal(t, plain.Row(1), "       gamma delta")
 }

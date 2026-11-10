@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -4802,4 +4803,31 @@ func TestFlatRoutingCommandHelpShowsBothForms(t *testing.T) {
 	// Should show both the flat form and the grouped form
 	assert.Contains(t, output, "pretty resize")
 	assert.Contains(t, output, "pretty transform resize")
+}
+
+// TestDependencies_LeaveOutHeavyPackages keeps programs that import cli small.
+// The chroma syntax highlighter (with its regexp2 engine) adds megabytes to a
+// binary, and termtest is for tests only. Both belong in tui subpackages that
+// cli does not import.
+func TestDependencies_LeaveOutHeavyPackages(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("go binary not available")
+	}
+	out, err := exec.Command(goBin, "list", "-deps", "github.com/deepnoodle-ai/wonton/cli").Output()
+	if err != nil {
+		t.Fatalf("go list -deps: %v", err)
+	}
+	forbidden := []string{
+		"github.com/alecthomas/chroma",
+		"github.com/dlclark/regexp2",
+		"github.com/deepnoodle-ai/wonton/termtest",
+	}
+	for _, dep := range strings.Fields(string(out)) {
+		for _, prefix := range forbidden {
+			if dep == prefix || strings.HasPrefix(dep, prefix+"/") {
+				t.Errorf("cli depends on %s", dep)
+			}
+		}
+	}
 }

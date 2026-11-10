@@ -14,6 +14,90 @@ func panelTheme() MarkdownTheme {
 	return theme
 }
 
+var keywordColor = RGB{R: 249, G: 38, B: 114}
+
+// keywordHighlighter is a small CodeHighlighter for tests. It colors the
+// words func, if and return and leaves the rest of the code unstyled.
+func keywordHighlighter(code, language, theme string) [][]StyledSegment {
+	var rows [][]StyledSegment
+	for _, line := range strings.Split(strings.TrimSuffix(code, "\n"), "\n") {
+		row := []StyledSegment{}
+		for _, word := range strings.SplitAfter(line, " ") {
+			name := strings.TrimSpace(word)
+			if name == "func" || name == "if" || name == "return" {
+				lead := word[:strings.Index(word, name)]
+				if lead != "" {
+					row = append(row, StyledSegment{Text: lead, Style: NewStyle()})
+				}
+				row = append(row, StyledSegment{Text: name, Style: NewStyle().WithFgRGB(keywordColor)})
+				if rest := word[len(lead)+len(name):]; rest != "" {
+					row = append(row, StyledSegment{Text: rest, Style: NewStyle()})
+				}
+			} else if word != "" {
+				row = append(row, StyledSegment{Text: word, Style: NewStyle()})
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// useHighlighter sets the Markdown code highlighter for one test.
+func useHighlighter(t *testing.T, h CodeHighlighter) {
+	t.Helper()
+	SetCodeHighlighter(h)
+	t.Cleanup(func() { SetCodeHighlighter(nil) })
+}
+
+func TestMarkdownRenderer_CodeBlockWithoutHighlighterUsesCodeBlockStyle(t *testing.T) {
+	theme := DefaultMarkdownTheme()
+	theme.CodeBlockStyle = NewStyle().WithForeground(ColorYellow)
+	renderer := NewMarkdownRenderer().WithTheme(theme)
+	result, err := renderer.Render("```go\nfunc main() {}\n```\n")
+	assert.NoError(t, err)
+	assert.Equal(t, len(result.Lines), 1)
+	assert.Equal(t, len(result.Lines[0].Segments), 1)
+	assert.Equal(t, result.Lines[0].Segments[0].Text, "func main() {}\n")
+	assert.Equal(t, result.Lines[0].Segments[0].Style, theme.CodeBlockStyle)
+}
+
+func TestMarkdownRenderer_CodeBlockUsesHighlighter(t *testing.T) {
+	var gotCode, gotLanguage, gotTheme string
+	useHighlighter(t, func(code, language, theme string) [][]StyledSegment {
+		gotCode, gotLanguage, gotTheme = code, language, theme
+		return keywordHighlighter(code, language, theme)
+	})
+	theme := DefaultMarkdownTheme()
+	theme.SyntaxTheme = "dracula"
+	renderer := NewMarkdownRenderer().WithTheme(theme)
+	result, err := renderer.Render("```go\nfunc main() {}\n```\n")
+	assert.NoError(t, err)
+	assert.Equal(t, gotCode, "func main() {}\n")
+	assert.Equal(t, gotLanguage, "go")
+	assert.Equal(t, gotTheme, "dracula")
+	assert.Equal(t, result.Lines[0].Segments[0].Text, "func")
+	assert.Equal(t, *result.Lines[0].Segments[0].Style.FgRGB, keywordColor)
+}
+
+func TestMarkdownRenderer_CodeBlockHighlighterSkipsUnknownLanguage(t *testing.T) {
+	useHighlighter(t, func(code, language, theme string) [][]StyledSegment { return nil })
+	renderer := NewMarkdownRenderer()
+	result, err := renderer.Render("```nosuchlang\nfunc main() {}\n```\n")
+	assert.NoError(t, err)
+	assert.Equal(t, result.Lines[0].Segments[0].Text, "func main() {}\n")
+	assert.Equal(t, result.Lines[0].Segments[0].Style, DefaultMarkdownTheme().CodeBlockStyle)
+}
+
+func TestMarkdownView_CodeBlockUsesHighlighterWithSourceOffset(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
+	view := Markdown("```go\nfunc main() {}\n```\n", nil).SourceOffset(0)
+	view.renderContent(40)
+	assert.True(t, view.rendered.sourceValid)
+	seg := view.rendered.Lines[0].Segments[0]
+	assert.Equal(t, seg.Text, "func")
+	assert.Equal(t, *seg.Style.FgRGB, keywordColor)
+}
+
 func lineWidth(line StyledLine) int {
 	w := line.Indent
 	for _, seg := range line.Segments {
@@ -55,6 +139,7 @@ func TestMarkdownRenderer_CodeBlockPanelFillsMaxWidth(t *testing.T) {
 }
 
 func TestMarkdownRenderer_CodeBlockPanelHighlightedKeepsBackground(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
 	renderer := NewMarkdownRenderer().WithTheme(panelTheme()).WithMaxWidth(40)
 	result, err := renderer.Render("```go\nfunc main() {\n\tprintln(\"hi\")\n}\n```\n")
 	assert.NoError(t, err)
@@ -92,6 +177,7 @@ func TestMarkdownRenderer_CodeBlockPanelNested(t *testing.T) {
 }
 
 func TestMarkdownRenderer_CodeBlockPanelWithSourceOffset(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
 	view := Markdown("```go\nx := 1\n```\n", nil).Theme(panelTheme()).SourceOffset(0)
 	view.renderContent(20)
 	assertPanel(t, view.rendered.Lines, 0, 20)
@@ -131,6 +217,7 @@ func TestMarkdownRenderer_CodeBlockLanguageLabelSkippedWhenTooWide(t *testing.T)
 }
 
 func TestMarkdownRenderer_CodeBlockPanelUsesBlockForegroundForPlainTokens(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
 	theme := panelTheme()
 	theme.CodeBlockStyle = theme.CodeBlockStyle.WithForeground(ColorWhite)
 	renderer := NewMarkdownRenderer().WithTheme(theme).WithMaxWidth(30)
@@ -145,6 +232,7 @@ func TestMarkdownRenderer_CodeBlockPanelUsesBlockForegroundForPlainTokens(t *tes
 }
 
 func TestMarkdownRenderer_CodeBlockPanelExpandsTabsWithSourceOffset(t *testing.T) {
+	useHighlighter(t, keywordHighlighter)
 	theme := panelTheme()
 	theme.CodeBlockShowLanguage = true
 	view := Markdown("```go\nif x {\n\treturn\n}\n```\n", nil).Theme(theme).SourceOffset(0)

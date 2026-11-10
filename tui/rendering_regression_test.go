@@ -18,30 +18,6 @@ func TestFuzzyMatch_MultiByte(t *testing.T) {
 	assert.True(t, FuzzyMatch("cf", "Café"))
 }
 
-// BUG-046: a long diff line must clip, not wrap onto the next row.
-func TestDiffView_LongLineClips(t *testing.T) {
-	diffText := "--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,2 @@\n-" + strings.Repeat("x", 60) + "\n \n"
-	scrollY := 0
-	view, err := DiffViewFromText(diffText, "", &scrollY)
-	assert.NoError(t, err)
-	term := renderOnTerminal(view, 40, 10)
-	for y := range 10 {
-		row := ""
-		for x := range 40 {
-			row += string(term.GetCell(x, y).Char)
-		}
-		if strings.Contains(row, "xxx") {
-			next := ""
-			for x := range 40 {
-				next += string(term.GetCell(x, y+1).Char)
-			}
-			assert.False(t, strings.Contains(next, "x"), "wrapped onto next row: %q", next)
-			return
-		}
-	}
-	t.Fatal("diff line not rendered")
-}
-
 // BUG-046: table rows wider than the container must clip, not wrap.
 func TestTableView_OverflowClips(t *testing.T) {
 	sel := 0
@@ -67,7 +43,7 @@ func renderOnTerminal(view View, w, h int) *Terminal {
 func TestProgress_ShimmerRendersWithoutRGBForeground(t *testing.T) {
 	view := Progress(50, 100).Width(10).Shimmer(NewRGB(255, 255, 255), 3)
 	assert.NotPanics(t, func() {
-		screen := SprintScreen(view, WithWidth(20))
+		screen := sprintScreen(view, WithWidth(20))
 		assert.Equal(t, "█", screen.CellGlyph(0, 0))
 	})
 }
@@ -89,7 +65,7 @@ func TestProgress_ShimmerBlendsDarkerHighlight(t *testing.T) {
 // BUG-004: a zero speed must not divide by zero.
 func TestProgress_AnimatedZeroSpeedDoesNotPanic(t *testing.T) {
 	assert.NotPanics(t, func() {
-		SprintScreen(Progress(50, 100).Width(10).Shimmer(NewRGB(255, 255, 255), 0), WithWidth(20))
+		sprintScreen(Progress(50, 100).Width(10).Shimmer(NewRGB(255, 255, 255), 0), WithWidth(20))
 	})
 }
 
@@ -156,7 +132,7 @@ func TestAnimation_LerpRGBClampsOvershoot(t *testing.T) {
 
 // BUG-024: animated text must keep wide characters intact.
 func TestAnimatedTextView_WideCharacters(t *testing.T) {
-	screen := SprintScreen(Text("世界A").Animate(Rainbow(3)), WithWidth(10))
+	screen := sprintScreen(Text("世界A").Animate(Rainbow(3)), WithWidth(10))
 	assert.Equal(t, "世界A", screen.Row(0))
 }
 
@@ -233,24 +209,29 @@ func TestAnimatedBordered_OneByOne(t *testing.T) {
 	}
 }
 
-// BUG-040: CodeView truncation must not split or overflow grapheme clusters.
+func TestTruncateToWidth(t *testing.T) {
+	tests := []struct {
+		input    string
+		maxWidth int
+		expected string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 3, "hel"},
+		{"hello", 0, ""},
+		{"", 5, ""},
+	}
+
+	for _, tt := range tests {
+		result := truncateToWidth(tt.input, tt.maxWidth)
+		assert.Equal(t, tt.expected, result, "truncateToWidth(%q, %d)", tt.input, tt.maxWidth)
+	}
+}
+
+// BUG-040: truncation must not split or overflow grapheme clusters.
 func TestTruncateToWidth_GraphemeClusters(t *testing.T) {
 	assert.Equal(t, "", truncateToWidth("❤️", 1))
 	assert.Equal(t, "👨‍👩‍👧", truncateToWidth("👨‍👩‍👧b", 2))
 	assert.Equal(t, "ab", truncateToWidth("ab世", 3))
-}
-
-func TestCodeView_TruncatesClusterAtEdge(t *testing.T) {
-	term := renderOnTerminal(Code("a👨‍👩‍👧b", "text").LineNumbers(false), 3, 1)
-	assert.Equal(t, 'a', term.GetCell(0, 0).Char)
-	assert.Equal(t, '👨', term.GetCell(1, 0).Char)
-}
-
-// BUG-040: tab stops must use cluster widths, like the rest of CodeView.
-func TestCodeView_ExpandTabsAfterCluster(t *testing.T) {
-	c := Code("", "text").TabWidth(4)
-	// "❤️" is 2 columns wide, so the tab advances 2 more columns.
-	assert.Equal(t, "❤️  x", c.expandTabs("❤️\tx", 0))
 }
 
 // BUG-045: nil children must not crash a tree.
@@ -378,14 +359,14 @@ func TestWrappersKeepFlex(t *testing.T) {
 	for name, wrap := range wrappers {
 		scrollY := 0
 		view := Stack(Text("Header"), wrap(Scroll(Stack(lines...), &scrollY)), Text("Footer"))
-		screen := SprintScreen(view, WithWidth(20), WithHeight(10))
+		screen := sprintScreen(view, WithWidth(20), WithHeight(10))
 		assert.Equal(t, screen.Row(9), "Footer", name)
 	}
 }
 
 func TestGroupScalesFlexibleMinimumsToFit(t *testing.T) {
 	view := Group(Stack(Text("%s", strings.Repeat("x", 40))).Flex(1), Text("END"))
-	screen := SprintScreen(view, WithWidth(20), WithHeight(1))
+	screen := sprintScreen(view, WithWidth(20), WithHeight(1))
 	assert.Equal(t, screen.Row(0), strings.Repeat("x", 17)+"END")
 }
 
@@ -398,6 +379,6 @@ func TestPanelMeasuresContentInsideBorderAndWidth(t *testing.T) {
 
 func TestScrollResetsOffsetWhenContentFits(t *testing.T) {
 	scrollY := 7
-	SprintScreen(Scroll(Text("short"), &scrollY), WithWidth(20), WithHeight(5))
+	sprintScreen(Scroll(Text("short"), &scrollY), WithWidth(20), WithHeight(5))
 	assert.Equal(t, scrollY, 0)
 }

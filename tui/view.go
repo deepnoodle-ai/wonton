@@ -26,6 +26,49 @@ type Flexible interface {
 	flex() int
 }
 
+// Custom returns a view that measures itself with size and draws itself with
+// render. It lets a package outside tui define a view type: embed the result
+// in the type, and the type is a View. Use Canvas instead when the view fills
+// the space it gets and does not measure its content.
+//
+// size returns the preferred size within maxWidth and maxHeight. A maximum of
+// 0 means unconstrained. render draws into ctx, whose size is the area the
+// view got.
+//
+// Example:
+//
+//	type Badge struct {
+//	    tui.View
+//	    label string
+//	}
+//
+//	func NewBadge(label string) *Badge {
+//	    b := &Badge{label: label}
+//	    b.View = tui.Custom(b.size, b.render)
+//	    return b
+//	}
+func Custom(size func(maxWidth, maxHeight int) (width, height int), render func(ctx *RenderContext)) View {
+	return customView{sizeFn: size, renderFn: render}
+}
+
+type customView struct {
+	sizeFn   func(maxWidth, maxHeight int) (int, int)
+	renderFn func(ctx *RenderContext)
+}
+
+func (c customView) render(ctx *RenderContext) {
+	if c.renderFn != nil {
+		c.renderFn(ctx)
+	}
+}
+
+func (c customView) size(maxWidth, maxHeight int) (int, int) {
+	if c.sizeFn == nil {
+		return 0, 0
+	}
+	return c.sizeFn(maxWidth, maxHeight)
+}
+
 // emptyView renders nothing
 type emptyView struct{}
 

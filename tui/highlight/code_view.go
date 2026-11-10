@@ -1,4 +1,4 @@
-package tui
+package highlight
 
 import (
 	"fmt"
@@ -7,12 +7,13 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/deepnoodle-ai/wonton/runewidth"
+	"github.com/deepnoodle-ai/wonton/tui"
 )
 
 // CodeView displays syntax-highlighted code.
 type CodeView struct {
+	view
 	code        string
 	language    string
 	theme       string
@@ -22,7 +23,7 @@ type CodeView struct {
 	width       int
 	height      int
 	tabWidth    int
-	highlighted [][]StyledSegment
+	highlighted [][]tui.StyledSegment
 }
 
 // Code creates a code view with syntax highlighting.
@@ -33,7 +34,7 @@ type CodeView struct {
 //	    fmt.Println("Hello")
 //	}`, "go")
 func Code(code string, language string) *CodeView {
-	return &CodeView{
+	c := &CodeView{
 		code:        code,
 		language:    language,
 		theme:       "monokai",
@@ -41,6 +42,8 @@ func Code(code string, language string) *CodeView {
 		startLine:   1,
 		tabWidth:    4,
 	}
+	c.view = tui.Custom(c.size, c.render)
+	return c
 }
 
 // Language sets the programming language for syntax highlighting.
@@ -122,10 +125,7 @@ func (c *CodeView) highlight() {
 	lexer = chroma.Coalesce(lexer)
 
 	// Get style
-	style := styles.Get(c.theme)
-	if style == nil {
-		style = styles.Fallback
-	}
+	style := chromaTheme(c.theme)
 
 	// Tokenize
 	iterator, err := lexer.Tokenise(nil, c.code)
@@ -136,12 +136,12 @@ func (c *CodeView) highlight() {
 	}
 
 	// Convert tokens to styled segments
-	c.highlighted = make([][]StyledSegment, 0)
-	var currentLine []StyledSegment
+	c.highlighted = make([][]tui.StyledSegment, 0)
+	var currentLine []tui.StyledSegment
 	col := 0 // track column for tab expansion
 
 	for _, token := range iterator.Tokens() {
-		tokenStyle := c.chromaToStyle(style.Get(token.Type))
+		segStyle := tokenStyle(style.Get(token.Type))
 
 		// Handle newlines in token
 		parts := strings.Split(token.Value, "\n")
@@ -154,9 +154,9 @@ func (c *CodeView) highlight() {
 			if part != "" {
 				// Expand tabs to spaces
 				expanded := c.expandTabs(part, col)
-				currentLine = append(currentLine, StyledSegment{
+				currentLine = append(currentLine, tui.StyledSegment{
 					Text:  expanded,
-					Style: tokenStyle,
+					Style: segStyle,
 				})
 				col += runewidth.StringWidth(expanded)
 			}
@@ -170,38 +170,13 @@ func (c *CodeView) highlight() {
 }
 
 // plainLines creates unhighlighted lines for fallback.
-func (c *CodeView) plainLines() [][]StyledSegment {
+func (c *CodeView) plainLines() [][]tui.StyledSegment {
 	lines := strings.Split(c.code, "\n")
-	result := make([][]StyledSegment, len(lines))
+	result := make([][]tui.StyledSegment, len(lines))
 	for i, line := range lines {
-		result[i] = []StyledSegment{{Text: c.expandTabs(line, 0), Style: NewStyle()}}
+		result[i] = []tui.StyledSegment{{Text: c.expandTabs(line, 0), Style: tui.NewStyle()}}
 	}
 	return result
-}
-
-// chromaToStyle converts a chroma style entry to our Style.
-func (c *CodeView) chromaToStyle(entry chroma.StyleEntry) Style {
-	style := NewStyle()
-
-	if entry.Colour.IsSet() {
-		style = style.WithFgRGB(RGB{
-			R: entry.Colour.Red(),
-			G: entry.Colour.Green(),
-			B: entry.Colour.Blue(),
-		})
-	}
-
-	if entry.Bold == chroma.Yes {
-		style = style.WithBold()
-	}
-	if entry.Italic == chroma.Yes {
-		style = style.WithItalic()
-	}
-	if entry.Underline == chroma.Yes {
-		style = style.WithUnderline()
-	}
-
-	return style
 }
 
 // expandTabs expands tab characters to spaces based on the current column.
@@ -278,7 +253,7 @@ func (c *CodeView) size(maxWidth, maxHeight int) (int, int) {
 	return w, h
 }
 
-func (c *CodeView) render(ctx *RenderContext) {
+func (c *CodeView) render(ctx *tui.RenderContext) {
 	width, height := ctx.Size()
 	if width == 0 || height == 0 {
 		return
@@ -287,8 +262,8 @@ func (c *CodeView) render(ctx *RenderContext) {
 	c.highlight()
 
 	lnWidth := c.lineNumberWidth()
-	lnStyle := NewStyle().WithForeground(ColorBrightBlack)
-	separatorStyle := NewStyle().WithForeground(ColorBrightBlack)
+	lnStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
+	separatorStyle := tui.NewStyle().WithForeground(tui.ColorBrightBlack)
 
 	// Get scroll position
 	scrollY := 0
@@ -363,15 +338,4 @@ func padLeft(n, width int) string {
 func truncateToWidth(s string, maxWidth int) string {
 	result, _ := runewidth.FitLeft(s, maxWidth)
 	return result
-}
-
-// AvailableThemes returns a list of available syntax highlighting themes.
-func AvailableThemes() []string {
-	return styles.Names()
-}
-
-// AvailableLanguages returns a list of available language lexers.
-func AvailableLanguages() []string {
-	names := lexers.Names(false)
-	return names
 }

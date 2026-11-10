@@ -59,7 +59,7 @@ func TestGridSelectionWideCharacters(t *testing.T) {
 func TestCellsViewSelect(t *testing.T) {
 	rows := textRows("abcd", "efgh")
 	sel := GridSelection{Anchor: image.Pt(2, 0), Cursor: image.Pt(0, 1)}
-	screen := SprintScreen(Cells(rows).Select(sel), WithWidth(4), WithHeight(2))
+	screen := sprintScreen(Cells(rows).Select(sel), WithWidth(4), WithHeight(2))
 	assert.Equal(t, screen.Row(0), "abcd")
 	for _, c := range []struct {
 		x, y     int
@@ -95,7 +95,7 @@ func TestCellsViewHighlightsWideCharFromContinuation(t *testing.T) {
 	// The selection starts on the second half of 日; Text copies 日, so
 	// the view highlights it too.
 	sel := GridSelection{Anchor: image.Pt(2, 0), Cursor: image.Pt(4, 0)}
-	screen := SprintScreen(Cells(rows).Select(sel), WithWidth(4), WithHeight(1))
+	screen := sprintScreen(Cells(rows).Select(sel), WithWidth(4), WithHeight(1))
 	assert.False(t, screen.Cell(0, 0).Style.Reverse)
 	assert.True(t, screen.Cell(1, 0).Style.Reverse)
 	assert.True(t, screen.Cell(3, 0).Style.Reverse)

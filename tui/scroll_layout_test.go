@@ -16,7 +16,7 @@ func (s *singleItems) Len() int        { return len(s.views) }
 func (s *singleItems) Item(i int) View { return s.views[i] }
 
 func screenLines(view View, width int) []string {
-	return strings.Split(SprintScreen(view, WithWidth(width)).Text(), "\n")
+	return strings.Split(sprintScreen(view, WithWidth(width)).Text(), "\n")
 }
 
 func TestViewportFillBgStaysInsideItsItem(t *testing.T) {
@@ -179,7 +179,7 @@ func TestContainersDrawNoContentWhenTheFrameFillsTheSpace(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			screen := SprintScreen(tc.view, WithWidth(5))
+			screen := sprintScreen(tc.view, WithWidth(5))
 			assert.False(t, strings.Contains(screen.Text(), "X"),
 				"content must not be drawn over the frame: %q", screen.Text())
 		})
