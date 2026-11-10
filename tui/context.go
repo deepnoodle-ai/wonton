@@ -203,11 +203,28 @@ func (c *RenderContext) AbsoluteBounds() image.Rectangle {
 // the rows it has scrolled past, so the rest must not catch clicks meant for
 // the views drawn there.
 func (c *RenderContext) registerClick(bounds image.Rectangle, callback func()) {
+	if c.offscreen {
+		return
+	}
 	bounds = c.clickArea(bounds)
 	if bounds.Empty() {
 		return
 	}
 	c.registries().interactive.RegisterRegion(bounds, callback)
+}
+
+// registerFocusable records the part of this context that takes focus clicks
+// in *bounds and registers f with the focus manager. A Viewport renders the
+// same view object again off-screen to paint a selection; that render must
+// leave the on-screen bounds alone, or clicks on the view miss.
+func (c *RenderContext) registerFocusable(f Focusable, bounds *image.Rectangle) {
+	if c.offscreen {
+		return
+	}
+	*bounds = c.clickArea(c.AbsoluteBounds())
+	if c.focusMgr != nil {
+		c.focusMgr.Register(f)
+	}
 }
 
 // clickArea returns the part of bounds, in absolute screen coordinates, that

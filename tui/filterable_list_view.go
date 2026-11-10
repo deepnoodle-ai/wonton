@@ -490,10 +490,7 @@ func (l *FilterableListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	l.bounds = ctx.clickArea(ctx.AbsoluteBounds())
-	if fm := ctx.FocusManager(); fm != nil {
-		fm.Register(l)
-	}
+	ctx.registerFocusable(l, &l.bounds)
 
 	yOffset := 0
 

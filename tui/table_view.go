@@ -525,10 +525,7 @@ func (t *TableView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	t.bounds = ctx.clickArea(ctx.AbsoluteBounds())
-	if fm := ctx.FocusManager(); fm != nil {
-		fm.Register(t)
-	}
+	ctx.registerFocusable(t, &t.bounds)
 
 	t.calculateColumnWidths()
 	t.fitColumnWidths(width) // Shrink columns to fit container

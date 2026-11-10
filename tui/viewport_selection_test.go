@@ -747,3 +747,44 @@ func TestOneRowViewportKeepsItsDragDirection(t *testing.T) {
 	}
 	assert.Equal(t, prev, 5, "the drag reached the end and stayed there")
 }
+
+// focusSourceItems puts a selectable text and a focusable checkbox list in
+// each item.
+type focusSourceItems struct{ text []string }
+
+func (f *focusSourceItems) Len() int                    { return len(f.text) }
+func (f *focusSourceItems) Source(i int) (string, bool) { return f.text[i], true }
+func (f *focusSourceItems) Item(i int) View {
+	cursor := 0
+	return Group(
+		Text("%s", f.text[i]).SourceOffset(0),
+		CheckboxList([]ListItem{{Label: "x"}}, []bool{false}, &cursor).ID(fmt.Sprintf("row:%d", i)),
+	)
+}
+
+func TestFocusableInsideViewportWithSelectionTakesClicks(t *testing.T) {
+	items := &focusSourceItems{text: []string{"alpha", "beta"}}
+	state := &ViewportState{}
+	view := Stack(Height(5, Text("")), Height(3, Viewport(state, items)))
+	fm := NewFocusManager()
+	render := func() {
+		term := NewTestTerminal(20, 8, &strings.Builder{})
+		frame, err := term.BeginFrame()
+		assert.NoError(t, err)
+		fm.Clear()
+		view.render(NewRenderContext(frame, 0).WithFocusManager(fm))
+		term.EndFrame(frame)
+	}
+	render()
+	state.SelectLine(0, 0)
+	assert.Equal(t, state.SelectedText(), "alpha")
+
+	// Rendering with a selection paints the item off-screen; that must not
+	// move the click bounds of the views on screen.
+	state.Invalidate(0)
+	render()
+	assert.True(t, fm.HandleClick(8, 6))
+	assert.Equal(t, fm.GetFocusedID(), "row:1")
+	assert.True(t, fm.HandleClick(8, 5), "a click on the first item reaches it")
+	assert.Equal(t, fm.GetFocusedID(), "row:0")
+}

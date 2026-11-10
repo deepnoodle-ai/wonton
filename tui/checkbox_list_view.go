@@ -259,10 +259,7 @@ func (c *CheckboxListView) render(ctx *RenderContext) {
 	}
 
 	// Register with focus manager for keyboard input (if available)
-	c.bounds = ctx.clickArea(ctx.AbsoluteBounds())
-	if fm := ctx.FocusManager(); fm != nil {
-		fm.Register(c)
-	}
+	ctx.registerFocusable(c, &c.bounds)
 
 	c.lastHeight = height
 
