@@ -349,7 +349,7 @@ func TestHelpEmptyDescriptionHasNoDash(t *testing.T) {
 
 	t.Run("styled command help", func(t *testing.T) {
 		app := newApp()
-		screen := tui.SprintScreen(app.commands["add"].renderCommandHelp(), tui.WithWidth(60))
+		screen := tuitest.Screen(app.commands["add"].renderCommandHelp(), tui.WithWidth(60))
 		assert.Equal(t, "calc add", strings.TrimSpace(screen.Row(0)))
 	})
 }
@@ -386,7 +386,7 @@ func TestHelpFlagPlaceholder(t *testing.T) {
 
 	t.Run("styled help", func(t *testing.T) {
 		cmd := newApp().commands["run"]
-		screen := tui.SprintScreen(renderFlags(cmd.flags, DefaultHelpTheme()), tui.WithWidth(80))
+		screen := tuitest.Screen(renderFlags(cmd.flags, DefaultHelpTheme()), tui.WithWidth(80))
 		text := screen.Text()
 		vars := lineContaining(t, text, "Variables file")
 		write := lineContaining(t, text, "Write results")
