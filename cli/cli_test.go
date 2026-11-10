@@ -2902,6 +2902,30 @@ func TestGroupValidatorsRunForSubcommands(t *testing.T) {
 		err := app.ExecuteArgs([]string{"db", "migrate", "--help"})
 		assert.True(t, IsHelpRequested(err))
 	})
+
+	t.Run("subcommand runs see global flags, not group flags", func(t *testing.T) {
+		var sawAll bool
+		var sawEnv string
+
+		app := TestApp("demo").GlobalFlags(String("env", "e"))
+		db := app.Group("db").
+			Flags(Bool("all", "a").Default(true)).
+			Validate(func(ctx *Context) error {
+				sawAll = ctx.Bool("all")
+				sawEnv = ctx.String("env")
+				return nil
+			}).
+			Run(func(*Context) error { return nil })
+		db.Command("migrate").Run(func(*Context) error { return nil })
+
+		assert.NoError(t, app.ExecuteArgs([]string{"--env", "prod", "db", "migrate"}))
+		assert.False(t, sawAll)
+		assert.Equal(t, "prod", sawEnv)
+
+		// Group's own handler still parses group flags.
+		assert.NoError(t, app.ExecuteArgs([]string{"db"}))
+		assert.True(t, sawAll)
+	})
 }
 
 func TestAppValidateWithMain(t *testing.T) {
@@ -2968,7 +2992,7 @@ func TestAppValidateWithMain(t *testing.T) {
 		assert.True(t, IsHelpRequested(failApp.ExecuteArgs([]string{"--help"})))
 	})
 
-	t.Run("runs once with app.Run", func(t *testing.T) {
+	t.Run("runs once per execution with app.Run", func(t *testing.T) {
 		calls := 0
 		app := TestApp("demo")
 		app.Validate(func(*Context) error {

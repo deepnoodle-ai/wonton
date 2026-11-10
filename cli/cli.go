@@ -1196,7 +1196,11 @@ func (g *Group) Use(mw ...Middleware) *Group {
 }
 
 // Validate adds a validation function for the group. It runs for the group's
-// own handler and before each subcommand's validators.
+// own handler and before each subcommand's validators. Flags added with
+// Group.Flags belong only to the group's own handler, so on a subcommand run
+// the validator sees global flags (and that subcommand's flags), not group
+// flags.
+//
 // An error from it is a usage error (exit status 2) unless it is an
 // ExitError; see Command.Validate.
 func (g *Group) Validate(v func(*Context) error) *Group {
