@@ -107,7 +107,7 @@ func TestButtonRegistry_Register(t *testing.T) {
 	callback := func() { called = true }
 	focusStyle := NewStyle().WithReverse()
 
-	state := registry.Register("btn1", bounds, callback, focusStyle, nil)
+	state := registry.Register("btn1", &bounds, callback, focusStyle, nil)
 
 	assert.NotNil(t, state)
 	assert.Equal(t, "btn1", state.id)
@@ -126,7 +126,7 @@ func TestButtonRegistry_Register_UpdateExisting(t *testing.T) {
 
 	// First registration
 	bounds1 := image.Rect(0, 0, 10, 1)
-	state1 := registry.Register("btn1", bounds1, nil, NewStyle(), nil)
+	state1 := registry.Register("btn1", &bounds1, nil, NewStyle(), nil)
 	originalID := state1.id
 
 	// Second registration with same ID should update the same state object
@@ -134,7 +134,7 @@ func TestButtonRegistry_Register_UpdateExisting(t *testing.T) {
 	callbackCalled := false
 	newCallback := func() { callbackCalled = true }
 	newStyle := NewStyle().WithBold()
-	state2 := registry.Register("btn1", bounds2, newCallback, newStyle, nil)
+	state2 := registry.Register("btn1", &bounds2, newCallback, newStyle, nil)
 
 	// Should be same state object (same pointer)
 	assert.True(t, state1 == state2, "Expected same state object")
@@ -153,7 +153,7 @@ func TestButtonRegistry_Clear(t *testing.T) {
 	}
 
 	// Register a button
-	registry.Register("btn1", image.Rect(0, 0, 10, 1), nil, NewStyle(), nil)
+	registry.Register("btn1", &image.Rectangle{Max: image.Pt(10, 1)}, nil, NewStyle(), nil)
 
 	// Clear should not panic
 	registry.Clear()

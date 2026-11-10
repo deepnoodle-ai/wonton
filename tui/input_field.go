@@ -677,7 +677,7 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	f.reg = ctx.registries()
 	state := f.reg.inputs.Register(f.id, inputConfig{
 		binding:          f.binding,
-		bounds:           ctx.clickArea(inputBounds),
+		bounds:           ctx.clickBounds(),
 		placeholder:      f.placeholder,
 		placeholderStyle: f.placeholderStyle,
 		textStyle:        f.textStyle,

@@ -760,6 +760,46 @@ func (f *focusSourceItems) Item(i int) View {
 	return Group(Text("%s", f.text[i]).SourceOffset(0), f.view(fmt.Sprintf("row:%d", i)))
 }
 
+// selectionApp renders a Viewport of focusSourceItems the way an app does:
+// with a focus manager and the app's own registries.
+type selectionApp struct {
+	state *ViewportState
+	root  View
+	fm    *FocusManager
+	reg   *registries
+}
+
+func newSelectionApp(view func(id string) View) *selectionApp {
+	state := &ViewportState{}
+	items := &focusSourceItems{text: []string{"alpha", "beta"}, view: view}
+	return &selectionApp{
+		state: state,
+		root:  Stack(Height(5, Text("")), Height(10, Viewport(state, items))),
+		fm:    NewFocusManager(),
+		reg:   newRegistries(),
+	}
+}
+
+func (a *selectionApp) render(t *testing.T) {
+	term := NewTestTerminal(30, 15, &strings.Builder{})
+	frame, err := term.BeginFrame()
+	assert.NoError(t, err)
+	a.fm.Clear()
+	a.reg.clearForRender()
+	a.root.render(NewRenderContext(frame, 0).WithFocusManager(a.fm).withRegistries(a.reg))
+	term.EndFrame(frame)
+}
+
+// paintSelection selects the first item's text and renders again. The item
+// changed, so the render paints it off-screen.
+func (a *selectionApp) paintSelection(t *testing.T) {
+	a.render(t)
+	a.state.SelectLine(0, 0)
+	assert.Equal(t, a.state.SelectedText(), "alpha")
+	a.state.Invalidate(0)
+	a.render(t)
+}
+
 func TestFocusableInsideViewportWithSelectionTakesClicks(t *testing.T) {
 	items := []ListItem{{Label: "x"}}
 	views := map[string]func(id string) View{
@@ -774,34 +814,79 @@ func TestFocusableInsideViewportWithSelectionTakesClicks(t *testing.T) {
 		"Table": func(id string) View {
 			return Table([]TableColumn{{Title: "c"}}, new(int)).Rows([][]string{{"x"}}).ID(id)
 		},
-		"Toggle": func(id string) View { return Toggle(new(bool)).ID(id) },
-		"Tree":   func(id string) View { return Tree(NewTreeNode("x")).ID(id) },
+		"Toggle":     func(id string) View { return Toggle(new(bool)).ID(id) },
+		"Tree":       func(id string) View { return Tree(NewTreeNode("x")).ID(id) },
+		"Button":     func(id string) View { return Button("x", func() {}).ID(id) },
+		"Input":      func(id string) View { return Input(new(string)).ID(id) },
+		"InputField": func(id string) View { return InputField(new(string)).ID(id) },
 	}
 	for name, view := range views {
 		t.Run(name, func(t *testing.T) {
-			state := &ViewportState{}
-			items := &focusSourceItems{text: []string{"alpha", "beta"}, view: view}
-			root := Stack(Height(5, Text("")), Height(10, Viewport(state, items)))
-			fm := NewFocusManager()
-			render := func() {
-				term := NewTestTerminal(30, 15, &strings.Builder{})
-				frame, err := term.BeginFrame()
-				assert.NoError(t, err)
-				fm.Clear()
-				root.render(NewRenderContext(frame, 0).WithFocusManager(fm))
-				term.EndFrame(frame)
-			}
-			render()
-			state.SelectLine(0, 0)
-			assert.Equal(t, state.SelectedText(), "alpha")
-
-			// Rendering with a selection paints the item off-screen; that
-			// must not move the click bounds of the views on screen.
-			state.Invalidate(0)
-			render()
-			fm.SetFocus("row:1")
-			assert.True(t, fm.HandleClick(5, 5), "a click on the first item reaches it")
-			assert.Equal(t, fm.GetFocusedID(), "row:0")
+			app := newSelectionApp(view)
+			// The off-screen paint must not move the click bounds of the
+			// views on screen.
+			app.paintSelection(t)
+			app.fm.SetFocus("row:1")
+			assert.True(t, app.fm.HandleClick(5, 5), "a click on the first item reaches it")
+			assert.Equal(t, app.fm.GetFocusedID(), "row:0")
 		})
 	}
+}
+
+func TestViewInsideViewportWithSelectionKeepsAppRegistries(t *testing.T) {
+	type viewWithReg struct {
+		view View
+		reg  func() *registries
+	}
+	views := map[string]func(id string) viewWithReg{
+		"Input": func(id string) viewWithReg {
+			v := Input(new(string)).ID(id)
+			return viewWithReg{v, func() *registries { return v.reg }}
+		},
+		"InputField": func(id string) viewWithReg {
+			v := InputField(new(string)).ID(id)
+			return viewWithReg{v, func() *registries { return v.reg }}
+		},
+		"TextArea": func(id string) viewWithReg {
+			v := TextArea(new(string)).ID(id)
+			return viewWithReg{v, func() *registries { return v.reg }}
+		},
+		"PromptChoice": func(id string) viewWithReg {
+			v := PromptChoice(new(int), nil).Option("x").ID(id)
+			return viewWithReg{v, func() *registries { return v.reg }}
+		},
+	}
+	for name, build := range views {
+		t.Run(name, func(t *testing.T) {
+			var regs []func() *registries
+			app := newSelectionApp(func(id string) View {
+				v := build(id)
+				if id == "row:0" { // the item the selection paints
+					regs = append(regs, v.reg)
+				}
+				return v.view
+			})
+			app.paintSelection(t)
+			for _, reg := range regs {
+				assert.True(t, reg() == app.reg, "the view keeps the app's registries")
+			}
+		})
+	}
+}
+
+func TestPromptChoiceInsideViewportWithSelectionKeepsTypedText(t *testing.T) {
+	var choice *PromptChoiceView
+	app := newSelectionApp(func(id string) View {
+		v := PromptChoice(new(int), nil).Option("x").InputOption("other").ID(id)
+		if id == "row:0" {
+			choice = v
+		}
+		return v
+	})
+	app.paintSelection(t)
+	app.fm.SetFocus("row:0")
+	app.fm.HandleKey(KeyEvent{Key: KeyArrowDown}) // select the input option
+	app.fm.HandleKey(KeyEvent{Rune: 'z'})
+	app.render(t)
+	assert.Equal(t, choice.currentInputText(), "z")
 }

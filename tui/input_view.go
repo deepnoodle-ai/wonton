@@ -289,7 +289,7 @@ func (r *inputRegistryImpl) Clear() {
 // from the view builders (Input, InputField).
 type inputConfig struct {
 	binding          *string
-	bounds           image.Rectangle
+	bounds           *image.Rectangle // nil keeps the bounds from the last on-screen render
 	placeholder      string
 	placeholderStyle *Style
 	textStyle        *Style
@@ -342,7 +342,9 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 	}
 
 	// Update state
-	state.bounds = cfg.bounds
+	if cfg.bounds != nil {
+		state.bounds = *cfg.bounds
+	}
 	state.onChange = cfg.onChange
 	state.onSubmit = cfg.onSubmit
 	state.onKey = cfg.onKey
@@ -665,7 +667,7 @@ func (i *InputView) render(ctx *RenderContext) {
 	i.reg = ctx.registries()
 	state := i.reg.inputs.Register(i.id, inputConfig{
 		binding:          i.binding,
-		bounds:           ctx.clickArea(inputBounds),
+		bounds:           ctx.clickBounds(),
 		placeholder:      i.placeholder,
 		placeholderStyle: i.placeholderStyle,
 		mask:             i.mask,

@@ -61,7 +61,7 @@ func (r *buttonRegistryImpl) Clear() {
 }
 
 // Register adds or updates a button.
-func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callback func(), focusStyle Style, fm *FocusManager) *buttonState {
+func (r *buttonRegistryImpl) Register(id string, bounds *image.Rectangle, callback func(), focusStyle Style, fm *FocusManager) *buttonState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -73,7 +73,9 @@ func (r *buttonRegistryImpl) Register(id string, bounds image.Rectangle, callbac
 		r.buttons[id] = state
 	}
 
-	state.bounds = bounds
+	if bounds != nil {
+		state.bounds = *bounds
+	}
 	state.callback = callback
 	state.focusStyle = focusStyle
 
@@ -237,12 +239,11 @@ func (b *ButtonView) render(ctx *RenderContext) {
 
 	// Register this button for focus management
 	// Only the visible part takes clicks; rows a Scroll hides must not.
-	bounds := ctx.clickArea(ctx.AbsoluteBounds())
-	state := ctx.registries().buttons.Register(b.id, bounds, b.callback, b.focusStyle, ctx.FocusManager())
+	state := ctx.registries().buttons.Register(b.id, ctx.clickBounds(), b.callback, b.focusStyle, ctx.FocusManager())
 	// Register the click region too: the focus manager only moves focus on
 	// a click, so without this a mouse click would never run the callback.
 	if b.callback != nil {
-		ctx.registries().interactive.RegisterRegion(bounds, b.callback)
+		ctx.registerClick(ctx.AbsoluteBounds(), b.callback)
 	}
 
 	// Choose style based on focus state

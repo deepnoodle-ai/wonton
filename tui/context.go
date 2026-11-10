@@ -227,6 +227,29 @@ func (c *RenderContext) registerFocusable(f Focusable, bounds *image.Rectangle) 
 	}
 }
 
+// clickBounds returns the part of this context that takes clicks, in
+// absolute screen coordinates. It returns nil in an off-screen render, whose
+// positions are not on screen: a registry then keeps the bounds from the last
+// on-screen render.
+func (c *RenderContext) clickBounds() *image.Rectangle {
+	if c.offscreen {
+		return nil
+	}
+	b := c.clickArea(c.AbsoluteBounds())
+	return &b
+}
+
+// newOffscreenContext returns a context for a scratch render into frame, such
+// as a Viewport selection paint. Views read their state from reg, the
+// registries of the app on screen, so the paint matches the screen. They
+// register no clicks, focus, or bounds.
+func newOffscreenContext(frame RenderFrame, reg *registries) *RenderContext {
+	ctx := NewRenderContext(frame, 0)
+	ctx.reg = reg
+	ctx.offscreen = true
+	return ctx
+}
+
 // clickArea returns the part of bounds, in absolute screen coordinates, that
 // is inside this context and on screen, and so can take clicks. Inside a
 // Scroll, that excludes the rows it has scrolled past. The result can be

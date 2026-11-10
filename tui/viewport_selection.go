@@ -576,9 +576,7 @@ func (s *ViewportState) renderItemLines(item int) []itemLine {
 		return nil
 	}
 	frame.Fill(' ', NewStyle())
-	ctx := NewRenderContext(frame, 0)
-	ctx.offscreen = true
-	view.render(ctx)
+	view.render(newOffscreenContext(frame, s.reg))
 	term.EndFrame(frame)
 
 	lines := make([]itemLine, height)
