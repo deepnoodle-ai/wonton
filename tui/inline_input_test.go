@@ -1,33 +1,200 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
+	"github.com/deepnoodle-ai/wonton/termtest"
 )
 
-func TestPrompt_BasicInput(t *testing.T) {
-	// TODO: Implement with simulated input
-	// This would require refactoring Prompt to accept an io.Reader for input
-	t.Skip("Requires terminal input simulation")
+// Key bytes as a terminal in raw mode sends them.
+const (
+	keyEnter     = "\r"
+	keyBackspace = "\x7f"
+	keyLeft      = "\x1b[D"
+	keyUp        = "\x1b[A"
+	keyHome      = "\x01" // Ctrl+A
+	keyCtrlC     = "\x03"
+	keyCtrlD     = "\x04"
+	keyCtrlJ     = "\n"
+)
+
+// promptKeys runs Prompt on the given key bytes and returns its result.
+func promptKeys(t *testing.T, keys string, opts ...PromptOption) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	opts = append([]PromptOption{
+		WithPromptInput(strings.NewReader(keys)),
+		WithPromptOutput(&out),
+	}, opts...)
+	return Prompt("> ", opts...)
 }
 
-func TestPrompt_History(t *testing.T) {
-	t.Skip("Requires terminal input simulation")
+// snapshotReader calls snap the first time the reader reaches it, then
+// reports EOF so an io.MultiReader moves on. Prompt renders each key before
+// it reads the next one, so snap sees the live region after the keys before
+// it.
+type snapshotReader struct {
+	snap func()
+	done bool
+}
+
+func (r *snapshotReader) Read([]byte) (int, error) {
+	if !r.done {
+		r.done = true
+		r.snap()
+	}
+	return 0, io.EOF
+}
+
+// livePromptRows returns the rows of the live region that Prompt draws for
+// the given keys on a screen wider than the prompt.
+func livePromptRows(t *testing.T, keys string, opts ...PromptOption) []string {
+	t.Helper()
+	screen := termtest.NewScreen(120, 10)
+	var rows []string
+	in := io.MultiReader(
+		strings.NewReader(keys),
+		&snapshotReader{snap: func() {
+			rows = strings.Split(strings.TrimRight(screen.Text(), "\n"), "\n")
+		}},
+		strings.NewReader(keyEnter),
+	)
+	opts = append([]PromptOption{WithPromptInput(in), WithPromptOutput(screen)}, opts...)
+	_, err := Prompt("> ", opts...)
+	assert.NoError(t, err)
+	return rows
+}
+
+func TestPrompt_TypeAndSubmit(t *testing.T) {
+	var out bytes.Buffer
+	got, err := Prompt("> ",
+		WithPromptInput(strings.NewReader("hello world"+keyEnter)),
+		WithPromptOutput(&out),
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "hello world", got)
+	// The submitted line stays in the output after the live region clears.
+	assert.True(t, strings.HasSuffix(out.String(), "hello world\n\x1b[?25h"))
+}
+
+func TestPrompt_EditingKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		keys string
+		want string
+	}{
+		{"backspace", "hellp" + keyBackspace + "o", "hello"},
+		{"left arrow", "helo" + keyLeft + "l", "hello"},
+		{"home", "ello" + keyHome + "h", "hello"},
+		{"ctrl+d deletes at cursor", "hello!" + keyLeft + keyCtrlD, "hello"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := promptKeys(t, tt.keys+keyEnter)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPrompt_HistoryAcrossPrompts(t *testing.T) {
+	// One reader feeds three prompts: each prompt must leave the bytes
+	// after its Enter for the next one.
+	in := strings.NewReader("first" + keyEnter + "second" + keyEnter + keyUp + keyUp + keyEnter)
+	var history []string
+	var got []string
+	for range 3 {
+		line, err := Prompt("> ",
+			WithPromptInput(in),
+			WithPromptOutput(io.Discard),
+			WithHistory(&history),
+		)
+		assert.NoError(t, err)
+		got = append(got, line)
+	}
+	assert.Equal(t, []string{"first", "second", "first"}, got)
+	assert.Equal(t, []string{"first", "second", "first"}, history)
+}
+
+func TestPrompt_MultiLineInput(t *testing.T) {
+	got, err := promptKeys(t, "one"+keyCtrlJ+"two"+keyEnter, WithMultiLine(true))
+	assert.NoError(t, err)
+	assert.Equal(t, "one\ntwo", got)
 }
 
 func TestPrompt_Autocomplete(t *testing.T) {
-	t.Skip("Requires terminal input simulation")
+	complete := func(input string, cursor int) ([]string, int) {
+		at := strings.LastIndex(input[:cursor], "@")
+		if at < 0 {
+			return nil, 0
+		}
+		return []string{"main.go"}, at + 1
+	}
+	got, err := promptKeys(t, "open @ma\t"+keyEnter, WithAutocomplete(complete))
+	assert.NoError(t, err)
+	assert.Equal(t, "open @main.go", got)
 }
 
-func TestPrompt_CtrlC(t *testing.T) {
-	t.Skip("Requires terminal input simulation")
+func TestPrompt_EndErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		keys string
+		want error
+	}{
+		{"ctrl+c", "abc" + keyCtrlC, ErrInterrupted},
+		{"ctrl+d on empty input", keyCtrlD, ErrEOF},
+		{"input ends before enter", "abc", ErrEOF},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := promptKeys(t, tt.keys)
+			assert.True(t, errors.Is(err, tt.want), "got error %v", err)
+			assert.Equal(t, "", got)
+		})
+	}
 }
 
-func TestPrompt_MultiLine(t *testing.T) {
-	t.Skip("Requires terminal input simulation")
+func TestPrompt_Frame(t *testing.T) {
+	t.Run("on by default", func(t *testing.T) {
+		rows := livePromptRows(t, "hi")
+		assert.Equal(t, strings.Repeat("─", 80), rows[0])
+		assert.Equal(t, "> hi", rows[1])
+		assert.Equal(t, strings.Repeat("─", 80), rows[2])
+	})
+	t.Run("off", func(t *testing.T) {
+		rows := livePromptRows(t, "hi", WithPromptFrame(false))
+		assert.Equal(t, []string{"> hi"}, rows)
+	})
+}
+
+func TestPrompt_Width(t *testing.T) {
+	t.Run("80 columns when no stream is a terminal", func(t *testing.T) {
+		width, fromTerminal := promptWidth(&bytes.Buffer{}, strings.NewReader(""))
+		assert.Equal(t, 80, width)
+		assert.False(t, fromTerminal)
+	})
+	t.Run("long input stays within the width", func(t *testing.T) {
+		rows := livePromptRows(t, strings.Repeat("a", 100), WithPromptFrame(false))
+		assert.Equal(t, 1, len(rows))
+		assert.Equal(t, "> "+strings.Repeat("a", 78), rows[0])
+	})
+}
+
+func TestReadLineFallback(t *testing.T) {
+	in := strings.NewReader("one\ntwo")
+	got, err := readLineFallback(in)
+	assert.NoError(t, err)
+	assert.Equal(t, "one", got)
+	got, err = readLineFallback(in)
+	assert.NoError(t, err)
+	assert.Equal(t, "two", got)
+	_, err = readLineFallback(in)
+	assert.True(t, errors.Is(err, io.EOF))
 }
 
 // Test the autocomplete function signature
