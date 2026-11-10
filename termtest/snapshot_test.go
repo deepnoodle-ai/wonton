@@ -269,6 +269,25 @@ func TestSnapshotHonoursUserDefinedUpdateFlag(t *testing.T) {
 	assert.True(t, updateFlagSet(fs), "update flag set to true")
 }
 
+func TestSnapshotUpdateFlagOnCommandLine(t *testing.T) {
+	// shouldUpdate reads flag.CommandLine, where a test package's own -update
+	// flag lives. Swap in a private set so the real CommandLine stays free of
+	// an "update" flag for TestSnapshotDoesNotRegisterUpdateFlag.
+	t.Setenv(updateEnv, "")
+	saved := flag.CommandLine
+	t.Cleanup(func() { flag.CommandLine = saved })
+
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	flag.CommandLine = fs
+	assert.False(t, shouldUpdate(), "no update flag defined")
+
+	fs.Bool("update", false, "update golden files")
+	assert.False(t, shouldUpdate(), "update flag defined but false")
+
+	assert.NoError(t, fs.Parse([]string{"-update"}))
+	assert.True(t, shouldUpdate(), "update flag set to true")
+}
+
 func TestSnapshotUpdateFlagWithNonBoolValue(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	v := fs.String("update", "", "update mode")
