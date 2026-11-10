@@ -397,9 +397,9 @@ func ExampleApp_ColorFlags() {
 	//   demo run [flags]
 	//
 	// Flags:
-	//   -v, --vars FILE Variables file
-	//       --max N     Maximum count
-	//   -w, --write     Write results
+	//   -v, --vars FILE  Variables file
+	//       --max N      Maximum count
+	//   -w, --write      Write results
 	//
 	// flag --vars given more than once
 	// unexpected argument: extra

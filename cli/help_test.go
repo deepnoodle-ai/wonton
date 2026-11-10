@@ -400,7 +400,7 @@ func TestHelpFlagPlaceholder(t *testing.T) {
 		app := New("demo")
 		app.Command("run").Flags(String("vars", "v").Help("Variables file")).Run(func(*Context) error { return nil })
 		output := renderPlainHelpForTest(t, app, "run", "--help")
-		assert.Contains(t, output, "  -v, --vars Variables file\n")
+		assert.Contains(t, output, "  -v, --vars  Variables file\n")
 	})
 }
 
@@ -597,8 +597,8 @@ func TestRenderFlag(t *testing.T) {
 		view := renderFlag(flag, theme, len(flag.GetName()))
 		screen := tuitest.Screen(view, tui.WithWidth(46))
 
-		assert.Contains(t, screen.Row(0), "--output default: out.txt")
-		assert.NotContains(t, screen.Row(0), "--output  default: out.txt")
+		assert.Contains(t, screen.Row(0), "--output  default: out.txt")
+		assert.NotContains(t, screen.Row(0), "--output   default: out.txt")
 	})
 }
 

@@ -140,8 +140,9 @@ func (a *App) GenerateFishCompletion(w io.Writer) error {
 	sb.WriteString(fmt.Sprintf("complete -c %s -f\n\n", a.name))
 
 	// Add commands
-	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
-		cmd := a.commands[name]
+	commands, order := a.listedCommands()
+	for _, name := range orderedCommandKeys(commands, order) {
+		cmd := commands[name]
 		if cmd == nil || cmd.hidden || name == "" {
 			continue
 		}
@@ -247,10 +248,13 @@ func (a *App) AddCompletionCommand() *App {
 
 // Helper functions
 
+// getCommandNames returns the visible top-level command and group names
+// that the bash completion script offers.
 func (a *App) getCommandNames() []string {
 	var names []string
-	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
-		cmd := a.commands[name]
+	commands, order := a.listedCommands()
+	for _, name := range orderedCommandKeys(commands, order) {
+		cmd := commands[name]
 		if cmd != nil && !cmd.hidden && name != "" {
 			names = append(names, name)
 		}
@@ -286,10 +290,13 @@ func (a *App) generateBashGroupCases() string {
 	return sb.String()
 }
 
+// generateZshCommandDesc returns the zsh "name:description" lines for the
+// visible top-level commands and groups.
 func (a *App) generateZshCommandDesc() string {
 	var lines []string
-	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
-		cmd := a.commands[name]
+	commands, order := a.listedCommands()
+	for _, name := range orderedCommandKeys(commands, order) {
+		cmd := commands[name]
 		if cmd != nil && !cmd.hidden && name != "" {
 			lines = append(lines, fmt.Sprintf("        '%s:%s'", name, escapeZsh(cmd.description)))
 		}
