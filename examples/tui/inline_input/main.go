@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,9 @@ import (
 )
 
 func main() {
+	plain := flag.Bool("plain", false, "show a plain prompt with no line above and below the input")
+	flag.Parse()
+
 	fmt.Println("Welcome to the Inline Input Demo!")
 	fmt.Println("This demonstrates tui.Prompt() with various features:")
 	fmt.Println("  - History navigation (up/down arrows)")
@@ -35,6 +39,7 @@ func main() {
 			tui.WithMultiLine(true),
 			tui.WithPlaceholder("Type a message... (@filename for autocomplete)"),
 			tui.WithPromptStyle(tui.NewStyle().WithForeground(tui.ColorCyan)),
+			tui.WithPromptFrame(!*plain),
 		)
 
 		if err != nil {

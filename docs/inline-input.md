@@ -135,6 +135,30 @@ Styles the user's input text.
 ### `WithPromptOutput(io.Writer)`
 Sets the output writer. Default is `os.Stdout`.
 
+### `WithPromptInput(io.Reader)`
+Sets the reader that the prompt reads keys from. Default is `os.Stdin`. When the reader is a terminal, `Prompt` puts it in raw mode. When it is not a terminal, `Prompt` still runs the full line editor and reads the bytes as a terminal sends them: `"\r"` is Enter, `"\x7f"` is Backspace, `"\x1b[D"` is Left, `"\x03"` is Ctrl+C. `Prompt` reads no bytes past the key that ends the input, so one reader can feed several prompts.
+
+```go
+// Drive the prompt from a test.
+var out bytes.Buffer
+line, err := tui.Prompt("> ",
+    tui.WithPromptInput(strings.NewReader("helo\x1b[Dl\r")),
+    tui.WithPromptOutput(&out),
+)
+// line == "hello"
+```
+
+### `WithPromptFrame(bool)`
+Sets whether the prompt draws a line above and below the input. Default is `true`. Pass `false` for a plain REPL prompt:
+
+```go
+input, err := tui.Prompt("> ", tui.WithPromptFrame(false))
+```
+
+## Width
+
+The input region is as wide as the terminal. `Prompt` uses the width of the output when it is a terminal, else the width of the input, else 80 columns. On Unix, the region follows a resize of the terminal while the prompt is open. Input longer than the width is cut at the edge of the region.
+
 ## Keyboard Shortcuts
 
 During input, the following shortcuts are available:
@@ -212,20 +236,22 @@ func chatLoop() {
 
 ## Graceful Degradation
 
-When stdin is not a terminal (piped input, redirected from file), `Prompt()` falls back to simple line reading without rich features.
+When stdin is not a terminal (piped input, redirected from file), `Prompt()` falls back to simple line reading without rich features. A reader given with `WithPromptInput` gets the full line editor instead, as described above.
 
 ## Example Application
 
-See `examples/inline_input/main.go` for a complete chat-like example demonstrating:
+See `examples/tui/inline_input/main.go` for a complete chat-like example demonstrating:
 - History navigation
 - File autocomplete with @ syntax
 - Multi-line input
 - Live streaming responses
 - Integration with `LivePrinter`
+- A plain prompt with no frame (`-plain`)
 
 Run with:
 ```bash
-go run ./examples/inline_input
+go run ./examples/tui/inline_input
+go run ./examples/tui/inline_input -plain
 ```
 
 ## Comparison to Full-Screen Mode
@@ -284,7 +310,7 @@ All components reuse existing Wonton infrastructure:
 
 ## Testing
 
-See `tui/inline_input_test.go` for unit tests covering:
+See `tui/inline_input_test.go` for tests that drive `Prompt` with key bytes through `WithPromptInput`, and unit tests covering:
 - Input insertion and deletion
 - History navigation
 - Autocomplete triggering and application

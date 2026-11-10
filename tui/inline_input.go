@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -57,11 +60,14 @@ type promptConfig struct {
 	promptStyle  Style
 	inputStyle   Style
 	output       io.Writer
+	input        io.Reader // nil = os.Stdin
+	frame        bool
 }
 
 func defaultPromptConfig() promptConfig {
 	return promptConfig{
 		output:      os.Stdout,
+		frame:       true,
 		promptStyle: NewStyle(),
 		inputStyle:  NewStyle(),
 	}
@@ -137,9 +143,38 @@ func WithInputStyle(style Style) PromptOption {
 }
 
 // WithPromptOutput sets the output writer for the prompt. Default is os.Stdout.
+// When w is a terminal, the prompt takes its width from w.
 func WithPromptOutput(w io.Writer) PromptOption {
 	return func(c *promptConfig) {
 		c.output = w
+	}
+}
+
+// WithPromptInput sets the reader the prompt reads keys from. Default is
+// os.Stdin.
+//
+// When r is a terminal (it has an Fd method and the descriptor is a
+// terminal), Prompt puts it in raw mode while it reads. When r is not a
+// terminal, Prompt still runs the full line editor and decodes the bytes as
+// a terminal in raw mode sends them: "\r" is Enter, "\x7f" is Backspace,
+// "\x1b[D" is Left, "\x03" is Ctrl+C. This lets a program or a test drive
+// the prompt from a pipe or a bytes.Reader. Prompt reads no bytes past the
+// key that ends the input, so one reader can feed several prompts in turn.
+//
+// Without this option, a non-terminal os.Stdin gets a plain line read with
+// no editing.
+func WithPromptInput(r io.Reader) PromptOption {
+	return func(c *promptConfig) {
+		c.input = r
+	}
+}
+
+// WithPromptFrame sets whether the prompt draws a line above and below the
+// input while the user types. Default is true. With false, the prompt shows
+// only the prompt text and the input, as a plain REPL prompt does.
+func WithPromptFrame(enabled bool) PromptOption {
+	return func(c *promptConfig) {
+		c.frame = enabled
 	}
 }
 
@@ -159,11 +194,15 @@ type promptState struct {
 
 // Prompt reads a line of input from the user with rich editing support.
 // It temporarily enables raw mode, handles input, and restores terminal state.
-// Returns the entered text (trimmed) or an error.
+// Returns the entered text or an error.
+//
+// The input region is as wide as the terminal: the output's width when the
+// output is a terminal, else the input's, else 80 columns. On Unix it
+// follows a resize of the terminal while the prompt is open.
 //
 // Errors:
 //   - ErrInterrupted: User pressed Ctrl+C
-//   - ErrEOF: User pressed Ctrl+D on empty input
+//   - ErrEOF: User pressed Ctrl+D on empty input, or the input ended
 //   - Other errors from terminal operations
 //
 // Example:
@@ -173,33 +212,45 @@ type promptState struct {
 //	    tui.WithAutocomplete(completeFn),
 //	    tui.WithMultiLine(true),
 //	)
+//
+// A plain REPL prompt with no line above and below the input:
+//
+//	input, err := tui.Prompt("> ", tui.WithPromptFrame(false))
+//
+// WithPromptInput and WithPromptOutput set the streams, for example to
+// drive the prompt from a test.
 func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	cfg := defaultPromptConfig()
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	// Check if stdin is a terminal
-	fd := int(os.Stdin.Fd())
-	if !term.IsTerminal(fd) {
-		// Fallback to simple line read
-		return readLineFallback()
+	in := cfg.input
+	if in == nil {
+		in = os.Stdin
 	}
+	keys := in
+	if fd, ok := terminalFd(in); ok {
+		oldState, err := term.MakeRaw(fd)
+		if err != nil {
+			return readLineFallback(in)
+		}
+		defer term.Restore(fd, oldState)
 
-	// Save terminal state
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return readLineFallback()
+		// Enable bracketed paste mode
+		fmt.Fprint(cfg.output, "\033[?2004h")
+		defer fmt.Fprint(cfg.output, "\033[?2004l")
+
+		// Enable enhanced keyboard mode for Shift+Enter detection
+		fmt.Fprint(cfg.output, terminalstate.KeyboardEnable())
+		defer fmt.Fprint(cfg.output, terminalstate.KeyboardRelease())
+	} else if cfg.input == nil {
+		// os.Stdin is piped or redirected: a plain line read.
+		return readLineFallback(in)
+	} else {
+		// An explicit non-terminal reader: run the line editor on its bytes.
+		keys = &scriptedKeys{r: in}
 	}
-	defer term.Restore(fd, oldState)
-
-	// Enable bracketed paste mode
-	fmt.Fprint(cfg.output, "\033[?2004h")
-	defer fmt.Fprint(cfg.output, "\033[?2004l")
-
-	// Enable enhanced keyboard mode for Shift+Enter detection
-	fmt.Fprint(cfg.output, terminalstate.KeyboardEnable())
-	defer fmt.Fprint(cfg.output, terminalstate.KeyboardRelease())
 
 	// Initialize state
 	state := &promptState{
@@ -211,17 +262,33 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	}
 
 	// Create live printer for the input region
-	lp := NewLivePrinter(WithWidth(80), WithOutput(cfg.output))
+	width, fromTerminal := promptWidth(cfg.output, in)
+	region := &promptRegion{
+		state: state,
+		lp:    NewLivePrinter(WithWidth(width), WithOutput(cfg.output)),
+	}
+	lp := region.lp
 	defer lp.Stop() // restores the cursor the live printer hid
 
 	// Render initial view
 	lp.Update(state.buildView())
 
+	stopResize := func() {}
+	if fromTerminal {
+		stopResize = watchPromptResize(func() {
+			if w, ok := promptWidth(cfg.output, in); ok {
+				region.resize(w)
+			}
+		})
+	}
+	defer stopResize()
+
 	// Input loop
-	decoder := terminal.NewKeyDecoder(os.Stdin)
+	decoder := terminal.NewKeyDecoder(keys)
 	for {
 		event, err := decoder.ReadKeyEvent()
 		if err != nil {
+			stopResize()
 			lp.Clear()
 			if err == io.EOF {
 				return "", ErrEOF
@@ -229,18 +296,128 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 			return "", err
 		}
 
-		// Handle the key event
-		result, done, keyErr := state.handleKey(event, prompt)
+		result, done, keyErr := region.handleKey(event, prompt)
 		if done {
+			// Stop the watcher first, so a resize cannot redraw the
+			// cleared region.
+			stopResize()
 			lp.Clear()
 			state.printFinal(cfg.output, prompt)
 			return result, keyErr
 		}
-
-		// Re-render
-		lp.Update(state.buildView())
 	}
 }
+
+// promptRegion is the prompt's state and the live printer that draws it.
+// mu guards both between the input loop and the resize watcher.
+type promptRegion struct {
+	mu    sync.Mutex
+	state *promptState
+	lp    *LivePrinter
+}
+
+// handleKey applies a key event to the state and redraws the region unless
+// the prompt is done.
+func (r *promptRegion) handleKey(event terminal.KeyEvent, prompt string) (string, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result, done, err := r.state.handleKey(event, prompt)
+	if !done {
+		r.lp.Update(r.state.buildView())
+	}
+	return result, done, err
+}
+
+// resize redraws the region at the given terminal width.
+func (r *promptRegion) resize(width int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lp.SetWidth(width)
+	r.lp.Update(r.state.buildView())
+}
+
+// defaultPromptWidth is the prompt's width when neither stream is a
+// terminal.
+const defaultPromptWidth = 80
+
+// promptWidth returns the width of the prompt's input region: the output's
+// terminal width, else the input's terminal width, else
+// defaultPromptWidth. fromTerminal reports whether a terminal gave it.
+func promptWidth(out io.Writer, in io.Reader) (width int, fromTerminal bool) {
+	if w, _, ok := terminalSize(out); ok {
+		return w, true
+	}
+	if fd, ok := terminalFd(in); ok {
+		if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+			return w, true
+		}
+	}
+	return defaultPromptWidth, false
+}
+
+// terminalFd returns the file descriptor of v when v has one and it is a
+// terminal.
+func terminalFd(v any) (int, bool) {
+	f, ok := v.(interface{ Fd() uintptr })
+	if !ok {
+		return 0, false
+	}
+	fd := int(f.Fd())
+	return fd, term.IsTerminal(fd)
+}
+
+// watchPromptResize calls onResize on its own goroutine each time the
+// terminal is resized, until stop is called. stop waits for the goroutine
+// to exit and is safe to call more than once. On platforms with no resize
+// signal it does nothing.
+func watchPromptResize(onResize func()) (stop func()) {
+	sigs := promptResizeSignals()
+	if len(sigs) == 0 {
+		return func() {}
+	}
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, sigs...)
+	done := make(chan struct{})
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		for {
+			select {
+			case <-ch:
+				onResize()
+			case <-done:
+				return
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			signal.Stop(ch)
+			close(done)
+			<-exited
+		})
+	}
+}
+
+// scriptedKeys feeds a non-terminal input to the key decoder. It reads one
+// byte at a time, so the decoder never buffers bytes past the key that ends
+// the prompt, and the next prompt on the same reader gets them. It reports
+// that more input is always coming, so the decoder reads an escape sequence
+// whole instead of taking its ESC for the Escape key.
+type scriptedKeys struct {
+	r io.Reader
+}
+
+func (s *scriptedKeys) Read(p []byte) (int, error) {
+	if len(p) > 1 {
+		p = p[:1]
+	}
+	return s.r.Read(p)
+}
+
+// WaitReady implements the key decoder's optional ready check.
+func (s *scriptedKeys) WaitReady(time.Duration) bool { return true }
 
 // printFinal prints the prompt and the entered input on their own line after
 // the live region is cleared. Masked input stays masked.
@@ -655,12 +832,16 @@ func (s *promptState) buildView() View {
 		}
 	}
 
-	// Build the input region with dividers
-	inputRegion := Stack(
-		Divider(),
-		inputContent,
-		Divider(),
-	)
+	// Build the input region, with a line above and below unless the
+	// frame is off
+	inputRegion := inputContent
+	if s.config.frame {
+		inputRegion = Stack(
+			Divider(),
+			inputContent,
+			Divider(),
+		)
+	}
 
 	// If no autocomplete, just return input region
 	if !s.acActive || len(s.acMatches) == 0 {
@@ -706,11 +887,11 @@ func (s *promptState) getDisplayInput() string {
 }
 
 // readLineFallback is a simple fallback for non-terminal input
-func readLineFallback() (string, error) {
+func readLineFallback(in io.Reader) (string, error) {
 	var line strings.Builder
 	buf := make([]byte, 1)
 	for {
-		n, err := os.Stdin.Read(buf)
+		n, err := in.Read(buf)
 		if err != nil {
 			if err == io.EOF && line.Len() > 0 {
 				return line.String(), nil
