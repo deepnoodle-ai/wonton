@@ -890,3 +890,29 @@ func TestPromptChoiceInsideViewportWithSelectionKeepsTypedText(t *testing.T) {
 	app.render(t)
 	assert.Equal(t, choice.currentInputText(), "z")
 }
+
+func TestInputInsideViewportWithSelectionKeepsScreenBounds(t *testing.T) {
+	views := map[string]func(text *string, id string) View{
+		"Input": func(text *string, id string) View {
+			return Width(12, Input(text).Multiline(true).ID(id))
+		},
+		"InputField": func(text *string, id string) View {
+			return Width(12, InputField(text).Multiline(true).ID(id))
+		},
+	}
+	for name, view := range views {
+		t.Run(name, func(t *testing.T) {
+			text := "aaaa bbbb cccc dddd eeee ffff"
+			app := newSelectionApp(func(id string) View { return view(&text, id) })
+			app.render(t)
+			state, ok := app.reg.inputs.lookup("row:0")
+			assert.True(t, ok)
+			onScreen := state.input.GetBounds()
+
+			// The selection paint at the end of each render draws the input
+			// off-screen; the live input must keep its place on screen.
+			app.paintSelection(t)
+			assert.Equal(t, state.input.GetBounds(), onScreen)
+		})
+	}
+}

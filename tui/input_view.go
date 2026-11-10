@@ -694,9 +694,12 @@ func (i *InputView) render(ctx *RenderContext) {
 		state.input.Style = *i.style
 	}
 
-	// Update textInput bounds
+	// Draw the textInput at this context. An off-screen render then puts back
+	// the bounds the live input had, so it keeps its place on screen.
+	onScreen := state.input.GetBounds()
 	state.input.SetBounds(inputBounds)
-
-	// Draw the textInput - pass the underlying frame
 	state.input.Draw(ctx.frame)
+	if ctx.offscreen {
+		state.input.SetBounds(onScreen)
+	}
 }
