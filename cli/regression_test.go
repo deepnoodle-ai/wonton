@@ -447,6 +447,22 @@ func TestAppNamesReplaceBuiltinCommands(t *testing.T) {
 		assert.NotContains(t, app.stdout.(*bytes.Buffer).String(), "1.2.3")
 	})
 
+	t.Run("flat-routed subcommands named version and help", func(t *testing.T) {
+		ran := ""
+		app := newApp(&ran)
+		tools := app.Group("tools").FlatRouting(true)
+		tools.Command("version").Run(func(*Context) error { ran = "tools version"; return nil })
+		tools.Command("help").Run(func(*Context) error { ran = "tools help"; return nil })
+		out := app.stdout.(*bytes.Buffer)
+
+		assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+		assert.Equal(t, "tools version", ran)
+		assert.NoError(t, app.ExecuteArgs([]string{"help"}))
+		assert.Equal(t, "tools help", ran)
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"--help"})))
+		assert.NotContains(t, out.String(), "Print the version")
+	})
+
 	t.Run("group named help", func(t *testing.T) {
 		ran := ""
 		app := newApp(&ran)
