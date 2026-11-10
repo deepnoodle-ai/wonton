@@ -932,7 +932,7 @@ func TestLiveView(t *testing.T) {
 
     // Render live view directly
     view := app.LiveView()
-    screen := tui.SprintScreen(view, tui.WithWidth(80), tui.WithHeight(10))
+    screen := tuitest.Screen(view, tui.WithWidth(80), tui.WithHeight(10))
 
     // Use termtest for snapshot testing
     termtest.AssertScreen(t, screen)

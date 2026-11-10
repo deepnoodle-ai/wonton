@@ -227,7 +227,8 @@ tui.Table(
 // Filterable lists
 tui.FilterableListStrings(items, &selected).Height(20)
 
-// Markdown rendering with syntax highlighting
+// Markdown rendering. Code blocks get syntax highlighting only when the program
+// imports the tui/highlight package: import _ "github.com/deepnoodle-ai/wonton/tui/highlight"
 // Second arg is *int for scroll position (nil = no scrolling)
 tui.Markdown(markdownContent, &scrollY).Height(20).MaxWidth(80)
 
