@@ -89,7 +89,7 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 			if errors.As(err, &valErr) {
 				return nil, &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, valErr.err), Err: valErr.err}
 			}
-			return nil, fmt.Errorf("invalid value for --%s: %w", name, err)
+			return nil, fmt.Errorf("cannot bind --%s to field %s (%s): %w", name, field.Name, field.Type, err)
 		}
 	}
 

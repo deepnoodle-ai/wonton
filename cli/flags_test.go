@@ -72,7 +72,7 @@ func TestBindFlagsFromContext(t *testing.T) {
 
 		_, err := BindFlags[Config](newTestContext(map[string]any{"tags": "a=b"}))
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported type")
+		assert.Equal(t, "cannot bind --tags to field Tags (map[string]string): unsupported type: map", err.Error())
 		assert.False(t, IsUsageError(err))
 		assert.Equal(t, 1, GetExitCode(err))
 	})
