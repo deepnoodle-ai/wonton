@@ -15,6 +15,13 @@ PR describes its user-visible and incompatible changes in its body.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-10
+
+### Fixed
+
+- `tui.Prompt`: output after the prompt starts in column 0 on a terminal,
+  not in the column where the input ended. (#249)
+
 ## [0.14.0] - 2026-11-10
 
 ### Added
