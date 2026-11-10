@@ -393,6 +393,7 @@ func (r *Runtime) eventLoop() {
 		case event := <-r.events:
 			// Process this event and drain any other pending events
 			_, resizeOnly := event.(ResizeEvent)
+			r.renderFirstFrameBefore(event)
 			if r.processEventWithQuitCheck(event) {
 				r.closeDone()
 				return
@@ -407,6 +408,7 @@ func (r *Runtime) eventLoop() {
 					if _, isResize := event.(ResizeEvent); !isResize {
 						resizeOnly = false
 					}
+					r.renderFirstFrameBefore(event)
 					if r.processEventWithQuitCheck(event) {
 						r.closeDone()
 						return
@@ -456,6 +458,20 @@ func (r *Runtime) eventLoop() {
 			return
 		}
 	}
+}
+
+// renderFirstFrameBefore draws the first frame before the loop handles any
+// event other than a resize. The render registers the view's focusable
+// inputs, so keys typed before the first frame reach the focused input
+// instead of falling through to HandleEvent.
+func (r *Runtime) renderFirstFrameBefore(event Event) {
+	if !r.lastRender.IsZero() {
+		return
+	}
+	if _, isResize := event.(ResizeEvent); isResize {
+		return
+	}
+	r.render()
 }
 
 // processEventWithQuitCheck processes an event and returns true if it's a quit event

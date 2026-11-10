@@ -72,6 +72,34 @@ func TestConsumedKeysNotDeliveredToApp(t *testing.T) {
 	}
 }
 
+// Keys that arrive before the first frame still reach the focused input.
+// Before the first render, the focus manager knows no inputs, so without a
+// first frame these keys would fall through to HandleEvent.
+func TestKeysBeforeFirstFrameReachFocusedInput(t *testing.T) {
+	var buf bytes.Buffer
+	terminal := NewTestTerminal(80, 24, &buf)
+
+	app := &keyRoutingApp{}
+	runtime := NewRuntime(terminal, app, 30)
+
+	// Queue the keys before Run, so the loop takes them before it has
+	// rendered anything.
+	runtime.SendEvent(KeyEvent{Rune: 'h', Key: KeyUnknown})
+	runtime.SendEvent(KeyEvent{Rune: 'i', Key: KeyUnknown})
+	runtime.SendEvent(doneEvent{})
+
+	if err := runtime.Run(); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if app.text != "hi" {
+		t.Errorf("input field should have received the early keys, got %q", app.text)
+	}
+	if len(app.received) != 0 {
+		t.Errorf("early keys should not reach HandleEvent, got %q", string(app.received))
+	}
+}
+
 // unconsumedKeyApp has no focusable elements, so every key reaches the app.
 type unconsumedKeyApp struct {
 	received []rune
