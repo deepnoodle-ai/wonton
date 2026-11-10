@@ -37,6 +37,9 @@ func TestStopReturnsWithHeldHandlerAndFullEventQueue(t *testing.T) {
 				r := NewRuntime(NewTestTerminal(80, 24, &bytes.Buffer{}), app, 30)
 				r.ticker = time.NewTicker(time.Hour)
 				defer r.ticker.Stop()
+				// The loop runs without Run, so mark the first frame as
+				// drawn. Otherwise the loop draws it before the first key.
+				r.lastRender = time.Now()
 				stop, loop, events, done = r.Stop, r.eventLoop, r.events, r.done
 			} else {
 				r := NewInlineApp(WithInlineOutput(&bytes.Buffer{}))
