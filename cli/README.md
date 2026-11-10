@@ -366,7 +366,7 @@ func main() {
 
     app.Command("process").
         Description("Process files").
-        ArgsRange(1, -1). // Require at least one argument
+        Args("files..."). // Require at least one argument
         // Interactive mode (with TUI)
         Interactive(func(ctx *cli.Context) error {
             files := ctx.Args() // All positional args are available
