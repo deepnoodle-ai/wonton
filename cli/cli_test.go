@@ -4160,6 +4160,20 @@ func TestVersionFunc(t *testing.T) {
 		assert.NotContains(t, buf.String(), "Print the version")
 	})
 
+	t.Run("a root-only app gets no Commands section for version", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("x").Version("1")
+		app.Run(func(*Context) error { return nil })
+		app.SetStdout(&buf)
+		app.SetColorEnabled(false)
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"--help"})))
+		assert.NotContains(t, buf.String(), "Commands:")
+
+		buf.Reset()
+		assert.NoError(t, app.ExecuteArgs([]string{"version"}))
+		assert.Equal(t, "1\n", buf.String())
+	})
+
 	t.Run("without VersionFunc the bare version is printed", func(t *testing.T) {
 		var buf bytes.Buffer
 		app := New("demo").Version("1.2.3")
