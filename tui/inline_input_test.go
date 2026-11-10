@@ -183,6 +183,18 @@ func TestPrompt_Width(t *testing.T) {
 		assert.Equal(t, 1, len(rows))
 		assert.Equal(t, "> "+strings.Repeat("a", 78), rows[0])
 	})
+	t.Run("a resize redraws the region at the new width", func(t *testing.T) {
+		screen := termtest.NewScreen(120, 10)
+		state := &promptState{config: defaultPromptConfig(), prompt: "> ", input: []rune("hi"), cursorPos: 2, historyIdx: -1}
+		region := &promptRegion{state: state, lp: NewLivePrinter(WithWidth(80), WithOutput(screen))}
+		region.lp.Update(state.buildView())
+		rows := strings.Split(strings.TrimRight(screen.Text(), "\n"), "\n")
+		assert.Equal(t, strings.Repeat("─", 80), rows[0])
+
+		region.resize(40)
+		rows = strings.Split(strings.TrimRight(screen.Text(), "\n"), "\n")
+		assert.Equal(t, []string{strings.Repeat("─", 40), "> hi", strings.Repeat("─", 40)}, rows)
+	})
 }
 
 func TestReadLineFallback(t *testing.T) {

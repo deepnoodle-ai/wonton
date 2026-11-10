@@ -263,11 +263,12 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 
 	// Create live printer for the input region
 	width, fromTerminal := promptWidth(cfg.output, in)
-	lp := NewLivePrinter(WithWidth(width), WithOutput(cfg.output))
+	region := &promptRegion{
+		state: state,
+		lp:    NewLivePrinter(WithWidth(width), WithOutput(cfg.output)),
+	}
+	lp := region.lp
 	defer lp.Stop() // restores the cursor the live printer hid
-
-	// mu guards state and lp between the input loop and the resize watcher.
-	var mu sync.Mutex
 
 	// Render initial view
 	lp.Update(state.buildView())
@@ -275,14 +276,9 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 	stopResize := func() {}
 	if fromTerminal {
 		stopResize = watchPromptResize(func() {
-			w, ok := promptWidth(cfg.output, in)
-			if !ok {
-				return
+			if w, ok := promptWidth(cfg.output, in); ok {
+				region.resize(w)
 			}
-			mu.Lock()
-			defer mu.Unlock()
-			lp.SetWidth(w)
-			lp.Update(state.buildView())
 		})
 	}
 	defer stopResize()
@@ -300,14 +296,7 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 			return "", err
 		}
 
-		// Handle the key event and re-render
-		mu.Lock()
-		result, done, keyErr := state.handleKey(event, prompt)
-		if !done {
-			lp.Update(state.buildView())
-		}
-		mu.Unlock()
-
+		result, done, keyErr := region.handleKey(event, prompt)
 		if done {
 			// Stop the watcher first, so a resize cannot redraw the
 			// cleared region.
@@ -317,6 +306,34 @@ func Prompt(prompt string, opts ...PromptOption) (string, error) {
 			return result, keyErr
 		}
 	}
+}
+
+// promptRegion is the prompt's state and the live printer that draws it.
+// mu guards both between the input loop and the resize watcher.
+type promptRegion struct {
+	mu    sync.Mutex
+	state *promptState
+	lp    *LivePrinter
+}
+
+// handleKey applies a key event to the state and redraws the region unless
+// the prompt is done.
+func (r *promptRegion) handleKey(event terminal.KeyEvent, prompt string) (string, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result, done, err := r.state.handleKey(event, prompt)
+	if !done {
+		r.lp.Update(r.state.buildView())
+	}
+	return result, done, err
+}
+
+// resize redraws the region at the given terminal width.
+func (r *promptRegion) resize(width int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lp.SetWidth(width)
+	r.lp.Update(r.state.buildView())
 }
 
 // defaultPromptWidth is the prompt's width when neither stream is a
