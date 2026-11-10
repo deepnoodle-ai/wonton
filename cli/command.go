@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -248,7 +246,11 @@ func (c *Command) NonInteractive(h Handler) *Command {
 
 // Validate adds a validation function that runs before the handler.
 //
-// Validators can check arguments and flags, returning an error if invalid:
+// Validators can check arguments and flags, returning an error if invalid.
+// An error from a validator is a usage error (exit status 2, see
+// GetExitCode) unless it is an ExitError, which keeps its own code. A
+// validator that finds a runtime failure, such as a missing file, returns
+// Exit(1):
 //
 //	cmd.Validate(func(ctx *cli.Context) error {
 //	    if ctx.Int("port") < 1024 {
@@ -512,7 +514,7 @@ func (f *Int64Flag) Validate(value string) error {
 	if f.Validator == nil {
 		return nil
 	}
-	v, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	v, err := parseInt64(value)
 	if err != nil {
 		return err
 	}
@@ -543,7 +545,7 @@ func (f *Float64Flag) Validate(value string) error {
 	if f.Validator == nil {
 		return nil
 	}
-	v, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	v, err := parseFloat(value)
 	if err != nil {
 		return err
 	}
@@ -744,7 +746,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					ctx.flags[name] = true
 					ctx.setFlags[name] = true
 					ctx.cliFlags[name] = true
-				} else if i+1 < len(args) && !looksLikeFlag(args[i+1]) {
+				} else if i+1 < len(args) {
 					i++
 					if err := c.setFlag(ctx, name, args[i]); err != nil {
 						return err
@@ -781,7 +783,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 					ctx.flags[flag.GetName()] = true
 					ctx.setFlags[flag.GetName()] = true
 					ctx.cliFlags[flag.GetName()] = true
-				} else if last && i+1 < len(args) && !looksLikeFlag(args[i+1]) {
+				} else if last && i+1 < len(args) {
 					i++
 					if err := c.setFlag(ctx, flag.GetName(), args[i]); err != nil {
 						return err
@@ -847,7 +849,7 @@ func (c *Command) parseFlags(ctx *Context, args []string) error {
 	// Run validators
 	for _, v := range c.validators {
 		if err := v(ctx); err != nil {
-			return err
+			return asUsageError(err)
 		}
 	}
 
@@ -943,18 +945,18 @@ func (c *Command) setFlag(ctx *Context, name, value string) error {
 		// Otherwise start with empty slice (replacing defaults)
 		intVal, err := parseInt(value)
 		if err != nil {
-			msg := fmt.Sprintf("invalid integer for --%s: %q", name, value)
+			msg := fmt.Sprintf("invalid value for --%s: %s", name, err)
 			if strings.Contains(value, ",") {
 				// Command-line values are not split on commas.
 				msg += fmt.Sprintf(" (pass one value per --%s)", name)
 			}
-			return errors.New(msg)
+			return &UsageError{Message: msg, Err: err}
 		}
 		ctx.flags[name] = append(existing, intVal)
 	default:
 		typed, err := convertFlagValue(flag, value)
 		if err != nil {
-			return fmt.Errorf("invalid value for --%s: %s", name, err)
+			return &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, err), Err: err}
 		}
 		ctx.flags[name] = typed
 	}
@@ -992,10 +994,6 @@ func checkFlagValue(f Flag, val string) string {
 	return ""
 }
 
-func parseInt(s string) (int, error) {
-	return strconv.Atoi(strings.TrimSpace(s))
-}
-
 // convertFlagValue converts a raw string (e.g. from an environment variable)
 // to the flag's value type, as indicated by the type of its default value.
 // Slice flags accept comma-separated values.
@@ -1008,16 +1006,16 @@ func convertFlagValue(f Flag, val string) (any, error) {
 		case "false", "0", "no", "off", "":
 			return false, nil
 		default:
-			return nil, fmt.Errorf("invalid boolean")
+			return nil, fmt.Errorf("%q is not true or false", val)
 		}
 	case int:
 		return parseInt(val)
 	case int64:
-		return strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+		return parseInt64(val)
 	case float64:
-		return strconv.ParseFloat(strings.TrimSpace(val), 64)
+		return parseFloat(val)
 	case time.Duration:
-		return time.ParseDuration(strings.TrimSpace(val))
+		return parseDuration(val)
 	case []string:
 		if val == "" {
 			return []string(nil), nil
@@ -1034,9 +1032,9 @@ func convertFlagValue(f Flag, val string) (any, error) {
 		parts := strings.Split(val, ",")
 		ints := make([]int, len(parts))
 		for i, p := range parts {
-			n, err := parseInt(p)
+			n, err := parseInt(strings.TrimSpace(p))
 			if err != nil {
-				return nil, fmt.Errorf("invalid integer %q", strings.TrimSpace(p))
+				return nil, err
 			}
 			ints[i] = n
 		}
@@ -1163,9 +1161,9 @@ func missingFlagError(prefix string, c *Command, f Flag) error {
 // relevant reference material is the flag list.
 func (c *Command) errorWithHelpHint(head string) error {
 	if c == nil {
-		return fmt.Errorf("%s", head)
+		return &UsageError{Message: head}
 	}
-	return fmt.Errorf("%s\n\nRun '%s --help' to see available flags.", head, c.helpInvocation())
+	return usageErrorf("%s\n\nRun '%s --help' to see available flags.", head, c.helpInvocation())
 }
 
 // errorWithUsageHint is the positional-argument counterpart to
@@ -1174,9 +1172,9 @@ func (c *Command) errorWithHelpHint(head string) error {
 // the flag list.
 func (c *Command) errorWithUsageHint(head string) error {
 	if c == nil {
-		return fmt.Errorf("%s", head)
+		return &UsageError{Message: head}
 	}
-	return fmt.Errorf("%s\n\nRun '%s --help' to see available arguments.", head, c.helpInvocation())
+	return usageErrorf("%s\n\nRun '%s --help' to see available arguments.", head, c.helpInvocation())
 }
 
 // helpInvocation returns the "app [group] name" prefix used when pointing

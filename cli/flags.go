@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -81,7 +82,14 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 
 		value := ctx.flags[name]
 		if err := setFieldFromAny(rv.Field(i), value); err != nil {
-			return nil, fmt.Errorf("invalid value for --%s: %w", name, err)
+			// Only a value the user typed that does not parse is a usage
+			// error. A field type that cannot hold the flag is a bug in
+			// the program.
+			var valErr *badValueError
+			if errors.As(err, &valErr) {
+				return nil, &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, valErr.err), Err: valErr.err}
+			}
+			return nil, fmt.Errorf("cannot bind --%s to field %s (%s): %w", name, field.Name, field.Type, err)
 		}
 	}
 
@@ -282,7 +290,7 @@ func boolTag(tag reflect.StructTag, key string) bool {
 
 func setFieldValue(v reflect.Value, s string) error {
 	if v.Type() == durationType {
-		d, err := time.ParseDuration(s)
+		d, err := parseDuration(s)
 		if err != nil {
 			return err
 		}
@@ -297,7 +305,7 @@ func setFieldValue(v reflect.Value, s string) error {
 		case reflect.Int:
 			var ints []int
 			for _, part := range splitList(s) {
-				n, err := strconv.Atoi(part)
+				n, err := parseInt(part)
 				if err != nil {
 					return err
 				}
@@ -312,13 +320,13 @@ func setFieldValue(v reflect.Value, s string) error {
 	case reflect.Bool:
 		v.SetBool(s == "true" || s == "1" || s == "yes")
 	case reflect.Int, reflect.Int64:
-		i, err := strconv.ParseInt(s, 10, 64)
+		i, err := parseInt64(s)
 		if err != nil {
 			return err
 		}
 		v.SetInt(i)
 	case reflect.Float64:
-		f, err := strconv.ParseFloat(s, 64)
+		f, err := parseFloat(s)
 		if err != nil {
 			return err
 		}
@@ -328,6 +336,13 @@ func setFieldValue(v reflect.Value, s string) error {
 	}
 	return nil
 }
+
+// badValueError marks an error from setFieldFromAny as a value that does not
+// parse, as opposed to a field type that cannot hold the flag's value.
+type badValueError struct{ err error }
+
+func (e *badValueError) Error() string { return e.err.Error() }
+func (e *badValueError) Unwrap() error { return e.err }
 
 func setFieldFromAny(v reflect.Value, val any) error {
 	switch v.Kind() {
@@ -360,9 +375,9 @@ func setFieldFromAny(v reflect.Value, val any) error {
 		case float64:
 			v.SetInt(int64(i))
 		case string:
-			n, err := strconv.ParseInt(i, 10, 64)
+			n, err := parseInt64(i)
 			if err != nil {
-				return err
+				return &badValueError{err}
 			}
 			v.SetInt(n)
 		}
@@ -375,9 +390,9 @@ func setFieldFromAny(v reflect.Value, val any) error {
 		case int64:
 			v.SetFloat(float64(f))
 		case string:
-			n, err := strconv.ParseFloat(f, 64)
+			n, err := parseFloat(f)
 			if err != nil {
-				return err
+				return &badValueError{err}
 			}
 			v.SetFloat(n)
 		}
@@ -592,7 +607,7 @@ func (b *float64Builder) Validate(value string) error {
 	if b.validator == nil {
 		return nil
 	}
-	v, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	v, err := parseFloat(value)
 	if err != nil {
 		return err
 	}
@@ -744,7 +759,7 @@ func (b *int64Builder) Validate(value string) error {
 	if b.validator == nil {
 		return nil
 	}
-	v, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	v, err := parseInt64(value)
 	if err != nil {
 		return err
 	}

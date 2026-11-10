@@ -126,12 +126,73 @@ func IsHelpRequested(err error) bool {
 	return errors.As(err, &helpErr)
 }
 
+// UsageError reports that the program was invoked incorrectly: an unknown
+// flag, command or subcommand, a missing or invalid value, a missing or
+// unexpected argument, or a missing required flag.
+//
+// The package returns a UsageError for every error it finds while it parses
+// and validates the command line. That includes the errors of flag
+// validators (ValidateWith, a Validator field, Enum) and of Validate hooks
+// on the app, a group or a command. A Validate hook error that is an
+// ExitError keeps its own code, so a hook that finds a runtime failure
+// returns Exit(1). Errors returned by handlers are not usage errors.
+//
+// GetExitCode returns 2 for a UsageError, which is the Unix convention for
+// "called incorrectly". Check for one with IsUsageError.
+type UsageError struct {
+	// Message is the complete error text, including any hint that follows
+	// a blank line. When it is empty, Error returns Err's text.
+	Message string
+
+	// Err is the underlying error, if any. errors.Is and errors.As see it
+	// through Unwrap.
+	Err error
+}
+
+func (e *UsageError) Error() string {
+	if e.Message == "" && e.Err != nil {
+		return e.Err.Error()
+	}
+	return e.Message
+}
+
+// Unwrap returns the underlying error, if any.
+func (e *UsageError) Unwrap() error {
+	return e.Err
+}
+
+// asUsageError marks an error returned by a validator as a usage error.
+// Errors that already carry an exit status (ExitError, UsageError) or ask
+// for help are returned unchanged.
+func asUsageError(err error) error {
+	if err == nil || IsUsageError(err) || IsHelpRequested(err) {
+		return err
+	}
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	return &UsageError{Err: err}
+}
+
+// usageErrorf returns a UsageError with a formatted message.
+func usageErrorf(format string, args ...any) error {
+	return &UsageError{Message: fmt.Sprintf(format, args...)}
+}
+
+// IsUsageError reports whether err is, or wraps, a UsageError.
+func IsUsageError(err error) bool {
+	var usageErr *UsageError
+	return errors.As(err, &usageErr)
+}
+
 // GetExitCode returns the appropriate exit code for an error.
 // This function supports wrapped errors via errors.As.
 //
 // Returns:
 //   - 0 if err is nil or HelpRequested
 //   - The code from ExitError if err is an ExitError
+//   - 2 if err is a UsageError (the command line was invalid)
 //   - 1 for all other errors
 func GetExitCode(err error) int {
 	if err == nil {
@@ -143,6 +204,9 @@ func GetExitCode(err error) int {
 	}
 	if IsHelpRequested(err) {
 		return 0
+	}
+	if IsUsageError(err) {
+		return 2
 	}
 	return 1
 }

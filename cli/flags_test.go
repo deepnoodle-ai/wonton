@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/deepnoodle-ai/wonton/assert"
@@ -41,6 +42,39 @@ func TestBindFlagsFromContext(t *testing.T) {
 		cfg, err := BindFlags[Config](ctx)
 		assert.NoError(t, err)
 		assert.True(t, cfg.Verbose)
+	})
+
+	t.Run("reports a value that is not a number plainly", func(t *testing.T) {
+		type Config struct {
+			Port  int     `flag:"port"`
+			Ratio float64 `flag:"ratio"`
+		}
+
+		_, err := BindFlags[Config](newTestContext(map[string]any{"port": "abc"}))
+		assert.Error(t, err)
+		assert.Equal(t, `invalid value for --port: "abc" is not a whole number`, err.Error())
+		assert.True(t, IsUsageError(err))
+
+		_, err = BindFlags[Config](newTestContext(map[string]any{"ratio": "x"}))
+		assert.Error(t, err)
+		assert.Equal(t, `invalid value for --ratio: "x" is not a number`, err.Error())
+
+		var usageErr *UsageError
+		assert.True(t, errors.As(err, &usageErr))
+		assert.Error(t, usageErr.Err)
+		assert.Equal(t, `"x" is not a number`, usageErr.Err.Error())
+	})
+
+	t.Run("field type that cannot hold the flag is not a usage error", func(t *testing.T) {
+		type Config struct {
+			Tags map[string]string `flag:"tags"`
+		}
+
+		_, err := BindFlags[Config](newTestContext(map[string]any{"tags": "a=b"}))
+		assert.Error(t, err)
+		assert.Equal(t, "cannot bind --tags to field Tags (map[string]string): unsupported type: map", err.Error())
+		assert.False(t, IsUsageError(err))
+		assert.Equal(t, 1, GetExitCode(err))
 	})
 
 	t.Run("binds int field from context", func(t *testing.T) {
