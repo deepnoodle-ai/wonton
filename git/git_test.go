@@ -14,6 +14,30 @@ import (
 	"github.com/deepnoodle-ai/wonton/git"
 )
 
+// TestMain runs every git command in these tests, and in the package under
+// test, with an empty global config and no system config. The tests then
+// behave as they do in CI, whatever the developer's own settings are. For
+// example, tag.gpgSign=true turns a plain "git tag v1" into a signed tag that
+// needs a message, and the tag fails.
+func TestMain(m *testing.M) {
+	os.Exit(runIsolated(m))
+}
+
+func runIsolated(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "wonton-git-test-")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	global := filepath.Join(dir, "gitconfig")
+	if err := os.WriteFile(global, nil, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	os.Setenv("GIT_CONFIG_GLOBAL", global)
+	os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	return m.Run()
+}
+
 func TestOpen(t *testing.T) {
 	// Test opening the current repo
 	repo, err := git.Open(".")
