@@ -999,11 +999,11 @@ go test ./tui -run "TestGolden" -v
 When you add new tests or intentionally change rendering behavior:
 
 ```bash
-# Create/update snapshots (flag must come AFTER package)
-go test ./tui -run "TestGolden_MyComponent" -update
+# Create/update snapshots
+TERMTEST_UPDATE=1 go test ./tui -run "TestGolden_MyComponent"
 
 # Update all snapshots
-go test ./tui -run "TestGolden" -update
+TERMTEST_UPDATE=1 go test ./tui -run "TestGolden"
 ```
 
 Snapshots are stored in `testdata/snapshots/` as `.snap` files.

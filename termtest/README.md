@@ -23,7 +23,7 @@ func TestSimpleOutput(t *testing.T) {
 	screen.Write([]byte("Hello, \x1b[32mWorld\x1b[0m!"))
 
 	// Assert screen content matches snapshot
-	// Run with -update flag to create/update snapshots
+	// Run with TERMTEST_UPDATE=1 to create/update snapshots
 	termtest.AssertScreen(t, screen)
 }
 
@@ -439,17 +439,16 @@ current background color (background color erase), as xterm and ghostty do.
 
 ## Testing Workflow
 
-To update snapshots, run tests with the `-update` flag:
-
-```bash
-go test -update ./...
-```
-
-Or set environment variable:
+To create or update snapshots, set `TERMTEST_UPDATE`:
 
 ```bash
 TERMTEST_UPDATE=1 go test ./...
 ```
+
+termtest does not register a `-update` flag, so importing it adds no flags to
+your program or test binary. If a test package defines its own boolean
+`update` flag (for its own golden files), `go test -update` in that package
+also updates termtest snapshots.
 
 Snapshots are stored in `testdata/snapshots/` directory as `.snap` files.
 

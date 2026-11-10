@@ -1,6 +1,9 @@
 package termtest
 
 import (
+	"flag"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -247,4 +250,47 @@ func TestEqualWithStyles(t *testing.T) {
 	// Different content
 	assert.False(t, Equal(s1, s3))
 	assert.False(t, EqualStyled(s1, s3))
+}
+
+func TestSnapshotDoesNotRegisterUpdateFlag(t *testing.T) {
+	// Importing termtest must not add flags to the program. No test file in
+	// this package defines "update", so any flag found here came from termtest.
+	assert.Nil(t, flag.Lookup("update"))
+}
+
+func TestSnapshotHonoursUserDefinedUpdateFlag(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	assert.False(t, updateFlagSet(fs), "no update flag defined")
+
+	fs.Bool("update", false, "update golden files")
+	assert.False(t, updateFlagSet(fs), "update flag defined but false")
+
+	assert.NoError(t, fs.Parse([]string{"-update"}))
+	assert.True(t, updateFlagSet(fs), "update flag set to true")
+}
+
+func TestSnapshotUpdateFlagWithNonBoolValue(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	v := fs.String("update", "", "update mode")
+
+	*v = "all"
+	assert.False(t, updateFlagSet(fs))
+
+	*v = "true"
+	assert.True(t, updateFlagSet(fs))
+}
+
+func TestSnapshotUpdateEnvWritesSnapshot(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	t.Setenv(updateEnv, "1")
+	AssertTextNamed(t, "env_update", "hello\n")
+
+	got, err := os.ReadFile(filepath.Join("testdata", "snapshots", "env_update.snap"))
+	assert.NoError(t, err)
+	assert.Equal(t, "hello\n", string(got))
+
+	// With updates off, the written snapshot is compared and matches.
+	t.Setenv(updateEnv, "")
+	AssertTextNamed(t, "env_update", "hello\n")
 }

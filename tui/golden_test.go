@@ -8,7 +8,7 @@ import (
 )
 
 // Golden tests compare rendered TUI output against saved snapshot files.
-// Run with -update to create/update snapshots: go test -update ./tui/...
+// Create/update snapshots with: TERMTEST_UPDATE=1 go test ./tui/...
 // Snapshots are stored in testdata/snapshots/
 
 // =============================================================================

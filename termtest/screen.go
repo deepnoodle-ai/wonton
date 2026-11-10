@@ -44,7 +44,7 @@
 //
 // Update snapshots when output changes intentionally:
 //
-//	go test -update ./...
+//	TERMTEST_UPDATE=1 go test ./...
 //
 // # Capturing Live Output
 //
