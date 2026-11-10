@@ -4130,6 +4130,36 @@ func TestVersionFunc(t *testing.T) {
 		assert.Contains(t, buf.String(), "demo (v1.2.3)")
 	})
 
+	t.Run("help and completions list the built-in version command", func(t *testing.T) {
+		app := New("x").VersionFunc(func(w io.Writer) { fmt.Fprintln(w, "x 1") })
+		app.Command("a").Run(func(*Context) error { return nil })
+
+		var help bytes.Buffer
+		app.SetStdout(&help)
+		app.SetColorEnabled(false)
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"help"})))
+		assert.Contains(t, help.String(), "  version  Print the version\n")
+
+		for _, gen := range []func(io.Writer) error{
+			app.GenerateBashCompletion, app.GenerateZshCompletion, app.GenerateFishCompletion,
+		} {
+			var script bytes.Buffer
+			assert.NoError(t, gen(&script))
+			assert.Contains(t, script.String(), "version")
+		}
+	})
+
+	t.Run("an app's own version command is listed once", func(t *testing.T) {
+		var buf bytes.Buffer
+		app := New("x").Version("1")
+		app.Command("version").Description("Show build info").Run(func(*Context) error { return nil })
+		app.SetStdout(&buf)
+		app.SetColorEnabled(false)
+		assert.True(t, IsHelpRequested(app.ExecuteArgs([]string{"help"})))
+		assert.Contains(t, buf.String(), "Show build info")
+		assert.NotContains(t, buf.String(), "Print the version")
+	})
+
 	t.Run("without VersionFunc the bare version is printed", func(t *testing.T) {
 		var buf bytes.Buffer
 		app := New("demo").Version("1.2.3")

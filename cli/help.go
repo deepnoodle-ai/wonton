@@ -107,10 +107,10 @@ func (a *App) renderAppHelp() tui.View {
 			renderExamples(a.examples, theme),
 		))
 	}
-	if len(a.commands) > 0 && hasSubcmds {
+	if listed, listedOrder := a.listedCommands(); len(a.commands) > 0 && hasSubcmds {
 		views = append(views, tui.Stack(
 			renderSection("COMMANDS", theme),
-			renderOrderedCommands(a.commands, a.commandOrder, theme),
+			renderOrderedCommands(listed, listedOrder, theme),
 		))
 	}
 
@@ -608,7 +608,7 @@ func renderFlag(f Flag, theme HelpTheme, maxNameLen int) tui.View {
 
 	return tui.Group(
 		tui.Text("%s", prefix).Style(theme.Flag),
-		tui.Text(" "),
+		tui.Text("  "),
 		tui.Text("%s", help).Wrap().Flex(1),
 	)
 }

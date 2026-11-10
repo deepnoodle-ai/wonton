@@ -1327,7 +1327,7 @@ func writeFlagHelp(sb *strings.Builder, f Flag, nameWidth int) {
 	}
 	flagStr += fmt.Sprintf("--%-*s", nameWidth, flagLabel(f))
 	sb.WriteString(flagStr)
-	sb.WriteString(" ")
+	sb.WriteString("  ")
 	sb.WriteString(f.GetHelp())
 	def := f.GetDefault()
 	if !isZeroDefault(def) {

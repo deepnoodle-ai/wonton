@@ -285,6 +285,22 @@ func (a *App) hasVersion() bool {
 	return a.version != "" || a.versionFunc != nil
 }
 
+// listedCommands returns the top-level commands that help and completions
+// list, with their order. It adds the built-in version command when the app
+// has version output and defines no command or group named "version".
+func (a *App) listedCommands() (map[string]*Command, []string) {
+	if !a.hasVersion() || a.commands["version"] != nil || a.groups["version"] != nil {
+		return a.commands, a.commandOrder
+	}
+	commands := make(map[string]*Command, len(a.commands)+1)
+	for name, cmd := range a.commands {
+		commands[name] = cmd
+	}
+	commands["version"] = &Command{name: "version", description: "Print the version"}
+	order := append(orderedCommandKeys(a.commands, a.commandOrder), "version")
+	return commands, order
+}
+
 // printVersion writes the version output to the app's stdout.
 func (a *App) printVersion() {
 	if a.versionFunc != nil {
@@ -850,9 +866,10 @@ func levenshtein(a, b string) int {
 // topLevelCommandNames returns visible, invokable top-level names: direct
 // commands (excluding the empty root name), their aliases, and group names.
 func (a *App) topLevelCommandNames() []string {
-	out := make([]string, 0, len(a.commands)+len(a.groups))
-	for _, name := range orderedCommandKeys(a.commands, a.commandOrder) {
-		cmd := a.commands[name]
+	commands, order := a.listedCommands()
+	out := make([]string, 0, len(commands)+len(a.groups))
+	for _, name := range orderedCommandKeys(commands, order) {
+		cmd := commands[name]
 		if name == "" || cmd == nil || cmd.hidden {
 			continue
 		}
@@ -1027,7 +1044,8 @@ func (a *App) showHelp() error {
 	// Commands section (in insertion order)
 	if len(a.commands) > 0 && hasSubcmds {
 		sb.WriteString("Commands:\n")
-		writePlainCommandRows(&sb, a.commands, a.commandOrder, 2)
+		commands, order := a.listedCommands()
+		writePlainCommandRows(&sb, commands, order, 2)
 		sb.WriteString("\n")
 	}
 
