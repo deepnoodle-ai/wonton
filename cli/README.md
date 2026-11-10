@@ -693,9 +693,10 @@ String flags additionally support:
 | `Errorf(format, args...)` | Create formatted error                                | `string`, `...any` | `*CommandError` |
 | `Exit(code)`              | Create exit error with code                           | `int`              | `error`         |
 | `IsHelpRequested(err)`    | Check if help was requested (supports wrapped errors) | `error`            | `bool`          |
-| `GetExitCode(err)`        | Get exit code from error (supports wrapped errors)    | `error`            | `int`           |
+| `IsUsageError(err)`       | Check if the command line was invalid                 | `error`            | `bool`          |
+| `GetExitCode(err)`        | Exit code: 0 help, 2 usage error, 1 other error       | `error`            | `int`           |
 
-Note: `IsHelpRequested` and `GetExitCode` use `errors.As` internally, so they work correctly with wrapped errors (e.g., `fmt.Errorf("failed: %w", cli.Exit(1))`).
+Note: `IsHelpRequested`, `IsUsageError` and `GetExitCode` use `errors.As` internally, so they work correctly with wrapped errors (e.g., `fmt.Errorf("failed: %w", cli.Exit(1))`).
 
 ## Argument Parsing
 
@@ -768,17 +769,76 @@ appear, `-4` is then that flag. Right after a flag that needs a value, `-4` is
 the value, so `--count -4` sets the count. Use `--` to pass `-4` as a
 positional argument.
 
-### Command Names Take Precedence
+### Flag Values
 
-When a flag value matches a command name, the command takes precedence:
+A flag that takes a value always takes the next word as its value, whatever
+the word starts with. This matches getopt and Go's `flag` package:
 
 ```bash
-myapp --config run    # "run" is treated as command, --config has no value → ERROR
+myapp calc --run -x       # run = "-x"
+myapp calc --name --write # name = "--write"; --write is not set
+myapp calc -wr -x         # -w is a bool flag; -r takes "-x"
+myapp calc --run          # ERROR: flag --run requires a value
+```
+
+In a short-flag bundle, only the last flag can take the next word. Bool flags
+never take the next word; use `--write=false` to set one to false.
+
+### Flags Before the Command
+
+A global flag, or a flag the root command (`app.Main()`) defines, belongs to
+the root even when its value is also a command name:
+
+```bash
+myapp --env test      # env = "test"; runs the root command
+```
+
+A flag that only a command defines can appear before that command. When the
+next word is a command name, the parser gives the flag to that command:
+
+```bash
+myapp --config run    # "run" is the command; --config has no value → ERROR
 myapp --config=run    # "run" is the value for --config ✓
 ```
 
-This is by design - command resolution happens before flag-value association.
-Use `--flag=value` syntax when passing values that might match command names.
+Use `--flag=value` syntax when a value might match a command name.
+
+### Unknown Commands
+
+When the root command declares no positional arguments, an unknown first word
+is reported as an unknown command, with a suggestion when one is close:
+
+```bash
+myapp clac            # ERROR: unknown command: clac  (Did you mean 'calc'?)
+```
+
+If the root command declares arguments with `Args`, the word is a positional
+argument instead.
+
+### Usage Errors and Exit Codes
+
+Every error the parser finds about how the program was invoked is a
+`*cli.UsageError`: an unknown flag, command or subcommand, a missing or
+invalid value, a missing or unexpected argument, or a missing required flag.
+`cli.IsUsageError(err)` reports one. Errors returned by your handlers are not
+usage errors.
+
+`cli.GetExitCode` follows the Unix convention:
+
+| Error                  | Exit code       |
+| ---------------------- | --------------- |
+| `nil`, help requested  | 0               |
+| `cli.Exit(n)`          | n               |
+| Usage error            | 2               |
+| Any other error        | 1               |
+
+An invalid value names the flag and the value in plain words:
+
+```text
+invalid value for --offset: "abc" is not a whole number
+invalid value for --ratio: "x" is not a number
+invalid value for --timeout: "soon" is not a duration (e.g. 30s, 5m)
+```
 
 ## Tips
 

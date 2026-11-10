@@ -2687,6 +2687,241 @@ func TestGetExitCodeForGenericError(t *testing.T) {
 	assert.Equal(t, 1, GetExitCode(Error("generic")))
 }
 
+func TestGetExitCodeForUsageError(t *testing.T) {
+	assert.Equal(t, 2, GetExitCode(&UsageError{Message: "bad"}))
+	assert.Equal(t, 2, GetExitCode(fmt.Errorf("wrapped: %w", &UsageError{Message: "bad"})))
+	assert.Equal(t, 1, GetExitCode(errors.New("failed")))
+	assert.Equal(t, 0, GetExitCode(&HelpRequested{}))
+	assert.Equal(t, 3, GetExitCode(Exit(3)))
+}
+
+// --- Flag values, unknown commands and usage errors ----------------------
+
+// parseDemo holds the values a parseDemoApp handler saw.
+type parseDemo struct {
+	ran            string
+	env, run, name string
+	offset         int
+	ratio          float64
+	write          bool
+	timeout        time.Duration
+}
+
+// parseDemoApp builds an app with a root command that has an --env flag,
+// a "test" command, and a "calc" command with value and bool flags.
+func parseDemoApp(d *parseDemo) *App {
+	app := New("demo")
+	app.Main().
+		Flags(String("env", "e")).
+		Run(func(ctx *Context) error {
+			d.ran = "root"
+			d.env = ctx.String("env")
+			return nil
+		})
+	app.Command("test").Run(func(ctx *Context) error {
+		d.ran = "test"
+		return nil
+	})
+	app.Command("calc").
+		Flags(
+			Int("offset", "o"),
+			String("run", "r"),
+			String("name", "n"),
+			Bool("write", "w"),
+			Float64("ratio"),
+			Duration("timeout"),
+		).
+		Run(func(ctx *Context) error {
+			d.ran = "calc"
+			d.offset = ctx.Int("offset")
+			d.run = ctx.String("run")
+			d.name = ctx.String("name")
+			d.write = ctx.Bool("write")
+			d.ratio = ctx.Float64("ratio")
+			d.timeout = ctx.Duration("timeout")
+			return nil
+		})
+	return app
+}
+
+func TestFlagTakesNextWordAsValue(t *testing.T) {
+	cases := []struct {
+		name  string
+		args  []string
+		check func(t *testing.T, d *parseDemo)
+	}{
+		{"long value starting with dash", []string{"calc", "--run", "-x"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "-x", d.run)
+		}},
+		{"short value starting with dash", []string{"calc", "-r", "-x"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "-x", d.run)
+		}},
+		{"value that is a long flag", []string{"calc", "--name", "--write"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "--write", d.name)
+			assert.False(t, d.write)
+		}},
+		{"double dash as value", []string{"calc", "--run", "--"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "--", d.run)
+		}},
+		{"last flag of a short bundle", []string{"calc", "-wr", "-x"}, func(t *testing.T, d *parseDemo) {
+			assert.True(t, d.write)
+			assert.Equal(t, "-x", d.run)
+		}},
+		{"bool flag does not take the next word", []string{"calc", "--write", "--run", "x"}, func(t *testing.T, d *parseDemo) {
+			assert.True(t, d.write)
+			assert.Equal(t, "x", d.run)
+		}},
+		{"negative int", []string{"calc", "--offset", "-1"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, -1, d.offset)
+		}},
+		{"root long flag value names a command", []string{"--env", "test"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "root", d.ran)
+			assert.Equal(t, "test", d.env)
+		}},
+		{"root short flag value names a command", []string{"-e", "test"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "root", d.ran)
+			assert.Equal(t, "test", d.env)
+		}},
+		{"root flag value starting with dash", []string{"--env", "-x"}, func(t *testing.T, d *parseDemo) {
+			assert.Equal(t, "root", d.ran)
+			assert.Equal(t, "-x", d.env)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &parseDemo{}
+			err := parseDemoApp(d).ExecuteArgs(tc.args)
+			assert.NoError(t, err)
+			tc.check(t, d)
+		})
+	}
+}
+
+func TestFlagWithoutNextWordRequiresValue(t *testing.T) {
+	for _, args := range [][]string{
+		{"calc", "--run"},
+		{"calc", "-r"},
+		{"calc", "-rw", "x"},
+		{"--env"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			err := parseDemoApp(&parseDemo{}).ExecuteArgs(args)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "requires a value")
+			assert.True(t, IsUsageError(err))
+		})
+	}
+}
+
+func TestUnknownWordWithRootCommand(t *testing.T) {
+	t.Run("root without args reports unknown command", func(t *testing.T) {
+		err := parseDemoApp(&parseDemo{}).ExecuteArgs([]string{"bogus"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: bogus")
+		assert.NotContains(t, err.Error(), "unexpected argument")
+	})
+
+	t.Run("close word gets a suggestion", func(t *testing.T) {
+		err := parseDemoApp(&parseDemo{}).ExecuteArgs([]string{"clac"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unknown command: clac")
+		assert.Contains(t, err.Error(), "Did you mean 'calc'?")
+	})
+
+	t.Run("root with args takes the word as a positional", func(t *testing.T) {
+		var got []string
+		app := New("demo")
+		app.Main().Args("file").Run(func(ctx *Context) error {
+			got = ctx.Args()
+			return nil
+		})
+		app.Command("test").Run(func(ctx *Context) error { return nil })
+		assert.NoError(t, app.ExecuteArgs([]string{"bogus"}))
+		assert.Equal(t, []string{"bogus"}, got)
+	})
+}
+
+func TestInvalidFlagValueMessages(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"calc", "--offset", "abc"}, `invalid value for --offset: "abc" is not a whole number`},
+		{[]string{"calc", "--offset", "99999999999999999999"}, `invalid value for --offset: "99999999999999999999" is out of range`},
+		{[]string{"calc", "--ratio", "x"}, `invalid value for --ratio: "x" is not a number`},
+		{[]string{"calc", "--write=maybe"}, `invalid value for --write: "maybe" is not true or false`},
+		{[]string{"calc", "--timeout", "soon"}, `invalid value for --timeout: "soon" is not a duration (e.g. 30s, 5m)`},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			err := parseDemoApp(&parseDemo{}).ExecuteArgs(tc.args)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+			assert.NotContains(t, err.Error(), "strconv")
+			assert.NotContains(t, err.Error(), "time:")
+			assert.True(t, IsUsageError(err))
+		})
+	}
+}
+
+func TestUsageErrors(t *testing.T) {
+	newApp := func() *App {
+		app := New("demo")
+		app.Command("calc").
+			Flags(
+				Int("offset"),
+				String("mode").Enum("fast", "slow"),
+				String("token").Required(),
+				Ints("ids"),
+			).
+			Args("x?").
+			Run(func(ctx *Context) error { return nil })
+		app.Command("pair").Args("a", "b").Run(func(ctx *Context) error { return nil })
+		app.Command("fail").Run(func(ctx *Context) error { return errors.New("work failed") })
+		app.Group("db").Command("migrate").Run(func(ctx *Context) error { return nil })
+		return app
+	}
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"unknown long flag", []string{"calc", "--nope", "--token=t"}},
+		{"unknown short flag", []string{"calc", "-z", "--token=t"}},
+		{"missing value", []string{"calc", "--token"}},
+		{"invalid value", []string{"calc", "--offset", "abc", "--token=t"}},
+		{"invalid slice value", []string{"calc", "--ids", "abc", "--token=t"}},
+		{"enum mismatch", []string{"calc", "--mode", "medium", "--token=t"}},
+		{"required flag missing", []string{"calc"}},
+		{"unexpected argument", []string{"calc", "a", "b", "--token=t"}},
+		{"missing argument", []string{"pair", "a"}},
+		{"unknown command", []string{"bogus"}},
+		{"unknown subcommand", []string{"db", "bogus"}},
+		{"group requires subcommand", []string{"db"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := newApp().ExecuteArgs(tc.args)
+			assert.Error(t, err)
+			assert.True(t, IsUsageError(err), "error: %v", err)
+			assert.Equal(t, 2, GetExitCode(err))
+		})
+	}
+
+	t.Run("handler error is not a usage error", func(t *testing.T) {
+		err := newApp().ExecuteArgs([]string{"fail"})
+		assert.Error(t, err)
+		assert.False(t, IsUsageError(err))
+		assert.Equal(t, 1, GetExitCode(err))
+	})
+
+	t.Run("global flag missing value", func(t *testing.T) {
+		app := New("demo").GlobalFlags(String("config"))
+		app.Command("run").Run(func(ctx *Context) error { return nil })
+		err := app.ExecuteArgs([]string{"--config"})
+		assert.True(t, IsUsageError(err))
+	})
+}
+
 func TestAppVersionCommand(t *testing.T) {
 	var buf bytes.Buffer
 	app := New("test").Description("Test")

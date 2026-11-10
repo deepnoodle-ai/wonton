@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -92,6 +91,19 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			// Look up the global flag
 			gf := p.app.findGlobalFlag(name)
 			if gf == nil {
+				// A flag the root command defines belongs to the root, even
+				// when the next word names a command. A value flag takes the
+				// next word as its value, whatever it looks like.
+				if rf := p.rootFlag(name); rf != nil {
+					if !isBoolFlag(rf) && i+1 < len(args) {
+						result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
+						i += 2
+						continue
+					}
+					result.GlobalFlags = append(result.GlobalFlags, arg)
+					i++
+					continue
+				}
 				// Unknown global flag - could be a command-level flag appearing early.
 				// Check if next arg looks like a command name.
 				if i+1 < len(args) {
@@ -102,13 +114,6 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						p.resolveCommandPosition(result, args, i+1)
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
-					}
-					// If this is a boolean flag on the root command, it takes no
-					// value; leave the next token to be resolved as a positional.
-					if p.isRootBoolFlag(name) {
-						result.GlobalFlags = append(result.GlobalFlags, arg)
-						i++
-						continue
 					}
 					// Next arg is not a known command.
 					// If it doesn't look like a flag, assume it's this flag's value.
@@ -132,7 +137,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			} else {
 				// Non-boolean flag - needs a value
 				if i+1 >= len(args) {
-					return nil, fmt.Errorf("flag --%s requires a value\n\nRun '%s --help' to see available flags.", name, p.app.name)
+					return nil, usageErrorf("flag --%s requires a value\n\nRun '%s --help' to see available flags.", name, p.app.name)
 				}
 				result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
 				i += 2
@@ -162,6 +167,18 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 			gf := p.app.findGlobalFlagByShort(lastShort)
 
 			if gf == nil {
+				// A short flag the root command defines belongs to the root,
+				// as for long flags above.
+				if rf := p.rootFlagByShort(lastShort); rf != nil {
+					if !isBoolFlag(rf) && i+1 < len(args) {
+						result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
+						i += 2
+						continue
+					}
+					result.GlobalFlags = append(result.GlobalFlags, arg)
+					i++
+					continue
+				}
 				// Unknown short flag - similar logic to long flags
 				if i+1 < len(args) {
 					next := args[i+1]
@@ -169,11 +186,6 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 						p.resolveCommandPosition(result, args, i+1)
 						result.CommandArgs = append([]string{arg}, result.CommandArgs...)
 						return result, nil
-					}
-					if p.isRootBoolFlagByShort(lastShort) {
-						result.GlobalFlags = append(result.GlobalFlags, arg)
-						i++
-						continue
 					}
 					if !looksLikeFlag(next) {
 						result.GlobalFlags = append(result.GlobalFlags, arg, next)
@@ -192,7 +204,7 @@ func (p *parser) parse(args []string) (*parseResult, error) {
 				i++
 			} else {
 				if i+1 >= len(args) {
-					return nil, fmt.Errorf("flag -%s requires a value\n\nRun '%s --help' to see available flags.", lastShort, p.app.name)
+					return nil, usageErrorf("flag -%s requires a value\n\nRun '%s --help' to see available flags.", lastShort, p.app.name)
 				}
 				result.GlobalFlags = append(result.GlobalFlags, arg, args[i+1])
 				i += 2
@@ -389,16 +401,21 @@ func (p *parser) hasCommands() bool {
 	return len(p.app.groups) > 0
 }
 
-// isRootBoolFlag reports whether name is a boolean flag defined on the root command.
-func (p *parser) isRootBoolFlag(name string) bool {
-	rootCmd := p.app.commands[""]
-	return rootCmd != nil && isBoolFlag(rootCmd.findFlag(name))
+// rootFlag returns the flag with the given name on the root command, or nil.
+func (p *parser) rootFlag(name string) Flag {
+	if rootCmd := p.app.commands[""]; rootCmd != nil {
+		return rootCmd.findFlag(name)
+	}
+	return nil
 }
 
-// isRootBoolFlagByShort reports whether short is a boolean flag defined on the root command.
-func (p *parser) isRootBoolFlagByShort(short string) bool {
-	rootCmd := p.app.commands[""]
-	return rootCmd != nil && isBoolFlag(rootCmd.findFlagByShort(short))
+// rootFlagByShort returns the flag with the given short name on the root
+// command, or nil.
+func (p *parser) rootFlagByShort(short string) Flag {
+	if rootCmd := p.app.commands[""]; rootCmd != nil {
+		return rootCmd.findFlagByShort(short)
+	}
+	return nil
 }
 
 // isBoolFlag reports whether f is a non-nil boolean flag.

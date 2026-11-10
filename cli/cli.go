@@ -408,6 +408,9 @@ func (a *App) rootCommand() *Command {
 //	    }
 //	}
 //
+// GetExitCode returns 2 when the command line was invalid (a UsageError)
+// and 1 when the command failed.
+//
 // Execute automatically strips the program name from os.Args and passes
 // the remaining arguments to ExecuteArgs.
 func (a *App) Execute() error {
@@ -569,7 +572,11 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 			} else if a.handler != nil {
 				cmd = a.rootCommand()
 				cmdArgs = rootArgs
-			} else {
+			}
+			// A root that takes no positional arguments cannot use the
+			// word, so it was meant as a command. A word such as "-5" is
+			// not a command name, so the root reports it instead.
+			if cmd == nil || (len(cmd.args) == 0 && !strings.HasPrefix(result.Command, "-")) {
 				return a.unknownCommandError(result.Command)
 			}
 		}
@@ -855,7 +862,7 @@ func (a *App) unknownCommandError(name string) error {
 		msg += fmt.Sprintf("\n\nDid you mean '%s'?", suggestion)
 	}
 	msg += fmt.Sprintf("\n\nRun '%s --help' to see available commands.", a.name)
-	return fmt.Errorf("%s", msg)
+	return &UsageError{Message: msg}
 }
 
 // unknownSubcommandError builds an error for an unknown subcommand of a
@@ -868,7 +875,7 @@ func (a *App) unknownSubcommandError(groupName, subName string) error {
 		}
 	}
 	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
-	return fmt.Errorf("%s", msg)
+	return &UsageError{Message: msg}
 }
 
 // groupRequiresSubcommandError builds an error for the case where a user
@@ -877,7 +884,7 @@ func (a *App) unknownSubcommandError(groupName, subName string) error {
 func (a *App) groupRequiresSubcommandError(groupName string) error {
 	msg := fmt.Sprintf("group '%s' requires a subcommand", groupName)
 	msg += fmt.Sprintf("\n\nRun '%s %s --help' to see available subcommands.", a.name, groupName)
-	return fmt.Errorf("%s", msg)
+	return &UsageError{Message: msg}
 }
 
 // findGroup looks up a group by its canonical name or any of its aliases.
