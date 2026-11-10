@@ -317,6 +317,92 @@ func TestRenderCommandHelp(t *testing.T) {
 	})
 }
 
+func TestHelpEmptyDescriptionHasNoDash(t *testing.T) {
+	newApp := func() *App {
+		app := New("calc")
+		app.Command("add").Run(func(*Context) error { return nil })
+		app.Group("mem").Command("clear").Run(func(*Context) error { return nil })
+		return app
+	}
+
+	t.Run("plain command help", func(t *testing.T) {
+		output := renderPlainHelpForTest(t, newApp(), "add", "--help")
+		assert.True(t, strings.HasPrefix(output, "add\n\n"), output)
+	})
+
+	t.Run("plain app help", func(t *testing.T) {
+		output := renderPlainHelpForTest(t, newApp(), "--help")
+		assert.True(t, strings.HasPrefix(output, "calc\n\n"), output)
+	})
+
+	t.Run("plain group help", func(t *testing.T) {
+		output := renderPlainHelpForTest(t, newApp(), "mem", "--help")
+		assert.True(t, strings.HasPrefix(output, "mem\n\n"), output)
+	})
+
+	t.Run("group command list", func(t *testing.T) {
+		app := newApp()
+		app.SetColorEnabled(false)
+		assert.Equal(t, "  mem clear\n", app.groups["mem"].commandList())
+	})
+
+	t.Run("styled command help", func(t *testing.T) {
+		app := newApp()
+		screen := tui.SprintScreen(app.commands["add"].renderCommandHelp(), tui.WithWidth(60))
+		assert.Equal(t, "calc add", strings.TrimSpace(screen.Row(0)))
+	})
+}
+
+func TestHelpFlagPlaceholder(t *testing.T) {
+	newApp := func() *App {
+		app := New("demo")
+		app.Command("run").Flags(
+			String("vars", "v").Placeholder("FILE").Help("Variables file"),
+			Int("max").Placeholder("N").Help("Maximum count"),
+			Bool("write", "w").Help("Write results"),
+			String("name").Help("Plain name"),
+		).Run(func(*Context) error { return nil })
+		return app
+	}
+
+	t.Run("plain help", func(t *testing.T) {
+		output := renderPlainHelpForTest(t, newApp(), "run", "--help")
+		vars := lineContaining(t, output, "Variables file")
+		max := lineContaining(t, output, "Maximum count")
+		write := lineContaining(t, output, "Write results")
+		name := lineContaining(t, output, "Plain name")
+
+		assert.Contains(t, vars, "-v, --vars FILE ")
+		assert.Contains(t, max, "    --max N ")
+		assert.Contains(t, write, "-w, --write ")
+		assert.Contains(t, name, "    --name ")
+
+		col := strings.Index(vars, "Variables file")
+		assert.Equal(t, col, strings.Index(max, "Maximum count"))
+		assert.Equal(t, col, strings.Index(write, "Write results"))
+		assert.Equal(t, col, strings.Index(name, "Plain name"))
+	})
+
+	t.Run("styled help", func(t *testing.T) {
+		cmd := newApp().commands["run"]
+		screen := tui.SprintScreen(renderFlags(cmd.flags, DefaultHelpTheme()), tui.WithWidth(80))
+		text := screen.Text()
+		vars := lineContaining(t, text, "Variables file")
+		write := lineContaining(t, text, "Write results")
+
+		assert.Contains(t, vars, "-v, --vars FILE ")
+		assert.Contains(t, lineContaining(t, text, "Maximum count"), "--max N ")
+		assert.Equal(t, strings.Index(vars, "Variables file"), strings.Index(write, "Write results"))
+	})
+
+	t.Run("unset placeholder keeps help unchanged", func(t *testing.T) {
+		app := New("demo")
+		app.Command("run").Flags(String("vars", "v").Help("Variables file")).Run(func(*Context) error { return nil })
+		output := renderPlainHelpForTest(t, app, "run", "--help")
+		assert.Contains(t, output, "  -v, --vars Variables file\n")
+	})
+}
+
 func TestBuildUsageString(t *testing.T) {
 	t.Run("builds usage for simple command", func(t *testing.T) {
 		app := New("myapp")

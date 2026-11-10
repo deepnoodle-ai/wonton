@@ -14,7 +14,9 @@ import (
 // It returns the command for chaining.
 //
 // This provides a declarative way to define flags using struct tags.
-// Supports tags: flag, default, help, env, enum, required, hidden
+// Supports tags: flag, default, help, env, enum, required, hidden, once,
+// placeholder. The once tag applies to single-value flags; placeholder
+// applies to every flag except bool.
 //
 // Example:
 //
@@ -23,6 +25,7 @@ import (
 //	    Temp  float64 `flag:"temperature,t" default:"0.7" help:"Temperature"`
 //	    Debug bool    `flag:"debug,d" help:"Enable debug mode"`
 //	    Format string `flag:"format,f" enum:"text,json,markdown" default:"text"`
+//	    Config string `flag:"config" placeholder:"FILE" once:"" help:"Config file"`
 //	}
 //
 //	cmd := app.Command("chat")
@@ -127,6 +130,8 @@ func parseStructFlags(c *Command, t reflect.Type) {
 		}
 		required := boolTag(field.Tag, "required")
 		hidden := boolTag(field.Tag, "hidden")
+		once := boolTag(field.Tag, "once")
+		placeholder := field.Tag.Get("placeholder")
 
 		// time.Duration has kind Int64, so check it before the kind switch.
 		if field.Type == durationType {
@@ -137,13 +142,15 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				}
 			}
 			c.flags = append(c.flags, &DurationFlag{
-				Name:     name,
-				Short:    short,
-				Help:     help,
-				Value:    defVal,
-				EnvVar:   envVar,
-				Required: required,
-				Hidden:   hidden,
+				Name:        name,
+				Short:       short,
+				Help:        help,
+				Value:       defVal,
+				EnvVar:      envVar,
+				Required:    required,
+				Hidden:      hidden,
+				Once:        once,
+				Placeholder: placeholder,
 			})
 			continue
 		}
@@ -159,13 +166,14 @@ func parseStructFlags(c *Command, t reflect.Type) {
 					defVal = splitList(def)
 				}
 				c.flags = append(c.flags, &StringSliceFlag{
-					Name:     name,
-					Short:    short,
-					Help:     help,
-					Value:    defVal,
-					EnvVar:   envVar,
-					Required: required,
-					Hidden:   hidden,
+					Name:        name,
+					Short:       short,
+					Help:        help,
+					Value:       defVal,
+					EnvVar:      envVar,
+					Required:    required,
+					Hidden:      hidden,
+					Placeholder: placeholder,
 				})
 			case reflect.Int:
 				var defVal []int
@@ -175,13 +183,14 @@ func parseStructFlags(c *Command, t reflect.Type) {
 					}
 				}
 				c.flags = append(c.flags, &IntSliceFlag{
-					Name:     name,
-					Short:    short,
-					Help:     help,
-					Value:    defVal,
-					EnvVar:   envVar,
-					Required: required,
-					Hidden:   hidden,
+					Name:        name,
+					Short:       short,
+					Help:        help,
+					Value:       defVal,
+					EnvVar:      envVar,
+					Required:    required,
+					Hidden:      hidden,
+					Placeholder: placeholder,
 				})
 			}
 		case reflect.Bool:
@@ -197,18 +206,21 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				EnvVar:   envVar,
 				Required: required,
 				Hidden:   hidden,
+				Once:     once,
 			})
 		case reflect.String:
 			defVal := field.Tag.Get("default")
 			c.flags = append(c.flags, &StringFlag{
-				Name:     name,
-				Short:    short,
-				Help:     help,
-				Value:    defVal,
-				EnvVar:   envVar,
-				Required: required,
-				Hidden:   hidden,
-				Enum:     enum,
+				Name:        name,
+				Short:       short,
+				Help:        help,
+				Value:       defVal,
+				EnvVar:      envVar,
+				Required:    required,
+				Hidden:      hidden,
+				Once:        once,
+				Placeholder: placeholder,
+				Enum:        enum,
 			})
 		case reflect.Int:
 			defVal := 0
@@ -218,13 +230,15 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				}
 			}
 			c.flags = append(c.flags, &IntFlag{
-				Name:     name,
-				Short:    short,
-				Help:     help,
-				Value:    defVal,
-				EnvVar:   envVar,
-				Required: required,
-				Hidden:   hidden,
+				Name:        name,
+				Short:       short,
+				Help:        help,
+				Value:       defVal,
+				EnvVar:      envVar,
+				Required:    required,
+				Hidden:      hidden,
+				Once:        once,
+				Placeholder: placeholder,
 			})
 		case reflect.Int64:
 			defVal := int64(0)
@@ -234,13 +248,15 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				}
 			}
 			c.flags = append(c.flags, &Int64Flag{
-				Name:     name,
-				Short:    short,
-				Help:     help,
-				Value:    defVal,
-				EnvVar:   envVar,
-				Required: required,
-				Hidden:   hidden,
+				Name:        name,
+				Short:       short,
+				Help:        help,
+				Value:       defVal,
+				EnvVar:      envVar,
+				Required:    required,
+				Hidden:      hidden,
+				Once:        once,
+				Placeholder: placeholder,
 			})
 		case reflect.Float64:
 			defVal := 0.0
@@ -250,13 +266,15 @@ func parseStructFlags(c *Command, t reflect.Type) {
 				}
 			}
 			c.flags = append(c.flags, &Float64Flag{
-				Name:     name,
-				Short:    short,
-				Help:     help,
-				Value:    defVal,
-				EnvVar:   envVar,
-				Required: required,
-				Hidden:   hidden,
+				Name:        name,
+				Short:       short,
+				Help:        help,
+				Value:       defVal,
+				EnvVar:      envVar,
+				Required:    required,
+				Hidden:      hidden,
+				Once:        once,
+				Placeholder: placeholder,
 			})
 		}
 	}
@@ -428,6 +446,12 @@ func lookupEnv(key string) (string, bool) {
 //   - Required(): Mark as required
 //   - Hidden(): Hide from help output
 //
+// Single-value flags (all but Strings and Ints) also support:
+//   - Once(): Make a second use on the command line a usage error
+//
+// Value flags (all but Bool) also support:
+//   - Placeholder(s): Name the value in help, e.g. "--config FILE"
+//
 // String flags also support:
 //   - Enum(values...): Restrict to a set of valid values
 //   - ValidateWith(fn): Add custom validation
@@ -452,6 +476,8 @@ type stringBuilder struct {
 	enum                      []string
 	required, hidden          bool
 	validator                 func(string) error
+	once                      bool
+	placeholder               string
 }
 
 func (b *stringBuilder) Default(v string) *stringBuilder { b.value = v; return b }
@@ -460,19 +486,31 @@ func (b *stringBuilder) Env(v string) *stringBuilder     { b.envVar = v; return 
 func (b *stringBuilder) Enum(v ...string) *stringBuilder { b.enum = v; return b }
 func (b *stringBuilder) Required() *stringBuilder        { b.required = true; return b }
 func (b *stringBuilder) Hidden() *stringBuilder          { b.hidden = true; return b }
+
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *stringBuilder) Once() *stringBuilder { b.once = true; return b }
+
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *stringBuilder) Placeholder(v string) *stringBuilder { b.placeholder = v; return b }
+
 func (b *stringBuilder) ValidateWith(f func(string) error) *stringBuilder {
 	b.validator = f
 	return b
 }
 
-func (b *stringBuilder) GetName() string   { return b.name }
-func (b *stringBuilder) GetShort() string  { return b.short }
-func (b *stringBuilder) GetHelp() string   { return b.help }
-func (b *stringBuilder) GetEnvVar() string { return b.envVar }
-func (b *stringBuilder) GetDefault() any   { return b.value }
-func (b *stringBuilder) IsRequired() bool  { return b.required }
-func (b *stringBuilder) IsHidden() bool    { return b.hidden }
-func (b *stringBuilder) GetEnum() []string { return b.enum }
+func (b *stringBuilder) GetName() string        { return b.name }
+func (b *stringBuilder) GetShort() string       { return b.short }
+func (b *stringBuilder) GetHelp() string        { return b.help }
+func (b *stringBuilder) GetEnvVar() string      { return b.envVar }
+func (b *stringBuilder) GetDefault() any        { return b.value }
+func (b *stringBuilder) IsRequired() bool       { return b.required }
+func (b *stringBuilder) IsHidden() bool         { return b.hidden }
+func (b *stringBuilder) IsOnce() bool           { return b.once }
+func (b *stringBuilder) GetPlaceholder() string { return b.placeholder }
+func (b *stringBuilder) GetEnum() []string      { return b.enum }
 func (b *stringBuilder) Validate(value string) error {
 	if b.validator != nil {
 		return b.validator(value)
@@ -495,6 +533,7 @@ type boolBuilder struct {
 	name, short, help, envVar string
 	value                     bool
 	required, hidden          bool
+	once                      bool
 }
 
 func (b *boolBuilder) Default(v bool) *boolBuilder { b.value = v; return b }
@@ -503,6 +542,11 @@ func (b *boolBuilder) Env(v string) *boolBuilder   { b.envVar = v; return b }
 func (b *boolBuilder) Required() *boolBuilder      { b.required = true; return b }
 func (b *boolBuilder) Hidden() *boolBuilder        { b.hidden = true; return b }
 
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *boolBuilder) Once() *boolBuilder { b.once = true; return b }
+
 func (b *boolBuilder) GetName() string       { return b.name }
 func (b *boolBuilder) GetShort() string      { return b.short }
 func (b *boolBuilder) GetHelp() string       { return b.help }
@@ -510,6 +554,7 @@ func (b *boolBuilder) GetEnvVar() string     { return b.envVar }
 func (b *boolBuilder) GetDefault() any       { return b.value }
 func (b *boolBuilder) IsRequired() bool      { return b.required }
 func (b *boolBuilder) IsHidden() bool        { return b.hidden }
+func (b *boolBuilder) IsOnce() bool          { return b.once }
 func (b *boolBuilder) GetEnum() []string     { return nil }
 func (b *boolBuilder) Validate(string) error { return nil }
 
@@ -529,6 +574,8 @@ type intBuilder struct {
 	value                     int
 	required, hidden          bool
 	validator                 func(int) error
+	once                      bool
+	placeholder               string
 }
 
 func (b *intBuilder) Default(v int) *intBuilder { b.value = v; return b }
@@ -536,19 +583,31 @@ func (b *intBuilder) Help(v string) *intBuilder { b.help = v; return b }
 func (b *intBuilder) Env(v string) *intBuilder  { b.envVar = v; return b }
 func (b *intBuilder) Required() *intBuilder     { b.required = true; return b }
 func (b *intBuilder) Hidden() *intBuilder       { b.hidden = true; return b }
+
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *intBuilder) Once() *intBuilder { b.once = true; return b }
+
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *intBuilder) Placeholder(v string) *intBuilder { b.placeholder = v; return b }
+
 func (b *intBuilder) ValidateWith(f func(int) error) *intBuilder {
 	b.validator = f
 	return b
 }
 
-func (b *intBuilder) GetName() string   { return b.name }
-func (b *intBuilder) GetShort() string  { return b.short }
-func (b *intBuilder) GetHelp() string   { return b.help }
-func (b *intBuilder) GetEnvVar() string { return b.envVar }
-func (b *intBuilder) GetDefault() any   { return b.value }
-func (b *intBuilder) IsRequired() bool  { return b.required }
-func (b *intBuilder) IsHidden() bool    { return b.hidden }
-func (b *intBuilder) GetEnum() []string { return nil }
+func (b *intBuilder) GetName() string        { return b.name }
+func (b *intBuilder) GetShort() string       { return b.short }
+func (b *intBuilder) GetHelp() string        { return b.help }
+func (b *intBuilder) GetEnvVar() string      { return b.envVar }
+func (b *intBuilder) GetDefault() any        { return b.value }
+func (b *intBuilder) IsRequired() bool       { return b.required }
+func (b *intBuilder) IsHidden() bool         { return b.hidden }
+func (b *intBuilder) IsOnce() bool           { return b.once }
+func (b *intBuilder) GetPlaceholder() string { return b.placeholder }
+func (b *intBuilder) GetEnum() []string      { return nil }
 func (b *intBuilder) Validate(value string) error {
 	if b.validator == nil {
 		return nil
@@ -583,6 +642,8 @@ type float64Builder struct {
 	value                     float64
 	required, hidden          bool
 	validator                 func(float64) error
+	once                      bool
+	placeholder               string
 }
 
 func (b *float64Builder) Default(v float64) *float64Builder { b.value = v; return b }
@@ -590,19 +651,31 @@ func (b *float64Builder) Help(v string) *float64Builder     { b.help = v; return
 func (b *float64Builder) Env(v string) *float64Builder      { b.envVar = v; return b }
 func (b *float64Builder) Required() *float64Builder         { b.required = true; return b }
 func (b *float64Builder) Hidden() *float64Builder           { b.hidden = true; return b }
+
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *float64Builder) Once() *float64Builder { b.once = true; return b }
+
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *float64Builder) Placeholder(v string) *float64Builder { b.placeholder = v; return b }
+
 func (b *float64Builder) ValidateWith(f func(float64) error) *float64Builder {
 	b.validator = f
 	return b
 }
 
-func (b *float64Builder) GetName() string   { return b.name }
-func (b *float64Builder) GetShort() string  { return b.short }
-func (b *float64Builder) GetHelp() string   { return b.help }
-func (b *float64Builder) GetEnvVar() string { return b.envVar }
-func (b *float64Builder) GetDefault() any   { return b.value }
-func (b *float64Builder) IsRequired() bool  { return b.required }
-func (b *float64Builder) IsHidden() bool    { return b.hidden }
-func (b *float64Builder) GetEnum() []string { return nil }
+func (b *float64Builder) GetName() string        { return b.name }
+func (b *float64Builder) GetShort() string       { return b.short }
+func (b *float64Builder) GetHelp() string        { return b.help }
+func (b *float64Builder) GetEnvVar() string      { return b.envVar }
+func (b *float64Builder) GetDefault() any        { return b.value }
+func (b *float64Builder) IsRequired() bool       { return b.required }
+func (b *float64Builder) IsHidden() bool         { return b.hidden }
+func (b *float64Builder) IsOnce() bool           { return b.once }
+func (b *float64Builder) GetPlaceholder() string { return b.placeholder }
+func (b *float64Builder) GetEnum() []string      { return nil }
 func (b *float64Builder) Validate(value string) error {
 	if b.validator == nil {
 		return nil
@@ -629,6 +702,8 @@ type durationBuilder struct {
 	name, short, help, envVar string
 	value                     time.Duration
 	required, hidden          bool
+	once                      bool
+	placeholder               string
 }
 
 func (b *durationBuilder) Default(v time.Duration) *durationBuilder { b.value = v; return b }
@@ -637,15 +712,26 @@ func (b *durationBuilder) Env(v string) *durationBuilder            { b.envVar =
 func (b *durationBuilder) Required() *durationBuilder               { b.required = true; return b }
 func (b *durationBuilder) Hidden() *durationBuilder                 { b.hidden = true; return b }
 
-func (b *durationBuilder) GetName() string       { return b.name }
-func (b *durationBuilder) GetShort() string      { return b.short }
-func (b *durationBuilder) GetHelp() string       { return b.help }
-func (b *durationBuilder) GetEnvVar() string     { return b.envVar }
-func (b *durationBuilder) GetDefault() any       { return b.value }
-func (b *durationBuilder) IsRequired() bool      { return b.required }
-func (b *durationBuilder) IsHidden() bool        { return b.hidden }
-func (b *durationBuilder) GetEnum() []string     { return nil }
-func (b *durationBuilder) Validate(string) error { return nil }
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *durationBuilder) Once() *durationBuilder { b.once = true; return b }
+
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *durationBuilder) Placeholder(v string) *durationBuilder { b.placeholder = v; return b }
+
+func (b *durationBuilder) GetName() string        { return b.name }
+func (b *durationBuilder) GetShort() string       { return b.short }
+func (b *durationBuilder) GetHelp() string        { return b.help }
+func (b *durationBuilder) GetEnvVar() string      { return b.envVar }
+func (b *durationBuilder) GetDefault() any        { return b.value }
+func (b *durationBuilder) IsRequired() bool       { return b.required }
+func (b *durationBuilder) IsHidden() bool         { return b.hidden }
+func (b *durationBuilder) IsOnce() bool           { return b.once }
+func (b *durationBuilder) GetPlaceholder() string { return b.placeholder }
+func (b *durationBuilder) GetEnum() []string      { return nil }
+func (b *durationBuilder) Validate(string) error  { return nil }
 
 // Strings creates a new string slice flag builder.
 //
@@ -665,6 +751,7 @@ type stringsBuilder struct {
 	name, short, help, envVar string
 	value                     []string
 	required, hidden          bool
+	placeholder               string
 }
 
 func (b *stringsBuilder) Default(v ...string) *stringsBuilder { b.value = v; return b }
@@ -673,15 +760,20 @@ func (b *stringsBuilder) Env(v string) *stringsBuilder        { b.envVar = v; re
 func (b *stringsBuilder) Required() *stringsBuilder           { b.required = true; return b }
 func (b *stringsBuilder) Hidden() *stringsBuilder             { b.hidden = true; return b }
 
-func (b *stringsBuilder) GetName() string       { return b.name }
-func (b *stringsBuilder) GetShort() string      { return b.short }
-func (b *stringsBuilder) GetHelp() string       { return b.help }
-func (b *stringsBuilder) GetEnvVar() string     { return b.envVar }
-func (b *stringsBuilder) GetDefault() any       { return b.value }
-func (b *stringsBuilder) IsRequired() bool      { return b.required }
-func (b *stringsBuilder) IsHidden() bool        { return b.hidden }
-func (b *stringsBuilder) GetEnum() []string     { return nil }
-func (b *stringsBuilder) Validate(string) error { return nil }
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *stringsBuilder) Placeholder(v string) *stringsBuilder { b.placeholder = v; return b }
+
+func (b *stringsBuilder) GetName() string        { return b.name }
+func (b *stringsBuilder) GetShort() string       { return b.short }
+func (b *stringsBuilder) GetHelp() string        { return b.help }
+func (b *stringsBuilder) GetEnvVar() string      { return b.envVar }
+func (b *stringsBuilder) GetDefault() any        { return b.value }
+func (b *stringsBuilder) IsRequired() bool       { return b.required }
+func (b *stringsBuilder) IsHidden() bool         { return b.hidden }
+func (b *stringsBuilder) GetPlaceholder() string { return b.placeholder }
+func (b *stringsBuilder) GetEnum() []string      { return nil }
+func (b *stringsBuilder) Validate(string) error  { return nil }
 
 // Ints creates a new int slice flag builder.
 //
@@ -701,6 +793,7 @@ type intsBuilder struct {
 	name, short, help, envVar string
 	value                     []int
 	required, hidden          bool
+	placeholder               string
 }
 
 func (b *intsBuilder) Default(v ...int) *intsBuilder { b.value = v; return b }
@@ -709,15 +802,20 @@ func (b *intsBuilder) Env(v string) *intsBuilder     { b.envVar = v; return b }
 func (b *intsBuilder) Required() *intsBuilder        { b.required = true; return b }
 func (b *intsBuilder) Hidden() *intsBuilder          { b.hidden = true; return b }
 
-func (b *intsBuilder) GetName() string       { return b.name }
-func (b *intsBuilder) GetShort() string      { return b.short }
-func (b *intsBuilder) GetHelp() string       { return b.help }
-func (b *intsBuilder) GetEnvVar() string     { return b.envVar }
-func (b *intsBuilder) GetDefault() any       { return b.value }
-func (b *intsBuilder) IsRequired() bool      { return b.required }
-func (b *intsBuilder) IsHidden() bool        { return b.hidden }
-func (b *intsBuilder) GetEnum() []string     { return nil }
-func (b *intsBuilder) Validate(string) error { return nil }
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *intsBuilder) Placeholder(v string) *intsBuilder { b.placeholder = v; return b }
+
+func (b *intsBuilder) GetName() string        { return b.name }
+func (b *intsBuilder) GetShort() string       { return b.short }
+func (b *intsBuilder) GetHelp() string        { return b.help }
+func (b *intsBuilder) GetEnvVar() string      { return b.envVar }
+func (b *intsBuilder) GetDefault() any        { return b.value }
+func (b *intsBuilder) IsRequired() bool       { return b.required }
+func (b *intsBuilder) IsHidden() bool         { return b.hidden }
+func (b *intsBuilder) GetPlaceholder() string { return b.placeholder }
+func (b *intsBuilder) GetEnum() []string      { return nil }
+func (b *intsBuilder) Validate(string) error  { return nil }
 
 // Int64 creates a new int64 flag builder.
 //
@@ -735,6 +833,8 @@ type int64Builder struct {
 	value                     int64
 	required, hidden          bool
 	validator                 func(int64) error
+	once                      bool
+	placeholder               string
 }
 
 func (b *int64Builder) Default(v int64) *int64Builder { b.value = v; return b }
@@ -742,19 +842,31 @@ func (b *int64Builder) Help(v string) *int64Builder   { b.help = v; return b }
 func (b *int64Builder) Env(v string) *int64Builder    { b.envVar = v; return b }
 func (b *int64Builder) Required() *int64Builder       { b.required = true; return b }
 func (b *int64Builder) Hidden() *int64Builder         { b.hidden = true; return b }
+
+// Once makes a second use of the flag on the command line a usage error:
+// "flag --name given more than once". Environment and default values do not
+// count. Without Once, the last value wins.
+func (b *int64Builder) Once() *int64Builder { b.once = true; return b }
+
+// Placeholder names the flag's value in help output, for example
+// Placeholder("FILE") shows "--name FILE".
+func (b *int64Builder) Placeholder(v string) *int64Builder { b.placeholder = v; return b }
+
 func (b *int64Builder) ValidateWith(f func(int64) error) *int64Builder {
 	b.validator = f
 	return b
 }
 
-func (b *int64Builder) GetName() string   { return b.name }
-func (b *int64Builder) GetShort() string  { return b.short }
-func (b *int64Builder) GetHelp() string   { return b.help }
-func (b *int64Builder) GetEnvVar() string { return b.envVar }
-func (b *int64Builder) GetDefault() any   { return b.value }
-func (b *int64Builder) IsRequired() bool  { return b.required }
-func (b *int64Builder) IsHidden() bool    { return b.hidden }
-func (b *int64Builder) GetEnum() []string { return nil }
+func (b *int64Builder) GetName() string        { return b.name }
+func (b *int64Builder) GetShort() string       { return b.short }
+func (b *int64Builder) GetHelp() string        { return b.help }
+func (b *int64Builder) GetEnvVar() string      { return b.envVar }
+func (b *int64Builder) GetDefault() any        { return b.value }
+func (b *int64Builder) IsRequired() bool       { return b.required }
+func (b *int64Builder) IsHidden() bool         { return b.hidden }
+func (b *int64Builder) IsOnce() bool           { return b.once }
+func (b *int64Builder) GetPlaceholder() string { return b.placeholder }
+func (b *int64Builder) GetEnum() []string      { return nil }
 func (b *int64Builder) Validate(value string) error {
 	if b.validator == nil {
 		return nil

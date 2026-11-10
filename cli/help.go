@@ -569,8 +569,8 @@ func renderFlags(flags []Flag, theme HelpTheme) tui.View {
 		if f.IsHidden() {
 			continue
 		}
-		if len(f.GetName()) > maxNameLen {
-			maxNameLen = len(f.GetName())
+		if n := len(flagLabel(f)); n > maxNameLen {
+			maxNameLen = n
 		}
 	}
 
@@ -593,7 +593,7 @@ func renderFlag(f Flag, theme HelpTheme, maxNameLen int) tui.View {
 	} else {
 		prefix += "    "
 	}
-	prefix += fmt.Sprintf("--%-*s", maxNameLen, f.GetName())
+	prefix += fmt.Sprintf("--%-*s", maxNameLen, flagLabel(f))
 
 	// Build metadata
 	meta := buildFlagMeta(f)

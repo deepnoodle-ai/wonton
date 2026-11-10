@@ -169,6 +169,7 @@ type App struct {
 	description string
 	longDesc    string
 	version     string
+	versionFunc func(w io.Writer)
 
 	commands     map[string]*Command
 	commandOrder []string // insertion order for stable help output
@@ -196,6 +197,7 @@ type App struct {
 	isInteractive    bool
 	forceInteractive *bool // For testing - if set, overrides TTY detection
 	colorEnabled     bool  // Whether to use colored output
+	noColorFlags     bool  // ColorFlags(false): no built-in color flags
 
 	// Help styling
 	helpTheme *HelpTheme
@@ -241,10 +243,55 @@ func (a *App) Description(desc string) *App {
 	return a
 }
 
-// Version sets the application version.
+// Version sets the application version. It enables the --version flag and
+// the version command, which print the string on a line of its own, and
+// it appears in the help header. Use VersionFunc to print other text.
 func (a *App) Version(v string) *App {
 	a.version = v
 	return a
+}
+
+// VersionFunc sets the function that writes the output of --version and
+// the version command, in place of the bare version string. The function
+// writes to the app's stdout.
+//
+// VersionFunc alone enables --version and the version command. The help
+// header still shows only the string set with Version.
+//
+//	app.Version("1.2.3").VersionFunc(func(w io.Writer) {
+//	    fmt.Fprintln(w, "demo 1.2.3")
+//	    fmt.Fprintln(w, "Copyright 2026 Example Inc.")
+//	})
+func (a *App) VersionFunc(fn func(w io.Writer)) *App {
+	a.versionFunc = fn
+	return a
+}
+
+// ColorFlags turns the built-in color flags on or off. They are on by
+// default. When on, --no-color, --no-colour, --color, --colour and
+// --force-color are accepted on every command and change the color
+// setting. When off, they are unknown flags like any other, unless the app
+// defines them.
+//
+//	app := cli.New("strict").ColorFlags(false)
+func (a *App) ColorFlags(enabled bool) *App {
+	a.noColorFlags = !enabled
+	return a
+}
+
+// hasVersion reports whether the app has version output: a version string
+// or a VersionFunc.
+func (a *App) hasVersion() bool {
+	return a.version != "" || a.versionFunc != nil
+}
+
+// printVersion writes the version output to the app's stdout.
+func (a *App) printVersion() {
+	if a.versionFunc != nil {
+		a.versionFunc(a.stdout)
+		return
+	}
+	fmt.Fprintln(a.stdout, a.version)
 }
 
 // Long sets a longer description or quickstart text for help output.
@@ -447,7 +494,9 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 	// Apply --no-color / --color / --force-color command-line overrides.
 	// These take precedence over env vars and TTY detection, matching the
 	// common CLI precedence convention.
-	args = a.applyColorOverrides(args)
+	if !a.noColorFlags {
+		args = a.applyColorOverrides(args)
+	}
 
 	// Parse command and arguments using definition-driven parser
 	p := newParser(a)
@@ -462,7 +511,7 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 			return a.showHelp()
 		}
 		if gf == "--version" && a.isBuiltinVersionFlag() {
-			fmt.Fprintln(a.stdout, a.version)
+			a.printVersion()
 			return nil
 		}
 	}
@@ -473,8 +522,8 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		case "help":
 			return a.showHelp()
 		case "version":
-			if a.version != "" {
-				fmt.Fprintln(a.stdout, a.version)
+			if a.hasVersion() {
+				a.printVersion()
 				return nil
 			}
 		}
@@ -660,9 +709,9 @@ func (a *App) isHelpShort() bool {
 }
 
 // isBuiltinVersionFlag reports whether --version prints the app version: the
-// app has a version and no global flag claims the name.
+// app has version output and no global flag claims the name.
 func (a *App) isBuiltinVersionFlag() bool {
-	return a.version != "" && a.findGlobalFlag("version") == nil
+	return a.hasVersion() && a.findGlobalFlag("version") == nil
 }
 
 // definesFlag reports whether the app, any group, or any command defines a
@@ -1140,6 +1189,13 @@ func (g *Group) Args(names ...string) *Group {
 	return g
 }
 
+// NoArgs declares that the group handler takes no positional arguments,
+// and removes any slots declared earlier with Args. See Command.NoArgs.
+func (g *Group) NoArgs() *Group {
+	g.args = g.args[:0]
+	return g
+}
+
 // Use adds middleware to the group.
 func (g *Group) Use(mw ...Middleware) *Group {
 	g.middleware = append(g.middleware, mw...)
@@ -1212,11 +1268,15 @@ func (g *Group) commandList() string {
 		if cmd == nil {
 			continue
 		}
+		group, sub := g.name, name
 		if g.app.colorEnabled {
-			sb.WriteString(fmt.Sprintf("  %s %s - %s\n", color.Green.Apply(g.name), color.Green.Apply(name), cmd.description))
-		} else {
-			sb.WriteString(fmt.Sprintf("  %s %s - %s\n", g.name, name, cmd.description))
+			group, sub = color.Green.Apply(group), color.Green.Apply(sub)
 		}
+		sb.WriteString(fmt.Sprintf("  %s %s", group, sub))
+		if cmd.description != "" {
+			sb.WriteString(" - " + cmd.description)
+		}
+		sb.WriteString("\n")
 	}
 	return sb.String()
 }
