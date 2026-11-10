@@ -162,8 +162,8 @@ import (
 //	app.Group("users").Command("list").Run(listUsersHandler)
 //
 // The App provides a built-in help command, and a version command when a
-// version is set. A command, group, or alias the app defines with either
-// name replaces the built-in.
+// version is set. A command, group, alias, or flat-routed group subcommand
+// that the app defines with either name replaces the built-in.
 type App struct {
 	name        string
 	description string
