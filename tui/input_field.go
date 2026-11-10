@@ -677,7 +677,7 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 	f.reg = ctx.registries()
 	state := f.reg.inputs.Register(f.id, inputConfig{
 		binding:          f.binding,
-		bounds:           ctx.clickArea(inputBounds),
+		bounds:           ctx.clickBounds(),
 		placeholder:      f.placeholder,
 		placeholderStyle: f.placeholderStyle,
 		textStyle:        f.textStyle,
@@ -703,9 +703,12 @@ func (f *InputFieldView) renderInput(ctx *RenderContext, isFocused bool) {
 		state.input.CursorColor = f.cursorColor
 	}
 
-	// Update textInput bounds
+	// Draw the textInput at this context. An off-screen render then puts back
+	// the bounds the live input had, so it keeps its place on screen.
+	onScreen := state.input.GetBounds()
 	state.input.SetBounds(inputBounds)
-
-	// Draw the textInput
 	state.input.Draw(ctx.frame)
+	if ctx.offscreen {
+		state.input.SetBounds(onScreen)
+	}
 }

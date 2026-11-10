@@ -318,9 +318,8 @@ func (s *ViewportState) sourceLayout(item int) (*sourceLayout, bool) {
 		term := NewTestTerminal(s.width, height, &strings.Builder{})
 		frame, err := term.BeginFrame()
 		if err == nil {
-			ctx := NewRenderContext(frame, 0)
+			ctx := newOffscreenContext(frame, s.reg)
 			ctx.source = l
-			ctx.offscreen = true
 			view.render(ctx)
 			term.EndFrame(frame)
 		} else {

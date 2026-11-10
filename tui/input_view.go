@@ -289,7 +289,7 @@ func (r *inputRegistryImpl) Clear() {
 // from the view builders (Input, InputField).
 type inputConfig struct {
 	binding          *string
-	bounds           image.Rectangle
+	bounds           *image.Rectangle // nil keeps the bounds from the last on-screen render
 	placeholder      string
 	placeholderStyle *Style
 	textStyle        *Style
@@ -342,7 +342,9 @@ func (r *inputRegistryImpl) Register(id string, cfg inputConfig, fm *FocusManage
 	}
 
 	// Update state
-	state.bounds = cfg.bounds
+	if cfg.bounds != nil {
+		state.bounds = *cfg.bounds
+	}
 	state.onChange = cfg.onChange
 	state.onSubmit = cfg.onSubmit
 	state.onKey = cfg.onKey
@@ -665,7 +667,7 @@ func (i *InputView) render(ctx *RenderContext) {
 	i.reg = ctx.registries()
 	state := i.reg.inputs.Register(i.id, inputConfig{
 		binding:          i.binding,
-		bounds:           ctx.clickArea(inputBounds),
+		bounds:           ctx.clickBounds(),
 		placeholder:      i.placeholder,
 		placeholderStyle: i.placeholderStyle,
 		mask:             i.mask,
@@ -692,9 +694,12 @@ func (i *InputView) render(ctx *RenderContext) {
 		state.input.Style = *i.style
 	}
 
-	// Update textInput bounds
+	// Draw the textInput at this context. An off-screen render then puts back
+	// the bounds the live input had, so it keeps its place on screen.
+	onScreen := state.input.GetBounds()
 	state.input.SetBounds(inputBounds)
-
-	// Draw the textInput - pass the underlying frame
 	state.input.Draw(ctx.frame)
+	if ctx.offscreen {
+		state.input.SetBounds(onScreen)
+	}
 }

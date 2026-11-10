@@ -72,7 +72,8 @@ type ViewportState struct {
 	items ViewportItems
 	gap   int
 	cache []viewportEntry
-	width int // the width cache entries were measured at; 0 before first render
+	width int         // the width cache entries were measured at; 0 before first render
+	reg   *registries // the registries of the app that last rendered this viewport
 
 	// focusIDs[i] holds the focus IDs item i registered when it last
 	// rendered. It is kept apart from cache so a width change does not drop
@@ -508,6 +509,7 @@ func (v *ViewportView) render(ctx *RenderContext) {
 	}
 
 	s.items = v.items
+	s.reg = ctx.reg
 	s.gap = v.gap
 	if width != s.width {
 		// Every cached height was measured at the old width and is now wrong.
