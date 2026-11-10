@@ -65,6 +65,18 @@ func TestBindFlagsFromContext(t *testing.T) {
 		assert.Equal(t, `"x" is not a number`, usageErr.Err.Error())
 	})
 
+	t.Run("field type that cannot hold the flag is not a usage error", func(t *testing.T) {
+		type Config struct {
+			Tags map[string]string `flag:"tags"`
+		}
+
+		_, err := BindFlags[Config](newTestContext(map[string]any{"tags": "a=b"}))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported type")
+		assert.False(t, IsUsageError(err))
+		assert.Equal(t, 1, GetExitCode(err))
+	})
+
 	t.Run("binds int field from context", func(t *testing.T) {
 		type Config struct {
 			Port int `flag:"port"`

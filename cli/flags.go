@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -81,7 +82,14 @@ func BindFlags[T any](ctx *Context) (*T, error) {
 
 		value := ctx.flags[name]
 		if err := setFieldFromAny(rv.Field(i), value); err != nil {
-			return nil, &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, err), Err: err}
+			// Only a value the user typed that does not parse is a usage
+			// error. A field type that cannot hold the flag is a bug in
+			// the program.
+			var valErr *badValueError
+			if errors.As(err, &valErr) {
+				return nil, &UsageError{Message: fmt.Sprintf("invalid value for --%s: %s", name, valErr.err), Err: valErr.err}
+			}
+			return nil, fmt.Errorf("invalid value for --%s: %w", name, err)
 		}
 	}
 
@@ -329,6 +337,13 @@ func setFieldValue(v reflect.Value, s string) error {
 	return nil
 }
 
+// badValueError marks an error from setFieldFromAny as a value that does not
+// parse, as opposed to a field type that cannot hold the flag's value.
+type badValueError struct{ err error }
+
+func (e *badValueError) Error() string { return e.err.Error() }
+func (e *badValueError) Unwrap() error { return e.err }
+
 func setFieldFromAny(v reflect.Value, val any) error {
 	switch v.Kind() {
 	case reflect.Slice:
@@ -362,7 +377,7 @@ func setFieldFromAny(v reflect.Value, val any) error {
 		case string:
 			n, err := parseInt64(i)
 			if err != nil {
-				return err
+				return &badValueError{err}
 			}
 			v.SetInt(n)
 		}
@@ -377,7 +392,7 @@ func setFieldFromAny(v reflect.Value, val any) error {
 		case string:
 			n, err := parseFloat(f)
 			if err != nil {
-				return err
+				return &badValueError{err}
 			}
 			v.SetFloat(n)
 		}
