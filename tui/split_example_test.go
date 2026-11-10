@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/deepnoodle-ai/wonton/tui/tuitest"
 )
 
 // ExampleSplitState lays out an editor beside a shell, with logs below the
@@ -17,7 +18,7 @@ func ExampleSplitState() {
 	view := tui.Split(split, func(id string) tui.View {
 		return tui.Bordered(tui.Text("%s", id)).Border(&tui.RoundedBorder)
 	})
-	screen := tui.SprintScreen(view, tui.WithWidth(24), tui.WithHeight(6))
+	screen := tuitest.Screen(view, tui.WithWidth(24), tui.WithHeight(6))
 	for y := range 6 {
 		fmt.Println(screen.Row(y))
 	}

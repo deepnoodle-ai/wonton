@@ -110,8 +110,8 @@ func TestRawMode_LivePrinterStop(t *testing.T) {
 	termtest.AssertCursor(t, screen, 0, 3)
 }
 
-func TestRawMode_SprintScreen(t *testing.T) {
-	screen := SprintScreen(rawLinesView([]string{"alpha", "beta", "gamma"}), WithWidth(20), WithRawMode(true))
+func TestRawMode_Screen(t *testing.T) {
+	screen := sprintScreen(rawLinesView([]string{"alpha", "beta", "gamma"}), WithWidth(20), WithRawMode(true))
 	rawAssertRows(t, screen, "alpha", "beta", "gamma")
 }
 

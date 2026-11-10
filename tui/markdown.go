@@ -5,8 +5,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/deepnoodle-ai/wonton/runewidth"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -67,7 +65,10 @@ type MarkdownTheme struct {
 	HorizontalRuleChar  string
 	HorizontalRuleStyle Style
 
-	// Syntax highlighting theme name for code blocks
+	// SyntaxTheme names the syntax highlighting theme for fenced code
+	// blocks, such as "monokai". It is passed to the CodeHighlighter (see
+	// SetCodeHighlighter). With no highlighter, code blocks use
+	// CodeBlockStyle.
 	SyntaxTheme string
 
 	// Table styles
@@ -948,82 +949,11 @@ func sharedStyle(a, b Style) Style {
 }
 
 func (mr *MarkdownRenderer) highlightCode(code, language string) [][]StyledSegment {
-	// Get lexer for the language
-	lexer := lexers.Get(language)
-	if lexer == nil {
-		// If we can't find a lexer, return unstyled code
+	h := codeHighlighter.Load()
+	if h == nil {
 		return nil
 	}
-
-	// Get chroma style
-	chromaStyle := styles.Get(mr.Theme.SyntaxTheme)
-	if chromaStyle == nil {
-		chromaStyle = styles.Fallback
-	}
-
-	// Tokenize the code
-	iterator, err := lexer.Tokenise(nil, code)
-	if err != nil {
-		return nil
-	}
-
-	// Convert tokens to our styled segments
-	var result [][]StyledSegment
-	var currentLine []StyledSegment
-
-	for _, token := range iterator.Tokens() {
-		tokenText := token.Value
-
-		// Get the style entry for this token type
-		styleEntry := chromaStyle.Get(token.Type)
-
-		// Convert chroma style to our Style
-		style := NewStyle()
-
-		// Handle foreground color
-		if styleEntry.Colour.IsSet() {
-			r, g, b := styleEntry.Colour.Red(), styleEntry.Colour.Green(), styleEntry.Colour.Blue()
-			style = style.WithFgRGB(RGB{R: r, G: g, B: b})
-		}
-
-		// Note: We intentionally do NOT use background colors from the syntax theme
-		// to allow the terminal's default background to show through
-
-		// Handle text attributes
-		if styleEntry.Bold == 1 {
-			style = style.WithBold()
-		}
-		if styleEntry.Italic == 1 {
-			style = style.WithItalic()
-		}
-		if styleEntry.Underline == 1 {
-			style = style.WithUnderline()
-		}
-
-		// Split token text by newlines to handle multi-line tokens
-		lines := strings.Split(tokenText, "\n")
-		for i, line := range lines {
-			if i > 0 {
-				// New line - append current line to result and start new one
-				result = append(result, currentLine)
-				currentLine = []StyledSegment{}
-			}
-
-			if line != "" {
-				currentLine = append(currentLine, StyledSegment{
-					Text:  line,
-					Style: style,
-				})
-			}
-		}
-	}
-
-	// Append final line if not empty
-	if len(currentLine) > 0 {
-		result = append(result, currentLine)
-	}
-
-	return result
+	return (*h)(code, language, mr.Theme.SyntaxTheme)
 }
 
 // tableCellData holds the rendered content of a table cell

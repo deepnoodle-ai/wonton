@@ -260,7 +260,7 @@ func TestPromptChoice_InputOptionWithoutBinding(t *testing.T) {
 	view.HandleKeyEvent(KeyEvent{Rune: 'h'})
 	view.HandleKeyEvent(KeyEvent{Rune: 'i'})
 
-	screen := SprintScreen(view, WithWidth(20))
+	screen := sprintScreen(view, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 1, "hi")
 
 	view.HandleKeyEvent(KeyEvent{Key: KeyEnter})
@@ -273,7 +273,7 @@ func TestPromptChoice_OutOfRangeSelectionTypesIntoInput(t *testing.T) {
 	view := PromptChoice(&selected, &text).ID("out-of-range-input").
 		Option("Yes").Option("No").InputOption("Other...")
 	view.SetFocused(true)
-	SprintScreen(view, WithWidth(20))
+	sprintScreen(view, WithWidth(20))
 
 	view.HandleKeyEvent(KeyEvent{Rune: 'h'})
 	assert.Equal(t, text, "h", "the first key reaches the highlighted input row")
@@ -285,7 +285,7 @@ func TestPromptChoice_OutOfRangeSelection(t *testing.T) {
 	view := PromptChoice(&selected, nil).Option("Yes").Option("No").
 		OnSelect(func(idx int, _ string) { got = idx })
 
-	screen := SprintScreen(view, WithWidth(20))
+	screen := sprintScreen(view, WithWidth(20))
 	termtest.AssertRowContains(t, screen, 1, "❯")
 
 	view.HandleKeyEvent(KeyEvent{Key: KeyEnter})

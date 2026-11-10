@@ -40,7 +40,7 @@ func TestInputField_Highlight_StylesRange(t *testing.T) {
 			cmd, _, _ := strings.Cut(v, " ")
 			return []TextRange{{Start: 0, End: len(cmd), Style: cmdStyle}}
 		})
-	screen := SprintScreen(field, WithWidth(20))
+	screen := sprintScreen(field, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "/effort high")
 	for x := 0; x < len("/effort"); x++ {

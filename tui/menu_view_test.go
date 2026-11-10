@@ -10,7 +10,7 @@ import (
 )
 
 func renderMenu(m *MenuState, width, height int) *termtest.Screen {
-	return SprintScreen(Menu(m), WithWidth(width), WithHeight(height))
+	return sprintScreen(Menu(m), WithWidth(width), WithHeight(height))
 }
 
 func testMenu(chosen *string) []MenuItem {

@@ -431,7 +431,7 @@ func TestGroup_RenderClipsFromRight(t *testing.T) {
 	)
 
 	// Render into a 15-wide frame (children want 30)
-	screen := SprintScreen(g, WithWidth(15), WithHeight(1))
+	screen := sprintScreen(g, WithWidth(15), WithHeight(1))
 	output := screen.Text()
 
 	// First child should be fully visible (10 chars fits in 15)
@@ -509,7 +509,7 @@ func TestGroup_RenderZeroHeight(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// Render tests using termtest with SprintScreen helper
+// Render tests using termtest with the sprintScreen helper
 
 func TestGroup_Render_Basic(t *testing.T) {
 	g := Group(
@@ -517,7 +517,7 @@ func TestGroup_Render_Basic(t *testing.T) {
 		Text("Middle"),
 		Text("Right"),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := sprintScreen(g, WithWidth(30))
 
 	// All text should appear on the same row
 	termtest.AssertRowContains(t, screen, 0, "Left")
@@ -530,7 +530,7 @@ func TestGroup_Render_WithGap(t *testing.T) {
 		Text("A"),
 		Text("B"),
 	).Gap(3)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	row := screen.Row(0)
 	// "A" followed by 3 spaces, then "B"
@@ -546,7 +546,7 @@ func TestGroup_Render_WithSpacer(t *testing.T) {
 		Spacer(),
 		Text("Right"),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := sprintScreen(g, WithWidth(30))
 
 	row := screen.Row(0)
 	// Left and Right should be at opposite ends
@@ -561,7 +561,7 @@ func TestGroup_Render_WrappedFlexTextUsesRemainingWidth(t *testing.T) {
 		Text("prefix: "),
 		Text("alpha beta gamma delta epsilon").Wrap().Flex(1),
 	)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	termtest.AssertRowContains(t, screen, 0, "prefix: alpha beta")
 	termtest.AssertRowContains(t, screen, 1, "gamma delta")
@@ -573,7 +573,7 @@ func TestGroup_Render_VaryingHeights(t *testing.T) {
 		Text("Short"),
 		Stack(Text("Tall1"), Text("Tall2")),
 	)
-	screen := SprintScreen(g, WithWidth(30))
+	screen := sprintScreen(g, WithWidth(30))
 
 	// Both columns should be visible
 	termtest.AssertRowContains(t, screen, 0, "Short")
@@ -587,7 +587,7 @@ func TestGroup_Render_LeftAlign(t *testing.T) {
 		Text("A"),
 		Stack(Text("1"), Text("2"), Text("3")),
 	).Align(AlignLeft)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	// "A" should be at the top (row 0)
 	termtest.AssertRowContains(t, screen, 0, "A")
@@ -600,7 +600,7 @@ func TestGroup_Render_CenterAlign(t *testing.T) {
 		Text("X"),
 		Stack(Text("A"), Text("B"), Text("C")),
 	).Align(AlignCenter)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	// "X" should be vertically centered (row 1 for 3-row tall content)
 	termtest.AssertRowContains(t, screen, 1, "X")
@@ -612,7 +612,7 @@ func TestGroup_Render_RightAlign(t *testing.T) {
 		Text("Z"),
 		Stack(Text("A"), Text("B"), Text("C")),
 	).Align(AlignRight)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	// "Z" should be at the bottom (row 2 for 3-row tall content)
 	termtest.AssertRowContains(t, screen, 2, "Z")
@@ -623,7 +623,7 @@ func TestGroup_Render_WithStyles(t *testing.T) {
 		Text("Bold").Bold(),
 		Text("Normal"),
 	)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	// Check content is present
 	termtest.AssertRowContains(t, screen, 0, "Bold")
@@ -640,7 +640,7 @@ func TestGroup_Render_Nested(t *testing.T) {
 		Group(Text("A"), Text("B")),
 		Text("]"),
 	)
-	screen := SprintScreen(g, WithWidth(20))
+	screen := sprintScreen(g, WithWidth(20))
 
 	row := screen.Row(0)
 	assert.True(t, strings.Contains(row, "["))

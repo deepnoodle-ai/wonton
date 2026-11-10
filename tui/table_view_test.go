@@ -219,14 +219,14 @@ func TestTable_NilSelectionHighlightsNothing(t *testing.T) {
 		Rows([][]string{{"Alice"}, {"Bob"}}).
 		ShowHeader(false)
 
-	screen := SprintScreen(table, WithWidth(20))
+	screen := sprintScreen(table, WithWidth(20))
 	assert.False(t, screen.Cell(0, 0).Style.Reverse, "row 0 should not be highlighted")
 
 	selected := 0
 	table = Table([]TableColumn{{Title: "Name"}}, &selected).
 		Rows([][]string{{"Alice"}, {"Bob"}}).
 		ShowHeader(false)
-	screen = SprintScreen(table, WithWidth(20))
+	screen = sprintScreen(table, WithWidth(20))
 	assert.True(t, screen.Cell(0, 0).Style.Reverse, "selected row should be highlighted")
 }
 
@@ -235,7 +235,7 @@ func TestTable_ShortRowSelectionSpansAllColumns(t *testing.T) {
 	table := Table([]TableColumn{{Title: "A", Width: 3}, {Title: "B", Width: 3}}, &selected).
 		Rows([][]string{{"x"}}).
 		ShowHeader(false)
-	screen := SprintScreen(table, WithWidth(10), WithHeight(1))
+	screen := sprintScreen(table, WithWidth(10), WithHeight(1))
 	assert.True(t, screen.Cell(0, 0).Style.Reverse, "first column highlighted")
 	assert.True(t, screen.Cell(5, 0).Style.Reverse, "missing column highlighted")
 }
@@ -245,7 +245,7 @@ func TestTable_ClampsSelectionWhenRowsShrink(t *testing.T) {
 	table := Table([]TableColumn{{Title: "Name"}}, &selected).
 		Rows([][]string{{"Alice"}, {"Bob"}}).
 		ShowHeader(false)
-	screen := SprintScreen(table, WithWidth(20), WithHeight(2))
+	screen := sprintScreen(table, WithWidth(20), WithHeight(2))
 	assert.Equal(t, selected, 1)
 	assert.True(t, screen.Cell(0, 1).Style.Reverse, "last row highlighted")
 }
@@ -255,7 +255,7 @@ func TestTable_KeepsNoSelectionWithRows(t *testing.T) {
 	table := Table([]TableColumn{{Title: "Name"}}, &selected).
 		Rows([][]string{{"Alice"}, {"Bob"}}).
 		ShowHeader(false)
-	screen := SprintScreen(table, WithWidth(20), WithHeight(2))
+	screen := sprintScreen(table, WithWidth(20), WithHeight(2))
 	assert.Equal(t, selected, -1)
 	assert.False(t, screen.Cell(0, 0).Style.Reverse, "no row highlighted")
 }

@@ -17,11 +17,11 @@ func renderSplit(s *SplitState, width, height int) *termtest.Screen {
 			ctx.Fill(rune(id[0]), NewStyle())
 		})
 	})
-	return SprintScreen(view, WithWidth(width), WithHeight(height))
+	return sprintScreen(view, WithWidth(width), WithHeight(height))
 }
 
 func TestSplitNilStateRendersNothing(t *testing.T) {
-	SprintScreen(Split(nil, func(string) View { return nil }), WithWidth(10), WithHeight(3))
+	sprintScreen(Split(nil, func(string) View { return nil }), WithWidth(10), WithHeight(3))
 }
 
 func TestSplitIgnoresNonFiniteWeights(t *testing.T) {
@@ -298,7 +298,7 @@ func TestSplitTightHighlightsBorders(t *testing.T) {
 		view := Split(s, func(id string) View {
 			return Bordered(Text("%s", id)).Title(id)
 		}).ActiveGutterStyle(active)
-		return SprintScreen(view, WithWidth(12), WithHeight(3))
+		return sprintScreen(view, WithWidth(12), WithHeight(3))
 	}
 	screen := render()
 	assert.Equal(t, screen.Row(1), "│a   ││b   │")
@@ -322,7 +322,7 @@ func TestSplitTightHighlightsBorders(t *testing.T) {
 		view := Split(s, func(id string) View {
 			return Bordered(Text("%s", id)).Title(id)
 		}).ActiveGutterStyle(active)
-		return SprintScreen(view, WithWidth(8), WithHeight(6))
+		return sprintScreen(view, WithWidth(8), WithHeight(6))
 	}
 	render()
 	s.HandleMouse(MouseEvent{Type: MouseMove, X: 4, Y: 3})

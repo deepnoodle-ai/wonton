@@ -32,6 +32,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/clipboard"
 	"github.com/deepnoodle-ai/wonton/fetch"
 	"github.com/deepnoodle-ai/wonton/tui"
+	_ "github.com/deepnoodle-ai/wonton/tui/highlight" // colors Markdown code blocks
 )
 
 const (

@@ -9,7 +9,6 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/runewidth"
-	"github.com/deepnoodle-ai/wonton/termtest"
 	"golang.org/x/term"
 )
 
@@ -24,7 +23,7 @@ type printConfig struct {
 }
 
 // PrintOption is a functional option for the printing functions:
-// Print, Fprint, Sprint, SprintScreen, NewLivePrinter, and Live.
+// Print, Fprint, Sprint, NewLivePrinter, and Live.
 type PrintOption func(*printConfig)
 
 // WithWidth sets the rendering width in columns.
@@ -62,7 +61,7 @@ func WithRawMode(enabled bool) PrintOption {
 // WithColor controls whether Print, Fprint, and Sprint write styles as ANSI
 // escape codes. When disabled, the output is plain text. Default is
 // color.Enabled, which is off when stdout is not a terminal or when NO_COLOR
-// or CLICOLOR=0 is set. SprintScreen defaults to on, since it exists to
+// or CLICOLOR=0 is set. tuitest.Screen defaults to on, since it exists to
 // inspect styles in tests. LivePrinter ignores this option.
 func WithColor(enabled bool) PrintOption {
 	return func(c *printConfig) {
@@ -305,49 +304,32 @@ func Sprint(view View, opts ...PrintOption) string {
 	return buf.String()
 }
 
-// SprintScreen renders a view and returns a termtest.Screen for assertions.
-// This is a convenience function for testing that combines Sprint with
-// termtest.Screen parsing, making it easy to write precise visual tests.
-// With WithRawMode(true), the screen models a raw-mode terminal (see
-// termtest.WithRawMode), so a line that does not start at column 0 shows.
-//
-// Example:
-//
-//	func TestButton(t *testing.T) {
-//	    btn := Button("Submit", func() {})
-//	    screen := SprintScreen(btn, WithWidth(20))
-//	    termtest.AssertRowContains(t, screen, 0, "Submit")
-//	}
-func SprintScreen(view View, opts ...PrintOption) *termtest.Screen {
-	var buf strings.Builder
+// PrintSettings holds the values that a list of PrintOptions selects.
+type PrintSettings struct {
+	// Width is the rendering width in columns.
+	Width int
+	// Height is the fixed rendering height in lines. 0 means the view's
+	// natural height.
+	Height int
+	// RawMode reports whether lines end with \r\n.
+	RawMode bool
+	// Color reports whether styles are written as ANSI escape codes.
+	Color bool
+}
+
+// SprintSettings returns the settings that Sprint uses for opts, with the
+// defaults filled in. Packages that wrap Sprint, such as tuitest, use it to
+// size their output.
+func SprintSettings(opts ...PrintOption) PrintSettings {
 	cfg := newPrintConfig(opts)
-	cfg.Output = &buf
-	if cfg.Color == nil {
-		enabled := true
-		cfg.Color = &enabled
-	}
+	cfg.Output = io.Discard
 	cfg = cfg.withDefaults()
-
-	// Get view dimensions
-	_, viewHeight := view.size(cfg.Width, 0)
-	if viewHeight == 0 {
-		viewHeight = 1
+	return PrintSettings{
+		Width:   cfg.Width,
+		Height:  cfg.Height,
+		RawMode: cfg.RawMode,
+		Color:   *cfg.Color,
 	}
-
-	// Use configured height or view's natural height + 1 for trailing newline
-	height := cfg.Height
-	if height == 0 {
-		height = viewHeight + 1
-	}
-
-	// Render to string
-	printWith(view, cfg)
-	output := buf.String()
-
-	// Create screen and write output
-	screen := termtest.NewScreen(cfg.Width, height, termtest.WithRawMode(cfg.RawMode))
-	screen.Write([]byte(output))
-	return screen
 }
 
 // LivePrinter renders views to a fixed region of the terminal that updates in place.

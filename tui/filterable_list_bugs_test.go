@@ -13,7 +13,7 @@ func TestFilterableListTightHeightKeepsItem(t *testing.T) {
 	scroll := 0
 	view := FilterableListStrings([]string{"A", "B", "Cherry-long-label", "D", "E"}, &selected).
 		ScrollOffset(&scroll).Height(2).Width(20)
-	screen := SprintScreen(view, WithWidth(20), WithHeight(2))
+	screen := sprintScreen(view, WithWidth(20), WithHeight(2))
 	if !screen.Contains("Cherry-long-label") {
 		t.Fatalf("selected item hidden:\n%s", screen.Text())
 	}
@@ -40,7 +40,7 @@ func TestFilterableListSelectIndexConsistent(t *testing.T) {
 	selected := 0
 	view := FilterableListStrings(items, &selected).Filter(&filter).Height(5).
 		OnSelect(func(_ ListItem, i int) { enterIdx = i })
-	SprintScreen(view, WithWidth(20), WithHeight(5))
+	sprintScreen(view, WithWidth(20), WithHeight(5))
 	view.HandleKeyEvent(KeyEvent{Key: KeyEnter})
 
 	selected = 0

@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/deepnoodle-ai/wonton/tui/highlight"
 )
 
 const sampleDiff = `diff --git a/server.go b/server.go
@@ -108,7 +109,7 @@ func (app *DiffDemoApp) scrollBy(lines int) {
 }
 
 func (app *DiffDemoApp) diffView() tui.View {
-	return tui.DiffView(app.diff, "go", nil).ShowLineNumbers(true)
+	return highlight.DiffView(app.diff, "go", nil).ShowLineNumbers(true)
 }
 
 // View returns the declarative view structure.

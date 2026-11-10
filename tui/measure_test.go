@@ -27,7 +27,7 @@ func TestMeasureMatchesWhatIsActuallyRendered(t *testing.T) {
 
 	_, height := Measure(view, 20, 0)
 
-	screen := SprintScreen(view, WithWidth(20))
+	screen := sprintScreen(view, WithWidth(20))
 	rows := 0
 	for y := 0; y < height+5; y++ {
 		if screen.Row(y) != "" {

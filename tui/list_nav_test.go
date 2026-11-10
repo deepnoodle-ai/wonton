@@ -145,7 +145,7 @@ func TestSelectListRendersSelectedItemAfterEnd(t *testing.T) {
 	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
 	assert.Equal(t, 19, selected)
 
-	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	screen := sprintScreen(list, WithWidth(20), WithHeight(5))
 	termtest.AssertRowContains(t, screen, 4, "item-19")
 }
 
@@ -155,7 +155,7 @@ func TestSelectListRenderFollowsProgrammaticSelection(t *testing.T) {
 	selected := 19
 	list := SelectList(labeledItems(20), &selected).Height(5)
 
-	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	screen := sprintScreen(list, WithWidth(20), WithHeight(5))
 	termtest.AssertRowContains(t, screen, 4, "item-19")
 }
 
@@ -167,7 +167,7 @@ func TestCheckboxListRendersCursorAfterEnd(t *testing.T) {
 	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
 	assert.Equal(t, 19, cursor)
 
-	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	screen := sprintScreen(list, WithWidth(20), WithHeight(5))
 	termtest.AssertRowContains(t, screen, 4, "item-19")
 }
 
@@ -178,7 +178,7 @@ func TestRadioListRendersSelectedAfterEnd(t *testing.T) {
 	assert.True(t, list.HandleKeyEvent(KeyEvent{Key: KeyEnd}))
 	assert.Equal(t, 19, selected)
 
-	screen := SprintScreen(list, WithWidth(20), WithHeight(5))
+	screen := sprintScreen(list, WithWidth(20), WithHeight(5))
 	termtest.AssertRowContains(t, screen, 4, "item-19")
 }
 
@@ -194,7 +194,7 @@ func TestTreeEndScrollsWithoutScrollYBinding(t *testing.T) {
 
 	// With no external ScrollY binding, the internal offset keeps the
 	// selected node visible.
-	screen := SprintScreen(tree, WithWidth(20), WithHeight(5))
+	screen := sprintScreen(tree, WithWidth(20), WithHeight(5))
 	termtest.AssertRowContains(t, screen, 4, "child-09")
 }
 

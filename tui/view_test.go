@@ -303,3 +303,41 @@ func TestZStack_Render(t *testing.T) {
 	err := Print(z, WithWidth(80), WithHeight(10), WithOutput(&buf))
 	assert.NoError(t, err)
 }
+
+// badge is a view type built the way a package outside tui builds one.
+type badge struct {
+	View
+	label string
+}
+
+func newBadge(label string) *badge {
+	b := &badge{label: label}
+	b.View = Custom(b.measure, b.draw)
+	return b
+}
+
+func (b *badge) measure(maxWidth, maxHeight int) (int, int) {
+	return min(len(b.label)+2, maxWidth), 1
+}
+
+func (b *badge) draw(ctx *RenderContext) {
+	ctx.PrintTruncated(0, 0, "["+b.label+"]", NewStyle())
+}
+
+func TestCustom_MeasuresAndDraws(t *testing.T) {
+	view := Stack(newBadge("ok"), Text("next"))
+	w, h := Measure(view, 20, 0)
+	assert.Equal(t, w, 4)
+	assert.Equal(t, h, 2)
+	screen := sprintScreen(view, WithWidth(20))
+	assert.Equal(t, screen.Row(0), "[ok]")
+	assert.Equal(t, screen.Row(1), "next")
+}
+
+func TestCustom_NilFuncs(t *testing.T) {
+	view := Custom(nil, nil)
+	w, h := Measure(view, 10, 10)
+	assert.Equal(t, w, 0)
+	assert.Equal(t, h, 0)
+	assert.NotPanics(t, func() { Sprint(view, WithWidth(10)) })
+}

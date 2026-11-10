@@ -46,7 +46,7 @@ func TestBorderAnimationsWithEmptyBorder(t *testing.T) {
 		&GradientBorderAnimation{},
 		&WaveBorderAnimation{},
 	} {
-		SprintScreen(Size(1, 1, AnimatedBordered(Text("x"), anim)), WithWidth(1), WithHeight(1))
+		sprintScreen(Size(1, 1, AnimatedBordered(Text("x"), anim)), WithWidth(1), WithHeight(1))
 		anim.GetBorderStyle(0, BorderPartTop, 0, 0)
 		anim.GetBorderStyle(0, BorderPartTop, 3, -10) // -WaveWidth by default
 	}

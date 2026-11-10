@@ -140,6 +140,8 @@ func renderSnippet(code string) string {
 		{"strings.", "\"strings\"", "var _ = strings.Join"},
 		{"testing.", "\"testing\"", "var _ testing.TB"},
 		{"termtest.", "\"github.com/deepnoodle-ai/wonton/termtest\"", "var _ = termtest.AssertScreen"},
+		{"highlight.", "\"github.com/deepnoodle-ai/wonton/tui/highlight\"", "var _ = highlight.Code"},
+		{"tuitest.", "\"github.com/deepnoodle-ai/wonton/tui/tuitest\"", "var _ = tuitest.Screen"},
 	}
 	var specs, anchors []string
 	for _, im := range imports {

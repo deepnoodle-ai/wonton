@@ -46,7 +46,7 @@ func TestGolden_ZStack_Layers(t *testing.T) {
         Fill('.'),
         Text("Overlay"),
     )
-    screen := SprintScreen(view, WithWidth(15), WithHeight(3))
+    screen := sprintScreen(view, WithWidth(15), WithHeight(3))
     termtest.AssertScreen(t, screen)
 }
 </code>

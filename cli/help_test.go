@@ -8,6 +8,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/assert"
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/deepnoodle-ai/wonton/tui/tuitest"
 )
 
 func TestDefaultHelpTheme(t *testing.T) {
@@ -585,7 +586,7 @@ func TestRenderFlag(t *testing.T) {
 	t.Run("wraps long help text", func(t *testing.T) {
 		flag := String("output", "o").Help("Creates records using the configured destination and includes audit details for generated events")
 		view := renderFlag(flag, theme, len(flag.GetName()))
-		screen := tui.SprintScreen(view, tui.WithWidth(46))
+		screen := tuitest.Screen(view, tui.WithWidth(46))
 
 		assert.Contains(t, screen.Text(), "generated events")
 		assert.Contains(t, strings.TrimSpace(screen.Row(1)), "configured destination")
@@ -594,7 +595,7 @@ func TestRenderFlag(t *testing.T) {
 	t.Run("renders metadata without leading help space", func(t *testing.T) {
 		flag := String("output", "o").Default("out.txt")
 		view := renderFlag(flag, theme, len(flag.GetName()))
-		screen := tui.SprintScreen(view, tui.WithWidth(46))
+		screen := tuitest.Screen(view, tui.WithWidth(46))
 
 		assert.Contains(t, screen.Row(0), "--output default: out.txt")
 		assert.NotContains(t, screen.Row(0), "--output  default: out.txt")
@@ -608,7 +609,7 @@ func TestRenderCommandListWrapsLongDescriptions(t *testing.T) {
 	}
 
 	view := renderCommandList(commands, []string{"sync"}, theme)
-	screen := tui.SprintScreen(view, tui.WithWidth(48))
+	screen := tuitest.Screen(view, tui.WithWidth(48))
 
 	assert.Contains(t, screen.Text(), "generated change")
 	assert.Contains(t, strings.TrimSpace(screen.Row(1)), "explain every")

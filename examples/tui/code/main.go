@@ -7,6 +7,7 @@ import (
 
 	"github.com/deepnoodle-ai/wonton/cli"
 	"github.com/deepnoodle-ai/wonton/tui"
+	"github.com/deepnoodle-ai/wonton/tui/highlight"
 )
 
 func main() {
@@ -86,7 +87,7 @@ func (app *codeApp) scrollBy(lines int) {
 	app.scrollY = min(max(app.scrollY+lines, 0), app.maxScroll())
 }
 
-func (app *codeApp) codeView() tui.View { return tui.Code(app.code, "go") }
+func (app *codeApp) codeView() tui.View { return highlight.Code(app.code, "go") }
 
 func (app *codeApp) View() tui.View {
 	return tui.Stack(
