@@ -15,6 +15,16 @@ PR describes its user-visible and incompatible changes in its body.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-10
+
+### Fixed
+
+- `cli`: help and the shell completion scripts list the built-in `version`
+  command, and flag help has a two-space gap before descriptions. (#253)
+- `cli`: an app's own group, alias, or group subcommand named `help` or
+  `version` runs instead of the built-in. (#256)
+- `tui`: keys typed before the first frame reach the focused input. (#254)
+
 ## [0.14.1] - 2026-11-10
 
 ### Fixed
