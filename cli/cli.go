@@ -162,8 +162,8 @@ import (
 //	app.Group("users").Command("list").Run(listUsersHandler)
 //
 // The App provides a built-in help command, and a version command when a
-// version is set. A command the app defines with either name replaces the
-// built-in.
+// version is set. A command, group, alias, or flat-routed group subcommand
+// that the app defines with either name replaces the built-in.
 type App struct {
 	name        string
 	description string
@@ -287,9 +287,10 @@ func (a *App) hasVersion() bool {
 
 // listedCommands returns the top-level commands that help and completions
 // list, with their order. It adds the built-in version command when the app
-// has version output and defines no command or group named "version".
+// has version output and no command, group, or alias of the app's own
+// claims the name "version".
 func (a *App) listedCommands() (map[string]*Command, []string) {
-	if !a.hasVersion() || a.commands["version"] != nil || a.groups["version"] != nil {
+	if !a.hasVersion() || a.claimsName("version") {
 		return a.commands, a.commandOrder
 	}
 	commands := make(map[string]*Command, len(a.commands)+1)
@@ -299,6 +300,13 @@ func (a *App) listedCommands() (map[string]*Command, []string) {
 	commands["version"] = &Command{name: "version", description: "Print the version"}
 	order := append(orderedCommandKeys(a.commands, a.commandOrder), "version")
 	return commands, order
+}
+
+// claimsName reports whether a command, group, or alias of the app's own
+// resolves from name. Such a name replaces the built-in command of that name.
+func (a *App) claimsName(name string) bool {
+	command, group := newParser(a).resolveAppCommand(name)
+	return command != "" || group != ""
 }
 
 // printVersion writes the version output to the app's stdout.
@@ -533,8 +541,10 @@ func (a *App) ExecuteContext(ctx context.Context, args []string) error {
 		}
 	}
 
-	// Handle built-in commands, unless the app defines a command by that name
-	if a.commands[result.Command] == nil {
+	// Handle built-in commands. The parser resolves help and version to a
+	// built-in only when no command, group, or alias of the app's own claims
+	// the name. A group subcommand with the same name is not a built-in.
+	if result.Group == "" && a.commands[result.Command] == nil {
 		switch result.Command {
 		case "help":
 			return a.showHelp()

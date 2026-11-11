@@ -278,14 +278,24 @@ func (p *parser) resolveCommandPosition(result *parseResult, args []string, pos 
 // resolveCommand checks if the argument matches a known command or group.
 // Returns (commandName, groupName). For a direct command, groupName is empty.
 // For a group, commandName is empty. For group:command syntax, both are set.
+// The built-in help and version commands match only when no command, group,
+// or alias of the app's own claims the name.
 func (p *parser) resolveCommand(arg string) (command, group string) {
-	// Check direct commands
-	if _, ok := p.app.commands[arg]; ok {
+	if command, group = p.resolveAppCommand(arg); command != "" || group != "" {
+		return command, group
+	}
+	if arg == "help" || (arg == "version" && p.app.hasVersion()) {
 		return arg, ""
 	}
+	return "", ""
+}
 
-	// Built-in commands, unless a command above already claimed the name
-	if arg == "help" || (arg == "version" && p.app.hasVersion()) {
+// resolveAppCommand resolves arg against the app's own commands and groups,
+// ignoring the built-in commands. It returns the same values as
+// resolveCommand.
+func (p *parser) resolveAppCommand(arg string) (command, group string) {
+	// Check direct commands
+	if _, ok := p.app.commands[arg]; ok {
 		return arg, ""
 	}
 
