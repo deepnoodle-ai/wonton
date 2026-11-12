@@ -336,6 +336,12 @@ func TestTransform_RemovesActiveAttributes(t *testing.T) {
 		`<form action="javascript:alert(6)"><button formaction="javascript:alert(7)">d</button></form>` +
 		`<iframe srcdoc="&lt;script&gt;alert(8)&lt;/script&gt;"></iframe>` +
 		`<a href="https://example.com/javascript:ok" title="javascript: is a scheme">e</a>` +
+		// SVG animation can set a link's href to a script URL.
+		`<svg><a><animate attributeName="href" values="javascript:alert(9)"/>` +
+		`<animate attributeName="href" values="#a; JavaScript:alert(10)"/>` +
+		`<set attributeName="href" to="javascript:alert(11)"/>` +
+		`<animate attributeName="href" from="vbscript:msgbox(12)" by="javascript:alert(13)"/>` +
+		`<animate attributeName="opacity" values="0;1"/><text>f</text></a></svg>` +
 		`</body>`
 	doc, _ := Parse(input)
 
@@ -352,6 +358,7 @@ func TestTransform_RemovesActiveAttributes(t *testing.T) {
 		assert.Contains(t, result, `alt="pic"`)
 		assert.Contains(t, result, `href="https://example.com/javascript:ok"`)
 		assert.Contains(t, result, `title="javascript: is a scheme"`)
+		assert.Contains(t, result, `values="0;1"`)
 	}
 }
 
