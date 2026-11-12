@@ -285,3 +285,16 @@ func ExampleRedactor() {
 	fmt.Printf("%q\n", out.String())
 	// Output: "Token: [REDACTED]\r\nok"
 }
+
+// ExampleStripControl shows how to link an untrusted label, such as model
+// output, so it cannot carry escape sequences of its own.
+func ExampleStripControl() {
+	// The label tries to point the visible link at another URL.
+	label := "docs\x1b]8;;https://evil.example\x1b\\"
+	link := terminal.Format("https://example.com", terminal.StripControl(label))
+	fmt.Printf("%q\n", terminal.StripControl(label))
+	fmt.Println(terminal.StripOSC8(link))
+	// Output:
+	// "docs]8;;https://evil.example\\"
+	// docs]8;;https://evil.example\
+}

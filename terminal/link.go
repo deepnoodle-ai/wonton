@@ -38,7 +38,7 @@ import (
 // Where ST (String Terminator) is ESC \
 // Control characters are removed from the URL so it cannot end the sequence.
 func Start(targetURL string) string {
-	return fmt.Sprintf("\033]8;;%s\033\\", stripControl(targetURL))
+	return fmt.Sprintf("\033]8;;%s\033\\", stripAllControl(targetURL))
 }
 
 // StartWithID returns the OSC 8 escape sequence to start a hyperlink with an ID.
@@ -47,7 +47,7 @@ func Start(targetURL string) string {
 // Control characters are removed from the URL and ID, and ';' and ':' from
 // the ID, so neither can end the sequence or change its parameters.
 func StartWithID(targetURL, id string) string {
-	return fmt.Sprintf("\033]8;id=%s;%s\033\\", sanitizeLinkID(id), stripControl(targetURL))
+	return fmt.Sprintf("\033]8;id=%s;%s\033\\", sanitizeLinkID(id), stripAllControl(targetURL))
 }
 
 // End returns the OSC 8 escape sequence to end a hyperlink.
@@ -58,16 +58,16 @@ func End() string {
 
 // Format returns a complete hyperlink with the given URL and display text.
 // This wraps the text in OSC 8 start and end sequences. The text is written
-// as given, so it may carry its own styling; strip control characters from
-// untrusted text before passing it.
+// as given, so it may carry its own styling; pass untrusted text through
+// [StripControl] first.
 func Format(targetURL, text string) string {
 	return Start(targetURL) + text + End()
 }
 
 // FormatWithID returns a complete hyperlink with a custom ID.
 // The ID can be used to group multiple hyperlink segments as a single link.
-// As with Format, the text is written as given; strip control characters
-// from untrusted text before passing it.
+// As with Format, the text is written as given; pass untrusted text
+// through [StripControl] first.
 func FormatWithID(targetURL, text, id string) string {
 	return StartWithID(targetURL, id) + text + End()
 }
@@ -115,9 +115,10 @@ func ValidateAbsoluteURL(targetURL string) error {
 // Fallback returns a fallback representation for terminals that don't support OSC 8.
 // Format: "text (URL)"
 // For example: "Click here (https://example.com)"
-// Control characters are removed from the URL; the text is written as given.
+// Control characters are removed from the URL; the text is written as given;
+// pass untrusted text through [StripControl] first.
 func Fallback(targetURL, text string) string {
-	return text + " (" + stripControl(targetURL) + ")"
+	return text + " (" + stripAllControl(targetURL) + ")"
 }
 
 // StripOSC8 removes OSC 8 hyperlink escape sequences from text.

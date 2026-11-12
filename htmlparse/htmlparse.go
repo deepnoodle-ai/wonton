@@ -629,6 +629,42 @@ func (r *renderOpts) isExcluded(n *html.Node) bool {
 	return false
 }
 
+// urlAttrs are the attributes whose value a browser loads or navigates to.
+var urlAttrs = map[string]bool{
+	"href": true, "src": true, "action": true, "formaction": true,
+	"data": true, "poster": true, "background": true, "cite": true,
+	"codebase": true, "classid": true, "archive": true, "longdesc": true,
+	"lowsrc": true, "dynsrc": true, "manifest": true, "icon": true,
+	"ping": true, "xlink:href": true,
+}
+
+// isActiveAttr reports whether an attribute runs script when the output is
+// shown in a browser: an event handler (on*), srcdoc (an inline document),
+// or a URL attribute whose scheme is javascript: or vbscript:.
+func isActiveAttr(attr html.Attribute) bool {
+	key := strings.ToLower(attr.Key)
+	if attr.Namespace != "" {
+		key = strings.ToLower(attr.Namespace) + ":" + key
+	}
+	if strings.HasPrefix(key, "on") || key == "srcdoc" {
+		return true
+	}
+	if !urlAttrs[key] {
+		return false
+	}
+	// Browsers trim leading and trailing C0 controls and spaces from a URL
+	// and drop tabs and newlines anywhere in it before reading the scheme.
+	v := strings.TrimFunc(attr.Val, func(r rune) bool { return r <= ' ' })
+	v = strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, v)
+	v = strings.ToLower(v)
+	return strings.HasPrefix(v, "javascript:") || strings.HasPrefix(v, "vbscript:")
+}
+
 // nodeAttrs extracts attributes from a node into a map.
 func nodeAttrs(n *html.Node) map[string]string {
 	attrs := make(map[string]string, len(n.Attr))
@@ -647,7 +683,13 @@ func nodeAttrs(n *html.Node) map[string]string {
 //   - Cleaning HTML for content analysis
 //   - Preparing HTML for display or archival
 //
-// If opts is nil, returns the full document with only script/style removed.
+// Transform always removes script, style, and noscript elements, event
+// handler attributes (on*), srcdoc, and javascript: and vbscript: URLs. It is
+// not an HTML sanitizer: other active content, such as iframes, objects,
+// forms, and data: URLs, is kept unless filtered out. Sanitize the result
+// before rendering HTML from an untrusted page in a browser.
+//
+// If opts is nil, returns the full document with only the above removed.
 //
 // Example:
 //
@@ -819,6 +861,9 @@ func (d *Document) renderCompact(buf *strings.Builder, n *html.Node, opts *rende
 		buf.WriteString("<")
 		buf.WriteString(n.Data)
 		for _, attr := range n.Attr {
+			if isActiveAttr(attr) {
+				continue
+			}
 			buf.WriteString(" ")
 			buf.WriteString(attr.Key)
 			buf.WriteString(`="`)
@@ -896,6 +941,9 @@ func (d *Document) renderPretty(buf *strings.Builder, n *html.Node, depth int, o
 		buf.WriteString("<")
 		buf.WriteString(n.Data)
 		for _, attr := range n.Attr {
+			if isActiveAttr(attr) {
+				continue
+			}
 			buf.WriteString(" ")
 			buf.WriteString(attr.Key)
 			buf.WriteString(`="`)

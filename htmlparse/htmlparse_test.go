@@ -327,6 +327,34 @@ func TestTransform_ScriptStyleRemoved(t *testing.T) {
 	assert.NotContains(t, result, "alert")
 }
 
+func TestTransform_RemovesActiveAttributes(t *testing.T) {
+	input := `<body>` +
+		`<img src="x.png" onerror="alert(1)" ONLOAD="alert(2)" alt="pic">` +
+		`<a href="javascript:alert(3)">a</a>` +
+		`<a href=" JaVa&#x09;Script:alert(4)">b</a>` +
+		`<a href="vbscript:msgbox(5)">c</a>` +
+		`<form action="javascript:alert(6)"><button formaction="javascript:alert(7)">d</button></form>` +
+		`<iframe srcdoc="&lt;script&gt;alert(8)&lt;/script&gt;"></iframe>` +
+		`<a href="https://example.com/javascript:ok" title="javascript: is a scheme">e</a>` +
+		`</body>`
+	doc, _ := Parse(input)
+
+	for _, pretty := range []bool{false, true} {
+		result := doc.Transform(&TransformOptions{PrettyPrint: pretty})
+		assert.NotContains(t, result, "alert")
+		assert.NotContains(t, result, "msgbox")
+		assert.NotContains(t, strings.ToLower(result), "onerror")
+		assert.NotContains(t, strings.ToLower(result), "onload")
+		assert.NotContains(t, result, "srcdoc")
+		// Ordinary attributes, including ones that merely mention a scheme
+		// outside a URL position, are kept.
+		assert.Contains(t, result, `src="x.png"`)
+		assert.Contains(t, result, `alt="pic"`)
+		assert.Contains(t, result, `href="https://example.com/javascript:ok"`)
+		assert.Contains(t, result, `title="javascript: is a scheme"`)
+	}
+}
+
 func TestHTML(t *testing.T) {
 	input := `<html><head></head><body><p>Test</p></body></html>`
 	doc, _ := Parse(input)
