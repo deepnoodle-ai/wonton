@@ -22,6 +22,7 @@ import (
 	"github.com/deepnoodle-ai/wonton/color"
 	"github.com/deepnoodle-ai/wonton/crawler"
 	"github.com/deepnoodle-ai/wonton/fetch"
+	"github.com/deepnoodle-ai/wonton/httpguard"
 	"github.com/deepnoodle-ai/wonton/humanize"
 	"github.com/deepnoodle-ai/wonton/retry"
 	"github.com/deepnoodle-ai/wonton/tui"
@@ -254,16 +255,20 @@ func (app *SiteCheckApp) formatResult(status LinkStatus) tui.View {
 	)
 }
 
+// linkClient checks links. The links come from crawled pages, so it is
+// guarded: a page cannot point it at a loopback, private, or cloud metadata
+// address. Redirects are recorded, not followed.
+var linkClient = func() *http.Client {
+	c := httpguard.NewClient()
+	c.Timeout = 10 * time.Second
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return c
+}()
+
 // checkLink checks a single link and returns its status
 func checkLink(ctx context.Context, url string) LinkStatus {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// Don't follow redirects, just record them
-			return http.ErrUseLastResponse
-		},
-	}
-
 	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
 	if err != nil {
 		return LinkStatus{
@@ -276,7 +281,7 @@ func checkLink(ctx context.Context, url string) LinkStatus {
 	// Set a reasonable user agent
 	req.Header.Set("User-Agent", "SiteCheck/1.0")
 
-	resp, err := client.Do(req)
+	resp, err := linkClient.Do(req)
 	if err != nil {
 		return LinkStatus{
 			URL:       url,

@@ -149,7 +149,10 @@ type Response struct {
 	Headers map[string]string `json:"headers"`
 
 	// HTML is the processed HTML content with transformations applied.
-	// Populated when "html" format is requested.
+	// Populated when "html" format is requested. Scripts, event handlers,
+	// and javascript: URLs are removed, but the HTML is not sanitized (see
+	// htmlparse.Document.Transform): sanitize it before rendering it in a
+	// browser.
 	HTML string `json:"html,omitempty"`
 
 	// RawHTML is the original HTML without any processing.

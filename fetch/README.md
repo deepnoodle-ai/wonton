@@ -266,6 +266,10 @@ req := &fetch.Request{
 // - Navigation and footers
 ```
 
+The `html` format removes scripts, event handler attributes, and
+`javascript:` URLs even without filters, but it is not an HTML sanitizer.
+Sanitize `Response.HTML` before rendering a fetched page in a browser.
+
 ## API Reference
 
 ### Fetcher Interface

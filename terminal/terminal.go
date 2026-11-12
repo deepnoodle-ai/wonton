@@ -1425,7 +1425,7 @@ func (t *Terminal) PrintStyled(text string, style Style) {
 func (t *Terminal) printInternal(startX, startY int, text string, style Style, clipRect image.Rectangle, wrap bool) error {
 	// Text is drawn, never interpreted: drop control characters so it
 	// cannot carry escape sequences to the terminal.
-	text = stripTextControl(text)
+	text = StripControl(text)
 
 	if !t.buffered {
 		// Non-buffered mode doesn't support clipping via buffer, direct print

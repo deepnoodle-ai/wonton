@@ -503,3 +503,16 @@ func TestFormatWithIDRoundTrip(t *testing.T) {
 	stripped := StripOSC8(formatted)
 	assert.Equal(t, text, stripped)
 }
+
+func TestStripControl(t *testing.T) {
+	label := "safe\x1b]8;;https://evil.example\x1b\\click\x1b]52;c;cHduZWQ=\a\x9b31m\x7f"
+	got := StripControl(label + "\nline2\ttab")
+	// The raw 0x9b byte (8-bit CSI) is invalid UTF-8 and becomes U+FFFD.
+	assert.Equal(t, got, "safe]8;;https://evil.example\\click]52;c;cHduZWQ=�31m\nline2\ttab")
+
+	// A stripped label cannot end or replace the link it is placed in: the
+	// only escapes left are the link's own start and end sequences.
+	link := Format("https://example.com", StripControl(label))
+	assert.Equal(t, link, Start("https://example.com")+StripControl(label)+End())
+	assert.Equal(t, strings.Count(link, "\x1b"), strings.Count(Start("")+End(), "\x1b"))
+}

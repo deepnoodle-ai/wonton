@@ -134,7 +134,7 @@ func (h Hyperlink) FormatFallback() string {
 
 	// Add URL in parentheses
 	sb.WriteString(" (")
-	sb.WriteString(stripControl(h.URL))
+	sb.WriteString(stripAllControl(h.URL))
 	sb.WriteString(")")
 
 	return sb.String()
